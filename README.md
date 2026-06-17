@@ -40,24 +40,24 @@ schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
 
 | Option | Description |
 | --- | --- |
-| `--allow-experiments` | Accept add-ons that use Experiment APIs. Off by default (an Experiment submission is then an error). |
-| `--checks-only <ids>` | Only run these checks (comma-separated). See the check list below. |
-| `--checks-skip <ids>` | Skip these checks (comma-separated). See the check list below. |
-| `--claude-api-key <key>` | API key for the LLM checks via Claude. Providing it enables them. Off by default. |
-| `--claude-enabled` | Enable the LLM checks using a `CLAUDE_API_KEY` from the environment. A bare `CLAUDE_API_KEY` no longer enables them on its own. |
-| `--claude-list-models` | List the Anthropic models available to your token (marking the default), then exit. |
-| `--claude-model <id>` | Model for the LLM checks. See `--claude-list-models` for the choices and the default. |
-| `--diff-to <xpi\|folder>` | Previously published version, to diff against. Enables the diff checks (run only with `--diff-to`). |
-| `--diff-summary` | Add an AI **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Advisory, not a finding. Needs `--diff-to` and the LLM enabled (`--claude-api-key` or `--claude-enabled`). |
-| `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default, so without it the check does not run at all (no findings, no activity entry). |
-| `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes and a permission review (which declared permissions appear unused) - from its (almost) full current source (vendored and unused files excluded). Advisory, not a finding. Needs the LLM enabled (`--claude-api-key` or `--claude-enabled`). |
-| `--report-format <text\|json>` | Report output format (default `text`). |
-| `--report-out <file>` | Write the report to a file instead of stdout. |
 | `--schema-cache <dir>` | Where downloaded schema zips are cached (default `.schema-cache`). |
 | `--schema-channel <name>` | Schema channel (default `release`). One of `release`, `beta`, `esr`. |
 | `--schema-force-refresh` | Re-download the schema even if a cached copy exists. |
-| `--schema-zip <path>` | Use a local schema zip (or directory) instead of downloading. Fully offline. |
-| `--verbose` | Verbose progress logging on stderr. |
+| `--schema-zip <path>` | Use a local schema zip (or directory) instead of downloading. |
+| `--checks-only <ids>` | Only run these checks (comma-separated). See the check list below. |
+| `--checks-skip <ids>` | Skip these checks (comma-separated). See the check list below. |
+| `--report-format <text\|json>` | Report output format (default `text`). |
+| `--report-out <file>` | Write the report to a file in addition to stdout. |
+| `--claude-api-key <key>` | API key for the LLM checks via Claude. |
+| `--claude-enabled` | Enable the LLM checks using the `CLAUDE_API_KEY` environment variable. |
+| `--claude-list-models` | List the Anthropic models available to your token, then exit. |
+| `--claude-model <id>` | Model for the LLM checks. See `--claude-list-models` for the choices and the default. |
+| `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
+| `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
+| `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
+| `--diff-summary` | Add an AI assited **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and the LLM enabled (`--claude-api-key` or `--claude-enabled`). |
+| `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes and a permission review (which declared permissions appear unused) - from its (almost) full current source (vendored and unused files excluded). Advisory, not a finding. Needs the LLM enabled (`--claude-api-key` or `--claude-enabled`). |
+| `--verbose` | Verbose logging. |
 
 **Exit codes:** `0` no errors · `1` one or more error-severity findings · `2`
 tool failure.

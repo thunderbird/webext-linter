@@ -196,21 +196,17 @@ export function helpText() {
       `Only run these checks (comma-separated). Available: ${loadRegistry().checkIds().join(", ")}.`,
     ],
     ["--checks-skip <ids>", "Skip these checks (comma-separated)."],
-    [
-      "--eslint",
-      "Run the ESLint code-sanity checks on authored JS (off by default).",
-    ],
   ];
 
   const report = [
     ["--report-format <text|json>", "Report output format (default: text)."],
-    ["--report-out <file>", "Write the report to a file instead of stdout."],
+    ["--report-out <file>", "Write the report to a file in addition to stdout."],
   ];
 
   const claude = [
     [
       "--claude-api-key <key>",
-      "API key for the LLM checks via Claude. Providing it enables them.",
+      "API key for the LLM checks via Claude.",
     ],
     [
       "--claude-enabled",
@@ -233,7 +229,7 @@ export function helpText() {
     ],
     [
       "--diff-to <xpi|folder>",
-      "Previously published version, to diff against: enables the 'diff' checks.",
+      "Previously published version, to diff against.",
     ],
     [
       "--diff-summary",
@@ -243,8 +239,12 @@ export function helpText() {
       "--full-summary",
       "Add an AI Summary of the full add-on, what the add-on does, with security notes and a permission review (needs a Claude API key).",
     ],
-    ["--verbose", "Verbose progress logging (text mode only)."],
+    [
+      "--eslint",
+      "Run the ESLint code-sanity checks on authored JS (off by default).",
+    ],
     ["--help", "Show this help."],
+    ["--verbose", "Verbose logging (text mode only)."],
   ];
 
   const commands = [
