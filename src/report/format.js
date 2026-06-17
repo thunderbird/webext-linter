@@ -95,14 +95,16 @@ function headerLines(meta) {
 }
 
 /**
- * Issues: numbered "N) file:line - description", wrapped with a hanging indent.
- * Grouped by severity under registry-defined headings (numbering continuous
- * across the groups) when headings are supplied, otherwise a single flat list.
+ * Issues: numbered "N) file:line - description", printed VERBATIM (no 80-column
+ * rewrap, no hanging indent - see renderFinding). Grouped by severity under
+ * registry-defined headings (numbering continuous across the groups) when
+ * headings are supplied, otherwise a single flat list.
  *
  * A registry-owned verdict preamble opens the section: with no findings it is
  * the whole body (`verdictIntros.none`); with findings it is `rejected` (any
  * error) or `feedback` (warnings/info only), glued directly to the FIRST
- * severity heading - one space, no blank line - so they wrap as one paragraph.
+ * severity heading - one space, no blank line - and printed verbatim (no
+ * rewrap), like the findings below it.
  * @param {import("./finding.js").Finding[]} issues
  * @param {Record<string, string>} [issueHeadings]
  * @param {Record<string, string>} [verdictIntros]
@@ -130,7 +132,9 @@ function issuesLines(issues, issueHeadings, verdictIntros) {
       const heading = issueHeadings[sev];
       const text = first && intro ? `${intro} ${heading ?? ""}` : heading;
       if (text) {
-        out.push(...wrapParagraph(text, "").map(tint));
+        // Verbatim, like the findings: no 80-column rewrap. The registry owns
+        // the intro/heading wording on one line; any authored break is kept.
+        out.push(...text.split("\n").map(tint));
       }
       first = false;
       for (const f of group) {
@@ -150,13 +154,18 @@ function issuesLines(issues, issueHeadings, verdictIntros) {
 }
 
 /**
- * One numbered issue line plus its optional remediation hint.
+ * Render one Issues finding VERBATIM: "N) file:line - message" with the registry
+ * response printed exactly as authored - no 80-column rewrap and no hanging
+ * indent. A long response runs off the line, and its own line breaks (the
+ * registry puts one before "Read more:") land at column 0. The optional
+ * remediation hint follows. (Manual review still wraps - see manualLines.)
  * @param {number} n  1-based number.
  * @param {import("./finding.js").Finding} f
  * @returns {string[]}
  */
 function renderFinding(n, f) {
-  const lines = wrapEntry(n, entryBody(f));
+  const [first, ...rest] = entryBody(f).split("\n");
+  const lines = [`${n}) ${first}`, ...rest];
   if (f.hint) {
     lines.push(`    → ${f.hint}`);
   }
@@ -293,41 +302,6 @@ function wrapEntry(n, body, width = 80) {
     }
   }
   lines.push(cur);
-  return lines;
-}
-
-/**
- * Wrap a paragraph under a fixed left indent, collapsing internal whitespace
- * first. Like wrapEntry but without the hanging "N)" marker - used for the
- * (possibly multi-line) Issues heading/verdict paragraph. A word longer than
- * the available width is left on its own over-long line.
- *
- * @param {string} text
- * @param {string} indent  Left indent applied to every line.
- * @param {number} [width]
- * @returns {string[]}
- */
-function wrapParagraph(text, indent, width = 80) {
-  const lines = [];
-  let cur = indent;
-  let started = false;
-  for (const word of text.replace(/\s+/g, " ").trim().split(" ")) {
-    if (!word) {
-      continue;
-    }
-    if (!started) {
-      cur += word;
-      started = true;
-    } else if (cur.length + 1 + word.length <= width) {
-      cur += ` ${word}`;
-    } else {
-      lines.push(cur);
-      cur = indent + word;
-    }
-  }
-  if (started) {
-    lines.push(cur);
-  }
   return lines;
 }
 

@@ -95,7 +95,7 @@
       "loc": null,
       "item": "browser_action",
       "hint": null,
-      "message": "Manifest entry issue: unrecognized top-level key \"browser_action\". Thunderbird ignores or misreads such entries. Read more: https://webextension-api.thunderbird.net/."
+      "message": "Manifest entry issue: unrecognized top-level key \"browser_action\". Thunderbird ignores or misreads such entries.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }

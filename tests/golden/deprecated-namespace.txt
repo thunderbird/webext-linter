@@ -3,12 +3,10 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 ── Issues ──
 
-Thank you for your contribution, it will be approved shortly. We would like to
-share the following information with you:
+Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
-1) bg.js:3 - "legacy.doThing" is deprecated in the targeted Thunderbird version.
-   Please migrate to a supported API. Read more:
-   https://webextension-api.thunderbird.net/.
+1) bg.js:3 - "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+Read more: https://webextension-api.thunderbird.net/.
     → The legacy API was removed; use messages instead.
 
 ── Manual review ──
@@ -50,7 +48,12 @@ Continue manual review for the following checks:
    Mark this review step as failed if it imitates or incorporates the
    Thunderbird or Mozilla logo.
 
-8) Forked add-on: Check if the submission is a fork of an existing add-on. Such
+8) Missing ATN description or details: The add-on listing page should include
+   detailed instructions on how to use the add-on and where to find its entry
+   points. Verify it also includes screenshots to help users quickly understand
+   how the add-on works.
+
+9) Forked add-on: Check if the submission is a fork of an existing add-on. Such
    forks are only allowed on ATN if they are clearly distinguished from the
    original and provide a significant difference in functionality and/or code.
    Exceptions may be made where the add-on is no longer maintained by its
@@ -60,13 +63,13 @@ Continue manual review for the following checks:
    confusion for users and unnecessary overlap for developers. We encourage
    developers to contribute their improvements directly to the original project.
 
-9) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm an English localization is provided.
+10) Missing English localization: This add-on ships no English localization, so
+    user-facing text may be hardcoded in another language. Review its strings by
+    hand and confirm an English localization is provided.
 
-10) Unused permissions: Review whether the add-on requests any permission it
+11) Unused permissions: Review whether the add-on requests any permission it
     does not use, and ask the developer to remove the ones that are not needed.
 
 ── Summary ──
 
-0 error(s), 0 warning(s), 1 info, 10 manual review step(s)
+0 error(s), 0 warning(s), 1 info, 11 manual review step(s)

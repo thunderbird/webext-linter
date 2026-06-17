@@ -19,8 +19,20 @@
 
 const PLACEHOLDER = "{{item}}";
 
-/** Collapse a multiline (80-wrapped) registry template into one report line. */
-const collapse = (s) => s.replace(/\s+/g, " ").trim();
+/**
+ * Tidy a filled registry template for display: collapse runs of spaces/tabs to a
+ * single space and trim, but PRESERVE newlines. Issues responses are printed
+ * VERBATIM (src/report/format.js renderFinding), so a line break authored in the
+ * response - e.g. the deliberate one before "Read more:" - shows in the report.
+ * Keep each registry response on one physical line except such breaks. (Manual-
+ * review instructions are re-collapsed by manualLines, so their wraps don't
+ * survive there regardless.)
+ */
+const collapse = (s) =>
+  s
+    .replace(/[ \t]*\n[ \t]*/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .trim();
 
 /**
  * Fill a registry template: substitute `{{item}}` with `item` and each

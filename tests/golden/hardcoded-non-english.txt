@@ -3,16 +3,10 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 ── Issues ──
 
-Thank you for your contribution, it will be approved shortly. We kindly ask you
-to resolve the following issues with your next release:
+Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
 
-1) manifest.json - Please include an English localization. English serves as the
-   default language in Thunderbird, and most users who do not understand the
-   hardcoded language will most likely be able to read English. The i18n API
-   allows defining strings for multiple locales, and Thunderbird automatically
-   selects the one that best matches the user’s interface language. An example
-   can be found here:
-   https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
+1) manifest.json - Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
+An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
 
 ── Manual review ──
 
@@ -53,7 +47,12 @@ Continue manual review for the following checks:
    Mark this review step as failed if it imitates or incorporates the
    Thunderbird or Mozilla logo.
 
-8) Forked add-on: Check if the submission is a fork of an existing add-on. Such
+8) Missing ATN description or details: The add-on listing page should include
+   detailed instructions on how to use the add-on and where to find its entry
+   points. Verify it also includes screenshots to help users quickly understand
+   how the add-on works.
+
+9) Forked add-on: Check if the submission is a fork of an existing add-on. Such
    forks are only allowed on ATN if they are clearly distinguished from the
    original and provide a significant difference in functionality and/or code.
    Exceptions may be made where the add-on is no longer maintained by its
@@ -63,9 +62,9 @@ Continue manual review for the following checks:
    confusion for users and unnecessary overlap for developers. We encourage
    developers to contribute their improvements directly to the original project.
 
-9) Unused permissions: Review whether the add-on requests any permission it does
-   not use, and ask the developer to remove the ones that are not needed.
+10) Unused permissions: Review whether the add-on requests any permission it
+    does not use, and ask the developer to remove the ones that are not needed.
 
 ── Summary ──
 
-0 error(s), 1 warning(s), 0 info, 9 manual review step(s)
+0 error(s), 1 warning(s), 0 info, 10 manual review step(s)

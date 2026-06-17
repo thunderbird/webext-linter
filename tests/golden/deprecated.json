@@ -85,7 +85,7 @@
       },
       "item": "messages.oldOne",
       "hint": "Use list() instead.",
-      "message": "\"messages.oldOne\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API. Read more: https://webextension-api.thunderbird.net/."
+      "message": "\"messages.oldOne\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "deprecated-api",
@@ -97,7 +97,7 @@
       },
       "item": "messages.future",
       "hint": null,
-      "message": "\"messages.future\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API. Read more: https://webextension-api.thunderbird.net/."
+      "message": "\"messages.future\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }

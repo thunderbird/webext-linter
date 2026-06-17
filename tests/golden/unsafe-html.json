@@ -85,7 +85,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "Dynamic content is assigned via \".innerHTML\". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement. Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Dynamic content is assigned via \".innerHTML\". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     }
   ]
 }

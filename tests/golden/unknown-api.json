@@ -85,7 +85,7 @@
       },
       "item": "browser.contextMenus",
       "hint": null,
-      "message": "\"browser.contextMenus\" is not supported in the targeted Thunderbird version. Read more: https://webextension-api.thunderbird.net/."
+      "message": "\"browser.contextMenus\" is not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "unknown-api",
@@ -97,7 +97,7 @@
       },
       "item": "browser.messages.frobnicate",
       "hint": null,
-      "message": "\"browser.messages.frobnicate\" is not supported in the targeted Thunderbird version. Read more: https://webextension-api.thunderbird.net/."
+      "message": "\"browser.messages.frobnicate\" is not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }

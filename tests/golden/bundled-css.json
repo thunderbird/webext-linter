@@ -29,7 +29,7 @@
       "loc": null,
       "item": "vendor/bootstrap/bootstrap.min.css",
       "hint": null,
-      "message": "\"vendor/bootstrap/bootstrap.min.css\" appears to be a third-party library. Please link to its source and ensure the bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice). Read more: https://extensionworkshop.com/documentation/publish/third-party-library-usage/."
+      "message": "\"vendor/bootstrap/bootstrap.min.css\" appears to be a third-party library. Please link to its source and ensure the bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice).\nRead more: https://extensionworkshop.com/documentation/publish/third-party-library-usage/."
     }
   ]
 }

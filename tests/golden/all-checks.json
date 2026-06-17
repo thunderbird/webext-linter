@@ -101,7 +101,7 @@
       },
       "item": "browser.bogusApi",
       "hint": null,
-      "message": "\"browser.bogusApi\" is not supported in the targeted Thunderbird version. Read more: https://webextension-api.thunderbird.net/."
+      "message": "\"browser.bogusApi\" is not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "unknown-api",
@@ -113,7 +113,7 @@
       },
       "item": "browser.messages.frobnicate",
       "hint": null,
-      "message": "\"browser.messages.frobnicate\" is not supported in the targeted Thunderbird version. Read more: https://webextension-api.thunderbird.net/."
+      "message": "\"browser.messages.frobnicate\" is not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "missing-permission",
@@ -137,7 +137,7 @@
       },
       "item": "messages.oldOne",
       "hint": "Use list() instead.",
-      "message": "\"messages.oldOne\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API. Read more: https://webextension-api.thunderbird.net/."
+      "message": "\"messages.oldOne\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "deprecated-api",
@@ -149,7 +149,7 @@
       },
       "item": "messages.future",
       "hint": null,
-      "message": "\"messages.future\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API. Read more: https://webextension-api.thunderbird.net/."
+      "message": "\"messages.future\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "deprecated-api",
@@ -161,7 +161,7 @@
       },
       "item": "legacy.doThing",
       "hint": "The legacy API was removed; use messages instead.",
-      "message": "\"legacy.doThing\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API. Read more: https://webextension-api.thunderbird.net/."
+      "message": "\"legacy.doThing\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "missing-permission",
@@ -233,7 +233,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "Dynamic content is assigned via \".innerHTML\". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement. Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Dynamic content is assigned via \".innerHTML\". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
       "ruleId": "debugger-statement",
@@ -257,7 +257,7 @@
       },
       "item": null,
       "hint": null,
-      "message": "Asynchronous listener attached to runtime.onMessage. This is error prone and must be avoided. Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html"
+      "message": "Asynchronous listener attached to runtime.onMessage. This is error prone and must be avoided.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html"
     },
     {
       "ruleId": "code-sanity",
@@ -278,7 +278,7 @@
       "loc": null,
       "item": "bogusPermission",
       "hint": null,
-      "message": "Invalid manifest.json: unknown permission \"bogusPermission\" in \"permissions\". Read more: https://webextension-api.thunderbird.net/."
+      "message": "Invalid manifest.json: unknown permission \"bogusPermission\" in \"permissions\".\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "bundled-files",
@@ -296,7 +296,7 @@
       "loc": null,
       "item": "weirdTopLevelKey",
       "hint": null,
-      "message": "Manifest entry issue: unrecognized top-level key \"weirdTopLevelKey\". Thunderbird ignores or misreads such entries. Read more: https://webextension-api.thunderbird.net/."
+      "message": "Manifest entry issue: unrecognized top-level key \"weirdTopLevelKey\". Thunderbird ignores or misreads such entries.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "minimize-host-permissions",
@@ -305,7 +305,7 @@
       "loc": null,
       "item": "<all_urls>",
       "hint": null,
-      "message": "<all_urls> is a very broad host permission requested as required. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare it as an optional host permission so the user can grant it on demand rather than up front. Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch"
+      "message": "<all_urls> is a very broad host permission requested as required. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare it as an optional host permission so the user can grant it on demand rather than up front.\nRead more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch"
     },
     {
       "ruleId": "unused-files",

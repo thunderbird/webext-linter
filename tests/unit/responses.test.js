@@ -13,8 +13,9 @@ import { loadRegistry } from "../../src/checks/registry.js";
 
 const registry = loadRegistry();
 
-// {{item}} is replaced with the finding's item, keyed by ruleId; the result is
-// a single line with no raw placeholder.
+// {{item}} is replaced with the finding's item, keyed by ruleId; horizontal
+// whitespace is collapsed and the placeholder is gone, but the deliberate line
+// break before "Read more:" is preserved (Issues prints responses verbatim).
 test("renderFindings fills {{item}} from the registry response by ruleId", () => {
   const f = {
     ruleId: "unknown-api",
@@ -24,8 +25,11 @@ test("renderFindings fills {{item}} from the registry response by ruleId", () =>
   renderFindings([f], registry);
   assert.match(f.message, /browser\.contextMenus/);
   assert.match(f.message, /is not supported/);
-  assert.ok(!f.message.includes("\n"), "message should be a single line");
   assert.ok(!f.message.includes("{{item}}"));
+  // The only line break is the one before "Read more:" - the prose itself is
+  // one line (no 80-col wrapping survives into the message).
+  assert.match(f.message, /\nRead more:/);
+  assert.equal(f.message.split("\n").length, 2);
 });
 
 // A response with no {{item}} is used wholesale (the item is irrelevant).

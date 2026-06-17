@@ -3,101 +3,69 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 ── Issues ──
 
-Thank you for your submission. We appreciate the effort you’ve put into creating
-this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net
-in its current form. The following findings caused the submission to be
-rejected:
+Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) background.js:4 - "browser.bogusApi" is not supported in the targeted
-   Thunderbird version. Read more: https://webextension-api.thunderbird.net/.
+1) background.js:4 - "browser.bogusApi" is not supported in the targeted Thunderbird version.
+Read more: https://webextension-api.thunderbird.net/.
 
-2) background.js:5 - "browser.messages.frobnicate" is not supported in the
-   targeted Thunderbird version. Read more:
-   https://webextension-api.thunderbird.net/.
+2) background.js:5 - "browser.messages.frobnicate" is not supported in the targeted Thunderbird version.
+Read more: https://webextension-api.thunderbird.net/.
 
-3) background.js:9 - "messagesRead" permission is required here, but is not
-   declared in the manifest. Add it to permissions (or optional_permissions).
+3) background.js:9 - "messagesRead" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions).
 
-4) background.js:15 - "accountsRead" permission is required here, but is not
-   declared in the manifest. Add it to permissions (or optional_permissions).
+4) background.js:15 - "accountsRead" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions).
 
-5) background.js:16 - "messagesMove" permission is required here, but is not
-   declared in the manifest. Add it to permissions (or optional_permissions).
+5) background.js:16 - "messagesMove" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions).
 
-6) background.js:19 - action.onClicked needs a manifest key that is not
-   declared: "action". Add one of those keys to manifest.json.
+6) background.js:19 - action.onClicked needs a manifest key that is not declared: "action". Add one of those keys to manifest.json.
 
 7) background.js:22 - Dynamic code execution via "eval()" is not allowed.
 
-8) background.js:26 - The add-on makes a synchronous XMLHttpRequest, which can
-   lock up the user interface. Please use an asynchronous request instead.
+8) background.js:26 - The add-on makes a synchronous XMLHttpRequest, which can lock up the user interface. Please use an asynchronous request instead.
 
-9) background.js:32 - Unconditional debugger statement. Please remove it or move
-   it behind a config flag.
+9) background.js:32 - Unconditional debugger statement. Please remove it or move it behind a config flag.
 
-10) manifest.json - Invalid manifest.json: unknown permission "bogusPermission"
-    in "permissions". Read more: https://webextension-api.thunderbird.net/.
+10) manifest.json - Invalid manifest.json: unknown permission "bogusPermission" in "permissions".
+Read more: https://webextension-api.thunderbird.net/.
 
-11) manifest.json - "missing.js" is referenced but not bundled with the add-on.
-    Please include every referenced file in the package.
+11) manifest.json - "missing.js" is referenced but not bundled with the add-on. Please include every referenced file in the package.
 
-12) options.html - options.html appears to be an unused or hidden file or
-    folder. Such files complicate the review, may leak information about the
-    system the XPI was built on or needlessly increases the size of the add-on.
-    Please correct your packaging process so it is not included.
+12) options.html - options.html appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included.
 
-13) options.html:4 - Remote code is loaded from
-    "https://cdn.example.com/remote.js". Remote scripts and libraries are not
-    allowed. Please bundle all code with your add-on so it can be reviewed.
+13) options.html:4 - Remote code is loaded from "https://cdn.example.com/remote.js". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
 
-14) styles.css - styles.css appears to be an unused or hidden file or folder.
-    Such files complicate the review, may leak information about the system the
-    XPI was built on or needlessly increases the size of the add-on. Please
-    correct your packaging process so it is not included.
+14) styles.css - styles.css appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included.
 
-15) styles.css:1 - Remote code is loaded from
-    "https://fonts.example.com/font.css". Remote scripts and libraries are not
-    allowed. Please bundle all code with your add-on so it can be reviewed.
+15) styles.css:1 - Remote code is loaded from "https://fonts.example.com/font.css". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
 
 We kindly ask you to resolve the following issues with your next release:
 
-16) background.js:29 - Dynamic content is assigned via ".innerHTML". If it can
-    contain external or user-provided data, sanitize it (DOMPurify or the
-    Sanitizer API) or build the DOM with textContent / createElement. Read more:
-    https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
+16) background.js:29 - Dynamic content is assigned via ".innerHTML". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
 
-17) background.js:35 - Asynchronous listener attached to runtime.onMessage. This
-    is error prone and must be avoided. Read more:
-    https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
+17) background.js:35 - Asynchronous listener attached to runtime.onMessage. This is error prone and must be avoided.
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
 
-18) manifest.json - Manifest entry issue: unrecognized top-level key
-    "weirdTopLevelKey". Thunderbird ignores or misreads such entries. Read more:
-    https://webextension-api.thunderbird.net/.
+18) manifest.json - Manifest entry issue: unrecognized top-level key "weirdTopLevelKey". Thunderbird ignores or misreads such entries.
+Read more: https://webextension-api.thunderbird.net/.
 
 We would like to share the following information with you:
 
-19) background.js:9 - "messages.oldOne" is deprecated in the targeted
-    Thunderbird version. Please migrate to a supported API. Read more:
-    https://webextension-api.thunderbird.net/.
+19) background.js:9 - "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+Read more: https://webextension-api.thunderbird.net/.
     → Use list() instead.
 
-20) background.js:10 - "messages.future" is deprecated in the targeted
-    Thunderbird version. Please migrate to a supported API. Read more:
-    https://webextension-api.thunderbird.net/.
+20) background.js:10 - "messages.future" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+Read more: https://webextension-api.thunderbird.net/.
 
-21) background.js:11 - "legacy.doThing" is deprecated in the targeted
-    Thunderbird version. Please migrate to a supported API. Read more:
-    https://webextension-api.thunderbird.net/.
+21) background.js:11 - "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+Read more: https://webextension-api.thunderbird.net/.
     → The legacy API was removed; use messages instead.
 
-22) background.js:41 - Static analysis flagged a likely code error:
-    no-redeclare: 'duplicate' is already defined.
+22) background.js:41 - Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined.
 
-23) manifest.json - <all_urls> is a very broad host permission requested as
-    required. Request only the specific hosts your add-on actually needs. If it
-    genuinely needs broad access, declare it as an optional host permission so
-    the user can grant it on demand rather than up front. Read more:
-    https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
+23) manifest.json - <all_urls> is a very broad host permission requested as required. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare it as an optional host permission so the user can grant it on demand rather than up front.
+Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
 
 ── Manual review ──
 
@@ -138,7 +106,12 @@ Continue manual review for the following checks:
    Mark this review step as failed if it imitates or incorporates the
    Thunderbird or Mozilla logo.
 
-8) Forked add-on: Check if the submission is a fork of an existing add-on. Such
+8) Missing ATN description or details: The add-on listing page should include
+   detailed instructions on how to use the add-on and where to find its entry
+   points. Verify it also includes screenshots to help users quickly understand
+   how the add-on works.
+
+9) Forked add-on: Check if the submission is a fork of an existing add-on. Such
    forks are only allowed on ATN if they are clearly distinguished from the
    original and provide a significant difference in functionality and/or code.
    Exceptions may be made where the add-on is no longer maintained by its
@@ -148,13 +121,13 @@ Continue manual review for the following checks:
    confusion for users and unnecessary overlap for developers. We encourage
    developers to contribute their improvements directly to the original project.
 
-9) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm an English localization is provided.
+10) Missing English localization: This add-on ships no English localization, so
+    user-facing text may be hardcoded in another language. Review its strings by
+    hand and confirm an English localization is provided.
 
-10) Unused permissions: Review whether the add-on requests any permission it
+11) Unused permissions: Review whether the add-on requests any permission it
     does not use, and ask the developer to remove the ones that are not needed.
 
 ── Summary ──
 
-15 error(s), 3 warning(s), 5 info, 10 manual review step(s)
+15 error(s), 3 warning(s), 5 info, 11 manual review step(s)

@@ -3,16 +3,10 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 ── Issues ──
 
-Thank you for your submission. We appreciate the effort you’ve put into creating
-this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net
-in its current form. The following findings caused the submission to be
-rejected:
+Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) vendor/bootstrap/bootstrap.min.css - "vendor/bootstrap/bootstrap.min.css"
-   appears to be a third-party library. Please link to its source and ensure the
-   bundled copy is identical to the linked version (a VENDOR file at the add-on
-   root is common practice). Read more:
-   https://extensionworkshop.com/documentation/publish/third-party-library-usage/.
+1) vendor/bootstrap/bootstrap.min.css - "vendor/bootstrap/bootstrap.min.css" appears to be a third-party library. Please link to its source and ensure the bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice).
+Read more: https://extensionworkshop.com/documentation/publish/third-party-library-usage/.
 
 ── Manual review ──
 
@@ -53,6 +47,11 @@ Continue manual review for the following checks:
    Mark this review step as failed if it imitates or incorporates the
    Thunderbird or Mozilla logo.
 
+8) Missing ATN description or details: The add-on listing page should include
+   detailed instructions on how to use the add-on and where to find its entry
+   points. Verify it also includes screenshots to help users quickly understand
+   how the add-on works.
+
 ── Summary ──
 
-1 error(s), 0 warning(s), 0 info, 7 manual review step(s)
+1 error(s), 0 warning(s), 0 info, 8 manual review step(s)

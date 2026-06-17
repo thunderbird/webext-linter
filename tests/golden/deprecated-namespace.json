@@ -85,7 +85,7 @@
       },
       "item": "legacy.doThing",
       "hint": "The legacy API was removed; use messages instead.",
-      "message": "\"legacy.doThing\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API. Read more: https://webextension-api.thunderbird.net/."
+      "message": "\"legacy.doThing\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }

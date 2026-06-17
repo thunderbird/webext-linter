@@ -84,7 +84,7 @@
       "loc": null,
       "item": "version",
       "hint": null,
-      "message": "Invalid manifest.json: missing the required \"version\" property. Read more: https://webextension-api.thunderbird.net/."
+      "message": "Invalid manifest.json: missing the required \"version\" property.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "manifest-unknown-permission",
@@ -93,7 +93,7 @@
       "loc": null,
       "item": "bogusPermission",
       "hint": null,
-      "message": "Invalid manifest.json: unknown permission \"bogusPermission\" in \"permissions\". Read more: https://webextension-api.thunderbird.net/."
+      "message": "Invalid manifest.json: unknown permission \"bogusPermission\" in \"permissions\".\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "unrecognized-manifest-key",
@@ -102,7 +102,7 @@
       "loc": null,
       "item": "weirdTopLevelKey",
       "hint": null,
-      "message": "Manifest entry issue: unrecognized top-level key \"weirdTopLevelKey\". Thunderbird ignores or misreads such entries. Read more: https://webextension-api.thunderbird.net/."
+      "message": "Manifest entry issue: unrecognized top-level key \"weirdTopLevelKey\". Thunderbird ignores or misreads such entries.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }
