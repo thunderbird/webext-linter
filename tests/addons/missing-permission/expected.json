@@ -1,0 +1,6 @@
+{
+  "_comment": "move() requires accountsRead + messagesMove; only messagesRead is declared.",
+  "expect": {
+    "missing-permission": ["background.js:3","background.js:3"]
+  }
+}

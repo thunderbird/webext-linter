@@ -1,0 +1,7 @@
+[
+  {
+    "namespace": "action",
+    "permissions": ["manifest:action", "manifest:browser_action"],
+    "events": [{ "name": "onClicked" }]
+  }
+]

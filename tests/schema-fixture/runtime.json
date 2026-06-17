@@ -1,0 +1,7 @@
+[
+  {
+    "namespace": "runtime",
+    "annotations": [{ "version_added": "57" }],
+    "events": [{ "name": "onMessage" }]
+  }
+]

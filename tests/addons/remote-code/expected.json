@@ -1,0 +1,8 @@
+{
+  "_comment": "eval in bg.js (eval-call) + remote refs flagged by remote-script: a <script src> (page.html:4), an @import in an inline <style> (page.html:7), a url() in a style= attribute (page.html:11), and an @import in style.css (style.css:1). page.html/style.css are not referenced by the manifest or any code, so unused-files flags them too.",
+  "expect": {
+    "remote-script": ["page.html:4","page.html:7","page.html:11","style.css:1"],
+    "eval-call": ["bg.js:2"],
+    "unused-files": ["page.html","style.css"]
+  }
+}

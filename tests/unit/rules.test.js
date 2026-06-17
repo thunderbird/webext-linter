@@ -1,0 +1,981 @@
+// Unit tests for the new deterministic rule modules and the yaml-driven loader.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import syncXhr from "../../src/checks/rules/sync-xhr.js";
+import debuggerStatement from "../../src/checks/rules/debugger-statement.js";
+import asyncOnMessage from "../../src/checks/rules/async-onmessage.js";
+import minimizeHostPermissions from "../../src/checks/rules/minimize-host-permissions.js";
+import codeSanity from "../../src/checks/rules/code-sanity.js";
+import deprecatedApi from "../../src/checks/rules/deprecated-api.js";
+import missingPermission from "../../src/checks/rules/missing-permission.js";
+import experimentMissingMax from "../../src/checks/rules/experiment-missing-strict-max-version.js";
+import nonExperimentMax from "../../src/checks/rules/non-experiment-strict-max-version.js";
+import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.js";
+import missingLibrary from "../../src/checks/rules/missing-library.js";
+import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
+import apiCoverage from "../../src/checks/rules/api-coverage.js";
+import strictMaxBumpOnly from "../../src/checks/rules/strict-max-version-bump-only.js";
+import trademarkViolation from "../../src/checks/rules/trademark-violation.js";
+import missingEnglish from "../../src/checks/rules/missing-english-localization.js";
+import disguisedResource from "../../src/checks/rules/disguised-resource.js";
+import disguisedStylesheet from "../../src/checks/rules/disguised-stylesheet.js";
+import unparsableFile from "../../src/checks/rules/unparsable-file.js";
+import dataExfiltration from "../../src/checks/rules/data-exfiltration.js";
+import cleartextTransmission from "../../src/checks/rules/cleartext-transmission.js";
+import privacyPolicy from "../../src/checks/rules/privacy-policy.js";
+import nativeMessaging from "../../src/checks/rules/native-messaging.js";
+import defaultLocaleMissing from "../../src/checks/rules/default-locale-missing.js";
+import defaultLocaleUnused from "../../src/checks/rules/default-locale-unused.js";
+import backgroundModule from "../../src/checks/rules/background-module.js";
+import forkCheck from "../../src/checks/rules/fork-check.js";
+import unusedPermission from "../../src/checks/rules/unused-permission.js";
+import unusedPermissionManual from "../../src/checks/rules/unused-permission-manual.js";
+import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
+import { loadChecks, loadRegistry } from "../../src/checks/registry.js";
+import { loadSchemaFiles } from "../../src/schema/load.js";
+import { buildSchemaIndex } from "../../src/schema/index.js";
+import { parseVendorManifest } from "../../src/normalize/vendor.js";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const schema = buildSchemaIndex(
+  loadSchemaFiles(path.join(here, "..", "schema-fixture"))
+);
+
+const jsCtx = (code, manifest = {}) => ({
+  jsSources: [{ file: "f.js", code, lineOffset: 0, inline: false }],
+  addon: { files: new Map(), manifest },
+  options: {},
+});
+
+// ctx whose addon.files is a path->content map (for the file-level bundled /
+// obfuscated checks, which read raw file bytes rather than parsed sources). The
+// vendored set is resolved deterministically, as the pipeline does once up front.
+const filesCtx = (files) => {
+  const addon = {
+    files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
+  };
+  const manifest = parseVendorManifest(addon);
+  addon.vendor = { set: new Set(manifest.map((e) => e.path)), manifest };
+  return { addon };
+};
+
+// Run a check with a fake ctx.note collector and return the recorded activity.
+function notesFrom(check, ctx) {
+  const notes = [];
+  ctx.note = (file, loc, item, verdict) => notes.push({ file, item, verdict });
+  check.run(ctx);
+  return notes;
+}
+
+// ---- sync-xhr ----
+// Only the explicit async=false third arg to open() is a synchronous XHR;
+// async=true and an omitted third arg (defaults to async) must not flag.
+test("sync-xhr flags open(..., false), not async/omitted", () => {
+  assert.equal(syncXhr.run(jsCtx(`x.open("GET", "/u", false);`)).length, 1);
+  assert.equal(syncXhr.run(jsCtx(`x.open("GET", "/u", true);`)).length, 0);
+  assert.equal(syncXhr.run(jsCtx(`x.open("GET", "/u");`)).length, 0);
+});
+
+// ---- debugger ----
+// A debugger that always runs (top level, in a function body, or inside a loop)
+// is flagged, but one guarded by any if/else branch is treated as intentional.
+test("debugger-statement flags unconditional debugger, allows if-guarded", () => {
+  const n = (code) => debuggerStatement.run(jsCtx(code)).length;
+  // Unconditional (always executes) -> flagged.
+  assert.equal(n(`debugger;`), 1);
+  assert.equal(n(`function f() { doStuff(); debugger; }`), 1);
+  assert.equal(n(`for (const x of xs) { debugger; }`), 1); // a loop is not a flag
+  // Conditional (behind an if / config flag) -> allowed.
+  assert.equal(n(`if (DEBUG) debugger;`), 0);
+  assert.equal(n(`if (config.debug) { debugger; }`), 0);
+  assert.equal(n(`if (x) {} else { debugger; }`), 0);
+});
+
+// ---- async onMessage ----
+// Only an async callback on runtime.onMessage flags (it breaks sendResponse);
+// a sync onMessage listener and an unrelated async addEventListener do not.
+test("async-onmessage flags an async runtime.onMessage listener only", () => {
+  assert.equal(
+    asyncOnMessage.run(
+      jsCtx(`browser.runtime.onMessage.addListener(async (m) => {});`)
+    ).length,
+    1
+  );
+  assert.equal(
+    asyncOnMessage.run(
+      jsCtx(`messenger.runtime.onMessage.addListener((m) => {});`)
+    ).length,
+    0
+  );
+  assert.equal(
+    asyncOnMessage.run(jsCtx(`el.addEventListener("click", async () => {});`))
+      .length,
+    0
+  );
+});
+
+// sync-xhr / debugger-statement / async-onmessage are source-level coding-pattern
+// checks: like code-sanity they skip non-authored (library / minified / vendored)
+// code, so a library's own sync XHR, debugger, or async onMessage listener is not
+// flagged. The same patterns in an authored file are still flagged.
+test("sync-xhr / debugger / async-onmessage skip non-authored code", () => {
+  const body =
+    `x.open("GET", "/u", false);\n` +
+    `debugger;\n` +
+    `browser.runtime.onMessage.addListener(async (m) => {});\n`;
+  const code = body + "var a = 1;\n".repeat(200); // >1KB so it is classified
+  const ctxFor = (file) => ({
+    jsSources: [{ file, code, lineOffset: 0 }],
+    addon: { files: new Map([[file, Buffer.from(code)]]), manifest: {} },
+    options: {},
+  });
+  // ".min.js" -> classified a library -> all three checks skip it.
+  const lib = ctxFor("vendor/lib.min.js");
+  assert.equal(syncXhr.run(lib).length, 0);
+  assert.equal(debuggerStatement.run(lib).length, 0);
+  assert.equal(asyncOnMessage.run(lib).length, 0);
+  // The same code under an authored name is still flagged by each.
+  const app = ctxFor("src/app.js");
+  assert.equal(syncXhr.run(app).length, 1);
+  assert.equal(debuggerStatement.run(app).length, 1);
+  assert.equal(asyncOnMessage.run(app).length, 1);
+});
+
+// ---- minimize host permissions ----
+// Broad required host patterns (<all_urls> and *://*/*) are flagged, while a
+// specific scoped origin like https://example.com/* is left alone.
+test("minimize-host-permissions flags broad required host patterns only", () => {
+  const out = minimizeHostPermissions.run(
+    jsCtx("", {
+      host_permissions: ["<all_urls>", "*://*/*", "https://example.com/*"],
+    })
+  );
+  assert.equal(out.length, 2); // all_urls + *://*/* ; example.com is scoped
+});
+
+// ---- code sanity (ESLint) ----
+// prefer-const is a style/fixable rule, not a review concern, so it is never
+// flagged. no-undef is off too, so browser/messenger globals are never flagged.
+test("code-sanity does not flag prefer-const or globals", () => {
+  const neverReassigned = `let x = 1;\nconsole.log(x);`;
+  assert.equal(codeSanity.run(jsCtx(neverReassigned)).length, 0);
+
+  // browser/messenger are not flagged as undefined (no-undef is disabled).
+  const clean = codeSanity.run(
+    jsCtx(`const y = browser.runtime.id;\nmessenger.tabs.query({});`)
+  );
+  assert.equal(clean.length, 0);
+});
+
+// no-empty flags an empty block (e.g. an error-swallowing empty catch), but not
+// an empty function body (which is no-empty-function's concern, not enabled). The
+// rule runs whenever code-sanity runs - the --eslint gate is applied upstream at
+// check selection (pipeline.js), not in the rule.
+test("code-sanity flags an empty block, not an empty function body", () => {
+  const out = codeSanity.run(jsCtx(`try { risky(); } catch (e) {}`));
+  assert.equal(out.length, 1);
+  assert.match(out[0].item, /no-empty/);
+  assert.equal(codeSanity.run(jsCtx(`const f = () => {};`)).length, 0);
+});
+
+// Third-party / minified / obfuscated / VENDOR.md code is not linted (its
+// findings are noise); the same code under an authored filename is.
+test("code-sanity skips non-authored code, lints authored code", () => {
+  const redecl = "var a = 1;\n".repeat(200); // ~2KB, trips no-redeclare, short lines
+  const ctxFor = (file) => ({
+    jsSources: [{ file, code: redecl, lineOffset: 0 }],
+    addon: { files: new Map([[file, Buffer.from(redecl)]]), manifest: {} },
+    options: {},
+  });
+  // ".min.js" name -> classified as a library -> skipped entirely.
+  assert.equal(codeSanity.run(ctxFor("vendor/lib.min.js")).length, 0);
+  // Authored source of the same code is linted.
+  assert.ok(codeSanity.run(ctxFor("src/app.js")).length > 0);
+});
+
+// ---- missing-library / obfuscated-code (shared bundled.js classifier) ----
+// missing-library flags JS that looks like a distributed library (banner, UMD,
+// *.min.js, known name), skipping readable code and VENDOR.md-declared files.
+test("missing-library flags library-looking JS, not readable/VENDORed files", () => {
+  const banner =
+    "/*! demolib v1.0.0 | (c) Demo */\n" +
+    "export const lib = { run() { return 1; } };\n".repeat(40); // >1 KB
+  assert.equal(
+    missingLibrary.run(filesCtx({ "lib/demo.js": banner })).length,
+    1
+  );
+  // *.min.js name alone is enough.
+  assert.equal(
+    missingLibrary.run(filesCtx({ "vendor/x.min.js": "a;".repeat(600) }))
+      .length,
+    1
+  );
+  // Readable code, no library signal -> not flagged.
+  const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
+  assert.equal(missingLibrary.run(filesCtx({ "bg.js": readable })).length, 0);
+  // Declared in VENDOR.md -> skipped even with a banner.
+  const vendor = "lib/demo.js:\n - Version: 1.0\n - URL: https://x\n";
+  assert.equal(
+    missingLibrary.run(filesCtx({ "VENDOR.md": vendor, "lib/demo.js": banner }))
+      .length,
+    0
+  );
+});
+
+// obfuscated-code flags minified or obfuscated NON-library code (the dev's own
+// blob); a library-looking file is deferred to missing-library instead.
+test("obfuscated-code flags minified/obfuscated non-library JS only", () => {
+  // Minified line geometry: one long, dense line.
+  const minified = "var a=1;b=2;c=3;d=4;".repeat(100) + "\n";
+  assert.equal(
+    obfuscatedCode.run(filesCtx({ "bundle.js": minified })).length,
+    1
+  );
+  // "_0x" obfuscator identifiers (short lines, so obfuscation - not minification
+  // - is what fires).
+  const obf =
+    "const _0xa1b2=1;\nconst _0xc3d4=2;\nconst _0xe5f6=3;\n" +
+    "const _0x7890=4;\nconst _0xabcd=5;\n".repeat(40);
+  assert.equal(obfuscatedCode.run(filesCtx({ "o.js": obf })).length, 1);
+  // A minified file with a library name is missing-library's job, not this one.
+  assert.equal(
+    obfuscatedCode.run(filesCtx({ "x.min.js": minified })).length,
+    0
+  );
+  // Readable code -> not flagged.
+  const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
+  assert.equal(obfuscatedCode.run(filesCtx({ "bg.js": readable })).length, 0);
+});
+
+// ---- api-coverage (static-analysis self-report) ----
+// api-coverage reports the runner's own blind spots: a file that failed to
+// parse, and each unresolved dynamic/aliased access (with its location). A
+// source that parsed cleanly with no limitations yields nothing. Severity is
+// left unset - runChecks stamps the yaml entry's type ("info").
+test("api-coverage flags dynamic limits; unparsable-file flags parse failures", () => {
+  const apiUsages = [
+    { file: "broken.js", parseError: "Unexpected token (3:5)" },
+    {
+      file: "dyn.js",
+      limitations: [
+        { reason: "dynamic browser[x] access", line: 7, column: 2 },
+      ],
+    },
+    { file: "ok.js", limitations: [] },
+  ];
+  const cov = apiCoverage.run({ apiUsages });
+  assert.equal(cov.length, 1);
+  const dyn = cov[0];
+  assert.equal(dyn.file, "dyn.js");
+  assert.equal(dyn.severity, null);
+  assert.equal(dyn.item, "dynamic browser[x] access"); // reason passed through
+  assert.equal(dyn.loc.line, 7); // carries the source location
+
+  const unparsable = unparsableFile.run({ apiUsages });
+  assert.equal(unparsable.length, 1);
+  assert.equal(unparsable[0].file, "broken.js");
+  // The "could not be parsed" wording lives in the registry; the check emits the
+  // parser error as data.
+  assert.match(unparsable[0].data.detail, /Unexpected token/);
+});
+
+// ---- strict-max-version-bump-only (diff vs --previous) ----
+// With a previous version it fires only when the sole change is a version bump
+// plus the gecko strict_max_version; any other file or manifest change, an
+// unchanged strict_max_version, or a missing baseline keeps it silent.
+test("strict-max-version-bump-only fires only on a pure version+strict_max bump", () => {
+  const manifest = (max, version = "1.0") => ({
+    manifest_version: 3,
+    name: "x",
+    version,
+    browser_specific_settings: {
+      gecko: { id: "a@b", strict_max_version: max },
+    },
+  });
+  const ver = (m, files = {}) => ({
+    manifest: m,
+    files: new Map([
+      ["manifest.json", Buffer.from(JSON.stringify(m))],
+      ...Object.entries(files).map(([k, v]) => [k, Buffer.from(v)]),
+    ]),
+  });
+  const bg = "console.log(1);\n";
+  const prev = ver(manifest("115.0"), { "bg.js": bg });
+  const run = (addon, previous) => strictMaxBumpOnly.run({ addon, previous });
+
+  // Only version + strict_max_version changed -> fires.
+  assert.equal(
+    run(ver(manifest("128.0", "1.1"), { "bg.js": bg }), prev).length,
+    1
+  );
+  // No baseline -> silent.
+  assert.equal(
+    run(ver(manifest("128.0", "1.1"), { "bg.js": bg }), null).length,
+    0
+  );
+  // A code file also changed -> silent.
+  assert.equal(
+    run(ver(manifest("128.0", "1.1"), { "bg.js": "console.log(2);\n" }), prev)
+      .length,
+    0
+  );
+  // strict_max_version unchanged (only the version bumped) -> silent.
+  assert.equal(
+    run(ver(manifest("115.0", "1.1"), { "bg.js": bg }), prev).length,
+    0
+  );
+  // Another manifest key changed too -> silent.
+  const renamed = { ...manifest("128.0", "1.1"), name: "y" };
+  assert.equal(run(ver(renamed, { "bg.js": bg }), prev).length, 0);
+});
+
+// The diff gate: the registry marks this a diff check (diff: true), so the
+// orchestrator runs it only with a --diff-to baseline (see runChecks).
+test("strict-max-version-bump-only is registered as a diff check", async () => {
+  const checks = await loadChecks(loadRegistry());
+  const c = checks.find((x) => x.id === "strict-max-version-bump-only");
+  assert.equal(c?.diff, true);
+});
+
+// ---- fork-check (diff: false - new submissions only) ----
+// The registry marks it diff: false, so runChecks runs it ONLY without a
+// --diff-to baseline; a normal check leaves diff undefined (always runs). The
+// check itself always escalates one manual-review case.
+test("fork-check is registered diff: false and always escalates once", async () => {
+  const checks = await loadChecks(loadRegistry());
+  assert.equal(checks.find((x) => x.id === "fork-check")?.diff, false);
+  assert.equal(checks.find((x) => x.id === "sync-xhr")?.diff, undefined);
+
+  const out = forkCheck.run();
+  assert.deepEqual(out.findings, []);
+  assert.equal(out.escalations.length, 1);
+});
+
+// ---- unused-permission (consumes the --full-summary list) ----
+// The check reads ctx.addon.unusedPermissions (which the add-on summary stores):
+// a "unused" entry becomes a warning finding carrying the reason on the
+// permission's manifest line, an "unsure" entry a manual-review escalation
+// carrying the reason. No stored list (no token / no --full-summary) -> a no-op.
+test("unused-permission turns the stored list into findings + escalations", () => {
+  const manifest = JSON.stringify(
+    { manifest_version: 3, permissions: ["tabs", "downloads"] },
+    null,
+    2
+  );
+  const ctx = {
+    addon: {
+      files: new Map([["manifest.json", Buffer.from(manifest)]]),
+      unusedPermissions: [
+        {
+          permission: "tabs",
+          status: "unused",
+          reason: "no tab property read",
+        },
+        { permission: "downloads", status: "unsure", reason: "cannot tell" },
+      ],
+    },
+  };
+  const out = unusedPermission.run(ctx);
+  assert.equal(out.findings.length, 1);
+  assert.equal(out.findings[0].file, "manifest.json");
+  assert.equal(out.findings[0].item, "tabs");
+  assert.equal(out.findings[0].data.reason, "no tab property read");
+  assert.equal(out.findings[0].loc.line, 4); // the "tabs" line in the manifest
+  assert.deepEqual(out.escalations, [
+    { item: "downloads", data: { reason: "cannot tell" } },
+  ]);
+});
+
+test("unused-permission is a no-op without the stored list", () => {
+  assert.deepEqual(unusedPermission.run({ addon: { files: new Map() } }), {
+    findings: [],
+    escalations: [],
+  });
+});
+
+// ---- unused-permission-manual (the by-hand reminder mirror) ----
+// It escalates one generic reminder (item: null) only when no list was produced;
+// a defined list (even empty) means the permissions were assessed, so it is a
+// no-op. The reminder's text comes from the registry entry's {{item}}-free
+// instructions, so a null item is fine.
+test("unused-permission-manual reminds only when no list was produced", () => {
+  // No list -> one reminder escalation with a null item.
+  assert.deepEqual(unusedPermissionManual.run({ addon: {} }), {
+    findings: [],
+    escalations: [{ item: null }],
+  });
+  // A produced list (even empty) -> nothing (the permissions were assessed).
+  assert.deepEqual(
+    unusedPermissionManual.run({ addon: { unusedPermissions: [] } }),
+    { findings: [], escalations: [] }
+  );
+  assert.deepEqual(
+    unusedPermissionManual.run({
+      addon: { unusedPermissions: [{ permission: "tabs", status: "unused" }] },
+    }),
+    { findings: [], escalations: [] }
+  );
+});
+
+// ---- deprecated-api ----
+// A deprecated API's hint is the schema's own deprecation message (the migration
+// note), not a link to the deprecated item. An API that is only "too new"
+// (version_added beyond the target) carries no deprecation message, so no hint.
+test("deprecated-api hint is the schema deprecation message, not a doc link", () => {
+  const ctx = {
+    schema,
+    apiUsages: [
+      {
+        file: "bg.js",
+        usages: [
+          { segments: ["messages", "oldOne"], line: 1, column: 0 },
+          { segments: ["messages", "future"], line: 2, column: 0 },
+        ],
+      },
+    ],
+  };
+  const out = deprecatedApi.run(ctx);
+  const old = out.find((f) => f.item === "messages.oldOne");
+  assert.equal(old.hint, "Use list() instead."); // schema message, not a URL
+  const fut = out.find((f) => f.item === "messages.future");
+  assert.equal(fut.hint ?? null, null); // too-new, no message -> no hint
+});
+
+// ---- permission analysis: dead files are ignored ----
+// A usage counts only when its file actually runs. messages.get needs
+// 'messagesRead'; in a live background script that is a missing-permission
+// finding, but the same call in an unreferenced (dead) file raises nothing.
+const GET_USAGE = [{ segments: ["messages", "get"], line: 3, column: 0 }];
+
+test("missing-permission ignores usages in dead (unreachable) files", () => {
+  const ctx = (file) => ({
+    schema,
+    addon: {
+      manifest: { permissions: [], background: { scripts: ["bg.js"] } },
+      files: new Map([
+        ["bg.js", Buffer.from("")],
+        ["dead.js", Buffer.from("messenger.messages.get(1);")],
+      ]),
+    },
+    apiUsages: [{ file, usages: GET_USAGE }],
+  });
+  // Live: the call sits in the background script -> messagesRead flagged missing.
+  const live = missingPermission.run(ctx("bg.js"));
+  assert.ok(live.some((f) => f.item === "messagesRead"));
+  // Dead: dead.js is never referenced by the manifest -> no missing finding.
+  assert.equal(missingPermission.run(ctx("dead.js")).length, 0);
+});
+
+// ---- trademark-violation (deterministic name check) ----
+// Firefox/Mozilla/MZLA are never allowed in the name; Thunderbird only as the
+// trailing "for Thunderbird". Matching is case-insensitive, and a __MSG__ name
+// is resolved from _locales (which a deterministic check can read).
+test("trademark-violation flags forbidden brands in the (resolved) name", () => {
+  const ctx = (name, files = {}) => ({
+    addon: {
+      manifest: { manifest_version: 3, name, version: "1" },
+      files: new Map(
+        Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
+      ),
+    },
+  });
+  const flags = (name, files) =>
+    trademarkViolation.run(ctx(name, files)).length;
+  assert.equal(flags("Firefox Helper"), 1);
+  assert.equal(flags("My Mozilla Thing"), 1);
+  assert.equal(flags("MZLA Tools"), 1);
+  assert.equal(flags("thunderbird helper"), 1); // case-insensitive
+  assert.equal(flags("Calendar for Thunderbird"), 0); // allowed trailing form
+  assert.equal(flags("Calendar Tool"), 0);
+  // A localized __MSG__ name is resolved from _locales (and flagged).
+  const locale = JSON.stringify({ extName: { message: "Firefox Sync" } });
+  assert.equal(
+    flags("__MSG_extName__", { "_locales/en/messages.json": locale }),
+    1
+  );
+});
+
+// ---- strict_max_version (Experiment vs not) ----
+// Only relevant when experiments are allowed: an allowed Experiment lacking a
+// strict_max_version errors; one that pins a max, a non-Experiment, and (key)
+// any Experiment when experiments are NOT allowed all stay silent.
+test("experiment-missing-strict-max-version flags an allowed Experiment lacking a max", () => {
+  const run = (manifest) =>
+    experimentMissingMax.run({
+      addon: { manifest },
+      options: { allowExperiments: true },
+    });
+  assert.equal(run({ experiment_apis: { a: {} } }).length, 1); // experiment, no max
+  assert.equal(
+    run({
+      experiment_apis: { a: {} },
+      browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
+    }).length,
+    0 // experiment WITH a max -> ok
+  );
+  assert.equal(run({ name: "x" }).length, 0); // not an experiment -> silent
+  // Experiments disabled -> silent (experiment-not-allowed handles it).
+  assert.equal(
+    experimentMissingMax.run({
+      addon: { manifest: { experiment_apis: { a: {} } } },
+      options: {},
+    }).length,
+    0
+  );
+});
+
+// A non-Experiment that pins strict_max_version warns and surfaces the value;
+// the legacy applications.gecko key counts too, and an Experiment or a missing
+// max stays silent.
+test("non-experiment-strict-max-version flags only a non-Experiment that pins a max", () => {
+  const run = (manifest) => nonExperimentMax.run({ addon: { manifest } });
+  const out = run({
+    browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
+  });
+  assert.equal(out.length, 1);
+  assert.equal(out[0].item, "128.0"); // value surfaced for the {{item}} response
+  // Legacy applications.gecko key is also honored.
+  assert.equal(
+    run({ applications: { gecko: { strict_max_version: "115" } } }).length,
+    1
+  );
+  // An Experiment with a max is the other check's concern -> silent here.
+  assert.equal(
+    run({
+      experiment_apis: { a: {} },
+      browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
+    }).length,
+    0
+  );
+  assert.equal(run({ name: "x" }).length, 0); // no max -> silent
+});
+
+// With experiments disabled (the default), an Experiment errors on the
+// experiment_apis manifest line; --allow-experiments silences it, and a
+// non-Experiment is silent regardless.
+test("experiment-not-allowed errors on the experiment_apis line unless allowed", () => {
+  const ctx = (manifest, allowExperiments) => ({
+    addon: {
+      manifest,
+      files: new Map([
+        [
+          "manifest.json",
+          Buffer.from('{\n  "experiment_apis": { "x": {} }\n}\n'),
+        ],
+      ]),
+    },
+    options: { allowExperiments },
+  });
+  const out = experimentNotAllowed.run(
+    ctx({ experiment_apis: { x: {} } }, false)
+  );
+  assert.equal(out.length, 1);
+  assert.equal(out[0].loc.line, 2); // attached to the experiment_apis line
+  // --allow-experiments silences it.
+  assert.equal(
+    experimentNotAllowed.run(ctx({ experiment_apis: { x: {} } }, true)).length,
+    0
+  );
+  // Not an Experiment -> silent regardless.
+  assert.equal(experimentNotAllowed.run(ctx({ name: "x" }, false)).length, 0);
+});
+
+// ---- activity feed (ctx.note) ----
+// Every check narrates each site it examines - pass and fail - to ctx.note, so
+// the what-is-going-on feed shows what was investigated (not only the findings),
+// grouped under the check. A check run without a note is unaffected.
+test("sync-xhr notes each open() site (sync=fail, async=pass)", () => {
+  const notes = notesFrom(
+    syncXhr,
+    jsCtx(`a.open("GET", "/u", false);\nb.open("GET", "/u", true);`)
+  );
+  assert.deepEqual(
+    notes.map((n) => n.verdict),
+    ["fail", "pass"]
+  );
+});
+
+test("debugger-statement notes guarded (pass) and unconditional (fail)", () => {
+  const notes = notesFrom(
+    debuggerStatement,
+    jsCtx(`debugger;\nif (D) debugger;`)
+  );
+  assert.deepEqual(notes.map((n) => n.verdict).sort(), ["fail", "pass"]);
+});
+
+test("minimize-host-permissions notes broad (fail) and scoped (pass) hosts", () => {
+  const notes = notesFrom(
+    minimizeHostPermissions,
+    jsCtx("", { host_permissions: ["<all_urls>", "https://example.com/*"] })
+  );
+  assert.deepEqual(notes, [
+    { file: "manifest.json", item: "<all_urls>", verdict: "fail" },
+    { file: "manifest.json", item: "https://example.com/*", verdict: "pass" },
+  ]);
+});
+
+test("missing-library / obfuscated-code note a verdict per classified file", () => {
+  const banner =
+    "/*! demolib v1.0.0 */\n" +
+    "export const lib = { run() { return 1; } };\n".repeat(40);
+  const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
+  const libNotes = notesFrom(
+    missingLibrary,
+    filesCtx({ "lib.js": banner, "app.js": readable })
+  );
+  assert.equal(libNotes.find((n) => n.file === "lib.js").verdict, "fail");
+  assert.equal(libNotes.find((n) => n.file === "app.js").verdict, "pass");
+  // obfuscated-code defers libraries to missing-library, so it notes only app.js.
+  const obfNotes = notesFrom(
+    obfuscatedCode,
+    filesCtx({ "lib.js": banner, "app.js": readable })
+  );
+  assert.deepEqual(
+    obfNotes.map((n) => n.file),
+    ["app.js"]
+  );
+  assert.equal(obfNotes[0].verdict, "pass");
+});
+
+// ---- Tier 2 status notes (one deterministic verdict per check) ----
+// These checks decide one thing about the manifest/submission; each reports its
+// outcome to the feed - pass/fail, or skipped-with-reason when it does not apply
+// (so a bare check header is never ambiguous). unsure = the deterministic
+// decision to escalate, never the LLM's answer.
+test("experiment-not-allowed notes pass / fail / skipped", () => {
+  const ctxFor = (manifest, allowExperiments) => ({
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from('{\n  "experiment_apis": {}\n}\n')],
+      ]),
+    },
+    options: { allowExperiments },
+  });
+  const v = (m, allow) => notesFrom(experimentNotAllowed, ctxFor(m, allow));
+  assert.equal(v({ name: "x" }, false)[0].verdict, "pass"); // not an Experiment
+  assert.equal(v({ experiment_apis: { a: {} } }, false)[0].verdict, "fail");
+  assert.equal(v({ experiment_apis: { a: {} } }, true)[0].verdict, "skipped");
+});
+
+test("experiment-missing-strict-max-version notes pass / fail / skipped", () => {
+  const v = (manifest) =>
+    notesFrom(experimentMissingMax, {
+      addon: { manifest },
+      options: { allowExperiments: true },
+    });
+  assert.equal(v({ experiment_apis: { a: {} } })[0].verdict, "fail"); // no max
+  assert.equal(
+    v({
+      experiment_apis: { a: {} },
+      browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
+    })[0].verdict,
+    "pass"
+  );
+  assert.equal(v({ name: "x" })[0].verdict, "skipped"); // not an Experiment
+});
+
+test("non-experiment-strict-max-version notes pass / fail / skipped", () => {
+  const v = (manifest) => notesFrom(nonExperimentMax, { addon: { manifest } });
+  assert.equal(v({ name: "x" })[0].verdict, "pass"); // no max
+  assert.equal(
+    v({
+      browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
+    })[0].verdict,
+    "fail"
+  );
+  assert.equal(
+    v({
+      experiment_apis: { a: {} },
+      browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
+    })[0].verdict,
+    "skipped" // an Experiment is the other check's concern
+  );
+});
+
+test("strict-max-version-bump-only notes fail / pass", () => {
+  const m = (max, version = "1.0") => ({
+    manifest_version: 3,
+    name: "x",
+    version,
+    browser_specific_settings: {
+      gecko: { id: "a@b", strict_max_version: max },
+    },
+  });
+  const ver = (mf, files = {}) => ({
+    manifest: mf,
+    files: new Map([
+      ["manifest.json", Buffer.from(JSON.stringify(mf))],
+      ...Object.entries(files).map(([k, v]) => [k, Buffer.from(v)]),
+    ]),
+  });
+  const bg = "console.log(1);\n";
+  const prev = ver(m("115.0"), { "bg.js": bg });
+  const v = (addon, previous) =>
+    notesFrom(strictMaxBumpOnly, { addon, previous });
+  assert.equal(
+    v(ver(m("128.0", "1.1"), { "bg.js": bg }), prev)[0].verdict,
+    "fail"
+  );
+  assert.equal(
+    v(ver(m("128.0", "1.1"), { "bg.js": "console.log(2);\n" }), prev)[0]
+      .verdict,
+    "pass" // a code file also changed
+  );
+});
+
+test("trademark-violation notes pass / fail / skipped", () => {
+  const ctxFor = (name) => ({
+    addon: { manifest: name == null ? {} : { name }, files: new Map() },
+  });
+  const v = (name) => notesFrom(trademarkViolation, ctxFor(name));
+  assert.equal(v("Calendar for Thunderbird")[0].verdict, "pass");
+  assert.equal(v("Firefox Helper")[0].verdict, "fail");
+  assert.equal(v(null)[0].verdict, "skipped"); // no name
+});
+
+test("missing-english-localization: _locales branches (pass / fail)", () => {
+  const v = (files) =>
+    notesFrom(missingEnglish, {
+      addon: {
+        files: new Map(
+          Object.entries(files).map(([k, val]) => [k, Buffer.from(val)])
+        ),
+      },
+    });
+  assert.equal(v({ "_locales/en/messages.json": "{}" })[0].verdict, "pass");
+  assert.equal(v({ "_locales/de/messages.json": "{}" })[0].verdict, "fail");
+});
+
+// No _locales: franc over the user-facing text (HTML visible text + manifest
+// name/description, script/style stripped) decides. Confident non-English is a
+// finding, English passes, too little/ambiguous text escalates to manual, and
+// no user-facing text passes.
+test("missing-english-localization: franc over hardcoded text", () => {
+  const de =
+    "<body><h1>Wetterbericht</h1><p>Diese Erweiterung zeigt den aktuellen " +
+    "Wetterbericht und sendet Benachrichtigungen an Ihren Posteingang.</p></body>";
+  const en =
+    "<body><h1>Weather report</h1><p>This extension shows the current weather " +
+    "forecast and sends notifications to your inbox.</p></body>";
+  const run = (files, manifest) =>
+    missingEnglish.run({
+      addon: {
+        manifest,
+        files: new Map(
+          Object.entries(files).map(([k, val]) => [k, Buffer.from(val)])
+        ),
+      },
+    });
+
+  const german = run({ "popup.html": de }, { name: "Wetter" });
+  assert.equal(german.findings.length, 1);
+  assert.equal(german.escalations.length, 0);
+
+  const english = run({ "popup.html": en }, { name: "Weather" });
+  assert.equal(english.findings.length, 0);
+  assert.equal(english.escalations.length, 0);
+
+  // Too little text: franc is unreliable, so defer to a human.
+  const tiny = run({ "popup.html": "<p>Hallo Welt</p>" }, { name: "App" });
+  assert.equal(tiny.findings.length, 0);
+  assert.equal(tiny.escalations.length, 1);
+
+  // No user-facing text at all -> nothing to localize.
+  const empty = run({ "background.js": "console.log(1)" }, {});
+  assert.equal(empty.findings.length, 0);
+  assert.equal(empty.escalations.length, 0);
+
+  // <script> text is stripped, so the German body still drives detection.
+  const scripted = run(
+    {
+      "popup.html":
+        "<body><script>const s = 'english words only inside this script';" +
+        "</script><p>Vielen Dank für die Installation dieser Erweiterung in " +
+        "Thunderbird.</p></body>",
+    },
+    {}
+  );
+  assert.equal(scripted.findings.length, 1);
+});
+
+// ---- yaml-driven loader ----
+// Every registry entry across the deterministic and llm sections loads to a
+// module with a run() function plus id/title, and ids stay in sync with checkIds.
+test("every check entry (both sections) resolves to a runnable module", async () => {
+  const registry = loadRegistry();
+  const checks = await loadChecks(registry);
+  const ids = registry.checkIds();
+  assert.equal(checks.length, ids.length);
+  assert.ok(checks.length >= 10);
+  for (const c of checks) {
+    assert.equal(typeof c.run, "function");
+    assert.ok(c.title && c.id);
+  }
+  // The loader spans deterministic + llm checks now.
+  assert.ok(ids.includes("unknown-api"));
+  assert.ok(ids.includes("unused-files"));
+});
+
+// A registry pointing at a nonexistent module file fails loudly (rejects with
+// /not found/) instead of silently skipping the check.
+test("loadChecks throws hard when a check: names a missing module", async () => {
+  const tmp = path.join(os.tmpdir(), `bad-registry-${process.pid}.yaml`);
+  fs.writeFileSync(
+    tmp,
+    "deterministic-checks:\n- title: Bogus\n  check: __does_not_exist__.js\n"
+  );
+  try {
+    await assert.rejects(() => loadChecks(loadRegistry(tmp)), /not found/);
+  } finally {
+    fs.rmSync(tmp);
+  }
+});
+
+// ---- disguised-transmission (covert) + data-exfiltration (overt) ----
+// Covert channels (data appended to an image/CSS/resource URL) are a flat
+// error; a normal fetch to a remote host escalates for an options-page consent
+// check. Local destinations and data-free covert loads are ignored.
+test("disguised checks flag covert URLs built with appended data", () => {
+  const res = (code) => disguisedResource.run(jsCtx(code)).length;
+  const sty = (code) => disguisedStylesheet.run(jsCtx(code)).length;
+  assert.equal(res('img.src = "https://x/?d=" + body;'), 1); // resource sink
+  assert.equal(
+    sty('el.style.backgroundImage = "url(https://x/?d=" + v + ")";'),
+    1
+  ); // stylesheet sink
+  assert.equal(res('img.src = "./logo.png";'), 0); // local
+  assert.equal(res('img.src = "https://x/logo.png";'), 0); // static, no data
+  assert.equal(res('fetch("https://x/?d=" + body);'), 0); // overt, not covert
+});
+
+test("data-exfiltration makes a candidate per overt remote transmission only", () => {
+  const candidates = (code) => {
+    const out = dataExfiltration.run(jsCtx(code));
+    return out.llm ? out.llm.candidates.length : 0;
+  };
+  assert.equal(candidates('fetch("https://api.example.com/", { body });'), 1);
+  assert.equal(candidates('navigator.sendBeacon("https://x", d);'), 1);
+  assert.equal(candidates('fetch("./local.json");'), 0); // local
+  assert.equal(candidates('img.src = "https://x/?d=" + body;'), 0); // covert
+});
+
+test("scanNetworkSinks classifies channel, destination, appended data", () => {
+  const one = (code) => scanNetworkSinks(code).hits[0];
+  const img = one('img.src = "https://x/?d=" + v;');
+  assert.equal(img.type, "element-src");
+  assert.equal(img.channel, "covert");
+  assert.equal(img.destClass, "remote");
+  assert.equal(img.dataAppended, true);
+  const beacon = one('navigator.sendBeacon("https://x", d);');
+  assert.equal(beacon.channel, "overt");
+  assert.equal(beacon.destClass, "remote");
+  assert.equal(
+    one("fetch(u, { body: messenger.messages.getFull(id) });").carriesData,
+    true
+  );
+});
+
+// ---- cleartext-transmission ----
+// Any overt transmission to a remote host over a non-TLS scheme is an error,
+// with or without a payload; encrypted (https/wss) and local destinations are
+// fine, and covert channels are disguised-transmission's job.
+test("cleartext-transmission flags overt http/ws/ftp remote sends only", () => {
+  const n = (code) => cleartextTransmission.run(jsCtx(code)).length;
+  assert.equal(n('fetch("http://api.example.com/x");'), 1); // GET, no payload
+  assert.equal(n('new WebSocket("ws://x.example.com/feed");'), 1);
+  assert.equal(n('fetch("ftp://files.example.com/x");'), 1);
+  assert.equal(n('fetch("https://api.example.com/x");'), 0); // encrypted
+  assert.equal(n('new WebSocket("wss://x.example.com/feed");'), 0); // encrypted
+  assert.equal(n('fetch("/local.json");'), 0); // local
+  assert.equal(n('img.src = "http://x/?d=" + body;'), 0); // covert, not overt
+  const hit = cleartextTransmission.run(
+    jsCtx('fetch("http://api.example.com/x");')
+  )[0];
+  assert.equal(hit.item, "api.example.com");
+});
+
+// ---- privacy-policy ----
+// One manual-review escalation per add-on, naming the distinct remote hosts of
+// every overt transmission; covert and local destinations do not trigger it.
+test("privacy-policy escalates once, naming the remote hosts", () => {
+  const esc = (code) => privacyPolicy.run(jsCtx(code)).escalations;
+  const single = esc('fetch("https://api.example.com/x");');
+  assert.equal(single.length, 1);
+  assert.equal(single[0].item, "api.example.com");
+  const two = esc(
+    'fetch("https://b.example.com/x"); fetch("https://a.example.com/y");'
+  );
+  assert.equal(two.length, 1);
+  assert.equal(two[0].item, "a.example.com, b.example.com"); // distinct, sorted
+  assert.equal(esc('fetch("./local.json");').length, 0); // local
+  assert.equal(esc('img.src = "https://x/?d=" + body;').length, 0); // covert
+});
+
+// ---- native-messaging ----
+// Keyed purely on the declared permission (required or optional); no JS scan.
+test("native-messaging escalates on the declared permission", () => {
+  const esc = (manifest) =>
+    nativeMessaging.run({ addon: { manifest } }).escalations;
+  const declared = esc({ permissions: ["nativeMessaging"] });
+  assert.equal(declared.length, 1);
+  assert.equal(declared[0].item, "nativeMessaging");
+  assert.equal(esc({ optional_permissions: ["nativeMessaging"] }).length, 1);
+  assert.equal(esc({ permissions: ["storage"] }).length, 0);
+  assert.equal(esc({}).length, 0);
+  assert.equal(nativeMessaging.run({ addon: {} }).escalations.length, 0);
+});
+
+// ---- default-locale-missing / default-locale-unused ----
+// A _locales directory requires a default_locale key and vice versa; either one
+// alone breaks loading. The two checks split the two directions.
+test("default-locale checks flag the two load-breaking directions", () => {
+  const ctx = (files, manifest) => ({
+    addon: {
+      files: new Map(
+        Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
+      ),
+      manifest,
+    },
+  });
+  const locales = { "_locales/en/messages.json": "{}" };
+  // missing: _locales present, no default_locale.
+  assert.equal(defaultLocaleMissing.run(ctx(locales, {})).length, 1);
+  assert.equal(
+    defaultLocaleMissing.run(ctx(locales, { default_locale: "en" })).length,
+    0
+  );
+  assert.equal(defaultLocaleMissing.run(ctx({}, {})).length, 0);
+  // unused: default_locale set, no _locales.
+  assert.equal(
+    defaultLocaleUnused.run(ctx({}, { default_locale: "en" })).length,
+    1
+  );
+  assert.equal(
+    defaultLocaleUnused.run(ctx(locales, { default_locale: "en" })).length,
+    0
+  );
+  assert.equal(defaultLocaleUnused.run(ctx({}, {})).length, 0);
+});
+
+// ---- background-module ----
+// A background script using static import/export needs the background declared
+// "type": "module"; module syntax in a non-background file is ignored.
+test("background-module flags module syntax without type: module", () => {
+  const n = (code, background) =>
+    backgroundModule.run(jsCtx(code, { background })).length;
+  assert.equal(n('import x from "./y.js";', { scripts: ["f.js"] }), 1);
+  assert.equal(n("export const a = 1;", { scripts: ["f.js"] }), 1);
+  assert.equal(
+    n('import x from "./y.js";', { scripts: ["f.js"], type: "module" }),
+    0
+  );
+  assert.equal(n("console.log(1);", { scripts: ["f.js"] }), 0);
+  assert.equal(n('import x from "./y.js";', { scripts: ["other.js"] }), 0);
+});

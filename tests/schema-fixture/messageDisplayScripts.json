@@ -1,0 +1,36 @@
+[
+  {
+    "namespace": "messageDisplayScripts",
+    "functions": [
+      {
+        "name": "register",
+        "parameters": [
+          {
+            "name": "details",
+            "type": "object",
+            "properties": {
+              "js": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "file": { "type": "string", "format": "strictRelativeUrl" }
+                  }
+                }
+              },
+              "css": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "file": { "type": "string", "format": "strictRelativeUrl" }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

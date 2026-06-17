@@ -1,0 +1,407 @@
+// The review pipeline: opts in, a structured Review out. This is the tool's
+// core, independent of the CLI front-end (cli.js) - the test harness drives it
+// directly. It loads the add-on, resolves and verifies its vendored
+// declarations, classifies bundled code, runs the schema review, and fills each
+// finding's display text from the registry. It returns the Review. Formatting
+// and I/O are the front-end's job. The tool is read-only: it never modifies or
+// repacks the submission.
+//
+// Belongs here: the stage orchestration (runPipeline, reviewAddon) and the
+// pipeline-level schema-branch helpers (chooseBranch, detectManifestVersion).
+//
+// Does NOT belong here: the channel/cache/model defaults and behavior toggles -
+// src/config.js. Argv parse, validation, and printing (src/cli.js and
+// src/report/format.js); each stage's own work - add-on load
+// (src/addon/load.js), vendor resolution/verification (src/vendor/*), schema
+// fetch/load/index (src/schema/*), check orchestration and run context
+// (src/checks/registry.js and src/checks/context.js), and all user-facing text
+// (src/checks/registry.js plus src/report/responses.js).
+
+import { resolveSchemaZip } from "./schema/fetch.js";
+import { loadSchemaFiles } from "./schema/load.js";
+import { buildSchemaIndex } from "./schema/index.js";
+import { loadAddon } from "./addon/load.js";
+import { resolveReviewUrl } from "./addon/atn.js";
+import {
+  runChecks,
+  runOneCheck,
+  loadChecks,
+  loadRegistry,
+} from "./checks/registry.js";
+import { buildRunContext } from "./checks/context.js";
+import { buildSummarizer, buildAddonSummarizer } from "./checks/summaries.js";
+import { renderFindings, renderManualItems } from "./report/responses.js";
+import { resolveVendor } from "./vendor/resolve.js";
+import { verifyVendor } from "./vendor/verify.js";
+import { classifyBundled } from "./checks/lib/bundled.js";
+import { debug, progress } from "./util/log.js";
+import { humanSize } from "./util/text.js";
+import { DEFAULT_CHANNEL, DEFAULT_CACHE } from "./config.js";
+
+// Checks that consume the add-on summary's result (ctx.addon.unusedPermissions),
+// so they cannot run in the main loop (the summary runs after it). reviewAddon
+// holds them out of the loop and runs them explicitly after the summary, in this
+// order. `unused-permission` evaluates a produced list; `unused-permission-manual`
+// is its mirror, raising the by-hand reminder when none was produced.
+const POST_SUMMARY_CHECKS = ["unused-permission", "unused-permission-manual"];
+
+/** @typedef {import("./report/finding.js").Finding} Finding */
+/** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
+/**
+ * An advisory summary already generated during the activity feed: the transmitted
+ * byte size and the model's prose (null if the call failed). The caller prints the
+ * prose after the report.
+ * @typedef {{bytes: number, text: ?string}} GeneratedSummary
+ */
+
+/**
+ * @typedef {object} PipelineOpts
+ * @property {string} addonPath
+ * @property {string} [schemaChannel]
+ * @property {string} [schemaZip]
+ * @property {string} [schemaCache]
+ * @property {boolean} [schemaForceRefresh]
+ * @property {string[]} [checksOnly]
+ * @property {string[]} [checksSkip]
+ * @property {boolean} [eslint]  Run the opt-in ESLint code-sanity check (off by
+ *   default); when unset, the code-sanity check is skipped entirely.
+ * @property {boolean} [allowExperiments]
+ * @property {string} [diffTo]  Path to the previous published version.
+ * @property {boolean} [diffSummary]  Add an LLM "Summary of changes" section.
+ * @property {boolean} [fullSummary]  Add an LLM "Summary of add-on" section.
+ * @property {boolean} [reviewUrl]  Look up the ATN reviewer review-page URL and
+ *   put it on meta.reviewUrl - set for text reports, off for JSON/the harness.
+ * @property {string} [claudeApiKey]
+ * @property {string} [claudeModel]
+ * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
+ *   network transport for vendor verification (the test harness injects an
+ *   offline one); defaults to the real fetch.
+ * @property {import("./addon/load.js").Addon} [addon]  Pre-loaded add-on (the
+ *   test harness injects one to drop its expected.json sidecar).
+ * @property {import("./checks/registry.js").Registry} [registry]  Parsed
+ *   registry threaded from the caller, parsed once here otherwise.
+ */
+
+/**
+ * Run the review pipeline and return the structured result.
+ *
+ * @param {PipelineOpts} opts
+ * @returns {Promise<{findings: Finding[], meta: ReviewMeta,
+ *   issueHeadings?: Record<string, string>,
+ *   verdictIntros?: Record<string, string>,
+ *   summarize?: GeneratedSummary,
+ *   summarizeAddon?: GeneratedSummary}>}
+ */
+export async function runPipeline(opts) {
+  const { addonPath } = opts;
+  // The parsed registry, threaded from main() (or loaded once here when a caller
+  // such as the test harness invokes the pipeline directly).
+  const registry = opts.registry ?? loadRegistry();
+
+  // 1. Load the add-on (.xpi archive or source folder). A caller may inject a
+  // pre-loaded add-on (the test harness does, to drop its expected.json file).
+  const addon = opts.addon ?? loadAddon(addonPath);
+
+  const findings = [];
+  const meta = {
+    action: "review",
+    addon: addon.source,
+    addonKind: addon.kind,
+    reviewed: true,
+  };
+
+  // 1b. Resolve the vendored declarations ONCE, before the review, so the
+  // review's checks share one immutable set. Deterministic parse, plus an LLM
+  // fallback when a token is set (token-less stays deterministic).
+  addon.vendor = await resolveVendor({
+    addon,
+    parsePrompt: registry.prompt("vendor-parse"),
+    token: opts.claudeApiKey,
+    model: opts.claudeModel,
+  });
+
+  // 1c. Verify the resolved declarations over the network ONCE - fetch, compare
+  // (EOL-tolerant), popularity, and the package.json<->file matching - recording
+  // each file's result into the same shared store. A declaration with nothing
+  // fetchable (or an injected offline transport, as the golden harness uses)
+  // makes no request, so offline runs stay deterministic.
+  await verifyVendor(addon, opts.vendorNet);
+
+  // 1d. Classify the bundled (undeclared third-party) JS ONCE into
+  // addon.bundled, read by the bundled checks (computed once, never recomputed).
+  // Runs after verifyVendor so the vendored skip set is final.
+  addon.bundled = classifyBundled(addon);
+
+  // 2. Schema review. reviewAddon also generates the advisory AI summaries at the
+  // tail of the activity feed (the add-on summary's unused-permission list feeds
+  // the unused-permission check, which runs there too), so they come back here.
+  const result = await reviewAddon(addon, opts, registry);
+  findings.push(...result.findings);
+  Object.assign(meta, result.meta);
+  const { summarize, summarizeAddon } = result;
+
+  // Text reports point the reviewer at the ATN review page, looked up by gecko
+  // id (addon/atn.js). Best-effort: null when it cannot be resolved, and the
+  // report omits the line. Gated to text runs by the caller, so the golden
+  // harness (which never sets it) makes no request and stays reproducible.
+  if (opts.reviewUrl) {
+    meta.reviewUrl = await resolveReviewUrl({ manifest: addon.manifest });
+  }
+
+  // Fill each finding's display message from its registry response (with the
+  // {{item}} placeholder), so the Issues section reports the ready-to-send
+  // wording. The registry is the only source of this text.
+  renderFindings(findings, registry);
+
+  return {
+    findings,
+    meta,
+    // Severity-group headings + the verdict preamble for the text Issues section.
+    issueHeadings: registry.issueHeadings(),
+    verdictIntros: registry.verdictIntros(),
+    // AI summaries generated above (each undefined unless its flag + a token
+    // warrant it). The caller prints the prose after the report - see src/cli.js.
+    summarize,
+    summarizeAddon,
+  };
+}
+
+/**
+ * Generate one advisory prose summary at the tail of the activity feed: narrate
+ * `LLM: Generating <label> (<size>) ...` so the reviewer sees what is being waited
+ * on, then run the deferred model call. Returns { bytes, text } (text null on an
+ * LLM error), or undefined when there is nothing to summarize (no token, no diff,
+ * ...). The caller prints the prose after the report.
+ * @param {import("./checks/summaries.js").DeferredSummary|null} deferred
+ * @param {string} label  Names the summary in the feed, e.g. "diff summary".
+ * @returns {Promise<GeneratedSummary|undefined>}
+ */
+async function generateSummary(deferred, label) {
+  if (!deferred) {
+    return undefined;
+  }
+  progress(`  LLM: Generating ${label} (${humanSize(deferred.bytes)}) ...`);
+  return { bytes: deferred.bytes, text: await deferred.run() };
+}
+
+/**
+ * Generate the --full-summary add-on review and store its structured
+ * unused-permission list on the context (the unused-permission checks, which run
+ * next, read it). Mirrors generateSummary but unpacks the review object: the
+ * prose goes to the returned summary (printed after the report), the
+ * unusedPermissions onto ctx.addon. The list is set ONLY when the model actually
+ * returned a review, so a missing `ctx.addon.unusedPermissions` is the clean
+ * signal that no analysis happened (LLM error here, or never called). Undefined
+ * when there is no summary to make.
+ * @param {import("./checks/registry.js").RunContext} ctx
+ * @param {import("./checks/registry.js").Registry} registry
+ * @param {Set<string>} unused  Files the review found unreachable (excluded).
+ * @returns {Promise<GeneratedSummary|undefined>}
+ */
+async function generateAddonSummary(ctx, registry, unused) {
+  const deferred = buildAddonSummarizer(ctx, registry, { unused });
+  if (!deferred) {
+    return undefined;
+  }
+  progress(`  LLM: Generating full summary (${humanSize(deferred.bytes)}) ...`);
+  const review = await deferred.run();
+  if (review) {
+    ctx.addon.unusedPermissions = review.unusedPermissions;
+  }
+  return { bytes: deferred.bytes, text: review?.summary ?? null };
+}
+
+/**
+ * Whether a check id passes the run's --checks / --skip filters (the same
+ * only/skip semantics loadChecks applies). Used to gate the explicit
+ * post-summary checks so they honor those flags like a loop check.
+ * @param {string} id
+ * @param {{only?: string[], skip?: string[]}} filter
+ * @returns {boolean}
+ */
+function passesFilter(id, { only, skip } = {}) {
+  if (only?.length && !only.includes(id)) {
+    return false;
+  }
+  if (skip?.includes(id)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The schema-review half of the pipeline, operating on an already-loaded add-on.
+ *
+ * @param {import("./addon/load.js").Addon} addon
+ * @param {PipelineOpts} opts
+ * @param {import("./checks/registry.js").Registry} registry
+ * @returns {Promise<{findings: Finding[], meta: ReviewMeta,
+ *   ctx: import("./checks/registry.js").RunContext}>}
+ */
+async function reviewAddon(addon, opts, registry) {
+  const {
+    schemaChannel = DEFAULT_CHANNEL,
+    schemaZip,
+    schemaCache = DEFAULT_CACHE,
+    schemaForceRefresh = false,
+    checksOnly,
+    checksSkip,
+    eslint,
+    claudeApiKey,
+    allowExperiments,
+    diffTo,
+    fullSummary,
+    diffSummary,
+  } = opts;
+
+  const branch = chooseBranch({ schemaZip, schemaChannel, addon });
+  const { zipPath, source: schemaSource } = await resolveSchemaZip({
+    schemaZip,
+    branch,
+    cacheDir: schemaCache,
+    refresh: schemaForceRefresh,
+  });
+  const schema = buildSchemaIndex(loadSchemaFiles(zipPath));
+
+  // The checks layer assembles its own context (sources, API usage, diff
+  // baseline, LLM client) - the pipeline only resolves the schema.
+  const ctx = buildRunContext({
+    addon,
+    schema,
+    options: { claudeApiKey, allowExperiments },
+    diffTo,
+    claudeModel: opts.claudeModel,
+    systemIntro: registry.prompt("system-intro"),
+  });
+
+  // The registry.yaml file drives which checks run (deterministic + llm,
+  // one path). The orchestrator returns issues-only findings plus the manual
+  // refs it produced (escalations with no token / unsure / error). Each throwing
+  // check is isolated so one failure can't abort all.
+  // Some checks are held out of the loop. The ESLint code-sanity check is opt-in:
+  // without --eslint it is excluded entirely. The two unused-permission checks
+  // read the add-on summary's result, so they must run AFTER it (the summary runs
+  // after the loop); they are excluded here and run explicitly below.
+  const baseSkip = eslint
+    ? (checksSkip ?? [])
+    : [...(checksSkip ?? []), "code-sanity"];
+  const { findings, checks, manualItems } = await runChecks(ctx, registry, {
+    only: checksOnly,
+    skip: [...baseSkip, ...POST_SUMMARY_CHECKS],
+  });
+
+  // Advisory AI summaries, generated at the tail of the activity feed (a
+  // `LLM: Generating ...` line shows what is being waited on); the prose is
+  // printed after the report by the caller (src/cli.js). The add-on summary runs
+  // first to match that display order, and because it produces the
+  // unused-permission list the check below needs. It excludes files the review
+  // found unreachable - that set is a product of reachability (unused-files), so
+  // it exists only now, which is why the summary runs after the checks.
+  let summarizeAddon;
+  if (fullSummary) {
+    const unused = new Set(
+      findings.filter((f) => f.ruleId === "unused-files").map((f) => f.file)
+    );
+    summarizeAddon = await generateAddonSummary(ctx, registry, unused);
+  }
+  let summarize;
+  if (diffSummary) {
+    summarize = await generateSummary(
+      buildSummarizer(ctx, registry),
+      "diff summary"
+    );
+  }
+
+  // The two unused-permission checks: ordinary deterministic checks, but run here
+  // (after the add-on summary populated ctx.addon.unusedPermissions) through the
+  // identical per-check path as the loop - runOneCheck stamps id/severity and
+  // routes escalations to manual review. They always run (honoring --checks/--skip
+  // like loop checks) and read the checks memory: `unused-permission` evaluates a
+  // present list, its `unused-permission-manual` mirror raises the by-hand
+  // reminder when none was produced, and each logs `skipped` in the other case.
+  const ran = [...checks];
+  for (const id of POST_SUMMARY_CHECKS) {
+    if (!passesFilter(id, { only: checksOnly, skip: baseSkip })) {
+      continue;
+    }
+    const [check] = await loadChecks(registry, { only: [id] });
+    if (!check) {
+      continue;
+    }
+    const out = await runOneCheck(
+      ctx,
+      check,
+      `[${ran.length + 1}/${ran.length + 1}]`
+    );
+    findings.push(...out.findings);
+    manualItems.push(...out.manualItems);
+    ran.push(check);
+  }
+
+  return {
+    findings,
+    // The built run context is returned for any post-review use by the caller.
+    ctx,
+    // The advisory summaries, generated above (each undefined unless its flag +
+    // a token warrant it); the caller prints their prose after the report.
+    summarize,
+    summarizeAddon,
+    meta: {
+      schemaSource,
+      schemaBranch: branch,
+      schemaChannel: schemaZip ? null : schemaChannel,
+      applicationVersion: schema.applicationVersion,
+      manifestVersion: addon.manifest?.manifest_version ?? null,
+      checksRun: ran.map((c) => c.id),
+      // One manual-review list: the always-manual checks plus the orchestrator's
+      // escalation refs, each resolved to its registry text.
+      manualReview: [
+        ...registry.manualChecks(),
+        ...renderManualItems(manualItems, registry),
+      ],
+    },
+  };
+}
+
+/**
+ * @typedef {object} BranchParams
+ * @property {string|undefined} schemaZip
+ * @property {string} schemaChannel
+ * @property {import("./addon/load.js").Addon} addon
+ */
+
+/**
+ * Choose the schema branch for the add-on. The add-on's manifest_version
+ * selects the schema, combined with the channel. A local --schema-zip bypasses
+ * branch selection.
+ *
+ * @param {BranchParams} params
+ * @returns {string|null}
+ */
+function chooseBranch({ schemaZip, schemaChannel, addon }) {
+  if (schemaZip) {
+    return null;
+  }
+  const mv = detectManifestVersion(addon.manifest);
+  const branch = `${schemaChannel}-mv${mv.version}`;
+  debug(
+    `Detected manifest_version ${mv.detected ? mv.version : `? (defaulting to ${mv.version})`}` +
+      ` → using schema branch "${branch}".`
+  );
+  return branch;
+}
+
+/**
+ * Detect the manifest_version from the add-on manifest. A missing or invalid
+ * manifest_version defaults to 2 (an add-on that omits it is Manifest V2).
+ *
+ * @param {object|null|undefined} manifest
+ * @returns {{version: number, detected: boolean}}
+ */
+function detectManifestVersion(manifest) {
+  const v = manifest?.manifest_version;
+  if (v === 2 || v === 3) {
+    return { version: v, detected: true };
+  }
+  return { version: 2, detected: false };
+}

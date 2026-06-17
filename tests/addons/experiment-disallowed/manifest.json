@@ -1,0 +1,6 @@
+{
+  "manifest_version": 3,
+  "name": "Experiment Disallowed",
+  "version": "1.0",
+  "experiment_apis": { "myapi": {} }
+}

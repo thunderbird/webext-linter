@@ -1,0 +1,58 @@
+// An accepted Experiment (declares experiment_apis) must pin a
+// strict_max_version. Experiments call internal APIs that change between major
+// Thunderbird versions, so without a maximum they break silently on upgrade.
+// Only relevant when experiments are allowed (--allow-experiments) - otherwise
+// experiment-not-allowed already rejects the submission. Silent for
+// non-Experiments and for Experiments that already declare a max.
+//
+// Belongs here: flagging an allowed Experiment that omits strict_max_version.
+// Does NOT belong here: detecting Experiment status or reading the max version
+// (-> isExperiment and strictMaxVersion in src/checks/lib/util.js). Rejecting
+// experiments when they are NOT allowed (-> experiment-not-allowed.js).
+// Flagging a strict_max_version on a non-Experiment (->
+// non-experiment-strict-max-version.js). Authored wording (->
+// assets/registry.yaml). Severity (-> the experiment-missing-strict-max-version
+// registry entry, stamped by src/checks/registry.js).
+
+import { finding } from "../../report/finding.js";
+import { isExperiment, strictMaxVersion } from "../lib/util.js";
+
+/** @typedef {import("../registry.js").RunContext} RunContext */
+export default {
+  /**
+   * @param {RunContext} ctx
+   * @returns {import("../../report/finding.js").Finding[]}
+   */
+  run(ctx) {
+    const m = ctx.addon.manifest;
+    if (!m) {
+      ctx.note?.("manifest.json", null, "manifest did not parse", "skipped");
+      return [];
+    }
+    if (!isExperiment(m)) {
+      ctx.note?.("manifest.json", null, "not an Experiment", "skipped");
+      return [];
+    }
+    if (!ctx.options?.allowExperiments) {
+      ctx.note?.("manifest.json", null, "experiments not allowed", "skipped");
+      return [];
+    }
+    const max = strictMaxVersion(m);
+    if (max != null) {
+      ctx.note?.(
+        "manifest.json",
+        null,
+        `Experiment pins strict_max_version ${max}`,
+        "pass"
+      );
+      return [];
+    }
+    ctx.note?.(
+      "manifest.json",
+      null,
+      "Experiment lacks strict_max_version",
+      "fail"
+    );
+    return [finding({ file: "manifest.json" })];
+  },
+};

@@ -1,0 +1,42 @@
+=== SYSTEM (block 0: reviewer intro) ===
+You are a Thunderbird WebExtension add-on reviewer. Each request gives you one review step (a rubric) and a numbered list of CANDIDATES, each an id pointing at a file:line site, together with the FILES they appear in. Judge every candidate and report by calling the report_verdicts tool with one entry per candidate id. For each id, return verdict='fail' when you are confident the issue this step looks for is present at that candidate, 'pass' when you are confident it is absent, and 'unsure' when you cannot be confident either way (a human then reviews it). Only give a definite verdict when you are genuinely confident, and prefer 'unsure' over guessing. Use the exact ids from the CANDIDATES list and never invent ids.
+
+=== SYSTEM (block 1: add-on context, cache_control=ephemeral) ===
+ADD-ON UNDER REVIEW
+
+manifest.json:
+{
+  "default_locale": "en",
+  "manifest_version": 3,
+  "name": "Sample",
+  "version": "1.0",
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "resources": [
+        "icon.png"
+      ]
+    }
+  ]
+}
+
+default_locale: en
+_locales directories: en
+web_accessible_resources: [{"resources":["icon.png"],"matches":["<all_urls>"]}]
+
+Files:
+  _locales/en/messages.json (2 bytes)
+  background.js (14 bytes)
+  manifest.json (2 bytes)
+
+=== USER (criterion) ===
+Check that the add-on does not execute remote code.
+
+CANDIDATES:
+E1: background.js:1 (an example site)
+
+FILES:
+--- background.js ---
+console.log(1)

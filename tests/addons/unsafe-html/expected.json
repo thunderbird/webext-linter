@@ -1,0 +1,6 @@
+{
+  "_comment": "innerHTML = location.hash is dynamic (flagged); the static string is not.",
+  "expect": {
+    "unsafe-html": ["bg.js:2"]
+  }
+}

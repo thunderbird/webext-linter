@@ -1,0 +1,4 @@
+{
+  "_comment": "The action API needs the MV3 'action' key, which is declared — and 'manifest:action' must NOT be reported as a missing permission.",
+  "expect": {}
+}

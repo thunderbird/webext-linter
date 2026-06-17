@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Clean",
+  "version": "1.0",
+  "description": "Uses only declared permissions and existing APIs.",
+  "permissions": ["messagesRead", "accountsRead", "messagesMove"],
+  "background": { "scripts": ["background.js"] },
+  "compose_action": { "default_title": "Compose" }
+}

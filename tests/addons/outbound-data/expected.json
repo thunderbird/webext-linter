@@ -1,0 +1,6 @@
+{
+  "_comment": "Triggers the outbound-data checks: a cleartext (http) transmission, two hardcoded remote transmissions needing a privacy policy, and the nativeMessaging permission. privacy-policy, native-messaging and data-exfiltration surface as manual-review items (see the golden), not findings.",
+  "expect": {
+    "cleartext-transmission": ["background.js:4"]
+  }
+}

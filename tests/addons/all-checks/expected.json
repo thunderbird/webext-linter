@@ -1,0 +1,22 @@
+{
+  "_comment": "Demo add-on that triggers every deterministic violation check at once, except missing-library / obfuscated-code (need a bundled or minified file), api-coverage (needs a parse/resolution gap), and the outbound-data checks cleartext-transmission / privacy-policy / native-messaging (covered by the outbound-data fixture). The ESLint code-sanity check is opt-in, so this fixture enables it via options.eslint to keep it covered.",
+  "options": { "--eslint": true },
+  "expect": {
+    "unknown-api": ["background.js:4","background.js:5"],
+    "deprecated-api": ["background.js:10","background.js:11","background.js:9"],
+    "missing-permission": ["background.js:15","background.js:16","background.js:9"],
+    "missing-manifest-key": ["background.js:19"],
+    "manifest-unknown-permission": ["manifest.json"],
+    "unrecognized-manifest-key": ["manifest.json"],
+    "bundled-files": ["manifest.json"],
+    "sync-xhr": ["background.js:26"],
+    "remote-script": ["options.html:4","styles.css:1"],
+    "eval-call": ["background.js:22"],
+    "unsafe-html": ["background.js:29"],
+    "debugger-statement": ["background.js:32"],
+    "async-onmessage": ["background.js:35"],
+    "code-sanity": ["background.js:41"],
+    "minimize-host-permissions": ["manifest.json"],
+    "unused-files": ["options.html","styles.css"]
+  }
+}

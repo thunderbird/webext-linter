@@ -1,0 +1,7 @@
+{
+  "_comment": "MV3 schema: browser_action is the wrong-version key. It does not satisfy the action API's manifest-key requirement (missing-manifest-key), and it is an unrecognized MV3 manifest key (unrecognized-manifest-key warning).",
+  "expect": {
+    "missing-manifest-key": ["background.js:3"],
+    "unrecognized-manifest-key": ["manifest.json"]
+  }
+}

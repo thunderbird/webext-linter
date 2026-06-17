@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Package Range Dep",
+  "version": "1.0",
+  "description": "Declares a package.json dependency as a range with no lock file.",
+  "permissions": ["messagesRead", "accountsRead"],
+  "background": { "scripts": ["background.js"] },
+  "compose_action": { "default_title": "Compose" }
+}

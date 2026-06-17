@@ -1,0 +1,6 @@
+{
+  "_comment": "browser.legacy.* is deprecated via the namespace-level annotation.",
+  "expect": {
+    "deprecated-api": ["bg.js:3"]
+  }
+}

@@ -1,0 +1,326 @@
+// Extracts add-on-internal file paths referenced by file-loading API calls - the
+// single source both checks build on:
+//   - bundled-files: every referenced local path must be packaged,
+//   - reachability: each referenced path is an edge in the reference graph.
+//
+// Two extraction modes:
+//   - SCHEMA-DIRECTED (the goal): for a method the schema marks as a file loader
+//     (SchemaIndex.fileLoaderMethods - a parameter whose type tree reaches an
+//     extension-relative-url leaf), we walk the call's arguments in lockstep
+//     with the parameter type and emit a path ONLY at a rel-url leaf. Precise: a
+//     non-path literal (a match glob, a property name) is never mistaken for a
+//     file, so the result is safe to assert "file not bundled" on.
+//   - BRIDGE (temporary): a handful of loaders the schema does not yet mark -
+//     their path is typed as a plain string / generic "url" - are extracted by a
+//     small hardcoded spec. Each entry is removed once the schema tags that
+//     method's path parameter with a relativeUrl format: the method then falls
+//     to the schema-directed branch and the bridge entry is dead. See BRIDGE.
+//
+// Belongs here: extracting the local file paths referenced by file-loading API
+// calls, both schema-directed and via the temporary BRIDGE scaffolding.
+//
+// Does NOT belong here: the file-loader marking and rel-url type tags it walks
+// - those come from the schema (src/schema/index.js). Resolving paths and
+// building the reachability graph is src/checks/lib/reachability.js. Verdicts
+// (bundled, reachable) are src/checks/rules/*. A script's own import/require
+// references are src/parse/local-imports.js. Babel access goes through
+// src/parse/ast.js.
+
+import { API_ROOTS } from "./api-usage.js";
+import { parseJs, traverse, staticPathOf } from "./ast.js";
+import { REL_URL_FORMATS } from "../schema/index.js";
+
+/** @typedef {import("@babel/types").Node} AstNode */
+/** @typedef {import("../schema/index.js").SchemaNode} SchemaNode */
+
+// Loaders the schema cannot yet mark (their path is a plain string / generic
+// "url", not a relativeUrl format). TEMPORARY: delete an entry once the schema
+// tags that method's path parameter - it is then derived (fileLoaderMethods) and
+// handled by the schema-directed branch, leaving this entry dead. Each spec says
+// where the path sits: `arg0` (the positional first argument) and/or option
+// keys holding a string (`stringKeys`) or string array (`arrayKeys`), looked up
+// in any object argument. `mv` restricts an entry to one manifest version, for
+// methods that exist only there (verified against the cached release-mv2 and
+// release-mv3 schemas): MV3 renamed browserAction -> action and replaced
+// tabs.executeScript/insertCSS/removeCSS with scripting.*. Thunderbird has no
+// pageAction or sidebarAction namespace, so neither appears here.
+const BRIDGE = new Map([
+  // runtime.getURL("path") - a root-relative resource URL (both versions).
+  ["runtime.getURL", { arg0: true }],
+  // tabs.executeScript|insertCSS|removeCSS {file}/{files}: MV2 only (MV3 uses
+  // the scripting.* equivalents below).
+  ["tabs.executeScript", { stringKeys: ["file"], arrayKeys: ["files"], mv: 2 }],
+  ["tabs.insertCSS", { stringKeys: ["file"], arrayKeys: ["files"], mv: 2 }],
+  ["tabs.removeCSS", { stringKeys: ["file"], arrayKeys: ["files"], mv: 2 }],
+  ["scripting.executeScript", { stringKeys: ["file"], arrayKeys: ["files"] }],
+  ["scripting.insertCSS", { stringKeys: ["file"], arrayKeys: ["files"] }],
+  ["scripting.removeCSS", { stringKeys: ["file"], arrayKeys: ["files"] }],
+  // tabs.create({url}) - a packaged page (or a remote url; callers drop remote).
+  ["tabs.create", { stringKeys: ["url"] }],
+  // <action>.setPopup({popup}): the default action is browserAction in MV2,
+  // renamed to action in MV3 (compose/messageDisplay action exist in both).
+  ["browserAction.setPopup", { stringKeys: ["popup"], mv: 2 }],
+  ["action.setPopup", { stringKeys: ["popup"], mv: 3 }],
+  ["composeAction.setPopup", { stringKeys: ["popup"] }],
+  ["messageDisplayAction.setPopup", { stringKeys: ["popup"] }],
+]);
+
+/**
+ * Scan JS for file paths passed to file-loading API calls.
+ * @param {string} code  JavaScript source text.
+ * @param {number} [lineOffset]  Added to reported lines (for inline scripts).
+ * @param {import("../schema/index.js").SchemaIndex} [schema]  Marks and
+ *   type-walks schema-derived loaders; the bridge works without it.
+ * @param {?number} [manifestVersion]  The add-on's manifest_version, so a
+ *   version-specific bridge entry (e.g. browserAction vs action) applies only
+ *   for its version. Null leaves every bridge entry in play.
+ * @returns {{refs: {path: string, line: number, column: number}[],
+ *   hasDynamic: boolean, parseError: string|null}}
+ */
+export function scanLoaderRefs(
+  code,
+  lineOffset = 0,
+  schema = null,
+  manifestVersion = null
+) {
+  const { ast, parseError } = parseJs(code);
+  if (parseError) {
+    return { refs: [], hasDynamic: false, parseError };
+  }
+
+  const refs = [];
+  const seenRef = new Set();
+  const state = { hasDynamic: false };
+  /**
+   * Record a string-literal path at a file-path slot, or note a dynamic value.
+   * @param {AstNode} node  The value AST node sitting at the slot.
+   */
+  const take = (node) => {
+    // A fully-static file path (a string, or a template/concat whose computed
+    // part is only a ?query/#fragment) is a reference, not a dynamic load.
+    const path =
+      node?.type === "StringLiteral" ? node.value : staticPathOf(node);
+    if (path != null) {
+      const line = (node.loc?.start.line ?? 1) + lineOffset;
+      const column = node.loc?.start.column ?? 0;
+      const key = `${line}:${column}:${path}`;
+      if (!seenRef.has(key)) {
+        seenRef.add(key);
+        refs.push({ path, line, column });
+      }
+    } else if (isDynamicValue(node)) {
+      state.hasDynamic = true; // a runtime-built path static analysis can't follow
+    }
+  };
+
+  const loaders = schema?.fileLoaderMethods;
+  const canWalk = typeof schema?.resolveApi === "function";
+  traverse(ast, {
+    CallExpression(path) {
+      const dotted = dottedApiPath(path.node.callee);
+      if (!dotted) {
+        return;
+      }
+      const args = path.node.arguments;
+      if (loaders?.has(dotted) && canWalk) {
+        const params = schema.resolveApi(dotted.split(".")).def?.parameters;
+        if (Array.isArray(params)) {
+          const n = Math.min(params.length, args.length);
+          for (let i = 0; i < n; i++) {
+            walkType(args[i], params[i], schema, take, new Set());
+          }
+        }
+        return;
+      }
+      const spec = BRIDGE.get(dotted);
+      if (spec && bridgeApplies(spec, manifestVersion)) {
+        extractBridge(spec, args, take);
+      }
+    },
+  });
+  return { refs, hasDynamic: state.hasDynamic, parseError: null };
+}
+
+/**
+ * Walk an argument AST node in lockstep with its schema type, invoking `take` at
+ * each extension-relative-url leaf. Descends $ref / choices / array items /
+ * object properties so a path is emitted only where the type expects one.
+ * @param {AstNode} node  The argument (or sub-value) AST node.
+ * @param {SchemaNode} type  The schema type for that position.
+ * @param {import("../schema/index.js").SchemaIndex} schema
+ * @param {(node: AstNode) => void} take  Path/dynamic sink.
+ * @param {Set<string>} seen  $refs on the current path (cycle guard).
+ */
+function walkType(node, type, schema, take, seen) {
+  if (!node || !type || typeof type !== "object") {
+    return;
+  }
+  if (type.$ref) {
+    if (!seen.has(type.$ref)) {
+      const next = new Set(seen).add(type.$ref);
+      walkType(node, schema.resolveRef(type.$ref), schema, take, next);
+    }
+    return;
+  }
+  if (Array.isArray(type.choices)) {
+    for (const choice of type.choices) {
+      walkType(node, choice, schema, take, seen);
+    }
+    return;
+  }
+  if (typeof type.format === "string" && REL_URL_FORMATS.has(type.format)) {
+    take(node); // a rel-url leaf: this position holds a packaged-file path
+    return;
+  }
+  if (type.items && node.type === "ArrayExpression") {
+    for (const el of node.elements) {
+      walkType(el, type.items, schema, take, seen);
+    }
+    return;
+  }
+  if (
+    node.type === "ObjectExpression" &&
+    (type.properties || type.additionalProperties || type.patternProperties)
+  ) {
+    const props = type.properties || {};
+    const extra =
+      type.additionalProperties && typeof type.additionalProperties === "object"
+        ? type.additionalProperties
+        : null;
+    const patterns = Object.values(type.patternProperties || {});
+    for (const member of node.properties) {
+      if (member.type !== "ObjectProperty" || member.computed) {
+        continue;
+      }
+      const key = member.key.name ?? member.key.value;
+      if (Object.prototype.hasOwnProperty.call(props, key)) {
+        walkType(member.value, props[key], schema, take, seen);
+      } else {
+        // Keys not named in the schema map through additional/pattern types
+        // (e.g. setIcon's size-keyed path object: {16: "...", 32: "..."}).
+        if (extra) {
+          walkType(member.value, extra, schema, take, seen);
+        }
+        for (const pt of patterns) {
+          walkType(member.value, pt, schema, take, seen);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Whether a bridge entry applies under the run's manifest version. An entry
+ * tagged `mv` is restricted to that version. An untagged entry applies to both.
+ * With no manifest version (null), every entry applies, so the bridge stays
+ * usable schema-independently.
+ * @param {{mv?: number}} spec
+ * @param {?number} manifestVersion
+ * @returns {boolean}
+ */
+function bridgeApplies(spec, manifestVersion) {
+  return !spec.mv || manifestVersion == null || spec.mv === manifestVersion;
+}
+
+/**
+ * Extract paths for a bridge (schema-unmarked) loader per its spec: a positional
+ * arg0 string, and/or string / string-array option keys scanned across every
+ * object argument.
+ * @param {{arg0?: boolean, stringKeys?: string[], arrayKeys?: string[]}} spec
+ * @param {AstNode[]} args  The call's argument nodes.
+ * @param {(node: AstNode) => void} take
+ */
+function extractBridge(spec, args, take) {
+  if (spec.arg0 && args.length) {
+    take(args[0]);
+  }
+  if (!spec.stringKeys && !spec.arrayKeys) {
+    return;
+  }
+  for (const arg of args) {
+    if (arg?.type !== "ObjectExpression") {
+      continue;
+    }
+    for (const prop of arg.properties) {
+      if (prop.type !== "ObjectProperty" || prop.computed) {
+        continue;
+      }
+      const key = prop.key.name ?? prop.key.value;
+      if (spec.stringKeys?.includes(key)) {
+        take(prop.value);
+      } else if (spec.arrayKeys?.includes(key)) {
+        if (prop.value.type === "ArrayExpression") {
+          for (const el of prop.value.elements) {
+            take(el);
+          }
+        } else {
+          take(prop.value); // a non-array files value is a dynamic load
+        }
+      }
+    }
+  }
+}
+
+/**
+ * The dotted member path after a browser/messenger/chrome root (e.g.
+ * "messageDisplayScripts.register", "scripting.messageDisplay.registerScripts"),
+ * or null if the callee is not such a member chain.
+ * @param {AstNode} callee
+ * @returns {string|null}
+ */
+function dottedApiPath(callee) {
+  if (callee?.type !== "MemberExpression" || callee.computed) {
+    return null;
+  }
+  const segments = [];
+  let cur = callee;
+  while (cur?.type === "MemberExpression" && !cur.computed) {
+    if (cur.property?.type !== "Identifier") {
+      return null;
+    }
+    segments.unshift(cur.property.name);
+    cur = cur.object;
+  }
+  if (cur?.type !== "Identifier" || !API_ROOTS.has(cur.name)) {
+    return null;
+  }
+  return segments.join(".");
+}
+
+/**
+ * True for an argument expression that yields a runtime-built value (an
+ * identifier, member access, call, concatenation, ...) at a file-path slot, as
+ * opposed to a static string or a structured object/array/function matching a
+ * non-string choice. Drives the caller's conservative `hasDynamic` handling.
+ * @param {AstNode} node
+ * @returns {boolean}
+ */
+function isDynamicValue(node) {
+  // A runtime.getURL(...) call sitting in a loader slot (e.g. windows.create({url:
+  // getURL("popup.html")})) is a resolved-URL value, not a runtime-built path: the
+  // getURL call is itself captured by the getURL loader, where it is static if its
+  // argument is a literal and dynamic otherwise. So it must not re-flag the outer
+  // slot as dynamic.
+  if (
+    node?.type === "CallExpression" &&
+    dottedApiPath(node.callee) === "runtime.getURL"
+  ) {
+    return false;
+  }
+  switch (node?.type) {
+    case undefined:
+    case "StringLiteral":
+    case "ObjectExpression":
+    case "ArrayExpression":
+    case "NullLiteral":
+    case "BooleanLiteral":
+    case "NumericLiteral":
+    case "BigIntLiteral":
+    case "RegExpLiteral":
+    case "ArrowFunctionExpression":
+    case "FunctionExpression":
+      return false;
+    default:
+      return true;
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "_comment": "browser.storage.local.* requires the namespace-level storage permission, which is undeclared.",
+  "expect": {
+    "missing-permission": ["background.js:4"]
+  }
+}

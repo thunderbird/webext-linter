@@ -1,0 +1,91 @@
+{
+  "meta": {
+    "action": "review",
+    "addon": "<root>/tests/addons/outbound-data",
+    "addonKind": "dir",
+    "reviewed": true,
+    "schemaSource": "local:<root>/tests/schema-fixture",
+    "schemaBranch": null,
+    "schemaChannel": null,
+    "applicationVersion": "128.0",
+    "manifestVersion": 3,
+    "checksRun": [
+      "trademark-violation",
+      "unknown-api",
+      "deprecated-api",
+      "missing-permission",
+      "missing-manifest-key",
+      "manifest-invalid-json",
+      "manifest-missing",
+      "manifest-missing-key",
+      "manifest-version-mismatch",
+      "manifest-unknown-permission",
+      "unrecognized-manifest-key",
+      "mistyped-manifest-value",
+      "bundled-files",
+      "sync-xhr",
+      "unsafe-html",
+      "debugger-statement",
+      "async-onmessage",
+      "minimize-host-permissions",
+      "missing-library",
+      "obfuscated-code",
+      "api-coverage",
+      "unparsable-file",
+      "experiment-not-allowed",
+      "experiment-missing-strict-max-version",
+      "non-experiment-strict-max-version",
+      "unpinned-dependency",
+      "unpinned-vendor-source",
+      "vendor-modified",
+      "vendor-unverified",
+      "missing-vendor-file",
+      "disguised-resource",
+      "disguised-stylesheet",
+      "disguised-window",
+      "disguised-navigation",
+      "cleartext-transmission",
+      "privacy-policy",
+      "native-messaging",
+      "fork-check",
+      "default-locale-missing",
+      "default-locale-unused",
+      "background-module",
+      "eval-call",
+      "function-constructor",
+      "string-timer",
+      "csp-unsafe-eval",
+      "csp-unsafe-inline",
+      "missing-english-localization",
+      "unused-files",
+      "minimize-web-accessible-resources",
+      "remote-script",
+      "remote-eval",
+      "data-exfiltration",
+      "unused-permission",
+      "unused-permission-manual"
+    ]
+  },
+  "summary": {
+    "error": 1,
+    "warning": 0,
+    "info": 0,
+    "byRule": {
+      "cleartext-transmission": 1
+    }
+  },
+  "findings": [
+    {
+      "ruleId": "cleartext-transmission",
+      "severity": "error",
+      "file": "background.js",
+      "loc": {
+        "line": 4,
+        "column": 0
+      },
+      "item": "api.example.com",
+      "hint": null,
+      "message": "Data is sent over an unencrypted connection to api.example.com. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://."
+    }
+  ]
+}

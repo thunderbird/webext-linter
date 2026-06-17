@@ -1,0 +1,6 @@
+{
+  "_comment": "German name/description, no _locales -> missing-english-localization warning (franc-detected).",
+  "expect": {
+    "missing-english-localization": ["manifest.json"]
+  }
+}

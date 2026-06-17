@@ -1,0 +1,6 @@
+{
+  "_comment": "A background script uses ES module syntax (import/export) but the background is not declared \"type\": \"module\", so it would not load as a module.",
+  "expect": {
+    "background-module": ["background.js:2"]
+  }
+}

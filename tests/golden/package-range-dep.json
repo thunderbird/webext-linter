@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "action": "review",
+    "addon": "<root>/tests/addons/package-range-dep",
+    "addonKind": "dir",
+    "reviewed": true,
+    "schemaSource": "local:<root>/tests/schema-fixture",
+    "schemaBranch": null,
+    "schemaChannel": null,
+    "applicationVersion": "128.0",
+    "manifestVersion": 3,
+    "checksRun": [
+      "trademark-violation",
+      "unknown-api",
+      "deprecated-api",
+      "missing-permission",
+      "missing-manifest-key",
+      "manifest-invalid-json",
+      "manifest-missing",
+      "manifest-missing-key",
+      "manifest-version-mismatch",
+      "manifest-unknown-permission",
+      "unrecognized-manifest-key",
+      "mistyped-manifest-value",
+      "bundled-files",
+      "sync-xhr",
+      "unsafe-html",
+      "debugger-statement",
+      "async-onmessage",
+      "minimize-host-permissions",
+      "missing-library",
+      "obfuscated-code",
+      "api-coverage",
+      "unparsable-file",
+      "experiment-not-allowed",
+      "experiment-missing-strict-max-version",
+      "non-experiment-strict-max-version",
+      "unpinned-dependency",
+      "unpinned-vendor-source",
+      "vendor-modified",
+      "vendor-unverified",
+      "missing-vendor-file",
+      "disguised-resource",
+      "disguised-stylesheet",
+      "disguised-window",
+      "disguised-navigation",
+      "cleartext-transmission",
+      "privacy-policy",
+      "native-messaging",
+      "fork-check",
+      "default-locale-missing",
+      "default-locale-unused",
+      "background-module",
+      "eval-call",
+      "function-constructor",
+      "string-timer",
+      "csp-unsafe-eval",
+      "csp-unsafe-inline",
+      "missing-english-localization",
+      "unused-files",
+      "minimize-web-accessible-resources",
+      "remote-script",
+      "remote-eval",
+      "data-exfiltration",
+      "unused-permission",
+      "unused-permission-manual"
+    ]
+  },
+  "summary": {
+    "error": 1,
+    "warning": 0,
+    "info": 0,
+    "byRule": {
+      "unpinned-dependency": 1
+    }
+  },
+  "findings": [
+    {
+      "ruleId": "unpinned-dependency",
+      "severity": "error",
+      "file": "package.json",
+      "loc": {
+        "line": 5
+      },
+      "item": "lodash",
+      "hint": null,
+      "message": "A bundled dependency is not pinned to an exact version: lodash, declared as \"^4.17.21\". A version range can resolve to different releases over time, so the bundled copy cannot be verified against a known upstream. Pin it to an exact version in package.json, or commit the lock file (package-lock.json, npm-shrinkwrap.json, yarn.lock, or pnpm-lock.yaml) that records the exact version used."
+    }
+  ]
+}

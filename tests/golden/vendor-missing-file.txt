@@ -1,0 +1,68 @@
+Reviewing <root>/tests/addons/vendor-missing-file
+schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_version 3
+
+── Issues ──
+
+  Thank you for your contribution, it will be approved shortly. We kindly ask
+  you to resolve the following issues with your next release:
+
+  1) VENDORS.md - A file listed in the VENDOR manifest is not present in the
+     submission: "lib/ghost.js". Add the file to the submission, or remove its
+     VENDOR entry.
+
+── Manual review ──
+
+  Continue manual review for the following checks:
+
+  1) Check the submission for spam: Inspect the listing (name, summary,
+     description, screenshots) and the add-on itself. Mark this review step as
+     failed if it looks like spam or contains inappropriate, misleading, or
+     low-effort content.
+
+  2) Test the add-on and request testing information if needed: Test the
+     add-on's functionality in a test profile. Mark this review step as failed
+     if additional information like credentials is needed in order to continue
+     the review.
+
+  3) Check for "No Surprises" policy violations: Test the add-on's functionality
+     in a test profile and inspect the code diff from the last version. Mark
+     this review step as failed if recent changes introduced behavior that is
+     not documented on the ATN listing page and could be a surprise to the user.
+
+  4) Check for a missing payment disclosure: Test the add-on's functionality in
+     a test profile. Verify whether the add-on requires a subscription or other
+     form of payment to function. Mark this review step as failed if a payment
+     is required but the "needs payment" flag on the add-on's ATN setting is not
+     enabled.
+
+  5) Check suitability for listing: Judge whether the add-on targets a limited
+     or non-public audience (for example an internal, single-organization, or
+     test-only add-on). Mark this review step as failed if it would be better
+     self-hosted than publicly listed on addons.thunderbird.net.
+
+  6) Acceptable Use Policy: Check the name, summary, description, and
+     screenshots against Mozilla's Acceptable Use Policy
+     (https://www.mozilla.org/about/legal/acceptable-use/). Mark this review
+     step as failed if any of them violate it.
+
+  7) Check the icon for trademark or logo imitation: Inspect the add-on's icon.
+     Mark this review step as failed if it imitates or incorporates the
+     Thunderbird or Mozilla logo.
+
+  8) Forked add-on: Check if the submission is a fork of an existing add-on.
+     Such forks are only allowed on ATN if they are clearly distinguished from
+     the original and provide a significant difference in functionality and/or
+     code. Exceptions may be made where the add-on is no longer maintained by
+     its original author. The primary goal, however, should be to connect the
+     two developers and let the new developer help maintain or take over the
+     existing add-on. In general, small-change forks of still-active projects
+     cause confusion for users and unnecessary overlap for developers. We
+     encourage developers to contribute their improvements directly to the
+     original project.
+
+  9) Unused permissions: Review whether the add-on requests any permission it
+     does not use, and ask the developer to remove the ones that are not needed.
+
+── Summary ──
+
+  0 error(s), 1 warning(s), 0 info, 9 manual review step(s)

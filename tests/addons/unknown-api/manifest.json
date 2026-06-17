@@ -1,0 +1,6 @@
+{
+  "manifest_version": 3,
+  "name": "Unknown API",
+  "version": "1.0",
+  "background": { "scripts": ["background.js"] }
+}

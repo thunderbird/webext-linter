@@ -1,0 +1,57 @@
+[
+  {
+    "namespace": "manifest",
+    "applicationVersion": "128.0",
+    "types": [
+      {
+        "id": "ManifestBase",
+        "type": "object",
+        "properties": {
+          "manifest_version": { "type": "integer", "enum": [3] },
+          "name": { "type": "string" },
+          "version": { "type": "string" },
+          "description": { "type": "string" },
+          "browser_specific_settings": { "type": "object" }
+        }
+      },
+      {
+        "id": "WebExtensionManifest",
+        "type": "object",
+        "additionalProperties": { "$ref": "UnrecognizedProperty" },
+        "properties": {
+          "permissions": { "type": "array" },
+          "optional_permissions": { "type": "array" },
+          "host_permissions": { "type": "array" },
+          "default_locale": { "type": "string" },
+          "background": { "type": "object" },
+          "options_ui": { "type": "object" },
+          "action": { "type": "object" },
+          "content_scripts": { "type": "array" },
+          "experiment_apis": { "type": "object" }
+        }
+      },
+      {
+        "id": "PermissionNoPrompt",
+        "type": "string",
+        "enum": ["storage", "alarms"]
+      },
+      {
+        "id": "OptionalPermission",
+        "choices": [
+          { "$ref": "PermissionNoPrompt" },
+          {
+            "type": "string",
+            "enum": ["clipboardWrite", "nativeMessaging", "notifications"]
+          }
+        ]
+      },
+      {
+        "id": "Permission",
+        "choices": [
+          { "$ref": "PermissionNoPrompt" },
+          { "$ref": "OptionalPermission" }
+        ]
+      }
+    ]
+  }
+]

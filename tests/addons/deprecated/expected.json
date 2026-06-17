@@ -1,0 +1,6 @@
+{
+  "_comment": "oldOne is deprecated; future requires a newer Thunderbird than the schema.",
+  "expect": {
+    "deprecated-api": ["background.js:2","background.js:3"]
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "manifest_version": 3,
+  "name": "Strict Max Not Experiment",
+  "version": "1.0",
+  "browser_specific_settings": { "gecko": { "strict_max_version": "128.0" } }
+}

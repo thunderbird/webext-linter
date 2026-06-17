@@ -1,0 +1,6 @@
+{
+  "_comment": "package.json declares lodash as a range (^4.17.21) with no lock file, so it cannot be pinned to one release: unpinned-dependency rejects it. package.json is exempt from unused-files. Decided offline, no fetch.",
+  "expect": {
+    "unpinned-dependency": ["package.json:5"]
+  }
+}

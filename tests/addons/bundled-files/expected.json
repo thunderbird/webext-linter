@@ -1,0 +1,6 @@
+{
+  "_comment": "content_scripts references missing.js, which is not bundled.",
+  "expect": {
+    "bundled-files": ["manifest.json"]
+  }
+}

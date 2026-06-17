@@ -1,0 +1,7 @@
+[
+  {
+    "namespace": "legacy",
+    "deprecated": "The legacy API was removed; use messages instead.",
+    "functions": [{ "name": "doThing", "async": true }]
+  }
+]

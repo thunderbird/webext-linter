@@ -1,0 +1,107 @@
+// The shared Babel front door for every module that parses add-on JavaScript:
+// one canonical set of lenient parse options, the ESM unwrap of
+// @babel/traverse's CommonJS default export, and the node -> finding-loc
+// helper. Submission code is untrusted and often partial, so parsing is
+// error-recovering and a fatal failure is reported, never thrown.
+//
+// Belongs here: the only direct import of @babel/parser and @babel/traverse in
+// the app, plus the parse-options and nodeLoc primitives every parser reuses.
+// Any module needing Babel goes through parseJs/traverse/nodeLoc here.
+//
+// Does NOT belong here: extracting facts from the AST or any check logic - the
+// per-concern AST walks live in the sibling parsers (src/parse/api-usage.js,
+// remote-js.js, unsafe-html.js, local-imports.js, loader-files.js). Verdicts go
+// to src/checks/rules/*. HTML/markup parsing is a separate subsystem
+// (src/scan/html.js and src/scan/html-parse.js).
+
+import { parse } from "@babel/parser";
+import _traverse from "@babel/traverse";
+
+export const traverse = _traverse.default || _traverse;
+
+/** @typedef {import("@babel/types").Node} AstNode */
+/**
+ * @typedef {{ast: ?import("@babel/types").File, parseError: string|null}}
+ *   ParseResult
+ */
+
+/**
+ * Parse JavaScript leniently. Never throws: a fatal parse error comes back as
+ * `parseError` so each caller can surface it its own way (a finding, a
+ * scan-result field, ...).
+ * @param {string} code
+ * @returns {ParseResult}
+ */
+export function parseJs(code) {
+  try {
+    return {
+      ast: parse(code, {
+        sourceType: "unambiguous",
+        allowReturnOutsideFunction: true,
+        errorRecovery: true,
+        plugins: ["topLevelAwait"],
+      }),
+      parseError: null,
+    };
+  } catch (err) {
+    return { ast: null, parseError: err.message };
+  }
+}
+
+/**
+ * A finding loc from a node, shifted by an inline-script line offset.
+ * @param {AstNode} node
+ * @param {number} [lineOffset]
+ * @returns {{line: number, column: number}}
+ */
+export function nodeLoc(node, lineOffset = 0) {
+  return {
+    line: (node.loc?.start.line ?? 1) + lineOffset,
+    column: node.loc?.start.column ?? 0,
+  };
+}
+
+/**
+ * The fully-static file path an argument node resolves to, or null if any part of
+ * the *path* is computed. Beyond a plain string this catches two runtime-built
+ * shapes whose file is still fixed, so they are references, not dynamic loaders:
+ *   - a template literal with no interpolation (`"foo.js"` in backticks), and
+ *   - a template or string concatenation whose computed part lands only in a
+ *     `?query` or `#fragment` (e.g. `getURL(`popup.html?id=${x}`)` -> popup.html).
+ * StringLiteral is handled by callers and returns its value here too.
+ * @param {AstNode} node
+ * @returns {string|null}
+ */
+export function staticPathOf(node) {
+  if (node?.type === "StringLiteral") {
+    return node.value;
+  }
+  if (node?.type === "TemplateLiteral") {
+    if (node.expressions.length === 0) {
+      return node.quasis[0]?.value?.cooked ?? null;
+    }
+    return pathBeforeQuery(node.quasis[0]?.value?.cooked ?? "");
+  }
+  if (node?.type === "BinaryExpression" && node.operator === "+") {
+    let cur = node;
+    while (cur.type === "BinaryExpression" && cur.operator === "+") {
+      cur = cur.left;
+    }
+    if (cur.type === "StringLiteral") {
+      return pathBeforeQuery(cur.value);
+    }
+  }
+  return null;
+}
+
+/**
+ * The path portion of a static prefix when the computed part falls in a query or
+ * fragment: the text before the first `?` or `#`, or null if there is none (so a
+ * prefix like `views/` that the computed part extends is not treated as fixed).
+ * @param {string} prefix
+ * @returns {?string}
+ */
+function pathBeforeQuery(prefix) {
+  const i = prefix.search(/[?#]/);
+  return i >= 0 ? prefix.slice(0, i) : null;
+}

@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "Wetterbericht",
+  "version": "1.0",
+  "description": "Diese Erweiterung zeigt Ihnen den aktuellen Wetterbericht und sendet Benachrichtigungen an Ihren Posteingang in Thunderbird.",
+  "background": { "scripts": ["background.js"] }
+}

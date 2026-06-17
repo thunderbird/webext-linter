@@ -1,0 +1,88 @@
+// The report-assembly resolver: the single place that turns the registry into
+// the strings shown to the user. A Finding carries only structured data (ruleId,
+// a single `item`/subject, and optional `data` slots describing that item). The
+// entry's `response` is the frame: `{{item}}` is filled with the finding's item
+// and each named `{{slot}}` with the matching `data` value - so the check authors
+// no prose, and `data` only adds detail ABOUT the one item (never a second
+// subject; one finding has one item). A manual ref resolves to a {title,
+// instructions} pair. `{{item}}` and `{{slot}}` are the only injection points, so
+// all prose lives in the registry.
+//
+// Belongs here: template resolution only - filling {{item}}/{{slot}} and
+// resolving a manual ref to {title, instructions}. Reads the registry via
+// src/checks/registry.js.
+// Does NOT belong here: the authored wording itself, which lives in
+// assets/registry.yaml. Section chrome, ordering and text/JSON output belong to
+// src/report/format.js. The finding data shape is in src/report/finding.js.
+// Whether a check escalates to manual review (vs the LLM) is decided in
+// src/checks/escalation.js - here a manual ref is only rendered, not chosen.
+
+const PLACEHOLDER = "{{item}}";
+
+/** Collapse a multiline (80-wrapped) registry template into one report line. */
+const collapse = (s) => s.replace(/\s+/g, " ").trim();
+
+/**
+ * Fill a registry template: substitute `{{item}}` with `item` and each
+ * `{{name}}` with `data[name]`. Returns null if a `{{item}}` template has no
+ * item (so the caller can fall back rather than emit a blank).
+ * @param {?string} template
+ * @param {?string} item
+ * @param {Record<string, string|number>|null} [data]
+ * @returns {?string}
+ */
+function fill(template, item, data) {
+  if (template == null) {
+    return null;
+  }
+  let out = template;
+  if (out.includes(PLACEHOLDER)) {
+    if (item == null) {
+      return null;
+    }
+    out = out.replaceAll(PLACEHOLDER, item);
+  }
+  if (data) {
+    for (const [name, value] of Object.entries(data)) {
+      out = out.replaceAll(`{{${name}}}`, String(value));
+    }
+  }
+  return collapse(out);
+}
+
+/**
+ * Fill each Issues finding's display `message` from the registry, keyed by its
+ * ruleId: substitute the finding's `item` into the entry's `response` `{{item}}`
+ * and any `data` values into the response's named `{{slot}}`s. Mutates in place.
+ * @param {import("./finding.js").Finding[]} findings
+ * @param {import("../checks/registry.js").Registry} registry
+ */
+export function renderFindings(findings, registry) {
+  for (const f of findings) {
+    f.message =
+      fill(registry.responseFor(f.ruleId), f.item, f.data) ?? f.message;
+  }
+}
+
+/**
+ * Resolve manual-review refs to {title, instructions}: the owning entry's title
+ * plus its `instructions` (or the `llm-unavailable` system message), filled with
+ * the case item and any `data` slots (e.g. a reason) the case carried.
+ * @param {{ruleId: string, item: ?string, kind: string,
+ *   data?: Record<string, string|number>|null}[]} refs
+ * @param {import("../checks/registry.js").Registry} registry
+ * @returns {import("./finding.js").ManualItem[]}
+ */
+export function renderManualItems(refs, registry) {
+  return refs.map((ref) => {
+    const entry = registry.checkEntry(ref.ruleId);
+    const template =
+      ref.kind === "llm-error"
+        ? registry.message("llm-unavailable")
+        : entry?.instructions;
+    return {
+      title: entry?.title ?? ref.ruleId,
+      instructions: fill(template, ref.item, ref.data) ?? "",
+    };
+  });
+}

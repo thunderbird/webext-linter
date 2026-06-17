@@ -1,0 +1,83 @@
+[
+  {
+    "namespace": "messages",
+    "permissions": ["messagesRead"],
+    "annotations": [{ "version_added": "66" }],
+    "types": [
+      {
+        "id": "MessageHeader",
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "folder": {
+            "type": "object",
+            "optional": true,
+            "description": "The folder this message is in. The <permission>accountsRead</permission> permission is required for this property to be included."
+          }
+        }
+      }
+    ],
+    "functions": [
+      {
+        "name": "get",
+        "async": "callback",
+        "permissions": ["messagesRead"],
+        "parameters": [
+          { "name": "messageId", "type": "integer" },
+          {
+            "name": "callback",
+            "type": "function",
+            "parameters": [{ "name": "message", "$ref": "MessageHeader" }]
+          }
+        ]
+      },
+      {
+        "name": "list",
+        "async": true,
+        "permissions": ["accountsRead"],
+        "annotations": [{ "version_added": "66" }]
+      },
+      {
+        "name": "move",
+        "async": true,
+        "permissions": ["accountsRead", "messagesMove"]
+      },
+      { "name": "oldOne", "async": true, "deprecated": "Use list() instead." },
+      {
+        "name": "future",
+        "async": true,
+        "annotations": [{ "version_added": "200" }]
+      }
+    ],
+    "events": [{ "name": "onNewMailReceived" }]
+  },
+  {
+    "namespace": "messages.tags",
+    "functions": [
+      { "name": "list", "async": true, "permissions": ["messagesTagsList"] }
+    ]
+  },
+  {
+    "namespace": "manifest",
+    "types": [
+      {
+        "$extend": "Permission",
+        "choices": [
+          {
+            "type": "string",
+            "enum": [
+              "messagesRead",
+              "accountsRead",
+              "messagesMove",
+              "messagesTagsList"
+            ]
+          }
+        ]
+      },
+      {
+        "$extend": "WebExtensionManifest",
+        "properties": { "compose_action": { "type": "object" } }
+      }
+    ]
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "_comment": "An Experiment with no strict_max_version, reviewed with experiments allowed (options) - experiment-missing-strict-max-version errors, experiment-not-allowed stays silent.",
+  "options": { "--allow-experiments": true },
+  "expect": {
+    "experiment-missing-strict-max-version": ["manifest.json"]
+  }
+}

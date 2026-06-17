@@ -1,0 +1,6 @@
+{
+  "_comment": "An Experiment (experiment_apis) reviewed with experiments off (the default) - experiment-not-allowed errors on the experiment_apis line.",
+  "expect": {
+    "experiment-not-allowed": ["manifest.json:5"]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Optional Permission",
+  "version": "1.0",
+  "permissions": ["messagesRead", "accountsRead"],
+  "optional_permissions": ["messagesMove"],
+  "background": { "scripts": ["bg.js"] }
+}

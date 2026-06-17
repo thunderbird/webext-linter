@@ -1,0 +1,201 @@
+// Loads a submitted add-on, whether it's an .xpi/.zip archive or an
+// already-unpacked directory, into an in-memory file map plus the parsed
+// manifest. Keeping the whole add-on in memory (paths -> Buffer) lets every
+// check read files without caring how the add-on was packaged.
+//
+// Belongs here: unpacking the submission into the Addon model (files map +
+// manifest parse + manifestError), the Manifest typedef, and the load-time path
+// safety guards. Loading/parsing the package only (the tool never writes back).
+//
+// Does NOT belong here: reviewing the add-on - all verdicts live in the checks
+// (src/checks/*). Enumerating which JS sources to scan is src/addon/sources.js.
+// Parsing CSS/HTML/CSP content is src/scan/*. Schema files load via
+// src/schema/load.js.
+
+import fs from "node:fs";
+import path from "node:path";
+import AdmZip from "adm-zip";
+import JSON5 from "json5";
+
+import { warn } from "../util/log.js";
+
+/**
+ * @typedef {object} GeckoSettings
+ * @property {string} [id]  Extension id.
+ * @property {string} [strict_min_version]  Lowest supported app version.
+ * @property {string} [strict_max_version]  Highest supported app version.
+ */
+
+/**
+ * One content_scripts entry.
+ * @typedef {object} ContentScript
+ * @property {string[]} [matches]  URL match patterns.
+ * @property {string[]} [js]  Injected script paths.
+ * @property {string[]} [css]  Injected stylesheet paths.
+ */
+
+/**
+ * A web_accessible_resources entry in MV3 object form (MV2 uses bare strings).
+ * @typedef {object} WebAccessibleResource
+ * @property {string[]} [resources]  Exposed resource paths or globs.
+ * @property {string[]} [matches]  Origins the resources are exposed to.
+ */
+
+/**
+ * The background context (MV2 scripts/page or MV3 service worker).
+ * @typedef {object} Background
+ * @property {string[]} [scripts]  Background script paths (MV2).
+ * @property {string} [service_worker]  Service worker path (MV3).
+ * @property {string} [page]  Background page path.
+ */
+
+/**
+ * The sidebar_action manifest key.
+ * @typedef {object} SidebarAction
+ * @property {string} [default_panel]  Panel document path.
+ * @property {string} [default_icon]  Icon path.
+ * @property {string} [default_title]  Sidebar title.
+ */
+
+/**
+ * The parsed manifest.json. A WebExtension manifest is an open-ended JSON
+ * object, so these are just the keys the review reads (others may be present).
+ * @typedef {object} Manifest
+ * @property {number} [manifest_version]  2 or 3.
+ * @property {string} [name]  Add-on name.
+ * @property {string} [version]  Add-on version.
+ * @property {string} [default_locale]  Default _locales subdir.
+ * @property {string[]} [permissions]  Declared permissions / host patterns.
+ * @property {string[]} [optional_permissions]  Runtime-granted permissions.
+ * @property {string[]} [host_permissions]  Host patterns (MV3).
+ * @property {ContentScript[]} [content_scripts]  Declared content scripts.
+ * @property {(string|WebAccessibleResource)[]} [web_accessible_resources]
+ *   Resources exposed to web pages (MV2 strings, MV3 objects).
+ * @property {{gecko?: GeckoSettings}} [browser_specific_settings]  Gecko data.
+ * @property {{gecko?: GeckoSettings}} [applications]  Legacy gecko data.
+ * @property {Record<string, object>} [experiment_apis]  Experiment API defs.
+ * @property {{images?: Record<string, string>}} [theme]  Static theme.
+ * @property {SidebarAction} [sidebar_action]  Sidebar action.
+ * @property {{page?: string}} [options_ui]  Options UI page.
+ * @property {string} [options_page]  Legacy options page path.
+ * @property {Background} [background]  Background context.
+ * @property {Record<string, string>} [icons]  Size -> icon path.
+ * @property {Record<string, string>} [dictionaries]  Locale -> dictionary path.
+ * @property {string|Record<string, string>} [content_security_policy]  CSP.
+ */
+
+/**
+ * @typedef {object} Addon
+ * @property {string} source                 Original path provided.
+ * @property {"zip"|"dir"} kind
+ * @property {Map<string, Buffer>} files  Add-on-relative path (posix "/")
+ *   -> contents.
+ * @property {?Manifest} manifest  Parsed; null if missing/invalid.
+ * @property {string|null} manifestError     Parse error message, if any.
+ */
+
+/**
+ * @param {string} source  Path to an .xpi/.zip file or an unpacked add-on
+ *   directory.
+ * @returns {Addon}
+ */
+export function loadAddon(source) {
+  const resolved = path.resolve(source);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Add-on not found: ${resolved}`);
+  }
+  const stat = fs.statSync(resolved);
+  const files = stat.isDirectory() ? readDir(resolved) : readZip(resolved);
+  const addon = {
+    source: resolved,
+    kind: stat.isDirectory() ? "dir" : "zip",
+    files,
+    manifest: null,
+    manifestError: null,
+  };
+
+  const manifestBuf = files.get("manifest.json");
+  if (manifestBuf) {
+    let text = manifestBuf.toString("utf8");
+    if (text.charCodeAt(0) === 0xfeff) {
+      text = text.slice(1);
+    }
+    try {
+      addon.manifest = JSON5.parse(text);
+    } catch (err) {
+      addon.manifestError = err.message;
+    }
+  }
+  return addon;
+}
+
+/**
+ * @param {string} zipPath  Path to the .xpi/.zip archive.
+ * @returns {Map<string, Buffer>}
+ */
+function readZip(zipPath) {
+  const zip = new AdmZip(zipPath);
+  const files = new Map();
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) {
+      continue;
+    }
+    const name = normalize(entry.entryName);
+    // Reject path-traversal / absolute entry names from a (possibly malicious)
+    // archive so they can never reach a filesystem write or the output package.
+    if (!isSafeAddonPath(name)) {
+      warn(`Skipping unsafe archive entry: ${entry.entryName}`);
+      continue;
+    }
+    files.set(name, entry.getData());
+  }
+  return files;
+}
+
+/**
+ * @param {string} dir  Root directory of the unpacked add-on.
+ * @returns {Map<string, Buffer>}
+ */
+function readDir(dir) {
+  const files = new Map();
+  /** @param {string} current  Directory to recurse into. */
+  const walk = (current) => {
+    for (const e of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, e.name);
+      if (e.isSymbolicLink()) {
+        // Skip symlinks rather than follow them: a real .xpi has none, and
+        // following could pull in host files or loop. Warn so it is not silent.
+        warn(`Skipping symlink (not packaged): ${path.relative(dir, full)}`);
+      } else if (e.isDirectory()) {
+        walk(full);
+      } else if (e.isFile()) {
+        const rel = path.relative(dir, full);
+        files.set(normalize(rel), fs.readFileSync(full));
+      }
+    }
+  };
+  walk(dir);
+  return files;
+}
+
+/**
+ * Normalize an add-on-internal path to posix style without a leading "./".
+ * @param {string} p  Raw path (may use backslashes or a leading "./").
+ * @returns {string}
+ */
+function normalize(p) {
+  return p.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+/**
+ * True when a normalized add-on-relative path stays inside the add-on root: not
+ * empty, not absolute, no Windows drive, and no ".." segment.
+ * @param {string} p  Normalized posix path.
+ * @returns {boolean}
+ */
+function isSafeAddonPath(p) {
+  if (!p || p.startsWith("/") || /^[a-zA-Z]:/.test(p)) {
+    return false;
+  }
+  return !p.split("/").includes("..");
+}

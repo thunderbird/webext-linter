@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Vendor Missing File",
+  "version": "1.0",
+  "description": "VENDOR file declares a library file that is not in the package.",
+  "permissions": ["messagesRead", "accountsRead"],
+  "background": { "scripts": ["background.js"] },
+  "compose_action": { "default_title": "Compose" }
+}

@@ -1,0 +1,6 @@
+{
+  "_comment": "Unknown namespace (contextMenus) + unknown member (messages.frobnicate).",
+  "expect": {
+    "unknown-api": ["background.js:3","background.js:5"]
+  }
+}

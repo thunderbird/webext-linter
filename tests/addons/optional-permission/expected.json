@@ -1,0 +1,4 @@
+{
+  "_comment": "messagesMove is optional (runtime-granted), so no declared-but-unused finding; messagesRead is used.",
+  "expect": {}
+}

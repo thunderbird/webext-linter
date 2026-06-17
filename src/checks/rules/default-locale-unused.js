@@ -1,0 +1,44 @@
+// A default_locale manifest key requires a packaged _locales directory; without
+// it Thunderbird refuses to load the add-on. Errors when default_locale is
+// declared but no _locales directory is present, locating the default_locale
+// line. The inverse (_locales with no default_locale) is default-locale-missing.js.
+//
+// Belongs here: the declared-default_locale / absent-_locales verdict and
+// locating the default_locale line. Does NOT belong here: the _locales scan (->
+// getLocales in src/checks/lib/locales.js, memoized and shared with
+// default-locale-missing), finding a manifest key's line (-> manifestKeyLine in
+// src/checks/lib/util.js), authored wording (-> assets/registry.yaml), and
+// severity (-> that registry entry).
+
+import { finding } from "../../report/finding.js";
+import { getLocales } from "../lib/locales.js";
+import { manifestKeyLine } from "../lib/util.js";
+
+/** @typedef {import("../registry.js").RunContext} RunContext */
+
+export default {
+  /**
+   * @param {RunContext} ctx
+   * @returns {import("../../report/finding.js").Finding[]}
+   */
+  run(ctx) {
+    const manifest = ctx.addon.manifest;
+    if (!manifest) {
+      ctx.note?.("manifest.json", null, "manifest did not parse", "skipped");
+      return [];
+    }
+    if (!manifest.default_locale) {
+      ctx.note?.("manifest.json", null, "no default_locale", "skipped");
+      return [];
+    }
+    if (getLocales(ctx).hasLocales) {
+      ctx.note?.("manifest.json", null, "_locales directory present", "pass");
+      return [];
+    }
+    const text = ctx.addon.files?.get("manifest.json")?.toString("utf8") ?? "";
+    const line = manifestKeyLine(text, "default_locale");
+    const loc = line ? { line, column: 0 } : null;
+    ctx.note?.("manifest.json", loc, "default_locale without _locales", "fail");
+    return [finding({ file: "manifest.json", loc })];
+  },
+};

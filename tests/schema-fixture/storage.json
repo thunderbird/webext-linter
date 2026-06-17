@@ -1,0 +1,21 @@
+[
+  {
+    "namespace": "storage",
+    "permissions": ["storage"],
+    "annotations": [{ "version_added": "57" }],
+    "properties": {
+      "local": { "$ref": "StorageArea" },
+      "sync": { "$ref": "StorageArea" }
+    },
+    "types": [
+      {
+        "id": "StorageArea",
+        "type": "object",
+        "functions": [
+          { "name": "get", "async": true },
+          { "name": "set", "async": true }
+        ]
+      }
+    ]
+  }
+]

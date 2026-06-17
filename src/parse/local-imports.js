@@ -1,0 +1,76 @@
+// Finds add-on-internal files loaded by a script's own static loaders -
+// `import`/`export ... from`, dynamic `import()`, `require()`, and
+// `importScripts()` - whose source is a local (non-remote) path. The
+// reachability analysis resolves these relative to the importing file. The
+// remote-script check owns the remote/embedded sources; this is its local
+// complement. A non-literal source sets `hasDynamic` (a runtime-built module
+// path that can't be resolved statically).
+//
+// Belongs here: extracting the local module-source paths from a script's own
+// ES/CommonJS loaders, as raw reference-graph input.
+//
+// Does NOT belong here: resolving those paths against the package or building
+// the reachability graph - that lives in src/checks/lib/reachability.js.
+// File-loading API calls (executeScript, getURL, setPopup, ...) are
+// src/parse/loader-files.js. Remote/embedded sources are
+// src/checks/rules/remote-script.js (fed by src/parse/remote-js.js). Babel
+// access goes through src/parse/ast.js.
+
+import { classifyUrl } from "../scan/url.js";
+import { parseJs, traverse, staticPathOf } from "./ast.js";
+
+/**
+ * @param {string} code  JavaScript source text.
+ * @param {number} [lineOffset]  Added to reported lines (for inline scripts).
+ * @returns {{refs: {path: string, line: number, column: number}[],
+ *   hasDynamic: boolean, parseError: string|null}}
+ */
+export function scanLocalImports(code, lineOffset = 0) {
+  const { ast, parseError } = parseJs(code);
+  if (parseError) {
+    return { refs: [], hasDynamic: false, parseError };
+  }
+
+  const refs = [];
+  const state = { hasDynamic: false };
+  /** @param {any} node  The source/argument node. */
+  const add = (node) => {
+    // A fully-static source path (a string, or a template/concat whose computed
+    // part is only a ?query/#fragment) is a reference, not a dynamic import. Keep
+    // only local refs - remote/embedded sources are the remote-script check's
+    // concern, not a packaged-file edge.
+    const path =
+      node?.type === "StringLiteral" ? node.value : staticPathOf(node);
+    if (path != null) {
+      if (classifyUrl(path) === "local") {
+        refs.push({
+          path,
+          line: (node.loc?.start.line ?? 1) + lineOffset,
+          column: node.loc?.start.column ?? 0,
+        });
+      }
+    } else if (node != null) {
+      state.hasDynamic = true; // a non-literal module path
+    }
+  };
+
+  traverse(ast, {
+    ImportDeclaration: (p) => add(p.node.source),
+    ExportNamedDeclaration: (p) => p.node.source && add(p.node.source),
+    ExportAllDeclaration: (p) => add(p.node.source),
+    CallExpression(p) {
+      const callee = p.node.callee;
+      if (callee?.type === "Import") {
+        add(p.node.arguments[0]); // dynamic import()
+      } else if (
+        callee?.type === "Identifier" &&
+        (callee.name === "require" || callee.name === "importScripts")
+      ) {
+        for (const a of p.node.arguments) {
+          add(a);
+        }
+      }
+    },
+  });
+  return { refs, hasDynamic: state.hasDynamic, parseError: null };
+}

@@ -1,0 +1,6 @@
+{
+  "_comment": "Ships a _locales directory but declares no default_locale, so Thunderbird would refuse to load it.",
+  "expect": {
+    "default-locale-missing": ["manifest.json"]
+  }
+}

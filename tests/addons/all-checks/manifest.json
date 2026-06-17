@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "All Checks Demo",
+  "version": "1.0",
+  "permissions": ["clipboardWrite", "bogusPermission"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "scripts": ["background.js"] },
+  "content_scripts": [
+    { "matches": ["*://*/*"], "js": ["content.js", "missing.js"] }
+  ],
+  "weirdTopLevelKey": true
+}

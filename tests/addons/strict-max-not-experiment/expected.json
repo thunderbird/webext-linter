@@ -1,0 +1,6 @@
+{
+  "_comment": "A non-Experiment that pins strict_max_version - warns.",
+  "expect": {
+    "non-experiment-strict-max-version": ["manifest.json"]
+  }
+}

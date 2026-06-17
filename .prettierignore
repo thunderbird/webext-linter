@@ -1,0 +1,9 @@
+# Hand-controlled data and docs — Prettier must not reformat these.
+assets/
+tests/addons/
+tests/schema-fixture/
+README.md
+
+# Generated / vendored.
+node_modules/
+.schema-cache/

@@ -1,0 +1,8 @@
+[
+  {
+    "namespace": "clipboard",
+    "permissions": ["clipboardWrite"],
+    "annotations": [{ "version_added": "57" }],
+    "functions": [{ "name": "setImageData", "async": true, "parameters": [] }]
+  }
+]
