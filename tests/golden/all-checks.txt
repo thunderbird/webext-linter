@@ -8,12 +8,11 @@ this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net
 in its current form. The following findings caused the submission to be
 rejected:
 
-1) background.js:4 - "browser.bogusApi" is not supported. This API has not been
-   implemented by Thunderbird. Read more:
-   https://webextension-api.thunderbird.net/.
+1) background.js:4 - "browser.bogusApi" is not supported in the targeted
+   Thunderbird version. Read more: https://webextension-api.thunderbird.net/.
 
-2) background.js:5 - "browser.messages.frobnicate" is not supported. This API
-   has not been implemented by Thunderbird. Read more:
+2) background.js:5 - "browser.messages.frobnicate" is not supported in the
+   targeted Thunderbird version. Read more:
    https://webextension-api.thunderbird.net/.
 
 3) background.js:9 - "messagesRead" permission is required here, but is not

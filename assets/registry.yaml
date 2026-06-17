@@ -194,13 +194,13 @@ deterministic-checks:
     Review whether the add-on requests any permission it does not use, and ask the
     developer to remove the ones that are not needed.
 
-# Flags a bundled-looking third-party library (banner/UMD/.min.js/known name)
-# not declared in a VENDOR file.
-- title: Missing JavaScript library reference
+# Flags a bundled-looking third-party library - JS or CSS - (banner/UMD/.min.
+# name/known name) not declared in a VENDOR file.
+- title: Missing third-party library reference
   severity: error
   check: missing-library.js
   response: |-
-    "{{item}}" appears to be a third-party JavaScript library. Please link to
+    "{{item}}" appears to be a third-party library. Please link to
     its source and ensure the bundled copy is identical to the linked version (a
     VENDOR file at the add-on root is common practice). Read more:
     https://extensionworkshop.com/documentation/publish/third-party-library-usage/.

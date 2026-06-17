@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "action": "review",
+    "addon": "<root>/tests/addons/bundled-css",
+    "addonKind": "dir",
+    "reviewed": true,
+    "schemaSource": "local:<root>/tests/schema-fixture",
+    "schemaBranch": null,
+    "schemaChannel": null,
+    "applicationVersion": "128.0",
+    "manifestVersion": 3,
+    "checksRun": [
+      "missing-library"
+    ]
+  },
+  "summary": {
+    "error": 1,
+    "warning": 0,
+    "info": 0,
+    "byRule": {
+      "missing-library": 1
+    }
+  },
+  "findings": [
+    {
+      "ruleId": "missing-library",
+      "severity": "error",
+      "file": "vendor/bootstrap/bootstrap.min.css",
+      "loc": null,
+      "item": "vendor/bootstrap/bootstrap.min.css",
+      "hint": null,
+      "message": "\"vendor/bootstrap/bootstrap.min.css\" appears to be a third-party library. Please link to its source and ensure the bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice). Read more: https://extensionworkshop.com/documentation/publish/third-party-library-usage/."
+    }
+  ]
+}

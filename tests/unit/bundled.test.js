@@ -11,6 +11,7 @@ import {
   classifyAddonJs,
 } from "../../src/checks/lib/bundled.js";
 import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
+import missingLibrary from "../../src/checks/rules/missing-library.js";
 
 // One long, dense line (no newline): minified by geometry, not by name, so it
 // exercises the heuristic rather than the ".min.js" / library-name shortcut.
@@ -58,4 +59,42 @@ test("without the pre-step, classifying the reformatted bytes misses it", () => 
 test("the classification is memoized: readers share one computation", () => {
   const ctx = { addon: addonWith({ "lib/blob.js": MINIFIED }) };
   assert.strictEqual(classifyAddonJs(ctx), classifyAddonJs(ctx));
+});
+
+// A vendored CSS distribution: recognized by its name (.min.css + "bootstrap"
+// stem) and a "/*!" banner, exactly like a bundled JS library. >= 1024 bytes so
+// it is classified, not skipped.
+const LIB_CSS = `/*! Bootstrap v5 */\n${".navbar{display:flex}".repeat(80)}`;
+// Minified-by-geometry CSS under a plain name (no .min. / library / banner
+// signal): one long, dense line -> minified, but NOT a recognized library.
+const MINIFIED_CSS = `.x{color:#fff}${".y{margin:0}".repeat(120)}`;
+
+test("classifyBundled tags an undeclared vendored CSS as a library", () => {
+  const file = "vendor/bootstrap/bootstrap.min.css";
+  const { classified, nonAuthored } = classifyBundled(
+    addonWith({ [file]: LIB_CSS })
+  );
+  const tag = classified.find((c) => c.file === file);
+  assert.equal(tag.library, true);
+  assert.equal(tag.obfuscated, false); // obfuscation is a JS-only concept
+  assert.ok(nonAuthored.has(file)); // joins the non-authored skip set
+});
+
+test("missing-library reports an undeclared vendored CSS file", () => {
+  const file = "vendor/bootstrap/bootstrap.min.css";
+  const flagged = missingLibrary
+    .run({ addon: addonWith({ [file]: LIB_CSS }) })
+    .map((f) => f.file);
+  assert.deepEqual(flagged, [file]);
+});
+
+test("a minified-by-geometry CSS is minified but not a library or obfuscated", () => {
+  const { classified } = classifyBundled(
+    addonWith({ "popup/app.css": MINIFIED_CSS })
+  );
+  const tag = classified.find((c) => c.file === "popup/app.css");
+  assert.deepEqual(
+    [tag.minified, tag.library, tag.obfuscated],
+    [true, false, false]
+  );
 });

@@ -4,12 +4,16 @@
 // drift between the source collector, the normalizer, and the checks.
 //
 // Belongs here: pure path/extension string helpers (extname, basename) and the
-// JS_EXTENSIONS / HTML_EXTENSIONS sets. No filesystem IO and no dependencies.
-// Does NOT belong here: reading files off disk or out of an archive - that is
-// src/addon/load.js for the add-on and src/schema/load.js for schemas.
+// JS_EXTENSIONS / CSS_EXTENSIONS / HTML_EXTENSIONS sets. No filesystem IO and no
+// dependencies. Does NOT belong here: reading files off disk or out of an
+// archive - that is src/addon/load.js for the add-on and src/schema/load.js for
+// schemas.
 
 /** Extensions treated as JavaScript source. */
 export const JS_EXTENSIONS = new Set([".js", ".mjs", ".jsm", ".es", ".es6"]);
+
+/** Extensions treated as CSS stylesheets. */
+export const CSS_EXTENSIONS = new Set([".css"]);
 
 /** Extensions treated as HTML documents. */
 export const HTML_EXTENSIONS = new Set([".html", ".htm", ".xhtml"]);

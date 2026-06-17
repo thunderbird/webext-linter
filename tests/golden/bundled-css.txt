@@ -1,4 +1,4 @@
-Reviewing <root>/tests/addons/unknown-api
+Reviewing <root>/tests/addons/bundled-css
 schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_version 3
 
 ── Issues ──
@@ -8,12 +8,11 @@ this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net
 in its current form. The following findings caused the submission to be
 rejected:
 
-1) background.js:3 - "browser.contextMenus" is not supported in the targeted
-   Thunderbird version. Read more: https://webextension-api.thunderbird.net/.
-
-2) background.js:5 - "browser.messages.frobnicate" is not supported in the
-   targeted Thunderbird version. Read more:
-   https://webextension-api.thunderbird.net/.
+1) vendor/bootstrap/bootstrap.min.css - "vendor/bootstrap/bootstrap.min.css"
+   appears to be a third-party library. Please link to its source and ensure the
+   bundled copy is identical to the linked version (a VENDOR file at the add-on
+   root is common practice). Read more:
+   https://extensionworkshop.com/documentation/publish/third-party-library-usage/.
 
 ── Manual review ──
 
@@ -54,23 +53,6 @@ Continue manual review for the following checks:
    Mark this review step as failed if it imitates or incorporates the
    Thunderbird or Mozilla logo.
 
-8) Forked add-on: Check if the submission is a fork of an existing add-on. Such
-   forks are only allowed on ATN if they are clearly distinguished from the
-   original and provide a significant difference in functionality and/or code.
-   Exceptions may be made where the add-on is no longer maintained by its
-   original author. The primary goal, however, should be to connect the two
-   developers and let the new developer help maintain or take over the existing
-   add-on. In general, small-change forks of still-active projects cause
-   confusion for users and unnecessary overlap for developers. We encourage
-   developers to contribute their improvements directly to the original project.
-
-9) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm an English localization is provided.
-
-10) Unused permissions: Review whether the add-on requests any permission it
-    does not use, and ask the developer to remove the ones that are not needed.
-
 ── Summary ──
 
-2 error(s), 0 warning(s), 0 info, 10 manual review step(s)
+1 error(s), 0 warning(s), 0 info, 7 manual review step(s)

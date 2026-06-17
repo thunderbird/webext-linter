@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "Bundled CSS",
+  "version": "1.0",
+  "description": "Ships an undeclared vendored bootstrap.min.css.",
+  "compose_action": { "default_title": "Compose" }
+}
