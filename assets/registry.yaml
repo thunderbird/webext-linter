@@ -17,7 +17,7 @@ deterministic-checks:
   severity: error
   check: unknown-api.js
   response: |-
-    "{{item}}" is not supported. This API has not been implemented by Thunderbird.
+    "{{item}}" is not supported in the targeted Thunderbird version.
     Read more: https://webextension-api.thunderbird.net/.
 
 # Flags deprecated APIs, and APIs added after the targeted Thunderbird version.
