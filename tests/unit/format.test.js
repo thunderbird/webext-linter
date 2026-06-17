@@ -77,7 +77,9 @@ test("issues render under Issues/JSON; manual items under Manual review", () => 
     .split("── Issues ──")[1]
     .split("── Manual review ──")[0];
   assert.ok(!issuesSection.includes("old.js")); // not in Issues
-  assert.match(issuesSection, /bg\.js:2 - eval used/);
+  // Message first, then the "- file:line" location beneath it.
+  assert.match(issuesSection, /1\) eval used/);
+  assert.match(issuesSection, /\n - bg\.js:2/);
   assert.match(
     out,
     /1 error\(s\), 0 warning\(s\), 0 info, 1 manual review step\(s\)/
@@ -118,22 +120,59 @@ test("Issues are grouped by severity under headings with continuous numbering", 
   };
   const out = formatText(r);
   // Continuous numbering, errors first (sorted by line within the group), then
-  // the warning, then the info.
-  assert.match(out, /1\) a\.js:1 - err one/);
-  assert.match(out, /2\) a\.js:5 - err two/);
-  assert.match(out, /3\) b\.js:2 - warn one/);
-  assert.match(out, /4\) \(add-on\) - info one|4\) c\.js - info one/);
+  // the warning, then the info. Each distinct message is its own entry, with the
+  // location listed beneath it.
+  assert.match(out, /1\) err one\n - a\.js:1/);
+  assert.match(out, /2\) err two\n - a\.js:5/);
+  assert.match(out, /3\) warn one\n - b\.js:2/);
+  assert.match(out, /4\) info one\n - c\.js/);
   // Headings appear in severity order, above their group.
   assert.ok(
     out.indexOf("ERR HEADING:") < out.indexOf("WARN HEADING:") &&
       out.indexOf("WARN HEADING:") < out.indexOf("INFO HEADING:")
   );
-  assert.ok(out.indexOf("ERR HEADING:") < out.indexOf("1) a.js:1"));
+  assert.ok(out.indexOf("ERR HEADING:") < out.indexOf("1) err one"));
   // A blank line sits between the Summary header and its counts line.
   assert.match(
     out,
     /── Summary ──\n\n2 error\(s\), 1 warning\(s\), 1 info, 0 manual review step\(s\)/
   );
+});
+
+// Findings that share an identical message collapse to ONE numbered entry, the
+// prose shown once with each location listed beneath it; a distinct message is
+// its own entry. JSON stays ungrouped (grouping is a text-layout concern).
+test("Issues group findings by identical message into one entry", () => {
+  const mk = (message, file, line) => ({
+    ruleId: "r",
+    severity: "warning",
+    message,
+    file,
+    loc: { line },
+    item: null,
+    hint: null,
+  });
+  const r = {
+    findings: [
+      mk("same message", "a.js", 10),
+      mk("other message", "b.js", 1),
+      mk("same message", "a.js", 20),
+      mk("same message", "c.js", 5),
+    ],
+    meta: { action: "review", addon: "x", reviewed: true },
+  };
+  const out = formatText(r);
+  const issues = out.split("── Issues ──")[1].split("── Summary ──")[0];
+  // The shared prose appears exactly once, as one entry listing all 3 locations.
+  assert.equal(issues.match(/same message/g).length, 1);
+  assert.match(
+    issues,
+    /\d\) same message\n - a\.js:10\n - a\.js:20\n - c\.js:5/
+  );
+  // The distinct message is its own entry.
+  assert.match(issues, /\d\) other message\n - b\.js:1/);
+  // JSON is ungrouped: every finding is still present.
+  assert.equal(JSON.parse(formatJson(r)).findings.length, 4);
 });
 
 // ---- verdict intros (the Issues-section preamble) ----

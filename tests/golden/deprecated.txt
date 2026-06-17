@@ -5,12 +5,14 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
-1) background.js:2 - "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+1) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
-    → Use list() instead.
+ - background.js:2
+   → Use list() instead.
 
-2) background.js:3 - "messages.future" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+2) "messages.future" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
+ - background.js:3
 
 ── Manual review ──
 

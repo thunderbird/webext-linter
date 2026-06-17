@@ -5,16 +5,19 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) manifest.json - Invalid manifest.json: missing the required "version" property.
+1) Invalid manifest.json: missing the required "version" property.
 Read more: https://webextension-api.thunderbird.net/.
+ - manifest.json
 
-2) manifest.json - Invalid manifest.json: unknown permission "bogusPermission" in "permissions".
+2) Invalid manifest.json: unknown permission "bogusPermission" in "permissions".
 Read more: https://webextension-api.thunderbird.net/.
+ - manifest.json
 
 We kindly ask you to resolve the following issues with your next release:
 
-3) manifest.json - Manifest entry issue: unrecognized top-level key "weirdTopLevelKey". Thunderbird ignores or misreads such entries.
+3) Manifest entry issue: unrecognized top-level key "weirdTopLevelKey". Thunderbird ignores or misreads such entries.
 Read more: https://webextension-api.thunderbird.net/.
+ - manifest.json
 
 ── Manual review ──
 

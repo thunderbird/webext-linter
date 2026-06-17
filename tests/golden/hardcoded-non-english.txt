@@ -5,8 +5,9 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
 
-1) manifest.json - Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
+1) Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
+ - manifest.json
 
 ── Manual review ──
 

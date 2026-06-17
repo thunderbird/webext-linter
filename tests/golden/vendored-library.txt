@@ -5,7 +5,8 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) lib/widget.min.js - A vendored file cites a source that is not pinned to an immutable version: lib/widget.min.js is linked to https://unpkg.com/widget/dist/widget.min.js, which is a branch or unversioned URL rather than a pinned release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from.
+1) A vendored file cites a source that is not pinned to an immutable version: lib/widget.min.js is linked to https://unpkg.com/widget/dist/widget.min.js, which is a branch or unversioned URL rather than a pinned release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from.
+ - lib/widget.min.js
 
 ── Manual review ──
 

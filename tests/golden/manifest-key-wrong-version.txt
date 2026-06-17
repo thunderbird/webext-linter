@@ -5,12 +5,14 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) background.js:3 - action.onClicked needs a manifest key that is not declared: "action". Add one of those keys to manifest.json.
+1) action.onClicked needs a manifest key that is not declared: "action". Add one of those keys to manifest.json.
+ - background.js:3
 
 We kindly ask you to resolve the following issues with your next release:
 
-2) manifest.json - Manifest entry issue: unrecognized top-level key "browser_action". Thunderbird ignores or misreads such entries.
+2) Manifest entry issue: unrecognized top-level key "browser_action". Thunderbird ignores or misreads such entries.
 Read more: https://webextension-api.thunderbird.net/.
+ - manifest.json
 
 ── Manual review ──
 

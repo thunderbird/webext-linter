@@ -5,8 +5,9 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) vendor/bootstrap/bootstrap.min.css - "vendor/bootstrap/bootstrap.min.css" appears to be a third-party library. Please link to its source and ensure the bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice).
+1) The following files appear to be third-party libraries. Please link to their sources and ensure each bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice).
 Read more: https://extensionworkshop.com/documentation/publish/third-party-library-usage/.
+ - vendor/bootstrap/bootstrap.min.css
 
 ── Manual review ──
 

@@ -5,7 +5,8 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) background.js:2 - The background script background.js uses ES module syntax (import/export) but the manifest's background is not declared "type": "module", so Thunderbird will not load it. Add "type": "module" to the background entry.
+1) The background script background.js uses ES module syntax (import/export) but the manifest's background is not declared "type": "module", so Thunderbird will not load it. Add "type": "module" to the background entry.
+ - background.js:2
 
 ── Manual review ──
 

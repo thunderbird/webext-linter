@@ -5,9 +5,10 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
-1) bg.js:3 - "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+1) "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
-    → The legacy API was removed; use messages instead.
+ - bg.js:3
+   → The legacy API was removed; use messages instead.
 
 ── Manual review ──
 

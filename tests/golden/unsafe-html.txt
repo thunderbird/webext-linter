@@ -5,8 +5,10 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
 
-1) bg.js:2 - Dynamic content is assigned via ".innerHTML". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.
+1) Dynamic content is assigned via ".innerHTML". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
+ - bg.js:2
+ - bg.js:6
 
 ── Manual review ──
 
@@ -71,4 +73,4 @@ Continue manual review for the following checks:
 
 ── Summary ──
 
-0 error(s), 1 warning(s), 0 info, 11 manual review step(s)
+0 error(s), 2 warning(s), 0 info, 11 manual review step(s)

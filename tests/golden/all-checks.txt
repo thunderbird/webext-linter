@@ -5,67 +5,90 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) background.js:4 - "browser.bogusApi" is not supported in the targeted Thunderbird version.
+1) "browser.bogusApi" is not supported in the targeted Thunderbird version.
 Read more: https://webextension-api.thunderbird.net/.
+ - background.js:4
 
-2) background.js:5 - "browser.messages.frobnicate" is not supported in the targeted Thunderbird version.
+2) "browser.messages.frobnicate" is not supported in the targeted Thunderbird version.
 Read more: https://webextension-api.thunderbird.net/.
+ - background.js:5
 
-3) background.js:9 - "messagesRead" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions).
+3) "messagesRead" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions).
+ - background.js:9
 
-4) background.js:15 - "accountsRead" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions).
+4) "accountsRead" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions).
+ - background.js:15
 
-5) background.js:16 - "messagesMove" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions).
+5) "messagesMove" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions).
+ - background.js:16
 
-6) background.js:19 - action.onClicked needs a manifest key that is not declared: "action". Add one of those keys to manifest.json.
+6) action.onClicked needs a manifest key that is not declared: "action". Add one of those keys to manifest.json.
+ - background.js:19
 
-7) background.js:22 - Dynamic code execution via "eval()" is not allowed.
+7) Dynamic code execution via "eval()" is not allowed.
+ - background.js:22
 
-8) background.js:26 - The add-on makes a synchronous XMLHttpRequest, which can lock up the user interface. Please use an asynchronous request instead.
+8) The add-on makes a synchronous XMLHttpRequest, which can lock up the user interface. Please use an asynchronous request instead.
+ - background.js:26
 
-9) background.js:32 - Unconditional debugger statement. Please remove it or move it behind a config flag.
+9) Unconditional debugger statement. Please remove it or move it behind a config flag.
+ - background.js:32
 
-10) manifest.json - Invalid manifest.json: unknown permission "bogusPermission" in "permissions".
+10) Invalid manifest.json: unknown permission "bogusPermission" in "permissions".
 Read more: https://webextension-api.thunderbird.net/.
+ - manifest.json
 
-11) manifest.json - "missing.js" is referenced but not bundled with the add-on. Please include every referenced file in the package.
+11) "missing.js" is referenced but not bundled with the add-on. Please include every referenced file in the package.
+ - manifest.json
 
-12) options.html - options.html appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included.
+12) options.html appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included.
+ - options.html
 
-13) options.html:4 - Remote code is loaded from "https://cdn.example.com/remote.js". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
+13) Remote code is loaded from "https://cdn.example.com/remote.js". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
+ - options.html:4
 
-14) styles.css - styles.css appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included.
+14) styles.css appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included.
+ - styles.css
 
-15) styles.css:1 - Remote code is loaded from "https://fonts.example.com/font.css". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
+15) Remote code is loaded from "https://fonts.example.com/font.css". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
+ - styles.css:1
 
 We kindly ask you to resolve the following issues with your next release:
 
-16) background.js:29 - Dynamic content is assigned via ".innerHTML". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.
+16) Dynamic content is assigned via ".innerHTML". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
+ - background.js:29
 
-17) background.js:35 - Asynchronous listener attached to runtime.onMessage. This is error prone and must be avoided.
+17) Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
+ - background.js:35
 
-18) manifest.json - Manifest entry issue: unrecognized top-level key "weirdTopLevelKey". Thunderbird ignores or misreads such entries.
+18) Manifest entry issue: unrecognized top-level key "weirdTopLevelKey". Thunderbird ignores or misreads such entries.
 Read more: https://webextension-api.thunderbird.net/.
+ - manifest.json
 
 We would like to share the following information with you:
 
-19) background.js:9 - "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+19) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
-    → Use list() instead.
+ - background.js:9
+   → Use list() instead.
 
-20) background.js:10 - "messages.future" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+20) "messages.future" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
+ - background.js:10
 
-21) background.js:11 - "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+21) "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
-    → The legacy API was removed; use messages instead.
+ - background.js:11
+   → The legacy API was removed; use messages instead.
 
-22) background.js:41 - Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined.
+22) Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined.
+ - background.js:41
 
-23) manifest.json - <all_urls> is a very broad host permission requested as required. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare it as an optional host permission so the user can grant it on demand rather than up front.
+23) <all_urls> is a very broad host permission requested as required. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare it as an optional host permission so the user can grant it on demand rather than up front.
 Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
+ - manifest.json
 
 ── Manual review ──
 

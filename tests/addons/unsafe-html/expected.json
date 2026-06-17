@@ -1,6 +1,6 @@
 {
-  "_comment": "innerHTML = location.hash is dynamic (flagged); the static string is not.",
+  "_comment": "innerHTML = location.hash/search is dynamic (both flagged); the static string is not. The two dynamic sinks share one message, so the Issues section groups them into a single numbered entry listing both locations.",
   "expect": {
-    "unsafe-html": ["bg.js:2"]
+    "unsafe-html": ["bg.js:2", "bg.js:6"]
   }
 }

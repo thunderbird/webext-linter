@@ -5,7 +5,8 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) manifest.json - This add-on uses Experiment APIs but declares no strict_max_version. Experiments rely on internal APIs that change between major Thunderbird versions, so they must set browser_specific_settings.gecko.strict_max_version.
+1) This add-on uses Experiment APIs but declares no strict_max_version. Experiments rely on internal APIs that change between major Thunderbird versions, so they must set browser_specific_settings.gecko.strict_max_version.
+ - manifest.json
 
 ── Manual review ──
 

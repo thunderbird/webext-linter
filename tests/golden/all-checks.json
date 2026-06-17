@@ -257,7 +257,7 @@
       },
       "item": null,
       "hint": null,
-      "message": "Asynchronous listener attached to runtime.onMessage. This is error prone and must be avoided.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html"
+      "message": "Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html"
     },
     {
       "ruleId": "code-sanity",

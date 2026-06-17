@@ -95,10 +95,10 @@ function headerLines(meta) {
 }
 
 /**
- * Issues: numbered "N) file:line - description", printed VERBATIM (no 80-column
- * rewrap, no hanging indent - see renderFinding). Grouped by severity under
- * registry-defined headings (numbering continuous across the groups) when
- * headings are supplied, otherwise a single flat list.
+ * Issues: one numbered entry per distinct message (see renderGroup/groupByMessage)
+ * - the response printed VERBATIM, then its "- file:line" locations. Grouped by
+ * severity under registry-defined headings (numbering continuous across the
+ * severity groups) when headings are supplied, otherwise a single flat list.
  *
  * A registry-owned verdict preamble opens the section: with no findings it is
  * the whole body (`verdictIntros.none`); with findings it is `rejected` (any
@@ -137,42 +137,69 @@ function issuesLines(issues, issueHeadings, verdictIntros) {
         out.push(...text.split("\n").map(tint));
       }
       first = false;
-      for (const f of group) {
+      for (const entry of groupByMessage(group)) {
         out.push("");
-        out.push(...renderFinding(++n, f));
+        out.push(...renderGroup(++n, entry));
       }
     }
   } else {
-    sortFindings(issues).forEach((f, i) => {
+    groupByMessage(sortFindings(issues)).forEach((entry, i) => {
       if (i > 0) {
-        out.push(""); // blank line between items
+        out.push(""); // blank line between entries
       }
-      out.push(...renderFinding(i + 1, f));
+      out.push(...renderGroup(i + 1, entry));
     });
   }
   return out;
 }
 
 /**
- * Render one Issues finding VERBATIM: "N) file:line - message" with the registry
- * response printed exactly as authored - no 80-column rewrap and no hanging
- * indent. A long response runs off the line, and its own line breaks (the
- * registry puts one before "Read more:") land at column 0. The optional
- * remediation hint follows. (Manual review still wraps - see manualLines.)
- * @param {number} n  1-based number.
- * @param {import("./finding.js").Finding} f
+ * Group findings that share an identical rendered `message` so a check that
+ * fires many times (e.g. dozens of innerHTML sinks) shows its prose once, not
+ * once per site. A Map preserves first-appearance order, and the input is
+ * already sortFindings-ordered, so the groups and the locations within them
+ * stay sorted. Findings whose message embeds the file (e.g. missing-library)
+ * are simply singleton groups.
+ * @param {import("./finding.js").Finding[]} findings
+ * @returns {import("./finding.js").Finding[][]}
+ */
+function groupByMessage(findings) {
+  const byMessage = new Map();
+  for (const f of findings) {
+    const bucket = byMessage.get(f.message);
+    if (bucket) {
+      bucket.push(f);
+    } else {
+      byMessage.set(f.message, [f]);
+    }
+  }
+  return [...byMessage.values()];
+}
+
+/**
+ * Render one Issues entry: the shared registry response VERBATIM (no 80-column
+ * rewrap, no hanging indent - a long line runs off, and the registry's own break
+ * before "Read more:" lands at column 0), then one "- file:line" location line
+ * per finding (with a "→ hint" line after any location that carries one). Every
+ * entry uses this form, so a unique message is just a one-location list.
+ * (Manual review still wraps - see manualLines.)
+ * @param {number} n  1-based entry number.
+ * @param {import("./finding.js").Finding[]} findings  All sharing one message.
  * @returns {string[]}
  */
-function renderFinding(n, f) {
-  const [first, ...rest] = entryBody(f).split("\n");
+function renderGroup(n, findings) {
+  const [first, ...rest] = findings[0].message.split("\n");
   const lines = [`${n}) ${first}`, ...rest];
-  if (f.hint) {
-    lines.push(`    → ${f.hint}`);
+  for (const f of findings) {
+    lines.push(` - ${whereOf(f)}`);
+    if (f.hint) {
+      lines.push(`   → ${f.hint}`);
+    }
   }
-  // Tint the whole finding by severity (error red, warning yellow) - a no-op
+  // Tint the whole entry by severity (error red, warning yellow) - a no-op
   // unless the CLI enabled color. Each line is tinted on its own, so the color
   // resets per line and stripColor cleans the --report-out copy.
-  const tint = SEV_COLOR[f.severity] ?? identity;
+  const tint = SEV_COLOR[findings[0].severity] ?? identity;
   return lines.map(tint);
 }
 
@@ -261,17 +288,16 @@ function section(title) {
 }
 
 /**
- * The "file:line - message" body of one finding ("(add-on)" when it has no
- * file, ":line" appended only when a line is known).
+ * Where a finding sits: "file:line" ("(add-on)" when it has no file, ":line"
+ * appended only when a line is known). The location listed under each Issue.
  *
  * @param {import("./finding.js").Finding} f
  * @returns {string}
  */
-function entryBody(f) {
-  const where = f.file
+function whereOf(f) {
+  return f.file
     ? `${f.file}${f.loc?.line != null ? `:${f.loc.line}` : ""}`
     : "(add-on)";
-  return `${where} - ${f.message}`;
 }
 
 /**

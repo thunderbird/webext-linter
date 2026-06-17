@@ -68,10 +68,10 @@
   },
   "summary": {
     "error": 0,
-    "warning": 1,
+    "warning": 2,
     "info": 0,
     "byRule": {
-      "unsafe-html": 1
+      "unsafe-html": 2
     }
   },
   "findings": [
@@ -81,6 +81,18 @@
       "file": "bg.js",
       "loc": {
         "line": 2,
+        "column": 0
+      },
+      "item": ".innerHTML",
+      "hint": null,
+      "message": "Dynamic content is assigned via \".innerHTML\". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+    },
+    {
+      "ruleId": "unsafe-html",
+      "severity": "warning",
+      "file": "bg.js",
+      "loc": {
+        "line": 6,
         "column": 0
       },
       "item": ".innerHTML",
