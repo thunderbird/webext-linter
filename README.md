@@ -55,7 +55,7 @@ schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
-| `--diff-summary` | Add an AI assited **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and the LLM enabled (`--claude-api-key` or `--claude-enabled`). |
+| `--diff-summary` | Add an AI assisted **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and the LLM enabled (`--claude-api-key` or `--claude-enabled`). |
 | `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes and a permission review (which declared permissions appear unused) - from its (almost) full current source (vendored and unused files excluded). Advisory, not a finding. Needs the LLM enabled (`--claude-api-key` or `--claude-enabled`). |
 | `--verbose` | Verbose logging. |
 

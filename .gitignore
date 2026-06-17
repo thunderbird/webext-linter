@@ -3,3 +3,4 @@ tmp_extract/
 logs/
 .schema-cache/
 *.tmp
+*.key

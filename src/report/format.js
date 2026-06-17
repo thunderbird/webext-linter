@@ -112,7 +112,7 @@ function issuesLines(issues, issueHeadings, verdictIntros) {
   const out = section("Issues");
   const intros = verdictIntros ?? {};
   if (issues.length === 0) {
-    out.push(`  ${intros.none ?? "No issues found."}`);
+    out.push(intros.none ?? "No issues found.");
     return out;
   }
   // One preamble for the whole section, glued onto the first rendered heading.
@@ -130,7 +130,7 @@ function issuesLines(issues, issueHeadings, verdictIntros) {
       const heading = issueHeadings[sev];
       const text = first && intro ? `${intro} ${heading ?? ""}` : heading;
       if (text) {
-        out.push(...wrapParagraph(text, "  ").map(tint));
+        out.push(...wrapParagraph(text, "").map(tint));
       }
       first = false;
       for (const f of group) {
@@ -158,7 +158,7 @@ function issuesLines(issues, issueHeadings, verdictIntros) {
 function renderFinding(n, f) {
   const lines = wrapEntry(n, entryBody(f));
   if (f.hint) {
-    lines.push(`      → ${f.hint}`);
+    lines.push(`    → ${f.hint}`);
   }
   // Tint the whole finding by severity (error red, warning yellow) - a no-op
   // unless the CLI enabled color. Each line is tinted on its own, so the color
@@ -182,7 +182,7 @@ function manualLines(manual, reviewUrl) {
   out.push("");
   // The manual-review group is all manual work, so it is all blue (a no-op
   // unless color is enabled). Each line is tinted on its own for stripColor.
-  out.push(blue("  Continue manual review for the following checks:"));
+  out.push(blue("Continue manual review for the following checks:"));
   manual.forEach((item, i) => {
     out.push("");
     const body = item.instructions
@@ -193,8 +193,8 @@ function manualLines(manual, reviewUrl) {
   // Last line of the section: where to complete the review (when resolved).
   if (reviewUrl) {
     out.push("");
-    out.push(blue("  Complete this review on ATN:"));
-    out.push(blue(`  ${reviewUrl}`));
+    out.push(blue("Complete this review on ATN:"));
+    out.push(blue(reviewUrl));
   }
   return out;
 }
@@ -210,7 +210,7 @@ function summaryLines(issues, manualCount) {
   const out = section("Summary");
   out.push("");
   out.push(
-    `  ${c.error} error(s), ${c.warning} warning(s), ${c.info} info, ${manualCount} manual review step(s)`
+    `${c.error} error(s), ${c.warning} warning(s), ${c.info} info, ${manualCount} manual review step(s)`
   );
   return out;
 }
@@ -267,7 +267,7 @@ function entryBody(f) {
 
 /**
  * Render one numbered issue, wrapped at `width` columns with continuation lines
- * hanging-indented under the text (after the "  N) " marker). A word longer
+ * hanging-indented under the text (after the "N) " marker). A word longer
  * than the available width (e.g. a URL) is left on its own over-long line.
  *
  * @param {number} n  1-based issue number.
@@ -276,7 +276,7 @@ function entryBody(f) {
  * @returns {string[]}
  */
 function wrapEntry(n, body, width = 80) {
-  const firstPrefix = `  ${n}) `;
+  const firstPrefix = `${n}) `;
   const contIndent = " ".repeat(firstPrefix.length);
   const lines = [];
   let cur = firstPrefix;

@@ -28,7 +28,7 @@ function review() {
 test("text report includes the Manual review section", () => {
   const out = formatText(review());
   // A blank line sits between the header and the "Continue ..." intro.
-  assert.match(out, /── Manual review ──\n\n {2}Continue manual review/);
+  assert.match(out, /── Manual review ──\n\nContinue manual review/);
   assert.match(
     out,
     /1\) Source Archive required: Confirm sources were uploaded and rebuild matches\./
@@ -132,7 +132,7 @@ test("Issues are grouped by severity under headings with continuous numbering", 
   // A blank line sits between the Summary header and its counts line.
   assert.match(
     out,
-    /── Summary ──\n\n {2}2 error\(s\), 1 warning\(s\), 1 info, 0 manual review step\(s\)/
+    /── Summary ──\n\n2 error\(s\), 1 warning\(s\), 1 info, 0 manual review step\(s\)/
   );
 });
 
@@ -158,7 +158,7 @@ const withReview = (findings, verdictIntros) => ({
 
 test("empty review shows the registry 'none' intro as the Issues body", () => {
   const out = formatText(withReview([], { none: "NONE-MSG" }));
-  assert.match(out, /── Issues ──\n {2}NONE-MSG/);
+  assert.match(out, /── Issues ──\nNONE-MSG/);
 });
 
 test("an error finding glues the 'rejected' intro to the first heading", () => {
@@ -195,6 +195,6 @@ test("an error among warnings shows only 'rejected'; later headings stay plain",
   );
   assert.match(out, /REJECTED-MSG ERR:/);
   assert.ok(!out.includes("FEEDBACK-MSG"));
-  assert.match(out, /\n {2}WARN:/); // warning heading rendered, no intro glued
+  assert.match(out, /\nWARN:/); // warning heading rendered, no intro glued
   assert.ok(out.indexOf("REJECTED-MSG") < out.indexOf("WARN:"));
 });
