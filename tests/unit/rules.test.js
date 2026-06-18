@@ -37,6 +37,7 @@ import forkCheck from "../../src/checks/rules/fork-check.js";
 import unusedPermission from "../../src/checks/rules/unused-permission.js";
 import unusedPermissionManual from "../../src/checks/rules/unused-permission-manual.js";
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
+import { getPermissionAnalysis } from "../../src/checks/lib/permissions.js";
 import { loadChecks, loadRegistry } from "../../src/checks/registry.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex } from "../../src/schema/index.js";
@@ -412,12 +413,16 @@ test("unused-permission-manual lists permissions only when no list was produced"
     optional_permissions: ["storage"],
   };
   const ctx = {
+    schema,
     addon: {
       manifest,
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
       ]),
     },
+    // No API usages -> nothing is provably used -> every named permission is
+    // still escalated for the reviewer.
+    apiUsages: [],
   };
   const out = unusedPermissionManual.run(ctx);
   assert.equal(out.findings.length, 0);
@@ -486,6 +491,57 @@ test("missing-permission ignores usages in dead (unreachable) files", () => {
   assert.ok(live.some((f) => f.item === "messagesRead"));
   // Dead: dead.js is never referenced by the manifest -> no missing finding.
   assert.equal(missingPermission.run(ctx("dead.js")).length, 0);
+});
+
+// usedPermissions records the permissions a REACHABLE call provably requires; a
+// usage only in a dead file does not count (same reachability gate as above).
+test("usedPermissions tracks reachable requirements, not dead-file ones", () => {
+  const ctx = (file) => ({
+    schema,
+    addon: {
+      manifest: {
+        permissions: ["messagesRead"],
+        background: { scripts: ["bg.js"] },
+      },
+      files: new Map([
+        ["bg.js", Buffer.from("")],
+        ["dead.js", Buffer.from("messenger.messages.get(1);")],
+      ]),
+    },
+    apiUsages: [{ file, usages: GET_USAGE }],
+  });
+  assert.ok(
+    getPermissionAnalysis(ctx("bg.js")).usedPermissions.has("messagesRead")
+  );
+  assert.ok(
+    !getPermissionAnalysis(ctx("dead.js")).usedPermissions.has("messagesRead")
+  );
+});
+
+// The no-LLM checklist drops a declared permission a reachable call provably
+// needs (messages.get -> messagesRead), escalating only the unproven ones.
+test("unused-permission-manual omits permissions a reachable call requires", () => {
+  const manifest = {
+    permissions: ["messagesRead", "tabs"],
+    background: { scripts: ["bg.js"] },
+  };
+  const ctx = {
+    schema,
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+        ["bg.js", Buffer.from("messenger.messages.get(1);")],
+      ]),
+    },
+    apiUsages: [{ file: "bg.js", usages: GET_USAGE }],
+  };
+  const out = unusedPermissionManual.run(ctx);
+  // messagesRead is proven used -> not escalated; tabs has no proven need -> kept.
+  assert.deepEqual(
+    out.escalations.map((e) => e.item),
+    ["tabs"]
+  );
 });
 
 // ---- trademark-violation (deterministic name check) ----

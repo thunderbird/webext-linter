@@ -69,11 +69,6 @@ Continue manual review for the following checks:
     developers to contribute their improvements directly to the original
     project.
 
-11) Unused permissions: Review whether the following declared permissions are
-    used, and ask the developer to remove any that are not needed.
- - manifest.json:6 - messagesRead
- - manifest.json:6 - accountsRead
-
 ── Summary ──
 
-0 error(s), 1 warning(s), 0 info, 12 manual review step(s)
+0 error(s), 1 warning(s), 0 info, 10 manual review step(s)

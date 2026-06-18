@@ -49,6 +49,11 @@ const GATED_KINDS = new Set(["function", "event", "property", "namespace"]);
  *   required permission (item) not declared in the manifest.
  * @property {import("../../report/finding.js").Finding[]} missingManifestKeys  An
  *   API (item) needing a manifest key (data.keys) that is not declared.
+ * @property {Set<string>} usedPermissions  Named permissions a reachable API call
+ *   provably requires (so the add-on is definitely using them). The
+ *   unused-permission-manual check drops these from its by-hand checklist. Only
+ *   ever proves a permission USED - a permission absent here may still be needed
+ *   via a gated property a static scan cannot see (see the file header).
  * @property {{requirements: PermNote[], manifestKeys: PermNote[]}} notes  Feed
  *   records, one list per owning rule.
  */
@@ -63,6 +68,9 @@ export function analyzePermissions(ctx) {
   const { schema, addon } = ctx;
   const missingPermissions = [];
   const missingManifestKeys = [];
+  // Named permissions some reachable API call provably requires (used below to
+  // trim the by-hand unused-permission checklist).
+  const usedPermissions = new Set();
   // Activity records, one list per owning rule's feed group.
   const requirements = [];
   const manifestKeyNotes = [];
@@ -71,7 +79,7 @@ export function analyzePermissions(ctx) {
     manifestKeys: manifestKeyNotes,
   };
   if (!addon.manifest) {
-    return { missingPermissions, missingManifestKeys, notes };
+    return { missingPermissions, missingManifestKeys, usedPermissions, notes };
   }
 
   const declared = declaredPermissions(addon.manifest);
@@ -107,6 +115,10 @@ export function analyzePermissions(ctx) {
           manifestKeyReqs.set(res.namespace, rec);
           continue;
         }
+        // A reachable call requires this permission, so the add-on provably
+        // uses it (whether or not it is declared - the manual checklist below
+        // intersects this with the declared set).
+        usedPermissions.add(perm);
         const declaredHere = declared.named.has(perm);
         requirements.push({
           file: src.file,
@@ -153,7 +165,7 @@ export function analyzePermissions(ctx) {
     }
   }
 
-  return { missingPermissions, missingManifestKeys, notes };
+  return { missingPermissions, missingManifestKeys, usedPermissions, notes };
 }
 
 /**

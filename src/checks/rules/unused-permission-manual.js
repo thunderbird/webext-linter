@@ -8,10 +8,12 @@
 // same checks memory:
 //   - a list is present (Array.isArray) -> the permissions were assessed, so the
 //     reminder is not needed: log a `skipped` note and emit nothing.
-//   - no list -> escalate one manual-review case PER declared named permission,
-//     each anchored to its manifest.json line, so the report lists every
-//     permission the reviewer should check by hand (the registry "Unused
-//     permissions" instructions name no specific one; auto-group lists them).
+//   - no list -> escalate one manual-review case per declared named permission
+//     the add-on does not PROVABLY use, each anchored to its manifest.json line,
+//     so the report lists only the permissions the reviewer must vet by hand (the
+//     registry "Unused permissions" instructions name no specific one; auto-group
+//     lists them). A permission a reachable API call requires (usedPermissions in
+//     lib/permissions.js) is definitely used, so it is dropped from the list.
 //
 // Belongs here: the present-or-not decision and enumerating the permissions. Does
 // NOT belong here: the reminder wording (-> assets/registry.yaml), producing the
@@ -19,6 +21,7 @@
 // (-> src/checks/rules/unused-permission.js).
 
 import { asArray, isMatchPattern, manifestTokenLine } from "../lib/util.js";
+import { getPermissionAnalysis } from "../lib/permissions.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -39,8 +42,11 @@ export default {
       );
       return { findings: [], escalations: [] };
     }
-    // No automated analysis: list every declared named permission so the reviewer
-    // checks each by hand (host match patterns are minimize-host-permissions').
+    // No automated analysis: list each declared named permission the reviewer
+    // must check by hand - except those a reachable API call provably requires
+    // (deterministically used, so not worth a manual case) and host match
+    // patterns (minimize-host-permissions' concern).
+    const used = getPermissionAnalysis(ctx).usedPermissions;
     const m = ctx.addon?.manifest ?? {};
     const text = ctx.addon?.files?.get("manifest.json")?.toString("utf8");
     const seen = new Set();
@@ -53,6 +59,11 @@ export default {
         seen.add(p);
         const line = manifestTokenLine(text, p);
         const loc = line ? { line } : null;
+        if (used.has(p)) {
+          // A reachable API call needs it - definitely used, not a manual case.
+          ctx.note?.("manifest.json", loc, p, "pass");
+          continue;
+        }
         ctx.note?.("manifest.json", loc, p, "unsure");
         escalations.push({ item: p, file: "manifest.json", loc });
       }
