@@ -16,6 +16,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import readline from "node:readline/promises";
 import { parseArgs } from "node:util";
 
 import { runPipeline } from "./pipeline.js";
@@ -28,6 +29,7 @@ import {
   VALID_CHANNELS,
   DEFAULT_CACHE,
   DEFAULT_MODEL,
+  MAX_LLM_REQUESTS_PER_RUN,
 } from "./config.js";
 import {
   info,
@@ -200,14 +202,14 @@ export function helpText() {
 
   const report = [
     ["--report-format <text|json>", "Report output format (default: text)."],
-    ["--report-out <file>", "Write the report to a file in addition to stdout."],
+    [
+      "--report-out <file>",
+      "Write the report to a file in addition to stdout.",
+    ],
   ];
 
   const claude = [
-    [
-      "--claude-api-key <key>",
-      "API key for the LLM checks via Claude.",
-    ],
+    ["--claude-api-key <key>", "API key for the LLM checks via Claude."],
     [
       "--claude-enabled",
       "Enable the LLM checks using a CLAUDE_API_KEY from the environment.",
@@ -304,6 +306,31 @@ const OPTIONS = {
 };
 
 /**
+ * The interactive "the LLM request cap was reached - run more?" prompt, handed
+ * to the pipeline's request budget (src/llm/budget.js). Reads stdin and writes
+ * the question to stderr so it never mixes into the stdout report. Only wired up
+ * for an interactive text run; a non-"y" answer (or EOF) stops, and the run's
+ * remaining LLM work escalates to manual review.
+ * @param {number} used  Requests already made this run.
+ * @returns {Promise<boolean>}  Whether to allow MAX_LLM_REQUESTS_PER_RUN more.
+ */
+async function confirmMoreLlmRequests(used) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stderr,
+  });
+  try {
+    const answer = await rl.question(
+      `\nReached the LLM request limit (${used} requests this run). ` +
+        `Run ${MAX_LLM_REQUESTS_PER_RUN} more? [y/N] `
+    );
+    return /^y(es)?$/i.test(answer.trim());
+  } finally {
+    rl.close();
+  }
+}
+
+/**
  * @param {string[]} argv
  * @returns {Promise<number>} process exit code
  */
@@ -391,6 +418,12 @@ export async function main(argv) {
     return 2;
   }
 
+  // The run-wide LLM request cap prompts to continue only at an interactive text
+  // terminal; JSON/piped/CI runs have no one to ask, so they hard-stop at the cap
+  // (remaining LLM work escalates to manual review).
+  const interactive =
+    format === "text" && Boolean(process.stdin.isTTY && process.stdout.isTTY);
+
   let result;
   try {
     result = await runPipeline({
@@ -398,6 +431,7 @@ export async function main(argv) {
       ...pipelineOptsFromValues(values),
       // The reviewer review-page URL is a text-report extra (JSON omits it).
       reviewUrl: format === "text",
+      confirmMore: interactive ? confirmMoreLlmRequests : undefined,
       registry,
     });
   } catch (err) {

@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { createLlmClient } from "../../src/checks/llm-client.js";
+import { createLlmBudget } from "../../src/llm/budget.js";
 import { MAX_FILES_PER_BATCH } from "../../src/config.js";
 
 function clientWith(files, callClaude) {
@@ -77,6 +78,46 @@ test("evaluate splits candidates into file-bounded batches", async () => {
   const candidates = files.map((f, i) => ({ id: `E${i}`, file: f }));
   const out = await llm.evaluate({ rubric: "R", candidates });
   assert.equal(calls.length, 2);
+  assert.equal(out.size, candidates.length);
+  for (const c of candidates) {
+    assert.equal(out.get(c.id).verdict, "unsure");
+  }
+});
+
+// The run-wide request budget stops evaluate mid-stream: once it is spent, no
+// more model calls are made and the remaining candidates default to "unsure"
+// (so the orchestrator routes them to manual review, like a token-less run).
+test("evaluate stops at the request budget; the rest are unsure", async () => {
+  const files = Array.from(
+    { length: MAX_FILES_PER_BATCH * 3 },
+    (_, i) => `f${i}.js`
+  );
+  let calls = 0;
+  // step:1 with no confirmMore -> one request, then a hard stop.
+  const budget = createLlmBudget({ step: 1 });
+  const map = new Map([["manifest.json", Buffer.from("{}")]]);
+  for (const f of files) {
+    map.set(f, Buffer.from(`// ${f}\n`));
+  }
+  const ctx = {
+    addon: {
+      files: map,
+      manifest: { manifest_version: 3, name: "x", version: "1" },
+    },
+  };
+  const llm = createLlmClient({
+    ctx,
+    token: "t",
+    systemIntro: "intro",
+    budget,
+    callClaude: async () => {
+      calls++;
+      return { verdicts: [] };
+    },
+  });
+  const candidates = files.map((f, i) => ({ id: `E${i}`, file: f }));
+  const out = await llm.evaluate({ rubric: "R", candidates });
+  assert.equal(calls, 1); // only the first batch ran; the budget stopped the rest
   assert.equal(out.size, candidates.length);
   for (const c of candidates) {
     assert.equal(out.get(c.id).verdict, "unsure");

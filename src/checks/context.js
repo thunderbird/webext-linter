@@ -36,6 +36,8 @@ import { llmEnabled } from "./lib/util.js";
  * @param {boolean} [params.invalidExperiment]  The add-on is an Experiment and
  *   --allow-experiments is off: short-circuit to the reject check with no LLM,
  *   so the client is never attached even when a token is set.
+ * @param {import("../llm/budget.js").LlmBudget} [params.budget]  Run-wide model
+ *   request cap, shared with the rest of the run (see runPipeline).
  * @returns {RunContext}
  */
 export function buildRunContext({
@@ -46,6 +48,7 @@ export function buildRunContext({
   claudeModel,
   systemIntro,
   invalidExperiment,
+  budget,
 }) {
   // Parse each source ONCE and hang the result on the source. Every read-only
   // analysis consumer (api-usage here, plus the sync-xhr / debugger-statement /
@@ -83,6 +86,7 @@ export function buildRunContext({
       token: options.claudeApiKey,
       systemIntro,
       model: claudeModel,
+      budget,
     });
   }
   return ctx;

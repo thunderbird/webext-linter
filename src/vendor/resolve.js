@@ -51,6 +51,8 @@ const EXACT = /^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
  * @param {?string} [params.token]  Anthropic token, else deterministic only.
  * @param {string} [params.model]
  * @param {typeof callClaudeText} [params.callText]  Injectable transport.
+ * @param {import("../llm/budget.js").LlmBudget} [params.budget]  Run-wide model
+ *   request cap; the parse fallback is skipped once it is exhausted.
  * @returns {Promise<VendorStore>}
  */
 export async function resolveVendor({
@@ -59,10 +61,15 @@ export async function resolveVendor({
   token,
   model = DEFAULT_MODEL,
   callText = callClaudeText,
+  budget,
 }) {
   const vendorFile = readVendorFile(addon);
   const manifest = dedupeByPath(parseVendorManifest(addon));
-  if (vendorFile && manifest.length === 0 && token && parsePrompt) {
+  // The LLM parse fallback is one model request; count it against the run-wide
+  // cap and skip it (deterministic only) once that is spent.
+  const wantLlmParse =
+    Boolean(vendorFile) && manifest.length === 0 && token && parsePrompt;
+  if (wantLlmParse && (!budget || (await budget.consume()))) {
     try {
       manifest.push(
         ...(await llmExtract({

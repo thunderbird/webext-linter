@@ -36,6 +36,18 @@ export const MAX_RESPONSE_TOKENS = 8192;
  */
 export const MAX_FILES_PER_BATCH = 12;
 
+/**
+ * Cap on the TOTAL model requests one run may make before pausing - across every
+ * LLM check (each candidate batch is one request), the advisory summaries, and
+ * the vendor-parse fallback. MAX_FILES_PER_BATCH bounds a single request; this
+ * bounds their count, so a pathological add-on cannot fan out into thousands of
+ * calls. On reaching it the run asks (at an interactive terminal) whether to run
+ * this many more, re-asking at every multiple; non-interactively it stops and the
+ * remaining LLM work escalates to manual review. Doubles as the per-confirmation
+ * increment. See src/llm/budget.js. Tunable.
+ */
+export const MAX_LLM_REQUESTS_PER_RUN = 25;
+
 /** Max characters of a truncated display label (e.g. a long URL). */
 export const DISPLAY_TRUNCATE_LENGTH = 80;
 

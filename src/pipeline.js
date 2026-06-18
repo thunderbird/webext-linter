@@ -30,9 +30,14 @@ import { resolveVendor } from "./vendor/resolve.js";
 import { verifyVendor } from "./vendor/verify.js";
 import { classifyBundled } from "./checks/lib/bundled.js";
 import { isExperiment } from "./checks/lib/util.js";
+import { createLlmBudget } from "./llm/budget.js";
 import { debug, progress } from "./util/log.js";
 import { humanSize } from "./util/text.js";
-import { DEFAULT_CHANNEL, DEFAULT_CACHE } from "./config.js";
+import {
+  DEFAULT_CHANNEL,
+  DEFAULT_CACHE,
+  MAX_LLM_REQUESTS_PER_RUN,
+} from "./config.js";
 
 /** @typedef {import("./report/finding.js").Finding} Finding */
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
@@ -69,6 +74,10 @@ import { DEFAULT_CHANNEL, DEFAULT_CACHE } from "./config.js";
  *   test harness injects one to drop its expected.json sidecar).
  * @property {import("./checks/registry.js").Registry} [registry]  Parsed
  *   registry threaded from the caller, parsed once here otherwise.
+ * @property {(used: number) => boolean | Promise<boolean>} [confirmMore]  Asked
+ *   when the run hits the LLM request cap (MAX_LLM_REQUESTS_PER_RUN): truthy runs
+ *   that many more, falsy stops. The CLI supplies an interactive prompt only at a
+ *   terminal; omitted means hard-stop at the cap (see src/llm/budget.js).
  */
 
 /**
@@ -108,6 +117,16 @@ export async function runPipeline(opts) {
     reviewed: true,
   };
 
+  // Run-wide model-request cap, shared by every LLM site this run: the vendor
+  // parse, the LLM checks (each candidate batch is one request), and the
+  // summaries. `confirmMore` (the interactive "run 25 more?" prompt) is supplied
+  // by the CLI; without it (JSON, piped, tests) the run hard-stops at the cap and
+  // the remaining LLM work escalates to manual review. See src/llm/budget.js.
+  const llmBudget = createLlmBudget({
+    step: MAX_LLM_REQUESTS_PER_RUN,
+    confirmMore: opts.confirmMore,
+  });
+
   if (!invalidExperiment) {
     // 1b. Resolve the vendored declarations ONCE, before the review, so the
     // review's checks share one immutable set. Deterministic parse, plus an LLM
@@ -117,6 +136,7 @@ export async function runPipeline(opts) {
       parsePrompt: registry.prompt("vendor-parse"),
       token: opts.claudeApiKey,
       model: opts.claudeModel,
+      budget: llmBudget,
     });
 
     // 1c. Verify the resolved declarations over the network ONCE - fetch,
@@ -135,7 +155,13 @@ export async function runPipeline(opts) {
   // 2. Schema review. reviewAddon also generates the advisory AI summaries at the
   // tail of the activity feed (the add-on summary's unused-permission list feeds
   // the unused-permission check, which runs there too), so they come back here.
-  const result = await reviewAddon(addon, opts, registry, invalidExperiment);
+  const result = await reviewAddon(
+    addon,
+    opts,
+    registry,
+    invalidExperiment,
+    llmBudget
+  );
   findings.push(...result.findings);
   Object.assign(meta, result.meta);
   const { summarize, summarizeAddon } = result;
@@ -176,11 +202,15 @@ export async function runPipeline(opts) {
  * ...). The caller prints the prose after the report.
  * @param {import("./checks/summaries.js").DeferredSummary|null} deferred
  * @param {string} label  Names the summary in the feed, e.g. "diff summary".
+ * @param {import("./llm/budget.js").LlmBudget} [budget]  Run-wide request cap.
  * @returns {Promise<GeneratedSummary|undefined>}
  */
-async function generateSummary(deferred, label) {
+async function generateSummary(deferred, label, budget) {
   if (!deferred) {
     return undefined;
+  }
+  if (budget && !(await budget.consume())) {
+    return undefined; // run-wide request cap reached
   }
   progress(`  LLM: Generating ${label} (${humanSize(deferred.bytes)}) ...`);
   return { bytes: deferred.bytes, text: await deferred.run() };
@@ -198,12 +228,16 @@ async function generateSummary(deferred, label) {
  * @param {import("./checks/registry.js").RunContext} ctx
  * @param {import("./checks/registry.js").Registry} registry
  * @param {Set<string>} unused  Files the review found unreachable (excluded).
+ * @param {import("./llm/budget.js").LlmBudget} [budget]  Run-wide request cap.
  * @returns {Promise<GeneratedSummary|undefined>}
  */
-async function generateAddonSummary(ctx, registry, unused) {
+async function generateAddonSummary(ctx, registry, unused, budget) {
   const deferred = buildAddonSummarizer(ctx, registry, { unused });
   if (!deferred) {
     return undefined;
+  }
+  if (budget && !(await budget.consume())) {
+    return undefined; // run-wide request cap reached
   }
   progress(`  LLM: Generating full summary (${humanSize(deferred.bytes)}) ...`);
   const review = await deferred.run();
@@ -224,7 +258,7 @@ async function generateAddonSummary(ctx, registry, unused) {
  * @returns {Promise<{findings: Finding[], meta: ReviewMeta,
  *   ctx: import("./checks/registry.js").RunContext}>}
  */
-async function reviewAddon(addon, opts, registry, invalidExperiment) {
+async function reviewAddon(addon, opts, registry, invalidExperiment, budget) {
   const {
     schemaChannel = DEFAULT_CHANNEL,
     schemaZip,
@@ -259,6 +293,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment) {
     claudeModel: opts.claudeModel,
     systemIntro: registry.prompt("system-intro"),
     invalidExperiment,
+    budget,
   });
 
   // The registry.yaml file drives which checks run, by `phase`: runChecks runs
@@ -291,13 +326,14 @@ async function reviewAddon(addon, opts, registry, invalidExperiment) {
     const unused = new Set(
       findings.filter((f) => f.ruleId === "unused-files").map((f) => f.file)
     );
-    summarizeAddon = await generateAddonSummary(ctx, registry, unused);
+    summarizeAddon = await generateAddonSummary(ctx, registry, unused, budget);
   }
   let summarize;
   if (!invalidExperiment && diffSummary) {
     summarize = await generateSummary(
       buildSummarizer(ctx, registry),
-      "diff summary"
+      "diff summary",
+      budget
     );
   }
 

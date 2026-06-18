@@ -55,6 +55,7 @@ export function createLlmClient({
   token,
   systemIntro,
   model = DEFAULT_MODEL,
+  budget,
   callClaude = realCallClaude,
   callClaudeText = realCallClaudeText,
   callClaudeReview = realCallClaudeReview,
@@ -98,6 +99,12 @@ export function createLlmClient({
       const out = new Map();
       const list = (candidates ?? []).filter((c) => c && c.id);
       for (const batch of batchByFiles(list)) {
+        // Run-wide request cap: once the budget is spent (and not extended) stop
+        // calling the model; the fill below defaults the rest to "unsure", so
+        // they escalate to manual review like a token-less run.
+        if (budget && !(await budget.consume())) {
+          break;
+        }
         const paths = corpusPaths(batch);
         const criterion = buildCriterion(rubric, batch, paths, ctx);
         debug(`[llm] criterion (${batch.length} candidate(s)):\n${criterion}`);
