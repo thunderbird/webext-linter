@@ -1,17 +1,18 @@
 // Manifest file references: enumerating the packaged-file paths a manifest
-// declares (entry points, scripts, popups) and normalizing a raw reference to
-// an add-on-relative key. Shared by the bundled-files check (a referenced file
-// must be packaged) and the reachability graph (each reference is a seed).
+// declares (entry points, scripts, popups), normalizing a raw reference to an
+// add-on-relative key, and resolving a reference (directory-aware) against the
+// packaged file set. Shared by the bundled-files check (a referenced file must
+// be packaged), the reachability graph (each reference is a seed/edge), and the
+// background-page-module check (a <script src> in the background page).
 //
-// Belongs here: manifestFileRefs (the manifest -> referenced-path enumeration)
-// and normalizeRef (raw path -> relative key). Path-cleaning that is purely
-// lexical, with no need to know which files are packaged.
+// Belongs here: manifestFileRefs (manifest -> referenced paths), normalizeRef
+// (raw path -> relative key, purely lexical), and resolveRef (raw path +
+// referrer -> packaged key, directory-aware).
 //
-// Does NOT belong here: resolving a reference against the packaged file set or
-// walking the reference graph - that is reachability.js (which has its own
-// directory-aware resolve). web_accessible_resources shapes -
-// web-accessible-resources.js. The bundled-files verdict - its rule under
-// src/checks/rules/*. Generic shape guards like asArray - lib/util.js.
+// Does NOT belong here: walking the reference graph - that is reachability.js.
+// web_accessible_resources shapes - web-accessible-resources.js. The
+// bundled-files verdict - its rule under src/checks/rules/*. Generic shape
+// guards like asArray - lib/util.js.
 
 import { asArray } from "./util.js";
 
@@ -82,4 +83,44 @@ export function normalizeRef(p) {
     .replace(/^\.\//, "")
     .replace(/^\/+/, "")
     .replace(/[?#].*$/, "");
+}
+
+/**
+ * Resolve a reference to an add-on-relative key, or null if it is not a packaged
+ * file. `fromFile` null (manifest/getURL/injected) or a leading "/" means
+ * extension-root-relative. Otherwise it is relative to `fromFile`'s directory.
+ * @param {Map<string, Buffer>} files
+ * @param {string|null} fromFile
+ * @param {string} raw
+ * @returns {string|null}
+ */
+export function resolveRef(files, fromFile, raw) {
+  let p = String(raw ?? "")
+    .replace(/\\/g, "/")
+    .replace(/[?#].*$/, "")
+    .trim();
+  if (p === "") {
+    return null;
+  }
+  if (p.startsWith("/") || fromFile == null) {
+    p = p.replace(/^\/+/, "");
+  } else {
+    const dir = fromFile.includes("/")
+      ? fromFile.slice(0, fromFile.lastIndexOf("/"))
+      : "";
+    p = dir ? `${dir}/${p}` : p;
+  }
+  const parts = [];
+  for (const seg of p.split("/")) {
+    if (seg === "" || seg === ".") {
+      continue;
+    }
+    if (seg === "..") {
+      parts.pop();
+    } else {
+      parts.push(seg);
+    }
+  }
+  const key = parts.join("/");
+  return files.has(key) ? key : null;
 }

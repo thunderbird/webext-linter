@@ -51,6 +51,7 @@
       "default-locale-missing",
       "default-locale-unused",
       "background-module",
+      "background-page-module",
       "eval-call",
       "function-constructor",
       "string-timer",

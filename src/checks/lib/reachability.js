@@ -29,7 +29,7 @@
 // unused-files and minimize-web-accessible-resources verdicts - their rules
 // under src/checks/rules/*.
 
-import { manifestFileRefs } from "./manifest-refs.js";
+import { manifestFileRefs, resolveRef } from "./manifest-refs.js";
 import {
   warResourceList,
   expandResourcePattern,
@@ -146,13 +146,13 @@ function compute(ctx) {
     if (HTML_EXTENSIONS.has(ext)) {
       for (const r of scanHtmlRemoteRefs(buf.toString("utf8"))) {
         if (r.klass === "local") {
-          addEdge(file, resolve(files, file, r.url));
+          addEdge(file, resolveRef(files, file, r.url));
         }
       }
     } else if (ext === ".css") {
       for (const r of scanCssRemoteRefs(buf.toString("utf8"))) {
         if (r.klass === "local") {
-          addEdge(file, resolve(files, file, r.url));
+          addEdge(file, resolveRef(files, file, r.url));
         }
       }
     }
@@ -165,7 +165,7 @@ function compute(ctx) {
     // JS import/require/importScripts are relative to the importing file.
     const imp = scanLocalImports(src.code, src.lineOffset);
     for (const r of imp.refs) {
-      addEdge(src.file, resolve(files, src.file, r.path));
+      addEdge(src.file, resolveRef(files, src.file, r.path));
     }
     if (imp.hasDynamic && !nonAuthored.has(src.file)) {
       dynamicLoaderSites.push({ file: src.file, kind: "dynamic-import" });
@@ -180,7 +180,7 @@ function compute(ctx) {
       ctx.schema?.manifestVersionMajor
     );
     for (const r of loaded.refs) {
-      addEdge(src.file, resolve(files, null, r.path));
+      addEdge(src.file, resolveRef(files, null, r.path));
     }
     if (loaded.hasDynamic && !nonAuthored.has(src.file)) {
       dynamicLoaderSites.push({ file: src.file, kind: "dynamic-loader" });
@@ -191,7 +191,7 @@ function compute(ctx) {
   const generalSeeds = new Set();
   /** @param {Set<string>} set @param {string} raw  Root-relative seed path. */
   const seed = (set, raw) => {
-    const p = resolve(files, null, raw);
+    const p = resolveRef(files, null, raw);
     if (p) {
       set.add(p);
     }
@@ -262,46 +262,6 @@ function bfs(seeds, outEdges) {
     }
   }
   return reached;
-}
-
-/**
- * Resolve a reference to an add-on-relative key, or null if it is not a packaged
- * file. `fromFile` null (manifest/getURL/injected) or a leading "/" means
- * extension-root-relative. Otherwise it is relative to `fromFile`'s directory.
- * @param {Map<string, Buffer>} files
- * @param {string|null} fromFile
- * @param {string} raw
- * @returns {string|null}
- */
-function resolve(files, fromFile, raw) {
-  let p = String(raw ?? "")
-    .replace(/\\/g, "/")
-    .replace(/[?#].*$/, "")
-    .trim();
-  if (p === "") {
-    return null;
-  }
-  if (p.startsWith("/") || fromFile == null) {
-    p = p.replace(/^\/+/, "");
-  } else {
-    const dir = fromFile.includes("/")
-      ? fromFile.slice(0, fromFile.lastIndexOf("/"))
-      : "";
-    p = dir ? `${dir}/${p}` : p;
-  }
-  const parts = [];
-  for (const seg of p.split("/")) {
-    if (seg === "" || seg === ".") {
-      continue;
-    }
-    if (seg === "..") {
-      parts.pop();
-    } else {
-      parts.push(seg);
-    }
-  }
-  const key = parts.join("/");
-  return files.has(key) ? key : null;
 }
 
 /**

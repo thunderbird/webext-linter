@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "action": "review",
+    "addon": "<root>/tests/addons/background-page-module",
+    "addonKind": "dir",
+    "reviewed": true,
+    "schemaSource": "local:<root>/tests/schema-fixture",
+    "schemaBranch": null,
+    "schemaChannel": null,
+    "applicationVersion": "128.0",
+    "manifestVersion": 3,
+    "checksRun": [
+      "background-page-module"
+    ]
+  },
+  "summary": {
+    "error": 1,
+    "warning": 0,
+    "info": 0,
+    "byRule": {
+      "background-page-module": 1
+    }
+  },
+  "findings": [
+    {
+      "ruleId": "background-page-module",
+      "severity": "error",
+      "file": "background.html",
+      "loc": {
+        "line": 5
+      },
+      "item": null,
+      "hint": null,
+      "message": "The following background page code location(s) load a script that uses ES module syntax (import/export), but the <script> tag is not declared type=\"module\", so Thunderbird will fail to load the background page. Add type=\"module\" to the <script> tag."
+    }
+  ]
+}

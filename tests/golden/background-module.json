@@ -51,6 +51,7 @@
       "default-locale-missing",
       "default-locale-unused",
       "background-module",
+      "background-page-module",
       "eval-call",
       "function-constructor",
       "string-timer",
@@ -85,7 +86,7 @@
       },
       "item": "background.js",
       "hint": null,
-      "message": "The background script background.js uses ES module syntax (import/export) but the manifest's background is not declared \"type\": \"module\", so Thunderbird will not load it. Add \"type\": \"module\" to the background entry."
+      "message": "The following background code location(s) use ES module syntax (import/export), but the manifest's background is not declared \"type\": \"module\", so Thunderbird will fail to load the background script(s). Add \"type\": \"module\" to the background entry."
     }
   ]
 }

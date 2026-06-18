@@ -1,0 +1,7 @@
+{
+  "_comment": "Background PAGE (background.page = background.html). The <script src=\"background.js\"> at line 5 loads module-syntax JS but lacks type=\"module\" (fail). The type=\"module\" tag (ok.js, line 6), the classic script (classic.js, line 7), and the inline module <script> (line 8, out of scope) are not flagged. --checks-only isolates the new check.",
+  "options": { "--checks-only": "background-page-module" },
+  "expect": {
+    "background-page-module": ["background.html:5"]
+  }
+}

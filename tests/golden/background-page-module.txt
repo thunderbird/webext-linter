@@ -1,12 +1,12 @@
-Reviewing <root>/tests/addons/background-module
+Reviewing <root>/tests/addons/background-page-module
 schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_version 3
 
 ── Issues ──
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) The following background code location(s) use ES module syntax (import/export), but the manifest's background is not declared "type": "module", so Thunderbird will fail to load the background script(s). Add "type": "module" to the background entry.
- - background.js:2
+1) The following background page code location(s) load a script that uses ES module syntax (import/export), but the <script> tag is not declared type="module", so Thunderbird will fail to load the background page. Add type="module" to the <script> tag.
+ - background.html:5
 
 ── Manual review ──
 
@@ -52,23 +52,6 @@ Continue manual review for the following checks:
    points. Verify it also includes screenshots to help users quickly understand
    how the add-on works.
 
-9) Forked add-on: Check if the submission is a fork of an existing add-on. Such
-   forks are only allowed on ATN if they are clearly distinguished from the
-   original and provide a significant difference in functionality and/or code.
-   Exceptions may be made where the add-on is no longer maintained by its
-   original author. The primary goal, however, should be to connect the two
-   developers and let the new developer help maintain or take over the existing
-   add-on. In general, small-change forks of still-active projects cause
-   confusion for users and unnecessary overlap for developers. We encourage
-   developers to contribute their improvements directly to the original project.
-
-10) Missing English localization: This add-on ships no English localization, so
-    user-facing text may be hardcoded in another language. Review its strings by
-    hand and confirm an English localization is provided.
-
-11) Unused permissions: Review whether the add-on requests any permission it
-    does not use, and ask the developer to remove the ones that are not needed.
-
 ── Summary ──
 
-1 error(s), 0 warning(s), 0 info, 11 manual review step(s)
+1 error(s), 0 warning(s), 0 info, 8 manual review step(s)

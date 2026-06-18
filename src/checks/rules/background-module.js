@@ -6,22 +6,23 @@
 //
 // Scoped to the manifest's background scripts (background.scripts /
 // service_worker). A background page (HTML) declares module-ness on its own
-// <script type="module"> tag, and content scripts cannot be modules at all -
-// both are out of scope here. Dynamic import() is a call, not module syntax.
+// <script type="module"> tag instead - that case is the sibling check
+// background-page-module.js. Content scripts cannot be modules at all. Dynamic
+// import() is a call, not module syntax.
 //
-// Belongs here: matching background scripts to their sources and detecting
-// module syntax. Does NOT belong here: Babel parse/traverse (-> src/parse/
-// ast.js), the background-ref shape / path normalization (-> normalizeRef in
-// src/checks/lib/manifest-refs.js), authored wording (-> assets/registry.yaml),
-// and severity (-> that registry entry).
+// Belongs here: matching background scripts to their sources and emitting the
+// finding. Does NOT belong here: the AST module-syntax query (-> shared
+// lib/module-syntax.js, firstModuleSyntax), Babel parse (-> src/parse/ast.js),
+// path normalization (-> normalizeRef in src/checks/lib/manifest-refs.js),
+// authored wording (-> assets/registry.yaml), and severity (-> that entry).
 
 import { finding } from "../../report/finding.js";
-import { parseJs, traverse, nodeLoc } from "../../parse/ast.js";
+import { parseJs } from "../../parse/ast.js";
+import { firstModuleSyntax } from "../lib/module-syntax.js";
 import { normalizeRef } from "../lib/manifest-refs.js";
 import { asArray } from "../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
-/** @typedef {import("@babel/types").Node} AstNode */
 
 export default {
   /**
@@ -66,23 +67,3 @@ export default {
     return out;
   },
 };
-
-/**
- * The location of the first static ES module statement (import/export) in an
- * AST, or null if there is none.
- * @param {AstNode} ast  Parsed program.
- * @param {number} lineOffset  Added to the reported line.
- * @returns {?{line: number, column: number}}
- */
-function firstModuleSyntax(ast, lineOffset) {
-  let loc = null;
-  traverse(ast, {
-    "ImportDeclaration|ExportNamedDeclaration|ExportDefaultDeclaration|ExportAllDeclaration"(
-      path
-    ) {
-      loc = nodeLoc(path.node, lineOffset);
-      path.stop();
-    },
-  });
-  return loc;
-}
