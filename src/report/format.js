@@ -16,7 +16,7 @@
 // src/util/json.js rather than adding JSON utilities here.
 
 import { SEVERITY, sortFindings, countByRule, hasErrors } from "./finding.js";
-import { red, yellow, blue } from "../util/color.js";
+import { red, yellow, blue, white } from "../util/color.js";
 import { MAX_ENTRIES_PER_CATEGORY } from "../config.js";
 
 /** @param {string} s @returns {string} */
@@ -226,8 +226,10 @@ function manualBody(m) {
 /**
  * Manual review: the to-do list the pipeline assembled, ending (when known) with
  * the ATN review-page URL. Items sharing a "Title: instructions" body collapse
- * into one numbered entry (like Issues) - the body is still 80-column wrapped,
- * and each item that carries a locus is listed beneath as "- file:line - item".
+ * into one numbered entry (like Issues) - the body is still 80-column wrapped.
+ * When the entry has a developer-facing `response`, it is printed under the
+ * instructions in white, flush-left and verbatim (a ready-to-send block). Each
+ * item that carries a locus is then listed beneath as "- file:line - item".
  * Standalone reminders (no locus) carry no list.
  * @param {import("./finding.js").ManualItem[]} manual
  * @param {string} [reviewUrl]  ATN reviewer review-page URL, or undefined.
@@ -255,18 +257,30 @@ function manualLines(manual, reviewUrl) {
   let n = 0;
   for (const [body, items] of byBody) {
     out.push("");
-    const lines = wrapEntry(++n, body);
+    // The reviewer-facing instructions (blue, 80-col wrapped).
+    out.push(...wrapEntry(++n, body).map(blue));
+    // The developer-facing response, if any: white and flush-left at column 0
+    // (verbatim, like the Issues responses), sitting between the instructions and
+    // the locus list so it reads as a ready-to-send block. Shared across the
+    // group, so taken from the first item.
+    const response = items[0].response;
+    if (response) {
+      for (const line of response.split("\n")) {
+        out.push(white(line));
+      }
+    }
     // List a locus only when there is one (escalated items); standalone
     // reminders have no file/item and render as the wrapped body alone. The
     // list is display-capped like Issues (see renderGroup).
+    const where = [];
     const loci = items.filter((m) => m.file || (m.listItem && m.item));
     for (const m of loci.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
-      lines.push(` - ${locationLine(m)}`);
+      where.push(` - ${locationLine(m)}`);
     }
     if (loci.length > MAX_ENTRIES_PER_CATEGORY) {
-      lines.push(excludedMarker(loci.length - MAX_ENTRIES_PER_CATEGORY));
+      where.push(excludedMarker(loci.length - MAX_ENTRIES_PER_CATEGORY));
     }
-    out.push(...lines.map(blue));
+    out.push(...where.map(blue));
   }
   // Last line of the section: where to complete the review (when resolved).
   if (reviewUrl) {

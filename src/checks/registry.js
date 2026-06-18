@@ -158,7 +158,11 @@ export class Registry {
   manualChecks() {
     return (this.doc["manual-checks"] || [])
       .filter((e) => e && e.title)
-      .map((e) => ({ title: e.title, instructions: e.instructions }));
+      .map((e) => ({
+        title: e.title,
+        instructions: e.instructions,
+        response: e.response ?? null,
+      }));
   }
 
   /**

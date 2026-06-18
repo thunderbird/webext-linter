@@ -131,6 +131,8 @@ export function sortFindings(findings) {
  *   the message, grouped like Issues; standalone reminders carry none.
  * @property {string} title
  * @property {string} [instructions]
+ * @property {string|null} [response]  Developer-facing wording (the registry
+ *   `response`), printed under the instructions in the report; null when none.
  * @property {string|null} [file]
  * @property {{line?: number, column?: number}|null} [loc]
  * @property {string|null} [item]

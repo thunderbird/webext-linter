@@ -72,6 +72,41 @@ test("Manual review groups by message and lists each item's locus", () => {
   assert.ok(!manual.includes("(add-on)"));
 });
 
+// A manual entry's developer response prints under the instructions and above
+// the locus list, flush-left at column 0 and verbatim (its own line breaks kept).
+// An entry without a response is unchanged (no extra line).
+test("Manual review prints the response between instructions and the locus list", () => {
+  const r = {
+    findings: [],
+    meta: {
+      action: "review",
+      addon: "x",
+      reviewed: true,
+      manualReview: [
+        {
+          title: "Needs a privacy policy",
+          instructions: "Confirm a policy exists.",
+          response: "Please add a privacy policy.\nSee [1].",
+          file: "bg.js",
+          loc: { line: 4 },
+          item: null,
+          listItem: false,
+        },
+        { title: "Forked add-on", instructions: "Check for a fork." },
+      ],
+    },
+  };
+  const manual = formatText(r).split("── Manual review ──")[1];
+  // Response: after the instructions, before the locus, flush-left, verbatim.
+  assert.match(
+    manual,
+    /Needs a privacy policy: Confirm a policy exists\.\nPlease add a privacy policy\.\nSee \[1\]\.\n - bg\.js:4/
+  );
+  // The entry with no response carries no extra line.
+  assert.match(manual, /Forked add-on: Check for a fork\./);
+  assert.ok(!manual.includes("undefined"));
+});
+
 // JSON render drops manualReview entirely - both the meta key and the item
 // title are absent - since automated consumers should not see manual steps.
 test("JSON output omits manual-review items (ATN auto-verification)", () => {

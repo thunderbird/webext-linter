@@ -103,6 +103,9 @@ export function renderManualItems(refs, registry) {
     return {
       title: entry?.title ?? ref.ruleId,
       instructions: fill(template, ref.item, ref.data) ?? "",
+      // The developer-facing response (printed under the instructions). Filled
+      // like the instructions; null when the entry has no response.
+      response: fill(entry?.response, ref.item, ref.data),
       file: ref.file ?? null,
       loc: ref.loc ?? null,
       item: ref.item ?? null,
