@@ -189,7 +189,7 @@ deterministic-checks:
   severity: error
   check: obfuscated-code.js
   response: |-
-    "{{item}}" is minified, obfuscated or otherwise machine-generated code, which cannot be reviewed in this form. The simplest fix is to ship the original, human-readable code directly (the add-on does not need to be minified or obfuscated). Alternatively, upload the original sources as a source code archive that includes the build instructions and build process needed to generate the final XPI, using the source code upload field available during submission or on the version page in the developer hub.
+    The following file(s) are minified, obfuscated or otherwise machine-generated code, which cannot be reviewed in this form. The simplest fix is to ship the original, human-readable code directly (the add-on does not need to be minified or obfuscated). Alternatively, upload the original sources as a source code archive that includes the build instructions and build process needed to generate the final XPI, using the source code upload field available during submission or on the version page in the developer hub.
     Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
 
 # Diff check (--diff-to): a version + gecko strict_max_version-only bump that the
@@ -460,7 +460,7 @@ llm-checks:
     "{{item}}" is not reachable from any entry point but may be loaded
     dynamically. Confirm by hand whether it is unused and safe to remove.
   response: |-
-    {{item}} appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included.
+    The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
 
 # LLM check: over-broad or unloaded web_accessible_resources exposure.
 - title: Minimize web_accessible_resources
@@ -541,7 +541,7 @@ llm-checks:
     data it sends is gated behind an explicit opt-in (a documented options-page
     setting) and is never sent without consent.
   response: |-
-    "{{item}}" sends user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
+    The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
 
 
 manual-checks:

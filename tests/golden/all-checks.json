@@ -314,7 +314,7 @@
       "loc": null,
       "item": "options.html",
       "hint": null,
-      "message": "options.html appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included."
+      "message": "The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
     {
       "ruleId": "remote-script",
@@ -335,7 +335,7 @@
       "loc": null,
       "item": "styles.css",
       "hint": null,
-      "message": "styles.css appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included."
+      "message": "The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
     {
       "ruleId": "remote-script",

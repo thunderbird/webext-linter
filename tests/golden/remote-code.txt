@@ -8,8 +8,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) Dynamic code execution via "eval()" is not allowed.
  - bg.js:2
 
-2) page.html appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included.
+2) The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
  - page.html
+ - style.css
 
 3) Remote code is loaded from "https://cdn.example.com/lib.js". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
  - page.html:4
@@ -20,10 +21,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 5) Remote code is loaded from "https://cdn.example.com/bg.png". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
  - page.html:11
 
-6) style.css appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included.
- - style.css
-
-7) Remote code is loaded from "https://cdn.example.com/theme.css". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
+6) Remote code is loaded from "https://cdn.example.com/theme.css". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
  - style.css:1
 
 ── Manual review ──

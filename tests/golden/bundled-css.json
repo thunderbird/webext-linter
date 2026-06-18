@@ -29,7 +29,7 @@
       "loc": null,
       "item": "vendor/bootstrap/bootstrap.min.css",
       "hint": null,
-      "message": "The following files appear to be third-party libraries. Please link to their sources and ensure each bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice).\nRead more: https://extensionworkshop.com/documentation/publish/third-party-library-usage/."
+      "message": "The following file(s) appear to be third-party libraries. Please link to their sources and ensure each bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice).\nExample: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html#safely-sanitizing-external-markup-with-dompurify\nRead more: https://extensionworkshop.com/documentation/publish/third-party-library-usage/."
     }
   ]
 }

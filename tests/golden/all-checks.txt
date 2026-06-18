@@ -41,52 +41,50 @@ Read more: https://webextension-api.thunderbird.net/.
 11) "missing.js" is referenced but not bundled with the add-on. Please include every referenced file in the package.
  - manifest.json
 
-12) options.html appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included.
+12) The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
  - options.html
+ - styles.css
 
 13) Remote code is loaded from "https://cdn.example.com/remote.js". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
  - options.html:4
 
-14) styles.css appears to be an unused or hidden file or folder. Such files complicate the review, may leak information about the system the XPI was built on or needlessly increases the size of the add-on. Please correct your packaging process so it is not included.
- - styles.css
-
-15) Remote code is loaded from "https://fonts.example.com/font.css". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
+14) Remote code is loaded from "https://fonts.example.com/font.css". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
  - styles.css:1
 
 We kindly ask you to resolve the following issues with your next release:
 
-16) Dynamic content is assigned via ".innerHTML". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.
+15) Dynamic content is assigned via ".innerHTML". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
  - background.js:29
 
-17) Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.
+16) Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
  - background.js:35
 
-18) Manifest entry issue: unrecognized top-level key "weirdTopLevelKey". Thunderbird ignores or misreads such entries.
+17) Manifest entry issue: unrecognized top-level key "weirdTopLevelKey". Thunderbird ignores or misreads such entries.
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json
 
 We would like to share the following information with you:
 
-19) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+18) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
  - background.js:9
    → Use list() instead.
 
-20) "messages.future" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+19) "messages.future" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
  - background.js:10
 
-21) "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+20) "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
  - background.js:11
    → The legacy API was removed; use messages instead.
 
-22) Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined.
+21) Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined.
  - background.js:41
 
-23) <all_urls> is a very broad host permission requested as required. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare it as an optional host permission so the user can grant it on demand rather than up front.
+22) <all_urls> is a very broad host permission requested as required. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare it as an optional host permission so the user can grant it on demand rather than up front.
 Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
  - manifest.json
 
