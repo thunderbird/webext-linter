@@ -69,8 +69,8 @@
   },
   "summary": {
     "error": 2,
-    "warning": 1,
-    "info": 0,
+    "warning": 0,
+    "info": 1,
     "byRule": {
       "manifest-missing-key": 1,
       "manifest-unknown-permission": 1,
@@ -81,29 +81,33 @@
     {
       "ruleId": "manifest-missing-key",
       "severity": "error",
-      "file": "manifest.json",
+      "file": null,
       "loc": null,
       "item": "version",
       "hint": null,
-      "message": "Invalid manifest.json: missing the required \"version\" property.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "Invalid manifest.json: one or more required properties are missing.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "manifest-unknown-permission",
       "severity": "error",
       "file": "manifest.json",
-      "loc": null,
+      "loc": {
+        "line": 4
+      },
       "item": "bogusPermission",
       "hint": null,
-      "message": "Invalid manifest.json: unknown permission \"bogusPermission\" in \"permissions\".\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "Invalid manifest.json: one or more requested permissions are unknown.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "unrecognized-manifest-key",
-      "severity": "warning",
+      "severity": "info",
       "file": "manifest.json",
-      "loc": null,
+      "loc": {
+        "line": 5
+      },
       "item": "weirdTopLevelKey",
       "hint": null,
-      "message": "Manifest entry issue: unrecognized top-level key \"weirdTopLevelKey\". Thunderbird ignores or misreads such entries.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }

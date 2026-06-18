@@ -33,7 +33,7 @@ export default {
       const what = c.obfuscated ? "obfuscated" : bad ? "minified" : "readable";
       ctx.note?.(c.file, null, what, bad ? "fail" : "pass");
       if (bad) {
-        findings.push(finding({ file: c.file, item: c.file }));
+        findings.push(finding({ file: c.file }));
       }
     }
     return findings;

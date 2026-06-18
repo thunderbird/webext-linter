@@ -296,7 +296,7 @@ test("vendor-unverified: every unverifiable result escalates; verified does not"
   assert.match(out.escalations[1].item, /trusted host/);
 });
 
-test("missing-vendor-file: one warning per missing entry, anchored to VENDOR", () => {
+test("missing-vendor-file: one warning per missing entry, listing the path", () => {
   const ctx = {
     addon: {
       files: new Map([["VENDORS.md", Buffer.from("file: lib/gone.js")]]),
@@ -312,8 +312,9 @@ test("missing-vendor-file: one warning per missing entry, anchored to VENDOR", (
   };
   const out = missingVendorFile.run(ctx);
   assert.equal(out.length, 1);
-  assert.equal(out[0].file, "VENDORS.md");
-  assert.equal(out[0].item, "lib/gone.js");
+  // The missing path is the location; the VENDOR filename rides {{item}}.
+  assert.equal(out[0].file, "lib/gone.js");
+  assert.equal(out[0].item, "VENDORS.md");
 });
 
 test("vendor-unverified: an unparsable VENDOR file escalates to manual", () => {

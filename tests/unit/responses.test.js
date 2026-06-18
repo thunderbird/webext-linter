@@ -49,6 +49,17 @@ test("renderFindings renders a system message for check-failed", () => {
   assert.match(f.message, /unknown-api/);
 });
 
+// listItem: when the response uses {{item}} the identifier is in the prose, so
+// it is not also listed (false); when the response is item-free the identifier
+// is surfaced on the finding's location line instead (true).
+test("renderFindings sets listItem only for item-free responses", () => {
+  const consumed = { ruleId: "missing-permission", item: "accountsRead" };
+  const listed = { ruleId: "unrecognized-manifest-key", item: "fooBar" };
+  renderFindings([consumed, listed], registry);
+  assert.equal(consumed.listItem, false); // {{item}} is in the message
+  assert.equal(listed.listItem, true); // generic message -> list it
+});
+
 // A manual-review escalation ref resolves to the owning entry's title +
 // instructions, with {{item}} filled.
 test("renderManualItems resolves an escalation to title + instructions", () => {

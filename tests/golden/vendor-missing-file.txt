@@ -5,8 +5,8 @@ schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_versio
 
 Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
 
-1) A file listed in the VENDOR manifest is not present in the submission: "lib/ghost.js". Add the file to the submission, or remove its VENDOR entry.
- - VENDORS.md
+1) One or more files listed in "VENDORS.md" are not present in the submission. Add each file to the submission, or remove its entry from "VENDORS.md".
+ - lib/ghost.js
 
 ── Manual review ──
 

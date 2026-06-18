@@ -69,7 +69,7 @@ export default {
       }
       if (JUNK.some((re) => re.test(file))) {
         ctx.note?.(file, null, "hidden/junk file", "fail");
-        findings.push(finding({ file, item: file }));
+        findings.push(finding({ file }));
         continue;
       }
       if (reach.reachable.has(file)) {
@@ -91,7 +91,7 @@ export default {
         orphan ? "fail" : "unsure"
       );
       if (orphan) {
-        findings.push(finding({ file, item: file }));
+        findings.push(finding({ file }));
         continue;
       }
       // One candidate per suspected loader site of this file.
@@ -107,7 +107,9 @@ export default {
           corpus: [site.file],
         });
       }
-      groups.push({ ids, finding: { file, item: file }, item: file });
+      // The finding lists `file` via its location; `item` stays for the manual
+      // escalation path (its {{item}} token), which is unchanged.
+      groups.push({ ids, finding: { file }, item: file });
     }
 
     if (!candidates.length) {

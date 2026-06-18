@@ -25,7 +25,7 @@
 // manual review (-> src/checks/escalation.js via the orchestrator).
 
 import { finding } from "../../report/finding.js";
-import { manifestKeyLine } from "../lib/util.js";
+import { manifestTokenLine } from "../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -55,7 +55,7 @@ export default {
       if (!permission) {
         continue;
       }
-      const line = manifestKeyLine(text, permission);
+      const line = manifestTokenLine(text, permission);
       const loc = line ? { line } : undefined;
       const data = { reason: reason ?? "" };
       if (status === "unused") {

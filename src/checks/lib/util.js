@@ -6,7 +6,7 @@
 //
 // Belongs here: generic, dependency-light check helpers - dedupe, llmEnabled,
 // the asArray/asObject manifest guards, isMatchPattern/isBroadHost, scheme,
-// trunc, manifestKeyLine, isExperiment/strictMaxVersion, the suspected-loader
+// trunc, manifestTokenLine, isExperiment/strictMaxVersion, the suspected-loader
 // helpers referrerSupported/loaderSites, and the feed-note builder loaderTrace.
 //
 // Does NOT belong here: anything with a heavier dependency or a single home -
@@ -207,16 +207,19 @@ export function isMatchPattern(p) {
 }
 
 /**
- * 1-based line of `"<key>"` in the manifest text, or null if not found.
+ * 1-based line of the first occurrence of `"<token>"` in the manifest text, or
+ * null if not found. Works for any quoted JSON token - a key or a string value
+ * (a permission, host pattern, or web_accessible_resources entry). Best-effort:
+ * a token appearing more than once resolves to its first line.
  * @param {string} manifestText
- * @param {string} key
+ * @param {string} token  The bare key/value, without surrounding quotes.
  * @returns {number|null}
  */
-export function manifestKeyLine(manifestText, key) {
+export function manifestTokenLine(manifestText, token) {
   if (!manifestText) {
     return null;
   }
-  const needle = `"${key}"`;
+  const needle = `"${token}"`;
   const lines = manifestText.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].includes(needle)) {

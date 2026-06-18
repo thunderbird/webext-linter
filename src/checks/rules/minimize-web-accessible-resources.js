@@ -26,6 +26,7 @@ import {
   referrerSupported,
   loaderTrace,
   loaderSites,
+  manifestTokenLine,
 } from "../lib/util.js";
 import { aggregateGroups } from "../lib/verdict-resolve.js";
 import { buildReachability } from "../lib/reachability.js";
@@ -51,6 +52,12 @@ export default {
     }
     const reach = buildReachability(ctx);
     const files = ctx.addon.files;
+    const text = files?.get("manifest.json")?.toString("utf8");
+    /** @param {string} item  The WAR entry's manifest line as a loc, or null. */
+    const lineOf = (item) => {
+      const line = manifestTokenLine(text, item);
+      return line ? { line } : null;
+    };
     const findings = [];
     const candidates = [];
     /** @type {{ids: string[], finding: object, item: string}[]} per WAR file. */
@@ -61,7 +68,9 @@ export default {
     const once = (key, item) => {
       if (!seen.has(key)) {
         seen.add(key);
-        findings.push(finding({ file: "manifest.json", item }));
+        findings.push(
+          finding({ file: "manifest.json", loc: lineOf(item), item })
+        );
       }
     };
 
@@ -126,7 +135,7 @@ export default {
             }
             groups.push({
               ids,
-              finding: { file: "manifest.json", item: file },
+              finding: { file: "manifest.json", loc: lineOf(file), item: file },
               item: file,
             });
           } else {

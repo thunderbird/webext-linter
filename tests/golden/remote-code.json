@@ -95,7 +95,7 @@
       "severity": "error",
       "file": "page.html",
       "loc": null,
-      "item": "page.html",
+      "item": null,
       "hint": null,
       "message": "The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
@@ -140,7 +140,7 @@
       "severity": "error",
       "file": "style.css",
       "loc": null,
-      "item": "style.css",
+      "item": null,
       "hint": null,
       "message": "The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },

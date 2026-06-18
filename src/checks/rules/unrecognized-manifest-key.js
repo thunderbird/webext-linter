@@ -7,6 +7,7 @@
 // wording (-> assets/registry.yaml), and severity (-> that registry entry).
 
 import { finding } from "../../report/finding.js";
+import { manifestTokenLine } from "../lib/util.js";
 
 export default {
   run(ctx) {
@@ -17,12 +18,20 @@ export default {
     if (schema.validManifestKeys.size === 0) {
       return [];
     }
+    const text = addon.files?.get("manifest.json")?.toString("utf8");
     const out = [];
     for (const key of Object.keys(addon.manifest)) {
       const known = schema.validManifestKeys.has(key);
       ctx.note?.("manifest.json", null, key, known ? "pass" : "fail");
       if (!known) {
-        out.push(finding({ file: "manifest.json", item: key }));
+        const line = manifestTokenLine(text, key);
+        out.push(
+          finding({
+            file: "manifest.json",
+            loc: line ? { line } : null,
+            item: key,
+          })
+        );
       }
     }
     return out;

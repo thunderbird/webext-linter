@@ -81,7 +81,7 @@
       "severity": "warning",
       "file": "manifest.json",
       "loc": null,
-      "item": "_locales",
+      "item": null,
       "hint": null,
       "message": "Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.\nAn example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n"
     }

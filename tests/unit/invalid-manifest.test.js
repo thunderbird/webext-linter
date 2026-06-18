@@ -82,7 +82,7 @@ test("manifest-version-mismatch flags an MV2 manifest under the MV3 schema", () 
 });
 
 // A match pattern / known permission passes; an unknown one is flagged (item =
-// the permission, data.field = which list it is in).
+// the permission, listed on the location line by the report).
 test("manifest-unknown-permission flags only unknown values", () => {
   const out = manifestUnknownPermission.run(
     ctx({
@@ -94,7 +94,6 @@ test("manifest-unknown-permission flags only unknown values", () => {
   );
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "bogusPerm");
-  assert.equal(out[0].data.field, "permissions");
 });
 
 // An unknown top-level key is an unrecognized-manifest-key finding (item = key).

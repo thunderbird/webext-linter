@@ -1,6 +1,6 @@
 {
-  "_comment": "VENDORS.md declares lib/ghost.js (with a source URL) but the file is not in the package, so missing-vendor-file flags it (warning) anchored to the VENDOR file. Decided offline, no fetch (the missing entry is never resolved or fetched). unparsedVendor stays false, so vendor-unverified does not also escalate it.",
+  "_comment": "VENDORS.md declares lib/ghost.js (with a source URL) but the file is not in the package, so missing-vendor-file flags it (warning). The finding lists the missing path; the VENDOR filename rides the message ({{item}}). Decided offline, no fetch (the missing entry is never resolved or fetched). unparsedVendor stays false, so vendor-unverified does not also escalate it.",
   "expect": {
-    "missing-vendor-file": ["VENDORS.md"]
+    "missing-vendor-file": ["lib/ghost.js"]
   }
 }

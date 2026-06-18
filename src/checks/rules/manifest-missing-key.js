@@ -25,7 +25,9 @@ export default {
           `missing required key "${key}"`,
           "fail"
         );
-        out.push(finding({ file: "manifest.json", item: key }));
+        // No file/line: the key is absent, so it has no location. The item (the
+        // missing key) is listed on its own, and the message names manifest.json.
+        out.push(finding({ item: key }));
       }
     }
     return out;

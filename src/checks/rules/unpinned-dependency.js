@@ -11,7 +11,7 @@
 // src/vendor/locks.js) and the registry wording.
 
 import { finding } from "../../report/finding.js";
-import { manifestKeyLine } from "../lib/util.js";
+import { manifestTokenLine } from "../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -26,7 +26,7 @@ export default {
     const text = addon.files.get("package.json")?.toString("utf8") ?? "";
     const findings = [];
     for (const { name, spec } of unpinned) {
-      const line = manifestKeyLine(text, name);
+      const line = manifestTokenLine(text, name);
       const loc = line ? { line } : undefined;
       ctx.note?.(
         "package.json",

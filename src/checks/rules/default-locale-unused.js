@@ -6,13 +6,13 @@
 // Belongs here: the declared-default_locale / absent-_locales verdict and
 // locating the default_locale line. Does NOT belong here: the _locales scan (->
 // getLocales in src/checks/lib/locales.js, memoized and shared with
-// default-locale-missing), finding a manifest key's line (-> manifestKeyLine in
+// default-locale-missing), finding a manifest key's line (-> manifestTokenLine in
 // src/checks/lib/util.js), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 
 import { finding } from "../../report/finding.js";
 import { getLocales } from "../lib/locales.js";
-import { manifestKeyLine } from "../lib/util.js";
+import { manifestTokenLine } from "../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -36,7 +36,7 @@ export default {
       return [];
     }
     const text = ctx.addon.files?.get("manifest.json")?.toString("utf8") ?? "";
-    const line = manifestKeyLine(text, "default_locale");
+    const line = manifestTokenLine(text, "default_locale");
     const loc = line ? { line, column: 0 } : null;
     ctx.note?.("manifest.json", loc, "default_locale without _locales", "fail");
     return [finding({ file: "manifest.json", loc })];

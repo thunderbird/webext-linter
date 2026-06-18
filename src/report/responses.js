@@ -66,13 +66,19 @@ function fill(template, item, data) {
  * Fill each Issues finding's display `message` from the registry, keyed by its
  * ruleId: substitute the finding's `item` into the entry's `response` `{{item}}`
  * and any `data` values into the response's named `{{slot}}`s. Mutates in place.
+ *
+ * Also sets `listItem`: when the entry's response has NO `{{item}}` placeholder
+ * but the finding carries an `item`, that identifier is not in the prose, so the
+ * report lists it on the finding's location line instead (src/report/format.js).
  * @param {import("./finding.js").Finding[]} findings
  * @param {import("../checks/registry.js").Registry} registry
  */
 export function renderFindings(findings, registry) {
   for (const f of findings) {
-    f.message =
-      fill(registry.responseFor(f.ruleId), f.item, f.data) ?? f.message;
+    const template = registry.responseFor(f.ruleId);
+    f.message = fill(template, f.item, f.data) ?? f.message;
+    f.listItem =
+      f.item != null && template != null && !template.includes(PLACEHOLDER);
   }
 }
 

@@ -73,7 +73,7 @@ export default {
       "fail"
     );
     return {
-      findings: [finding({ file: "manifest.json", item: "_locales" })],
+      findings: [finding({ file: "manifest.json" })],
       escalations: [],
     };
   },
@@ -118,7 +118,7 @@ function detectHardcodedLanguage(ctx) {
   }
   note(`non-English user-facing text (${topLang})`, "fail");
   return {
-    findings: [finding({ file: "manifest.json", item: "_locales" })],
+    findings: [finding({ file: "manifest.json" })],
     escalations: [],
   };
 }

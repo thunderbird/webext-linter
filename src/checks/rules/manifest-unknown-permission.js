@@ -8,7 +8,7 @@
 // assets/registry.yaml), and severity (-> that registry entry).
 
 import { finding } from "../../report/finding.js";
-import { asArray, isMatchPattern } from "../lib/util.js";
+import { asArray, isMatchPattern, manifestTokenLine } from "../lib/util.js";
 
 export default {
   run(ctx) {
@@ -17,6 +17,7 @@ export default {
     if (!m) {
       return [];
     }
+    const text = ctx.addon.files?.get("manifest.json")?.toString("utf8");
     const out = [];
     for (const field of ["permissions", "optional_permissions"]) {
       for (const p of asArray(m[field])) {
@@ -37,7 +38,14 @@ export default {
           `'${p}' (unknown permission)`,
           "fail"
         );
-        out.push(finding({ file: "manifest.json", item: p, data: { field } }));
+        const line = manifestTokenLine(text, p);
+        out.push(
+          finding({
+            file: "manifest.json",
+            loc: line ? { line } : null,
+            item: p,
+          })
+        );
       }
     }
     return out;

@@ -34,7 +34,7 @@ export default {
         c.library ? "fail" : "pass"
       );
       if (c.library) {
-        findings.push(finding({ file: c.file, item: c.file }));
+        findings.push(finding({ file: c.file }));
       }
     }
     return findings;

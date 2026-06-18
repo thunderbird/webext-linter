@@ -7,14 +7,14 @@
 // locating the experiment_apis line for the finding.
 //
 // Does NOT belong here: detecting Experiment status (-> isExperiment in src/
-// checks/lib/util.js) or finding a manifest key's line (-> manifestKeyLine in
+// checks/lib/util.js) or finding a manifest key's line (-> manifestTokenLine in
 // the same file). Requiring a strict_max_version on an ALLOWED Experiment (->
 // experiment-missing-strict-max-version.js). Authored wording (->
 // assets/review- registry.yaml). Severity, here an error (-> the
 // experiment-not-allowed registry entry, stamped by src/checks/registry.js).
 
 import { finding } from "../../report/finding.js";
-import { isExperiment, manifestKeyLine } from "../lib/util.js";
+import { isExperiment, manifestTokenLine } from "../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {
@@ -42,7 +42,7 @@ export default {
       return [];
     }
     const text = ctx.addon.files.get("manifest.json")?.toString("utf8") ?? "";
-    const line = manifestKeyLine(text, "experiment_apis");
+    const line = manifestTokenLine(text, "experiment_apis");
     const loc = line ? { line, column: 0 } : null;
     ctx.note?.("manifest.json", loc, "experiment_apis declared", "fail");
     return [finding({ file: "manifest.json", loc })];

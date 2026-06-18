@@ -6,8 +6,8 @@
     "deprecated-api": ["background.js:10","background.js:11","background.js:9"],
     "missing-permission": ["background.js:15","background.js:16","background.js:9"],
     "missing-manifest-key": ["background.js:19"],
-    "manifest-unknown-permission": ["manifest.json"],
-    "unrecognized-manifest-key": ["manifest.json"],
+    "manifest-unknown-permission": ["manifest.json:5"],
+    "unrecognized-manifest-key": ["manifest.json:11"],
     "bundled-files": ["manifest.json"],
     "sync-xhr": ["background.js:26"],
     "remote-script": ["options.html:4","styles.css:1"],
@@ -16,7 +16,7 @@
     "debugger-statement": ["background.js:32"],
     "async-onmessage": ["background.js:35"],
     "code-sanity": ["background.js:41"],
-    "minimize-host-permissions": ["manifest.json"],
+    "minimize-host-permissions": ["manifest.json:6"],
     "unused-files": ["options.html","styles.css"]
   }
 }

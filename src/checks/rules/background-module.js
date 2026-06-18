@@ -62,7 +62,7 @@ export default {
         continue;
       }
       ctx.note?.(src.file, loc, "module syntax without type: module", "fail");
-      out.push(finding({ file: src.file, loc, item: src.file }));
+      out.push(finding({ file: src.file, loc }));
     }
     return out;
   },

@@ -60,12 +60,7 @@ export default {
       "only version + strict_max_version changed",
       "fail"
     );
-    return [
-      finding({
-        file: "manifest.json",
-        item: String(strictMaxVersion(cur.manifest)),
-      }),
-    ];
+    return [finding({ file: "manifest.json" })];
   },
 };
 

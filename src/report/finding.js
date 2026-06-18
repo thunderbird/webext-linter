@@ -58,6 +58,9 @@ const SEVERITY_RANK = { error: 0, warning: 1, info: 2 };
  *   slot values describing the item); stripped from JSON output.
  * @property {string|null} message  Filled by the report resolver from the
  *   registry; never set by a check.
+ * @property {boolean} listItem  Set by the report resolver: show `item` on the
+ *   finding's location line (the message did not consume `{{item}}`, so the
+ *   identifier is surfaced there instead). Never set by a check.
  */
 
 /**
@@ -78,6 +81,7 @@ export function finding({ ruleId, severity, file, loc, item, hint, data }) {
     hint: hint ?? null,
     data: data ?? null,
     message: null,
+    listItem: false,
   };
 }
 

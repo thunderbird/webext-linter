@@ -25,8 +25,8 @@ export default {
     if (!missing.length) {
       return [];
     }
-    // Anchor the finding to the VENDOR file (where the bad declaration lives).
-    // The missing path is the item, and the source URL rides on the feed note.
+    // The missing path is the location (listed under the entry); the VENDOR file
+    // name fills the message's {{item}}. The source URL rides on the feed note.
     const vendorName = readVendorFile(addon)?.name ?? "VENDOR";
     const findings = [];
     for (const { path, sourceUrl } of missing) {
@@ -36,7 +36,7 @@ export default {
         `${path} declared (source ${sourceUrl}) but not in the submission`,
         "fail"
       );
-      findings.push(finding({ file: vendorName, item: path }));
+      findings.push(finding({ file: path, item: vendorName }));
     }
     return findings;
   },

@@ -58,7 +58,7 @@ deterministic-checks:
   severity: error
   check: manifest-missing-key.js
   response: |-
-    Invalid manifest.json: missing the required "{{item}}" property.
+    Invalid manifest.json: one or more required properties are missing.
     Read more: https://webextension-api.thunderbird.net/.
 
 # manifest_version disagrees with the schema set being reviewed.
@@ -75,15 +75,15 @@ deterministic-checks:
   severity: error
   check: manifest-unknown-permission.js
   response: |-
-    Invalid manifest.json: unknown permission "{{item}}" in "{{field}}".
+    Invalid manifest.json: one or more requested permissions are unknown.
     Read more: https://webextension-api.thunderbird.net/.
 
 # An unknown top-level manifest key (Thunderbird ignores it).
 - title: Unrecognized manifest key
-  severity: warning
+  severity: info
   check: unrecognized-manifest-key.js
   response: |-
-    Manifest entry issue: unrecognized top-level key "{{item}}". Thunderbird ignores or misreads such entries.
+    Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.
     Read more: https://webextension-api.thunderbird.net/.
 
 # A known manifest key with a wrong-typed value (Thunderbird misreads it).
@@ -145,7 +145,7 @@ deterministic-checks:
   severity: info
   check: minimize-host-permissions.js
   response: |-
-    {{item}} is a very broad host permission requested as required. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare it as an optional host permission so the user can grant it on demand rather than up front.
+    The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
     Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
 
 # Flags a declared permission the --full-summary LLM pass judged unused (a
@@ -279,7 +279,7 @@ deterministic-checks:
   severity: warning
   check: missing-vendor-file.js
   response: |-
-    A file listed in the VENDOR manifest is not present in the submission: "{{item}}". Add the file to the submission, or remove its VENDOR entry.
+    One or more files listed in "{{item}}" are not present in the submission. Add each file to the submission, or remove its entry from "{{item}}".
 
 # Flags data smuggled out through a channel not meant for it - always an error,
 # regardless of consent. One check per channel (resource/stylesheet/window/
@@ -492,7 +492,7 @@ llm-checks:
     "{{item}}" is exposed via web_accessible_resources but nothing in the add-on
     loads it. Confirm by hand whether it needs to be exposed.
   response: |-
-    {{item}} is exposed through web_accessible_resources but may not need to be. List a file here only if a web page or content script must access it; otherwise remove it to reduce the add-on's exposed surface.
+    One or more resources are exposed through web_accessible_resources but may not need to be exposed. List a file there only if a web page or content script must access it. Otherwise remove these entries to reduce the add-on's exposed surface.
 
 # LLM check: remote <script>/<link>/@import/importScripts/injection and CSP
 # sources that permit remote code.

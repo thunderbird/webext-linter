@@ -175,6 +175,35 @@ test("Issues group findings by identical message into one entry", () => {
   assert.equal(JSON.parse(formatJson(r)).findings.length, 4);
 });
 
+// When the message did not consume {{item}} (listItem), the identifier is shown
+// on the location line: "file:line - item", or the bare item when there is no
+// file. An item with listItem=false (already in the message) is NOT appended.
+test("Issues list the identifier on the location line when listItem is set", () => {
+  const mk = (file, line, item, listItem) => ({
+    ruleId: "r",
+    severity: "error",
+    message: "shared message",
+    file,
+    loc: line != null ? { line } : null,
+    item,
+    hint: null,
+    listItem,
+  });
+  const r = {
+    findings: [
+      mk("manifest.json", 13, "frobnicate", true), // file:line - item
+      mk(null, null, "name", true), // bare item (no file)
+      mk("bg.js", 4, "browser.x", false), // item already in message -> where only
+    ],
+    meta: { action: "review", addon: "x", reviewed: true },
+  };
+  const issues = formatText(r).split("── Issues ──")[1];
+  assert.match(issues, /\n - manifest\.json:13 - frobnicate\n/);
+  assert.match(issues, /\n - name\n/);
+  assert.match(issues, /\n - bg\.js:4\n/);
+  assert.ok(!issues.includes("bg.js:4 - browser.x"));
+});
+
 // ---- verdict intros (the Issues-section preamble) ----
 // A registry-owned preamble opens the Issues section: `none` is the whole body
 // when empty, else `rejected` (any error) / `feedback` (warnings/info only) is

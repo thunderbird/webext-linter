@@ -1,8 +1,8 @@
 {
-  "_comment": "Missing version (manifest-missing-key) + bogusPermission (manifest-unknown-permission), both errors; weirdTopLevelKey (unrecognized-manifest-key, warning).",
+  "_comment": "Missing version (manifest-missing-key, no location since the key is absent) + bogusPermission (manifest-unknown-permission), both errors; weirdTopLevelKey (unrecognized-manifest-key, info). The present items carry their manifest.json line.",
   "expect": {
-    "manifest-missing-key": ["manifest.json"],
-    "manifest-unknown-permission": ["manifest.json"],
-    "unrecognized-manifest-key": ["manifest.json"]
+    "manifest-missing-key": ["(add-on)"],
+    "manifest-unknown-permission": ["manifest.json:4"],
+    "unrecognized-manifest-key": ["manifest.json:5"]
   }
 }

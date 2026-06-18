@@ -69,8 +69,8 @@
   },
   "summary": {
     "error": 1,
-    "warning": 1,
-    "info": 0,
+    "warning": 0,
+    "info": 1,
     "byRule": {
       "missing-manifest-key": 1,
       "unrecognized-manifest-key": 1
@@ -91,12 +91,14 @@
     },
     {
       "ruleId": "unrecognized-manifest-key",
-      "severity": "warning",
+      "severity": "info",
       "file": "manifest.json",
-      "loc": null,
+      "loc": {
+        "line": 5
+      },
       "item": "browser_action",
       "hint": null,
-      "message": "Manifest entry issue: unrecognized top-level key \"browser_action\". Thunderbird ignores or misreads such entries.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }

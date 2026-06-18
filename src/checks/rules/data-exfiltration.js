@@ -53,7 +53,9 @@ export default {
         note: `transmits to a remote host (${sink.type})`,
         corpus: optionsPath ? [sink.file, optionsPath] : [sink.file],
       });
-      cases.push({ id, finding: { file: sink.file, loc, item }, item });
+      // The finding lists file:line via its location; `item` stays for the
+      // manual escalation path (its {{item}} token), which is unchanged.
+      cases.push({ id, finding: { file: sink.file, loc }, item });
       ctx.note?.(
         sink.file,
         loc,

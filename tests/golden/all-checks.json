@@ -70,8 +70,8 @@
   },
   "summary": {
     "error": 15,
-    "warning": 3,
-    "info": 5,
+    "warning": 2,
+    "info": 6,
     "byRule": {
       "unknown-api": 2,
       "deprecated-api": 3,
@@ -273,15 +273,6 @@
       "message": "Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined."
     },
     {
-      "ruleId": "manifest-unknown-permission",
-      "severity": "error",
-      "file": "manifest.json",
-      "loc": null,
-      "item": "bogusPermission",
-      "hint": null,
-      "message": "Invalid manifest.json: unknown permission \"bogusPermission\" in \"permissions\".\nRead more: https://webextension-api.thunderbird.net/."
-    },
-    {
       "ruleId": "bundled-files",
       "severity": "error",
       "file": "manifest.json",
@@ -291,29 +282,44 @@
       "message": "\"missing.js\" is referenced but not bundled with the add-on. Please include every referenced file in the package."
     },
     {
-      "ruleId": "unrecognized-manifest-key",
-      "severity": "warning",
+      "ruleId": "manifest-unknown-permission",
+      "severity": "error",
       "file": "manifest.json",
-      "loc": null,
-      "item": "weirdTopLevelKey",
+      "loc": {
+        "line": 5
+      },
+      "item": "bogusPermission",
       "hint": null,
-      "message": "Manifest entry issue: unrecognized top-level key \"weirdTopLevelKey\". Thunderbird ignores or misreads such entries.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "Invalid manifest.json: one or more requested permissions are unknown.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "minimize-host-permissions",
       "severity": "info",
       "file": "manifest.json",
-      "loc": null,
+      "loc": {
+        "line": 6
+      },
       "item": "<all_urls>",
       "hint": null,
-      "message": "<all_urls> is a very broad host permission requested as required. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare it as an optional host permission so the user can grant it on demand rather than up front.\nRead more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch"
+      "message": "The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.\nRead more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch"
+    },
+    {
+      "ruleId": "unrecognized-manifest-key",
+      "severity": "info",
+      "file": "manifest.json",
+      "loc": {
+        "line": 11
+      },
+      "item": "weirdTopLevelKey",
+      "hint": null,
+      "message": "Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "unused-files",
       "severity": "error",
       "file": "options.html",
       "loc": null,
-      "item": "options.html",
+      "item": null,
       "hint": null,
       "message": "The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
@@ -334,7 +340,7 @@
       "severity": "error",
       "file": "styles.css",
       "loc": null,
-      "item": "styles.css",
+      "item": null,
       "hint": null,
       "message": "The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },

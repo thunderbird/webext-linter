@@ -11,7 +11,12 @@
 // entry, stamped by src/checks/registry.js).
 
 import { finding } from "../../report/finding.js";
-import { asArray, isBroadHost, isMatchPattern } from "../lib/util.js";
+import {
+  asArray,
+  isBroadHost,
+  isMatchPattern,
+  manifestTokenLine,
+} from "../lib/util.js";
 
 export default {
   run(ctx) {
@@ -19,6 +24,7 @@ export default {
     if (!m) {
       return [];
     }
+    const text = ctx.addon.files?.get("manifest.json")?.toString("utf8");
     const out = [];
     const seen = new Set();
     for (const list of [m.host_permissions, m.permissions]) {
@@ -32,7 +38,14 @@ export default {
         const broad = isBroadHost(p);
         ctx.note?.("manifest.json", null, p, broad ? "fail" : "pass");
         if (broad) {
-          out.push(finding({ file: "manifest.json", item: p }));
+          const line = manifestTokenLine(text, p);
+          out.push(
+            finding({
+              file: "manifest.json",
+              loc: line ? { line } : null,
+              item: p,
+            })
+          );
         }
       }
     }

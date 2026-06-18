@@ -179,9 +179,9 @@ function groupByMessage(findings) {
 /**
  * Render one Issues entry: the shared registry response VERBATIM (no 80-column
  * rewrap, no hanging indent - a long line runs off, and the registry's own break
- * before "Read more:" lands at column 0), then one "- file:line" location line
- * per finding (with a "→ hint" line after any location that carries one). Every
- * entry uses this form, so a unique message is just a one-location list.
+ * before "Read more:" lands at column 0), then one location line per finding
+ * (with a "→ hint" line after any location that carries one). Every entry uses
+ * this form, so a unique message is just a one-location list.
  * (Manual review still wraps - see manualLines.)
  * @param {number} n  1-based entry number.
  * @param {import("./finding.js").Finding[]} findings  All sharing one message.
@@ -191,7 +191,7 @@ function renderGroup(n, findings) {
   const [first, ...rest] = findings[0].message.split("\n");
   const lines = [`${n}) ${first}`, ...rest];
   for (const f of findings) {
-    lines.push(` - ${whereOf(f)}`);
+    lines.push(` - ${locationLine(f)}`);
     if (f.hint) {
       lines.push(`   → ${f.hint}`);
     }
@@ -263,9 +263,11 @@ export function formatJson(review) {
   // auto-verification). findings are already issues only.
   const { manualReview: _omitted, reviewUrl: _url, ...meta } = review.meta;
   const issues = review.findings;
-  // `data` is an internal template-resolution input (already baked into
-  // `message`), so it is dropped from the machine output.
-  const publicFindings = sortFindings(issues).map(({ data: _d, ...f }) => f);
+  // `data` (template-resolution input, baked into `message`) and `listItem` (a
+  // text-layout flag) are internal, so they are dropped from the machine output.
+  const publicFindings = sortFindings(issues).map(
+    ({ data: _d, listItem: _li, ...f }) => f
+  );
   return JSON.stringify(
     {
       meta,
@@ -288,16 +290,24 @@ function section(title) {
 }
 
 /**
- * Where a finding sits: "file:line" ("(add-on)" when it has no file, ":line"
- * appended only when a line is known). The location listed under each Issue.
+ * The location listed under an Issue: "file:line" ("(add-on)" when there is no
+ * file, ":line" only when a line is known). When the finding's identifier was
+ * not consumed by its message (`listItem`), append it: "file:line - item", or
+ * show it alone when there is no file (e.g. a missing manifest key). This is how
+ * the item-free, grouped checks surface the offending key/permission/path.
  *
  * @param {import("./finding.js").Finding} f
  * @returns {string}
  */
-function whereOf(f) {
-  return f.file
+function locationLine(f) {
+  const where = f.file
     ? `${f.file}${f.loc?.line != null ? `:${f.loc.line}` : ""}`
-    : "(add-on)";
+    : null;
+  const item = f.listItem ? f.item : null;
+  if (where && item) {
+    return `${where} - ${item}`;
+  }
+  return where ?? item ?? "(add-on)";
 }
 
 /**

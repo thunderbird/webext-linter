@@ -46,12 +46,7 @@ export default {
       const term = trademarkTerm(candidate);
       if (term) {
         ctx.note?.("manifest.json", null, `name uses "${term}"`, "fail");
-        return [
-          finding({
-            file: "manifest.json",
-            item: term,
-          }),
-        ];
+        return [finding({ file: "manifest.json" })];
       }
     }
     ctx.note?.("manifest.json", null, `name "${name}"`, "pass");

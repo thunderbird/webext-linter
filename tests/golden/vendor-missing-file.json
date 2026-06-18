@@ -79,11 +79,11 @@
     {
       "ruleId": "missing-vendor-file",
       "severity": "warning",
-      "file": "VENDORS.md",
+      "file": "lib/ghost.js",
       "loc": null,
-      "item": "lib/ghost.js",
+      "item": "VENDORS.md",
       "hint": null,
-      "message": "A file listed in the VENDOR manifest is not present in the submission: \"lib/ghost.js\". Add the file to the submission, or remove its VENDOR entry."
+      "message": "One or more files listed in \"VENDORS.md\" are not present in the submission. Add each file to the submission, or remove its entry from \"VENDORS.md\"."
     }
   ]
 }
