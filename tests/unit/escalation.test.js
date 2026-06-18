@@ -35,7 +35,14 @@ test("runLlmCheck with no token defaults every candidate to unsure", async () =>
   assert.deepEqual(seen.sort(), ["U1:unsure", "U2:unsure"]);
   assert.deepEqual(out.findings, []);
   assert.deepEqual(out.manualItems, [
-    { ruleId: "unused-files", item: "a.js", kind: "escalation", data: null },
+    {
+      ruleId: "unused-files",
+      item: "a.js",
+      file: null,
+      loc: null,
+      kind: "escalation",
+      data: null,
+    },
   ]);
 });
 
@@ -66,10 +73,15 @@ test("runLlmCheck sends prompt + candidates and routes verdicts to resolve", asy
 });
 
 // A deterministic check's escalations route straight to manual refs, carrying
-// any per-case data (e.g. a reason) through to the rendered instructions.
+// any per-case data (e.g. a reason) and locus (file/loc) through to the report.
 test("manualEscalations maps each escalation to a manual ref", () => {
   const out = manualEscalations(check, [
-    { item: "x.js", data: { reason: "why" } },
+    {
+      item: "x.js",
+      file: "manifest.json",
+      loc: { line: 3 },
+      data: { reason: "why" },
+    },
     { item: null },
   ]);
   assert.deepEqual(out.findings, []);
@@ -77,9 +89,18 @@ test("manualEscalations maps each escalation to a manual ref", () => {
     {
       ruleId: "unused-files",
       item: "x.js",
+      file: "manifest.json",
+      loc: { line: 3 },
       kind: "escalation",
       data: { reason: "why" },
     },
-    { ruleId: "unused-files", item: null, kind: "escalation", data: null },
+    {
+      ruleId: "unused-files",
+      item: null,
+      file: null,
+      loc: null,
+      kind: "escalation",
+      data: null,
+    },
   ]);
 });

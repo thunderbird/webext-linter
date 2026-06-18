@@ -126,9 +126,16 @@ export function sortFindings(findings) {
 /**
  * @typedef {object} ManualItem  A reviewer to-do shown in the Manual review
  *   section: a short title and (optionally) the instructions to carry out. Its
- *   text is resolved from the registry (see report/responses.js).
+ *   text is resolved from the registry (see report/responses.js). The optional
+ *   locus mirrors a Finding so escalated items list "file:line - item" beneath
+ *   the message, grouped like Issues; standalone reminders carry none.
  * @property {string} title
  * @property {string} [instructions]
+ * @property {string|null} [file]
+ * @property {{line?: number, column?: number}|null} [loc]
+ * @property {string|null} [item]
+ * @property {boolean} [listItem]  List `item` on the location line (the
+ *   instructions did not consume `{{item}}`); set by the resolver.
  */
 
 /**

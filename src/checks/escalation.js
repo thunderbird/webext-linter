@@ -29,6 +29,9 @@ import { wrapText } from "../util/text.js";
  * @property {?string} item  The offending token, for the `{{item}}` slot.
  * @property {Record<string, string|number>} [data]  Extra `{{slot}}` values for
  *   the manual instructions (e.g. a reason), filled like a finding's data.
+ * @property {string} [file]  Locus, listed under the manual entry (like a
+ *   finding) so the reviewer sees where; the report groups by message.
+ * @property {{line?: number, column?: number}} [loc]
  */
 
 /**
@@ -36,6 +39,8 @@ import { wrapText } from "../util/text.js";
  *   text from the registry later).
  * @property {string} ruleId  The owning check.
  * @property {?string} item  The offending token, for the `{{item}}` slot.
+ * @property {?string} file  Locus path, listed under the manual entry, or null.
+ * @property {{line?: number, column?: number}|null} loc  Locus line, or null.
  * @property {"escalation"|"llm-error"} kind  Picks the registry message used.
  * @property {Record<string, string|number>|null} data  Extra `{{slot}}` values
  *   for the instructions template (null when the case carries none).
@@ -77,19 +82,26 @@ export async function runLlmCheck(ctx, check, step) {
   const { findings = [], manual = [] } = step.resolve(verdicts) || {};
   return {
     findings,
-    manualItems: manual.map((m) => manualRef(check, m.item, "escalation")),
+    manualItems: manual.map((m) => manualRef(check, m, "escalation")),
   };
 }
 
 /**
  * @param {LoadedCheck} check
- * @param {?string} item
+ * @param {{item?: ?string, file?: ?string, loc?: object, data?: object}} c  The
+ *   manual case: its `{{item}}` token plus an optional locus (file/loc) and data.
  * @param {"escalation"|"llm-error"} kind
- * @param {Record<string, string|number>} [data]  Extra instruction slots.
  * @returns {ManualRef}
  */
-function manualRef(check, item, kind, data) {
-  return { ruleId: check.id, item: item ?? null, kind, data: data ?? null };
+function manualRef(check, c, kind) {
+  return {
+    ruleId: check.id,
+    item: c.item ?? null,
+    file: c.file ?? null,
+    loc: c.loc ?? null,
+    kind,
+    data: c.data ?? null,
+  };
 }
 
 /**
@@ -103,9 +115,7 @@ function manualRef(check, item, kind, data) {
 export function manualEscalations(check, escalations) {
   return {
     findings: [],
-    manualItems: escalations.map((e) =>
-      manualRef(check, e.item, "escalation", e.data)
-    ),
+    manualItems: escalations.map((e) => manualRef(check, e, "escalation")),
   };
 }
 

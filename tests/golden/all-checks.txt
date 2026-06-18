@@ -144,9 +144,11 @@ Continue manual review for the following checks:
     user-facing text may be hardcoded in another language. Review its strings by
     hand and confirm an English localization is provided.
 
-11) Unused permissions: Review whether the add-on requests any permission it
-    does not use, and ask the developer to remove the ones that are not needed.
+11) Unused permissions: Review whether the following declared permissions are
+    used, and ask the developer to remove any that are not needed.
+ - manifest.json:5 - clipboardWrite
+ - manifest.json:5 - bogusPermission
 
 ── Summary ──
 
-15 error(s), 2 warning(s), 6 info, 11 manual review step(s)
+15 error(s), 2 warning(s), 6 info, 12 manual review step(s)

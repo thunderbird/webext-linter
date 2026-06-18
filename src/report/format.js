@@ -200,9 +200,19 @@ function renderGroup(n, findings) {
   return lines.map(tint);
 }
 
+/** The "Title: instructions" line of a manual item (its grouping key). */
+function manualBody(m) {
+  return m.instructions
+    ? `${m.title}: ${m.instructions.replace(/\s+/g, " ").trim()}`
+    : m.title;
+}
+
 /**
- * Manual review: the single to-do list the pipeline assembled, ending (when
- * known) with the ATN review-page URL where the reviewer completes it.
+ * Manual review: the to-do list the pipeline assembled, ending (when known) with
+ * the ATN review-page URL. Items sharing a "Title: instructions" body collapse
+ * into one numbered entry (like Issues) - the body is still 80-column wrapped,
+ * and each item that carries a locus is listed beneath as "- file:line - item".
+ * Standalone reminders (no locus) carry no list.
  * @param {import("./finding.js").ManualItem[]} manual
  * @param {string} [reviewUrl]  ATN reviewer review-page URL, or undefined.
  * @returns {string[]}
@@ -216,13 +226,29 @@ function manualLines(manual, reviewUrl) {
   // The manual-review group is all manual work, so it is all blue (a no-op
   // unless color is enabled). Each line is tinted on its own for stripColor.
   out.push(blue("Continue manual review for the following checks:"));
-  manual.forEach((item, i) => {
+  const byBody = new Map();
+  for (const m of manual) {
+    const body = manualBody(m);
+    const bucket = byBody.get(body);
+    if (bucket) {
+      bucket.push(m);
+    } else {
+      byBody.set(body, [m]);
+    }
+  }
+  let n = 0;
+  for (const [body, items] of byBody) {
     out.push("");
-    const body = item.instructions
-      ? `${item.title}: ${item.instructions.replace(/\s+/g, " ").trim()}`
-      : item.title;
-    out.push(...wrapEntry(i + 1, body).map(blue));
-  });
+    const lines = wrapEntry(++n, body);
+    for (const m of items) {
+      // List a locus only when there is one (escalated items); standalone
+      // reminders have no file/item and render as the wrapped body alone.
+      if (m.file || (m.listItem && m.item)) {
+        lines.push(` - ${locationLine(m)}`);
+      }
+    }
+    out.push(...lines.map(blue));
+  }
   // Last line of the section: where to complete the review (when resolved).
   if (reviewUrl) {
     out.push("");

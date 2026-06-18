@@ -35,6 +35,43 @@ test("text report includes the Manual review section", () => {
   );
 });
 
+// Manual review uses the Issues grouping: items sharing a "Title: instructions"
+// body collapse into one entry, each locus listed beneath as "- file:line"; a
+// standalone reminder (no locus) renders as the wrapped body alone.
+test("Manual review groups by message and lists each item's locus", () => {
+  const exfil = (file, line) => ({
+    title: "User-data exfiltration",
+    instructions: "Confirm opt-in.",
+    file,
+    loc: { line },
+    item: null,
+    listItem: false,
+  });
+  const r = {
+    findings: [],
+    meta: {
+      action: "review",
+      addon: "x",
+      reviewed: true,
+      manualReview: [
+        exfil("bg.js", 80),
+        exfil("lib/x.js", 12),
+        { title: "Check the submission for spam", instructions: "Inspect it." },
+      ],
+    },
+  };
+  const manual = formatText(r).split("── Manual review ──")[1];
+  // The two exfiltration items collapse into ONE entry with both loci.
+  assert.equal(
+    manual.match(/User-data exfiltration: Confirm opt-in\./g).length,
+    1
+  );
+  assert.match(manual, /\n - bg\.js:80\n - lib\/x\.js:12/);
+  // The standalone reminder is its own entry with no locus line.
+  assert.match(manual, /Check the submission for spam: Inspect it\./);
+  assert.ok(!manual.includes("(add-on)"));
+});
+
 // JSON render drops manualReview entirely - both the meta key and the item
 // title are absent - since automated consumers should not see manual steps.
 test("JSON output omits manual-review items (ATN auto-verification)", () => {

@@ -79,18 +79,16 @@ Continue manual review for the following checks:
     user-facing text may be hardcoded in another language. Review its strings by
     hand and confirm an English localization is provided.
 
-13) User-data exfiltration: "api.example.com" transmits data to a remote server.
-    Confirm by hand that any user data it sends is gated behind an explicit
-    opt-in (a documented options-page setting) and is never sent without
-    consent.
-
-14) User-data exfiltration: "metrics.example.com" transmits data to a remote
-    server. Confirm by hand that any user data it sends is gated behind an
-    explicit opt-in (a documented options-page setting) and is never sent
+13) User-data exfiltration: The following code locations transmit data to a
+    remote server. Confirm by hand that any user data they send is gated behind
+    an explicit opt-in (a documented options-page setting) and is never sent
     without consent.
+ - background.js:4
+ - background.js:7
 
-15) Unused permissions: Review whether the add-on requests any permission it
-    does not use, and ask the developer to remove the ones that are not needed.
+14) Unused permissions: Review whether the following declared permissions are
+    used, and ask the developer to remove any that are not needed.
+ - manifest.json:5 - nativeMessaging
 
 ── Summary ──
 

@@ -39,6 +39,8 @@ export default {
       `'${NATIVE_MESSAGING}' permission`,
       "unsure"
     );
-    return { findings: [], escalations: [{ item: NATIVE_MESSAGING }] };
+    // A single whole-add-on reminder: no item/locus to list (the instructions
+    // name the permission), so it renders as the wrapped message alone.
+    return { findings: [], escalations: [{}] };
   },
 };

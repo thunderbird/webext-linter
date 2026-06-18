@@ -61,14 +61,16 @@ test("renderFindings sets listItem only for item-free responses", () => {
 });
 
 // A manual-review escalation ref resolves to the owning entry's title +
-// instructions, with {{item}} filled.
-test("renderManualItems resolves an escalation to title + instructions", () => {
+// instructions, carrying its locus (file/loc) for the report to list rather
+// than baking the identifier into the prose.
+test("renderManualItems resolves an escalation to title + instructions + locus", () => {
   const [item] = renderManualItems(
-    [{ ruleId: "unused-files", item: "stray.js", kind: "escalation" }],
+    [{ ruleId: "unused-files", file: "stray.js", kind: "escalation" }],
     registry
   );
   assert.match(item.title, /Unused/);
-  assert.match(item.instructions, /stray\.js/);
+  assert.match(item.instructions, /not reachable/);
+  assert.equal(item.file, "stray.js"); // listed by the report, not in the prose
   assert.ok(!item.instructions.includes("{{item}}"));
 });
 
@@ -91,6 +93,27 @@ test("renderManualItems fills {{reason}} from the ref's data", () => {
   assert.match(item.instructions, /"tabs"/);
   assert.match(item.instructions, /no tab property is read/);
   assert.ok(!item.instructions.includes("{{reason}}"));
+});
+
+// A manual ref whose instructions are item-free (e.g. unused-permission-manual)
+// carries listItem=true + its locus, so the report lists "file:line - item".
+test("renderManualItems sets listItem + locus for an item-free instructions ref", () => {
+  const [m] = renderManualItems(
+    [
+      {
+        ruleId: "unused-permission-manual",
+        item: "tabs",
+        file: "manifest.json",
+        loc: { line: 3 },
+        kind: "escalation",
+      },
+    ],
+    registry
+  );
+  assert.equal(m.listItem, true);
+  assert.equal(m.item, "tabs");
+  assert.equal(m.file, "manifest.json");
+  assert.ok(!m.instructions.includes("{{item}}"));
 });
 
 // An llm-error ref uses the llm-unavailable system message (not the entry's

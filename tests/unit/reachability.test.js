@@ -165,7 +165,7 @@ test("unused-files: junk + orphan are findings; mentioned -> candidate", () => {
   };
   const result = unusedFiles.run(ctxFrom(files, manifest));
   const found = result.findings.map((f) => f.file);
-  const manual = manualItems(result).map((m) => m.item);
+  const manual = manualItems(result).map((m) => m.file);
   assert.ok(found.includes(".DS_Store"));
   assert.ok(found.includes("orphan.js"));
   assert.equal(
@@ -261,7 +261,7 @@ test("unused-files: a doc-only reference does not count as a mention", () => {
   };
   const result = unusedFiles.run(ctxFrom(files, manifest));
   assert.ok(result.findings.some((f) => f.file === "Images/banner.png"));
-  assert.ok(!manualItems(result).some((m) => m.item === "Images/banner.png"));
+  assert.ok(!manualItems(result).some((m) => m.file === "Images/banner.png"));
 });
 
 // minimize-WAR pre-flight: over-broad resource pattern and matches are findings;
@@ -305,7 +305,7 @@ test("unused-files makes a candidate per ambiguous file's loader site", () => {
   assert.equal(result.findings.length, 0);
   assert.deepEqual(
     manualItems(result)
-      .map((m) => m.item)
+      .map((m) => m.file)
       .sort(),
     ["bad.js", "good.js"]
   );

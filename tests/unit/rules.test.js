@@ -404,12 +404,28 @@ test("unused-permission is a no-op without the stored list", () => {
 // a defined list (even empty) means the permissions were assessed, so it is a
 // no-op. The reminder's text comes from the registry entry's {{item}}-free
 // instructions, so a null item is fine.
-test("unused-permission-manual reminds only when no list was produced", () => {
-  // No list -> one reminder escalation with a null item.
-  assert.deepEqual(unusedPermissionManual.run({ addon: {} }), {
-    findings: [],
-    escalations: [{ item: null }],
-  });
+test("unused-permission-manual lists permissions only when no list was produced", () => {
+  // No list -> one escalation per declared named permission, anchored to the
+  // manifest line; host match patterns are skipped (minimize-host's concern).
+  const manifest = {
+    permissions: ["tabs", "https://example.com/*"],
+    optional_permissions: ["storage"],
+  };
+  const ctx = {
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+      ]),
+    },
+  };
+  const out = unusedPermissionManual.run(ctx);
+  assert.equal(out.findings.length, 0);
+  assert.deepEqual(out.escalations.map((e) => e.item).sort(), [
+    "storage",
+    "tabs",
+  ]);
+  assert.ok(out.escalations.every((e) => e.file === "manifest.json"));
   // A produced list (even empty) -> nothing (the permissions were assessed).
   assert.deepEqual(
     unusedPermissionManual.run({ addon: { unusedPermissions: [] } }),
@@ -925,7 +941,8 @@ test("native-messaging escalates on the declared permission", () => {
     nativeMessaging.run({ addon: { manifest } }).escalations;
   const declared = esc({ permissions: ["nativeMessaging"] });
   assert.equal(declared.length, 1);
-  assert.equal(declared[0].item, "nativeMessaging");
+  // A single whole-add-on reminder: no item to list (instructions name it).
+  assert.equal(declared[0].item, undefined);
   assert.equal(esc({ optional_permissions: ["nativeMessaging"] }).length, 1);
   assert.equal(esc({ permissions: ["storage"] }).length, 0);
   assert.equal(esc({}).length, 0);

@@ -170,8 +170,8 @@ deterministic-checks:
 - title: Unused permissions
   check: unused-permission-manual.js
   instructions: |-
-    Review whether the add-on requests any permission it does not use, and ask the
-    developer to remove the ones that are not needed.
+    Review whether the following declared permissions are used, and ask the
+    developer to remove any that are not needed.
 
 # Flags a bundled-looking third-party library - JS or CSS - (banner/UMD/.min.
 # name/known name) not declared in a VENDOR file.
@@ -465,8 +465,8 @@ llm-checks:
     Use unsure only when you genuinely cannot tell. F's own contents do not
     matter, only whether this site loads it.
   instructions: |-
-    "{{item}}" is not reachable from any entry point but may be loaded
-    dynamically. Confirm by hand whether it is unused and safe to remove.
+    The following files are not reachable from any entry point but may be loaded
+    dynamically. Confirm by hand whether they are unused and safe to remove.
   response: |-
     The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
 
@@ -489,8 +489,8 @@ llm-checks:
 
     Use unsure only when you genuinely cannot tell.
   instructions: |-
-    "{{item}}" is exposed via web_accessible_resources but nothing in the add-on
-    loads it. Confirm by hand whether it needs to be exposed.
+    The following resources are exposed via web_accessible_resources but nothing
+    in the add-on loads them. Confirm by hand whether they need to be exposed.
   response: |-
     One or more resources are exposed through web_accessible_resources but may not need to be exposed. List a file there only if a web page or content script must access it. Otherwise remove these entries to reduce the add-on's exposed surface.
 
@@ -545,9 +545,9 @@ llm-checks:
     determine whether user data is transmitted WITHOUT such consent (verdict fail)
     or not (verdict pass). Use unsure when you genuinely cannot tell.
   instructions: |-
-    "{{item}}" transmits data to a remote server. Confirm by hand that any user
-    data it sends is gated behind an explicit opt-in (a documented options-page
-    setting) and is never sent without consent.
+    The following code locations transmit data to a remote server. Confirm by
+    hand that any user data they send is gated behind an explicit opt-in (a
+    documented options-page setting) and is never sent without consent.
   response: |-
     The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
 

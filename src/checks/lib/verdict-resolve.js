@@ -34,7 +34,8 @@ export function perCandidateResolve(cases) {
       if (v === "fail") {
         findings.push(finding(c.finding));
       } else if (v === "unsure") {
-        manual.push({ item: c.item });
+        // Carry the finding's locus so the manual entry can list file:line/item.
+        manual.push({ ...c.finding });
       }
     }
     return { findings, manual };
@@ -61,7 +62,8 @@ export function aggregateGroups(groups) {
       if (vs.length && vs.every((v) => v === "fail")) {
         findings.push(finding(g.finding));
       } else {
-        manual.push({ item: g.item });
+        // Carry the finding's locus so the manual entry can list file:line/item.
+        manual.push({ ...g.finding });
       }
     }
     return { findings, manual };

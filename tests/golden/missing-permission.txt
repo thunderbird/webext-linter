@@ -69,8 +69,9 @@ Continue manual review for the following checks:
     user-facing text may be hardcoded in another language. Review its strings by
     hand and confirm an English localization is provided.
 
-11) Unused permissions: Review whether the add-on requests any permission it
-    does not use, and ask the developer to remove the ones that are not needed.
+11) Unused permissions: Review whether the following declared permissions are
+    used, and ask the developer to remove any that are not needed.
+ - manifest.json:5 - messagesRead
 
 ── Summary ──
 

@@ -62,9 +62,6 @@ Continue manual review for the following checks:
     user-facing text may be hardcoded in another language. Review its strings by
     hand and confirm an English localization is provided.
 
-11) Unused permissions: Review whether the add-on requests any permission it
-    does not use, and ask the developer to remove the ones that are not needed.
-
 ── Summary ──
 
-0 error(s), 0 warning(s), 0 info, 11 manual review step(s)
+0 error(s), 0 warning(s), 0 info, 10 manual review step(s)

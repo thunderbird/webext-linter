@@ -83,11 +83,13 @@ export function renderFindings(findings, registry) {
 }
 
 /**
- * Resolve manual-review refs to {title, instructions}: the owning entry's title
- * plus its `instructions` (or the `llm-unavailable` system message), filled with
- * the case item and any `data` slots (e.g. a reason) the case carried.
- * @param {{ruleId: string, item: ?string, kind: string,
- *   data?: Record<string, string|number>|null}[]} refs
+ * Resolve manual-review refs to ManualItems: the owning entry's title plus its
+ * `instructions` (or the `llm-unavailable` system message), filled with the case
+ * item and any `data` slots (e.g. a reason). The ref's locus (file/loc/item) is
+ * carried through, and `listItem` is set exactly as for findings - so the report
+ * can list "file:line - item" under an item-free instructions message.
+ * @param {{ruleId: string, item: ?string, file?: ?string, loc?: object|null,
+ *   kind: string, data?: Record<string, string|number>|null}[]} refs
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {import("./finding.js").ManualItem[]}
  */
@@ -101,6 +103,11 @@ export function renderManualItems(refs, registry) {
     return {
       title: entry?.title ?? ref.ruleId,
       instructions: fill(template, ref.item, ref.data) ?? "",
+      file: ref.file ?? null,
+      loc: ref.loc ?? null,
+      item: ref.item ?? null,
+      listItem:
+        ref.item != null && template != null && !template.includes(PLACEHOLDER),
     };
   });
 }

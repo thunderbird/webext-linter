@@ -62,9 +62,11 @@ Continue manual review for the following checks:
    confusion for users and unnecessary overlap for developers. We encourage
    developers to contribute their improvements directly to the original project.
 
-10) Unused permissions: Review whether the add-on requests any permission it
-    does not use, and ask the developer to remove the ones that are not needed.
+10) Unused permissions: Review whether the following declared permissions are
+    used, and ask the developer to remove any that are not needed.
+ - manifest.json:6 - messagesRead
+ - manifest.json:6 - accountsRead
 
 ── Summary ──
 
-1 error(s), 0 warning(s), 0 info, 10 manual review step(s)
+1 error(s), 0 warning(s), 0 info, 11 manual review step(s)
