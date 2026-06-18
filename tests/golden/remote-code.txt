@@ -63,25 +63,32 @@ Continue manual review for the following checks:
    Mark this review step as failed if it imitates or incorporates the
    Thunderbird or Mozilla logo.
 
-8) Missing ATN description or details: The add-on listing page should include
-   detailed instructions on how to use the add-on and where to find its entry
-   points. Verify it also includes screenshots to help users quickly understand
-   how the add-on works.
+8) Missing ATN description or details: The add-on listing page on ATN
+   (addons.thunderbird.net) should include detailed instructions on how to use
+   the add-on and where to find its entry points. Verify it also includes
+   screenshots to help users quickly understand how the add-on works.
 
-9) Forked add-on: Check if the submission is a fork of an existing add-on. Such
-   forks are only allowed on ATN if they are clearly distinguished from the
-   original and provide a significant difference in functionality and/or code.
-   Exceptions may be made where the add-on is no longer maintained by its
-   original author. The primary goal, however, should be to connect the two
-   developers and let the new developer help maintain or take over the existing
-   add-on. In general, small-change forks of still-active projects cause
-   confusion for users and unnecessary overlap for developers. We encourage
-   developers to contribute their improvements directly to the original project.
+9) Missing English ATN localization: The add-on listing page on ATN
+   (addons.thunderbird.net) should also have an english localization. English
+   serves as the default language in Thunderbird, and most users who do not
+   understand the available non-English version will most likely be able to read
+   English.
 
-10) Missing English localization: This add-on ships no English localization, so
+10) Forked add-on: Check if the submission is a fork of an existing add-on. Such
+    forks are only allowed on ATN if they are clearly distinguished from the
+    original and provide a significant difference in functionality and/or code.
+    Exceptions may be made where the add-on is no longer maintained by its
+    original author. The primary goal, however, should be to connect the two
+    developers and let the new developer help maintain or take over the existing
+    add-on. In general, small-change forks of still-active projects cause
+    confusion for users and unnecessary overlap for developers. We encourage
+    developers to contribute their improvements directly to the original
+    project.
+
+11) Missing English localization: This add-on ships no English localization, so
     user-facing text may be hardcoded in another language. Review its strings by
     hand and confirm an English localization is provided.
 
 ── Summary ──
 
-7 error(s), 0 warning(s), 0 info, 10 manual review step(s)
+7 error(s), 0 warning(s), 0 info, 11 manual review step(s)

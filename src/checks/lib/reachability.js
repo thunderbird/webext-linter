@@ -40,7 +40,12 @@ import { scanCssRemoteRefs } from "../../scan/css.js";
 import { scanLocalImports } from "../../parse/local-imports.js";
 import { scanLoaderRefs } from "../../parse/loader-files.js";
 import { nonAuthoredJs } from "./bundled.js";
-import { asArray, asObject, PROJECT_METADATA_RE } from "./util.js";
+import {
+  asArray,
+  asObject,
+  DOC_METADATA_RE,
+  DEPENDENCY_FILE_RE,
+} from "./util.js";
 import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../../util/files.js";
 import { REACHABILITY_SKIPS_NON_AUTHORED } from "../../config.js";
 
@@ -65,7 +70,7 @@ const TEXT_EXTS = new Set([
 // manifest.json - these are excluded from the basename net. Otherwise an asset
 // referenced only by a README looks "mentioned" and never gets flagged.
 const DOC_FILE = new RegExp(
-  `${PROJECT_METADATA_RE.source}|\\.(md|markdown|txt|rst)$`,
+  `${DOC_METADATA_RE.source}|${DEPENDENCY_FILE_RE.source}|\\.(md|markdown|txt|rst)$`,
   "i"
 );
 

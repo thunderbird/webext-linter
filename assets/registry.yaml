@@ -628,10 +628,18 @@ manual-checks:
 # Manual: the ATN listing page lacks usage details/entry points or screenshots.
 - title: Missing ATN description or details
   instructions: |-
-    The add-on listing page should include detailed instructions on how to use
-    the add-on and where to find its entry points. Verify it also includes
-    screenshots to help users quickly understand how the add-on works.
+    The add-on listing page on ATN (addons.thunderbird.net) should include
+    detailed instructions on how to use the add-on and where to find its entry
+    points. Verify it also includes screenshots to help users quickly understand
+    how the add-on works.
 
+# Manual: the ATN listing page should have an english version.
+- title: Missing English ATN localization
+  instructions: |-
+    The add-on listing page on ATN (addons.thunderbird.net) should also have an
+    english localization. English serves as the default language in Thunderbird,
+    and most users who do not understand the available non-English version will
+    most likely be able to read English. 
 
 # Headings shown above each severity group in the report's Issues section
 # (numbering is continuous across the groups).

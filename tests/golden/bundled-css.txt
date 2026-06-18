@@ -49,11 +49,17 @@ Continue manual review for the following checks:
    Mark this review step as failed if it imitates or incorporates the
    Thunderbird or Mozilla logo.
 
-8) Missing ATN description or details: The add-on listing page should include
-   detailed instructions on how to use the add-on and where to find its entry
-   points. Verify it also includes screenshots to help users quickly understand
-   how the add-on works.
+8) Missing ATN description or details: The add-on listing page on ATN
+   (addons.thunderbird.net) should include detailed instructions on how to use
+   the add-on and where to find its entry points. Verify it also includes
+   screenshots to help users quickly understand how the add-on works.
+
+9) Missing English ATN localization: The add-on listing page on ATN
+   (addons.thunderbird.net) should also have an english localization. English
+   serves as the default language in Thunderbird, and most users who do not
+   understand the available non-English version will most likely be able to read
+   English.
 
 ── Summary ──
 
-1 error(s), 0 warning(s), 0 info, 8 manual review step(s)
+1 error(s), 0 warning(s), 0 info, 9 manual review step(s)

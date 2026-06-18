@@ -23,16 +23,26 @@ import { DISPLAY_TRUNCATE_LENGTH } from "../../config.js";
 /** @typedef {import("./reachability.js").Reachability} Reachability */
 /** @typedef {import("../../addon/load.js").Manifest} Manifest */
 
-// Project-metadata files referenced by tooling or the i18n runtime, not by the
-// add-on's own code: license, readme, the vendor manifest, and the npm/yarn/pnpm
-// dependency manifest + lock files (a valid third-party-library declaration).
-// An optional [_-]<token> tail matches localized / variant names such as
-// README_DE, README-pt-BR, CHANGELOG_v2, LICENSE-MIT (a plain word boundary
-// misses these because "_" is itself a word char, so README_DE has no boundary
-// after README). Shared so the unused-files ALLOW list and reachability's
-// doc-file test agree.
-export const PROJECT_METADATA_RE =
-  /(^|\/)(LICENSE|COPYING|README|CHANGELOG|AUTHORS|NOTICE|VENDORS?|package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)(?:[_-][a-z0-9]+)*\b/i;
+// Documentation / project-metadata files an add-on may ship (for tooling, its
+// store listing, or the i18n runtime) but never loads at runtime: license,
+// readme, changelog, the vendor manifest, contributing/description/etc. Matched
+// by base NAME, so the match is limited to a documentation extension
+// (.md/.markdown/.txt/.rst) or none - a code file that merely shares the name
+// (README.js, history.js, security.js) is NOT exempt and stays subject to the
+// unused-files check. An optional [_-]<token> tail matches localized / variant
+// names (README_DE, README-pt-BR, CHANGELOG_v2, LICENSE-MIT, Description_pt-BR),
+// and the trailing `$` keeps it to the final path segment (so README/foo.js,
+// a file UNDER a README dir, is not swept in). Shared so the unused-files ALLOW
+// list and reachability's doc-file test agree.
+export const DOC_METADATA_RE =
+  /(^|\/)(LICENSE|COPYING|README|CHANGELOG|AUTHORS|NOTICE|VENDORS?|DESCRIPTION|CONTRIBUTING|INSTALL|HISTORY|SECURITY|CODE_OF_CONDUCT|TODO)(?:[_-][a-z0-9]+)*(?:\.(?:md|markdown|txt|rst))?$/i;
+
+// Dependency manifests / lock files (a valid third-party-library declaration).
+// Matched as EXACT filenames - the extension is part of the identity, so unlike
+// the name-based docs above there is no name-without-extension ambiguity and no
+// risk of exempting a same-named code file.
+export const DEPENDENCY_FILE_RE =
+  /(^|\/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$/i;
 
 /**
  * Drop findings that duplicate file+line+column+item+data (the discriminators

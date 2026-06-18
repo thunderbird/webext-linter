@@ -47,24 +47,30 @@ Continue manual review for the following checks:
    Mark this review step as failed if it imitates or incorporates the
    Thunderbird or Mozilla logo.
 
-8) Missing ATN description or details: The add-on listing page should include
-   detailed instructions on how to use the add-on and where to find its entry
-   points. Verify it also includes screenshots to help users quickly understand
-   how the add-on works.
+8) Missing ATN description or details: The add-on listing page on ATN
+   (addons.thunderbird.net) should include detailed instructions on how to use
+   the add-on and where to find its entry points. Verify it also includes
+   screenshots to help users quickly understand how the add-on works.
 
-9) Remote data transmission needs a privacy policy: This add-on transmits data
-   to a hardcoded remote server (api.example.com, metrics.example.com). Confirm
-   the ATN listing carries a privacy policy that discloses what data is
-   collected and why. The privacy policy must be pasted into the ATN field
-   directly (links to remotely hosted policies are not allowed).
+9) Missing English ATN localization: The add-on listing page on ATN
+   (addons.thunderbird.net) should also have an english localization. English
+   serves as the default language in Thunderbird, and most users who do not
+   understand the available non-English version will most likely be able to read
+   English.
 
-10) Native messaging needs disclosure: This add-on requests the
+10) Remote data transmission needs a privacy policy: This add-on transmits data
+    to a hardcoded remote server (api.example.com, metrics.example.com). Confirm
+    the ATN listing carries a privacy policy that discloses what data is
+    collected and why. The privacy policy must be pasted into the ATN field
+    directly (links to remotely hosted policies are not allowed).
+
+11) Native messaging needs disclosure: This add-on requests the
     "nativeMessaging" permission, letting it exchange messages with a native
     application outside Thunderbird. Confirm the listing discloses what
     information is exchanged and complies with the No Surprises policy. The
     native host itself does not need to be part of the package.
 
-11) Forked add-on: Check if the submission is a fork of an existing add-on. Such
+12) Forked add-on: Check if the submission is a fork of an existing add-on. Such
     forks are only allowed on ATN if they are clearly distinguished from the
     original and provide a significant difference in functionality and/or code.
     Exceptions may be made where the add-on is no longer maintained by its
@@ -75,21 +81,21 @@ Continue manual review for the following checks:
     developers to contribute their improvements directly to the original
     project.
 
-12) Missing English localization: This add-on ships no English localization, so
+13) Missing English localization: This add-on ships no English localization, so
     user-facing text may be hardcoded in another language. Review its strings by
     hand and confirm an English localization is provided.
 
-13) User-data exfiltration: The following code locations transmit data to a
+14) User-data exfiltration: The following code locations transmit data to a
     remote server. Confirm by hand that any user data they send is gated behind
     an explicit opt-in (a documented options-page setting) and is never sent
     without consent.
  - background.js:4
  - background.js:7
 
-14) Unused permissions: Review whether the following declared permissions are
+15) Unused permissions: Review whether the following declared permissions are
     used, and ask the developer to remove any that are not needed.
  - manifest.json:5 - nativeMessaging
 
 ── Summary ──
 
-1 error(s), 0 warning(s), 0 info, 15 manual review step(s)
+1 error(s), 0 warning(s), 0 info, 16 manual review step(s)

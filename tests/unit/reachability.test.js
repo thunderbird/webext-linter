@@ -181,6 +181,42 @@ test("unused-files: junk + orphan are findings; mentioned -> candidate", () => {
   assert.ok(!found.includes("bg.js")); // reachable
 });
 
+// Docs/metadata the add-on ships (Description.md, README.md, ...) are allowlisted
+// by NAME, but only with a documentation extension or none - a code file that
+// merely shares the name (history.js, README.js) is NOT exempt and stays subject
+// to the unused-files check, so the allowlist cannot hide code.
+test("unused-files: docs allowlisted by name; same-named code still flagged", () => {
+  const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
+  const files = {
+    "manifest.json": JSON.stringify(manifest),
+    "bg.js": `console.log(1);`,
+    "Description.md": "# store listing",
+    "Description_DE.md": "# localized variant",
+    "CONTRIBUTING.md": "# how to help",
+    "CODE_OF_CONDUCT.md": "# be nice",
+    "TODO.md": "- things",
+    "history.js": `console.log("orphan code, not a doc");`,
+    "README.js": `console.log("not a readme");`,
+  };
+  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const found = result.findings.map((f) => f.file);
+  const manual = manualItems(result).map((m) => m.file);
+  const flagged = (f) => found.includes(f) || manual.includes(f);
+  for (const doc of [
+    "Description.md",
+    "Description_DE.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "TODO.md",
+  ]) {
+    assert.ok(!flagged(doc), `${doc} should be allowlisted`);
+  }
+  // A code file (.js) is NOT allowlisted, even when named like a doc/metadata
+  // file - neither a doc-prose name nor an existing metadata name gets a pass.
+  assert.ok(flagged("history.js"), "history.js should still be flagged");
+  assert.ok(flagged("README.js"), "README.js should still be flagged");
+});
+
 // The pre-flight narrates each unreachable candidate it assesses to the feed via
 // ctx.note, carrying its deterministic verdict (unsure = escalated to the LLM,
 // fail = a clear orphan) and the loaders (file:line) it examined - so a reviewer

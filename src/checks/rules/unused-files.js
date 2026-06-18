@@ -25,15 +25,23 @@ import {
   referrerSupported,
   loaderSites,
   loaderTrace,
-  PROJECT_METADATA_RE,
+  DOC_METADATA_RE,
+  DEPENDENCY_FILE_RE,
 } from "../lib/util.js";
 import { basename } from "../../util/files.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../lib/reachability.js").Reachability} Reachability */
 
-// Never flag: project metadata (referenced by tooling / the i18n runtime).
-const ALLOW = [PROJECT_METADATA_RE, /^manifest\.json$/i, /^_locales\//];
+// Never flag: documentation / project metadata the add-on ships but never loads
+// (license, readme, Description.md and the like - by name, doc extensions only),
+// dependency manifests / lock files, the manifest, and locale message catalogs.
+const ALLOW = [
+  DOC_METADATA_RE,
+  DEPENDENCY_FILE_RE,
+  /^manifest\.json$/i,
+  /^_locales\//,
+];
 
 // Definite "should not ship" by name: OS/editor junk, source maps, archives.
 const JUNK = [
