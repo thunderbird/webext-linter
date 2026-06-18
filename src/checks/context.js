@@ -33,6 +33,9 @@ import { llmEnabled } from "./lib/util.js";
  * @param {string} [params.claudeModel]  Model override for the LLM client.
  * @param {string} [params.systemIntro]  The registry-owned reviewer system
  *   prompt (prompts.system-intro), passed to the LLM client when a token is set.
+ * @param {boolean} [params.invalidExperiment]  The add-on is an Experiment and
+ *   --allow-experiments is off: short-circuit to the reject check with no LLM,
+ *   so the client is never attached even when a token is set.
  * @returns {RunContext}
  */
 export function buildRunContext({
@@ -42,6 +45,7 @@ export function buildRunContext({
   diffTo,
   claudeModel,
   systemIntro,
+  invalidExperiment,
 }) {
   // Parse each source ONCE and hang the result on the source. Every read-only
   // analysis consumer (api-usage here, plus the sync-xhr / debugger-statement /
@@ -65,13 +69,15 @@ export function buildRunContext({
     apiUsages,
     options,
     previous: diffTo ? loadAddon(diffTo) : null,
+    invalidExperiment,
   };
 
   // When an Anthropic token is set, attach the LLM client so the llm-checks
   // rule modules can evaluate their criterion. Without it ctx.llm is absent and
   // those modules escalate to manual review (the tool stays deterministic and
-  // offline).
-  if (llmEnabled(ctx)) {
+  // offline). An invalid Experiment rejects outright with no LLM at all, so the
+  // client is never attached in that mode (even with a token).
+  if (llmEnabled(ctx) && !invalidExperiment) {
     ctx.llm = createLlmClient({
       ctx,
       token: options.claudeApiKey,

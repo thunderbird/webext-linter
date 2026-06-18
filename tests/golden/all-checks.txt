@@ -13,13 +13,13 @@ Read more: https://webextension-api.thunderbird.net/.
 Read more: https://webextension-api.thunderbird.net/.
  - background.js:5
 
-3) "messagesRead" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions).
+3) "messagesRead" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
  - background.js:9
 
-4) "accountsRead" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions).
+4) "accountsRead" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
  - background.js:15
 
-5) "messagesMove" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions).
+5) "messagesMove" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
  - background.js:16
 
 6) action.onClicked needs a manifest key that is not declared: "action". Add one of those keys to manifest.json.

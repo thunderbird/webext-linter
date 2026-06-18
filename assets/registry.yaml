@@ -157,6 +157,7 @@ deterministic-checks:
 - title: Possibly unused permission
   severity: warning
   check: unused-permission.js
+  phase: post-summary
   response: |-
     The "{{item}}" permission appears to be unused. {{reason}} An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If it is in fact used, please specify which part of your add-on stops working if it is removed.
   instructions: |-
@@ -169,6 +170,7 @@ deterministic-checks:
 # (it never emits a finding); the instructions name no specific permission.
 - title: Unused permissions
   check: unused-permission-manual.js
+  phase: post-summary
   instructions: |-
     Review whether the following declared permissions are used, and ask the
     developer to remove any that are not needed.
@@ -216,9 +218,12 @@ deterministic-checks:
     Limited static-analysis coverage: could not be parsed, so API checks were skipped ({{detail}})
 
 # Rejects an Experiment (declares experiment_apis) unless --allow-experiments.
+# phase: invalid-experiment - the orchestrator runs ONLY this check (and nothing
+# else, no LLM) when the add-on is an Experiment and --allow-experiments is off.
 - title: Experiment APIs not accepted
   severity: error
   check: experiment-not-allowed.js
+  phase: invalid-experiment
   response: |-
     We are currently not accepting new submissions using Experiment APIs.
     Read more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews

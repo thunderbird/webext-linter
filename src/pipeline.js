@@ -22,28 +22,17 @@ import { loadSchemaFiles } from "./schema/load.js";
 import { buildSchemaIndex } from "./schema/index.js";
 import { loadAddon } from "./addon/load.js";
 import { resolveReviewUrl } from "./addon/atn.js";
-import {
-  runChecks,
-  runOneCheck,
-  loadChecks,
-  loadRegistry,
-} from "./checks/registry.js";
+import { runChecks, runOneCheck, loadRegistry } from "./checks/registry.js";
 import { buildRunContext } from "./checks/context.js";
 import { buildSummarizer, buildAddonSummarizer } from "./checks/summaries.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import { verifyVendor } from "./vendor/verify.js";
 import { classifyBundled } from "./checks/lib/bundled.js";
+import { isExperiment } from "./checks/lib/util.js";
 import { debug, progress } from "./util/log.js";
 import { humanSize } from "./util/text.js";
 import { DEFAULT_CHANNEL, DEFAULT_CACHE } from "./config.js";
-
-// Checks that consume the add-on summary's result (ctx.addon.unusedPermissions),
-// so they cannot run in the main loop (the summary runs after it). reviewAddon
-// holds them out of the loop and runs them explicitly after the summary, in this
-// order. `unused-permission` evaluates a produced list; `unused-permission-manual`
-// is its mirror, raising the by-hand reminder when none was produced.
-const POST_SUMMARY_CHECKS = ["unused-permission", "unused-permission-manual"];
 
 /** @typedef {import("./report/finding.js").Finding} Finding */
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
@@ -102,6 +91,15 @@ export async function runPipeline(opts) {
   // pre-loaded add-on (the test harness does, to drop its expected.json file).
   const addon = opts.addon ?? loadAddon(addonPath);
 
+  // An Experiment add-on (non-empty experiment_apis) submitted with
+  // --allow-experiments off is rejected outright: the review short-circuits to
+  // the single experiment-not-allowed check, with no other checks, no LLM (llm
+  // checks, advisory summaries, or the vendor-parse fallback), and no manual
+  // reminders. The vendor pre-processing below feeds only the normal checks (and
+  // its parse can call the LLM), so it is skipped in that mode too.
+  const invalidExperiment =
+    isExperiment(addon.manifest) && !opts.allowExperiments;
+
   const findings = [];
   const meta = {
     action: "review",
@@ -110,32 +108,34 @@ export async function runPipeline(opts) {
     reviewed: true,
   };
 
-  // 1b. Resolve the vendored declarations ONCE, before the review, so the
-  // review's checks share one immutable set. Deterministic parse, plus an LLM
-  // fallback when a token is set (token-less stays deterministic).
-  addon.vendor = await resolveVendor({
-    addon,
-    parsePrompt: registry.prompt("vendor-parse"),
-    token: opts.claudeApiKey,
-    model: opts.claudeModel,
-  });
+  if (!invalidExperiment) {
+    // 1b. Resolve the vendored declarations ONCE, before the review, so the
+    // review's checks share one immutable set. Deterministic parse, plus an LLM
+    // fallback when a token is set (token-less stays deterministic).
+    addon.vendor = await resolveVendor({
+      addon,
+      parsePrompt: registry.prompt("vendor-parse"),
+      token: opts.claudeApiKey,
+      model: opts.claudeModel,
+    });
 
-  // 1c. Verify the resolved declarations over the network ONCE - fetch, compare
-  // (EOL-tolerant), popularity, and the package.json<->file matching - recording
-  // each file's result into the same shared store. A declaration with nothing
-  // fetchable (or an injected offline transport, as the golden harness uses)
-  // makes no request, so offline runs stay deterministic.
-  await verifyVendor(addon, opts.vendorNet);
+    // 1c. Verify the resolved declarations over the network ONCE - fetch,
+    // compare (EOL-tolerant), popularity, and the package.json<->file matching -
+    // recording each file's result into the same shared store. A declaration
+    // with nothing fetchable (or an injected offline transport, as the golden
+    // harness uses) makes no request, so offline runs stay deterministic.
+    await verifyVendor(addon, opts.vendorNet);
 
-  // 1d. Classify the bundled (undeclared third-party) JS ONCE into
-  // addon.bundled, read by the bundled checks (computed once, never recomputed).
-  // Runs after verifyVendor so the vendored skip set is final.
-  addon.bundled = classifyBundled(addon);
+    // 1d. Classify the bundled (undeclared third-party) JS ONCE into
+    // addon.bundled, read by the bundled checks (computed once, never
+    // recomputed). Runs after verifyVendor so the vendored skip set is final.
+    addon.bundled = classifyBundled(addon);
+  }
 
   // 2. Schema review. reviewAddon also generates the advisory AI summaries at the
   // tail of the activity feed (the add-on summary's unused-permission list feeds
   // the unused-permission check, which runs there too), so they come back here.
-  const result = await reviewAddon(addon, opts, registry);
+  const result = await reviewAddon(addon, opts, registry, invalidExperiment);
   findings.push(...result.findings);
   Object.assign(meta, result.meta);
   const { summarize, summarizeAddon } = result;
@@ -144,7 +144,9 @@ export async function runPipeline(opts) {
   // id (addon/atn.js). Best-effort: null when it cannot be resolved, and the
   // report omits the line. Gated to text runs by the caller, so the golden
   // harness (which never sets it) makes no request and stays reproducible.
-  if (opts.reviewUrl) {
+  // Skipped for an outright Experiment reject (the URL only renders inside the
+  // omitted Manual review section anyway).
+  if (opts.reviewUrl && !invalidExperiment) {
     meta.reviewUrl = await resolveReviewUrl({ manifest: addon.manifest });
   }
 
@@ -212,33 +214,17 @@ async function generateAddonSummary(ctx, registry, unused) {
 }
 
 /**
- * Whether a check id passes the run's --checks / --skip filters (the same
- * only/skip semantics loadChecks applies). Used to gate the explicit
- * post-summary checks so they honor those flags like a loop check.
- * @param {string} id
- * @param {{only?: string[], skip?: string[]}} filter
- * @returns {boolean}
- */
-function passesFilter(id, { only, skip } = {}) {
-  if (only?.length && !only.includes(id)) {
-    return false;
-  }
-  if (skip?.includes(id)) {
-    return false;
-  }
-  return true;
-}
-
-/**
  * The schema-review half of the pipeline, operating on an already-loaded add-on.
  *
  * @param {import("./addon/load.js").Addon} addon
  * @param {PipelineOpts} opts
  * @param {import("./checks/registry.js").Registry} registry
+ * @param {boolean} [invalidExperiment]  Reject-only mode: run just the
+ *   experiment-not-allowed check, with no LLM, summaries, or manual reminders.
  * @returns {Promise<{findings: Finding[], meta: ReviewMeta,
  *   ctx: import("./checks/registry.js").RunContext}>}
  */
-async function reviewAddon(addon, opts, registry) {
+async function reviewAddon(addon, opts, registry, invalidExperiment) {
   const {
     schemaChannel = DEFAULT_CHANNEL,
     schemaZip,
@@ -272,23 +258,26 @@ async function reviewAddon(addon, opts, registry) {
     diffTo,
     claudeModel: opts.claudeModel,
     systemIntro: registry.prompt("system-intro"),
+    invalidExperiment,
   });
 
-  // The registry.yaml file drives which checks run (deterministic + llm,
-  // one path). The orchestrator returns issues-only findings plus the manual
-  // refs it produced (escalations with no token / unsure / error). Each throwing
-  // check is isolated so one failure can't abort all.
-  // Some checks are held out of the loop. The ESLint code-sanity check is opt-in:
-  // without --eslint it is excluded entirely. The two unused-permission checks
-  // read the add-on summary's result, so they must run AFTER it (the summary runs
-  // after the loop); they are excluded here and run explicitly below.
+  // The registry.yaml file drives which checks run, by `phase`: runChecks runs
+  // the default-phase checks in its loop now and returns the `phase: post-summary`
+  // checks (the two unused-permission checks, which read the add-on summary's
+  // result) as `deferred` to run after the summary below; an invalid Experiment
+  // runs only its reject check (runChecks picks the profile from
+  // ctx.invalidExperiment). The orchestrator returns issues-only findings plus
+  // the manual refs it produced (escalations with no token / unsure / error);
+  // each throwing check is isolated so one failure can't abort all. The ESLint
+  // code-sanity check is opt-in: without --eslint it is excluded here.
   const baseSkip = eslint
     ? (checksSkip ?? [])
     : [...(checksSkip ?? []), "code-sanity"];
-  const { findings, checks, manualItems } = await runChecks(ctx, registry, {
-    only: checksOnly,
-    skip: [...baseSkip, ...POST_SUMMARY_CHECKS],
-  });
+  const { findings, checks, manualItems, deferred, total } = await runChecks(
+    ctx,
+    registry,
+    { only: checksOnly, skip: baseSkip }
+  );
 
   // Advisory AI summaries, generated at the tail of the activity feed (a
   // `LLM: Generating ...` line shows what is being waited on); the prose is
@@ -298,40 +287,32 @@ async function reviewAddon(addon, opts, registry) {
   // found unreachable - that set is a product of reachability (unused-files), so
   // it exists only now, which is why the summary runs after the checks.
   let summarizeAddon;
-  if (fullSummary) {
+  if (!invalidExperiment && fullSummary) {
     const unused = new Set(
       findings.filter((f) => f.ruleId === "unused-files").map((f) => f.file)
     );
     summarizeAddon = await generateAddonSummary(ctx, registry, unused);
   }
   let summarize;
-  if (diffSummary) {
+  if (!invalidExperiment && diffSummary) {
     summarize = await generateSummary(
       buildSummarizer(ctx, registry),
       "diff summary"
     );
   }
 
-  // The two unused-permission checks: ordinary deterministic checks, but run here
-  // (after the add-on summary populated ctx.addon.unusedPermissions) through the
-  // identical per-check path as the loop - runOneCheck stamps id/severity and
-  // routes escalations to manual review. They always run (honoring --checks/--skip
-  // like loop checks) and read the checks memory: `unused-permission` evaluates a
-  // present list, its `unused-permission-manual` mirror raises the by-hand
-  // reminder when none was produced, and each logs `skipped` in the other case.
+  // The post-summary checks (phase: post-summary), run now that the add-on
+  // summary has populated ctx.addon.unusedPermissions, through the identical
+  // per-check path as the loop - runOneCheck stamps id/severity and routes
+  // escalations to manual review. They honor --checks/--skip (already applied by
+  // loadChecks). Numbering continues from the main loop so the feed reads
+  // [1/total] .. [total/total]. (Empty for an invalid Experiment.)
   const ran = [...checks];
-  for (const id of POST_SUMMARY_CHECKS) {
-    if (!passesFilter(id, { only: checksOnly, skip: baseSkip })) {
-      continue;
-    }
-    const [check] = await loadChecks(registry, { only: [id] });
-    if (!check) {
-      continue;
-    }
+  for (const [j, check] of deferred.entries()) {
     const out = await runOneCheck(
       ctx,
       check,
-      `[${ran.length + 1}/${ran.length + 1}]`
+      `[${checks.length + j + 1}/${total}]`
     );
     findings.push(...out.findings);
     manualItems.push(...out.manualItems);
@@ -354,11 +335,14 @@ async function reviewAddon(addon, opts, registry) {
       manifestVersion: addon.manifest?.manifest_version ?? null,
       checksRun: ran.map((c) => c.id),
       // One manual-review list: the always-manual checks plus the orchestrator's
-      // escalation refs, each resolved to its registry text.
-      manualReview: [
-        ...registry.manualChecks(),
-        ...renderManualItems(manualItems, registry),
-      ],
+      // escalation refs, each resolved to its registry text. An outright
+      // Experiment reject prints only the reject finding, so it carries none.
+      manualReview: invalidExperiment
+        ? []
+        : [
+            ...registry.manualChecks(),
+            ...renderManualItems(manualItems, registry),
+          ],
     },
   };
 }

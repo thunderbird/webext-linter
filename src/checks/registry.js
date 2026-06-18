@@ -57,6 +57,11 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {"deterministic"|"llm"} kind  Which registry section it came from.
  * @property {boolean} [diff]  Diff-mode gate: true = run only with a --diff-to
  *   baseline, false = run only WITHOUT one (new submissions), omitted = always.
+ * @property {"post-summary"|"invalid-experiment"} [phase]  Run profile, picked
+ *   by runChecks: omitted = the main loop of a normal review; "post-summary" =
+ *   after the AI add-on summary (reads its output); "invalid-experiment" = only
+ *   when the add-on is an invalid Experiment, in which case it is the ONLY phase
+ *   that runs (see runChecks).
  * @property {string} [prompt]  LLM rubric for an ambiguous case (llm checks).
  * @property {string} [instructions]  Manual-review message (llm checks).
  * @property {Function} run
@@ -72,6 +77,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {object[]} apiUsages  Per-source extracted API usage.
  * @property {{claudeApiKey?: string, allowExperiments?: boolean}} options
  * @property {import("../addon/load.js").Addon|null} [previous]  Diff baseline.
+ * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
+ *   --allow-experiments is off: the review short-circuits to the reject check
+ *   only, with no LLM (see runChecks and buildRunContext).
  * @property {{evaluate: Function}} [llm]  LLM client, present only with a token.
  * @property {Function} [note]  Narrate a file:line investigation note to the
  *   feed: (file, loc, item, verdict) -> void. Set by runChecks, absent in tests.
@@ -260,6 +268,7 @@ export async function loadChecks(registry, { only, skip } = {}) {
       severity: entry.severity || "error",
       kind: entry.kind,
       diff: typeof entry.diff === "boolean" ? entry.diff : undefined,
+      phase: entry.phase,
       prompt: entry.prompt,
       instructions: entry.instructions,
       run,
@@ -318,19 +327,26 @@ export function formatNote(file, loc, item, verdict) {
  * @param {RunContext} ctx  The shared check context.
  * @param {Registry} registry
  * @param {{only?: string[], skip?: string[]}} [opts]
- * @returns {Promise<{findings: object[], checks: object[],
- *   manualItems: {ruleId: string, item: ?string, kind: string}[]}>}
+ * @returns {Promise<{findings: object[], checks: object[], deferred: object[],
+ *   total: number, manualItems: {ruleId: string, item: ?string,
+ *   kind: string}[]}>}  `checks` ran in this loop; `deferred` are the
+ *   post-summary checks for the caller to run next (continuing the [i/total]
+ *   numbering); `total` is the whole-review check count.
  */
 export async function runChecks(ctx, registry, opts = {}) {
-  // The `diff` gate (a registry field) decides whether a check runs given the
-  // mode: `diff: true` (e.g. strict-max-version-bump-only) compares against a
-  // previous version, so it runs only when --diff-to gave us a baseline
-  // (ctx.previous); `diff: false` (e.g. fork-check) is new-submission only, so
-  // it runs only WITHOUT a baseline; an omitted `diff` runs in both. A filtered
-  // check never runs and never appears in the feed or meta.checksRun.
+  // Two gates pick which checks run. The `diff` gate (a registry field) keys off
+  // the mode: `diff: true` (e.g. strict-max-version-bump-only) needs a --diff-to
+  // baseline (ctx.previous), `diff: false` (e.g. fork-check) is new-submission
+  // only, an omitted `diff` runs in both. The `phase` gate then picks the review
+  // PROFILE: an invalid Experiment (ctx.invalidExperiment - Experiment APIs with
+  // --allow-experiments off) runs ONLY the `phase: invalid-experiment` reject
+  // check and nothing else; a normal review runs the default-phase checks in this
+  // loop and returns the `phase: post-summary` checks as `deferred` for the
+  // caller to run after the AI add-on summary. A filtered-out check never runs
+  // and never appears in the feed or meta.checksRun.
   const loaded = await loadChecks(registry, opts);
   const inDiffMode = Boolean(ctx.previous);
-  const checks = loaded.filter((c) => {
+  const eligible = loaded.filter((c) => {
     if (c.diff === true) {
       return inDiffMode;
     }
@@ -339,6 +355,15 @@ export async function runChecks(ctx, registry, opts = {}) {
     }
     return true;
   });
+  const checks = ctx.invalidExperiment
+    ? eligible.filter((c) => c.phase === "invalid-experiment")
+    : eligible.filter((c) => !c.phase);
+  const deferred = ctx.invalidExperiment
+    ? []
+    : eligible.filter((c) => c.phase === "post-summary");
+  // The whole-review count, so [i/total] is continuous across this loop AND the
+  // caller's deferred post-summary checks (they carry on from checks.length).
+  const total = checks.length + deferred.length;
   const findings = [];
   const manualItems = [];
   // Let checks narrate the file:line sites they investigated (network loads,
@@ -361,14 +386,14 @@ export async function runChecks(ctx, registry, opts = {}) {
   progress("── Activity ──");
   progress("");
   for (const [i, check] of checks.entries()) {
-    const out = await runOneCheck(ctx, check, `[${i + 1}/${checks.length}]`);
+    const out = await runOneCheck(ctx, check, `[${i + 1}/${total}]`);
     findings.push(...out.findings);
     manualItems.push(...out.manualItems);
   }
   // Close the live activity list with a blank line, so it is separated from the
   // report that follows. A no-op when progress is disabled.
   progress("");
-  return { findings, checks, manualItems };
+  return { findings, checks, deferred, total, manualItems };
 }
 
 /**

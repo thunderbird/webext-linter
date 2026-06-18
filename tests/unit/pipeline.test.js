@@ -50,3 +50,56 @@ test("review: read-only; line numbers match the submitted source", async () => {
 
   fs.rmSync(src, { recursive: true, force: true });
 });
+
+const EXPERIMENT_MANIFEST =
+  '{"manifest_version":3,"name":"Exp","version":"1.0",' +
+  '"background":{"scripts":["bg.js"]},' +
+  '"experiment_apis":{"myApi":{"schema":"s.json"}}}';
+
+// An Experiment add-on submitted without --allow-experiments rejects outright:
+// the review runs ONLY the experiment-not-allowed check (the eval that would
+// otherwise fire is never scanned), with no manual-review reminders and no AI
+// summaries.
+test("invalid Experiment: only the reject check runs, nothing else", async () => {
+  const src = tmpAddon({
+    "manifest.json": EXPERIMENT_MANIFEST,
+    "bg.js": 'eval("y");\n',
+  });
+
+  const result = await runPipeline({
+    addonPath: src,
+    schemaZip: SCHEMA_FIXTURE,
+  });
+
+  assert.deepEqual(
+    result.findings.map((f) => f.ruleId),
+    ["experiment-not-allowed"]
+  );
+  assert.deepEqual(result.meta.checksRun, ["experiment-not-allowed"]);
+  assert.deepEqual(result.meta.manualReview, []);
+  assert.equal(result.summarize, undefined);
+  assert.equal(result.summarizeAddon, undefined);
+
+  fs.rmSync(src, { recursive: true, force: true });
+});
+
+// Control: with --allow-experiments the same add-on takes the normal path - the
+// eval-call check fires and the reject check does not run.
+test("allowed Experiment: normal review runs, no reject", async () => {
+  const src = tmpAddon({
+    "manifest.json": EXPERIMENT_MANIFEST,
+    "bg.js": 'eval("y");\n',
+  });
+
+  const result = await runPipeline({
+    addonPath: src,
+    schemaZip: SCHEMA_FIXTURE,
+    allowExperiments: true,
+  });
+
+  const ids = result.findings.map((f) => f.ruleId);
+  assert.ok(ids.includes("eval-call"), "eval-call fires in normal mode");
+  assert.ok(!ids.includes("experiment-not-allowed"));
+
+  fs.rmSync(src, { recursive: true, force: true });
+});

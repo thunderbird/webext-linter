@@ -32,7 +32,6 @@
       "obfuscated-code",
       "api-coverage",
       "unparsable-file",
-      "experiment-not-allowed",
       "experiment-missing-strict-max-version",
       "non-experiment-strict-max-version",
       "unpinned-dependency",
@@ -86,7 +85,7 @@
       },
       "item": "storage",
       "hint": null,
-      "message": "\"storage\" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions)."
+      "message": "\"storage\" permission is required here, but is not declared in the manifest. Add it to the requested permissions."
     }
   ]
 }

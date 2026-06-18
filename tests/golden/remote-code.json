@@ -32,7 +32,6 @@
       "obfuscated-code",
       "api-coverage",
       "unparsable-file",
-      "experiment-not-allowed",
       "experiment-missing-strict-max-version",
       "non-experiment-strict-max-version",
       "unpinned-dependency",

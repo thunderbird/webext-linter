@@ -33,7 +33,6 @@
       "obfuscated-code",
       "api-coverage",
       "unparsable-file",
-      "experiment-not-allowed",
       "experiment-missing-strict-max-version",
       "non-experiment-strict-max-version",
       "unpinned-dependency",
@@ -126,7 +125,7 @@
       },
       "item": "messagesRead",
       "hint": null,
-      "message": "\"messagesRead\" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions)."
+      "message": "\"messagesRead\" permission is required here, but is not declared in the manifest. Add it to the requested permissions."
     },
     {
       "ruleId": "deprecated-api",
@@ -174,7 +173,7 @@
       },
       "item": "accountsRead",
       "hint": null,
-      "message": "\"accountsRead\" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions)."
+      "message": "\"accountsRead\" permission is required here, but is not declared in the manifest. Add it to the requested permissions."
     },
     {
       "ruleId": "missing-permission",
@@ -186,7 +185,7 @@
       },
       "item": "messagesMove",
       "hint": null,
-      "message": "\"messagesMove\" permission is required here, but is not declared in the manifest. Add it to permissions (or optional_permissions)."
+      "message": "\"messagesMove\" permission is required here, but is not declared in the manifest. Add it to the requested permissions."
     },
     {
       "ruleId": "missing-manifest-key",
