@@ -65,8 +65,7 @@ We would like to share the following information with you:
 
 17) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
- - background.js:9
-   → Use list() instead.
+ - background.js:9 - Use list() instead.
 
 18) "messages.future" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
@@ -74,8 +73,7 @@ Read more: https://webextension-api.thunderbird.net/.
 
 19) "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
- - background.js:11
-   → The legacy API was removed; use messages instead.
+ - background.js:11 - The legacy API was removed; use messages instead.
 
 20) Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined.
  - background.js:41

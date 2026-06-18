@@ -7,8 +7,7 @@ Thank you for your contribution, it will be approved shortly. We would like to s
 
 1) "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
- - bg.js:3
-   → The legacy API was removed; use messages instead.
+ - bg.js:3 - The legacy API was removed; use messages instead.
 
 ── Manual review ──
 

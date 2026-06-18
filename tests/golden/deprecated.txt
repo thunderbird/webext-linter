@@ -7,8 +7,7 @@ Thank you for your contribution, it will be approved shortly. We would like to s
 
 1) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
- - background.js:2
-   → Use list() instead.
+ - background.js:2 - Use list() instead.
 
 2) "messages.future" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.

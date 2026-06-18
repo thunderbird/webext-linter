@@ -179,8 +179,8 @@ function groupByMessage(findings) {
 /**
  * Render one Issues entry: the shared registry response VERBATIM (no 80-column
  * rewrap, no hanging indent - a long line runs off, and the registry's own break
- * before "Read more:" lands at column 0), then one location line per finding
- * (with a "→ hint" line after any location that carries one). Every entry uses
+ * before "Read more:" lands at column 0), then one location line per finding -
+ * any remediation hint is appended to that line after " - ". Every entry uses
  * this form, so a unique message is just a one-location list.
  * (Manual review still wraps - see manualLines.)
  * @param {number} n  1-based entry number.
@@ -191,10 +191,7 @@ function renderGroup(n, findings) {
   const [first, ...rest] = findings[0].message.split("\n");
   const lines = [`${n}) ${first}`, ...rest];
   for (const f of findings) {
-    lines.push(` - ${locationLine(f)}`);
-    if (f.hint) {
-      lines.push(`   → ${f.hint}`);
-    }
+    lines.push(` - ${locationLine(f)}${f.hint ? ` - ${f.hint}` : ""}`);
   }
   // Tint the whole entry by severity (error red, warning yellow) - a no-op
   // unless the CLI enabled color. Each line is tinted on its own, so the color
