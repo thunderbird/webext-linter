@@ -13,50 +13,42 @@ Thank you for your contribution, it will be approved shortly. We kindly ask you 
 Continue manual review for the following checks:
 
 1) Check the submission for spam: Inspect the listing (name, summary,
-   description, screenshots) and the add-on itself. Mark this review step as
-   failed if it looks like spam or contains inappropriate, misleading, or
-   low-effort content.
+   description, screenshots) and the add-on itself. Determine if it looks like
+   spam or contains inappropriate, misleading, or low-effort content.
 
-2) Test the add-on and request testing information if needed: Test the add-on's
-   functionality in a test profile. Mark this review step as failed if
-   additional information like credentials is needed in order to continue the
-   review.
+2) Test the add-on and request testing information if needed: Test the add-on’s
+   functionality in a test profile, and check if it needs additional information
+   like credentials in order to continue the review.
 
-3) Check for "No Surprises" policy violations: Test the add-on's functionality
-   in a test profile and inspect the code diff from the last version. Mark this
-   review step as failed if recent changes introduced behavior that is not
-   documented on the ATN listing page and could be a surprise to the user.
+3) Check for "No Surprises" policy violations: Test the add-on’s functionality
+   in a test profile and inspect the code for any unexpected features or
+   behavior that is not documented on the ATN listing page and could be a
+   surprise to the user. A diff against the last accepted version may be
+   helpful.
 
-4) Check for a missing payment disclosure: Test the add-on's functionality in a
+4) Check for a missing payment disclosure: Test the add-on’s functionality in a
    test profile. Verify whether the add-on requires a subscription or other form
-   of payment to function. Mark this review step as failed if a payment is
-   required but the "needs payment" flag on the add-on's ATN setting is not
-   enabled.
+   of payment to function but the "needs payment" flag on the add-on’s ATN
+   listing page is not enabled.
 
 5) Check suitability for listing: Judge whether the add-on targets a limited or
    non-public audience (for example an internal, single-organization, or
-   test-only add-on). Mark this review step as failed if it would be better
-   self-hosted than publicly listed on addons.thunderbird.net.
+   test-only add-on) and should better self-hosted than publicly listed on ATN.
 
 6) Acceptable Use Policy: Check the name, summary, description, and screenshots
-   against Mozilla's Acceptable Use Policy
-   (https://www.mozilla.org/about/legal/acceptable-use/). Mark this review step
-   as failed if any of them violate it.
+   against Mozilla’s Acceptable Use Policy
+   (https://www.mozilla.org/about/legal/acceptable-use/).
 
-7) Check the icon for trademark or logo imitation: Inspect the add-on's icon.
-   Mark this review step as failed if it imitates or incorporates the
-   Thunderbird or Mozilla logo.
+7) Check the icon for trademark or logo imitation: Inspect the add-on’s icon, if
+   it imitates or incorporates the Thunderbird or Mozilla logo.
 
-8) Missing ATN description or details: The add-on listing page on ATN
-   (addons.thunderbird.net) should include detailed instructions on how to use
-   the add-on and where to find its entry points. Verify it also includes
-   screenshots to help users quickly understand how the add-on works.
+8) Missing ATN description or details: Verify that the add-on listing page on
+   ATN includes detailed instructions on how to use the add-on and where to find
+   its entry points. It should also include screenshots to help users quickly
+   understand how the add-on works.
 
-9) Missing English ATN localization: The add-on listing page on ATN
-   (addons.thunderbird.net) should also have an english localization. English
-   serves as the default language in Thunderbird, and most users who do not
-   understand the available non-English version will most likely be able to read
-   English.
+9) Missing English ATN localization: Verify that the ATN listing page also has
+   an English version.
 
 10) Forked add-on: Check if the submission is a fork of an existing add-on. Such
     forks are only allowed on ATN if they are clearly distinguished from the

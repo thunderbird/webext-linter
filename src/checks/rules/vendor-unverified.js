@@ -17,12 +17,15 @@ import { readVendorFile } from "../../normalize/vendor.js";
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../escalation.js").Escalation} Escalation */
 
-// Results this check owns, each mapped to its manual-review reason.
+// Results this check owns, each mapped to its manual-review reason. The reason is
+// URL-free: the source URL is listed separately on the location line (which reads
+// "<VENDOR file> - <declared file> - <source URL> - <reason>"), so it is not
+// repeated here.
 const REASON = {
-  "no-url": () => "no source URL declared",
-  untrusted: (url) => `source not on a trusted host: ${url}`,
-  "not-popular": (url) => `not a confirmed widely-used library: ${url}`,
-  unfetchable: (url) => `could not fetch ${url}`,
+  "no-url": "no source URL declared",
+  untrusted: "source not on a trusted host",
+  "not-popular": "not a confirmed widely-used library",
+  unfetchable: "source could not be fetched",
 };
 
 export default {
@@ -34,22 +37,26 @@ export default {
     const { addon } = ctx;
     const vendor = addon?.vendor ?? {};
     const escalations = [];
+    // The escalations group under one entry (the instruction is item-free), so
+    // each is located by the VENDOR file (its `file`) and lists the declared
+    // file, source URL, and reason as its item -> "<VENDOR> - <file> - <url> -
+    // <reason>". The per-file reason therefore stays on the report line.
+    const vendorName = (addon.files && readVendorFile(addon)?.name) || "VENDOR";
 
     for (const { path, source, outcome } of vendor.results ?? []) {
-      const reasonOf = REASON[outcome];
-      if (reasonOf) {
-        const reason = reasonOf(source);
-        ctx.note?.(path, null, reason, "unsure");
-        escalations.push({ item: `${path} - ${reason}` });
+      const reason = REASON[outcome];
+      if (reason) {
+        const item = [path, source, reason].filter(Boolean).join(" - ");
+        ctx.note?.(vendorName, null, item, "unsure");
+        escalations.push({ file: vendorName, item });
       }
     }
 
     // A VENDOR file present but parsed to nothing (scan empty, LLM fallback
     // unavailable or unhelpful): a human reads the declarations by hand.
     if (vendor.unparsedVendor) {
-      const name = readVendorFile(addon)?.name ?? "VENDOR";
-      ctx.note?.(name, null, "could not be parsed", "unsure");
-      escalations.push({ item: `${name} - could not be parsed` });
+      ctx.note?.(vendorName, null, "could not be parsed", "unsure");
+      escalations.push({ file: vendorName, item: "could not be parsed" });
     }
 
     return { findings: [], escalations };

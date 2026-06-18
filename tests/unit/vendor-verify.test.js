@@ -293,7 +293,14 @@ test("vendor-unverified: every unverifiable result escalates; verified does not"
   const out = vendorUnverified.run(ctx);
   assert.deepEqual(out.findings, []);
   assert.equal(out.escalations.length, 4);
-  assert.match(out.escalations[1].item, /trusted host/);
+  // Each escalation is located by the VENDOR file; the item lists the declared
+  // file, the source URL (when there is one), and the URL-free reason.
+  assert.ok(out.escalations.every((e) => e.file === "VENDOR"));
+  assert.equal(out.escalations[0].item, "a.js - no source URL declared");
+  assert.equal(
+    out.escalations[1].item,
+    "b.js - http://evil/x.js - source not on a trusted host"
+  );
 });
 
 test("missing-vendor-file: one warning per missing entry, listing the path", () => {
@@ -326,5 +333,7 @@ test("vendor-unverified: an unparsable VENDOR file escalates to manual", () => {
   };
   const out = vendorUnverified.run(ctx);
   assert.equal(out.escalations.length, 1);
-  assert.match(out.escalations[0].item, /VENDOR - could not be parsed/);
+  // The VENDOR file is the location; the item is just the reason.
+  assert.equal(out.escalations[0].file, "VENDOR");
+  assert.equal(out.escalations[0].item, "could not be parsed");
 });

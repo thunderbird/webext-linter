@@ -48,7 +48,13 @@ export default {
     if (!any) {
       return { findings: [], escalations: [] };
     }
-    const item = hosts.size ? [...hosts].sort().join(", ") : "a remote server";
-    return { findings: [], escalations: [{ item }] };
+    // One escalation per distinct remote host: the instruction is item-free, so
+    // the hosts group under one entry and list as the "where" - a plain list of
+    // remote hosts the reviewer must confirm a privacy policy covers.
+    const sorted = [...hosts].sort();
+    const escalations = (sorted.length ? sorted : ["a remote server"]).map(
+      (host) => ({ item: host })
+    );
+    return { findings: [], escalations };
   },
 };
