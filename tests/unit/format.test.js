@@ -303,3 +303,72 @@ test("an error among warnings shows only 'rejected'; later headings stay plain",
   assert.match(out, /\nWARN:/); // warning heading rendered, no intro glued
   assert.ok(out.indexOf("REJECTED-MSG") < out.indexOf("WARN:"));
 });
+
+// ---- display cap (MAX_ENTRIES_PER_CATEGORY) ----
+// A grouped Issues entry lists at most 25 locations, then one "… and N more,
+// excluded from this list" marker. The cap is display only: the summary count
+// and JSON still reflect every finding.
+test("Issues cap a grouped list at 25 locations with a 'more' marker", () => {
+  const findings = Array.from({ length: 30 }, (_, i) => ({
+    ruleId: "r",
+    severity: "warning",
+    message: "many locations",
+    file: `f${i}.js`,
+    loc: { line: i + 1 },
+    item: null,
+    hint: null,
+  }));
+  const r = {
+    findings,
+    meta: { action: "review", addon: "x", reviewed: true },
+  };
+  const out = formatText(r);
+  const issues = out.split("── Issues ──")[1].split("── Summary ──")[0];
+  // Exactly 25 location lines render, then the marker for the other 5.
+  assert.equal((issues.match(/^ - f\d+\.js:/gm) || []).length, 25);
+  assert.match(issues, /- … and 5 more, excluded from this list/);
+  // Display only: the summary still counts all 30, and JSON carries them all.
+  assert.match(out, /30 warning\(s\)/);
+  assert.equal(JSON.parse(formatJson(r)).findings.length, 30);
+});
+
+// A group at or under the cap renders every location and shows no marker.
+test("Issues add no marker for a list of 25 or fewer", () => {
+  const findings = Array.from({ length: 25 }, (_, i) => ({
+    ruleId: "r",
+    severity: "warning",
+    message: "exactly at the cap",
+    file: `f${i}.js`,
+    loc: { line: i + 1 },
+    item: null,
+    hint: null,
+  }));
+  const out = formatText({
+    findings,
+    meta: { action: "review", addon: "x", reviewed: true },
+  });
+  const issues = out.split("── Issues ──")[1].split("── Summary ──")[0];
+  assert.equal((issues.match(/^ - f\d+\.js:/gm) || []).length, 25);
+  assert.ok(!issues.includes("excluded from this list"));
+});
+
+// Manual review caps a grouped locus list the same way; the standalone reminder
+// (no locus) in the same report is unaffected.
+test("Manual review caps a grouped locus list at 25 with a marker", () => {
+  const manualReview = Array.from({ length: 30 }, (_, i) => ({
+    title: "Unused permissions",
+    instructions: "Review whether each is used.",
+    file: "manifest.json",
+    loc: { line: i + 1 },
+    item: `perm${i}`,
+    listItem: true,
+  }));
+  manualReview.push({ title: "Spam check", instructions: "Inspect it." });
+  const manual = formatText({
+    findings: [],
+    meta: { action: "review", addon: "x", reviewed: true, manualReview },
+  }).split("── Manual review ──")[1];
+  assert.equal((manual.match(/^ - manifest\.json:/gm) || []).length, 25);
+  assert.match(manual, /- … and 5 more, excluded from this list/);
+  assert.match(manual, /Spam check: Inspect it\./); // standalone reminder intact
+});

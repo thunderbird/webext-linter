@@ -17,6 +17,7 @@
 
 import { SEVERITY, sortFindings, countByRule, hasErrors } from "./finding.js";
 import { red, yellow, blue } from "../util/color.js";
+import { MAX_ENTRIES_PER_CATEGORY } from "../config.js";
 
 /** @param {string} s @returns {string} */
 const identity = (s) => s;
@@ -190,14 +191,29 @@ function groupByMessage(findings) {
 function renderGroup(n, findings) {
   const [first, ...rest] = findings[0].message.split("\n");
   const lines = [`${n}) ${first}`, ...rest];
-  for (const f of findings) {
+  for (const f of findings.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
     lines.push(` - ${locationLine(f)}${f.hint ? ` - ${f.hint}` : ""}`);
+  }
+  if (findings.length > MAX_ENTRIES_PER_CATEGORY) {
+    lines.push(excludedMarker(findings.length - MAX_ENTRIES_PER_CATEGORY));
   }
   // Tint the whole entry by severity (error red, warning yellow) - a no-op
   // unless the CLI enabled color. Each line is tinted on its own, so the color
   // resets per line and stripColor cleans the --report-out copy.
   const tint = SEV_COLOR[findings[0].severity] ?? identity;
   return lines.map(tint);
+}
+
+/**
+ * The capped-list marker that closes a grouped entry whose location list was
+ * truncated to MAX_ENTRIES_PER_CATEGORY: a final "- ..." line standing in for
+ * the omitted locations. Display only - the summary counts and JSON still see
+ * every finding (see MAX_ENTRIES_PER_CATEGORY in src/config.js).
+ * @param {number} n  How many locations were omitted.
+ * @returns {string}
+ */
+function excludedMarker(n) {
+  return ` - … and ${n} more, excluded from this list`;
 }
 
 /** The "Title: instructions" line of a manual item (its grouping key). */
@@ -240,12 +256,15 @@ function manualLines(manual, reviewUrl) {
   for (const [body, items] of byBody) {
     out.push("");
     const lines = wrapEntry(++n, body);
-    for (const m of items) {
-      // List a locus only when there is one (escalated items); standalone
-      // reminders have no file/item and render as the wrapped body alone.
-      if (m.file || (m.listItem && m.item)) {
-        lines.push(` - ${locationLine(m)}`);
-      }
+    // List a locus only when there is one (escalated items); standalone
+    // reminders have no file/item and render as the wrapped body alone. The
+    // list is display-capped like Issues (see renderGroup).
+    const loci = items.filter((m) => m.file || (m.listItem && m.item));
+    for (const m of loci.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
+      lines.push(` - ${locationLine(m)}`);
+    }
+    if (loci.length > MAX_ENTRIES_PER_CATEGORY) {
+      lines.push(excludedMarker(loci.length - MAX_ENTRIES_PER_CATEGORY));
     }
     out.push(...lines.map(blue));
   }

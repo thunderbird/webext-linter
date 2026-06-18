@@ -46,6 +46,15 @@ export const DISPLAY_TRUNCATE_LENGTH = 80;
 export const BANNER_SCAN_CHARS = 1000;
 
 /**
+ * Display cap: the most location lines a single grouped report entry lists (an
+ * Issues or Manual-review entry with many "- file:line" locations). Beyond this,
+ * the rest are replaced by one "... more, excluded from this list" marker. This
+ * is a rendering limit only (see src/report/format.js) - the summary counts,
+ * JSON output, and LLM logic still see every finding.
+ */
+export const MAX_ENTRIES_PER_CATEGORY = 25;
+
+/**
  * Whether the reference graph (reachability) skips "non-authored" JS - library,
  * minified, obfuscated, or VENDOR.md-declared files (see nonAuthoredJs in
  * src/checks/lib/bundled.js) - when extracting outgoing edges.
