@@ -10,10 +10,11 @@
 //     then gate on popularity (verified / not-popular). An unfetchable URL is
 //     escalated to manual review.
 //   - package.json dependencies pinned to a version: fetch the published file
-//     listing from unpkg, and for each packaged file whose basename a published
-//     file shares, fetch and EOL-compare. A match marks that file vendored
-//     (verified / not-popular). A non-match is left alone - a same-basename
-//     file is not assumed to be a modified copy, as it may be the author's own.
+//     listing from unpkg ONCE (it carries a per-file sha256 integrity) and mark
+//     vendored any packaged file whose content hash matches a published file's
+//     integrity - matched locally, no file bytes downloaded, so it scales to a
+//     large package. A file that does not hash-match is left alone, as it may be
+//     the author's own code or a modified copy.
 //
 // Belongs here: verifyVendor (the batch), the per-source compare, the popularity
 // lookup, and the default network transport. Does NOT belong here: URL
@@ -21,8 +22,9 @@
 // allowlist + thresholds (-> config.js), and the finding/manual routing (-> the
 // four vendor checks + registry).
 
+import { createHash } from "node:crypto";
+
 import { classifySource } from "./sources.js";
-import { basename } from "../util/files.js";
 import {
   VENDOR_NPM_MIN_DOWNLOADS,
   VENDOR_GITHUB_MIN_STARS,
@@ -38,10 +40,16 @@ import {
  *   fetchJson: (url: string) => Promise<object>}} VendorNet
  */
 /**
- * @typedef {object} MetaNode  A node in an unpkg "?meta" listing tree.
- * @property {"file"|"directory"} [type]  The node kind.
- * @property {string} [path]  The published path (for a file).
- * @property {MetaNode[]} [files]  Child nodes (for a directory).
+ * @typedef {object} MetaNode  A node in an unpkg "?meta" listing. unpkg returns a
+ * flat `files` array whose entries each carry a `path` and a `type` that is the
+ * file's MIME type (e.g. "application/javascript") - NOT the literal "file". The
+ * listing root (and any directory node in the older nested form) instead carries
+ * a `files` child array, so a node is a FILE when it has a `path` and no `files`.
+ * @property {string} [path]  The published path.
+ * @property {string} [type]  A file's MIME type, or "directory" (nested form).
+ * @property {string} [integrity]  A file's Subresource-Integrity hash, e.g.
+ *   "sha256-<base64>" (used to match without downloading the bytes).
+ * @property {MetaNode[]} [files]  Child nodes (the listing root / a directory).
  */
 
 /**
@@ -94,8 +102,10 @@ async function verifyUrl(entry, addon, net) {
 }
 
 /**
- * Match packaged files against a pinned npm package's published files (by
- * basename + EOL-tolerant byte compare), recording each match as vendored.
+ * Match packaged files against a pinned npm package's published files by
+ * Subresource-Integrity hash (the per-file sha256 in the "?meta" listing),
+ * recording each match as vendored. The match is purely local - the listing is
+ * the only fetch; no file bytes are downloaded - so it scales to large packages.
  * @param {{name: string, version: string}} pkg
  * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
  * @returns {Promise<void>}
@@ -113,26 +123,37 @@ async function verifyPackage(pkg, addon, vendor, net) {
   } catch {
     return; // can't list the package - its files (if shipped) are scanned as-is
   }
-  const byBase = new Map();
-  for (const p of flattenMeta(listing)) {
-    const b = basename(p);
-    if (!byBase.has(b)) {
-      byBase.set(b, []);
+  // Index the published files by their SRI hash. unpkg emits standard padded
+  // base64 (e.g. "sha256-<base64>"), which matches Node's digest("base64").
+  const byHash = new Map(); // "<algo>-<base64>" -> published path
+  for (const f of metaFiles(listing)) {
+    for (const sri of String(f.integrity ?? "")
+      .trim()
+      .split(/\s+/)) {
+      if (/^sha\d+-./.test(sri) && !byHash.has(sri)) {
+        byHash.set(sri, f.path);
+      }
     }
-    byBase.get(b).push(p);
   }
+  const algos = [...new Set([...byHash.keys()].map((k) => k.split("-")[0]))];
   let popular = null; // looked up once, lazily, only if a file actually matches
   for (const [addonPath, mine] of addon.files) {
     if (vendor.set.has(addonPath)) {
       continue; // already vendored (a VENDOR entry)
     }
-    const url = await matchPublished(
-      base,
-      byBase.get(basename(addonPath)),
-      mine,
-      net
-    );
-    if (!url) {
+    // A packaged file is vendored when its exact content hash matches a
+    // published file (basename-independent - a renamed verbatim copy still
+    // matches). A file that does not hash-match is left alone (it may be the
+    // author's own code, or a modified copy).
+    let path = null;
+    for (const algo of algos) {
+      const sri = `${algo}-${createHash(algo).update(mine).digest("base64")}`;
+      if (byHash.has(sri)) {
+        path = byHash.get(sri);
+        break;
+      }
+    }
+    if (!path) {
       continue;
     }
     if (popular === null) {
@@ -141,33 +162,10 @@ async function verifyPackage(pkg, addon, vendor, net) {
     vendor.set.add(addonPath);
     vendor.results.push({
       path: addonPath,
-      source: url,
+      source: `${base}${path}`,
       outcome: popular ? "verified" : "not-popular",
     });
   }
-}
-
-/**
- * The published file URL whose bytes EOL-match `mine`, or null. Tries every
- * same-basename candidate in turn, and the first match wins.
- * @param {string} base  "https://unpkg.com/<name>@<version>"
- * @param {string[]|undefined} candidates  Published paths sharing the basename.
- * @param {Buffer} mine @param {VendorNet} net
- * @returns {Promise<?string>}
- */
-async function matchPublished(base, candidates, mine, net) {
-  for (const cand of candidates ?? []) {
-    let bytes;
-    try {
-      bytes = await net.fetchBytes(`${base}${cand}`);
-    } catch {
-      continue;
-    }
-    if (eolEqual(mine, bytes)) {
-      return `${base}${cand}`;
-    }
-  }
-  return null;
 }
 
 /**
@@ -189,20 +187,24 @@ function eolNormalize(buf) {
 }
 
 /**
- * Flatten an unpkg "?meta" listing tree into the file paths it contains (each
- * like "/dist/jszip.min.js").
- * @param {MetaNode} node @param {string[]} [out]
- * @returns {string[]}
+ * The published file nodes (each `{path, integrity, ...}`) an unpkg "?meta"
+ * listing contains. A node is a file when it has a `path` and no `files` child of
+ * its own - which covers both unpkg's flat listing (every entry is a file, its
+ * `type` a MIME type) and the older nested tree (directories carry a `files`
+ * array). Keying off `type === "file"` would miss the flat form, whose entries
+ * carry a MIME type instead.
+ * @param {MetaNode} node @param {MetaNode[]} [out]
+ * @returns {MetaNode[]}
  */
-function flattenMeta(node, out = []) {
+function metaFiles(node, out = []) {
   if (!node || typeof node !== "object") {
     return out;
   }
-  if (node.type === "file" && typeof node.path === "string") {
-    out.push(node.path);
+  if (typeof node.path === "string" && node.files === undefined) {
+    out.push(node);
   }
   for (const child of node.files ?? []) {
-    flattenMeta(child, out);
+    metaFiles(child, out);
   }
   return out;
 }
@@ -264,7 +266,15 @@ export const defaultNet = {
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
     }
-    return res.json();
+    const declared = Number(res.headers.get("content-length"));
+    if (declared && declared > VENDOR_FETCH_MAX_BYTES) {
+      throw new Error("listing exceeds size cap");
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > VENDOR_FETCH_MAX_BYTES) {
+      throw new Error("listing exceeds size cap");
+    }
+    return JSON.parse(buf.toString("utf8"));
   },
 };
 

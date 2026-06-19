@@ -5,6 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 
 import { classifySource } from "../../src/vendor/sources.js";
 import { verifyVendor } from "../../src/vendor/verify.js";
@@ -155,68 +156,86 @@ test("verifyVendor: an unfetchable source -> unfetchable", async () => {
   assert.equal(addon.vendor.results[0].outcome, "unfetchable");
 });
 
-test("verifyVendor: a package.json file matches a published file by basename", async () => {
+test("verifyVendor: a file that does not hash-match any published file is not claimed", async () => {
+  const sri = `sha256-${createHash("sha256").update("UPSTREAM").digest("base64")}`;
   const addon = addonWith(
-    { "lib/jszip.min.js": "ZIP\n" },
+    { "lib/jszip.min.js": "MY OWN CODE" }, // same basename, different bytes
     store({ packages: [{ name: "jszip", version: "3.10.1" }] })
   );
-  const listing = {
-    type: "directory",
-    files: [
-      { type: "file", path: "/dist/jszip.min.js" },
-      { type: "file", path: "/package.json" },
-    ],
-  };
-  const fileUrl = "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js";
-  await verifyVendor(addon, net({ listing, files: { [fileUrl]: "ZIP\n" } }));
-  assert.deepEqual(addon.vendor.results, [
-    { path: "lib/jszip.min.js", source: fileUrl, outcome: "verified" },
-  ]);
-  assert.ok(addon.vendor.set.has("lib/jszip.min.js"));
-});
-
-test("verifyVendor: a same-basename file that differs is NOT claimed as vendored", async () => {
-  const addon = addonWith(
-    { "lib/jszip.min.js": "MY OWN CODE" },
-    store({ packages: [{ name: "jszip", version: "3.10.1" }] })
-  );
-  const listing = {
-    type: "directory",
-    files: [{ type: "file", path: "/dist/jszip.min.js" }],
-  };
-  const fileUrl = "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js";
-  await verifyVendor(addon, net({ listing, files: { [fileUrl]: "UPSTREAM" } }));
+  const listing = { files: [{ path: "/dist/jszip.min.js", integrity: sri }] };
+  await verifyVendor(addon, net({ listing, throwOnFetch: true }));
   assert.deepEqual(addon.vendor.results, []);
   assert.equal(addon.vendor.set.has("lib/jszip.min.js"), false);
 });
 
-test("verifyVendor: multiple same-basename candidates - the matching one wins", async () => {
+test("verifyVendor: a renamed verbatim copy is matched by hash (basename-independent)", async () => {
+  const body = "LIB\n";
+  const sri = `sha256-${createHash("sha256").update(body).digest("base64")}`;
   const addon = addonWith(
-    { "vendor/util.js": "RIGHT\n" },
+    { "vendor/renamed.js": body }, // a different name than the published file
     store({ packages: [{ name: "pkg", version: "2.0.0" }] })
   );
-  const listing = {
-    type: "directory",
-    files: [
-      { type: "file", path: "/util.js" },
-      { type: "file", path: "/esm/util.js" },
-    ],
-  };
+  const listing = { files: [{ path: "/dist/foo.js", integrity: sri }] };
   const base = "https://unpkg.com/pkg@2.0.0";
-  await verifyVendor(
-    addon,
-    net({
-      listing,
-      files: {
-        [`${base}/util.js`]: "WRONG",
-        [`${base}/esm/util.js`]: "RIGHT\n",
-      },
-    })
-  );
+  await verifyVendor(addon, net({ listing, throwOnFetch: true }));
   assert.deepEqual(addon.vendor.results, [
     {
-      path: "vendor/util.js",
-      source: `${base}/esm/util.js`,
+      path: "vendor/renamed.js",
+      source: `${base}/dist/foo.js`,
+      outcome: "verified",
+    },
+  ]);
+});
+
+test("verifyVendor: a hash match for a niche package is not-popular", async () => {
+  const body = "LIB\n";
+  const sri = `sha256-${createHash("sha256").update(body).digest("base64")}`;
+  const addon = addonWith(
+    { "vendor/lib.js": body },
+    store({ packages: [{ name: "niche", version: "1.0.0" }] })
+  );
+  const listing = { files: [{ path: "/lib.js", integrity: sri }] };
+  await verifyVendor(addon, net({ listing, downloads: 3, throwOnFetch: true }));
+  assert.equal(addon.vendor.results[0].outcome, "not-popular");
+});
+
+// unpkg's real "?meta" is a FLAT files array whose entries carry the MIME type in
+// `type` (not the literal "file") plus a per-file sha256 `integrity`. A packaged
+// file is matched by hashing it locally and comparing to that integrity - no
+// bytes are fetched (`throwOnFetch` proves it). (Regression: keying off
+// type === "file" extracted zero files, so vendored copies were never
+// whitelisted; and fetching every file made a big package hang.)
+test("verifyVendor: a flat ?meta file is matched by sha256 integrity, no download", async () => {
+  const body = "WA\n";
+  const sri = `sha256-${createHash("sha256").update(body).digest("base64")}`;
+  const addon = addonWith(
+    { "vendor/webawesome/webawesome.js": body },
+    store({ packages: [{ name: "@awesome.me/webawesome", version: "3.3.1" }] })
+  );
+  const listing = {
+    package: "@awesome.me/webawesome",
+    version: "3.3.1",
+    prefix: "/",
+    files: [
+      {
+        path: "/dist/webawesome.js",
+        type: "application/javascript",
+        integrity: sri,
+      },
+      {
+        path: "/dist-cdn/webawesome.js",
+        type: "application/javascript",
+        integrity: sri,
+      },
+    ],
+  };
+  const base = "https://unpkg.com/@awesome.me/webawesome@3.3.1";
+  await verifyVendor(addon, net({ listing, throwOnFetch: true }));
+  assert.ok(addon.vendor.set.has("vendor/webawesome/webawesome.js"));
+  assert.deepEqual(addon.vendor.results, [
+    {
+      path: "vendor/webawesome/webawesome.js",
+      source: `${base}/dist/webawesome.js`,
       outcome: "verified",
     },
   ]);
