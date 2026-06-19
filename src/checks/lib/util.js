@@ -16,7 +16,6 @@
 // debug) stay in src/util/files.js, src/util/json.js, src/util/log.js. Any
 // rule's verdict logic - src/checks/rules/*.
 
-import { basename } from "../../util/files.js";
 import { DISPLAY_TRUNCATE_LENGTH } from "../../config.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -91,8 +90,7 @@ export function llmEnabled(ctx) {
  */
 export function referrerSupported(reach, f) {
   return (
-    reach.isLive(f) ||
-    reach.mentionsOf(basename(f), f).some((m) => reach.isLive(m.file))
+    reach.isLive(f) || reach.mentionsOf(f).some((m) => reach.isLive(m.file))
   );
 }
 

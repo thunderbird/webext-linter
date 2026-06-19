@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "Unused folder",
+  "version": "1.0",
+  "description": "A fully-unused nested folder collapses to its top-most folder.",
+  "background": { "scripts": ["background.js"] }
+}

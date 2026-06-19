@@ -1,0 +1,6 @@
+{
+  "_comment": "Every file under deadtree/ is an unreachable orphan, so the unused-files report collapses the whole nested tree to the single top-most folder 'deadtree/' rather than listing each file.",
+  "expect": {
+    "unused-files": ["deadtree/"]
+  }
+}

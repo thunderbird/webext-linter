@@ -95,7 +95,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
+      "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
     {
       "ruleId": "remote-script",
@@ -140,7 +140,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
+      "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
     {
       "ruleId": "remote-script",

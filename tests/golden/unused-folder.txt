@@ -2,102 +2,8 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) "browser.bogusApi" is not supported in the targeted Thunderbird version.
-Read more: https://webextension-api.thunderbird.net/.
- - background.js:4
-
-2) "browser.messages.frobnicate" is not supported in the targeted Thunderbird version.
-Read more: https://webextension-api.thunderbird.net/.
- - background.js:5
-
-3) "messagesRead" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
- - background.js:9
-
-4) "accountsRead" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
- - background.js:15
-
-5) "messagesMove" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
- - background.js:16
-
-6) action.onClicked needs a manifest key that is not declared: "action". Add one of those keys to manifest.json.
- - background.js:19
-
-7) Dynamic code execution via "eval()" is not allowed.
- - background.js:22
-
-8) The add-on makes a synchronous XMLHttpRequest, which can lock up the user interface. Please use an asynchronous request instead.
- - background.js:26
-
-9) Unconditional debugger statement. Please remove it or move it behind a config flag.
- - background.js:32
-
-10) "missing.js" is referenced but not bundled with the add-on. Please include every referenced file in the package.
- - manifest.json
-
-11) Invalid manifest.json: one or more requested permissions are unknown.
-Read more: https://webextension-api.thunderbird.net/.
- - manifest.json:5 - bogusPermission
-
-12) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
- - options.html
- - styles.css
-
-13) Remote code is loaded from "https://cdn.example.com/remote.js". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
- - options.html:4
-
-14) Remote code is loaded from "https://fonts.example.com/font.css". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
- - styles.css:1
-
-We kindly ask you to resolve the following issues with your next release:
-
-15) Dynamic content is assigned via ".innerHTML". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.
-Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
- - background.js:29
-
-16) Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.
-Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
- - background.js:35
-
-We would like to share the following information with you:
-
-17) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
-Read more: https://webextension-api.thunderbird.net/.
- - background.js:9 - Use list() instead.
-
-18) "messages.future" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
-Read more: https://webextension-api.thunderbird.net/.
- - background.js:10
-
-19) "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
-Read more: https://webextension-api.thunderbird.net/.
- - background.js:11 - The legacy API was removed; use messages instead.
-
-20) Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined.
- - background.js:41
-
-21) The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
-Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
- - manifest.json:6 - <all_urls>
-
-22) Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.
-Read more: https://webextension-api.thunderbird.net/.
- - manifest.json:11 - weirdTopLevelKey
-
-── Extended manual review ──
-
-Continue manual review for the following checks:
-
-1) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
-Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
-An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
-
-2) Unused permissions: Review whether the following declared permissions are
-   used, and ask the developer to remove any that are not needed.
-Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
- - manifest.json:5 - clipboardWrite
- - manifest.json:5 - bogusPermission
+1) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
+ - deadtree/
 
 ── Standard manual review ──
 
@@ -168,4 +74,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-15 error(s), 2 warning(s), 6 info, 13 manual review step(s)
+1 error(s), 0 warning(s), 0 info, 10 manual review step(s)

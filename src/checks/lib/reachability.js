@@ -14,7 +14,9 @@
 // that static analysis can't follow - a loader in dead code never runs, so it
 // is dropped. `isLive` says whether a file is reached from any entry point. A
 // `mentionsOf` string-find net catches references the structured parsers miss
-// (custom loaders, odd strings).
+// (custom loaders, odd strings); it is path-aware, so a reference to a
+// same-basename file elsewhere (a library's own button.js) does not make an
+// unrelated file look mentioned.
 //
 // Belongs here: building the reference graph and the Reachability result
 // (reachable/webReachable sets, the dynamic-loader flag, mentionsOf), memoized
@@ -46,7 +48,12 @@ import {
   DOC_METADATA_RE,
   DEPENDENCY_FILE_RE,
 } from "./util.js";
-import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../../util/files.js";
+import {
+  basename,
+  extname,
+  JS_EXTENSIONS,
+  HTML_EXTENSIONS,
+} from "../../util/files.js";
 import { REACHABILITY_SKIPS_NON_AUTHORED } from "../../config.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -81,8 +88,10 @@ const DOC_FILE = new RegExp(
  * @property {boolean} hasDynamicLoaders  A live, authored file builds a load path
  *   at run time (dead-code and non-authored/library loaders are excluded).
  * @property {{file: string, kind: string}[]} dynamicLoaderSites  Live, authored.
- * @property {(basename: string, exceptFile?: string) =>
- *   {file: string, line: number}[]} mentionsOf
+ * @property {(file: string) => {file: string, line: number}[]} mentionsOf
+ *   Lines in OTHER files that reference `file` by its basename - path-aware: an
+ *   occurrence whose surrounding path resolves to a DIFFERENT packaged file (a
+ *   same-basename namesake) is not counted.
  * @property {(file: string) => boolean} isLive  Reachable from ANY entry point
  *   (general or web-facing) - tells a check whether a referrer is itself live
  *   code, so a reference from a dead file can be discounted.
@@ -269,13 +278,52 @@ function bfs(seeds, outEdges) {
   return reached;
 }
 
+/** Escape a string for literal use inside a RegExp. */
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
- * The string-find safety net: every text file's lines holding `basename` (a
- * reference the structured parsers may have missed). Excludes `exceptFile` so a
- * file mentioning its own name does not save itself.
+ * Whether a line that contains `target`'s basename could actually reference
+ * `target` - as opposed to a DIFFERENT packaged file that happens to share the
+ * basename. Each path-like token ending in the basename is resolved (relative to
+ * the mentioning file AND root-relative); a token that resolves to some OTHER
+ * packaged file points elsewhere. The line refers to `target` UNLESS every such
+ * token points elsewhere - a bare basename, an unresolvable token, or one
+ * resolving to `target` itself all keep the line (the net stays recall-first).
+ * @param {string} line @param {RegExp} tokenRe  Global regex for "<path>basename".
+ * @param {string} fromFile  The mentioning file (for relative resolution).
+ * @param {string} target  The file whose reference we are looking for.
  * @param {Map<string, Buffer>} files
- * @returns {(basename: string, exceptFile?: string) =>
- *   {file: string, line: number}[]}
+ * @returns {boolean}
+ */
+function refersTo(line, tokenRe, fromFile, target, files) {
+  tokenRe.lastIndex = 0;
+  let sawElsewhere = false;
+  let m;
+  while ((m = tokenRe.exec(line))) {
+    const tok = m[0];
+    const rel = resolveRef(files, fromFile, tok);
+    const root = resolveRef(files, null, tok);
+    if (rel === target || root === target) {
+      return true; // explicitly references the target
+    }
+    if (!rel && !root) {
+      return true; // bare / unresolvable token - cannot rule out the target
+    }
+    sawElsewhere = true; // resolves only to other packaged file(s)
+  }
+  return !sawElsewhere;
+}
+
+/**
+ * The string-find safety net: every other text file's lines that reference
+ * `file` by its basename (a reference the structured parsers may have missed).
+ * Path-aware (see refersTo): an occurrence that resolves to a different
+ * same-basename file is not counted, so a vendored `components/button/button.js`
+ * reference does not make an unrelated `widgets/button.js` look mentioned.
+ * @param {Map<string, Buffer>} files
+ * @returns {(file: string) => {file: string, line: number}[]}
  */
 function makeMentions(files) {
   // manifest.json is structured config, not a code loader - a path appearing
@@ -293,14 +341,19 @@ function makeMentions(files) {
       lines.set(file, buf.toString("utf8").split("\n"));
     }
   }
-  return (basename, exceptFile) => {
+  return (target) => {
+    const base = basename(target);
+    const tokenRe = new RegExp(`[\\w./@-]*${escapeRegExp(base)}`, "g");
     const hits = [];
     for (const [file, ls] of lines) {
-      if (file === exceptFile) {
-        continue;
+      if (file === target) {
+        continue; // a file mentioning its own name does not save itself
       }
       ls.forEach((line, i) => {
-        if (line.includes(basename)) {
+        if (
+          line.includes(base) &&
+          refersTo(line, tokenRe, file, target, files)
+        ) {
           hits.push({ file, line: i + 1 });
         }
       });

@@ -28,7 +28,6 @@ import {
   DOC_METADATA_RE,
   DEPENDENCY_FILE_RE,
 } from "../lib/util.js";
-import { basename } from "../../util/files.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../lib/reachability.js").Reachability} Reachability */
@@ -86,10 +85,7 @@ export default {
       // Unreachable. A reference from live code (whether it is a real load is the
       // model's call) or a live dynamic loader makes it ambiguous; a file named
       // only by dead code with no live loader is a clear orphan.
-      const base = basename(file);
-      const mentions = reach
-        .mentionsOf(base, file)
-        .filter((m) => m.file !== file);
+      const mentions = reach.mentionsOf(file);
       const supported = mentions.some((m) => referrerSupported(reach, m.file));
       const orphan = !supported && !reach.hasDynamicLoaders;
       ctx.note?.(

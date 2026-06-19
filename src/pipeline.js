@@ -30,6 +30,7 @@ import { headerLines } from "./report/format.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import { verifyVendor } from "./vendor/verify.js";
 import { classifyBundled } from "./checks/lib/bundled.js";
+import { collapseUnused } from "./checks/lib/unused-folders.js";
 import { isExperiment } from "./checks/lib/util.js";
 import { createLlmBudget } from "./llm/budget.js";
 import { debug, progress } from "./util/log.js";
@@ -397,6 +398,16 @@ async function reviewAddon(
     ran.push(check);
   }
 
+  // Condense the unused-files report: when every packaged file under a folder is
+  // unused, collapse it to the top-most such folder (recursively). Output-only -
+  // it runs after every check has scanned every file, so other rules still report
+  // each nested file at its exact path. Applied separately to the findings (clear
+  // orphans/junk) and the manual escalations (ambiguous), so certainty is not
+  // mixed (a folder split across both buckets collapses in neither).
+  const allFiles = [...addon.files.keys()];
+  collapseUnusedFolders(findings, allFiles);
+  collapseUnusedFolders(manualItems, allFiles);
+
   return {
     findings,
     // The built run context is returned for any post-review use by the caller.
@@ -431,6 +442,54 @@ async function reviewAddon(
           ],
     },
   };
+}
+
+/**
+ * Rewrite the unused-files entries (findings OR manual refs) in `entries`,
+ * in place, collapsing fully-unused folders to a single top-most folder entry
+ * (see collapseUnused). Only acts when at least one folder forms, so the common
+ * "nothing collapses" case leaves the array untouched (no reordering). The first
+ * unused-files entry serves as the template, so the collapsed entries keep its
+ * `ruleId` + `severity` (findings) / `ruleId` + `kind` (manual refs); each new
+ * entry sets `file` to the collapsed path and clears `loc`/`item`.
+ * @param {Array<{ruleId?: string, file?: ?string}>} entries
+ * @param {string[]} allFiles  Every packaged file path (the denominator).
+ */
+function collapseUnusedFolders(entries, allFiles) {
+  const idx = [];
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i].ruleId === "unused-files" && entries[i].file) {
+      idx.push(i);
+    }
+  }
+  if (!idx.length) {
+    return;
+  }
+  const collapsed = collapseUnused(
+    idx.map((i) => entries[i].file),
+    allFiles
+  );
+  if (!collapsed.some((p) => p.endsWith("/"))) {
+    return; // no folder formed - leave the per-file entries (and their order) as-is
+  }
+  const base = entries[idx[0]];
+  const replacements = collapsed.map((file) => ({
+    ...base,
+    file,
+    loc: null,
+    item: null,
+  }));
+  const drop = new Set(idx);
+  const rebuilt = [];
+  for (let i = 0; i < entries.length; i++) {
+    if (i === idx[0]) {
+      rebuilt.push(...replacements); // collapsed group takes the first match's slot
+    }
+    if (!drop.has(i)) {
+      rebuilt.push(entries[i]);
+    }
+  }
+  entries.splice(0, entries.length, ...rebuilt);
 }
 
 /**

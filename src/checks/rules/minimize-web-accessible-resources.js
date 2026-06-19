@@ -35,7 +35,6 @@ import {
   expandResourcePattern,
   isOverBroadResource,
 } from "../lib/web-accessible-resources.js";
-import { basename } from "../../util/files.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -108,10 +107,7 @@ export default {
             );
             continue;
           }
-          const base = basename(file);
-          const mentions = reach
-            .mentionsOf(base, file)
-            .filter((m) => m.file !== file);
+          const mentions = reach.mentionsOf(file);
           const supported = mentions.some((m) =>
             referrerSupported(reach, m.file)
           );

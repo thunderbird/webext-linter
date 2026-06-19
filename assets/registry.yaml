@@ -468,7 +468,7 @@ llm-checks:
     The following files are not reachable from any entry point but may be loaded
     dynamically. Confirm by hand whether they are unused and safe to remove.
   response: |-
-    The following file(s) appear to be unused or hidden files or folders. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
+    The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
 
 # LLM check: over-broad or unloaded web_accessible_resources exposure.
 - title: Minimize web_accessible_resources

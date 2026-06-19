@@ -181,6 +181,52 @@ test("unused-files: junk + orphan are findings; mentioned -> candidate", () => {
   assert.ok(!found.includes("bg.js")); // reachable
 });
 
+// The mention net is path-aware: a reference whose path resolves to a DIFFERENT
+// packaged file must not make an unrelated same-basename file look mentioned. A
+// bare basename (no resolvable path) is still caught, so recall is preserved.
+test("mentionsOf is path-aware: a path-resolved reference ignores a same-basename namesake", () => {
+  const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
+  const files = {
+    "manifest.json": JSON.stringify(manifest),
+    "bg.js": `import "./lib/button.js";\n// bare ref to widget.js in a comment`,
+    "lib/button.js": `export const x = 1;`,
+    "dead/button.js": `export const y = 2;`,
+    "dead/widget.js": `export const z = 3;`,
+  };
+  const reach = buildReachability(ctxFrom(files, manifest));
+  // "./lib/button.js" resolves to lib/button.js, NOT to dead/button.js.
+  assert.deepEqual(reach.mentionsOf("dead/button.js"), []);
+  assert.deepEqual(
+    reach.mentionsOf("lib/button.js").map((m) => m.file),
+    ["bg.js"]
+  );
+  // A bare "widget.js" (no resolvable path) still counts.
+  assert.deepEqual(
+    reach.mentionsOf("dead/widget.js").map((m) => m.file),
+    ["bg.js"]
+  );
+});
+
+// End to end through the check: a genuinely-unused file whose basename collides
+// with a referenced library file (e.g. an add-on's own widgets/button.js vs a
+// vendored components/button/button.js) is a clear ORPHAN finding, not an
+// ambiguous escalation - so it is reported, not hidden behind a manual review.
+test("unused-files: a basename colliding with a referenced library file is still an orphan", () => {
+  const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
+  const files = {
+    "manifest.json": JSON.stringify(manifest),
+    "bg.js": `import "./lib/button.js";`,
+    "lib/button.js": `export const x = 1;`,
+    "dead/button.js": `export const y = 2;`,
+  };
+  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const found = result.findings.map((f) => f.file);
+  const manual = manualItems(result).map((m) => m.file);
+  assert.ok(found.includes("dead/button.js"), "collision orphan is a finding");
+  assert.ok(!manual.includes("dead/button.js"), "not escalated to manual");
+  assert.ok(!found.includes("lib/button.js")); // reachable, used
+});
+
 // Docs/metadata the add-on ships (Description.md, README.md, ...) are allowlisted
 // by NAME, but only with a documentation extension or none - a code file that
 // merely shares the name (history.js, README.js) is NOT exempt and stays subject
