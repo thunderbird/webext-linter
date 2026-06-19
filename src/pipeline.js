@@ -127,7 +127,23 @@ export async function runPipeline(opts) {
     confirmMore: opts.confirmMore,
   });
 
+  // The "Setup" feed section: a numbered line per slow pre-review step, in the
+  // same [i/total] style as the Activity check loop, so the otherwise-silent
+  // pause after the banner (vendor network verification, schema fetch, AST parse)
+  // shows what is running. The add-on is already loaded above - like Activity
+  // counting its checks before the loop, the total is known here: the vendor step
+  // is skipped for a rejected Experiment, so it is one fewer then. A no-op when
+  // progress is off (JSON, the golden harness).
+  const setupTotal = invalidExperiment ? 3 : 4;
+  let setupDone = 0;
+  const setupStep = (label) =>
+    progress(`  [${++setupDone}/${setupTotal}] ${label}`);
+  progress("── Setup ──");
+  progress("");
+  setupStep("Reading add-on");
+
   if (!invalidExperiment) {
+    setupStep("Verifying vendored libraries");
     // 1b. Resolve the vendored declarations ONCE, before the review, so the
     // review's checks share one immutable set. Deterministic parse, plus an LLM
     // fallback when a token is set (token-less stays deterministic).
@@ -160,7 +176,8 @@ export async function runPipeline(opts) {
     opts,
     registry,
     invalidExperiment,
-    llmBudget
+    llmBudget,
+    setupStep
   );
   findings.push(...result.findings);
   Object.assign(meta, result.meta);
@@ -255,10 +272,20 @@ async function generateAddonSummary(ctx, registry, unused, budget) {
  * @param {import("./checks/registry.js").Registry} registry
  * @param {boolean} [invalidExperiment]  Reject-only mode: run just the
  *   experiment-not-allowed check, with no LLM, summaries, or manual reminders.
+ * @param {import("../llm/budget.js").LlmBudget} [budget]
+ * @param {(label: string) => void} [setupStep]  Emits the next numbered "Setup"
+ *   feed line; supplied by runPipeline, which owns the section's running count.
  * @returns {Promise<{findings: Finding[], meta: ReviewMeta,
  *   ctx: import("./checks/registry.js").RunContext}>}
  */
-async function reviewAddon(addon, opts, registry, invalidExperiment, budget) {
+async function reviewAddon(
+  addon,
+  opts,
+  registry,
+  invalidExperiment,
+  budget,
+  setupStep = () => {}
+) {
   const {
     schemaChannel = DEFAULT_CHANNEL,
     schemaZip,
@@ -275,6 +302,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, budget) {
   } = opts;
 
   const branch = chooseBranch({ schemaZip, schemaChannel, addon });
+  setupStep(`Fetching review schemas (${branch})`);
   const { zipPath, source: schemaSource } = await resolveSchemaZip({
     schemaZip,
     branch,
@@ -283,6 +311,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, budget) {
   });
   const schema = buildSchemaIndex(loadSchemaFiles(zipPath));
 
+  setupStep("Parsing add-on sources");
   // The checks layer assembles its own context (sources, API usage, diff
   // baseline, LLM client) - the pipeline only resolves the schema.
   const ctx = buildRunContext({
@@ -308,6 +337,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, budget) {
   const baseSkip = eslint
     ? (checksSkip ?? [])
     : [...(checksSkip ?? []), "code-sanity"];
+  progress(""); // close the Setup section before runChecks prints "── Activity ──"
   const { findings, checks, manualItems, deferred, total } = await runChecks(
     ctx,
     registry,

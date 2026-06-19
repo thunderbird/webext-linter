@@ -15,7 +15,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { debug, info } from "../util/log.js";
+import { debug } from "../util/log.js";
 
 const REPO = "thunderbird/webext-annotated-schemas";
 
@@ -64,7 +64,9 @@ export async function resolveSchemaZip({
   }
 
   const url = codeloadUrl(branch);
-  info(`Downloading annotated schemas (${branch}) from ${url} ...`);
+  // The on-screen narration is now the "Setup" feed entry (src/pipeline.js); the
+  // URL detail stays here for --verbose.
+  debug(`Downloading annotated schemas (${branch}) from ${url} ...`);
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(
