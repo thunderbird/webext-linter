@@ -108,6 +108,17 @@ export const VENDOR_TRUSTED_HOSTS = [
 export const VENDOR_NPM_MIN_DOWNLOADS = 1000;
 export const VENDOR_GITHUB_MIN_STARS = 100;
 
+/**
+ * GitHub orgs whose repos are trusted by provenance (first-party sources), so a
+ * vendored file pinned to one is accepted WITHOUT meeting the stars bar above.
+ * The bundled bytes are still compared to upstream, so a modified copy is still
+ * reported. Owner match is exact + case-insensitive; covers every github source
+ * form (github.com blob, raw.githubusercontent, jsDelivr gh) since all classify
+ * to kind "github" with this owner. Thunderbird's own add-on helper repos
+ * (e.g. thunderbird/webext-support) live here but are below the generic bar.
+ */
+export const VENDOR_TRUSTED_GITHUB_ORGS = ["thunderbird"];
+
 /** Limits when fetching an (untrusted, submission-declared) vendor source. */
 export const VENDOR_FETCH_TIMEOUT_MS = 10000;
 export const VENDOR_FETCH_MAX_BYTES = 12 * 1024 * 1024;

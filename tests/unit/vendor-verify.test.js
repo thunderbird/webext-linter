@@ -156,6 +156,48 @@ test("verifyVendor: an unfetchable source -> unfetchable", async () => {
   assert.equal(addon.vendor.results[0].outcome, "unfetchable");
 });
 
+test("verifyVendor: a github source from a trusted org verifies despite low stars, no popularity lookup", async () => {
+  const url =
+    "https://github.com/thunderbird/webext-support/blob/" +
+    "6bbbf8ac2105d04c1b59083e8bd52e0046448ec7/modules/i18n/i18n.mjs";
+  const addon = addonWith(
+    { "vendor/i18n.mjs": "BODY\n" },
+    store({
+      set: new Set(["vendor/i18n.mjs"]),
+      manifest: [pinnedEntry("vendor/i18n.mjs", url)],
+    })
+  );
+  // The raw bytes match; fetchJson throws to prove the stars lookup is skipped
+  // (a trusted org is accepted by provenance).
+  const net = {
+    fetchBytes: async () => Buffer.from("BODY\n"),
+    fetchJson: async () => {
+      throw new Error("no popularity lookup expected for a trusted org");
+    },
+  };
+  await verifyVendor(addon, net);
+  assert.equal(addon.vendor.results[0].outcome, "verified");
+});
+
+test("verifyVendor: a github source from a non-trusted org is still star-gated", async () => {
+  const url =
+    "https://github.com/someone/repo/blob/" +
+    "6bbbf8ac2105d04c1b59083e8bd52e0046448ec7/lib.js";
+  const addon = addonWith(
+    { "vendor/lib.js": "BODY\n" },
+    store({
+      set: new Set(["vendor/lib.js"]),
+      manifest: [pinnedEntry("vendor/lib.js", url)],
+    })
+  );
+  const net = {
+    fetchBytes: async () => Buffer.from("BODY\n"),
+    fetchJson: async () => ({ stargazers_count: 5 }), // below VENDOR_GITHUB_MIN_STARS
+  };
+  await verifyVendor(addon, net);
+  assert.equal(addon.vendor.results[0].outcome, "not-popular");
+});
+
 test("verifyVendor: a file that does not hash-match any published file is not claimed", async () => {
   const sri = `sha256-${createHash("sha256").update("UPSTREAM").digest("base64")}`;
   const addon = addonWith(

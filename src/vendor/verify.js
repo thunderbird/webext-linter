@@ -7,7 +7,9 @@
 // Two sources are verified:
 //   - VENDOR entries that are trusted-host + pinned: fetch the declared URL and
 //     EOL-tolerant compare against the packaged bytes (verified / modified),
-//     then gate on popularity (verified / not-popular). An unfetchable URL is
+//     then gate on popularity (verified / not-popular) - except a github source
+//     from a first-party trusted org (e.g. github.com/thunderbird/...) is
+//     accepted by provenance, skipping the popularity bar. An unfetchable URL is
 //     escalated to manual review.
 //   - package.json dependencies pinned to a version: fetch the published file
 //     listing from unpkg ONCE (it carries a per-file sha256 integrity) and mark
@@ -28,6 +30,7 @@ import { classifySource } from "./sources.js";
 import {
   VENDOR_NPM_MIN_DOWNLOADS,
   VENDOR_GITHUB_MIN_STARS,
+  VENDOR_TRUSTED_GITHUB_ORGS,
   VENDOR_FETCH_TIMEOUT_MS,
   VENDOR_FETCH_MAX_BYTES,
 } from "../config.js";
@@ -210,9 +213,12 @@ function metaFiles(node, out = []) {
 }
 
 /**
- * Whether the source is a broadly-used library: npm monthly downloads, GitHub
- * stars, or cdnjs catalog membership over the configured bar. A lookup error
- * counts as "not popular" (the case then goes to manual review).
+ * Whether the source clears the trust bar: a broadly-used library (npm monthly
+ * downloads, GitHub stars, or cdnjs catalog membership over the configured bar)
+ * OR a github source from a first-party trusted org (VENDOR_TRUSTED_GITHUB_ORGS,
+ * e.g. Thunderbird), which is accepted by provenance regardless of stars and
+ * without a popularity lookup. A lookup error counts as "not popular" (the case
+ * then goes to manual review).
  * @param {VendorSource} src @param {VendorNet} net
  * @returns {Promise<boolean>}
  */
@@ -225,6 +231,12 @@ async function isPopular(src, net) {
       return Number(j?.downloads) >= VENDOR_NPM_MIN_DOWNLOADS;
     }
     if (src.kind === "github") {
+      const owner = String(src.repo ?? "")
+        .split("/")[0]
+        .toLowerCase();
+      if (VENDOR_TRUSTED_GITHUB_ORGS.includes(owner)) {
+        return true; // first-party org (e.g. Thunderbird) - trusted by provenance
+      }
       const j = await net.fetchJson(`https://api.github.com/repos/${src.repo}`);
       return Number(j?.stargazers_count) >= VENDOR_GITHUB_MIN_STARS;
     }
