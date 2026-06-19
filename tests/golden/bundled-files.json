@@ -46,7 +46,6 @@
       "cleartext-transmission",
       "privacy-policy",
       "native-messaging",
-      "fork-check",
       "default-locale-missing",
       "default-locale-unused",
       "background-module",

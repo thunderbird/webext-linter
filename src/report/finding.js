@@ -138,6 +138,10 @@ export function sortFindings(findings) {
  * @property {string|null} [item]
  * @property {boolean} [listItem]  List `item` on the location line (the
  *   instructions did not consume `{{item}}`); set by the resolver.
+ * @property {boolean} [extended]  True for a check that escalated to manual review
+ *   (rendered under "Extended manual review"); false/absent for a registry
+ *   manual-checks entry (rendered under "Standard manual review"). Set by the
+ *   pipeline when it assembles the list.
  */
 
 /**

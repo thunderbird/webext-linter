@@ -149,15 +149,19 @@ export class Registry {
   }
 
   /**
-   * The always-by-hand to-do items: every `manual-checks` entry, already in the
-   * rendered {title, instructions} shape (these carry no `{{item}}`). An llm
-   * check that escalates with no token is surfaced by the orchestrator
+   * The by-hand to-do items: every `manual-checks` entry eligible in the current
+   * review mode, already in the rendered {title, instructions, response} shape
+   * (these carry no `{{item}}`). Entries are diff-gated like checks (see
+   * diffEligible): e.g. the "Forked add-on" reminder is `diff: false`, so it shows
+   * only for a new submission, not when reviewing against a --diff-to baseline. An
+   * llm check that escalates with no token is surfaced by the orchestrator
    * (escalation.js), not here.
-   * @returns {{title: string, instructions?: string}[]}
+   * @param {boolean} [inDiffMode]  Reviewing against a --diff-to baseline.
+   * @returns {{title: string, instructions?: string, response: ?string}[]}
    */
-  manualChecks() {
+  manualChecks(inDiffMode = false) {
     return (this.doc["manual-checks"] || [])
-      .filter((e) => e && e.title)
+      .filter((e) => e && e.title && diffEligible(e, inDiffMode))
       .map((e) => ({
         title: e.title,
         instructions: e.instructions,
@@ -320,6 +324,24 @@ export function formatNote(file, loc, item, verdict) {
 }
 
 /**
+ * Whether a registry entry runs in the current review mode, per its `diff` field:
+ * `diff: true` only with a --diff-to baseline, `diff: false` only without one (a
+ * new submission), an omitted `diff` in both. Shared by the check gate (runChecks)
+ * and the manual-checks gate (Registry.manualChecks).
+ * @param {{diff?: boolean}} entry @param {boolean} inDiffMode
+ * @returns {boolean}
+ */
+function diffEligible(entry, inDiffMode) {
+  if (entry.diff === true) {
+    return inDiffMode;
+  }
+  if (entry.diff === false) {
+    return !inDiffMode;
+  }
+  return true;
+}
+
+/**
  * Run the selected checks. A check returns its verdicts as findings, and may
  * also return `escalations` (cases it could not settle), which this orchestrator
  * - the sole authority on manual review - resolves an llm check's via
@@ -340,8 +362,10 @@ export function formatNote(file, loc, item, verdict) {
 export async function runChecks(ctx, registry, opts = {}) {
   // Two gates pick which checks run. The `diff` gate (a registry field) keys off
   // the mode: `diff: true` (e.g. strict-max-version-bump-only) needs a --diff-to
-  // baseline (ctx.previous), `diff: false` (e.g. fork-check) is new-submission
-  // only, an omitted `diff` runs in both. The `phase` gate then picks the review
+  // baseline (ctx.previous), `diff: false` is new-submission only (the same gate
+  // also applies to manual-checks entries - see diffEligible/manualChecks, used by
+  // the new-submission-only "Forked add-on" reminder), an omitted `diff` runs in
+  // both. The `phase` gate then picks the review
   // PROFILE: an invalid Experiment (ctx.invalidExperiment - Experiment APIs with
   // --allow-experiments off) runs ONLY the `phase: invalid-experiment` reject
   // check and nothing else; a normal review runs the default-phase checks in this
@@ -350,15 +374,7 @@ export async function runChecks(ctx, registry, opts = {}) {
   // and never appears in the feed or meta.checksRun.
   const loaded = await loadChecks(registry, opts);
   const inDiffMode = Boolean(ctx.previous);
-  const eligible = loaded.filter((c) => {
-    if (c.diff === true) {
-      return inDiffMode;
-    }
-    if (c.diff === false) {
-      return !inDiffMode;
-    }
-    return true;
-  });
+  const eligible = loaded.filter((c) => diffEligible(c, inDiffMode));
   const checks = ctx.invalidExperiment
     ? eligible.filter((c) => c.phase === "invalid-experiment")
     : eligible.filter((c) => !c.phase);

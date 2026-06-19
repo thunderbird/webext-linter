@@ -1,10 +1,7 @@
-Reviewing <root>/tests/addons/clean
-schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_version 3
-
 ── Issues ──
 No issues found.
 
-── Manual review ──
+── Standard manual review ──
 
 Continue manual review for the following checks:
 

@@ -22,17 +22,51 @@ function review() {
   };
 }
 
-// Text render surfaces the Manual review header, the "continue manual review"
-// heading, and each item as an enumerated "N) title: instructions" entry, so a
-// human knows both what to check (e.g. Source Archive) and how.
-test("text report includes the Manual review section", () => {
-  const out = formatText(review());
-  // A blank line sits between the header and the "Continue ..." intro.
-  assert.match(out, /── Manual review ──\n\nContinue manual review/);
+// Manual review splits into two sections - Extended (escalated checks) FIRST,
+// then Standard (the always-by-hand manual-checks) - each with its "continue
+// manual review" intro and enumerated "N) title: instructions" entries.
+test("manual review splits into Extended then Standard sections", () => {
+  const r = {
+    findings: [],
+    meta: {
+      action: "review",
+      addon: "x",
+      reviewed: true,
+      manualReview: [
+        {
+          title: "Source Archive required",
+          instructions: "Confirm sources were uploaded and rebuild matches.",
+          file: "x.js",
+          loc: { line: 1 },
+          item: null,
+          listItem: false,
+          extended: true,
+        },
+        {
+          title: "Check the submission for spam",
+          instructions: "Inspect it.",
+          extended: false,
+        },
+      ],
+    },
+  };
+  const out = formatText(r);
+  const ext = out.indexOf("── Extended manual review ──");
+  const std = out.indexOf("── Standard manual review ──");
+  assert.ok(ext !== -1 && std !== -1 && ext < std); // Extended precedes Standard
+  // A blank line sits between each header and its "Continue ..." intro.
+  assert.match(out, /── Extended manual review ──\n\nContinue manual review/);
+  assert.match(out, /── Standard manual review ──\n\nContinue manual review/);
+  // The escalated item (with its locus) under Extended, the checklist item
+  // (standalone reminder) under Standard.
+  const extended = out.slice(ext, std);
+  const standard = out.slice(std);
   assert.match(
-    out,
+    extended,
     /1\) Source Archive required: Confirm sources were uploaded and rebuild matches\./
   );
+  assert.match(extended, /\n - x\.js:1/);
+  assert.match(standard, /1\) Check the submission for spam: Inspect it\./);
 });
 
 // Manual review uses the Issues grouping: items sharing a "Title: instructions"
@@ -46,6 +80,7 @@ test("Manual review groups by message and lists each item's locus", () => {
     loc: { line },
     item: null,
     listItem: false,
+    extended: true,
   });
   const r = {
     findings: [],
@@ -56,20 +91,28 @@ test("Manual review groups by message and lists each item's locus", () => {
       manualReview: [
         exfil("bg.js", 80),
         exfil("lib/x.js", 12),
-        { title: "Check the submission for spam", instructions: "Inspect it." },
+        {
+          title: "Check the submission for spam",
+          instructions: "Inspect it.",
+          extended: false,
+        },
       ],
     },
   };
-  const manual = formatText(r).split("── Manual review ──")[1];
-  // The two exfiltration items collapse into ONE entry with both loci.
+  const out = formatText(r);
+  const extended = out
+    .split("── Extended manual review ──")[1]
+    .split("── Standard manual review ──")[0];
+  const standard = out.split("── Standard manual review ──")[1];
+  // The two exfiltration items (Extended) collapse into ONE entry with both loci.
   assert.equal(
-    manual.match(/User-data exfiltration: Confirm opt-in\./g).length,
+    extended.match(/User-data exfiltration: Confirm opt-in\./g).length,
     1
   );
-  assert.match(manual, /\n - bg\.js:80\n - lib\/x\.js:12/);
-  // The standalone reminder is its own entry with no locus line.
-  assert.match(manual, /Check the submission for spam: Inspect it\./);
-  assert.ok(!manual.includes("(add-on)"));
+  assert.match(extended, /\n - bg\.js:80\n - lib\/x\.js:12/);
+  // The standalone reminder is its own entry (Standard) with no locus line.
+  assert.match(standard, /Check the submission for spam: Inspect it\./);
+  assert.ok(!out.includes("(add-on)"));
 });
 
 // A manual entry's developer response prints under the instructions and above
@@ -91,12 +134,17 @@ test("Manual review prints the response between instructions and the locus list"
           loc: { line: 4 },
           item: null,
           listItem: false,
+          extended: true,
         },
-        { title: "Forked add-on", instructions: "Check for a fork." },
+        {
+          title: "Forked add-on",
+          instructions: "Check for a fork.",
+          extended: true,
+        },
       ],
     },
   };
-  const manual = formatText(r).split("── Manual review ──")[1];
+  const manual = formatText(r).split("── Extended manual review ──")[1];
   // Response: after the instructions, before the locus, flush-left, verbatim.
   assert.match(
     manual,
@@ -139,6 +187,7 @@ test("issues render under Issues/JSON; manual items under Manual review", () => 
         {
           title: "old.js",
           instructions: "old.js may be loaded dynamically - confirm by hand.",
+          extended: true,
         },
       ],
     },
@@ -147,7 +196,7 @@ test("issues render under Issues/JSON; manual items under Manual review", () => 
   assert.match(out, /old\.js: old\.js may be loaded dynamically/); // Manual review
   const issuesSection = out
     .split("── Issues ──")[1]
-    .split("── Manual review ──")[0];
+    .split("── Extended manual review ──")[0];
   assert.ok(!issuesSection.includes("old.js")); // not in Issues
   // Message first, then the "- file:line" location beneath it.
   assert.match(issuesSection, /1\) eval used/);
@@ -397,13 +446,23 @@ test("Manual review caps a grouped locus list at 25 with a marker", () => {
     loc: { line: i + 1 },
     item: `perm${i}`,
     listItem: true,
+    extended: true,
   }));
-  manualReview.push({ title: "Spam check", instructions: "Inspect it." });
-  const manual = formatText({
+  manualReview.push({
+    title: "Spam check",
+    instructions: "Inspect it.",
+    extended: false,
+  });
+  const out = formatText({
     findings: [],
     meta: { action: "review", addon: "x", reviewed: true, manualReview },
-  }).split("── Manual review ──")[1];
-  assert.equal((manual.match(/^ - manifest\.json:/gm) || []).length, 25);
-  assert.match(manual, /- … and 5 more, excluded from this list/);
-  assert.match(manual, /Spam check: Inspect it\./); // standalone reminder intact
+  });
+  const extended = out
+    .split("── Extended manual review ──")[1]
+    .split("── Standard manual review ──")[0];
+  assert.equal((extended.match(/^ - manifest\.json:/gm) || []).length, 25);
+  assert.match(extended, /- … and 5 more, excluded from this list/);
+  // The standalone reminder (Standard) is unaffected by the Extended cap.
+  const standard = out.split("── Standard manual review ──")[1];
+  assert.match(standard, /Spam check: Inspect it\./);
 });

@@ -26,6 +26,7 @@ import { runChecks, runOneCheck, loadRegistry } from "./checks/registry.js";
 import { buildRunContext } from "./checks/context.js";
 import { buildSummarizer, buildAddonSummarizer } from "./checks/summaries.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
+import { headerLines } from "./report/format.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import { verifyVendor } from "./vendor/verify.js";
 import { classifyBundled } from "./checks/lib/bundled.js";
@@ -182,6 +183,17 @@ export async function runPipeline(opts) {
   findings.push(...result.findings);
   Object.assign(meta, result.meta);
   const { summarize, summarizeAddon } = result;
+
+  // Surface the review header now - before the ATN review-page lookup below, a
+  // network call that can stall the feed for seconds - so the reviewer sees what
+  // was reviewed the moment the Activity feed ends, instead of staring at a frozen
+  // screen. It is removed from the report body (src/report/format.js) so it is not
+  // printed twice. A no-op when progress is off (JSON, the golden harness).
+  progress("");
+  for (const line of headerLines(meta)) {
+    progress(line);
+  }
+  progress("");
 
   // Text reports point the reviewer at the ATN review page, looked up by gecko
   // id (addon/atn.js). Best-effort: null when it cannot be resolved, and the
@@ -400,14 +412,22 @@ async function reviewAddon(
       applicationVersion: schema.applicationVersion,
       manifestVersion: addon.manifest?.manifest_version ?? null,
       checksRun: ran.map((c) => c.id),
-      // One manual-review list: the always-manual checks plus the orchestrator's
-      // escalation refs, each resolved to its registry text. An outright
+      // One manual-review list, tagged by origin so the report can split it into
+      // two sections: `extended` items are checks that escalated (the
+      // orchestrator's refs, resolved to their registry text); the rest are the
+      // by-hand `manual-checks` entries (Standard), diff-gated like the checks
+      // (e.g. the new-submission-only "Forked add-on" reminder). An outright
       // Experiment reject prints only the reject finding, so it carries none.
       manualReview: invalidExperiment
         ? []
         : [
-            ...registry.manualChecks(),
-            ...renderManualItems(manualItems, registry),
+            ...renderManualItems(manualItems, registry).map((m) => ({
+              ...m,
+              extended: true,
+            })),
+            ...registry
+              .manualChecks(Boolean(ctx.previous))
+              .map((m) => ({ ...m, extended: false })),
           ],
     },
   };

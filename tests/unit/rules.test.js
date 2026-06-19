@@ -33,7 +33,6 @@ import nativeMessaging from "../../src/checks/rules/native-messaging.js";
 import defaultLocaleMissing from "../../src/checks/rules/default-locale-missing.js";
 import defaultLocaleUnused from "../../src/checks/rules/default-locale-unused.js";
 import backgroundModule from "../../src/checks/rules/background-module.js";
-import forkCheck from "../../src/checks/rules/fork-check.js";
 import unusedPermission from "../../src/checks/rules/unused-permission.js";
 import unusedPermissionManual from "../../src/checks/rules/unused-permission-manual.js";
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
@@ -344,18 +343,17 @@ test("strict-max-version-bump-only is registered as a diff check", async () => {
   assert.equal(c?.diff, true);
 });
 
-// ---- fork-check (diff: false - new submissions only) ----
-// The registry marks it diff: false, so runChecks runs it ONLY without a
-// --diff-to baseline; a normal check leaves diff undefined (always runs). The
-// check itself always escalates one manual-review case.
-test("fork-check is registered diff: false and always escalates once", async () => {
-  const checks = await loadChecks(loadRegistry());
-  assert.equal(checks.find((x) => x.id === "fork-check")?.diff, false);
-  assert.equal(checks.find((x) => x.id === "sync-xhr")?.diff, undefined);
-
-  const out = forkCheck.run();
-  assert.deepEqual(out.findings, []);
-  assert.equal(out.escalations.length, 1);
+// ---- manual-checks diff gate (the "Forked add-on" reminder) ----
+// "Forked add-on" is now a manual-checks entry marked diff: false, so it shows
+// only for a new submission, not when reviewing against a --diff-to baseline. An
+// ungated manual-checks entry (e.g. the spam check) shows in both modes.
+test("manualChecks gates diff:false entries to new submissions", () => {
+  const reg = loadRegistry();
+  const titles = (inDiff) => reg.manualChecks(inDiff).map((m) => m.title);
+  assert.ok(titles(false).includes("Forked add-on")); // new submission
+  assert.ok(!titles(true).includes("Forked add-on")); // diff review excludes it
+  assert.ok(titles(false).includes("Check the submission for spam"));
+  assert.ok(titles(true).includes("Check the submission for spam"));
 });
 
 // ---- unused-permission (consumes the --full-summary list) ----

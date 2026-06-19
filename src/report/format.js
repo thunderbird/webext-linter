@@ -54,9 +54,11 @@ const SEV_COLOR = {
  * @property {string[]} [checksRun]  Ids of the checks that ran.
  * @property {string} [reviewUrl]  ATN reviewer review-page URL, appended to the
  *   Manual review section. Text reports only; dropped from JSON.
- * @property {import("./finding.js").ManualItem[]} [manualReview]  The single
- *   manual-review to-do list (the pipeline merges manual-checks, whole-check
- *   escalations and per-item escalations into it). Text-only; dropped from JSON.
+ * @property {import("./finding.js").ManualItem[]} [manualReview]  The manual-review
+ *   to-do list, each item tagged with `extended`. The report splits it into an
+ *   "Extended manual review" section (items that escalated - whole-check and
+ *   per-item escalations) followed by a "Standard manual review" section (the
+ *   always-by-hand manual-checks). Text-only; dropped from JSON.
  */
 
 /**
@@ -68,15 +70,27 @@ const SEV_COLOR = {
 export function formatText(review) {
   const { findings: issues, meta, issueHeadings, verdictIntros } = review;
   // The findings here are issues only - the manual-review to-dos live in
-  // meta.manualReview (the pipeline routed every kind into it). Section order
-  // below is the pipeline order.
+  // meta.manualReview, each tagged with `extended`. The list splits into two
+  // sections: Extended (checks that escalated to manual review) first, then
+  // Standard (the always-by-hand manual-checks). The ATN tail and the summary
+  // count cover both.
   const manual = meta.manualReview ?? [];
-  return [
-    ...headerLines(meta),
+  const extended = manual.filter((m) => m.extended);
+  const standard = manual.filter((m) => !m.extended);
+  const lines = [
     ...issuesLines(issues, issueHeadings, verdictIntros),
-    ...manualLines(manual, meta.reviewUrl),
+    ...manualSection(extended, "Extended manual review"),
+    ...manualSection(standard, "Standard manual review"),
+    ...manualTail(meta.reviewUrl, manual.length),
     ...summaryLines(issues, manual.length),
-  ].join("\n");
+  ];
+  // The "Reviewing …" header is now printed live before the review (src/pipeline.js),
+  // not here, so drop the blank that section() prepends to the first (Issues)
+  // section - the report body opens directly at "── Issues ──".
+  if (lines[0] === "") {
+    lines.shift();
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -84,7 +98,7 @@ export function formatText(review) {
  * @param {ReviewMeta} meta
  * @returns {string[]}
  */
-function headerLines(meta) {
+export function headerLines(meta) {
   const schema = meta.schemaBranch || meta.schemaSource;
   return [
     `Reviewing ${meta.addon}`,
@@ -224,28 +238,28 @@ function manualBody(m) {
 }
 
 /**
- * Manual review: the to-do list the pipeline assembled, ending (when known) with
- * the ATN review-page URL. Items sharing a "Title: instructions" body collapse
- * into one numbered entry (like Issues) - the body is still 80-column wrapped.
- * When the entry has a developer-facing `response`, it is printed under the
- * instructions in white, flush-left and verbatim (a ready-to-send block). Each
- * item that carries a locus is then listed beneath as "- file:line - item".
- * Standalone reminders (no locus) carry no list.
- * @param {import("./finding.js").ManualItem[]} manual
- * @param {string} [reviewUrl]  ATN reviewer review-page URL, or undefined.
+ * One manual-review section under `title`. Items sharing a "Title: instructions"
+ * body collapse into one numbered entry (like Issues) - the body is still
+ * 80-column wrapped. When the entry has a developer-facing `response`, it is
+ * printed under the instructions in white, flush-left and verbatim (a
+ * ready-to-send block). Each item that carries a locus is then listed beneath as
+ * "- file:line - item". Standalone reminders (no locus) carry no list. Returns []
+ * when there are no items, so an absent section prints nothing.
+ * @param {import("./finding.js").ManualItem[]} items
+ * @param {string} title  Section heading, e.g. "Extended manual review".
  * @returns {string[]}
  */
-function manualLines(manual, reviewUrl) {
-  if (!manual.length) {
+function manualSection(items, title) {
+  if (!items.length) {
     return [];
   }
-  const out = section("Manual review");
+  const out = section(title);
   out.push("");
-  // The manual-review group is all manual work, so it is all blue (a no-op
+  // A manual-review section is all manual work, so it is all blue (a no-op
   // unless color is enabled). Each line is tinted on its own for stripColor.
   out.push(blue("Continue manual review for the following checks:"));
   const byBody = new Map();
-  for (const m of manual) {
+  for (const m of items) {
     const body = manualBody(m);
     const bucket = byBody.get(body);
     if (bucket) {
@@ -255,7 +269,7 @@ function manualLines(manual, reviewUrl) {
     }
   }
   let n = 0;
-  for (const [body, items] of byBody) {
+  for (const [body, group] of byBody) {
     out.push("");
     // The reviewer-facing instructions (blue, 80-col wrapped).
     out.push(...wrapEntry(++n, body).map(blue));
@@ -263,7 +277,7 @@ function manualLines(manual, reviewUrl) {
     // (verbatim, like the Issues responses), sitting between the instructions and
     // the locus list so it reads as a ready-to-send block. Shared across the
     // group, so taken from the first item.
-    const response = items[0].response;
+    const response = group[0].response;
     if (response) {
       for (const line of response.split("\n")) {
         out.push(white(line));
@@ -273,7 +287,7 @@ function manualLines(manual, reviewUrl) {
     // reminders have no file/item and render as the wrapped body alone. The
     // list is display-capped like Issues (see renderGroup).
     const where = [];
-    const loci = items.filter((m) => m.file || (m.listItem && m.item));
+    const loci = group.filter((m) => m.file || (m.listItem && m.item));
     for (const m of loci.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
       where.push(` - ${locationLine(m)}`);
     }
@@ -282,13 +296,21 @@ function manualLines(manual, reviewUrl) {
     }
     out.push(...where.map(blue));
   }
-  // Last line of the section: where to complete the review (when resolved).
-  if (reviewUrl) {
-    out.push("");
-    out.push(blue("Complete this review on ATN:"));
-    out.push(blue(reviewUrl));
-  }
   return out;
+}
+
+/**
+ * The closing pointer to the ATN review page, printed once after the manual
+ * sections - but only when there is manual work and the URL resolved.
+ * @param {string} [reviewUrl]  ATN reviewer review-page URL, or undefined.
+ * @param {number} manualCount  Total manual items across both sections.
+ * @returns {string[]}
+ */
+function manualTail(reviewUrl, manualCount) {
+  if (!reviewUrl || manualCount === 0) {
+    return [];
+  }
+  return ["", blue("Complete this review on ATN:"), blue(reviewUrl)];
 }
 
 /**

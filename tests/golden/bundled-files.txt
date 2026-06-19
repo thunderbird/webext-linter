@@ -1,6 +1,3 @@
-Reviewing <root>/tests/addons/bundled-files
-schema local:<root>/tests/schema-fixture · Thunderbird 128.0 · manifest_version 3
-
 ── Issues ──
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
@@ -8,7 +5,17 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) "missing.js" is referenced but not bundled with the add-on. Please include every referenced file in the package.
  - manifest.json
 
-── Manual review ──
+── Extended manual review ──
+
+Continue manual review for the following checks:
+
+1) Missing English localization: This add-on ships no English localization, so
+   user-facing text may be hardcoded in another language. Review its strings by
+   hand and confirm if an English localization is provided.
+Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
+An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
+
+── Standard manual review ──
 
 Continue manual review for the following checks:
 
@@ -74,12 +81,6 @@ The submission appears to be a fork of an existing add-on that is still being ac
 "If the add-on is a fork of another add-on, the name must clearly distinguish it from the original and provide a significant difference in functionality and/or code. Exceptions may be made in instances where the add-on is no longer maintained by the original author."
 
 Because the original project is still active, your submission does not meet these requirements. Small-change forks can sometimes cause confusion for users and unnecessary overlap for developers. We encourage you to consider contributing your improvements directly to the original project so that all existing users can benefit from your ideas.
-
-11) Missing English localization: This add-on ships no English localization, so
-    user-facing text may be hardcoded in another language. Review its strings by
-    hand and confirm if an English localization is provided.
-Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
-An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
 
 ── Summary ──
 
