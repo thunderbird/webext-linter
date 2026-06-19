@@ -5,7 +5,7 @@
 // --report-out copy is run through stripColor, so the saved file is plain even
 // when the screen was colored.
 //
-// Belongs here: setColor, the red/green/yellow/blue/white wrappers, and stripColor.
+// Belongs here: setColor, the red/green/yellow/blue/grey wrappers, and stripColor.
 // Does NOT belong here: WHICH text is colored (the feed note in
 // src/checks/registry.js, the issues in src/report/format.js) or WHEN color is
 // enabled (src/cli.js reads process.stdout.isTTY).
@@ -36,10 +36,11 @@ export const red = (s) => paint(31, s);
 export const green = (s) => paint(32, s);
 /** @param {string} s @returns {string} */
 export const yellow = (s) => paint(33, s);
-/** @param {string} s @returns {string} */
-export const blue = (s) => paint(34, s);
-/** Light grey (SGR 37 "white", which renders as light grey on most terminals). */
-export const white = (s) => paint(37, s);
+/** Bright blue (SGR 94) - the manual-review / "unsure" color, kept vivid so it
+ * leads against the dim-grey suggested response. @param {string} s @returns {string} */
+export const blue = (s) => paint(94, s);
+/** Dim grey (SGR 90 "bright black" - a muted grey that recedes against color). */
+export const grey = (s) => paint(90, s);
 
 // Every ANSI SGR escape sequence (the only kind this module emits). Built from
 // the ESC char so the source carries no control character.

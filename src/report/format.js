@@ -16,7 +16,7 @@
 // src/util/json.js rather than adding JSON utilities here.
 
 import { SEVERITY, sortFindings, countByRule, hasErrors } from "./finding.js";
-import { red, yellow, blue, white } from "../util/color.js";
+import { red, yellow, blue, grey } from "../util/color.js";
 import { MAX_ENTRIES_PER_CATEGORY } from "../config.js";
 
 /** @param {string} s @returns {string} */
@@ -241,10 +241,12 @@ function manualBody(m) {
  * One manual-review section under `title`. Items sharing a "Title: instructions"
  * body collapse into one numbered entry (like Issues) - the body is still
  * 80-column wrapped. When the entry has a developer-facing `response`, it is
- * printed under the instructions in white, flush-left and verbatim (a
- * ready-to-send block). Each item that carries a locus is then listed beneath as
- * "- file:line - item". Standalone reminders (no locus) carry no list. Returns []
- * when there are no items, so an absent section prints nothing.
+ * labelled "Suggested response:" and printed under the instructions in dim grey,
+ * flush-left and verbatim (a ready-to-send block) so it does not pull focus from
+ * the blue instructions. Each item that carries a locus is then listed beneath as
+ * "- file:line - item", in the same grey as the response. Standalone reminders (no
+ * locus) carry no list. Returns [] when there are no items, so an absent section
+ * prints nothing.
  * @param {import("./finding.js").ManualItem[]} items
  * @param {string} title  Section heading, e.g. "Extended manual review".
  * @returns {string[]}
@@ -273,19 +275,23 @@ function manualSection(items, title) {
     out.push("");
     // The reviewer-facing instructions (blue, 80-col wrapped).
     out.push(...wrapEntry(++n, body).map(blue));
-    // The developer-facing response, if any: white and flush-left at column 0
-    // (verbatim, like the Issues responses), sitting between the instructions and
-    // the locus list so it reads as a ready-to-send block. Shared across the
-    // group, so taken from the first item.
+    // The developer-facing response, if any: labelled "Suggested response:" and
+    // printed in dim grey, flush-left at column 0 (verbatim, like the Issues
+    // responses), sitting between the instructions and the locus list so it reads
+    // as a ready-to-send block without pulling focus from the blue instructions.
+    // Shared across the group, so taken from the first item.
     const response = group[0].response;
     if (response) {
-      for (const line of response.split("\n")) {
-        out.push(white(line));
+      const lines = response.split("\n");
+      lines[0] = `Suggested response: ${lines[0]}`;
+      for (const line of lines) {
+        out.push(grey(line));
       }
     }
     // List a locus only when there is one (escalated items); standalone
     // reminders have no file/item and render as the wrapped body alone. The
-    // list is display-capped like Issues (see renderGroup).
+    // list is display-capped like Issues (see renderGroup). Tinted in the same
+    // grey as the response (not the instructions' blue), so it reads as detail.
     const where = [];
     const loci = group.filter((m) => m.file || (m.listItem && m.item));
     for (const m of loci.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
@@ -294,7 +300,7 @@ function manualSection(items, title) {
     if (loci.length > MAX_ENTRIES_PER_CATEGORY) {
       where.push(excludedMarker(loci.length - MAX_ENTRIES_PER_CATEGORY));
     }
-    out.push(...where.map(blue));
+    out.push(...where.map(grey));
   }
   return out;
 }

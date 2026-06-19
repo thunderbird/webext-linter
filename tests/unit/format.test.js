@@ -148,7 +148,7 @@ test("Manual review prints the response between instructions and the locus list"
   // Response: after the instructions, before the locus, flush-left, verbatim.
   assert.match(
     manual,
-    /Needs a privacy policy: Confirm a policy exists\.\nPlease add a privacy policy\.\nSee \[1\]\.\n - bg\.js:4/
+    /Needs a privacy policy: Confirm a policy exists\.\nSuggested response: Please add a privacy policy\.\nSee \[1\]\.\n - bg\.js:4/
   );
   // The entry with no response carries no extra line.
   assert.match(manual, /Forked add-on: Check for a fork\./);

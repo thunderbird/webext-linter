@@ -14,7 +14,7 @@ Continue manual review for the following checks:
    privacy policy that discloses what data is collected and why. The privacy
    policy must be pasted into the ATN field directly (links to remotely hosted
    policies are not allowed).
-Please add a privacy policy to this add-on that details which user data is being sent and to what services. The critical things to describe in the policy are how your extension collects, uses, stores, shares or discloses information about people. If your add-on makes it apparent to websites that it is installed, this must also be mentioned. The policy should be about the extension only, not a copy of the website’s privacy policy. It should also be the actual text, as opposed to a link to a privacy policy on a website. The privacy policy can be added in the add-on settings under "Manage Authors & License" on addons.thunderbird.net. For more information, please check our Review Policies [1], and Mozilla’s own privacy policy [2] as an example.
+Suggested response: Please add a privacy policy to this add-on that details which user data is being sent and to what services. The critical things to describe in the policy are how your extension collects, uses, stores, shares or discloses information about people. If your add-on makes it apparent to websites that it is installed, this must also be mentioned. The policy should be about the extension only, not a copy of the website’s privacy policy. It should also be the actual text, as opposed to a link to a privacy policy on a website. The privacy policy can be added in the add-on settings under "Manage Authors & License" on addons.thunderbird.net. For more information, please check our Review Policies [1], and Mozilla’s own privacy policy [2] as an example.
 
 [1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
 [2]: https://www.mozilla.org/en-US/privacy/
@@ -25,25 +25,25 @@ Please add a privacy policy to this add-on that details which user data is being
    permission. Confirm the add-on listing page on ATN discloses what information
    is exchanged with the local app and that it complies with the No Surprises
    policy. The native host itself does not need to be part of the package.
-This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged. The native host itself does not need to be part of the package.
+Suggested response: This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged. The native host itself does not need to be part of the package.
 
 3) Missing English localization: This add-on ships no English localization, so
    user-facing text may be hardcoded in another language. Review its strings by
    hand and confirm if an English localization is provided.
-Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
+Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
 
 4) User-data exfiltration: The following code locations transmit data to a
    remote server. Confirm by hand that any user data they send is gated behind
    an explicit opt-in (a documented options-page setting) and is never sent
    without consent.
-The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
+Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
  - background.js:4
  - background.js:7
 
 5) Unused permissions: Review whether the following declared permissions are
    used, and ask the developer to remove any that are not needed.
-One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
+Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
  - manifest.json:5 - nativeMessaging
 
 ── Standard manual review ──
@@ -53,49 +53,49 @@ Continue manual review for the following checks:
 1) Check the submission for spam: Inspect the listing (name, summary,
    description, screenshots) and the add-on itself. Determine if it looks like
    spam or contains inappropriate, misleading, or low-effort content.
-This add-on contains inappropriate content.
+Suggested response: This add-on contains inappropriate content.
 
 2) Test the add-on and request testing information if needed: Test the add-on’s
    functionality in a test profile, and check if it needs additional information
    like credentials in order to continue the review.
-Please provide us with detailed information on how to test this add-on. If authentication to a website is necessary, give us a test username and password to facilitate our work. This can be provided in the Whiteboard field, which can be found in the Edit Listing page under the Technical Details section. This information is only available to reviewers.
+Suggested response: Please provide us with detailed information on how to test this add-on. If authentication to a website is necessary, give us a test username and password to facilitate our work. This can be provided in the Whiteboard field, which can be found in the Edit Listing page under the Technical Details section. This information is only available to reviewers.
 
 3) Check for "No Surprises" policy violations: Test the add-on’s functionality
    in a test profile and inspect the code for any unexpected features or
    behavior that is not documented on the ATN listing page and could be a
    surprise to the user. A diff against the last accepted version may be
    helpful.
-Your add-on includes a feature that is not related to its primary function and is not mentioned in the description of your add-on listing page on ATN (addons.thunderbird.net). This feature must be strictly opt-in: <name of feature>.
+Suggested response: Your add-on includes a feature that is not related to its primary function and is not mentioned in the description of your add-on listing page on ATN (addons.thunderbird.net). This feature must be strictly opt-in: <name of feature>.
 
 4) Check for a missing payment disclosure: Test the add-on’s functionality in a
    test profile. Verify whether the add-on requires a subscription or other form
    of payment to function but the "needs payment" flag on the add-on’s ATN
    listing page is not enabled.
-It looks like a payment is required to use this add-on or the service this add-on relies on, either upfront, after a trial period or in conjunction with a paid software. If so, we need to ask you to update the payment status to yes.
+Suggested response: It looks like a payment is required to use this add-on or the service this add-on relies on, either upfront, after a trial period or in conjunction with a paid software. If so, we need to ask you to update the payment status to yes.
 
 5) Check suitability for listing: Judge whether the add-on targets a limited or
    non-public audience (for example an internal, single-organization, or
    test-only add-on) and should better self-hosted than publicly listed on ATN.
-Due to its limited or non-public audience, this add-on is not suitable for listing on ATN (addons.thunderbird.net). Please consider self-hosting and distributing it yourself.
+Suggested response: Due to its limited or non-public audience, this add-on is not suitable for listing on ATN (addons.thunderbird.net). Please consider self-hosting and distributing it yourself.
 
 6) Acceptable Use Policy: Check the name, summary, description, and screenshots
    against Mozilla’s Acceptable Use Policy
    (https://www.mozilla.org/about/legal/acceptable-use/).
-The name, summary, description, and/or or screenshot(s) of this extension contain content that does not comply with Mozilla’s Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/).
+Suggested response: The name, summary, description, and/or or screenshot(s) of this extension contain content that does not comply with Mozilla’s Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/).
 
 7) Check the icon for trademark or logo imitation: Inspect the add-on’s icon, if
    it imitates or incorporates the Thunderbird or Mozilla logo.
-This add-on’s icon imitates or incorporates a Mozilla trademark (the Thunderbird or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please use a distinct icon.
+Suggested response: This add-on’s icon imitates or incorporates a Mozilla trademark (the Thunderbird or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please use a distinct icon.
 
 8) Missing ATN description or details: Verify that the add-on listing page on
    ATN includes detailed instructions on how to use the add-on and where to find
    its entry points. It should also include screenshots to help users quickly
    understand how the add-on works.
-The add-on listing page on ATN (addons.thunderbird.net) should include detailed instructions on how to use the add-on and where to find its entry points. Please also include screenshots to help users quickly understand how the add-on works.
+Suggested response: The add-on listing page on ATN (addons.thunderbird.net) should include detailed instructions on how to use the add-on and where to find its entry points. Please also include screenshots to help users quickly understand how the add-on works.
 
 9) Missing English ATN localization: Verify that the ATN listing page also has
    an English version.
-The add-on listing page on ATN (addons.thunderbird.net) should also have an English localization. English serves as the default language in Thunderbird, and most users who do not understand the available non-English version will most likely be able to read English.
+Suggested response: The add-on listing page on ATN (addons.thunderbird.net) should also have an English localization. English serves as the default language in Thunderbird, and most users who do not understand the available non-English version will most likely be able to read English.
 
 10) Forked add-on: Check if the submission is a fork of an existing add-on. Such
     forks are only allowed on ATN if they are clearly distinguished from the
@@ -107,7 +107,7 @@ The add-on listing page on ATN (addons.thunderbird.net) should also have an Engl
     confusion for users and unnecessary overlap for developers. We encourage
     developers to contribute their improvements directly to the original
     project.
-The submission appears to be a fork of an existing add-on that is still being actively maintained. According to our review policies (https://thunderbird.github.io/atn-review-policy/):
+Suggested response: The submission appears to be a fork of an existing add-on that is still being actively maintained. According to our review policies (https://thunderbird.github.io/atn-review-policy/):
 
 "If the add-on is a fork of another add-on, the name must clearly distinguish it from the original and provide a significant difference in functionality and/or code. Exceptions may be made in instances where the add-on is no longer maintained by the original author."
 
