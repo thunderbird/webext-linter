@@ -147,7 +147,9 @@ function summarySection({ title, summary }) {
   const body =
     summary.text != null
       ? wrapText(summary.text, "  ").join("\n")
-      : "  (summary unavailable)";
+      : summary.error
+        ? `  (summary unavailable - ${summary.error})`
+        : "  (summary unavailable)";
   const block = `\n── ${title} ──\n\n${body}\n`;
   process.stdout.write(block);
   return block;

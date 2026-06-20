@@ -22,7 +22,8 @@ import {
 import { classifySource } from "./sources.js";
 import { lockedVersion } from "./locks.js";
 import { getProvider } from "../llm/provider.js";
-import { debug } from "../util/log.js";
+import { progress, llmErrorText } from "../util/log.js";
+import { red } from "../util/color.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /** @typedef {import("../normalize/vendor.js").VendorEntry} VendorEntry */
@@ -96,7 +97,11 @@ export async function resolveVendor({
         }))
       );
     } catch (err) {
-      debug(`[vendor] LLM parse fallback failed: ${err?.message ?? err}`);
+      // Report the failure at this step (visible without --verbose); the
+      // deterministic parse still stands, so the review continues.
+      progress(
+        red(`  vendor parse: LLM fallback failed - ${llmErrorText(err)}`)
+      );
     }
   }
 

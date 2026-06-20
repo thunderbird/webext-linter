@@ -132,3 +132,18 @@ export function warn(...args) {
 export function progress(...args) {
   emit(args, progressOn);
 }
+
+/**
+ * A concise one-line reason from a thrown LLM/SDK error, for narrating a failed
+ * LLM step in the feed (and the summary's report notice). Includes the HTTP
+ * status when the provider SDK attached one (e.g. 400 for an over-long prompt -
+ * whose message carries the model's token limit).
+ *
+ * @param {unknown} err
+ * @returns {string}
+ */
+export function llmErrorText(err) {
+  const status = err?.status ?? err?.statusCode;
+  const msg = err?.message ?? String(err);
+  return status ? `HTTP ${status}: ${msg}` : msg;
+}

@@ -14,12 +14,13 @@ export const DEFAULT_CACHE = ".schema-cache";
 
 /**
  * Default model per LLM_API_TYPE when LLM_API_MODEL is not set. DEFAULT_MODEL_CLAUDE is
- * the claude (Anthropic) default; DEFAULT_MODEL_OPENAI the chatgpt (OpenAI) one;
- * DEFAULT_MODEL_OLLAMA the ollama (local) one - a tool-capable model that must be
- * pulled (`ollama pull llama3.1`).
+ * the claude (Anthropic) default; DEFAULT_MODEL_OPENAI the chatgpt (OpenAI) one
+ * (gpt-4.1 for its 1M-token context - add-ons can be large; gpt-4o's 128k
+ * overflowed); DEFAULT_MODEL_OLLAMA the ollama (local) one - a tool-capable model
+ * that must be pulled (`ollama pull llama3.1`).
  */
 export const DEFAULT_MODEL_CLAUDE = "claude-sonnet-4-6";
-export const DEFAULT_MODEL_OPENAI = "gpt-4o";
+export const DEFAULT_MODEL_OPENAI = "gpt-4.1";
 export const DEFAULT_MODEL_OLLAMA = "llama3.1";
 
 /**

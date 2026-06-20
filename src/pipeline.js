@@ -34,7 +34,8 @@ import { classifyBundled } from "./checks/lib/bundled.js";
 import { collapseUnused } from "./checks/lib/unused-folders.js";
 import { isExperiment } from "./checks/lib/util.js";
 import { createLlmBudget } from "./llm/budget.js";
-import { debug, progress } from "./util/log.js";
+import { debug, progress, llmErrorText } from "./util/log.js";
+import { red } from "./util/color.js";
 import { humanSize } from "./util/text.js";
 import {
   DEFAULT_CHANNEL,
@@ -46,9 +47,10 @@ import {
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
 /**
  * An advisory summary already generated during the activity feed: the transmitted
- * byte size and the model's prose (null if the call failed). The caller prints the
- * prose after the report.
- * @typedef {{bytes: number, text: ?string}} GeneratedSummary
+ * byte size and the model's prose (null if the call failed), plus a one-line
+ * `error` reason when it failed (shown in the report's summary section). The
+ * caller prints the prose after the report.
+ * @typedef {{bytes: number, text: ?string, error?: string}} GeneratedSummary
  */
 
 /**
@@ -273,7 +275,15 @@ async function generateSummary(deferred, label, budget) {
     return undefined; // run-wide request cap reached
   }
   progress(`  LLM: Generating ${label} (${humanSize(deferred.bytes)}) ...`);
-  return { bytes: deferred.bytes, text: await deferred.run() };
+  try {
+    return { bytes: deferred.bytes, text: await deferred.run() };
+  } catch (err) {
+    // An advisory summary must never abort the review; report the failure at
+    // this step (visible without --verbose) and carry the reason to the report.
+    const reason = llmErrorText(err);
+    progress(red(`  LLM: ${label} failed - ${reason}`));
+    return { bytes: deferred.bytes, text: null, error: reason };
+  }
 }
 
 /**
@@ -300,7 +310,14 @@ async function generateAddonSummary(ctx, registry, unused, budget) {
     return undefined; // run-wide request cap reached
   }
   progress(`  LLM: Generating full summary (${humanSize(deferred.bytes)}) ...`);
-  const review = await deferred.run();
+  let review;
+  try {
+    review = await deferred.run();
+  } catch (err) {
+    const reason = llmErrorText(err);
+    progress(red(`  LLM: full summary failed - ${reason}`));
+    return { bytes: deferred.bytes, text: null, error: reason };
+  }
   if (review) {
     ctx.addon.unusedPermissions = review.unusedPermissions;
   }

@@ -67,7 +67,7 @@ The LLM checks are configured from the environment, and enabled via the `--llm-e
 | Variable | Description |
 | --- | --- |
 | `LLM_API_TYPE` | Provider: `claude` (default), `chatgpt`, or `ollama` (local). |
-| `LLM_API_KEY` | The provider API key. Required for `claude`/`chatgpt`; not used by `ollama`. |
+| `LLM_API_KEY` | The provider API key. Required for `claude`/`chatgpt`, not used by `ollama`. |
 | `LLM_API_MODEL` | Model for the LLM checks (default: the provider's default). |
 | `LLM_API_URL` | Override the provider's API base URL (e.g. a proxy, or a remote Ollama host). |
 
@@ -86,8 +86,8 @@ export LLM_API_TYPE=ollama
 node verify.js <xpi|folder> --llm-enabled
 ```
 
-Each provider has a default model (`claude-sonnet-4-6` for `claude`, `gpt-4o`
-for `chatgpt`, `llama3.1` for `ollama`); override it by setting `LLM_API_MODEL`,
+Each provider has a default model (`claude-sonnet-4-6` for `claude`, `gpt-4.1`
+for `chatgpt`, `llama3.1` for `ollama`). Override it by setting `LLM_API_MODEL`,
 or list the available models with `--llm-list-models`.
 
 **Local model (Ollama).** With [Ollama](https://ollama.com) running, the checks
@@ -103,10 +103,10 @@ model is not pulled. Point `LLM_API_URL` at a remote host to use a non-local Oll
 A review has three kinds of check, all declared in
 [assets/registry.yaml](assets/registry.yaml):
 
-- **Deterministic** - decided entirely in code, no LLM; offline apart from the
+- **Deterministic** - decided entirely in code, no LLM, offline apart from the
   one-time vendor source fetch. A few are gated by review mode
   (`diff: true`/`false`).
-- **LLM** - a deterministic pre-flight always runs offline; only the ambiguous
+- **LLM** - a deterministic pre-flight always runs offline, only the ambiguous
   residue is delegated to an LLM (when an API key is supplied) or routed to
   manual review.
 - **Manual** - checks the tool can't make itself, surfaced as a todo list.
@@ -117,7 +117,7 @@ Each `deterministic-checks` entry links to a module in
 [src/checks/rules/](src/checks/rules/) and supplies the severity for its
 findings. A deterministic check either decides each case as a finding or
 escalates it straight to manual review (e.g. `vendor-unverified`,
-`native-messaging`, `fork-check`); LLM checks escalate only their ambiguous
+`native-messaging`, `fork-check`). The LLM checks escalate only their ambiguous
 residue.
 
 | Check | What it flags |
@@ -186,7 +186,7 @@ source). The model returns a three-way verdict - **fail** / **pass** /
 | `remote-eval` | Pre-flight: the statically-undecidable `fetch()->eval` pattern → the LLM judges (given the offending file) whether the executed code is fetched remotely. The definite dynamic-execution cases are the deterministic `eval-call`/`function-constructor`/`string-timer`/`csp-unsafe-eval`/`csp-unsafe-inline` checks. |
 | `remote-script` | Pre-flight: remote `<script>`/`<link>`/`@import`/`url()`/media/imports/`importScripts`/runtime injection/WASM, and a CSP permitting a remote script source → a finding. Statically-undecidable cases (non-literal URLs, inline `data:`/`blob:` script sources) → the LLM judges whether the source is remote. |
 | `data-exfiltration` | Pre-flight: a normal transmission (`fetch`/XHR/WebSocket/EventSource/`sendBeacon`) to a remote/dynamic host → the LLM judges, given the file and the options page, whether user data is sent without an explicit opt-in. Covert channels are the separate `disguised-*` errors. |
-| `missing-english-localization` | Pre-flight: a `_locales` English directory (`en`, `en-US`, …) present → pass; `_locales` but no English → a finding. No `_locales` → the LLM judges whether user-facing strings are hardcoded in a non-English language. |
+| `missing-english-localization` | Pre-flight: A `_locales` English directory (`en`, `en-US`, …) present → pass. A `_locales` directory but no English → a finding. No `_locales` directory → the LLM judges whether user-facing strings are hardcoded in a non-English language. |
 | `minimize-web-accessible-resources` | Pre-flight: over-broad exposure (a resource pattern like `*`, or MV3 `matches` of `<all_urls>`/`*://*/*`) and concrete resources no content script/page loads → a finding. An ambiguous exposed resource (dynamic loaders, or name mentioned) → the LLM judges whether it is needlessly exposed. |
 | `unused-files` | Pre-flight: hidden/junk by name, and files reachable from no manifest entry point (a reference graph over imports/`getURL`/HTML/CSS plus schema-derived file-loading APIs) - a clearly-unreferenced file is a finding. An ambiguous file (string-mentioned, or the add-on uses dynamic loaders) → the LLM judges whether it is unused. License/README/VENDOR/`_locales` are exempt. |
 
@@ -201,7 +201,7 @@ report's **Standard manual review** to-do list.
 | Check | What the reviewer verifies |
 | --- | --- |
 | Check the submission for spam | The listing and add-on for spam or inappropriate, misleading, or low-effort content. |
-| Test the add-on and request testing information if needed | Functionality in a test profile; fail if credentials or other info are needed to continue. |
+| Test the add-on and request testing information if needed | Functionality in a test profile, fail if credentials or other info are needed to continue. |
 | Check for "No Surprises" policy violations | The code diff for behavior not documented on the ATN listing that could surprise the user. |
 | Check for a missing payment disclosure | Whether the add-on requires payment but the "needs payment" flag is not set on ATN. |
 | Check suitability for listing | Whether the add-on targets a limited or non-public audience (better self-hosted than listed). |
@@ -218,7 +218,7 @@ node verify.js ./submission.xpi
 # Review an unpacked source folder
 node verify.js ./my-addon
 
-# esr channel; machine-readable; offline schema
+# esr channel, machine-readable, offline schema
 node verify.js ./submission.xpi --schema-channel esr --report-format json --schema-zip ./schemas.zip
 
 # Review with the LLM checks enabled, plus an AI summary of the add-on
@@ -236,7 +236,7 @@ node verify.js --llm-list-models
 
 ## Contributing
 
-Requires Node `>=20`; `npm install` once. Before sending a change, run:
+Requires Node `>=20` and `npm install` once. Before sending a change, run:
 
 ```sh
 npm run lint          # ESLint over src/ and the root entry files
@@ -251,7 +251,7 @@ Conventions:
 - **The registry owns every model-facing string** - check rubrics, the LLM
   system intro, and prompts live in
   [`assets/registry.yaml`](assets/registry.yaml), never in `src/`.
-- **Each source file opens with a header comment** stating what belongs in it;
+- **Each source file opens with a header comment** stating what belongs in it,
   keep it accurate when you edit.
 - **Golden tests are byte-exact** - regenerate intended report changes with
   `UPDATE_GOLDEN=1 npm test` and review the diff.

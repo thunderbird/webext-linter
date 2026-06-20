@@ -27,7 +27,6 @@ import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
 import { canonicalJson } from "../util/json.js";
 import { nonAuthoredJs } from "./lib/bundled.js";
 import { declaredPermissions } from "./lib/permissions.js";
-import { debug } from "../util/log.js";
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
 /** @typedef {import("./registry.js").Registry} Registry */
@@ -82,23 +81,17 @@ function fenced(out, h, s) {
 /**
  * Wrap a self-contained prompt message as a deferred summary: its UTF-8 size
  * (for the status line) plus a run() that performs the LLM call and yields the
- * prose, or null on error - an advisory summary must never abort the review.
+ * prose. run() may THROW on an LLM error; the caller (the pipeline) catches it,
+ * narrates the failure at the step, and keeps the review going - an advisory
+ * summary must never abort the review.
  * @param {RunContext} ctx
  * @param {string} message  The full text sent to the model.
- * @param {string} label  Identifies the summary in the verbose error log.
  * @returns {DeferredSummary}
  */
-function deferredSummary(ctx, message, label) {
+function deferredSummary(ctx, message) {
   return {
     bytes: Buffer.byteLength(message, "utf8"),
-    run: async () => {
-      try {
-        return await ctx.llm.summarize(message);
-      } catch (err) {
-        debug(`[llm] ${label} error: ${err?.message ?? String(err)}`);
-        return null;
-      }
-    },
+    run: () => ctx.llm.summarize(message),
   };
 }
 
@@ -106,24 +99,17 @@ function deferredSummary(ctx, message, label) {
  * Like deferredSummary, but for the add-on review: run() yields the structured
  * { summary, unusedPermissions } via ctx.llm.reviewAddon (the forced
  * report_addon_review tool) rather than free-form prose, since the add-on
- * summary also returns the machine-readable unused-permission list. Returns null
- * on an LLM error - an advisory summary must never abort the review.
+ * summary also returns the machine-readable unused-permission list. run() may
+ * THROW on an LLM error; the pipeline catches it and narrates the failure - an
+ * advisory summary must never abort the review.
  * @param {RunContext} ctx
  * @param {string} message  The full text sent to the model.
- * @param {string} label  Identifies the review in the verbose error log.
  * @returns {DeferredReview}
  */
-function deferredReview(ctx, message, label) {
+function deferredReview(ctx, message) {
   return {
     bytes: Buffer.byteLength(message, "utf8"),
-    run: async () => {
-      try {
-        return await ctx.llm.reviewAddon(message);
-      } catch (err) {
-        debug(`[llm] ${label} error: ${err?.message ?? String(err)}`);
-        return null;
-      }
-    },
+    run: () => ctx.llm.reviewAddon(message),
   };
 }
 
@@ -289,7 +275,7 @@ export function buildSummarizer(ctx, registry) {
   if (!diff || !prompt) {
     return null;
   }
-  return deferredSummary(ctx, `${prompt}\n\n${diff}`, "change-summary");
+  return deferredSummary(ctx, `${prompt}\n\n${diff}`);
 }
 
 /**
@@ -316,5 +302,5 @@ export function buildAddonSummarizer(
   if (!text || !prompt) {
     return null;
   }
-  return deferredReview(ctx, `${prompt}\n\n${text}`, "add-on-summary");
+  return deferredReview(ctx, `${prompt}\n\n${text}`);
 }

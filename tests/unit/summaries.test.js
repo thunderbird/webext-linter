@@ -111,7 +111,10 @@ test("buildSummarizer returns null without a baseline/llm/change", () => {
 });
 
 // The summary is advisory: a failing LLM call yields null, never a throw.
-test("buildSummarizer run() swallows an LLM error and returns null", async () => {
+// run() propagates an LLM error; the pipeline (generateSummary) catches it,
+// reports it at the step, and keeps the review going - so the deferred itself
+// no longer swallows.
+test("buildSummarizer run() propagates an LLM error", async () => {
   const prev = { "manifest.json": MV1, "a.js": "OLD" };
   const cur = { "manifest.json": MV2, "a.js": "NEW" };
   const ctx = {
@@ -123,7 +126,7 @@ test("buildSummarizer run() swallows an LLM error and returns null", async () =>
     },
   };
   const s = buildSummarizer(ctx, loadRegistry());
-  assert.equal(await s.run(), null);
+  await assert.rejects(() => s.run(), /boom/);
 });
 
 // ---- add-on summary (full current) ----
@@ -203,9 +206,9 @@ test("buildAddonSummarizer sends prompt+add-on and returns the structured review
   assert.equal(s.bytes, Buffer.byteLength(received, "utf8"));
 });
 
-// An LLM error during the review is swallowed: run() yields null, never throws
-// (an advisory summary must not abort the review).
-test("buildAddonSummarizer run() returns null on an LLM error", async () => {
+// run() propagates an LLM error; the pipeline (generateAddonSummary) catches it
+// and reports it at the step, so the deferred no longer swallows it itself.
+test("buildAddonSummarizer run() propagates an LLM error", async () => {
   const ctx = {
     addon: addon({ "manifest.json": MV1 }),
     llm: {
@@ -215,7 +218,7 @@ test("buildAddonSummarizer run() returns null on an LLM error", async () => {
     },
   };
   const s = buildAddonSummarizer(ctx, loadRegistry());
-  assert.equal(await s.run(), null);
+  await assert.rejects(() => s.run(), /boom/);
 });
 
 // No token -> no add-on summarizer.
