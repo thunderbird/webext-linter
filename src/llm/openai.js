@@ -13,7 +13,7 @@
 // NOT belong here: the schemas + coercion (-> schema.js), the provider selection
 // (-> src/llm/provider.js), or any model-facing prompt (-> the registry).
 
-import { DEFAULT_MODEL_OPENAI, MAX_RESPONSE_TOKENS } from "../config.js";
+import { MAX_RESPONSE_TOKENS } from "../config.js";
 import {
   RESULT_TOOL,
   REVIEW_TOOL,
@@ -104,7 +104,7 @@ function callArgs(res) {
 /** @see import("./anthropic.js").callVerdicts */
 export async function callVerdicts({
   token,
-  model = DEFAULT_MODEL_OPENAI,
+  model,
   baseURL,
   system,
   criterion,
@@ -128,7 +128,7 @@ export async function callVerdicts({
 /** @see import("./anthropic.js").callText */
 export async function callText({
   token,
-  model = DEFAULT_MODEL_OPENAI,
+  model,
   baseURL,
   system,
   prompt,
@@ -147,7 +147,7 @@ export async function callText({
 /** @see import("./anthropic.js").callReview */
 export async function callReview({
   token,
-  model = DEFAULT_MODEL_OPENAI,
+  model,
   baseURL,
   system,
   prompt,
