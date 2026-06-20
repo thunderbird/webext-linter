@@ -338,7 +338,7 @@ function metaFiles(node, out = []) {
 
 /**
  * Whether the source clears the trust bar: a broadly-used library (npm monthly
- * downloads, GitHub stars, or cdnjs catalog membership over the configured bar)
+ * downloads or GitHub stars over the configured bar)
  * OR a github source from a first-party trusted org (VENDOR_TRUSTED_GITHUB_ORGS,
  * e.g. Thunderbird), which is accepted by provenance regardless of stars and
  * without a popularity lookup. A lookup error counts as "not popular" (the case
@@ -363,12 +363,6 @@ async function isPopular(src, net) {
       }
       const j = await net.fetchJson(`https://api.github.com/repos/${src.repo}`);
       return Number(j?.stargazers_count) >= VENDOR_GITHUB_MIN_STARS;
-    }
-    if (src.kind === "cdnjs") {
-      const j = await net.fetchJson(
-        `https://api.cdnjs.com/libraries/${src.lib}?fields=name`
-      );
-      return Boolean(j?.name);
     }
   } catch {
     return false;

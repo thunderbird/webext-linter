@@ -1,11 +1,11 @@
 // Classifies a declared vendor source URL, with no network. It decides whether
 // the host is one we may fetch from, whether the ref is immutable (so a byte
 // comparison against it is stable), the raw URL to fetch, and the identifier
-// used for the popularity lookup (npm package, GitHub owner/repo, or cdnjs lib).
+// used for the popularity lookup (npm package or GitHub owner/repo).
 //
-// Belongs here: parsing the four trusted host shapes (unpkg, jsDelivr npm + gh,
-// cdnjs, raw.githubusercontent) plus the github.com/.../blob -> raw rewrite, and
-// the pinned-ref heuristic. Does NOT belong here: the host allowlist policy
+// Belongs here: parsing the trusted host shapes (unpkg, jsDelivr npm + gh,
+// raw.githubusercontent) plus the github.com/.../blob -> raw rewrite, and the
+// pinned-ref heuristic. Does NOT belong here: the host allowlist policy
 // (-> src/config.js VENDOR_TRUSTED_HOSTS), fetching/comparing/popularity
 // (-> src/vendor/verify.js), or the finding/manual routing (-> the check).
 
@@ -14,10 +14,9 @@
  * @property {boolean} trusted  Host is one we may fetch from.
  * @property {boolean} pinned  Ref is immutable (a version/tag/commit).
  * @property {?string} rawUrl  The raw URL to fetch (blob URLs rewritten to raw).
- * @property {?("npm"|"github"|"cdnjs")} kind  Source family, for popularity.
+ * @property {?("npm"|"github")} kind  Source family, for popularity.
  * @property {?string} pkg  npm package name (npm kind).
  * @property {?string} repo  "owner/repo" (github kind).
- * @property {?string} lib  cdnjs library name (cdnjs kind).
  */
 
 const UNTRUSTED = Object.freeze({
@@ -27,7 +26,6 @@ const UNTRUSTED = Object.freeze({
   kind: null,
   pkg: null,
   repo: null,
-  lib: null,
 });
 
 // A concrete npm version (not a dist-tag like "latest"/"next").
@@ -65,19 +63,6 @@ export function classifySource(url) {
     if (segs[0] === "gh" && segs.length >= 3) {
       const { repo, ref } = ghSpec(segs[1], segs[2]);
       return github(repo, ref, url);
-    }
-    return UNTRUSTED;
-  }
-  if (host === "cdnjs.cloudflare.com") {
-    if (segs[0] === "ajax" && segs[1] === "libs" && segs.length >= 4) {
-      return {
-        ...UNTRUSTED,
-        trusted: true,
-        kind: "cdnjs",
-        lib: segs[2],
-        rawUrl: url,
-        pinned: VERSION.test(segs[3]),
-      };
     }
     return UNTRUSTED;
   }

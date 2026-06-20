@@ -32,17 +32,18 @@ test("classifySource recognizes the trusted hosts and pinned refs", () => {
     [gh.trusted, gh.pinned, gh.kind, gh.repo],
     [true, true, "github", "javve/list.js"]
   );
-  const cdnjs = classifySource(
-    "https://cdnjs.cloudflare.com/ajax/libs/jsdiff/7.0.0/diff.js"
-  );
-  assert.deepEqual(
-    [cdnjs.trusted, cdnjs.pinned, cdnjs.kind, cdnjs.lib],
-    [true, true, "cdnjs", "jsdiff"]
-  );
 });
 
 test("classifySource rejects untrusted hosts, non-https, and mutable refs", () => {
   assert.equal(classifySource("https://evil.example.com/x.js").trusted, false);
+  // cdnjs is no longer an accepted source (a cdnjs lib is always on npm/github);
+  // such a URL is now untrusted and routes to manual review.
+  assert.equal(
+    classifySource(
+      "https://cdnjs.cloudflare.com/ajax/libs/jsdiff/7.0.0/diff.js"
+    ).trusted,
+    false
+  );
   assert.equal(
     classifySource("http://unpkg.com/jszip@1.0.0/x.js").trusted,
     false

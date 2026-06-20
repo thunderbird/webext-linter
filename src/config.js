@@ -93,21 +93,19 @@ export const REACHABILITY_SKIPS_NON_AUTHORED = false;
 
 /**
  * The only hosts vendor verification fetches a declared source from. A source
- * on any other host is sent to manual review, never requested. All four pin an
+ * on any other host is sent to manual review, never requested. All three pin an
  * immutable version or tag, so a byte comparison is stable. A
  * github.com/.../blob URL is rewritten to raw.githubusercontent.com first.
  */
 export const VENDOR_TRUSTED_HOSTS = [
   "unpkg.com",
   "cdn.jsdelivr.net",
-  "cdnjs.cloudflare.com",
   "raw.githubusercontent.com",
 ];
 
 /**
  * "Broadly used" thresholds - the bar a declared library must clear to be
  * auto-trusted (else manual review): npm monthly downloads, or GitHub stars.
- * A cdnjs library is trusted by membership (cdnjs curates its catalog).
  */
 export const VENDOR_NPM_MIN_DOWNLOADS = 1000;
 export const VENDOR_GITHUB_MIN_STARS = 100;

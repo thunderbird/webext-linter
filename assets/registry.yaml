@@ -288,7 +288,7 @@ deterministic-checks:
 - title: Vendored library needs manual verification
   check: vendor-unverified.js
   response: |-
-    The following bundled third-party file(s) could not be automatically verified against their upstream source. For each, make sure your VENDOR file gives the library’s exact upstream version and a source URL that pins that release on a trusted host (unpkg, jsDelivr, cdnjs, or a raw GitHub URL), and that the bundled copy is unmodified, so it can be verified automatically.
+    The following bundled third-party file(s) could not be automatically verified against their upstream source. For each, make sure your VENDOR file gives the library’s exact upstream version and a source URL that pins that release on a trusted host (unpkg, jsDelivr, or a raw GitHub URL), and that the bundled copy is unmodified, so it can be verified automatically.
   instructions: |-
     The following declared third-party (vendored) file(s) could not be verified
     automatically. Confirm by hand that each is an unmodified copy of a
