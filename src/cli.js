@@ -157,11 +157,11 @@ function summarySection({ title, summary }) {
  * Resolve whether this run uses the LLM and with which key. The LLM is opt-in:
  * --llm-enabled is the sole enabler. A bare LLM_API_KEY in the environment does
  * not auto-enable it (a reviewer with a global key still runs the deterministic
- * checks alone), and --llm-model / LLM_API_URL / LLM_API_TYPE only configure the
+ * checks alone), and LLM_API_MODEL / LLM_API_URL / LLM_API_TYPE only configure the
  * LLM - they do not turn it on. When opted in, the key comes from the LLM_API_KEY
  * environment variable; it is undefined otherwise, so every downstream LLM path
  * stays off. LLM_API_TYPE picks the provider (claude | chatgpt, default claude)
- * and hence the default model when --llm-model is absent; the optional
+ * and hence the default model when LLM_API_MODEL is unset; the optional
  * LLM_API_URL overrides the API base URL.
  * @param {Record<string, string|boolean|string[]>} values
  * @returns {{wants: boolean, apiKey?: string, apiUrl?: string, apiType?: string,
@@ -172,7 +172,7 @@ function resolveLlm(values) {
   const apiKey = process.env.LLM_API_KEY;
   const apiUrl = process.env.LLM_API_URL || undefined;
   const apiType = (process.env.LLM_API_TYPE || DEFAULT_LLM_TYPE).toLowerCase();
-  const model = values["llm-model"] || defaultModelFor(apiType);
+  const model = process.env.LLM_API_MODEL || defaultModelFor(apiType);
   return {
     wants,
     apiKey: wants ? apiKey : undefined,
@@ -226,11 +226,7 @@ export function helpText() {
   const llmFlags = [
     [
       "--llm-enabled",
-      "Enable the LLM checks (the key comes from the LLM_API_KEY environment variable).",
-    ],
-    [
-      "--llm-model <id>",
-      "Model for the LLM checks; requires --llm-enabled (default: the provider's default; see --llm-list-models).",
+      "Enable the LLM checks (configured via the LLM_API_* environment variables; see the README).",
     ],
     ["--llm-list-models", "List the models your token can use, then exit."],
   ];
@@ -309,7 +305,6 @@ const OPTIONS = {
   "report-format": { type: "string" },
   "report-out": { type: "string" },
   "llm-enabled": { type: "boolean" },
-  "llm-model": { type: "string" },
   "llm-list-models": { type: "boolean" },
   verbose: { type: "boolean" },
   help: { type: "boolean" },

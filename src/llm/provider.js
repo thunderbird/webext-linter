@@ -48,7 +48,7 @@ export function getProvider(type = DEFAULT_LLM_TYPE) {
 }
 
 /**
- * The default model for an LLM_API_TYPE (used when --llm-model is not given).
+ * The default model for an LLM_API_TYPE (used when LLM_API_MODEL is not set).
  * @param {string} [type]
  * @returns {string}
  */

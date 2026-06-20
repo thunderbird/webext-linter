@@ -50,7 +50,6 @@ schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
 | `--report-out <file>` | Write the report to a file in addition to stdout. |
 | `--llm-enabled` | Enable the LLM checks. The key is read from the `LLM_API_KEY` environment variable (see [LLM configuration](#llm-configuration)). |
 | `--llm-list-models` | List the models your token can use, then exit. |
-| `--llm-model <id>` | Model for the LLM checks; requires `--llm-enabled` (default: the provider's default). |
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
@@ -69,6 +68,7 @@ The LLM checks are configured from the environment, and enabled via the `--llm-e
 | --- | --- |
 | `LLM_API_KEY` | The provider API key. **Required** by `--llm-enabled`. |
 | `LLM_API_TYPE` | Provider: `claude` (default) or `chatgpt`. |
+| `LLM_API_MODEL` | Model for the LLM checks (default: the provider's default). |
 | `LLM_API_URL` | Override the provider's API base URL (e.g. a proxy or gateway). |
 
 ```sh
@@ -80,8 +80,8 @@ node verify.js <xpi|folder> --llm-enabled            # ChatGPT
 ```
 
 Each provider has a default model (`claude-sonnet-4-6` for `claude`, `gpt-4o`
-for `chatgpt`); override it with `--llm-model`, or list the available models
-with `--llm-list-models`.
+for `chatgpt`); override it by setting `LLM_API_MODEL`, or list the available
+models with `--llm-list-models`.
 
 
 ## Review checks
@@ -90,10 +90,10 @@ A review has three kinds of check, all declared in
 [assets/registry.yaml](assets/registry.yaml):
 
 - **Deterministic** - decided entirely in code, no LLM; offline apart from the
-  one-time vendor source fetch (noted below). A few are gated by review mode
+  one-time vendor source fetch. A few are gated by review mode
   (`diff: true`/`false`).
 - **LLM** - a deterministic pre-flight always runs offline; only the ambiguous
-  residue is delegated to Claude (when an API key is supplied) or routed to
+  residue is delegated to an LLM (when an API key is supplied) or routed to
   manual review.
 - **Manual** - checks the tool can't make itself, surfaced as a todo list.
 
@@ -161,7 +161,7 @@ residue.
 
 Each LLM check **always runs its deterministic pre-flight**, regardless if LLM support is enabled or not.
 Cases the pre-flight can settle become findings directly, and only the
-genuinely-ambiguous residue is escalated, per case. When LLM support is not enabled, usure findings are added to the manual review queue. When LLM support *is* enabled
+genuinely-ambiguous residue is escalated, per case. When LLM support is not enabled, unsure findings are added to the manual review queue. When LLM support *is* enabled
 (`--llm-enabled` with an `LLM_API_KEY`), each escalated case is sent to the model
 with the check's rubric and that case's evidence (e.g. the offending file's
 source). The model returns a three-way verdict - **fail** / **pass** /
@@ -208,15 +208,15 @@ node verify.js ./my-addon
 node verify.js ./submission.xpi --schema-channel esr --report-format json --schema-zip ./schemas.zip
 
 # Review with the LLM checks enabled, plus an AI summary of the add-on
-LLM_API_KEY=sk-…
+export LLM_API_KEY=sk-…
 node verify.js ./submission.xpi --llm-enabled --full-summary
 
 # Same, but use ChatGPT instead of the default (Claude)
-LLM_API_KEY=sk-… LLM_API_TYPE=chatgpt
+export LLM_API_KEY=sk-… LLM_API_TYPE=chatgpt
 node verify.js ./submission.xpi --llm-enabled
 
 # List the models your token can use, then exit (needs a token)
-LLM_API_KEY=sk-…
+export LLM_API_KEY=sk-…
 node verify.js --llm-list-models
 ```
 

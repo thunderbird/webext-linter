@@ -13,7 +13,7 @@ export const VALID_CHANNELS = ["release", "beta", "esr"];
 export const DEFAULT_CACHE = ".schema-cache";
 
 /**
- * Default model per LLM_API_TYPE when --llm-model is not given. DEFAULT_MODEL is
+ * Default model per LLM_API_TYPE when LLM_API_MODEL is not set. DEFAULT_MODEL is
  * the claude (Anthropic) default; DEFAULT_MODEL_OPENAI the chatgpt (OpenAI) one.
  */
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
