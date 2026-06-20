@@ -63,8 +63,7 @@ tool failure.
 
 ### LLM configuration
 
-The LLM checks are configured from the environment - there is no API-key flag,
-so the key never lands in your shell history or a process listing:
+The LLM checks are configured from the environment, and enabled via the `--llm-enabled` flag:
 
 | Variable | Description |
 | --- | --- |
@@ -97,17 +96,6 @@ A review has three kinds of check, all declared in
   residue is delegated to Claude (when an API key is supplied) or routed to
   manual review.
 - **Manual** - checks the tool can't make itself, surfaced as a todo list.
-
-Every user-facing string lives in the registry: a check emits only structured
-data - the offending `item` (an API path, permission, host pattern, file, …)
-with a file and line - and the registry supplies the wording (with an optional
-`{{item}}` placeholder filled per finding). Findings are grouped in the report
-by severity (error, then warning, then info).
-
-When run interactively, the tool prints live progress to stderr, so stdout stays
-reserved for the report; piped or redirected runs (CI, a JSON consumer) stay
-quiet.
-
 
 ### Deterministic checks
 
@@ -169,29 +157,15 @@ residue.
 | `vendor-modified` | A declared third-party file whose bytes don't match its pinned source (EOL-tolerant compare) - it appears modified from upstream (error). |
 | `vendor-unverified` | Declarations that can't be settled automatically - an untrusted-host source, a library not confirmed widely used, an unfetchable source, or an unparsable VENDOR file - routed to manual review. |
 
-The vendor checks are fed by a one-time pre-step that fetches each declared
-source and byte-compares it (the tool's only outbound requests, and only to
-unpkg / jsDelivr / cdnjs / raw.githubusercontent); the checks above just read
-its result.
-
-The per-file JS checks (`code-sanity`, the eval checks, `unsafe-html`,
-`remote-script`) skip files that are not the developer's authored source -
-library/minified/obfuscated bundles, or VENDOR-declared files - since those are
-rejected (`obfuscated-code`/`missing-library`) or declared third-party anyway.
-(`remote-script` still scans HTML/CSS and the CSP regardless.)
-
-
 ### LLM checks
 
-Each LLM check **always runs its deterministic pre-flight**, enabled or not:
-cases the pre-flight can settle become findings directly, and only the
-genuinely-ambiguous residue is escalated, per case. When the LLM is enabled
+Each LLM check **always runs its deterministic pre-flight**, regardless if LLM support is enabled or not.
+Cases the pre-flight can settle become findings directly, and only the
+genuinely-ambiguous residue is escalated, per case. When LLM support is not enabled, usure findings are added to the manual review queue. When LLM support *is* enabled
 (`--llm-enabled` with an `LLM_API_KEY`), each escalated case is sent to the model
 with the check's rubric and that case's evidence (e.g. the offending file's
 source). The model returns a three-way verdict - **fail** / **pass** /
-**unsure** - so a confident result is final, but an **unsure** one (like a run
-with no key, or a call that errors) routes the case to manual review. An add-on
-with no ambiguity never spends tokens, and nothing is silently dropped.
+**unsure** - so a confident result is final. Any **unsure** finding is routed to manual review.
 
 | Check id (`check:`) | Pre-flight (always) + what the LLM judges |
 | --- | --- |
@@ -208,11 +182,7 @@ with no ambiguity never spends tokens, and nothing is silently dropped.
 Some review steps can't be automated - they need hands-on testing or a human's
 judgment over content the tool can't see (the store listing, screenshots, the
 icon). These live under `manual-checks` in the yaml and are surfaced in the
-report's **Manual review** to-do list. An LLM check whose pre-flight can't settle
-a case joins the same list when the LLM is off, its verdict is `unsure`, or the
-call errors - so a check only appears here when it actually needs a human. The
-list appears only in the text report; JSON output (which ATN consumes for
-auto-verification) omits it.
+report's **Standard manual review** to-do list.
 
 | Check | What the reviewer verifies |
 | --- | --- |
@@ -238,13 +208,16 @@ node verify.js ./my-addon
 node verify.js ./submission.xpi --schema-channel esr --report-format json --schema-zip ./schemas.zip
 
 # Review with the LLM checks enabled, plus an AI summary of the add-on
-LLM_API_KEY=sk-… node verify.js ./submission.xpi --llm-enabled --full-summary
+LLM_API_KEY=sk-…
+node verify.js ./submission.xpi --llm-enabled --full-summary
 
 # Same, but use ChatGPT instead of the default (Claude)
-LLM_API_KEY=sk-… LLM_API_TYPE=chatgpt node verify.js ./submission.xpi --llm-enabled
+LLM_API_KEY=sk-… LLM_API_TYPE=chatgpt
+node verify.js ./submission.xpi --llm-enabled
 
 # List the models your token can use, then exit (needs a token)
-LLM_API_KEY=sk-… node verify.js --llm-list-models
+LLM_API_KEY=sk-…
+node verify.js --llm-list-models
 ```
 
 ## Contributing
