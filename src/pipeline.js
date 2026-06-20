@@ -69,6 +69,7 @@ import {
  *   put it on meta.reviewUrl - set for text reports, off for JSON/the harness.
  * @property {string} [llmApiKey]
  * @property {string} [llmModel]
+ * @property {string} [llmApiUrl]  Override the LLM API base URL (LLM_API_URL).
  * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
  *   network transport for vendor verification (the test harness injects an
  *   offline one); defaults to the real fetch.
@@ -154,6 +155,7 @@ export async function runPipeline(opts) {
       parsePrompt: registry.prompt("vendor-parse"),
       token: opts.llmApiKey,
       model: opts.llmModel,
+      url: opts.llmApiUrl,
       budget: llmBudget,
     });
 
@@ -308,6 +310,7 @@ async function reviewAddon(
     checksSkip,
     eslint,
     llmApiKey,
+    llmApiUrl,
     allowExperiments,
     diffTo,
     fullSummary,
@@ -330,7 +333,7 @@ async function reviewAddon(
   const ctx = buildRunContext({
     addon,
     schema,
-    options: { llmApiKey, allowExperiments },
+    options: { llmApiKey, llmApiUrl, allowExperiments },
     diffTo,
     llmModel: opts.llmModel,
     systemIntro: registry.prompt("system-intro"),

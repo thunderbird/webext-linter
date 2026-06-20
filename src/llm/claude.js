@@ -189,6 +189,7 @@ export async function callClaude({
   system,
   criterion,
   maxTokens = MAX_RESPONSE_TOKENS,
+  baseURL,
   client,
 }) {
   if (!token) {
@@ -196,7 +197,7 @@ export async function callClaude({
   }
   if (!client) {
     const Anthropic = await loadSdk();
-    client = new Anthropic({ apiKey: token });
+    client = new Anthropic({ apiKey: token, ...(baseURL ? { baseURL } : {}) });
   }
   const message = await client.messages.create({
     model,
@@ -240,6 +241,7 @@ export async function callClaudeText({
   system,
   prompt,
   maxTokens = MAX_RESPONSE_TOKENS,
+  baseURL,
   client,
 }) {
   if (!token) {
@@ -247,7 +249,7 @@ export async function callClaudeText({
   }
   if (!client) {
     const Anthropic = await loadSdk();
-    client = new Anthropic({ apiKey: token });
+    client = new Anthropic({ apiKey: token, ...(baseURL ? { baseURL } : {}) });
   }
   const message = await client.messages.create({
     model,
@@ -283,6 +285,7 @@ export async function callClaudeReview({
   system,
   prompt,
   maxTokens = MAX_RESPONSE_TOKENS,
+  baseURL,
   client,
 }) {
   if (!token) {
@@ -290,7 +293,7 @@ export async function callClaudeReview({
   }
   if (!client) {
     const Anthropic = await loadSdk();
-    client = new Anthropic({ apiKey: token });
+    client = new Anthropic({ apiKey: token, ...(baseURL ? { baseURL } : {}) });
   }
   const message = await client.messages.create({
     model,
@@ -320,15 +323,18 @@ export async function callClaudeReview({
 /**
  * List the Anthropic models available to the given token (newest first), so a
  * reviewer can pick one for --llm-model.
- * @param {{token: string}} params
+ * @param {{token: string, baseURL?: string}} params
  * @returns {Promise<{id: string, displayName: string, createdAt: string}[]>}
  */
-export async function listModels({ token }) {
+export async function listModels({ token, baseURL }) {
   if (!token) {
     throw new Error("listModels requires an Anthropic API token.");
   }
   const Anthropic = await loadSdk();
-  const client = new Anthropic({ apiKey: token });
+  const client = new Anthropic({
+    apiKey: token,
+    ...(baseURL ? { baseURL } : {}),
+  });
   const models = [];
   for await (const m of client.models.list()) {
     models.push({

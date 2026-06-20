@@ -39,6 +39,7 @@ import { sortKeys } from "../util/json.js";
  * @param {string} opts.systemIntro  The reviewer role prompt (registry-owned,
  *   resolved by the caller from prompts.system-intro) - the first system block.
  * @param {string} [opts.model]
+ * @param {string} [opts.url]  Override the LLM API base URL (LLM_API_URL).
  * @param {typeof import("../llm/claude.js").callClaude} [opts.callClaude]
  *   Injectable transport (for tests).
  * @param {Function} [opts.callClaudeText]  Injectable free-form transport for
@@ -55,6 +56,7 @@ export function createLlmClient({
   token,
   systemIntro,
   model = DEFAULT_MODEL,
+  url,
   budget,
   callClaude = realCallClaude,
   callClaudeText = realCallClaudeText,
@@ -110,7 +112,13 @@ export function createLlmClient({
         debug(`[llm] criterion (${batch.length} candidate(s)):\n${criterion}`);
         let result;
         try {
-          result = await callClaude({ token, model, system, criterion });
+          result = await callClaude({
+            token,
+            model,
+            baseURL: url,
+            system,
+            criterion,
+          });
         } catch (err) {
           debug(`[llm] batch error: ${err?.message ?? String(err)}`);
           for (const c of batch) {
@@ -142,7 +150,7 @@ export function createLlmClient({
      */
     async summarize(prompt) {
       debug(`[llm] summarize prompt:\n${prompt}`);
-      const text = await callClaudeText({ token, model, prompt });
+      const text = await callClaudeText({ token, model, baseURL: url, prompt });
       debug(`[llm] summary:\n${text}`);
       return text;
     },
@@ -157,7 +165,12 @@ export function createLlmClient({
      */
     async reviewAddon(prompt) {
       debug(`[llm] reviewAddon prompt:\n${prompt}`);
-      const review = await callClaudeReview({ token, model, prompt });
+      const review = await callClaudeReview({
+        token,
+        model,
+        baseURL: url,
+        prompt,
+      });
       debug(`[llm] reviewAddon result:\n${JSON.stringify(review, null, 2)}`);
       return review;
     },

@@ -154,14 +154,20 @@ function summarySection({ title, summary }) {
  * bare LLM_API_KEY in the environment no longer auto-enables it, so a
  * reviewer with a global key can still run the deterministic checks alone. When
  * opted in, the key comes from the LLM_API_KEY environment variable. It is
- * undefined otherwise, so every downstream LLM path stays off.
+ * undefined otherwise, so every downstream LLM path stays off. The optional
+ * LLM_API_URL overrides the API base URL (e.g. a proxy or self-hosted endpoint).
  * @param {Record<string, string|boolean|string[]>} values
- * @returns {{wants: boolean, apiKey: string|undefined}}
+ * @returns {{wants: boolean, apiKey: string|undefined, apiUrl: string|undefined}}
  */
 function resolveLlm(values) {
   const wants = values["llm-model"] != null || values["llm-enabled"] === true;
   const apiKey = process.env.LLM_API_KEY;
-  return { wants, apiKey: wants ? apiKey : undefined };
+  const apiUrl = process.env.LLM_API_URL || undefined;
+  return {
+    wants,
+    apiKey: wants ? apiKey : undefined,
+    apiUrl: wants ? apiUrl : undefined,
+  };
 }
 
 /**
@@ -486,6 +492,7 @@ export async function main(argv) {
  * @returns {Partial<PipelineOpts>}
  */
 function pipelineOptsFromValues(values) {
+  const llm = resolveLlm(values);
   return {
     schemaChannel: values["schema-channel"] || DEFAULT_CHANNEL,
     schemaZip: values["schema-zip"],
@@ -498,8 +505,9 @@ function pipelineOptsFromValues(values) {
     diffTo: values["diff-to"],
     diffSummary: values["diff-summary"],
     fullSummary: values["full-summary"],
-    llmApiKey: resolveLlm(values).apiKey,
+    llmApiKey: llm.apiKey,
     llmModel: values["llm-model"],
+    llmApiUrl: llm.apiUrl,
   };
 }
 
@@ -535,7 +543,7 @@ async function runListModels() {
   }
   let models;
   try {
-    models = await listModels({ token });
+    models = await listModels({ token, baseURL: process.env.LLM_API_URL });
   } catch (err) {
     process.stderr.write(`Could not list models: ${err.message}\n`);
     return 2;

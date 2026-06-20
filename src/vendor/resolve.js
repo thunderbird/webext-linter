@@ -52,6 +52,7 @@ const EXACT = /^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
  * @param {?string} [params.parsePrompt]  The registry prompts.vendor-parse text.
  * @param {?string} [params.token]  Anthropic token, else deterministic only.
  * @param {string} [params.model]
+ * @param {string} [params.url]  Override the LLM API base URL (LLM_API_URL).
  * @param {typeof callClaudeText} [params.callText]  Injectable transport.
  * @param {import("../llm/budget.js").LlmBudget} [params.budget]  Run-wide model
  *   request cap; the parse fallback is skipped once it is exhausted.
@@ -62,6 +63,7 @@ export async function resolveVendor({
   parsePrompt,
   token,
   model = DEFAULT_MODEL,
+  url,
   callText = callClaudeText,
   budget,
 }) {
@@ -80,6 +82,7 @@ export async function resolveVendor({
           parsePrompt,
           token,
           model,
+          url,
           callText,
         }))
       );
@@ -179,7 +182,8 @@ function resolvePackages(addon) {
  * @param {object} params
  * @param {string} params.text @param {Addon} params.addon
  * @param {string} params.parsePrompt @param {string} params.token
- * @param {string} params.model @param {typeof callClaudeText} params.callText
+ * @param {string} params.model @param {string} [params.url]  LLM base URL.
+ * @param {typeof callClaudeText} params.callText
  * @returns {Promise<VendorEntry[]>}
  */
 async function llmExtract({
@@ -188,11 +192,13 @@ async function llmExtract({
   parsePrompt,
   token,
   model,
+  url,
   callText,
 }) {
   const reply = await callText({
     token,
     model,
+    baseURL: url,
     prompt: `${parsePrompt}\n\nVENDOR file:\n${text}`,
   });
   const match = buildFileMatcher(addon);

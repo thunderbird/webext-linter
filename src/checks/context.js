@@ -86,6 +86,7 @@ export function buildRunContext({
       token: options.llmApiKey,
       systemIntro,
       model: llmModel,
+      url: options.llmApiUrl,
       budget,
     });
   }

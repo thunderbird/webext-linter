@@ -42,6 +42,44 @@ test("evaluate returns a verdict per candidate id", async () => {
   assert.deepEqual(out.get("E2"), { verdict: "pass", reason: null });
 });
 
+// LLM_API_URL threads to every transport as `baseURL` (the SDK base-URL override).
+test("createLlmClient forwards the url to the transports as baseURL", async () => {
+  const seen = {};
+  const ctx = {
+    addon: {
+      files: new Map([
+        ["manifest.json", Buffer.from("{}")],
+        ["a.js", Buffer.from("// a\n")],
+      ]),
+      manifest: { manifest_version: 3, name: "x", version: "1" },
+    },
+  };
+  const llm = createLlmClient({
+    ctx,
+    token: "t",
+    systemIntro: "intro",
+    url: "https://proxy.example/v1",
+    callClaude: async (p) => {
+      seen.evaluate = p;
+      return { verdicts: [] };
+    },
+    callClaudeText: async (p) => {
+      seen.summarize = p;
+      return "";
+    },
+    callClaudeReview: async (p) => {
+      seen.review = p;
+      return { summary: "", unusedPermissions: [] };
+    },
+  });
+  await llm.evaluate({ rubric: "R", candidates: [{ id: "E1", file: "a.js" }] });
+  await llm.summarize("p");
+  await llm.reviewAddon("p");
+  assert.equal(seen.evaluate.baseURL, "https://proxy.example/v1");
+  assert.equal(seen.summarize.baseURL, "https://proxy.example/v1");
+  assert.equal(seen.review.baseURL, "https://proxy.example/v1");
+});
+
 // An id the model omits defaults to unsure; an id it invents (not in the batch)
 // is dropped. The model can never introduce a subject we did not ask about.
 test("evaluate defaults missing ids to unsure and drops unknown ids", async () => {
