@@ -6,9 +6,10 @@
 //
 // A check is a pure detector: it decides verdicts and emits findings carrying
 // only `file`/`loc`/`item`/`hint` - never prose. The registry entry is the
-// check's declarative contract: `severity` (the only source of a finding's
-// impact, stamped unconditionally), and the text shown for it (`response`,
-// `instructions`, `prompt`). Neither half leaks into the other.
+// check's declarative contract: `severity` (the source of a finding's impact,
+// stamped unconditionally - UNLESS it is `auto`, which delegates the per-finding
+// severity to the check), and the text shown for it (`response`, `instructions`,
+// `prompt`). Neither half leaks into the other.
 //
 // A deterministic check returns `Finding[]`. An llm check runs a deterministic
 // pre-flight and returns `{ findings, escalations }`, where each escalation is a
@@ -44,6 +45,28 @@ import { red, green, blue } from "../util/color.js";
 import { runLlmCheck, manualEscalations } from "./escalation.js";
 
 /** @typedef {import("../report/finding.js").Severity} Severity */
+
+// The severity token a check entry may declare. error/warning/info are stamped
+// onto every finding the check emits; "auto" instead delegates the per-finding
+// severity to the check itself (it sets f.severity, defaulting to error if it
+// sets none or an invalid value) - see runOneCheck. "auto" is a config-only
+// token: a finding never carries it.
+const AUTO_SEVERITY = "auto";
+const CONCRETE_SEVERITIES = new Set([
+  SEVERITY.ERROR,
+  SEVERITY.WARNING,
+  SEVERITY.INFO,
+]);
+const VALID_CHECK_SEVERITIES = new Set([...CONCRETE_SEVERITIES, AUTO_SEVERITY]);
+
+/**
+ * Whether `s` is a concrete finding severity (error/warning/info) - i.e. a value
+ * a finding may actually carry into the report. "auto"/null/anything else is not.
+ * @param {unknown} s @returns {boolean}
+ */
+function isConcreteSeverity(s) {
+  return CONCRETE_SEVERITIES.has(/** @type {string} */ (s));
+}
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const RULES_DIR = path.join(here, "rules");
@@ -270,10 +293,17 @@ export async function loadChecks(registry, { only, skip } = {}) {
     if (typeof run !== "function") {
       throw new Error(`rules/${entry.check} exports no run() function`);
     }
+    const severity = entry.severity || "error";
+    if (!VALID_CHECK_SEVERITIES.has(severity)) {
+      throw new Error(
+        `rules/${entry.check} has an invalid severity "${severity}" ` +
+          `(expected one of: ${[...VALID_CHECK_SEVERITIES].join(", ")})`
+      );
+    }
     checks.push({
       id,
       title: entry.title,
-      severity: entry.severity || "error",
+      severity,
       kind: entry.kind,
       diff: typeof entry.diff === "boolean" ? entry.diff : undefined,
       phase: entry.phase,
@@ -452,9 +482,24 @@ export async function runOneCheck(ctx, check, label) {
       // go straight to manual review (never the LLM, which is for judgment).
       manualItems.push(...manualEscalations(check, escalations).manualItems);
     }
+    const auto = check.severity === AUTO_SEVERITY;
     for (const f of produced) {
       f.ruleId = check.id;
-      f.severity = check.severity;
+      if (!auto) {
+        // Fixed severity: the entry is the sole authority. Whatever the check
+        // may have set on f.severity is ignored (overwritten) here.
+        f.severity = check.severity;
+      } else if (!isConcreteSeverity(f.severity)) {
+        // severity: auto - the check owns each finding's severity, but it must
+        // produce a concrete one. A missing/invalid value is a check bug; fail
+        // safe to error (the report consumers all assume a concrete severity).
+        debug(
+          `[registry] ${check.id} is severity:auto but emitted ${JSON.stringify(
+            f.severity
+          )} - defaulting to error`
+        );
+        f.severity = SEVERITY.ERROR;
+      }
       findings.push(f);
     }
   } catch (err) {

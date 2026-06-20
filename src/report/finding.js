@@ -42,8 +42,10 @@ const SEVERITY_RANK = { error: 0, warning: 1, info: 2 };
  *   not prose. Never a second independent subject: one finding has one item.
  * @property {string} [ruleId]  Set only by the orchestrator (e.g. its own
  *   "check-failed" system finding); checks leave it unset.
- * @property {Severity} [severity]  Set only by the orchestrator/lint channel;
- *   review checks leave it unset (the registry severity is stamped on).
+ * @property {Severity} [severity]  Set by the orchestrator/lint channel, or by a
+ *   check ONLY under a `severity: auto` registry entry (the check then owns each
+ *   finding's severity). Under a fixed registry severity a check's value is
+ *   ignored - the orchestrator overwrites it with the entry's severity.
  */
 
 /**

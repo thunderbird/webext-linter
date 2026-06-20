@@ -390,12 +390,47 @@ test("vendor-vulnerable: a recorded vulnerability becomes a finding at the packa
   assert.equal(out[0].file, "package.json");
   assert.equal(out[0].loc.line, 3);
   assert.equal(out[0].item, "lodash");
+  assert.equal(out[0].severity, "error"); // "high" band -> error
   assert.deepEqual(out[0].data, {
     version: "4.17.20",
     ids: "CVE-2021-23337",
-    severity: "high",
+    severity: "high", // the raw band still fills the {{severity}} slot
     fixed: "4.17.21",
   });
+});
+
+// severity:auto - the check derives each finding's severity from the advisory's
+// OSV band. high/critical -> error, moderate/medium -> warning, everything else
+// (low, unknown) -> info. Nothing is skipped: every band yields one finding.
+test("vendor-vulnerable: maps the OSV band to the finding severity", () => {
+  const severityFor = (band) => {
+    const pkg = '{\n  "dependencies": {\n    "lodash": "1.0.0"\n  }\n}';
+    const ctx = {
+      addon: {
+        files: new Map([["package.json", Buffer.from(pkg)]]),
+        vendor: store({
+          vulnerabilities: [
+            {
+              name: "lodash",
+              version: "1.0.0",
+              ids: ["X"],
+              severity: band,
+              fixed: [],
+            },
+          ],
+        }),
+      },
+    };
+    const out = vendorVulnerable.run(ctx);
+    assert.equal(out.length, 1); // reported, never dropped
+    return out[0].severity;
+  };
+  assert.equal(severityFor("critical"), "error");
+  assert.equal(severityFor("high"), "error");
+  assert.equal(severityFor("moderate"), "warning");
+  assert.equal(severityFor("medium"), "warning");
+  assert.equal(severityFor("low"), "info");
+  assert.equal(severityFor("unknown"), "info");
 });
 
 test("vendor-vulnerable: no recorded vulnerabilities -> no findings", () => {

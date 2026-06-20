@@ -262,8 +262,10 @@ deterministic-checks:
 
 # The pinned name@version is audited against the OSV database
 # (src/vendor/verify.js); a package with known advisories is reported here.
+# severity:auto - the check sets each finding's severity from the advisory's OSV
+# band (high/critical -> error, moderate/medium -> warning, else info).
 - title: Vulnerable dependency
-  severity: error
+  severity: auto
   check: vendor-vulnerable.js
   response: |-
     A bundled dependency has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). Update {{item}} to {{fixed}} or later, re-bundle, and resubmit. If you believe the advisory does not apply to how this add-on uses the dependency, let us know why.

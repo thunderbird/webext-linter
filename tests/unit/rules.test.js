@@ -37,7 +37,12 @@ import unusedPermission from "../../src/checks/rules/unused-permission.js";
 import unusedPermissionManual from "../../src/checks/rules/unused-permission-manual.js";
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
 import { getPermissionAnalysis } from "../../src/checks/lib/permissions.js";
-import { loadChecks, loadRegistry } from "../../src/checks/registry.js";
+import {
+  loadChecks,
+  loadRegistry,
+  runOneCheck,
+} from "../../src/checks/registry.js";
+import { finding } from "../../src/report/finding.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex } from "../../src/schema/index.js";
 import { parseVendorManifest } from "../../src/normalize/vendor.js";
@@ -906,6 +911,87 @@ test("loadChecks throws hard when a check: names a missing module", async () => 
   } finally {
     fs.rmSync(tmp);
   }
+});
+
+// loadChecks validates the severity token: error/warning/info/auto are allowed,
+// anything else is a loud config error (the module exists; only the severity is
+// bad - so this is distinct from the missing-module failure above).
+test("loadChecks accepts severity: auto", async () => {
+  const tmp = path.join(os.tmpdir(), `auto-registry-${process.pid}.yaml`);
+  fs.writeFileSync(
+    tmp,
+    "deterministic-checks:\n- title: Ok\n  severity: auto\n  check: sync-xhr.js\n"
+  );
+  try {
+    const checks = await loadChecks(loadRegistry(tmp));
+    assert.equal(checks[0].severity, "auto");
+  } finally {
+    fs.rmSync(tmp);
+  }
+});
+
+test("loadChecks rejects an invalid severity token", async () => {
+  const tmp = path.join(os.tmpdir(), `bad-sev-registry-${process.pid}.yaml`);
+  fs.writeFileSync(
+    tmp,
+    "deterministic-checks:\n- title: Bad\n  severity: nope\n  check: sync-xhr.js\n"
+  );
+  try {
+    await assert.rejects(
+      () => loadChecks(loadRegistry(tmp)),
+      /invalid severity "nope"/
+    );
+  } finally {
+    fs.rmSync(tmp);
+  }
+});
+
+// ---- severity stamping (the orchestrator is the gatekeeper) ----
+// A check under a FIXED registry severity cannot choose its own: any f.severity
+// it sets is overwritten with the entry's. Only severity:auto delegates the
+// choice to the check - and even then a missing/invalid value fails safe to
+// error, so a finding never leaves runOneCheck without a concrete severity.
+test("a fixed-severity check cannot override its finding severity", async () => {
+  const check = {
+    id: "fixed",
+    severity: "warning",
+    run: () => [finding({ item: "x", severity: "error" })],
+  };
+  const out = await runOneCheck({}, check, "[1/1]");
+  assert.equal(out.findings.length, 1);
+  assert.equal(out.findings[0].severity, "warning"); // entry wins; check ignored
+});
+
+test("severity:auto lets the check set each finding's severity", async () => {
+  const check = {
+    id: "auto",
+    severity: "auto",
+    run: () => [
+      finding({ item: "a", severity: "warning" }),
+      finding({ item: "b", severity: "info" }),
+    ],
+  };
+  const out = await runOneCheck({}, check, "[1/1]");
+  assert.deepEqual(
+    out.findings.map((f) => f.severity),
+    ["warning", "info"]
+  );
+});
+
+test("severity:auto fails safe to error when the check sets none/invalid", async () => {
+  const check = {
+    id: "auto-bad",
+    severity: "auto",
+    run: () => [
+      finding({ item: "a" }), // no severity
+      finding({ item: "b", severity: "auto" }), // not a concrete severity
+    ],
+  };
+  const out = await runOneCheck({}, check, "[1/1]");
+  assert.deepEqual(
+    out.findings.map((f) => f.severity),
+    ["error", "error"]
+  );
 });
 
 // ---- disguised-transmission (covert) + data-exfiltration (overt) ----
