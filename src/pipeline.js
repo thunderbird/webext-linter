@@ -67,8 +67,8 @@ import {
  * @property {boolean} [fullSummary]  Add an LLM "Summary of add-on" section.
  * @property {boolean} [reviewUrl]  Look up the ATN reviewer review-page URL and
  *   put it on meta.reviewUrl - set for text reports, off for JSON/the harness.
- * @property {string} [claudeApiKey]
- * @property {string} [claudeModel]
+ * @property {string} [llmApiKey]
+ * @property {string} [llmModel]
  * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
  *   network transport for vendor verification (the test harness injects an
  *   offline one); defaults to the real fetch.
@@ -152,8 +152,8 @@ export async function runPipeline(opts) {
     addon.vendor = await resolveVendor({
       addon,
       parsePrompt: registry.prompt("vendor-parse"),
-      token: opts.claudeApiKey,
-      model: opts.claudeModel,
+      token: opts.llmApiKey,
+      model: opts.llmModel,
       budget: llmBudget,
     });
 
@@ -307,7 +307,7 @@ async function reviewAddon(
     checksOnly,
     checksSkip,
     eslint,
-    claudeApiKey,
+    llmApiKey,
     allowExperiments,
     diffTo,
     fullSummary,
@@ -330,9 +330,9 @@ async function reviewAddon(
   const ctx = buildRunContext({
     addon,
     schema,
-    options: { claudeApiKey, allowExperiments },
+    options: { llmApiKey, allowExperiments },
     diffTo,
-    claudeModel: opts.claudeModel,
+    llmModel: opts.llmModel,
     systemIntro: registry.prompt("system-intro"),
     invalidExperiment,
     budget,

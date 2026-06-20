@@ -4,7 +4,7 @@
 // (prompts.system-intro) and is passed in. The per-review half - the cached
 // add-on context and the batched evaluate() transport - lives in
 // checks/llm-client.js, which calls callClaude() once per batch of candidates
-// when the reviewer supplies an Anthropic API token (the CLAUDE_API_KEY
+// when the reviewer supplies an Anthropic API token (the LLM_API_KEY
 // environment variable). With no token, ctx.llm is absent and the whole LLM path
 // is skipped, so the tool stays deterministic by default.
 //
@@ -319,7 +319,7 @@ export async function callClaudeReview({
 
 /**
  * List the Anthropic models available to the given token (newest first), so a
- * reviewer can pick one for --claude-model.
+ * reviewer can pick one for --llm-model.
  * @param {{token: string}} params
  * @returns {Promise<{id: string, displayName: string, createdAt: string}[]>}
  */

@@ -12,7 +12,7 @@ export const VALID_CHANNELS = ["release", "beta", "esr"];
 /** Directory where fetched schema zips are cached (--schema-cache default). */
 export const DEFAULT_CACHE = ".schema-cache";
 
-/** Anthropic model used for LLM checks when --claude-model is not given. */
+/** Anthropic model used for LLM checks when --llm-model is not given. */
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
 
 /**

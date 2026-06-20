@@ -6,7 +6,7 @@
 // main(argv) below. `npm run help` is an alias for `verify.js --help`.
 //
 // Belongs here: the front-end only - the OPTIONS table, usage/help text, argv
-// parse and flag validation, --claude-list-models, the values -> PipelineOpts
+// parse and flag validation, --llm-list-models, the values -> PipelineOpts
 // mapping, stream/capture routing, and exit codes.
 //
 // Does NOT belong here: running the stages (opts -> Review is pipeline.js
@@ -150,18 +150,17 @@ function summarySection({ title, summary }) {
 
 /**
  * Resolve whether this run uses the LLM and with which key. The LLM is opt-in:
- * --claude-model or --claude-enabled signals intent. A
- * bare CLAUDE_API_KEY in the environment no longer auto-enables it, so a
+ * --llm-model or --llm-enabled signals intent. A
+ * bare LLM_API_KEY in the environment no longer auto-enables it, so a
  * reviewer with a global key can still run the deterministic checks alone. When
- * opted in, the key comes from the CLAUDE_API_KEY environment variable. It is
+ * opted in, the key comes from the LLM_API_KEY environment variable. It is
  * undefined otherwise, so every downstream LLM path stays off.
  * @param {Record<string, string|boolean|string[]>} values
  * @returns {{wants: boolean, apiKey: string|undefined}}
  */
-function resolveClaude(values) {
-  const wants =
-    values["claude-model"] != null || values["claude-enabled"] === true;
-  const apiKey = process.env.CLAUDE_API_KEY;
+function resolveLlm(values) {
+  const wants = values["llm-model"] != null || values["llm-enabled"] === true;
+  const apiKey = process.env.LLM_API_KEY;
   return { wants, apiKey: wants ? apiKey : undefined };
 }
 
@@ -206,17 +205,14 @@ export function helpText() {
     ],
   ];
 
-  const claude = [
+  const llmFlags = [
     [
-      "--claude-enabled",
-      "Enable the LLM checks (the key comes from the CLAUDE_API_KEY environment variable).",
+      "--llm-enabled",
+      "Enable the LLM checks (the key comes from the LLM_API_KEY environment variable).",
     ],
+    ["--llm-model <id>", `Model for LLM checks (default: ${DEFAULT_MODEL}).`],
     [
-      "--claude-model <id>",
-      `Model for LLM checks (default: ${DEFAULT_MODEL}).`,
-    ],
-    [
-      "--claude-list-models",
+      "--llm-list-models",
       "List the Anthropic models available to your token, then exit.",
     ],
   ];
@@ -269,7 +265,7 @@ export function helpText() {
     ...report.map(([flag, desc]) => optionLine(flag, desc)),
     "",
     "LLM checks (Claude):",
-    ...claude.map(([flag, desc]) => optionLine(flag, desc)),
+    ...llmFlags.map(([flag, desc]) => optionLine(flag, desc)),
     "",
     "Other:",
     ...other.map(([flag, desc]) => optionLine(flag, desc)),
@@ -294,9 +290,9 @@ const OPTIONS = {
   "full-summary": { type: "boolean" },
   "report-format": { type: "string" },
   "report-out": { type: "string" },
-  "claude-enabled": { type: "boolean" },
-  "claude-model": { type: "string" },
-  "claude-list-models": { type: "boolean" },
+  "llm-enabled": { type: "boolean" },
+  "llm-model": { type: "string" },
+  "llm-list-models": { type: "boolean" },
   verbose: { type: "boolean" },
   help: { type: "boolean" },
 };
@@ -364,7 +360,7 @@ export async function main(argv) {
   // below so --help, list-models, and validation errors all carry it too.
   emitBanner(argv);
 
-  if (values["claude-list-models"]) {
+  if (values["llm-list-models"]) {
     return runListModels();
   }
 
@@ -402,14 +398,14 @@ export async function main(argv) {
     return 2;
   }
 
-  // The LLM is opt-in (resolveClaude): a --claude-enabled/-model flag turns it on.
+  // The LLM is opt-in (resolveLlm): a --llm-enabled/-model flag turns it on.
   // If the run asked for it but no token resolved, fail fast instead of silently
   // reviewing without the LLM.
-  const claude = resolveClaude(values);
-  if (claude.wants && !claude.apiKey) {
+  const llm = resolveLlm(values);
+  if (llm.wants && !llm.apiKey) {
     process.stderr.write(
       "Enabling the LLM checks needs an Anthropic API token " +
-        "(set CLAUDE_API_KEY in the environment).\n"
+        "(set LLM_API_KEY in the environment).\n"
     );
     return 2;
   }
@@ -449,10 +445,10 @@ export async function main(argv) {
         title: "Summary of add-on",
         summary: result.summarizeAddon,
       });
-    } else if (values["full-summary"] && !claude.apiKey) {
+    } else if (values["full-summary"] && !llm.apiKey) {
       const note =
-        "\n  (--full-summary needs the LLM; add --claude-enabled with " +
-        "CLAUDE_API_KEY set. Skipped.)\n";
+        "\n  (--full-summary needs the LLM; add --llm-enabled with " +
+        "LLM_API_KEY set. Skipped.)\n";
       process.stdout.write(note);
       summaryBlock += note;
     }
@@ -502,8 +498,8 @@ function pipelineOptsFromValues(values) {
     diffTo: values["diff-to"],
     diffSummary: values["diff-summary"],
     fullSummary: values["full-summary"],
-    claudeApiKey: resolveClaude(values).apiKey,
-    claudeModel: values["claude-model"],
+    llmApiKey: resolveLlm(values).apiKey,
+    llmModel: values["llm-model"],
   };
 }
 
@@ -524,16 +520,16 @@ export function pipelineOptsFromArgv(argv) {
 
 /**
  * Print the Anthropic models available to the token, then exit (the
- * --claude-list-models command). Needs a token, but no add-on path.
+ * --llm-list-models command). Needs a token, but no add-on path.
  *
  * @returns {Promise<number>} process exit code
  */
 async function runListModels() {
-  const token = process.env.CLAUDE_API_KEY;
+  const token = process.env.LLM_API_KEY;
   if (!token) {
     process.stderr.write(
-      "--claude-list-models needs an Anthropic API token " +
-        "(set CLAUDE_API_KEY in the environment).\n"
+      "--llm-list-models needs an Anthropic API token " +
+        "(set LLM_API_KEY in the environment).\n"
     );
     return 2;
   }

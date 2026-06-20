@@ -165,7 +165,7 @@ test("JSON + --report-out writes a plain JSON file", () => {
 test("--full-summary without a token prints a skip notice, no add-on section", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const env = { ...process.env };
-  delete env.CLAUDE_API_KEY;
+  delete env.LLM_API_KEY;
   const r = spawnSync(
     process.execPath,
     [REVIEW, addon, "--schema-zip", SCHEMA, "--full-summary"],
@@ -176,27 +176,27 @@ test("--full-summary without a token prints a skip notice, no add-on section", (
   assert.ok(!r.stdout.includes("── Summary of add-on ──"));
 });
 
-// --claude-enabled (or --claude-model) without any token is a usage error: the
+// --llm-enabled (or --llm-model) without any token is a usage error: the
 // run asked for the LLM but no key resolved, so fail fast on stderr, exit 2.
-test("--claude-enabled without a token errors to stderr and exits 2", () => {
+test("--llm-enabled without a token errors to stderr and exits 2", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const env = { ...process.env };
-  delete env.CLAUDE_API_KEY;
+  delete env.LLM_API_KEY;
   const r = spawnSync(
     process.execPath,
-    [REVIEW, addon, "--schema-zip", SCHEMA, "--claude-enabled"],
+    [REVIEW, addon, "--schema-zip", SCHEMA, "--llm-enabled"],
     { encoding: "utf8", env }
   );
   assert.equal(r.status, 2);
   assert.match(r.stderr, /needs an Anthropic API token/);
 });
 
-// A bare CLAUDE_API_KEY in the environment no longer auto-enables the LLM: with
+// A bare LLM_API_KEY in the environment no longer auto-enables the LLM: with
 // --full-summary but no opt-in flag, the run stays deterministic and skips the
 // add-on summary even though the env var is set.
-test("a bare CLAUDE_API_KEY does not enable the LLM without an opt-in", () => {
+test("a bare LLM_API_KEY does not enable the LLM without an opt-in", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
-  const env = { ...process.env, CLAUDE_API_KEY: "sk-not-used" };
+  const env = { ...process.env, LLM_API_KEY: "sk-not-used" };
   const r = spawnSync(
     process.execPath,
     [REVIEW, addon, "--schema-zip", SCHEMA, "--full-summary"],
@@ -212,7 +212,7 @@ test("a bare CLAUDE_API_KEY does not enable the LLM without an opt-in", () => {
 test("--diff-summary without --diff-to or a token prints a skip notice", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const env = { ...process.env };
-  delete env.CLAUDE_API_KEY;
+  delete env.LLM_API_KEY;
   const r = spawnSync(
     process.execPath,
     [REVIEW, addon, "--schema-zip", SCHEMA, "--diff-summary"],

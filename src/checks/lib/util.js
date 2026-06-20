@@ -69,12 +69,12 @@ export function dedupe(findings) {
 
 /**
  * Whether the LLM is configured: the resolved token on ctx.options, which the
- * CLI sets only when the run opted in to the LLM (see resolveClaude in cli.js).
+ * CLI sets only when the run opted in to the LLM (see resolveLlm in cli.js).
  * @param {RunContext} ctx
  * @returns {boolean}
  */
 export function llmEnabled(ctx) {
-  return Boolean(ctx.options?.claudeApiKey);
+  return Boolean(ctx.options?.llmApiKey);
 }
 
 /**

@@ -27,10 +27,10 @@ import { llmEnabled } from "./lib/util.js";
  * @param {object} params
  * @param {import("../addon/load.js").Addon} params.addon
  * @param {import("../schema/index.js").SchemaIndex} params.schema
- * @param {{claudeApiKey?: string, allowExperiments?: boolean}} params.options
+ * @param {{llmApiKey?: string, allowExperiments?: boolean}} params.options
  * @param {string} [params.diffTo]  Path of the previously published version,
  *   loaded as the diff baseline for the diff checks (run only with --diff-to).
- * @param {string} [params.claudeModel]  Model override for the LLM client.
+ * @param {string} [params.llmModel]  Model override for the LLM client.
  * @param {string} [params.systemIntro]  The registry-owned reviewer system
  *   prompt (prompts.system-intro), passed to the LLM client when a token is set.
  * @param {boolean} [params.invalidExperiment]  The add-on is an Experiment and
@@ -45,7 +45,7 @@ export function buildRunContext({
   schema,
   options,
   diffTo,
-  claudeModel,
+  llmModel,
   systemIntro,
   invalidExperiment,
   budget,
@@ -83,9 +83,9 @@ export function buildRunContext({
   if (llmEnabled(ctx) && !invalidExperiment) {
     ctx.llm = createLlmClient({
       ctx,
-      token: options.claudeApiKey,
+      token: options.llmApiKey,
       systemIntro,
-      model: claudeModel,
+      model: llmModel,
       budget,
     });
   }
