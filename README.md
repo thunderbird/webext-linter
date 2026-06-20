@@ -11,8 +11,8 @@ JavaScript and matching `browser.*` / `messenger.*` / `chrome.*` calls against
 the API surface - but uses Thunderbird's annotated schema files.
 
 Beyond the deterministic checks, a few review judgments that resist static
-analysis can optionally be delegated to Claude (Anthropic) when an API token is
-supplied. See the LLM checks under Review checks below.
+analysis can optionally be delegated to an LLM (Claude or ChatGPT) when an API
+key is supplied. See the LLM checks under Review checks below.
 
 
 ## Usage
@@ -48,26 +48,41 @@ schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
 | `--checks-skip <ids>` | Skip these checks (comma-separated). See the check list below. |
 | `--report-format <text\|json>` | Report output format (default `text`). |
 | `--report-out <file>` | Write the report to a file in addition to stdout. |
-| `--claude-enabled` | Enable the LLM checks. The key is read from the `CLAUDE_API_KEY` environment variable. |
-| `--claude-list-models` | List the Anthropic models available to your token, then exit. |
-| `--claude-model <id>` | Model for the LLM checks. See `--claude-list-models` for the choices and the default. |
+| `--llm-enabled` | Enable the LLM checks. The key is read from the `LLM_API_KEY` environment variable (see [LLM configuration](#llm-configuration)). |
+| `--llm-list-models` | List the models your token can use, then exit. |
+| `--llm-model <id>` | Model for the LLM checks; requires `--llm-enabled` (default: the provider's default). |
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
-| `--diff-summary` | Add an AI assisted **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and the LLM enabled (`--claude-enabled`). |
-| `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes and a permission review (which declared permissions appear unused) - from its (almost) full current source (vendored and unused files excluded). Advisory, not a finding. Needs the LLM enabled (`--claude-enabled`). |
+| `--diff-summary` | Add an AI assisted **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and `--llm-enabled`. |
+| `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes and a permission review (which declared permissions appear unused) - from its (almost) full current source (vendored and unused files excluded). Advisory, not a finding. Needs `--llm-enabled`. |
 | `--verbose` | Verbose logging. |
-
-The LLM checks need an Anthropic API key, supplied via the `CLAUDE_API_KEY`
-environment variable (there is no API-key flag):
-
-```sh
-export CLAUDE_API_KEY=sk-ant-...
-node verify.js <xpi|folder> --claude-enabled
-```
 
 **Exit codes:** `0` no errors · `1` one or more error-severity findings · `2`
 tool failure.
+
+### LLM configuration
+
+The LLM checks are configured from the environment - there is no API-key flag,
+so the key never lands in your shell history or a process listing:
+
+| Variable | Description |
+| --- | --- |
+| `LLM_API_KEY` | The provider API key. **Required** by `--llm-enabled`. |
+| `LLM_API_TYPE` | Provider: `claude` (default) or `chatgpt`. |
+| `LLM_API_URL` | Override the provider's API base URL (e.g. a proxy or gateway). |
+
+```sh
+export LLM_API_KEY=sk-...
+node verify.js <xpi|folder> --llm-enabled            # Claude (default)
+
+export LLM_API_TYPE=chatgpt
+node verify.js <xpi|folder> --llm-enabled            # ChatGPT
+```
+
+Each provider has a default model (`claude-sonnet-4-6` for `claude`, `gpt-4o`
+for `chatgpt`); override it with `--llm-model`, or list the available models
+with `--llm-list-models`.
 
 
 ## Review checks
@@ -83,36 +98,25 @@ A review has three kinds of check, all declared in
   manual review.
 - **Manual** - checks the tool can't make itself, surfaced as a todo list.
 
-Every user-facing string lives in the registry; a check emits only structured
-data - an `item` (the offending token: an API path, permission, host pattern,
-file, …), a file and a line - never prose. A check that emits Issues findings
-defines a `response` (the Issues wording); a check that routes a case to manual
-review defines `instructions` (the manual-review wording), and an `llm` check
-also a `prompt` (the rubric sent to the LLM); a `manual` entry has only
-`instructions`. Each may contain an `{{item}}` placeholder, filled per
-finding with that finding's `item` (one per occurrence); a string without
-`{{item}}` is used as-is. So the **Issues** list reads as ready-to-send wording,
-e.g. `browser.contextMenus is not supported. …`. In the review report it is
-grouped by severity (error, then warning, then info) under the headings
-configured in `issue-headings:` in the registry, with the numbering continuous
-across the groups.
+Every user-facing string lives in the registry: a check emits only structured
+data - the offending `item` (an API path, permission, host pattern, file, …)
+with a file and line - and the registry supplies the wording (with an optional
+`{{item}}` placeholder filled per finding). Findings are grouped in the report
+by severity (error, then warning, then info).
 
-When run interactively (a terminal), the tool also prints live progress to
-stderr - the check currently being evaluated and any LLM escalations in flight -
-so stdout stays reserved for the report. Piped or redirected runs (CI, a JSON
-consumer) stay quiet.
+When run interactively, the tool prints live progress to stderr, so stdout stays
+reserved for the report; piped or redirected runs (CI, a JSON consumer) stay
+quiet.
 
 
 ### Deterministic checks
 
-Each `deterministic-checks` entry carries a `check:` field linking to a module
-in [src/checks/rules/](src/checks/rules/) - adding a check means adding an entry
-plus its module. The entry supplies the severity stamped onto every finding the
-check emits (a check cannot override it); an escalate-only check that emits no
-findings - only a manual-review item - carries no severity. A deterministic
-check either decides each case as a finding or escalates it straight to manual
-review (e.g. `vendor-unverified`, `native-messaging`, `fork-check`); LLM checks
-escalate only their ambiguous residue.
+Each `deterministic-checks` entry links to a module in
+[src/checks/rules/](src/checks/rules/) and supplies the severity for its
+findings. A deterministic check either decides each case as a finding or
+escalates it straight to manual review (e.g. `vendor-unverified`,
+`native-messaging`, `fork-check`); LLM checks escalate only their ambiguous
+residue.
 
 | Check id (`check:`) | What it flags |
 | --- | --- |
@@ -171,32 +175,23 @@ unpkg / jsDelivr / cdnjs / raw.githubusercontent); the checks above just read
 its result.
 
 The per-file JS checks (`code-sanity`, the eval checks, `unsafe-html`,
-`remote-script`) skip files that are not the developer's authored source - JS
-classified as a library/minified/obfuscated bundle, or declared in the VENDOR
-file - to save time and noise. This loses nothing: minified/obfuscated code is
-rejected anyway (`obfuscated-code`/`missing-library` flag it and request the
-original, reviewable sources), and vendored files are declared third-party.
-(`remote-script` still scans HTML/CSS and the CSP regardless.) A future
-hash-based allow/block-list is meant to replace this surface-signal heuristic.
+`remote-script`) skip files that are not the developer's authored source -
+library/minified/obfuscated bundles, or VENDOR-declared files - since those are
+rejected (`obfuscated-code`/`missing-library`) or declared third-party anyway.
+(`remote-script` still scans HTML/CSS and the CSP regardless.)
 
 
 ### LLM checks
 
-Each LLM check is a `rules/` module linked by `check:`, with a `prompt:` (the
-rubric sent to the LLM) and an `instructions:` (the manual-review wording). It
-**always runs its deterministic pre-flight**, token or not: cases the pre-flight
-can settle become findings directly, and only the genuinely-ambiguous residue is
-escalated - **per case**. The orchestrator alone resolves an escalation: when
-the LLM is enabled (`--claude-enabled` with a `CLAUDE_API_KEY`) it sends the case
-to Claude as the `prompt` plus that
-case's evidence (e.g. the offending file's source), over a shared, prompt-cached
-add-on context. Claude returns a three-way verdict - **fail** / **pass**  and
-**unsure** - so a confident result is final, but an **unsure** one routes that
-case to manual review (the same place it goes with no token, or if the call
-errors). So an add-on with no ambiguity never spends tokens, and nothing is
-silently dropped: a case is auto-decided only when the model is confident. Pick
-the model with `--claude-model`, or run `--claude-list-models` to see the choices
-and the default.
+Each LLM check **always runs its deterministic pre-flight**, enabled or not:
+cases the pre-flight can settle become findings directly, and only the
+genuinely-ambiguous residue is escalated, per case. When the LLM is enabled
+(`--llm-enabled` with an `LLM_API_KEY`), each escalated case is sent to the model
+with the check's rubric and that case's evidence (e.g. the offending file's
+source). The model returns a three-way verdict - **fail** / **pass** /
+**unsure** - so a confident result is final, but an **unsure** one (like a run
+with no key, or a call that errors) routes the case to manual review. An add-on
+with no ambiguity never spends tokens, and nothing is silently dropped.
 
 | Check id (`check:`) | Pre-flight (always) + what the LLM judges |
 | --- | --- |
@@ -213,13 +208,11 @@ and the default.
 Some review steps can't be automated - they need hands-on testing or a human's
 judgment over content the tool can't see (the store listing, screenshots, the
 icon). These live under `manual-checks` in the yaml and are surfaced in the
-report's **Manual review** to-do list (each with its `instructions`) for the
-reviewer to carry out, rather than run. An LLM check whose pre-flight can't
-settle a case joins the same list when no token is set, when Claude's verdict is
-`unsure`, or when the call errors, so a check is never silently dropped - and a
-check only appears here when it actually needs a human, not by default. The list
-appears only in the text report - it is omitted from JSON output (which ATN
-consumes for auto-verification).
+report's **Manual review** to-do list. An LLM check whose pre-flight can't settle
+a case joins the same list when the LLM is off, its verdict is `unsure`, or the
+call errors - so a check only appears here when it actually needs a human. The
+list appears only in the text report; JSON output (which ATN consumes for
+auto-verification) omits it.
 
 | Check | What the reviewer verifies |
 | --- | --- |
@@ -245,19 +238,18 @@ node verify.js ./my-addon
 node verify.js ./submission.xpi --schema-channel esr --report-format json --schema-zip ./schemas.zip
 
 # Review with the LLM checks enabled, plus an AI summary of the add-on
-CLAUDE_API_KEY=sk-… node verify.js ./submission.xpi --claude-enabled --full-summary
+LLM_API_KEY=sk-… node verify.js ./submission.xpi --llm-enabled --full-summary
 
-# List the Claude models your token can use, then exit (needs a token)
-CLAUDE_API_KEY=sk-… node verify.js --claude-list-models
+# Same, but use ChatGPT instead of the default (Claude)
+LLM_API_KEY=sk-… LLM_API_TYPE=chatgpt node verify.js ./submission.xpi --llm-enabled
+
+# List the models your token can use, then exit (needs a token)
+LLM_API_KEY=sk-… node verify.js --llm-list-models
 ```
 
 ## Contributing
 
-Requires Node `>=20`; run `npm install` once to fetch the dependencies. Review
-runs directly (see [Usage](#usage)) - there is no `npm run` wrapper for it;
-`npm run help` prints the help screen.
-
-Before sending a change, run the checks:
+Requires Node `>=20`; `npm install` once. Before sending a change, run:
 
 ```sh
 npm run lint          # ESLint over src/ and the root entry files
@@ -268,16 +260,13 @@ npm test              # add-on golden snapshots + the unit suite
 Conventions:
 
 - **Prettier-formatted and ESLint-clean** - double quotes, semicolons,
-  `printWidth` 80. `npm run format:check` and `npm run lint` must pass.
-- **The registry owns every model-facing string.** Check rubrics, the LLM
-  system intro, notices, and prompts all live in
-  [`assets/registry.yaml`](assets/registry.yaml) - never hardcode
-  them in `src/`.
-- **Each source file opens with a header comment** stating what belongs in it
-  and what does not; keep it accurate when you edit, and comments describe the
-  current code (not the diff).
-- **Golden tests are byte-exact.** If a change is meant to alter report output,
-  regenerate with `UPDATE_GOLDEN=1 npm test` and review the diff.
+  `printWidth` 80.
+- **The registry owns every model-facing string** - check rubrics, the LLM
+  system intro, and prompts live in
+  [`assets/registry.yaml`](assets/registry.yaml), never in `src/`.
+- **Each source file opens with a header comment** stating what belongs in it;
+  keep it accurate when you edit.
+- **Golden tests are byte-exact** - regenerate intended report changes with
+  `UPDATE_GOLDEN=1 npm test` and review the diff.
 
-(See [tests/README.md](tests/README.md) for the test suite and how it's
-organized.)
+(See [tests/README.md](tests/README.md) for the test suite.)
