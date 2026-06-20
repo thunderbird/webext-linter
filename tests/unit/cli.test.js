@@ -176,8 +176,8 @@ test("--full-summary without a token prints a skip notice, no add-on section", (
   assert.ok(!r.stdout.includes("── Summary of add-on ──"));
 });
 
-// --llm-enabled (or --llm-model) without any token is a usage error: the
-// run asked for the LLM but no key resolved, so fail fast on stderr, exit 2.
+// --llm-enabled without any token is a usage error: the run asked for the LLM
+// but no key resolved, so fail fast on stderr, exit 2.
 test("--llm-enabled without a token errors to stderr and exits 2", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const env = { ...process.env };
@@ -203,6 +203,22 @@ test("--llm-enabled with an unknown LLM_API_TYPE errors and exits 2", () => {
   );
   assert.equal(r.status, 2);
   assert.match(r.stderr, /Unknown LLM_API_TYPE/);
+});
+
+// --llm-enabled is the sole enabler: --llm-model alone (no --llm-enabled) does
+// NOT turn the LLM on, so a run with no key is a normal deterministic review,
+// not the "needs an API token" usage error.
+test("--llm-model without --llm-enabled does not enable the LLM (no token error)", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const env = { ...process.env };
+  delete env.LLM_API_KEY;
+  const r = spawnSync(
+    process.execPath,
+    [REVIEW, addon, "--schema-zip", SCHEMA, "--llm-model", "some-model"],
+    { encoding: "utf8", env }
+  );
+  assert.ok([0, 1].includes(r.status)); // a normal review, not a usage error
+  assert.doesNotMatch(r.stderr, /needs an API token/);
 });
 
 // A bare LLM_API_KEY in the environment no longer auto-enables the LLM: with

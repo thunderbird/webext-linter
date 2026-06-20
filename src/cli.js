@@ -155,19 +155,20 @@ function summarySection({ title, summary }) {
 
 /**
  * Resolve whether this run uses the LLM and with which key. The LLM is opt-in:
- * --llm-model or --llm-enabled signals intent. A
- * bare LLM_API_KEY in the environment no longer auto-enables it, so a
- * reviewer with a global key can still run the deterministic checks alone. When
- * opted in, the key comes from the LLM_API_KEY environment variable. It is
- * undefined otherwise, so every downstream LLM path stays off. LLM_API_TYPE picks
- * the provider (claude | chatgpt, default claude) and hence the default model when
- * --llm-model is absent; the optional LLM_API_URL overrides the API base URL.
+ * --llm-enabled is the sole enabler. A bare LLM_API_KEY in the environment does
+ * not auto-enable it (a reviewer with a global key still runs the deterministic
+ * checks alone), and --llm-model / LLM_API_URL / LLM_API_TYPE only configure the
+ * LLM - they do not turn it on. When opted in, the key comes from the LLM_API_KEY
+ * environment variable; it is undefined otherwise, so every downstream LLM path
+ * stays off. LLM_API_TYPE picks the provider (claude | chatgpt, default claude)
+ * and hence the default model when --llm-model is absent; the optional
+ * LLM_API_URL overrides the API base URL.
  * @param {Record<string, string|boolean|string[]>} values
  * @returns {{wants: boolean, apiKey?: string, apiUrl?: string, apiType?: string,
  *   model?: string}}
  */
 function resolveLlm(values) {
-  const wants = values["llm-model"] != null || values["llm-enabled"] === true;
+  const wants = values["llm-enabled"] === true;
   const apiKey = process.env.LLM_API_KEY;
   const apiUrl = process.env.LLM_API_URL || undefined;
   const apiType = (process.env.LLM_API_TYPE || DEFAULT_LLM_TYPE).toLowerCase();
@@ -229,7 +230,7 @@ export function helpText() {
     ],
     [
       "--llm-model <id>",
-      "Model for the LLM checks (default: the provider's default; see --llm-list-models).",
+      "Model for the LLM checks; requires --llm-enabled (default: the provider's default; see --llm-list-models).",
     ],
     ["--llm-list-models", "List the models your token can use, then exit."],
   ];
@@ -415,9 +416,9 @@ export async function main(argv) {
     return 2;
   }
 
-  // The LLM is opt-in (resolveLlm): a --llm-enabled/-model flag turns it on.
-  // If the run asked for it but no token resolved, fail fast instead of silently
-  // reviewing without the LLM.
+  // The LLM is opt-in (resolveLlm): --llm-enabled turns it on. If the run asked
+  // for it but no token resolved, fail fast instead of silently reviewing
+  // without the LLM.
   const llm = resolveLlm(values);
   if (llm.wants && !llm.apiKey) {
     process.stderr.write(
