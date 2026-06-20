@@ -14,6 +14,7 @@ import unpinnedVendorSource from "../../src/checks/rules/unpinned-vendor-source.
 import vendorModified from "../../src/checks/rules/vendor-modified.js";
 import vendorUnverified from "../../src/checks/rules/vendor-unverified.js";
 import missingVendorFile from "../../src/checks/rules/missing-vendor-file.js";
+import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 
 // ---- classifySource (no network) ----
 test("classifySource recognizes the trusted hosts and pinned refs", () => {
@@ -65,8 +66,18 @@ function addonWith(files, vendor) {
 
 // An injectable transport. `bytes` answers every fetchBytes (the VENDOR case);
 // `files` answers per-URL (the package case, a missing URL is a 404); `listing`
-// answers the "?meta" tree; `downloads` drives the npm popularity lookup.
-function net({ bytes, files, listing, downloads = 99999, throwOnFetch } = {}) {
+// answers the "?meta" tree; `downloads` drives the npm popularity lookup; `osv`
+// answers the OSV audit postJson (an object, or a function of the request body),
+// and `throwOnPost` makes the audit POST fail (the offline case).
+function net({
+  bytes,
+  files,
+  listing,
+  downloads = 99999,
+  throwOnFetch,
+  osv,
+  throwOnPost,
+} = {}) {
   return {
     fetchBytes: async (url) => {
       if (throwOnFetch) {
@@ -86,6 +97,12 @@ function net({ bytes, files, listing, downloads = 99999, throwOnFetch } = {}) {
       }
       return { downloads };
     },
+    postJson: async (_url, body) => {
+      if (throwOnPost) {
+        throw new Error("offline");
+      }
+      return (typeof osv === "function" ? osv(body) : osv) ?? { vulns: [] };
+    },
   };
 }
 
@@ -97,6 +114,7 @@ const store = (over = {}) => ({
   unpinned: [],
   missing: [],
   unparsedVendor: false,
+  vulnerabilities: [],
   ...over,
 });
 
@@ -283,7 +301,109 @@ test("verifyVendor: a flat ?meta file is matched by sha256 integrity, no downloa
   ]);
 });
 
+// ---- OSV vulnerability audit (network injected) ----
+
+// A package OSV reports an advisory for is recorded on vendor.vulnerabilities,
+// aggregated per package: a CVE alias is preferred over the OSV id, the severity
+// is the database-specific label, and the fixed versions come from the matching
+// npm `affected` ranges. `throwOnFetch` proves the ?meta path is independent.
+test("verifyVendor: the OSV audit records a vulnerable pinned package", async () => {
+  const addon = addonWith(
+    {},
+    store({ packages: [{ name: "lodash", version: "4.17.20" }] })
+  );
+  const osv = {
+    vulns: [
+      {
+        id: "GHSA-35jh-r3h4-6jhm",
+        aliases: ["CVE-2021-23337"],
+        database_specific: { severity: "HIGH" },
+        affected: [
+          {
+            package: { ecosystem: "npm", name: "lodash" },
+            ranges: [
+              {
+                type: "SEMVER",
+                events: [{ introduced: "0" }, { fixed: "4.17.21" }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  await verifyVendor(addon, net({ listing: { files: [] }, osv }));
+  assert.deepEqual(addon.vendor.vulnerabilities, [
+    {
+      name: "lodash",
+      version: "4.17.20",
+      ids: ["CVE-2021-23337"],
+      severity: "high",
+      fixed: ["4.17.21"],
+    },
+  ]);
+});
+
+test("verifyVendor: a clean package records no vulnerability", async () => {
+  const addon = addonWith(
+    {},
+    store({ packages: [{ name: "left-pad", version: "1.3.0" }] })
+  );
+  await verifyVendor(
+    addon,
+    net({ listing: { files: [] }, osv: { vulns: [] } })
+  );
+  assert.deepEqual(addon.vendor.vulnerabilities, []);
+});
+
+test("verifyVendor: a failed OSV lookup records nothing (best-effort)", async () => {
+  const addon = addonWith(
+    {},
+    store({ packages: [{ name: "lodash", version: "4.17.20" }] })
+  );
+  await verifyVendor(addon, net({ listing: { files: [] }, throwOnPost: true }));
+  assert.deepEqual(addon.vendor.vulnerabilities, []);
+});
+
 // ---- the four checks (pure readers of addon.vendor) ----
+
+test("vendor-vulnerable: a recorded vulnerability becomes a finding at the package.json line", () => {
+  const pkg = '{\n  "dependencies": {\n    "lodash": "4.17.20"\n  }\n}';
+  const ctx = {
+    addon: {
+      files: new Map([["package.json", Buffer.from(pkg)]]),
+      vendor: store({
+        vulnerabilities: [
+          {
+            name: "lodash",
+            version: "4.17.20",
+            ids: ["CVE-2021-23337"],
+            severity: "high",
+            fixed: ["4.17.21"],
+          },
+        ],
+      }),
+    },
+  };
+  const out = vendorVulnerable.run(ctx);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].file, "package.json");
+  assert.equal(out[0].loc.line, 3);
+  assert.equal(out[0].item, "lodash");
+  assert.deepEqual(out[0].data, {
+    version: "4.17.20",
+    ids: "CVE-2021-23337",
+    severity: "high",
+    fixed: "4.17.21",
+  });
+});
+
+test("vendor-vulnerable: no recorded vulnerabilities -> no findings", () => {
+  const ctx = {
+    addon: { files: new Map(), vendor: store() },
+  };
+  assert.deepEqual(vendorVulnerable.run(ctx), []);
+});
 
 test("unpinned-dependency: one finding per unpinned dep, anchored in package.json", () => {
   const pkg = '{\n  "dependencies": {\n    "lodash": "^4.17.21"\n  }\n}';

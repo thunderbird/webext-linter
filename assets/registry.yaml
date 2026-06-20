@@ -260,6 +260,14 @@ deterministic-checks:
   response: |-
     A bundled dependency is not pinned to an exact version: {{item}}, declared as "{{spec}}". A version range can resolve to different releases over time, so the bundled copy cannot be verified against a known upstream. Pin it to an exact version in package.json, or commit the lock file (package-lock.json, npm-shrinkwrap.json, yarn.lock, or pnpm-lock.yaml) that records the exact version used.
 
+# The pinned name@version is audited against the OSV database
+# (src/vendor/verify.js); a package with known advisories is reported here.
+- title: Vulnerable dependency
+  severity: error
+  check: vendor-vulnerable.js
+  response: |-
+    A bundled dependency has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). Update {{item}} to {{fixed}} or later, re-bundle, and resubmit. If you believe the advisory does not apply to how this add-on uses the dependency, let us know why.
+
 - title: Unpinned vendored source
   severity: error
   check: unpinned-vendor-source.js

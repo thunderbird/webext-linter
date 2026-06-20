@@ -38,6 +38,8 @@ import { debug } from "../util/log.js";
  * @property {{name: string, spec: string}[]} unpinned  Deps with no pin.
  * @property {VendorEntry[]} missing  VENDOR entries whose file is absent.
  * @property {boolean} unparsedVendor  A VENDOR file exists but yielded nothing.
+ * @property {import("./verify.js").VendorVuln[]} vulnerabilities  Pinned packages
+ *   with known OSV advisories (filled by verifyVendor's audit; empty offline).
  */
 
 // An exact semver (no range operators) - a concrete pinned version.
@@ -124,6 +126,8 @@ export async function resolveVendor({
     packages,
     unpinned,
     missing,
+    // Filled by verifyVendor's OSV audit (network); empty for offline runs.
+    vulnerabilities: [],
     // "Unparsed" only when we extracted nothing at all - neither a matched entry
     // nor a missing-file declaration. A parseable-but-missing VENDOR goes to the
     // missing-vendor-file check instead of a "could not be parsed" manual item.

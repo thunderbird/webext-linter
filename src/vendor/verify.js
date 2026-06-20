@@ -16,7 +16,9 @@
 //     vendored any packaged file whose content hash matches a published file's
 //     integrity - matched locally, no file bytes downloaded, so it scales to a
 //     large package. A file that does not hash-match is left alone, as it may be
-//     the author's own code or a modified copy.
+//     the author's own code or a modified copy. The same pinned name@version is
+//     also audited against OSV (auditPackage); known advisories are recorded for
+//     the vendor-vulnerable check.
 //
 // Belongs here: verifyVendor (the batch), the per-source compare, the popularity
 // lookup, and the default network transport. Does NOT belong here: URL
@@ -33,6 +35,7 @@ import {
   VENDOR_TRUSTED_GITHUB_ORGS,
   VENDOR_FETCH_TIMEOUT_MS,
   VENDOR_FETCH_MAX_BYTES,
+  VENDOR_OSV_API,
 } from "../config.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
@@ -40,7 +43,16 @@ import {
 /** @typedef {import("./sources.js").VendorSource} VendorSource */
 /**
  * @typedef {{fetchBytes: (url: string) => Promise<Buffer>,
- *   fetchJson: (url: string) => Promise<object>}} VendorNet
+ *   fetchJson: (url: string) => Promise<object>,
+ *   postJson: (url: string, body: object) => Promise<object>}} VendorNet
+ */
+/**
+ * @typedef {object} VendorVuln  One vulnerable pinned package (OSV audit).
+ * @property {string} name  npm package name.
+ * @property {string} version  The bundled (pinned) version audited.
+ * @property {string[]} ids  Advisory ids (CVE preferred, else OSV/GHSA).
+ * @property {string} severity  Highest reported severity, or "unknown".
+ * @property {string[]} fixed  Versions the advisories were fixed in (may be empty).
  */
 /**
  * @typedef {object} MetaNode  A node in an unpkg "?meta" listing. unpkg returns a
@@ -80,7 +92,119 @@ export async function verifyVendor(addon, net = defaultNet) {
   }
   for (const pkg of vendor.packages) {
     await verifyPackage(pkg, addon, vendor, net);
+    await auditPackage(pkg, vendor, net);
   }
+}
+
+/**
+ * Audit a pinned package against the OSV vulnerability database. Best-effort: a
+ * package with known advisories is recorded on `vendor.vulnerabilities` (one entry
+ * per package, aggregating its advisories) for the vendor-vulnerable check; any
+ * network or parse error - or an injected net without `postJson` (offline runs,
+ * the golden harness) - records nothing.
+ * @param {{name: string, version: string}} pkg
+ * @param {VendorStore} vendor @param {VendorNet} net
+ * @returns {Promise<void>}
+ */
+async function auditPackage(pkg, vendor, net) {
+  let vulns;
+  try {
+    const res = await net.postJson(VENDOR_OSV_API, {
+      version: pkg.version,
+      package: { name: pkg.name, ecosystem: "npm" },
+    });
+    vulns = Array.isArray(res?.vulns) ? res.vulns : [];
+  } catch {
+    return; // offline / no postJson / OSV unreachable - skip silently
+  }
+  if (!vulns.length) {
+    return;
+  }
+  const ids = new Set();
+  const fixed = new Set();
+  let severity = "unknown";
+  for (const v of vulns) {
+    ids.add(advisoryId(v));
+    for (const f of fixedVersions(v, pkg.name)) {
+      fixed.add(f);
+    }
+    severity = worseSeverity(severity, vulnSeverity(v));
+  }
+  vendor.vulnerabilities.push({
+    name: pkg.name,
+    version: pkg.version,
+    ids: [...ids],
+    severity,
+    fixed: [...fixed],
+  });
+}
+
+/**
+ * The advisory's preferred id: a CVE alias if present, else the OSV/GHSA id.
+ * @param {object} v  An OSV vuln record.
+ * @returns {string}
+ */
+function advisoryId(v) {
+  const cve = (v?.aliases ?? []).find((a) => /^CVE-/i.test(String(a)));
+  return cve || v?.id || "unknown";
+}
+
+/**
+ * The fixed versions OSV lists for `name` (npm) in this advisory: the `fixed`
+ * events of every matching `affected` range.
+ * @param {object} v  An OSV vuln record. @param {string} name
+ * @returns {string[]}
+ */
+function fixedVersions(v, name) {
+  const out = [];
+  for (const a of v?.affected ?? []) {
+    if (a?.package?.ecosystem !== "npm" || a?.package?.name !== name) {
+      continue;
+    }
+    for (const range of a?.ranges ?? []) {
+      for (const ev of range?.events ?? []) {
+        if (ev?.fixed) {
+          out.push(String(ev.fixed));
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// OSV / GitHub Advisory severity labels, low to high. Unknown sorts lowest.
+const SEVERITY_RANK = [
+  "unknown",
+  "low",
+  "moderate",
+  "medium",
+  "high",
+  "critical",
+];
+
+/**
+ * A human severity label for an OSV vuln: the database-specific label (GHSA's
+ * LOW/MODERATE/HIGH/CRITICAL) when present, else derived coarsely from a CVSS
+ * vector, else "unknown".
+ * @param {object} v  An OSV vuln record.
+ * @returns {string}
+ */
+function vulnSeverity(v) {
+  const ds = v?.database_specific?.severity;
+  if (typeof ds === "string" && ds) {
+    return ds.toLowerCase();
+  }
+  // A CVSS vector string under severity[]: map its base score band if present.
+  const score = (v?.severity ?? []).find((s) => s?.score)?.score;
+  if (typeof score === "string" && /^CVSS:/i.test(score)) {
+    return "unknown"; // a vector without a numeric base - leave unlabelled
+  }
+  return "unknown";
+}
+
+/** The higher of two severity labels. @param {string} a @param {string} b */
+function worseSeverity(a, b) {
+  return SEVERITY_RANK.indexOf(b) > SEVERITY_RANK.indexOf(a) ? b : a;
 }
 
 /**
@@ -274,33 +398,55 @@ export const defaultNet = {
     return buf;
   },
   async fetchJson(url) {
-    const res = await timedFetch(url);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    const declared = Number(res.headers.get("content-length"));
-    if (declared && declared > VENDOR_FETCH_MAX_BYTES) {
-      throw new Error("listing exceeds size cap");
-    }
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > VENDOR_FETCH_MAX_BYTES) {
-      throw new Error("listing exceeds size cap");
-    }
-    return JSON.parse(buf.toString("utf8"));
+    return readJson(await timedFetch(url));
+  },
+  async postJson(url, body) {
+    return readJson(
+      await timedFetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      })
+    );
   },
 };
 
 /**
+ * Read a fetch Response as JSON, enforcing the size cap. Shared by fetchJson and
+ * postJson.
+ * @param {Response} res
+ * @returns {Promise<object>}
+ */
+async function readJson(res) {
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const declared = Number(res.headers.get("content-length"));
+  if (declared && declared > VENDOR_FETCH_MAX_BYTES) {
+    throw new Error("response exceeds size cap");
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > VENDOR_FETCH_MAX_BYTES) {
+    throw new Error("response exceeds size cap");
+  }
+  return JSON.parse(buf.toString("utf8"));
+}
+
+/**
  * fetch() with an abort timeout. Redirects are followed - the trust is that the
  * allowlisted CDNs only redirect within their own canonical URLs.
- * @param {string} url
+ * @param {string} url @param {RequestInit} [init]
  * @returns {Promise<Response>}
  */
-async function timedFetch(url) {
+async function timedFetch(url, init) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), VENDOR_FETCH_TIMEOUT_MS);
   try {
-    return await fetch(url, { signal: ctrl.signal, redirect: "follow" });
+    return await fetch(url, {
+      ...init,
+      signal: ctrl.signal,
+      redirect: "follow",
+    });
   } finally {
     clearTimeout(timer);
   }

@@ -124,6 +124,15 @@ export const VENDOR_FETCH_TIMEOUT_MS = 10000;
 export const VENDOR_FETCH_MAX_BYTES = 12 * 1024 * 1024;
 
 /**
+ * OSV vulnerability database query endpoint (https://osv.dev). A pinned
+ * package.json dependency (name@version, exact or lock-resolved) is POSTed here to
+ * learn whether the bundled version has known advisories. No API token; OSV
+ * ingests the GitHub Advisory DB, so it covers `npm audit`'s npm data and more.
+ * Best-effort: a failed lookup just skips (no finding).
+ */
+export const VENDOR_OSV_API = "https://api.osv.dev/v1/query";
+
+/**
  * Timeout for the ATN API lookup that resolves an add-on's listing slug (for the
  * reviewer review-page URL printed in the text report's Manual review section).
  */

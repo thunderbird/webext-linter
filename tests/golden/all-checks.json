@@ -36,6 +36,7 @@
       "experiment-missing-strict-max-version",
       "non-experiment-strict-max-version",
       "unpinned-dependency",
+      "vendor-vulnerable",
       "unpinned-vendor-source",
       "vendor-modified",
       "vendor-unverified",
