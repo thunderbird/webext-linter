@@ -4,9 +4,9 @@
 // (prompts.system-intro) and is passed in. The per-review half - the cached
 // add-on context and the batched evaluate() transport - lives in
 // checks/llm-client.js, which calls callClaude() once per batch of candidates
-// when the reviewer supplies an Anthropic API token (--claude-api-key or
-// CLAUDE_API_KEY). With no token, ctx.llm is absent and the whole LLM path is
-// skipped, so the tool stays deterministic by default.
+// when the reviewer supplies an Anthropic API token (the CLAUDE_API_KEY
+// environment variable). With no token, ctx.llm is absent and the whole LLM path
+// is skipped, so the tool stays deterministic by default.
 //
 //   - @anthropic-ai/sdk is imported lazily (only when a token is present), so a
 //     deterministic-only run never loads it,

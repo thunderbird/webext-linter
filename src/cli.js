@@ -150,20 +150,18 @@ function summarySection({ title, summary }) {
 
 /**
  * Resolve whether this run uses the LLM and with which key. The LLM is opt-in:
- * --claude-api-key, --claude-model, or --claude-enabled all signal intent. A
+ * --claude-model or --claude-enabled signals intent. A
  * bare CLAUDE_API_KEY in the environment no longer auto-enables it, so a
  * reviewer with a global key can still run the deterministic checks alone. When
- * opted in, the key comes from --claude-api-key or else CLAUDE_API_KEY. It is
+ * opted in, the key comes from the CLAUDE_API_KEY environment variable. It is
  * undefined otherwise, so every downstream LLM path stays off.
  * @param {Record<string, string|boolean|string[]>} values
  * @returns {{wants: boolean, apiKey: string|undefined}}
  */
 function resolveClaude(values) {
   const wants =
-    values["claude-api-key"] != null ||
-    values["claude-model"] != null ||
-    values["claude-enabled"] === true;
-  const apiKey = values["claude-api-key"] ?? process.env.CLAUDE_API_KEY;
+    values["claude-model"] != null || values["claude-enabled"] === true;
+  const apiKey = process.env.CLAUDE_API_KEY;
   return { wants, apiKey: wants ? apiKey : undefined };
 }
 
@@ -209,10 +207,9 @@ export function helpText() {
   ];
 
   const claude = [
-    ["--claude-api-key <key>", "API key for the LLM checks via Claude."],
     [
       "--claude-enabled",
-      "Enable the LLM checks using a CLAUDE_API_KEY from the environment.",
+      "Enable the LLM checks (the key comes from the CLAUDE_API_KEY environment variable).",
     ],
     [
       "--claude-model <id>",
@@ -297,7 +294,6 @@ const OPTIONS = {
   "full-summary": { type: "boolean" },
   "report-format": { type: "string" },
   "report-out": { type: "string" },
-  "claude-api-key": { type: "string" },
   "claude-enabled": { type: "boolean" },
   "claude-model": { type: "string" },
   "claude-list-models": { type: "boolean" },
@@ -369,7 +365,7 @@ export async function main(argv) {
   emitBanner(argv);
 
   if (values["claude-list-models"]) {
-    return runListModels(values["claude-api-key"]);
+    return runListModels();
   }
 
   if (values.help || positionals.length === 0) {
@@ -406,14 +402,14 @@ export async function main(argv) {
     return 2;
   }
 
-  // The LLM is opt-in (resolveClaude): a --claude-api-key/-model/-enabled flag
-  // turns it on. If the run asked for it but no token resolved, fail fast
-  // instead of silently reviewing without the LLM.
+  // The LLM is opt-in (resolveClaude): a --claude-enabled/-model flag turns it on.
+  // If the run asked for it but no token resolved, fail fast instead of silently
+  // reviewing without the LLM.
   const claude = resolveClaude(values);
   if (claude.wants && !claude.apiKey) {
     process.stderr.write(
       "Enabling the LLM checks needs an Anthropic API token " +
-        "(--claude-api-key or CLAUDE_API_KEY).\n"
+        "(set CLAUDE_API_KEY in the environment).\n"
     );
     return 2;
   }
@@ -455,8 +451,8 @@ export async function main(argv) {
       });
     } else if (values["full-summary"] && !claude.apiKey) {
       const note =
-        "\n  (--full-summary needs the LLM; add --claude-enabled or " +
-        "--claude-api-key. Skipped.)\n";
+        "\n  (--full-summary needs the LLM; add --claude-enabled with " +
+        "CLAUDE_API_KEY set. Skipped.)\n";
       process.stdout.write(note);
       summaryBlock += note;
     }
@@ -530,15 +526,14 @@ export function pipelineOptsFromArgv(argv) {
  * Print the Anthropic models available to the token, then exit (the
  * --claude-list-models command). Needs a token, but no add-on path.
  *
- * @param {string} [tokenOpt]  The --claude-api-key value, if any.
  * @returns {Promise<number>} process exit code
  */
-async function runListModels(tokenOpt) {
-  const token = tokenOpt ?? process.env.CLAUDE_API_KEY;
+async function runListModels() {
+  const token = process.env.CLAUDE_API_KEY;
   if (!token) {
     process.stderr.write(
       "--claude-list-models needs an Anthropic API token " +
-        "(--claude-api-key or CLAUDE_API_KEY).\n"
+        "(set CLAUDE_API_KEY in the environment).\n"
     );
     return 2;
   }

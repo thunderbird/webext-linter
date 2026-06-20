@@ -48,16 +48,23 @@ schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
 | `--checks-skip <ids>` | Skip these checks (comma-separated). See the check list below. |
 | `--report-format <text\|json>` | Report output format (default `text`). |
 | `--report-out <file>` | Write the report to a file in addition to stdout. |
-| `--claude-api-key <key>` | API key for the LLM checks via Claude. |
-| `--claude-enabled` | Enable the LLM checks using the `CLAUDE_API_KEY` environment variable. |
+| `--claude-enabled` | Enable the LLM checks. The key is read from the `CLAUDE_API_KEY` environment variable. |
 | `--claude-list-models` | List the Anthropic models available to your token, then exit. |
 | `--claude-model <id>` | Model for the LLM checks. See `--claude-list-models` for the choices and the default. |
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
-| `--diff-summary` | Add an AI assisted **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and the LLM enabled (`--claude-api-key` or `--claude-enabled`). |
-| `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes and a permission review (which declared permissions appear unused) - from its (almost) full current source (vendored and unused files excluded). Advisory, not a finding. Needs the LLM enabled (`--claude-api-key` or `--claude-enabled`). |
+| `--diff-summary` | Add an AI assisted **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and the LLM enabled (`--claude-enabled`). |
+| `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes and a permission review (which declared permissions appear unused) - from its (almost) full current source (vendored and unused files excluded). Advisory, not a finding. Needs the LLM enabled (`--claude-enabled`). |
 | `--verbose` | Verbose logging. |
+
+The LLM checks need an Anthropic API key, supplied via the `CLAUDE_API_KEY`
+environment variable (there is no API-key flag):
+
+```sh
+export CLAUDE_API_KEY=sk-ant-...
+node verify.js <xpi|folder> --claude-enabled
+```
 
 **Exit codes:** `0` no errors · `1` one or more error-severity findings · `2`
 tool failure.
@@ -180,8 +187,8 @@ rubric sent to the LLM) and an `instructions:` (the manual-review wording). It
 **always runs its deterministic pre-flight**, token or not: cases the pre-flight
 can settle become findings directly, and only the genuinely-ambiguous residue is
 escalated - **per case**. The orchestrator alone resolves an escalation: when
-the LLM is enabled (`--claude-api-key`, `--claude-model`, or `--claude-enabled`
-with a `CLAUDE_API_KEY`) it sends the case to Claude as the `prompt` plus that
+the LLM is enabled (`--claude-enabled` with a `CLAUDE_API_KEY`) it sends the case
+to Claude as the `prompt` plus that
 case's evidence (e.g. the offending file's source), over a shared, prompt-cached
 add-on context. Claude returns a three-way verdict - **fail** / **pass**  and
 **unsure** - so a confident result is final, but an **unsure** one routes that
@@ -238,10 +245,10 @@ node verify.js ./my-addon
 node verify.js ./submission.xpi --schema-channel esr --report-format json --schema-zip ./schemas.zip
 
 # Review with the LLM checks enabled, plus an AI summary of the add-on
-node verify.js ./submission.xpi --claude-api-key sk-… --full-summary
+CLAUDE_API_KEY=sk-… node verify.js ./submission.xpi --claude-enabled --full-summary
 
 # List the Claude models your token can use, then exit (needs a token)
-node verify.js --claude-list-models --claude-api-key sk-…
+CLAUDE_API_KEY=sk-… node verify.js --claude-list-models
 ```
 
 ## Contributing
