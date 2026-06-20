@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { coerceResult, coerceReview } from "../../src/llm/schema.js";
-import { DEFAULT_MODEL } from "../../src/config.js";
+import { DEFAULT_MODEL_CLAUDE } from "../../src/config.js";
 
 // Well-formed input passes through unchanged; empty/null input yields no
 // verdicts (so the orchestrator defaults every candidate to "unsure", deferring
@@ -105,6 +105,6 @@ test("coerceReview survives hostile shapes", () => {
 
 // Pins the default model to the Sonnet tier so the client does not silently
 // default to a different (e.g. more expensive) model family.
-test("DEFAULT_MODEL is a sonnet model", () => {
-  assert.match(DEFAULT_MODEL, /sonnet/);
+test("DEFAULT_MODEL_CLAUDE is a sonnet model", () => {
+  assert.match(DEFAULT_MODEL_CLAUDE, /sonnet/);
 });

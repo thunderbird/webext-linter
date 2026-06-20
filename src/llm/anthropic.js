@@ -13,7 +13,7 @@
 // (-> src/checks/llm-client.js), the provider selection (-> src/llm/provider.js),
 // or any model-facing prompt (-> the registry).
 
-import { DEFAULT_MODEL, MAX_RESPONSE_TOKENS } from "../config.js";
+import { DEFAULT_MODEL_CLAUDE, MAX_RESPONSE_TOKENS } from "../config.js";
 import {
   RESULT_TOOL,
   REVIEW_TOOL,
@@ -57,7 +57,7 @@ async function clientFor(token, baseURL, client) {
  */
 export async function callVerdicts({
   token,
-  model = DEFAULT_MODEL,
+  model = DEFAULT_MODEL_CLAUDE,
   baseURL,
   system,
   criterion,
@@ -94,7 +94,7 @@ export async function callVerdicts({
  */
 export async function callText({
   token,
-  model = DEFAULT_MODEL,
+  model = DEFAULT_MODEL_CLAUDE,
   baseURL,
   system,
   prompt,
@@ -127,7 +127,7 @@ export async function callText({
  */
 export async function callReview({
   token,
-  model = DEFAULT_MODEL,
+  model = DEFAULT_MODEL_CLAUDE,
   baseURL,
   system,
   prompt,

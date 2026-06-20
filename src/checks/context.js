@@ -27,7 +27,8 @@ import { llmEnabled } from "./lib/util.js";
  * @param {object} params
  * @param {import("../addon/load.js").Addon} params.addon
  * @param {import("../schema/index.js").SchemaIndex} params.schema
- * @param {{llmApiKey?: string, allowExperiments?: boolean}} params.options
+ * @param {{llmEnabled?: boolean, llmApiKey?: string, llmApiUrl?: string,
+ *   llmApiType?: string, allowExperiments?: boolean}} params.options
  * @param {string} [params.diffTo]  Path of the previously published version,
  *   loaded as the diff baseline for the diff checks (run only with --diff-to).
  * @param {string} [params.llmModel]  Model override for the LLM client.

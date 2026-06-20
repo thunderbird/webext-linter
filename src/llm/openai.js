@@ -25,21 +25,28 @@ import {
 
 /** @typedef {InstanceType<typeof import("openai").default>} OpenAI */
 
+// The openai SDK constructor requires a non-empty apiKey string. A keyless local
+// server (Ollama, reached via baseURL) has no key, so fall back to this harmless
+// placeholder - the server ignores it. Cloud callers always pass a real token
+// (the pre-flight requires it), so this only ever applies to the keyless path.
+const KEYLESS_PLACEHOLDER = "ollama";
+
 /**
  * Build an OpenAI client from a token (+ optional baseURL), unless an injectable
- * one is supplied (tests pass a fake).
- * @param {string} token @param {string} [baseURL] @param {OpenAI} [client]
+ * one is supplied (tests pass a fake). A missing token uses the keyless
+ * placeholder rather than failing, so an OpenAI-compatible local server works.
+ * @param {string} [token] @param {string} [baseURL] @param {OpenAI} [client]
  * @returns {Promise<OpenAI>}
  */
 async function clientFor(token, baseURL, client) {
   if (client) {
     return client;
   }
-  if (!token) {
-    throw new Error("the LLM call requires an API token.");
-  }
   const OpenAI = await loadSdk();
-  return new OpenAI({ apiKey: token, ...(baseURL ? { baseURL } : {}) });
+  return new OpenAI({
+    apiKey: token || KEYLESS_PLACEHOLDER,
+    ...(baseURL ? { baseURL } : {}),
+  });
 }
 
 /**

@@ -24,8 +24,8 @@ import { loadRegistry } from "./checks/registry.js";
 import {
   getProvider,
   defaultModelFor,
-  isLlmType,
-  LLM_TYPES,
+  defaultBaseUrlFor,
+  validateLlmConfig,
   DEFAULT_LLM_TYPE,
 } from "./llm/provider.js";
 import { hasErrors } from "./report/finding.js";
@@ -154,24 +154,23 @@ function summarySection({ title, summary }) {
 }
 
 /**
- * Resolve whether this run uses the LLM and with which key. The LLM is opt-in:
- * --llm-enabled is the sole enabler. A bare LLM_API_KEY in the environment does
- * not auto-enable it (a reviewer with a global key still runs the deterministic
- * checks alone), and LLM_API_MODEL / LLM_API_URL / LLM_API_TYPE only configure the
- * LLM - they do not turn it on. When opted in, the key comes from the LLM_API_KEY
- * environment variable; it is undefined otherwise, so every downstream LLM path
- * stays off. LLM_API_TYPE picks the provider (claude | chatgpt, default claude)
- * and hence the default model when LLM_API_MODEL is unset; the optional
- * LLM_API_URL overrides the API base URL.
+ * Resolve the LLM config for this run. The LLM is opt-in and `--llm-enabled` is
+ * the SOLE enabler (`wants`); the LLM_API_* env vars only configure it and never
+ * turn it on. The config is validated later, hard-failing at the pipeline's Setup
+ * pre-flight if it is unusable. LLM_API_TYPE picks the provider (claude | chatgpt
+ * | ollama, default claude) and hence the default model (LLM_API_MODEL override)
+ * and default base URL (LLM_API_URL override; Ollama defaults to its localhost
+ * endpoint). The key is the real LLM_API_KEY or undefined - a keyless provider
+ * (Ollama) needs none, so it is never a fabricated placeholder here.
  * @param {Record<string, string|boolean|string[]>} values
  * @returns {{wants: boolean, apiKey?: string, apiUrl?: string, apiType?: string,
  *   model?: string}}
  */
 function resolveLlm(values) {
   const wants = values["llm-enabled"] === true;
-  const apiKey = process.env.LLM_API_KEY;
-  const apiUrl = process.env.LLM_API_URL || undefined;
   const apiType = (process.env.LLM_API_TYPE || DEFAULT_LLM_TYPE).toLowerCase();
+  const apiKey = process.env.LLM_API_KEY || undefined;
+  const apiUrl = process.env.LLM_API_URL || defaultBaseUrlFor(apiType);
   const model = process.env.LLM_API_MODEL || defaultModelFor(apiType);
   return {
     wants,
@@ -226,7 +225,7 @@ export function helpText() {
   const llmFlags = [
     [
       "--llm-enabled",
-      "Enable the LLM checks (configured via the LLM_API_* environment variables; see the README).",
+      "Enable the LLM checks - cloud (Claude/ChatGPT) or a local model (Ollama), configured via the LLM_API_* environment variables; see the README.",
     ],
     ["--llm-list-models", "List the models your token can use, then exit."],
   ];
@@ -411,24 +410,9 @@ export async function main(argv) {
     return 2;
   }
 
-  // The LLM is opt-in (resolveLlm): --llm-enabled turns it on. If the run asked
-  // for it but no token resolved, fail fast instead of silently reviewing
-  // without the LLM.
-  const llm = resolveLlm(values);
-  if (llm.wants && !llm.apiKey) {
-    process.stderr.write(
-      "Enabling the LLM checks needs an API token " +
-        "(set LLM_API_KEY in the environment).\n"
-    );
-    return 2;
-  }
-  if (llm.wants && !isLlmType(llm.apiType)) {
-    process.stderr.write(
-      `Unknown LLM_API_TYPE "${process.env.LLM_API_TYPE}" ` +
-        `(expected one of: ${LLM_TYPES.join(", ")}).\n`
-    );
-    return 2;
-  }
+  // The LLM is opt-in (--llm-enabled). Its config (key requirement, an unknown
+  // type, a missing/unreachable local model) is validated at the pipeline's Setup
+  // pre-flight, which hard-fails there - so there is nothing to check here.
 
   // The run-wide LLM request cap prompts to continue only at an interactive text
   // terminal; JSON/piped/CI runs have no one to ask, so they hard-stop at the cap
@@ -465,7 +449,7 @@ export async function main(argv) {
         title: "Summary of add-on",
         summary: result.summarizeAddon,
       });
-    } else if (values["full-summary"] && !llm.apiKey) {
+    } else if (values["full-summary"] && !values["llm-enabled"]) {
       const note =
         "\n  (--full-summary needs the LLM; add --llm-enabled with " +
         "LLM_API_KEY set. Skipped.)\n";
@@ -519,6 +503,7 @@ function pipelineOptsFromValues(values) {
     diffTo: values["diff-to"],
     diffSummary: values["diff-summary"],
     fullSummary: values["full-summary"],
+    llmEnabled: llm.wants,
     llmApiKey: llm.apiKey,
     llmModel: llm.model,
     llmApiUrl: llm.apiUrl,
@@ -549,28 +534,19 @@ export function pipelineOptsFromArgv(argv) {
  * @returns {Promise<number>} process exit code
  */
 async function runListModels() {
-  const token = process.env.LLM_API_KEY;
-  if (!token) {
-    process.stderr.write(
-      "--llm-list-models needs an API token " +
-        "(set LLM_API_KEY in the environment).\n"
-    );
-    return 2;
-  }
   const type = (process.env.LLM_API_TYPE || DEFAULT_LLM_TYPE).toLowerCase();
-  if (!isLlmType(type)) {
-    process.stderr.write(
-      `Unknown LLM_API_TYPE "${process.env.LLM_API_TYPE}" ` +
-        `(expected one of: ${LLM_TYPES.join(", ")}).\n`
-    );
+  const token = process.env.LLM_API_KEY || undefined;
+  // The provider owns the requirements: an unknown type, or a key required but
+  // missing (Ollama is keyless, so it lists without one).
+  const configError = validateLlmConfig(type, { apiKey: token });
+  if (configError) {
+    process.stderr.write(`${configError}\n`);
     return 2;
   }
+  const baseURL = process.env.LLM_API_URL || defaultBaseUrlFor(type);
   let models;
   try {
-    models = await getProvider(type).listModels({
-      token,
-      baseURL: process.env.LLM_API_URL,
-    });
+    models = await getProvider(type).listModels({ token, baseURL });
   } catch (err) {
     process.stderr.write(`Could not list models: ${err.message}\n`);
     return 2;

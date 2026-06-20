@@ -68,13 +68,16 @@ export function dedupe(findings) {
 }
 
 /**
- * Whether the LLM is configured: the resolved token on ctx.options, which the
- * CLI sets only when the run opted in to the LLM (see resolveLlm in cli.js).
+ * Whether the LLM is enabled for this run - controlled ONLY by --llm-enabled (the
+ * CLI sets ctx.options.llmEnabled from it; see resolveLlm in cli.js). Decoupled
+ * from credentials: a keyless provider (Ollama) is still enabled. An enabled run
+ * with an invalid config fails hard at the Setup pre-flight, so by the time a
+ * check reads this the config is known-good.
  * @param {RunContext} ctx
  * @returns {boolean}
  */
 export function llmEnabled(ctx) {
-  return Boolean(ctx.options?.llmApiKey);
+  return Boolean(ctx.options?.llmEnabled);
 }
 
 /**

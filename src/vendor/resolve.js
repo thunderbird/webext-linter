@@ -22,7 +22,6 @@ import {
 import { classifySource } from "./sources.js";
 import { lockedVersion } from "./locks.js";
 import { getProvider } from "../llm/provider.js";
-import { DEFAULT_MODEL } from "../config.js";
 import { debug } from "../util/log.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
@@ -53,10 +52,13 @@ const EXACT = /^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
  * @param {object} params
  * @param {Addon} params.addon
  * @param {?string} [params.parsePrompt]  The registry prompts.vendor-parse text.
- * @param {?string} [params.token]  LLM token, else deterministic only.
+ * @param {boolean} [params.enabled]  Whether the LLM is enabled (--llm-enabled);
+ *   gates the LLM parse fallback. Decoupled from the token (a keyless provider
+ *   has none).
+ * @param {?string} [params.token]  LLM token (a real key, or undefined keyless).
  * @param {string} [params.model]
  * @param {string} [params.url]  Override the LLM API base URL (LLM_API_URL).
- * @param {string} [params.type]  LLM_API_TYPE (claude | chatgpt).
+ * @param {string} [params.type]  LLM_API_TYPE (claude | chatgpt | ollama).
  * @param {Function} [params.callText]  Injectable transport (else the provider's).
  * @param {import("../llm/budget.js").LlmBudget} [params.budget]  Run-wide model
  *   request cap; the parse fallback is skipped once it is exhausted.
@@ -65,8 +67,9 @@ const EXACT = /^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
 export async function resolveVendor({
   addon,
   parsePrompt,
+  enabled = false,
   token,
-  model = DEFAULT_MODEL,
+  model,
   url,
   type,
   callText = getProvider(type).callText,
@@ -75,9 +78,10 @@ export async function resolveVendor({
   const vendorFile = readVendorFile(addon);
   const manifest = dedupeByPath(parseVendorManifest(addon));
   // The LLM parse fallback is one model request; count it against the run-wide
-  // cap and skip it (deterministic only) once that is spent.
+  // cap and skip it (deterministic only) once that is spent. Gated on the LLM
+  // being enabled, not on a token (Ollama is keyless).
   const wantLlmParse =
-    Boolean(vendorFile) && manifest.length === 0 && token && parsePrompt;
+    Boolean(vendorFile) && manifest.length === 0 && enabled && parsePrompt;
   if (wantLlmParse && (!budget || (await budget.consume()))) {
     try {
       manifest.push(

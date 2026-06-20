@@ -225,6 +225,39 @@ test("LLM_API_MODEL sets llmModel only when --llm-enabled", () => {
   }
 });
 
+// LLM_API_TYPE=ollama is keyless and local: a localhost default base URL and the
+// llama3.1 default model, resolved with NO fabricated key (llmApiKey undefined).
+test("LLM_API_TYPE=ollama resolves keyless local defaults", () => {
+  const keys = ["LLM_API_TYPE", "LLM_API_KEY", "LLM_API_URL", "LLM_API_MODEL"];
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  for (const k of keys) {
+    delete process.env[k];
+  }
+  process.env.LLM_API_TYPE = "ollama";
+  try {
+    const opts = pipelineOptsFromArgv(["--llm-enabled"]);
+    assert.equal(opts.llmEnabled, true);
+    assert.equal(opts.llmApiType, "ollama");
+    assert.equal(opts.llmModel, "llama3.1"); // provider default
+    assert.equal(opts.llmApiUrl, "http://localhost:11434/v1"); // local default
+    assert.equal(opts.llmApiKey, undefined); // keyless, no fabricated placeholder
+    // An explicit LLM_API_URL wins over the local default.
+    process.env.LLM_API_URL = "http://remote:11434/v1";
+    assert.equal(
+      pipelineOptsFromArgv(["--llm-enabled"]).llmApiUrl,
+      "http://remote:11434/v1"
+    );
+  } finally {
+    for (const k of keys) {
+      if (saved[k] === undefined) {
+        delete process.env[k];
+      } else {
+        process.env[k] = saved[k];
+      }
+    }
+  }
+});
+
 // A bare LLM_API_KEY in the environment no longer auto-enables the LLM: with
 // --full-summary but no opt-in flag, the run stays deterministic and skips the
 // add-on summary even though the env var is set.

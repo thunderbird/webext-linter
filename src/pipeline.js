@@ -29,6 +29,7 @@ import { renderFindings, renderManualItems } from "./report/responses.js";
 import { headerLines } from "./report/format.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import { verifyVendor } from "./vendor/verify.js";
+import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
 import { classifyBundled } from "./checks/lib/bundled.js";
 import { collapseUnused } from "./checks/lib/unused-folders.js";
 import { isExperiment } from "./checks/lib/util.js";
@@ -67,10 +68,11 @@ import {
  * @property {boolean} [fullSummary]  Add an LLM "Summary of add-on" section.
  * @property {boolean} [reviewUrl]  Look up the ATN reviewer review-page URL and
  *   put it on meta.reviewUrl - set for text reports, off for JSON/the harness.
- * @property {string} [llmApiKey]
+ * @property {boolean} [llmEnabled]  The sole LLM on-switch (--llm-enabled).
+ * @property {string} [llmApiKey]  Real API key, or undefined (a keyless provider).
  * @property {string} [llmModel]
  * @property {string} [llmApiUrl]  Override the LLM API base URL (LLM_API_URL).
- * @property {string} [llmApiType]  LLM_API_TYPE (claude | chatgpt).
+ * @property {string} [llmApiType]  LLM_API_TYPE (claude | chatgpt | ollama).
  * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
  *   network transport for vendor verification (the test harness injects an
  *   offline one); defaults to the real fetch.
@@ -138,13 +140,36 @@ export async function runPipeline(opts) {
   // counting its checks before the loop, the total is known here: the vendor step
   // is skipped for a rejected Experiment, so it is one fewer then. A no-op when
   // progress is off (JSON, the golden harness).
-  const setupTotal = invalidExperiment ? 3 : 4;
+  const setupTotal = (invalidExperiment ? 3 : 4) + (opts.llmEnabled ? 1 : 0);
   let setupDone = 0;
   const setupStep = (label) =>
     progress(`  [${++setupDone}/${setupTotal}] ${label}`);
   progress("── Setup ──");
   progress("");
   setupStep("Reading add-on");
+
+  // The LLM pre-flight: shown in the Setup feed with the chosen type + model, and
+  // a HARD FAIL on a bad config. Runs whenever --llm-enabled, regardless of
+  // whether this run will actually use the LLM (a rejected Experiment included) -
+  // if you ask for the LLM, its config must be usable. A throw here is surfaced by
+  // main()'s catch as a stderr message + exit 2.
+  if (opts.llmEnabled) {
+    setupStep(`Checking the LLM (${opts.llmApiType}, ${opts.llmModel})`);
+    const configError = validateLlmConfig(opts.llmApiType, {
+      apiKey: opts.llmApiKey,
+    });
+    if (configError) {
+      throw new Error(configError);
+    }
+    const availabilityError = await checkModelAvailable(opts.llmApiType, {
+      model: opts.llmModel,
+      token: opts.llmApiKey,
+      baseURL: opts.llmApiUrl,
+    });
+    if (availabilityError) {
+      throw new Error(availabilityError);
+    }
+  }
 
   if (!invalidExperiment) {
     setupStep("Verifying vendored libraries");
@@ -154,6 +179,7 @@ export async function runPipeline(opts) {
     addon.vendor = await resolveVendor({
       addon,
       parsePrompt: registry.prompt("vendor-parse"),
+      enabled: opts.llmEnabled,
       token: opts.llmApiKey,
       model: opts.llmModel,
       url: opts.llmApiUrl,
@@ -311,6 +337,7 @@ async function reviewAddon(
     checksOnly,
     checksSkip,
     eslint,
+    llmEnabled,
     llmApiKey,
     llmApiUrl,
     llmApiType,
@@ -336,7 +363,7 @@ async function reviewAddon(
   const ctx = buildRunContext({
     addon,
     schema,
-    options: { llmApiKey, llmApiUrl, llmApiType, allowExperiments },
+    options: { llmEnabled, llmApiKey, llmApiUrl, llmApiType, allowExperiments },
     diffTo,
     llmModel: opts.llmModel,
     systemIntro: registry.prompt("system-intro"),

@@ -105,7 +105,7 @@ job, covered by `escalation.test.js` with a stub `ctx.llm`).
 | --- | --- |
 | `api-usage.test.js` | The Babel-based API-usage extractor - `browser`/`messenger`/`chrome` call chains, plus the aliasing/dynamic-access limitations it reports. |
 | `bundled-files.test.js` | `bundled-files` robustness against malformed/partial manifests, plus schema-directed / bridge detection of files referenced by loader API calls. |
-| `claude.test.js` | The pure pieces of the Claude client (result coercion, `DEFAULT_MODEL`). No network. |
+| `claude.test.js` | The pure pieces of the Claude client (result coercion, `DEFAULT_MODEL_CLAUDE`). No network. |
 | `escalation.test.js` | The escalation resolver - token→verdict mapping (fail→finding, pass→nothing, unsure/error→manual) and the no-token→manual path. |
 | `format.test.js` | The text / JSON report renderers - notably that the Manual review list is in the text report but omitted from JSON. |
 | `html-parse.test.js` | HTML parsing via parse5 - inline vs `src` scripts, and `>` inside attribute values - the cases the old regex scanner mishandled. |

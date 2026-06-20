@@ -98,7 +98,8 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {import("../schema/index.js").SchemaIndex} schema  Resolved schema.
  * @property {object[]} jsSources  Parsed JS sources (see addon/sources.js).
  * @property {object[]} apiUsages  Per-source extracted API usage.
- * @property {{llmApiKey?: string, allowExperiments?: boolean}} options
+ * @property {{llmEnabled?: boolean, llmApiKey?: string, llmApiUrl?: string,
+ *   llmApiType?: string, allowExperiments?: boolean}} options
  * @property {import("../addon/load.js").Addon|null} [previous]  Diff baseline.
  * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
  *   --allow-experiments is off: the review short-circuits to the reject check

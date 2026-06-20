@@ -66,22 +66,36 @@ The LLM checks are configured from the environment, and enabled via the `--llm-e
 
 | Variable | Description |
 | --- | --- |
-| `LLM_API_KEY` | The provider API key. **Required** by `--llm-enabled`. |
-| `LLM_API_TYPE` | Provider: `claude` (default) or `chatgpt`. |
+| `LLM_API_TYPE` | Provider: `claude` (default), `chatgpt`, or `ollama` (local). |
+| `LLM_API_KEY` | The provider API key. Required for `claude`/`chatgpt`; not used by `ollama`. |
 | `LLM_API_MODEL` | Model for the LLM checks (default: the provider's default). |
-| `LLM_API_URL` | Override the provider's API base URL (e.g. a proxy or gateway). |
+| `LLM_API_URL` | Override the provider's API base URL (e.g. a proxy, or a remote Ollama host). |
 
 ```sh
-export LLM_API_KEY=sk-...
-node verify.js <xpi|folder> --llm-enabled            # Claude (default)
+# Claude (the default provider)
+export LLM_API_KEY=sk-ant-...
+node verify.js <xpi|folder> --llm-enabled
 
+# ChatGPT
 export LLM_API_TYPE=chatgpt
-node verify.js <xpi|folder> --llm-enabled            # ChatGPT
+export LLM_API_KEY=sk-...
+node verify.js <xpi|folder> --llm-enabled
+
+# local Ollama - no API key
+export LLM_API_TYPE=ollama
+node verify.js <xpi|folder> --llm-enabled
 ```
 
 Each provider has a default model (`claude-sonnet-4-6` for `claude`, `gpt-4o`
-for `chatgpt`); override it by setting `LLM_API_MODEL`, or list the available
-models with `--llm-list-models`.
+for `chatgpt`, `llama3.1` for `ollama`); override it by setting `LLM_API_MODEL`,
+or list the available models with `--llm-list-models`.
+
+**Local model (Ollama).** With [Ollama](https://ollama.com) running, the checks
+talk to its OpenAI-compatible endpoint at `http://localhost:11434/v1` — no API
+key. Pull a tool-capable model first (the structured checks require tool calling),
+e.g. `ollama pull llama3.1`. When the LLM is enabled, a Setup-step pre-flight
+shows the chosen type and model and **fails hard** if Ollama is unreachable or the
+model is not pulled. Point `LLM_API_URL` at a remote host to use a non-local Ollama.
 
 
 ## Review checks

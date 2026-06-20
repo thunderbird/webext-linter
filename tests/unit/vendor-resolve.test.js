@@ -29,6 +29,7 @@ test("resolveVendor uses the LLM fallback and drops hallucinated paths", async (
   const { set, manifest } = await resolveVendor({
     addon,
     parsePrompt: "PARSE",
+    enabled: true,
     token: "t",
     model: "m",
     callText,
@@ -72,6 +73,7 @@ test("resolveVendor skips the fallback when the deterministic parse succeeds", a
   const { manifest } = await resolveVendor({
     addon,
     parsePrompt: "PARSE",
+    enabled: true,
     token: "t",
     callText: async () => {
       called++;
