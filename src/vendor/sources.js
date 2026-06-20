@@ -16,6 +16,7 @@
  * @property {?string} rawUrl  The raw URL to fetch (blob URLs rewritten to raw).
  * @property {?("npm"|"github")} kind  Source family, for popularity.
  * @property {?string} pkg  npm package name (npm kind).
+ * @property {?string} version  npm version, when given (npm kind); else null.
  * @property {?string} repo  "owner/repo" (github kind).
  */
 
@@ -25,6 +26,7 @@ const UNTRUSTED = Object.freeze({
   rawUrl: null,
   kind: null,
   pkg: null,
+  version: null,
   repo: null,
 });
 
@@ -87,6 +89,7 @@ function npm(pkg, version, rawUrl) {
     trusted: true,
     kind: "npm",
     pkg,
+    version: version ?? null,
     rawUrl,
     pinned: Boolean(version) && version !== "latest" && VERSION.test(version),
   };

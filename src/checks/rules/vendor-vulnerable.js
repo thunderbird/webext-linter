@@ -1,9 +1,10 @@
-// Flags a pinned package.json dependency whose bundled version has known
-// security advisories. The OSV audit ran once in the network pre-step
-// (src/vendor/verify.js auditPackage), which recorded each vulnerable package on
-// addon.vendor.vulnerabilities; this check only reads that and emits a finding per
-// vulnerable package, anchored at its package.json dependency line. Deterministic,
-// no network.
+// Flags a pinned npm library whose bundled version has known security
+// advisories - a package.json dependency OR an npm-sourced VENDOR entry. The OSV
+// audit ran once in the network pre-step (src/vendor/verify.js auditNpm), which
+// recorded each vulnerable package on addon.vendor.vulnerabilities with the file
+// + token to anchor it; this check only reads that and emits a finding per
+// vulnerable package, anchored at its declaration line (the package.json
+// dependency, or the VENDOR-file source line). Deterministic, no network.
 //
 // The registry entry is severity:auto, so this check sets each finding's severity
 // from the advisory's OSV band (its registry severity is delegated here): high /
@@ -17,7 +18,7 @@
 // (-> assets/registry.yaml).
 
 import { finding, SEVERITY } from "../../report/finding.js";
-import { manifestTokenLine } from "../lib/util.js";
+import { manifestTokenLine, lineContaining } from "../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../report/finding.js").Severity} Severity */
@@ -27,7 +28,7 @@ import { manifestTokenLine } from "../lib/util.js";
  * band "moderate" while raw CVSS calls it "medium"; both map to warning. Anything
  * not high/critical/moderate/medium (low, unknown, an unrecognized label) is
  * informational - reported, but neither an error nor a warning.
- * @param {string} band  The recorded OSV band (auditPackage lowercases it).
+ * @param {string} band  The recorded OSV band (auditNpm lowercases it).
  * @returns {Severity}
  */
 function severityForBand(band) {
@@ -51,20 +52,30 @@ export default {
   run(ctx) {
     const { addon } = ctx;
     const vulns = addon?.vendor?.vulnerabilities ?? [];
-    const text = addon.files?.get("package.json")?.toString("utf8") ?? "";
+    const textByFile = new Map();
+    const fileText = (file) => {
+      if (!textByFile.has(file)) {
+        textByFile.set(file, addon.files?.get(file)?.toString("utf8") ?? "");
+      }
+      return textByFile.get(file);
+    };
     const findings = [];
-    for (const { name, version, ids, severity, fixed } of vulns) {
-      const line = manifestTokenLine(text, name);
+    for (const { name, version, ids, severity, fixed, file, token } of vulns) {
+      const text = fileText(file);
+      // A quoted JSON token (a package.json dep name) or a plain substring (the
+      // VENDOR-file source URL) - whichever locates the declaration line.
+      const line =
+        manifestTokenLine(text, token) ?? lineContaining(text, token);
       const loc = line ? { line } : undefined;
       ctx.note?.(
-        "package.json",
+        file,
         loc,
         `${name}@${version} has known vulnerabilities (${ids.join(", ")})`,
         "fail"
       );
       findings.push(
         finding({
-          file: "package.json",
+          file,
           loc,
           item: name,
           // severity:auto - this check owns the finding's severity (mapped from

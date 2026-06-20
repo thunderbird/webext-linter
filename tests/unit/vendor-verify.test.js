@@ -15,6 +15,7 @@ import vendorModified from "../../src/checks/rules/vendor-modified.js";
 import vendorUnverified from "../../src/checks/rules/vendor-unverified.js";
 import missingVendorFile from "../../src/checks/rules/missing-vendor-file.js";
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
+import vendorVulnUnknown from "../../src/checks/rules/vendor-vuln-unknown.js";
 
 // ---- classifySource (no network) ----
 test("classifySource recognizes the trusted hosts and pinned refs", () => {
@@ -115,6 +116,7 @@ const store = (over = {}) => ({
   unpinned: [],
   missing: [],
   unparsedVendor: false,
+  vendorFile: null,
   vulnerabilities: [],
   ...over,
 });
@@ -341,6 +343,56 @@ test("verifyVendor: the OSV audit records a vulnerable pinned package", async ()
       ids: ["CVE-2021-23337"],
       severity: "high",
       fixed: ["4.17.21"],
+      file: "package.json", // a package.json dep anchors there, by its name
+      token: "lodash",
+    },
+  ]);
+});
+
+// An npm-sourced VENDOR entry is audited the same way as a package.json dep, but
+// the vuln anchors at the VENDOR file by its source URL (not a quoted dep name).
+test("verifyVendor: the OSV audit records a vulnerable npm VENDOR library", async () => {
+  const url = "https://unpkg.com/lodash@4.17.20/lodash.js";
+  const addon = addonWith(
+    { "VENDOR.md": `lib/lodash.js\n${url}\n`, "lib/lodash.js": "BODY\n" },
+    store({
+      vendorFile: "VENDOR.md",
+      set: new Set(["lib/lodash.js"]),
+      manifest: [
+        { path: "lib/lodash.js", sourceUrl: url, trusted: true, pinned: true },
+      ],
+    })
+  );
+  const osv = {
+    vulns: [
+      {
+        id: "GHSA-35jh-r3h4-6jhm",
+        aliases: ["CVE-2021-23337"],
+        database_specific: { severity: "HIGH" },
+        affected: [
+          {
+            package: { ecosystem: "npm", name: "lodash" },
+            ranges: [
+              {
+                type: "SEMVER",
+                events: [{ introduced: "0" }, { fixed: "4.17.21" }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  await verifyVendor(addon, net({ bytes: "BODY\n", osv }));
+  assert.deepEqual(addon.vendor.vulnerabilities, [
+    {
+      name: "lodash",
+      version: "4.17.20",
+      ids: ["CVE-2021-23337"],
+      severity: "high",
+      fixed: ["4.17.21"],
+      file: "VENDOR.md",
+      token: url,
     },
   ]);
 });
@@ -381,6 +433,8 @@ test("vendor-vulnerable: a recorded vulnerability becomes a finding at the packa
             ids: ["CVE-2021-23337"],
             severity: "high",
             fixed: ["4.17.21"],
+            file: "package.json",
+            token: "lodash",
           },
         ],
       }),
@@ -417,6 +471,8 @@ test("vendor-vulnerable: maps the OSV band to the finding severity", () => {
               ids: ["X"],
               severity: band,
               fixed: [],
+              file: "package.json",
+              token: "lodash",
             },
           ],
         }),
@@ -439,6 +495,49 @@ test("vendor-vulnerable: no recorded vulnerabilities -> no findings", () => {
     addon: { files: new Map(), vendor: store() },
   };
   assert.deepEqual(vendorVulnerable.run(ctx), []);
+});
+
+// A github-sourced VENDOR lib has no npm identity to query OSV with, so it is
+// surfaced as an info "not vulnerability-checked" - one per trusted+pinned github
+// entry, anchored at its VENDOR source line. npm and untrusted entries are not.
+test("vendor-vuln-unknown: flags trusted+pinned github entries only", () => {
+  const ghUrl = "https://cdn.jsdelivr.net/gh/javve/list.js@v2.3.1/dist/list.js";
+  const npmUrl = "https://unpkg.com/lodash@4.17.20/lodash.js";
+  const vendorMd = `list.js\n${ghUrl}\nlodash.js\n${npmUrl}\n`;
+  const ctx = {
+    addon: {
+      files: new Map([["VENDOR.md", Buffer.from(vendorMd)]]),
+      vendor: store({
+        vendorFile: "VENDOR.md",
+        manifest: [
+          {
+            path: "vendor/list.js",
+            sourceUrl: ghUrl,
+            trusted: true,
+            pinned: true,
+          },
+          {
+            path: "vendor/lodash.js",
+            sourceUrl: npmUrl,
+            trusted: true,
+            pinned: true,
+          },
+          {
+            path: "vendor/x.js",
+            sourceUrl: "https://evil.example/x.js",
+            trusted: false,
+            pinned: false,
+          },
+        ],
+      }),
+    },
+  };
+  const out = vendorVulnUnknown.run(ctx);
+  assert.equal(out.length, 1); // only the github entry
+  assert.equal(out[0].item, "vendor/list.js");
+  assert.equal(out[0].file, "VENDOR.md");
+  assert.equal(out[0].loc.line, 2); // the github source URL line
+  assert.equal(out[0].data.source, ghUrl);
 });
 
 test("unpinned-dependency: one finding per unpinned dep, anchored in package.json", () => {

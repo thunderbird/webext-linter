@@ -106,7 +106,7 @@ escalates it straight to manual review (e.g. `vendor-unverified`,
 `native-messaging`, `fork-check`); LLM checks escalate only their ambiguous
 residue.
 
-| Check id (`check:`) | What it flags |
+| Check | What it flags |
 | --- | --- |
 | `api-coverage` | Dynamic/aliased API access static analysis can't resolve (info). Files that fail to parse are `unparsable-file`. |
 | `async-onmessage` | An async listener passed to `runtime.onMessage.addListener()`. |

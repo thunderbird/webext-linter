@@ -260,8 +260,9 @@ deterministic-checks:
   response: |-
     A bundled dependency is not pinned to an exact version: {{item}}, declared as "{{spec}}". A version range can resolve to different releases over time, so the bundled copy cannot be verified against a known upstream. Pin it to an exact version in package.json, or commit the lock file (package-lock.json, npm-shrinkwrap.json, yarn.lock, or pnpm-lock.yaml) that records the exact version used.
 
-# The pinned name@version is audited against the OSV database
-# (src/vendor/verify.js); a package with known advisories is reported here.
+# Each pinned npm name@version - a package.json dependency or an npm-sourced
+# VENDOR entry - is audited against the OSV database (src/vendor/verify.js); a
+# package with known advisories is reported here.
 # severity:auto - the check sets each finding's severity from the advisory's OSV
 # band (high/critical -> error, moderate/medium -> warning, else info).
 - title: Vulnerable dependency
@@ -269,6 +270,15 @@ deterministic-checks:
   check: vendor-vulnerable.js
   response: |-
     A bundled dependency has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). Update {{item}} to {{fixed}} or later, re-bundle, and resubmit. If you believe the advisory does not apply to how this add-on uses the dependency, let us know why.
+
+# A VENDOR library sourced from a GitHub URL has no npm package identity, so it
+# cannot be audited against OSV; surfaced as info so the reviewer knows it went
+# unchecked (npm-sourced entries above are audited).
+- title: Vendored library not vulnerability-checked
+  severity: info
+  check: vendor-vuln-unknown.js
+  response: |-
+    The bundled third-party file {{item}} is sourced from a GitHub URL ({{source}}), so its known-vulnerability status could not be determined automatically - automated auditing against the OSV database covers npm-hosted sources only. To have this library checked, declare it in your VENDOR file with an npm source (unpkg or jsDelivr /npm) pinned to an exact version.
 
 - title: Unpinned vendored source
   severity: error

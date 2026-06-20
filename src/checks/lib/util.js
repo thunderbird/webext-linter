@@ -238,6 +238,28 @@ export function manifestTokenLine(manifestText, token) {
 }
 
 /**
+ * 1-based line of the first line containing `needle` as a plain substring, or
+ * null. Unlike manifestTokenLine (which matches a quoted JSON token), this suits
+ * free-form text such as a VENDOR file, where a finding anchors on the verbatim
+ * source URL rather than a quoted key.
+ * @param {string} text
+ * @param {string} needle
+ * @returns {number|null}
+ */
+export function lineContaining(text, needle) {
+  if (!text || !needle) {
+    return null;
+  }
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(needle)) {
+      return i + 1;
+    }
+  }
+  return null;
+}
+
+/**
  * True if a match pattern grants global host access (<all_urls> or a "*" host).
  * @param {string} p
  * @returns {boolean}

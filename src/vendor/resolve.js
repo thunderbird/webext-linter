@@ -38,8 +38,11 @@ import { debug } from "../util/log.js";
  * @property {{name: string, spec: string}[]} unpinned  Deps with no pin.
  * @property {VendorEntry[]} missing  VENDOR entries whose file is absent.
  * @property {boolean} unparsedVendor  A VENDOR file exists but yielded nothing.
- * @property {import("./verify.js").VendorVuln[]} vulnerabilities  Pinned packages
- *   with known OSV advisories (filled by verifyVendor's audit; empty offline).
+ * @property {?string} vendorFile  The VENDOR filename (e.g. "VENDOR.md"), or null;
+ *   the anchor file for VENDOR-sourced vulnerability/unaudited findings.
+ * @property {import("./verify.js").VendorVuln[]} vulnerabilities  Pinned npm
+ *   packages (package.json deps + npm VENDOR entries) with known OSV advisories
+ *   (filled by verifyVendor's audit; empty offline).
  */
 
 // An exact semver (no range operators) - a concrete pinned version.
@@ -131,6 +134,7 @@ export async function resolveVendor({
     packages,
     unpinned,
     missing,
+    vendorFile: vendorFile?.name ?? null,
     // Filled by verifyVendor's OSV audit (network); empty for offline runs.
     vulnerabilities: [],
     // "Unparsed" only when we extracted nothing at all - neither a matched entry

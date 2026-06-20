@@ -17,8 +17,8 @@
 //     integrity - matched locally, no file bytes downloaded, so it scales to a
 //     large package. A file that does not hash-match is left alone, as it may be
 //     the author's own code or a modified copy. The same pinned name@version is
-//     also audited against OSV (auditPackage); known advisories are recorded for
-//     the vendor-vulnerable check.
+//     also audited against OSV (auditNpm); known advisories are recorded for
+//     the vendor-vulnerable check. npm-sourced VENDOR entries are audited too.
 //
 // Belongs here: verifyVendor (the batch), the per-source compare, the popularity
 // lookup, and the default network transport. Does NOT belong here: URL
@@ -47,12 +47,15 @@ import {
  *   postJson: (url: string, body: object) => Promise<object>}} VendorNet
  */
 /**
- * @typedef {object} VendorVuln  One vulnerable pinned package (OSV audit).
+ * @typedef {object} VendorVuln  One vulnerable pinned npm package (OSV audit) -
+ * a package.json dependency or an npm-sourced VENDOR entry.
  * @property {string} name  npm package name.
  * @property {string} version  The bundled (pinned) version audited.
  * @property {string[]} ids  Advisory ids (CVE preferred, else OSV/GHSA).
  * @property {string} severity  Highest reported severity, or "unknown".
  * @property {string[]} fixed  Versions the advisories were fixed in (may be empty).
+ * @property {string} file  Where the finding anchors (package.json or the VENDOR file).
+ * @property {string} token  The string locating the declaration line in `file`.
  */
 /**
  * @typedef {object} MetaNode  A node in an unpkg "?meta" listing. unpkg returns a
@@ -88,30 +91,57 @@ export async function verifyVendor(addon, net = defaultNet) {
         source: entry.sourceUrl,
         outcome,
       });
+      // An npm-sourced VENDOR lib is also audited for known vulnerabilities (the
+      // same OSV query as a package.json dep), anchored at its VENDOR-file line.
+      // A github source has no npm identity, so the vendor-vuln-unknown check
+      // flags it as unaudited instead of guessing.
+      const src = classifySource(entry.sourceUrl);
+      if (src.kind === "npm") {
+        await auditNpm(
+          src.pkg,
+          src.version,
+          vendor.vendorFile,
+          entry.sourceUrl,
+          vendor,
+          net
+        );
+      }
     }
   }
   for (const pkg of vendor.packages) {
     await verifyPackage(pkg, addon, vendor, net);
-    await auditPackage(pkg, vendor, net);
+    await auditNpm(
+      pkg.name,
+      pkg.version,
+      "package.json",
+      pkg.name,
+      vendor,
+      net
+    );
   }
 }
 
 /**
- * Audit a pinned package against the OSV vulnerability database. Best-effort: a
- * package with known advisories is recorded on `vendor.vulnerabilities` (one entry
- * per package, aggregating its advisories) for the vendor-vulnerable check; any
- * network or parse error - or an injected net without `postJson` (offline runs,
- * the golden harness) - records nothing.
- * @param {{name: string, version: string}} pkg
+ * Audit a pinned npm package@version against the OSV vulnerability database.
+ * Best-effort: a package with known advisories is recorded on
+ * `vendor.vulnerabilities` (one entry aggregating its advisories, anchored at
+ * `file`/`token`) for the vendor-vulnerable check; any network or parse error - or
+ * an injected net without `postJson` (offline runs, the golden harness) - records
+ * nothing. Drives both package.json deps and npm-sourced VENDOR entries.
+ * @param {string} name  npm package name.
+ * @param {string} version  The bundled (pinned) version.
+ * @param {string} file  Where the finding anchors (package.json / the VENDOR file).
+ * @param {string} token  The string locating the declaration line in `file`.
  * @param {VendorStore} vendor @param {VendorNet} net
  * @returns {Promise<void>}
  */
-async function auditPackage(pkg, vendor, net) {
+async function auditNpm(name, version, file, token, vendor, net) {
   let vulns;
   try {
     const res = await net.postJson(VENDOR_OSV_API, {
-      version: pkg.version,
-      package: { name: pkg.name, ecosystem: "npm" },
+      // OSV npm versions carry no "v" prefix; a vendored URL may (e.g. "@v1.2.3").
+      version: String(version).replace(/^v/i, ""),
+      package: { name, ecosystem: "npm" },
     });
     vulns = Array.isArray(res?.vulns) ? res.vulns : [];
   } catch {
@@ -125,17 +155,19 @@ async function auditPackage(pkg, vendor, net) {
   let severity = "unknown";
   for (const v of vulns) {
     ids.add(advisoryId(v));
-    for (const f of fixedVersions(v, pkg.name)) {
+    for (const f of fixedVersions(v, name)) {
       fixed.add(f);
     }
     severity = worseSeverity(severity, vulnSeverity(v));
   }
   vendor.vulnerabilities.push({
-    name: pkg.name,
-    version: pkg.version,
+    name,
+    version,
     ids: [...ids],
     severity,
     fixed: [...fixed],
+    file,
+    token,
   });
 }
 
