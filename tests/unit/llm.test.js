@@ -1,5 +1,5 @@
 // Unit tests for the LLM client (createLlmClient - the batched verdict
-// transport). No network: the client uses an injected callClaude.
+// transport). No network: the client uses an injected callVerdicts.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -8,7 +8,7 @@ import { createLlmClient } from "../../src/checks/llm-client.js";
 import { createLlmBudget } from "../../src/llm/budget.js";
 import { MAX_FILES_PER_BATCH } from "../../src/config.js";
 
-function clientWith(files, callClaude) {
+function clientWith(files, callVerdicts) {
   const map = new Map([["manifest.json", Buffer.from("{}")]]);
   for (const f of files) {
     map.set(f, Buffer.from(`// ${f}\n`));
@@ -19,7 +19,12 @@ function clientWith(files, callClaude) {
       manifest: { manifest_version: 3, name: "x", version: "1" },
     },
   };
-  return createLlmClient({ ctx, token: "t", systemIntro: "intro", callClaude });
+  return createLlmClient({
+    ctx,
+    token: "t",
+    systemIntro: "intro",
+    callVerdicts,
+  });
 }
 
 // evaluate returns one verdict per candidate id; the orchestrator maps those ids
@@ -59,15 +64,15 @@ test("createLlmClient forwards the url to the transports as baseURL", async () =
     token: "t",
     systemIntro: "intro",
     url: "https://proxy.example/v1",
-    callClaude: async (p) => {
+    callVerdicts: async (p) => {
       seen.evaluate = p;
       return { verdicts: [] };
     },
-    callClaudeText: async (p) => {
+    callText: async (p) => {
       seen.summarize = p;
       return "";
     },
-    callClaudeReview: async (p) => {
+    callReview: async (p) => {
       seen.review = p;
       return { summary: "", unusedPermissions: [] };
     },
@@ -148,7 +153,7 @@ test("evaluate stops at the request budget; the rest are unsure", async () => {
     token: "t",
     systemIntro: "intro",
     budget,
-    callClaude: async () => {
+    callVerdicts: async () => {
       calls++;
       return { verdicts: [] };
     },

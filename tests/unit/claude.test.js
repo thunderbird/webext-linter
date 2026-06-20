@@ -1,9 +1,9 @@
-// Unit tests for the pure pieces of the Claude client (no network).
+// Unit tests for the provider-agnostic LLM result coercion (no network).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { coerceResult, coerceReview } from "../../src/llm/claude.js";
+import { coerceResult, coerceReview } from "../../src/llm/schema.js";
 import { DEFAULT_MODEL } from "../../src/config.js";
 
 // Well-formed input passes through unchanged; empty/null input yields no

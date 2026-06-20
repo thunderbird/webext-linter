@@ -3,31 +3,29 @@
 // prompt-cached add-on context shared across the review's calls and exposes
 // `evaluate(criterion)`, which returns the structured three-way verdict for one
 // case. It does NOT decide outcomes: mapping verdict -> finding / manual review
-// is the orchestrator's job (escalation.js). The fixed protocol (the forced
-// result tool, coercion) is llm/claude.js. It never reads the registry yaml -
-// the system intro and each criterion are passed in by the caller as strings.
+// is the orchestrator's job (escalation.js). The wire protocol (the forced
+// structured output, coercion) is the provider adapters via src/llm/provider.js.
+// It never reads the registry yaml - the system intro and each criterion are
+// passed in by the caller as strings.
 //
 // Belongs here: creating the per-review client, building the cached add-on
 // metadata block once, forwarding each criterion to the transport via
 // evaluate(), the free-form change summary via summarize(), and the structured
 // --full-summary add-on review via reviewAddon().
-// Does NOT belong here: the wire protocol - the forced result tool, verdict
-// coercion - which lives in src/llm/claude.js. The system intro and criterion
+// Does NOT belong here: the wire protocol - the forced structured output and
+// coercion - which lives in the provider adapters (src/llm/{anthropic,openai}.js
+// + schema.js), selected by src/llm/provider.js. The system intro and criterion
 // text - the registry owns those (the caller passes them in). Deciding what a
 // verdict means - src/checks/escalation.js. Attaching the client to ctx -
 // src/checks/context.js.
 
-import {
-  callClaude as realCallClaude,
-  callClaudeText as realCallClaudeText,
-  callClaudeReview as realCallClaudeReview,
-} from "../llm/claude.js";
-import { DEFAULT_MODEL, MAX_FILES_PER_BATCH } from "../config.js";
+import { getProvider, defaultModelFor } from "../llm/provider.js";
+import { MAX_FILES_PER_BATCH } from "../config.js";
 import { debug } from "../util/log.js";
 import { sortKeys } from "../util/json.js";
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
-/** @typedef {import("../llm/claude.js").LlmResult} LlmResult */
+/** @typedef {import("../llm/schema.js").LlmResult} LlmResult */
 
 /**
  * Build the LLM client for a review. The shared system context is built once
@@ -35,38 +33,41 @@ import { sortKeys } from "../util/json.js";
  * prefix billed cheaply after the first call.
  * @param {object} opts
  * @param {RunContext} opts.ctx  The shared check context (add-on metadata).
- * @param {string} opts.token  Anthropic API token.
+ * @param {string} opts.token  LLM API token.
  * @param {string} opts.systemIntro  The reviewer role prompt (registry-owned,
  *   resolved by the caller from prompts.system-intro) - the first system block.
+ * @param {string} [opts.type]  LLM_API_TYPE (claude | chatgpt); picks the provider.
  * @param {string} [opts.model]
  * @param {string} [opts.url]  Override the LLM API base URL (LLM_API_URL).
- * @param {typeof import("../llm/claude.js").callClaude} [opts.callClaude]
- *   Injectable transport (for tests).
- * @param {Function} [opts.callClaudeText]  Injectable free-form transport for
- *   the summary path (for tests).
- * @param {Function} [opts.callClaudeReview]  Injectable structured transport for
- *   the add-on-review path (for tests).
+ * @param {Function} [opts.callVerdicts]  Injectable verdict transport (tests).
+ * @param {Function} [opts.callText]  Injectable free-form transport (tests).
+ * @param {Function} [opts.callReview]  Injectable add-on-review transport (tests).
  * @returns {{evaluate: (criterion: string, label?: string) =>
  *   Promise<LlmResult>, summarize: (prompt: string) => Promise<string>,
  *   reviewAddon: (prompt: string) =>
- *     Promise<import("../llm/claude.js").AddonReview>}}
+ *     Promise<import("../llm/schema.js").AddonReview>}}
  */
 export function createLlmClient({
   ctx,
   token,
   systemIntro,
-  model = DEFAULT_MODEL,
+  type,
+  model = defaultModelFor(type),
   url,
   budget,
-  callClaude = realCallClaude,
-  callClaudeText = realCallClaudeText,
-  callClaudeReview = realCallClaudeReview,
+  callVerdicts,
+  callText,
+  callReview,
 }) {
   if (!systemIntro) {
     throw new Error(
       "createLlmClient: missing systemIntro (prompts.system-intro)"
     );
   }
+  const provider = getProvider(type);
+  const verdicts = callVerdicts ?? provider.callVerdicts;
+  const text = callText ?? provider.callText;
+  const review = callReview ?? provider.callReview;
   const system = [
     { type: "text", text: systemIntro },
     {
@@ -112,7 +113,7 @@ export function createLlmClient({
         debug(`[llm] criterion (${batch.length} candidate(s)):\n${criterion}`);
         let result;
         try {
-          result = await callClaude({
+          result = await verdicts({
             token,
             model,
             baseURL: url,
@@ -150,9 +151,9 @@ export function createLlmClient({
      */
     async summarize(prompt) {
       debug(`[llm] summarize prompt:\n${prompt}`);
-      const text = await callClaudeText({ token, model, baseURL: url, prompt });
-      debug(`[llm] summary:\n${text}`);
-      return text;
+      const out = await text({ token, model, baseURL: url, prompt });
+      debug(`[llm] summary:\n${out}`);
+      return out;
     },
 
     /**
@@ -161,18 +162,13 @@ export function createLlmClient({
      * summary plus the permissions the model judged unused. Throws on a
      * transport/API error (the caller treats that as no summary).
      * @param {string} prompt
-     * @returns {Promise<import("../llm/claude.js").AddonReview>}
+     * @returns {Promise<import("../llm/schema.js").AddonReview>}
      */
     async reviewAddon(prompt) {
       debug(`[llm] reviewAddon prompt:\n${prompt}`);
-      const review = await callClaudeReview({
-        token,
-        model,
-        baseURL: url,
-        prompt,
-      });
-      debug(`[llm] reviewAddon result:\n${JSON.stringify(review, null, 2)}`);
-      return review;
+      const result = await review({ token, model, baseURL: url, prompt });
+      debug(`[llm] reviewAddon result:\n${JSON.stringify(result, null, 2)}`);
+      return result;
     },
   };
 }

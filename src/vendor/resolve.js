@@ -11,7 +11,7 @@
 // Does NOT belong here: the network verification (-> verify.js), the
 // deterministic VENDOR parse (-> src/normalize/vendor.js), lock parsing (->
 // src/vendor/locks.js), URL classification (-> src/vendor/sources.js), and the
-// LLM wire protocol (-> src/llm/claude.js).
+// LLM wire protocol (-> src/llm/provider.js + the adapters).
 
 import {
   parseVendorManifest,
@@ -21,7 +21,7 @@ import {
 } from "../normalize/vendor.js";
 import { classifySource } from "./sources.js";
 import { lockedVersion } from "./locks.js";
-import { callClaudeText } from "../llm/claude.js";
+import { getProvider } from "../llm/provider.js";
 import { DEFAULT_MODEL } from "../config.js";
 import { debug } from "../util/log.js";
 
@@ -50,10 +50,11 @@ const EXACT = /^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
  * @param {object} params
  * @param {Addon} params.addon
  * @param {?string} [params.parsePrompt]  The registry prompts.vendor-parse text.
- * @param {?string} [params.token]  Anthropic token, else deterministic only.
+ * @param {?string} [params.token]  LLM token, else deterministic only.
  * @param {string} [params.model]
  * @param {string} [params.url]  Override the LLM API base URL (LLM_API_URL).
- * @param {typeof callClaudeText} [params.callText]  Injectable transport.
+ * @param {string} [params.type]  LLM_API_TYPE (claude | chatgpt).
+ * @param {Function} [params.callText]  Injectable transport (else the provider's).
  * @param {import("../llm/budget.js").LlmBudget} [params.budget]  Run-wide model
  *   request cap; the parse fallback is skipped once it is exhausted.
  * @returns {Promise<VendorStore>}
@@ -64,7 +65,8 @@ export async function resolveVendor({
   token,
   model = DEFAULT_MODEL,
   url,
-  callText = callClaudeText,
+  type,
+  callText = getProvider(type).callText,
   budget,
 }) {
   const vendorFile = readVendorFile(addon);
@@ -183,7 +185,7 @@ function resolvePackages(addon) {
  * @param {string} params.text @param {Addon} params.addon
  * @param {string} params.parsePrompt @param {string} params.token
  * @param {string} params.model @param {string} [params.url]  LLM base URL.
- * @param {typeof callClaudeText} params.callText
+ * @param {Function} params.callText
  * @returns {Promise<VendorEntry[]>}
  */
 async function llmExtract({

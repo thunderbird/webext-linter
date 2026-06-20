@@ -85,6 +85,7 @@ export function buildRunContext({
       ctx,
       token: options.llmApiKey,
       systemIntro,
+      type: options.llmApiType,
       model: llmModel,
       url: options.llmApiUrl,
       budget,

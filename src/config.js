@@ -12,8 +12,12 @@ export const VALID_CHANNELS = ["release", "beta", "esr"];
 /** Directory where fetched schema zips are cached (--schema-cache default). */
 export const DEFAULT_CACHE = ".schema-cache";
 
-/** Anthropic model used for LLM checks when --llm-model is not given. */
+/**
+ * Default model per LLM_API_TYPE when --llm-model is not given. DEFAULT_MODEL is
+ * the claude (Anthropic) default; DEFAULT_MODEL_OPENAI the chatgpt (OpenAI) one.
+ */
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
+export const DEFAULT_MODEL_OPENAI = "gpt-4o";
 
 /**
  * Cap on the tokens the model may generate in a reply (output, not input). The

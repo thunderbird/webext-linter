@@ -11,8 +11,8 @@
 //
 // Does NOT belong here: running the stages (opts -> Review is pipeline.js
 // runPipeline); report layout and rendering (src/report/format.js formatReview
-// and src/report/responses.js); the model listing call (src/llm/claude.js
-// listModels); the check ids and registry text (src/checks/registry.js).
+// and src/report/responses.js); the model listing call (src/llm/provider.js);
+// the check ids and registry text (src/checks/registry.js).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -21,14 +21,19 @@ import { parseArgs } from "node:util";
 
 import { runPipeline } from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
-import { listModels } from "./llm/claude.js";
+import {
+  getProvider,
+  defaultModelFor,
+  isLlmType,
+  LLM_TYPES,
+  DEFAULT_LLM_TYPE,
+} from "./llm/provider.js";
 import { hasErrors } from "./report/finding.js";
 import { formatReview } from "./report/format.js";
 import {
   DEFAULT_CHANNEL,
   VALID_CHANNELS,
   DEFAULT_CACHE,
-  DEFAULT_MODEL,
   MAX_LLM_REQUESTS_PER_RUN,
 } from "./config.js";
 import {
@@ -154,19 +159,25 @@ function summarySection({ title, summary }) {
  * bare LLM_API_KEY in the environment no longer auto-enables it, so a
  * reviewer with a global key can still run the deterministic checks alone. When
  * opted in, the key comes from the LLM_API_KEY environment variable. It is
- * undefined otherwise, so every downstream LLM path stays off. The optional
- * LLM_API_URL overrides the API base URL (e.g. a proxy or self-hosted endpoint).
+ * undefined otherwise, so every downstream LLM path stays off. LLM_API_TYPE picks
+ * the provider (claude | chatgpt, default claude) and hence the default model when
+ * --llm-model is absent; the optional LLM_API_URL overrides the API base URL.
  * @param {Record<string, string|boolean|string[]>} values
- * @returns {{wants: boolean, apiKey: string|undefined, apiUrl: string|undefined}}
+ * @returns {{wants: boolean, apiKey?: string, apiUrl?: string, apiType?: string,
+ *   model?: string}}
  */
 function resolveLlm(values) {
   const wants = values["llm-model"] != null || values["llm-enabled"] === true;
   const apiKey = process.env.LLM_API_KEY;
   const apiUrl = process.env.LLM_API_URL || undefined;
+  const apiType = (process.env.LLM_API_TYPE || DEFAULT_LLM_TYPE).toLowerCase();
+  const model = values["llm-model"] || defaultModelFor(apiType);
   return {
     wants,
     apiKey: wants ? apiKey : undefined,
     apiUrl: wants ? apiUrl : undefined,
+    apiType: wants ? apiType : undefined,
+    model: wants ? model : undefined,
   };
 }
 
@@ -216,11 +227,11 @@ export function helpText() {
       "--llm-enabled",
       "Enable the LLM checks (the key comes from the LLM_API_KEY environment variable).",
     ],
-    ["--llm-model <id>", `Model for LLM checks (default: ${DEFAULT_MODEL}).`],
     [
-      "--llm-list-models",
-      "List the Anthropic models available to your token, then exit.",
+      "--llm-model <id>",
+      "Model for the LLM checks (default: the provider's default; see --llm-list-models).",
     ],
+    ["--llm-list-models", "List the models your token can use, then exit."],
   ];
 
   const other = [
@@ -270,7 +281,7 @@ export function helpText() {
     "Report output:",
     ...report.map(([flag, desc]) => optionLine(flag, desc)),
     "",
-    "LLM checks (Claude):",
+    "LLM checks:",
     ...llmFlags.map(([flag, desc]) => optionLine(flag, desc)),
     "",
     "Other:",
@@ -410,8 +421,15 @@ export async function main(argv) {
   const llm = resolveLlm(values);
   if (llm.wants && !llm.apiKey) {
     process.stderr.write(
-      "Enabling the LLM checks needs an Anthropic API token " +
+      "Enabling the LLM checks needs an API token " +
         "(set LLM_API_KEY in the environment).\n"
+    );
+    return 2;
+  }
+  if (llm.wants && !isLlmType(llm.apiType)) {
+    process.stderr.write(
+      `Unknown LLM_API_TYPE "${process.env.LLM_API_TYPE}" ` +
+        `(expected one of: ${LLM_TYPES.join(", ")}).\n`
     );
     return 2;
   }
@@ -506,8 +524,9 @@ function pipelineOptsFromValues(values) {
     diffSummary: values["diff-summary"],
     fullSummary: values["full-summary"],
     llmApiKey: llm.apiKey,
-    llmModel: values["llm-model"],
+    llmModel: llm.model,
     llmApiUrl: llm.apiUrl,
+    llmApiType: llm.apiType,
   };
 }
 
@@ -527,8 +546,9 @@ export function pipelineOptsFromArgv(argv) {
 }
 
 /**
- * Print the Anthropic models available to the token, then exit (the
- * --llm-list-models command). Needs a token, but no add-on path.
+ * Print the models the configured provider's token can use, then exit (the
+ * --llm-list-models command). Needs a token, but no add-on path. The provider is
+ * LLM_API_TYPE (default claude); LLM_API_URL overrides the endpoint.
  *
  * @returns {Promise<number>} process exit code
  */
@@ -536,25 +556,37 @@ async function runListModels() {
   const token = process.env.LLM_API_KEY;
   if (!token) {
     process.stderr.write(
-      "--llm-list-models needs an Anthropic API token " +
+      "--llm-list-models needs an API token " +
         "(set LLM_API_KEY in the environment).\n"
+    );
+    return 2;
+  }
+  const type = (process.env.LLM_API_TYPE || DEFAULT_LLM_TYPE).toLowerCase();
+  if (!isLlmType(type)) {
+    process.stderr.write(
+      `Unknown LLM_API_TYPE "${process.env.LLM_API_TYPE}" ` +
+        `(expected one of: ${LLM_TYPES.join(", ")}).\n`
     );
     return 2;
   }
   let models;
   try {
-    models = await listModels({ token, baseURL: process.env.LLM_API_URL });
+    models = await getProvider(type).listModels({
+      token,
+      baseURL: process.env.LLM_API_URL,
+    });
   } catch (err) {
     process.stderr.write(`Could not list models: ${err.message}\n`);
     return 2;
   }
+  const defaultModel = defaultModelFor(type);
   const lines = models.map((m) => {
     const name = m.displayName ? `  (${m.displayName})` : "";
-    const def = m.id === DEFAULT_MODEL ? "  [default]" : "";
+    const def = m.id === defaultModel ? "  [default]" : "";
     return `  ${m.id}${name}${def}`;
   });
   process.stdout.write(
-    `Available Anthropic models (default: ${DEFAULT_MODEL}):\n${lines.join("\n")}\n`
+    `Available ${type} models (default: ${defaultModel}):\n${lines.join("\n")}\n`
   );
   return 0;
 }

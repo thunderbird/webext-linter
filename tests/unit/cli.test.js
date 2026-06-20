@@ -188,7 +188,21 @@ test("--llm-enabled without a token errors to stderr and exits 2", () => {
     { encoding: "utf8", env }
   );
   assert.equal(r.status, 2);
-  assert.match(r.stderr, /needs an Anthropic API token/);
+  assert.match(r.stderr, /needs an API token/);
+});
+
+// An unknown LLM_API_TYPE is a usage error even with a key set: there is no
+// provider for it, so fail fast on stderr, exit 2 (before any network call).
+test("--llm-enabled with an unknown LLM_API_TYPE errors and exits 2", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const env = { ...process.env, LLM_API_KEY: "sk-test", LLM_API_TYPE: "bogus" };
+  const r = spawnSync(
+    process.execPath,
+    [REVIEW, addon, "--schema-zip", SCHEMA, "--llm-enabled"],
+    { encoding: "utf8", env }
+  );
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /Unknown LLM_API_TYPE/);
 });
 
 // A bare LLM_API_KEY in the environment no longer auto-enables the LLM: with

@@ -1,5 +1,5 @@
 // Deterministic tests for the LLM protocol that need no network: the request
-// callClaude builds (B) and the exact prompt createLlmClient assembles (C).
+// callVerdicts builds (B) and the exact prompt createLlmClient assembles (C).
 // Both inject a fake transport so nothing reaches the Anthropic API. The
 // coercion of the model's answer (A) lives in claude.test.js.
 
@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { callClaude, callClaudeText } from "../../src/llm/claude.js";
+import { callVerdicts, callText } from "../../src/llm/anthropic.js";
 import { createLlmClient } from "../../src/checks/llm-client.js";
 import { loadRegistry } from "../../src/checks/registry.js";
 import { MAX_RESPONSE_TOKENS } from "../../src/config.js";
@@ -21,7 +21,7 @@ const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 // makes the model answer through the structured result tool instead of prose,
 // which is what the coercion step relies on. A fake client records the request
 // so we can assert it without a network call.
-test("callClaude forces the structured result tool", async () => {
+test("callVerdicts forces the structured result tool", async () => {
   let req;
   const fakeClient = {
     messages: {
@@ -40,7 +40,7 @@ test("callClaude forces the structured result tool", async () => {
     },
   };
 
-  const result = await callClaude({
+  const result = await callVerdicts({
     token: "test-token",
     model: "test-model",
     system: [{ type: "text", text: "sys" }],
@@ -71,7 +71,7 @@ test("callClaude forces the structured result tool", async () => {
 
 // A malformed response (no tool_use block) must surface as an error, never a
 // silent verdict - escalation.js maps a transport error to manual review.
-test("callClaude throws when no tool_use block is returned", async () => {
+test("callVerdicts throws when no tool_use block is returned", async () => {
   const fakeClient = {
     messages: {
       create: async () => ({ content: [{ type: "text", text: "hi" }] }),
@@ -79,7 +79,7 @@ test("callClaude throws when no tool_use block is returned", async () => {
   };
   await assert.rejects(
     () =>
-      callClaude({
+      callVerdicts({
         token: "test-token",
         system: [],
         criterion: "c",
@@ -89,9 +89,9 @@ test("callClaude throws when no tool_use block is returned", async () => {
   );
 });
 
-// callClaudeText (the change-summary path) is free-form: NO forced result tool,
+// callText (the change-summary path) is free-form: NO forced result tool,
 // and it returns the joined text blocks - not a coerced verdict.
-test("callClaudeText sends a free-form request and returns the text", async () => {
+test("callText sends a free-form request and returns the text", async () => {
   let req;
   const fakeClient = {
     messages: {
@@ -106,7 +106,7 @@ test("callClaudeText sends a free-form request and returns the text", async () =
       },
     },
   };
-  const out = await callClaudeText({
+  const out = await callText({
     token: "test-token",
     model: "test-model",
     prompt: "summarize this",
@@ -152,7 +152,7 @@ test("createLlmClient assembles the documented prompt", async () => {
     token: "test-token",
     systemIntro: loadRegistry().prompt("system-intro"),
     model: "test-model",
-    callClaude: async (params) => {
+    callVerdicts: async (params) => {
       captured = params;
       return { verdicts: [] };
     },

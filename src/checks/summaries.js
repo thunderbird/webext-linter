@@ -15,8 +15,8 @@
 //
 // Belongs here: buildDiffText / buildAddonText (the deterministic payloads) and
 // the two summarizer builders. Does NOT belong here: the prompt text ->
-// assets/registry.yaml (via registry.prompt). The transport ->
-// src/llm/claude.js (callClaudeText / callClaudeReview) through
+// assets/registry.yaml (via registry.prompt). The transport -> the provider
+// adapters (callText / callReview, selected by src/llm/provider.js) through
 // src/checks/llm-client.js (summarize / reviewAddon). The unused-file set ->
 // derived from review findings in src/pipeline.js. Displaying the summaries ->
 // src/cli.js. The unused-permission list -> the unused-permission check
@@ -32,7 +32,7 @@ import { debug } from "../util/log.js";
 /** @typedef {import("./registry.js").RunContext} RunContext */
 /** @typedef {import("./registry.js").Registry} Registry */
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
-/** @typedef {import("../llm/claude.js").AddonReview} AddonReview */
+/** @typedef {import("../llm/schema.js").AddonReview} AddonReview */
 /** @typedef {{bytes: number, run: () => Promise<?string>}} DeferredSummary */
 /** @typedef {{bytes: number, run: () => Promise<?AddonReview>}} DeferredReview */
 

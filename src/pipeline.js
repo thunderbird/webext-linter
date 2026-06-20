@@ -70,6 +70,7 @@ import {
  * @property {string} [llmApiKey]
  * @property {string} [llmModel]
  * @property {string} [llmApiUrl]  Override the LLM API base URL (LLM_API_URL).
+ * @property {string} [llmApiType]  LLM_API_TYPE (claude | chatgpt).
  * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
  *   network transport for vendor verification (the test harness injects an
  *   offline one); defaults to the real fetch.
@@ -156,6 +157,7 @@ export async function runPipeline(opts) {
       token: opts.llmApiKey,
       model: opts.llmModel,
       url: opts.llmApiUrl,
+      type: opts.llmApiType,
       budget: llmBudget,
     });
 
@@ -311,6 +313,7 @@ async function reviewAddon(
     eslint,
     llmApiKey,
     llmApiUrl,
+    llmApiType,
     allowExperiments,
     diffTo,
     fullSummary,
@@ -333,7 +336,7 @@ async function reviewAddon(
   const ctx = buildRunContext({
     addon,
     schema,
-    options: { llmApiKey, llmApiUrl, allowExperiments },
+    options: { llmApiKey, llmApiUrl, llmApiType, allowExperiments },
     diffTo,
     llmModel: opts.llmModel,
     systemIntro: registry.prompt("system-intro"),
