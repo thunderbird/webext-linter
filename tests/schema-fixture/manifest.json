@@ -23,6 +23,7 @@
           "optional_permissions": { "type": "array" },
           "host_permissions": { "type": "array" },
           "default_locale": { "type": "string" },
+          "icons": { "type": "object" },
           "background": { "type": "object" },
           "options_ui": { "type": "object" },
           "action": { "type": "object" },

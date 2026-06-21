@@ -75,11 +75,15 @@ Read more: https://webextension-api.thunderbird.net/.
 20) Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined.
  - background.js:41
 
-21) The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
+21) Adding and defining an add-on icon in manifest.json improves user acceptance.
+Read more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons
+ - manifest.json
+
+22) The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
 Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
  - manifest.json:6 - <all_urls>
 
-22) Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.
+23) Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json:11 - weirdTopLevelKey
 
@@ -168,4 +172,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-15 error(s), 2 warning(s), 6 info, 13 manual review step(s)
+15 error(s), 2 warning(s), 7 info, 13 manual review step(s)

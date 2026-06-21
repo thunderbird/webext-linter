@@ -51,6 +51,7 @@
       "native-messaging",
       "default-locale-missing",
       "default-locale-unused",
+      "addon-icon-missing",
       "background-module",
       "background-page-module",
       "eval-call",
@@ -71,7 +72,7 @@
   "summary": {
     "error": 15,
     "warning": 2,
-    "info": 6,
+    "info": 7,
     "byRule": {
       "unknown-api": 2,
       "deprecated-api": 3,
@@ -86,6 +87,7 @@
       "async-onmessage": 1,
       "code-sanity": 1,
       "minimize-host-permissions": 1,
+      "addon-icon-missing": 1,
       "eval-call": 1,
       "unused-files": 2,
       "remote-script": 2
@@ -280,6 +282,15 @@
       "item": "missing.js",
       "hint": null,
       "message": "\"missing.js\" is referenced but not bundled with the add-on. Please include every referenced file in the package."
+    },
+    {
+      "ruleId": "addon-icon-missing",
+      "severity": "info",
+      "file": "manifest.json",
+      "loc": null,
+      "item": null,
+      "hint": null,
+      "message": "Adding and defining an add-on icon in manifest.json improves user acceptance.\nRead more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons"
     },
     {
       "ruleId": "manifest-unknown-permission",

@@ -3,5 +3,6 @@
   "name": "Bundled Files",
   "version": "1.0",
   "content_scripts": [{ "matches": ["*://*/*"], "js": ["present.js", "missing.js"] }],
-  "background": { "scripts": ["bg.js"] }
+  "background": { "scripts": ["bg.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
 }

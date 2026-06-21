@@ -1,7 +1,8 @@
 {
-  "_comment": "Demo add-on that triggers every deterministic violation check at once, except missing-library / obfuscated-code (need a bundled or minified file), api-coverage (needs a parse/resolution gap), and the outbound-data checks cleartext-transmission / privacy-policy / native-messaging (covered by the outbound-data fixture). The ESLint code-sanity check is opt-in, so this fixture enables it via options.eslint to keep it covered.",
+  "_comment": "Demo add-on that triggers every deterministic violation check at once, except missing-library / obfuscated-code (need a bundled or minified file), api-coverage (needs a parse/resolution gap), and the outbound-data checks cleartext-transmission / privacy-policy / native-messaging (covered by the outbound-data fixture). It declares no icons key, so addon-icon-missing fires here too. The ESLint code-sanity check is opt-in, so this fixture enables it via options.eslint to keep it covered.",
   "options": { "--eslint": true },
   "expect": {
+    "addon-icon-missing": ["manifest.json"],
     "unknown-api": ["background.js:4","background.js:5"],
     "deprecated-api": ["background.js:10","background.js:11","background.js:9"],
     "missing-permission": ["background.js:15","background.js:16","background.js:9"],

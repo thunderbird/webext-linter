@@ -32,6 +32,7 @@ import privacyPolicy from "../../src/checks/rules/privacy-policy.js";
 import nativeMessaging from "../../src/checks/rules/native-messaging.js";
 import defaultLocaleMissing from "../../src/checks/rules/default-locale-missing.js";
 import defaultLocaleUnused from "../../src/checks/rules/default-locale-unused.js";
+import addonIconMissing from "../../src/checks/rules/addon-icon-missing.js";
 import backgroundModule from "../../src/checks/rules/background-module.js";
 import unusedPermission from "../../src/checks/rules/unused-permission.js";
 import unusedPermissionManual from "../../src/checks/rules/unused-permission-manual.js";
@@ -1122,6 +1123,31 @@ test("default-locale checks flag the two load-breaking directions", () => {
     0
   );
   assert.equal(defaultLocaleUnused.run(ctx({}, {})).length, 0);
+});
+
+// ---- addon-icon-missing ----
+// No defined add-on icon (absent `icons`, empty/blank values, or a malformed
+// non-object) gets one advisory with no location; a declared icon passes; themes
+// and dictionaries are exempt; an unparsed manifest is skipped.
+test("addon-icon-missing flags an extension with no defined add-on icon", () => {
+  const ctx = (manifest) => ({ addon: { manifest } });
+  const out = addonIconMissing.run(ctx({ manifest_version: 3, name: "x" }));
+  assert.equal(out.length, 1);
+  assert.equal(out[0].file, "manifest.json");
+  assert.equal(out[0].loc, null);
+  assert.equal(
+    addonIconMissing.run(ctx({ icons: { 16: "icon-16.png" } })).length,
+    0
+  );
+  assert.equal(addonIconMissing.run(ctx({ icons: {} })).length, 1);
+  assert.equal(addonIconMissing.run(ctx({ icons: { 16: "  " } })).length, 1);
+  assert.equal(addonIconMissing.run(ctx({ icons: "icon.png" })).length, 1);
+  assert.equal(addonIconMissing.run(ctx({ theme: { colors: {} } })).length, 0);
+  assert.equal(
+    addonIconMissing.run(ctx({ dictionaries: { en: "x.dic" } })).length,
+    0
+  );
+  assert.equal(addonIconMissing.run({ addon: { manifest: null } }).length, 0);
 });
 
 // ---- background-module ----

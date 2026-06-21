@@ -50,6 +50,7 @@
       "native-messaging",
       "default-locale-missing",
       "default-locale-unused",
+      "addon-icon-missing",
       "background-module",
       "background-page-module",
       "eval-call",

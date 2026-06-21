@@ -2,5 +2,6 @@
   "manifest_version": 3,
   "name": "Background Page Module Demo",
   "version": "1.0",
-  "background": { "page": "background.html" }
+  "background": { "page": "background.html" },
+  "icons": { "16": "icon.png", "48": "icon.png" }
 }

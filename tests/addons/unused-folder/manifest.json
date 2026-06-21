@@ -3,5 +3,6 @@
   "name": "Unused folder",
   "version": "1.0",
   "description": "A fully-unused nested folder collapses to its top-most folder.",
-  "background": { "scripts": ["background.js"] }
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
 }

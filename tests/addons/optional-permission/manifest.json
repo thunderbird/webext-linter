@@ -4,5 +4,6 @@
   "version": "1.0",
   "permissions": ["messagesRead", "accountsRead"],
   "optional_permissions": ["messagesMove"],
-  "background": { "scripts": ["bg.js"] }
+  "background": { "scripts": ["bg.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
 }

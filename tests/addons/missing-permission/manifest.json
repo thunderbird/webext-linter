@@ -3,5 +3,6 @@
   "name": "Missing Permission",
   "version": "1.0",
   "permissions": ["messagesRead"],
-  "background": { "scripts": ["background.js"] }
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
 }
