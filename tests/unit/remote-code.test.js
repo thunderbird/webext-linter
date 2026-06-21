@@ -313,6 +313,31 @@ test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval",
   );
   assert.equal(cspUnsafeEval.run(ok).length, 0);
   assert.equal(cspUnsafeInline.run(ok).length, 0);
+
+  // Both findings anchor on the content_security_policy line of the manifest
+  // text (fakeCtx does not put manifest.json in files, so build the ctx here).
+  const located = {
+    addon: {
+      files: new Map([
+        [
+          "manifest.json",
+          Buffer.from(
+            '{\n  "manifest_version": 3,\n' +
+              "  \"content_security_policy\": { \"extension_pages\": \"script-src 'self' 'unsafe-eval' 'unsafe-inline'\" }\n}\n"
+          ),
+        ],
+      ]),
+      manifest: {
+        content_security_policy: {
+          extension_pages: "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+        },
+      },
+    },
+    jsSources: [],
+    options: {},
+  };
+  assert.equal(cspUnsafeEval.run(located)[0].loc.line, 3);
+  assert.equal(cspUnsafeInline.run(located)[0].loc.line, 3);
 });
 
 // A remote host allowed in the CSP script-src directive is flagged with a

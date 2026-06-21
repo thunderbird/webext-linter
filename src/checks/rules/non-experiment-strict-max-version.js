@@ -13,7 +13,11 @@
 // registry.js).
 
 import { finding } from "../../report/finding.js";
-import { isExperiment, strictMaxVersion } from "../lib/util.js";
+import {
+  isExperiment,
+  strictMaxVersion,
+  manifestTokenLine,
+} from "../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {
@@ -42,6 +46,14 @@ export default {
       `strict_max_version ${max} on a non-Experiment`,
       "fail"
     );
-    return [finding({ file: "manifest.json", item: String(max) })];
+    const text = ctx.addon.files?.get("manifest.json")?.toString("utf8");
+    const line = manifestTokenLine(text, "strict_max_version");
+    return [
+      finding({
+        file: "manifest.json",
+        loc: line ? { line } : null,
+        item: String(max),
+      }),
+    ];
   },
 };
