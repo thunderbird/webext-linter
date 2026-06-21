@@ -290,7 +290,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "Adding and defining an add-on icon in manifest.json improves user acceptance.\nRead more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons"
+      "message": "Adding an add-on icon in manifest.json improves user acceptance.\nRead more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons"
     },
     {
       "ruleId": "manifest-unknown-permission",

@@ -68,21 +68,10 @@ const SEV_COLOR = {
  * @returns {string}
  */
 export function formatText(review) {
-  const { findings: issues, meta, issueHeadings, verdictIntros } = review;
-  // The findings here are issues only - the manual-review to-dos live in
-  // meta.manualReview, each tagged with `extended`. The list splits into two
-  // sections: Extended (checks that escalated to manual review) first, then
-  // Standard (the always-by-hand manual-checks). The ATN tail and the summary
-  // count cover both.
-  const manual = meta.manualReview ?? [];
-  const extended = manual.filter((m) => m.extended);
-  const standard = manual.filter((m) => !m.extended);
+  const manual = review.meta.manualReview ?? [];
   const lines = [
-    ...issuesLines(issues, issueHeadings, verdictIntros),
-    ...manualSection(extended, "Extended manual review"),
-    ...manualSection(standard, "Standard manual review"),
-    ...manualTail(meta.reviewUrl, manual.length),
-    ...summaryLines(issues, manual.length),
+    ...reviewBodyLines(review),
+    ...summaryLines(review.findings, manual.length),
   ];
   // The "Reviewing …" header is now printed live before the review (src/pipeline.js),
   // not here, so drop the blank that section() prepends to the first (Issues)
@@ -91,6 +80,55 @@ export function formatText(review) {
     lines.shift();
   }
   return lines.join("\n");
+}
+
+/**
+ * The report body lines - Issues, the Extended/Standard manual-review sections,
+ * and the ATN tail - WITHOUT the trailing Summary tally. The findings here are
+ * issues only; the manual-review to-dos live in meta.manualReview, each tagged
+ * with `extended` (Extended = checks that escalated, Standard = always-by-hand
+ * manual-checks). Shared by formatText and by formatReviewBody.
+ * @param {ReviewResult} review
+ * @returns {string[]}
+ */
+function reviewBodyLines(review) {
+  const { findings: issues, meta, issueHeadings, verdictIntros } = review;
+  const manual = meta.manualReview ?? [];
+  const extended = manual.filter((m) => m.extended);
+  const standard = manual.filter((m) => !m.extended);
+  return [
+    ...issuesLines(issues, issueHeadings, verdictIntros),
+    ...manualSection(extended, "Extended manual review"),
+    ...manualSection(standard, "Standard manual review"),
+    ...manualTail(meta.reviewUrl, manual.length),
+  ];
+}
+
+/**
+ * The text report body WITHOUT the Summary tally (Issues + manual sections +
+ * ATN tail). The CLI prints this first, then the advisory LLM summaries, then
+ * the tally (formatSummary) last, so the review verdict lands at the very end.
+ * @param {ReviewResult} review
+ * @returns {string}
+ */
+export function formatReviewBody(review) {
+  const lines = reviewBodyLines(review);
+  if (lines[0] === "") {
+    lines.shift();
+  }
+  return lines.join("\n");
+}
+
+/**
+ * The Summary tally as its own "── Summary ──" block (leading blank line, like
+ * every section). Kept separate from the body so the CLI can print it after the
+ * advisory "Summary of add-on" / "Summary of changes" sections.
+ * @param {ReviewResult} review
+ * @returns {string}
+ */
+export function formatSummary(review) {
+  const manual = review.meta.manualReview ?? [];
+  return summaryLines(review.findings, manual.length).join("\n");
 }
 
 /**

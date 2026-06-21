@@ -29,7 +29,11 @@ import {
   DEFAULT_LLM_TYPE,
 } from "./llm/provider.js";
 import { hasErrors } from "./report/finding.js";
-import { formatReview } from "./report/format.js";
+import {
+  formatReview,
+  formatReviewBody,
+  formatSummary,
+} from "./report/format.js";
 import {
   DEFAULT_CHANNEL,
   VALID_CHANNELS,
@@ -437,13 +441,15 @@ export async function main(argv) {
     return 2;
   }
 
-  const rendered = formatReview(result, format);
-  // Always emit the report to stdout (the report phase). The advisory summaries
-  // (text only) were already generated during the activity feed; their prose is
-  // printed after the report so the review lands first.
-  process.stdout.write(rendered + "\n");
+  // The report body (Issues + manual sections) lands first. The advisory LLM
+  // summaries (text only) were already generated during the activity feed; their
+  // prose prints next, and the review tally (── Summary ──) prints LAST so the
+  // verdict closes the report after the add-on and change summaries.
+  let rendered;
   let summaryBlock = "";
   if (format === "text") {
+    rendered = formatReviewBody(result);
+    process.stdout.write(rendered + "\n");
     // Add-on overview first, then the change delta. Both were generated during
     // the activity feed (src/pipeline.js); here we only print their prose.
     if (result.summarizeAddon) {
@@ -469,6 +475,13 @@ export async function main(argv) {
       process.stdout.write(note);
       summaryBlock += note;
     }
+    // The review tally closes the report, after the advisory summaries above.
+    const reviewSummary = formatSummary(result) + "\n";
+    process.stdout.write(reviewSummary);
+    summaryBlock += reviewSummary;
+  } else {
+    rendered = formatReview(result, format);
+    process.stdout.write(rendered + "\n");
   }
 
   // --report-out saves a carbon copy of stdout: the captured feed, the report,
