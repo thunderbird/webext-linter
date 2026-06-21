@@ -32,6 +32,7 @@
 // under src/checks/rules/*.
 
 import { manifestFileRefs, resolveRef } from "./manifest-refs.js";
+import { scriptHostDirs, resolvePageRelative } from "./script-hosts.js";
 import {
   warResourceList,
   expandResourcePattern,
@@ -140,6 +141,11 @@ function compute(ctx) {
   // it loads look unreachable. The finding scanners still skip these themselves.
   const skipParse = REACHABILITY_SKIPS_NON_AUTHORED ? nonAuthored : new Set();
 
+  // Host-page directories per script, for resolving page-relative loader paths
+  // (tabs.executeScript/insertCSS/removeCSS {file}) the way Gecko does - against
+  // the calling page's base URL, not the extension root.
+  const hostDirs = scriptHostDirs(ctx);
+
   // Outgoing edges: each file -> the resolved package paths it references.
   const outEdges = new Map();
   const dynamicLoaderSites = [];
@@ -185,8 +191,9 @@ function compute(ctx) {
       dynamicLoaderSites.push({ file: src.file, kind: "dynamic-import" });
     }
     // File-loading API calls (schema-directed + bridge): getURL, executeScript/
-    // insertCSS, the register family, setIcon, tabs.create, ... Every path is
-    // extension-root-relative.
+    // insertCSS, the register family, setIcon, tabs.create, ... Most paths are
+    // extension-root-relative; the page-relative trio (base:"page") resolves
+    // against the calling script's host page directory instead.
     const loaded = scanLoaderRefs(
       src.code,
       src.lineOffset,
@@ -194,7 +201,11 @@ function compute(ctx) {
       ctx.schema?.manifestVersionMajor
     );
     for (const r of loaded.refs) {
-      addEdge(src.file, resolveRef(files, null, r.path));
+      const target =
+        r.base === "page"
+          ? resolvePageRelative(files, hostDirs, src.file, r.path)
+          : resolveRef(files, null, r.path);
+      addEdge(src.file, target);
     }
     if (loaded.hasDynamic && !nonAuthored.has(src.file)) {
       dynamicLoaderSites.push({ file: src.file, kind: "dynamic-loader" });

@@ -98,3 +98,37 @@ test("checks bridge loaders but ignores remote / scheme urls", () => {
   );
   assert.equal(remote.length, 0);
 });
+
+// A tabs.executeScript({file}) path is page-relative (Gecko): present-ness is
+// checked against the calling script's host PAGE directory, not the extension
+// root. background.js (loaded by src/background.html) injects a sibling file:
+// present under the page dir -> no finding; absent there -> still flagged.
+test("page-relative executeScript file is checked against the host page dir", () => {
+  const manifest = {
+    manifest_version: 2,
+    background: { page: "src/background.html" },
+  };
+  const call = `browser.tabs.executeScript(id, { file: "message-unescape.js" });`;
+  const page = `<script src="background.js"></script>`;
+
+  const present = ctxWith(manifest, {
+    "src/background.html": page,
+    "src/background.js": call,
+    "src/message-unescape.js": "",
+  });
+  present.jsSources = [
+    { file: "src/background.js", code: call, lineOffset: 0 },
+  ];
+  assert.equal(bundledFiles.run(present).length, 0); // resolves to src/message-unescape.js
+
+  const missing = ctxWith(manifest, {
+    "src/background.html": page,
+    "src/background.js": call,
+  });
+  missing.jsSources = [
+    { file: "src/background.js", code: call, lineOffset: 0 },
+  ];
+  const out = bundledFiles.run(missing);
+  assert.equal(out.length, 1);
+  assert.match(out[0].item, /message-unescape\.js/);
+});
