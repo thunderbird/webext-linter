@@ -389,6 +389,16 @@ deterministic-checks:
   response: |-
     The manifest declares default_locale but the add-on ships no _locales directory, so Thunderbird will refuse to load the add-on. Add the _locales/<lang>/messages.json files, or remove default_locale.
 
+# An extension with no top-level `icons` key ships no defined add-on icon, so
+# Thunderbird shows the generic puzzle-piece placeholder in the Add-ons Manager.
+# Advisory only (info); static themes and dictionaries are exempt (see the check).
+- title: Add-on icon missing
+  severity: info
+  check: addon-icon-missing.js
+  response: |-
+    Adding an add-on icon in manifest.json improves user acceptance.
+    Read more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons
+
 # A background script using ES module syntax needs the background declared
 # "type": "module", or it will not load.
 - title: Background script needs type module

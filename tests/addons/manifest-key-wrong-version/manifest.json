@@ -3,5 +3,6 @@
   "name": "Manifest Key Wrong-Version",
   "version": "1.0",
   "browser_action": { "default_title": "Hi" },
-  "background": { "scripts": ["background.js"] }
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
 }

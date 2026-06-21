@@ -3,5 +3,6 @@
   "name": "Bundled CSS",
   "version": "1.0",
   "description": "Ships an undeclared vendored bootstrap.min.css.",
-  "compose_action": { "default_title": "Compose" }
+  "compose_action": { "default_title": "Compose" },
+  "icons": { "16": "icon.png", "48": "icon.png" }
 }

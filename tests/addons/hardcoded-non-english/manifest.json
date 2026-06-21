@@ -3,5 +3,6 @@
   "name": "Wetterbericht",
   "version": "1.0",
   "description": "Diese Erweiterung zeigt Ihnen den aktuellen Wetterbericht und sendet Benachrichtigungen an Ihren Posteingang in Thunderbird.",
-  "background": { "scripts": ["background.js"] }
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
 }

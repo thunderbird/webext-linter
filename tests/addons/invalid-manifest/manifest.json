@@ -2,5 +2,6 @@
   "manifest_version": 3,
   "name": "Invalid Manifest",
   "permissions": ["bogusPermission"],
-  "weirdTopLevelKey": true
+  "weirdTopLevelKey": true,
+  "icons": { "16": "icon.png", "48": "icon.png" }
 }
