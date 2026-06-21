@@ -339,6 +339,24 @@ test("strict-max-version-bump-only fires only on a pure version+strict_max bump"
   // Another manifest key changed too -> silent.
   const renamed = { ...manifest("128.0", "1.1"), name: "y" };
   assert.equal(run(ver(renamed, { "bg.js": bg }), prev).length, 0);
+
+  // The fired finding anchors on the strict_max_version line of the current
+  // manifest text (multi-line, unlike the single-line JSON.stringify helper).
+  const curText =
+    '{\n  "version": "1.1",\n' +
+    '  "browser_specific_settings": { "gecko": { "id": "a@b", "strict_max_version": "128.0" } }\n}\n';
+  const located = run(
+    {
+      manifest: manifest("128.0", "1.1"),
+      files: new Map([
+        ["manifest.json", Buffer.from(curText)],
+        ["bg.js", Buffer.from(bg)],
+      ]),
+    },
+    prev
+  );
+  assert.equal(located.length, 1);
+  assert.equal(located[0].loc.line, 3);
 });
 
 // The diff gate: the registry marks this a diff check (diff: true), so the
@@ -616,6 +634,23 @@ test("non-experiment-strict-max-version flags only a non-Experiment that pins a 
   });
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "128.0"); // value surfaced for the {{item}} response
+  // The finding anchors on the strict_max_version line of the manifest text.
+  const located = nonExperimentMax.run({
+    addon: {
+      manifest: {
+        browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
+      },
+      files: new Map([
+        [
+          "manifest.json",
+          Buffer.from(
+            '{\n  "browser_specific_settings": { "gecko": { "strict_max_version": "128.0" } }\n}\n'
+          ),
+        ],
+      ]),
+    },
+  });
+  assert.equal(located[0].loc.line, 2);
   // Legacy applications.gecko key is also honored.
   assert.equal(
     run({ applications: { gecko: { strict_max_version: "115" } } }).length,

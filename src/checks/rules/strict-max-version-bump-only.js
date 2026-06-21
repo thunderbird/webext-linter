@@ -18,7 +18,7 @@
 // registry.js).
 
 import { finding } from "../../report/finding.js";
-import { strictMaxVersion } from "../lib/util.js";
+import { strictMaxVersion, manifestTokenLine } from "../lib/util.js";
 import { canonicalJson } from "../../util/json.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -60,7 +60,9 @@ export default {
       "only version + strict_max_version changed",
       "fail"
     );
-    return [finding({ file: "manifest.json" })];
+    const text = cur.files?.get("manifest.json")?.toString("utf8");
+    const line = manifestTokenLine(text, "strict_max_version");
+    return [finding({ file: "manifest.json", loc: line ? { line } : null })];
   },
 };
 

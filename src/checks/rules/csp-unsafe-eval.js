@@ -8,6 +8,7 @@
 
 import { finding } from "../../report/finding.js";
 import { getEvalScan } from "../lib/eval-scan.js";
+import { manifestTokenLine } from "../lib/util.js";
 
 export default {
   run(ctx) {
@@ -15,6 +16,8 @@ export default {
       return [];
     }
     ctx.note?.("manifest.json", null, "CSP 'unsafe-eval'", "fail");
-    return [finding({ file: "manifest.json" })];
+    const text = ctx.addon.files?.get("manifest.json")?.toString("utf8");
+    const line = manifestTokenLine(text, "content_security_policy");
+    return [finding({ file: "manifest.json", loc: line ? { line } : null })];
   },
 };
