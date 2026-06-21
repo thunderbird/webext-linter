@@ -3,7 +3,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { formatText, formatJson } from "../../src/report/format.js";
+import {
+  formatText,
+  formatJson,
+  formatReviewBody,
+  formatSummary,
+} from "../../src/report/format.js";
 
 function review() {
   return {
@@ -343,6 +348,26 @@ const withReview = (findings, verdictIntros) => ({
   meta: { action: "review", addon: "x", reviewed: true },
   issueHeadings: { error: "ERR:", warning: "WARN:", info: "INFO:" },
   verdictIntros,
+});
+
+// The tally is split out of the body so the CLI can print it last (after the
+// "Summary of add-on" / "Summary of changes" sections). formatReviewBody is the
+// report without the tally; formatSummary is just the tally; together they
+// reproduce formatText, so the no-LLM output is unchanged.
+test("formatReviewBody / formatSummary split the report and round-trip", () => {
+  const r = {
+    findings: [mkFinding("info", "an info finding", "manifest.json", null)],
+    meta: { action: "review", addon: "x", reviewed: true, manualReview: [] },
+    issueHeadings: { error: "E:", warning: "W:", info: "I:" },
+  };
+  const body = formatReviewBody(r);
+  const summary = formatSummary(r);
+  assert.ok(!body.includes("── Summary ──")); // body has no tally
+  assert.match(
+    summary,
+    /── Summary ──\n\n0 error\(s\), 0 warning\(s\), 1 info/
+  );
+  assert.equal(formatText(r), body + "\n" + summary); // round-trips
 });
 
 test("empty review shows the registry 'none' intro as the Issues body", () => {

@@ -75,7 +75,7 @@ Read more: https://webextension-api.thunderbird.net/.
 20) Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined.
  - background.js:41
 
-21) Adding and defining an add-on icon in manifest.json improves user acceptance.
+21) Adding an add-on icon in manifest.json improves user acceptance.
 Read more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons
  - manifest.json
 
