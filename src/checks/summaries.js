@@ -201,18 +201,27 @@ export function buildDiffText(ctx) {
  * required permissions (manifest.permissions), the optional ones
  * (optional_permissions), and the host match patterns. An explicit anchor so the
  * LLM judges every declared permission even though the manifest is also quoted.
+ * A final line names the declared permissions the deterministic analysis already
+ * proved used (`used`); the prompt tells the model to treat those as justified
+ * and not assess them, so it spends its judgment only on the unsettled rest.
  * @param {Manifest} manifest
+ * @param {Set<string>} [used]  Permissions a reachable API call provably requires.
  * @returns {string}
  */
-function declaredPermissionsBlock(manifest) {
+function declaredPermissionsBlock(manifest, used = new Set()) {
   const { required, named, hosts } = declaredPermissions(manifest);
   const optional = [...named].filter((p) => !required.has(p));
+  const confirmed = [...named].filter((p) => used.has(p));
   const line = (label, items) =>
     `${label}: ${items.length ? [...items].join(", ") : "(none)"}`;
   return [
     line("required permissions", [...required]),
     line("optional permissions", optional),
     line("host permissions", [...hosts]),
+    line(
+      "confirmed used by static analysis (do not assess, treat as justified)",
+      confirmed
+    ),
   ].join("\n");
 }
 
@@ -223,10 +232,15 @@ function declaredPermissionsBlock(manifest) {
  * in `unused`, each fenced under "=== file ===". No byte cap - a large add-on
  * may approach the context window.
  * @param {RunContext} ctx
- * @param {{unused?: Set<string>}} [opts]  Files the review found unreachable.
+ * @param {{unused?: Set<string>, used?: Set<string>}} [opts]  unused = files the
+ *   review found unreachable; used = permissions provably required by a reachable
+ *   API call (annotated in the declared-permissions block).
  * @returns {?string}
  */
-export function buildAddonText(ctx, { unused = new Set() } = {}) {
+export function buildAddonText(
+  ctx,
+  { unused = new Set(), used = new Set() } = {}
+) {
   const files = ctx.addon?.files;
   if (!files) {
     return null;
@@ -242,7 +256,7 @@ export function buildAddonText(ctx, { unused = new Set() } = {}) {
     fenced(
       out,
       "=== declared permissions ===",
-      declaredPermissionsBlock(ctx.addon.manifest)
+      declaredPermissionsBlock(ctx.addon.manifest, used)
     );
   }
   for (const file of [...files.keys()].sort()) {
@@ -286,18 +300,20 @@ export function buildSummarizer(ctx, registry) {
  * token or no prompt.
  * @param {RunContext} ctx
  * @param {Registry} registry
- * @param {{unused?: Set<string>}} [opts]  Files the review found unreachable.
+ * @param {{unused?: Set<string>, used?: Set<string>}} [opts]  unused = files the
+ *   review found unreachable; used = permissions a reachable API call provably
+ *   requires (so the prompt can mark them settled).
  * @returns {?DeferredReview}
  */
 export function buildAddonSummarizer(
   ctx,
   registry,
-  { unused = new Set() } = {}
+  { unused = new Set(), used = new Set() } = {}
 ) {
   if (!ctx?.llm) {
     return null;
   }
-  const text = buildAddonText(ctx, { unused });
+  const text = buildAddonText(ctx, { unused, used });
   const prompt = registry.prompt("add-on-summary");
   if (!text || !prompt) {
     return null;

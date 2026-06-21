@@ -31,6 +31,7 @@ import { resolveVendor } from "./vendor/resolve.js";
 import { verifyVendor } from "./vendor/verify.js";
 import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
 import { classifyBundled } from "./checks/lib/bundled.js";
+import { getPermissionAnalysis } from "./checks/lib/permissions.js";
 import { collapseUnused } from "./checks/lib/unused-folders.js";
 import { isExperiment } from "./checks/lib/util.js";
 import { createLlmBudget } from "./llm/budget.js";
@@ -302,7 +303,12 @@ async function generateSummary(deferred, label, budget) {
  * @returns {Promise<GeneratedSummary|undefined>}
  */
 async function generateAddonSummary(ctx, registry, unused, budget) {
-  const deferred = buildAddonSummarizer(ctx, registry, { unused });
+  // Permissions a reachable API call provably requires (memoized; already
+  // computed by the main-loop missing-permission checks). The prompt marks these
+  // as settled so the model assesses only the unprovable rest, and the
+  // unused-permission check independently drops any the model still flags.
+  const used = getPermissionAnalysis(ctx).usedPermissions;
+  const deferred = buildAddonSummarizer(ctx, registry, { unused, used });
   if (!deferred) {
     return undefined;
   }

@@ -422,6 +422,61 @@ test("unused-permission is a no-op without the stored list", () => {
   });
 });
 
+// The deterministic analysis is authoritative: a permission a reachable API call
+// provably requires (here messagesRead, via messages.get) must never be flagged,
+// even if the LLM non-deterministically put it on the unused list. Only the
+// unprovable rest (messagesUpdate) survives. Reproduces llm-and-summary-2.log,
+// where messagesRead leaked to a [fail] finding.
+test("unused-permission drops permissions the deterministic analysis proved used", () => {
+  const manifest = {
+    manifest_version: 3,
+    permissions: ["messagesRead", "messagesUpdate"],
+    background: { scripts: ["bg.js"] },
+  };
+  const notes = [];
+  const ctx = {
+    schema,
+    note: (file, loc, item, verdict) => notes.push({ item, verdict }),
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+        ["bg.js", Buffer.from("")],
+      ]),
+      // The LLM flagged BOTH declared permissions, including the proven-used one.
+      unusedPermissions: [
+        { permission: "messagesRead", status: "unused", reason: "no read API" },
+        {
+          permission: "messagesUpdate",
+          status: "unused",
+          reason: "no update API",
+        },
+      ],
+    },
+    apiUsages: [
+      {
+        file: "bg.js",
+        usages: [{ segments: ["messages", "get"], line: 1, column: 0 }],
+      },
+    ],
+  };
+  const out = unusedPermission.run(ctx);
+  const flagged = out.findings
+    .map((f) => f.item)
+    .concat(out.escalations.map((e) => e.item));
+  assert.ok(!flagged.includes("messagesRead")); // gated out by the deterministic set
+  assert.deepEqual(
+    out.findings.map((f) => f.item),
+    ["messagesUpdate"]
+  );
+  assert.equal(out.escalations.length, 0);
+  // The override is recorded as a pass note, so the feed shows it was dropped.
+  assert.deepEqual(
+    notes.find((n) => n.item === "messagesRead"),
+    { item: "messagesRead", verdict: "pass" }
+  );
+});
+
 // ---- unused-permission-manual (the by-hand reminder mirror) ----
 // It escalates one generic reminder (item: null) only when no list was produced;
 // a defined list (even empty) means the permissions were assessed, so it is a

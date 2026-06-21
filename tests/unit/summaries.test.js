@@ -162,10 +162,20 @@ test("buildAddonText lists declared permissions split by kind", () => {
     permissions: ["messagesRead", "<all_urls>"],
     optional_permissions: ["downloads"],
   });
-  const text = buildAddonText({ addon: addon({ "manifest.json": manifest }) });
+  const ctx = { addon: addon({ "manifest.json": manifest }) };
+  const text = buildAddonText(ctx);
   assert.match(text, /required permissions: messagesRead/);
   assert.match(text, /optional permissions: downloads/);
   assert.match(text, /host permissions: <all_urls>/);
+  // No proven-used set -> the confirmed-used line is present but empty.
+  assert.match(text, /confirmed used by static analysis[^\n]*: \(none\)/);
+  // With a proven-used set, the deterministically-used permission is named there
+  // so the prompt can tell the model to leave it alone.
+  const annotated = buildAddonText(ctx, { used: new Set(["messagesRead"]) });
+  assert.match(
+    annotated,
+    /confirmed used by static analysis[^\n]*: messagesRead/
+  );
 });
 
 // buildAddonSummarizer returns { bytes, run }: run() sends the registry prompt +

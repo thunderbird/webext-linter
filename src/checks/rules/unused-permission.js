@@ -16,6 +16,13 @@
 //   - status "unsure" -> a manual-review escalation (the model could not tell);
 //     the registry "instructions" message is its text.
 //
+// Before either, any entry naming a permission a reachable API call provably
+// requires (usedPermissions in lib/permissions.js) is dropped with a `pass` note:
+// the deterministic analysis is authoritative, so the LLM cannot flag a
+// proven-used permission. This is the same guard the unused-permission-manual
+// mirror applies; without it a non-deterministic model flag leaks straight to a
+// finding even though another check proved the permission used.
+//
 // The model's per-entry reason rides along as data.reason, filling the {{reason}}
 // slot in both the finding response and the manual instructions.
 //
@@ -26,6 +33,7 @@
 
 import { finding } from "../../report/finding.js";
 import { manifestTokenLine } from "../lib/util.js";
+import { getPermissionAnalysis } from "../lib/permissions.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -49,6 +57,11 @@ export default {
       return { findings: [], escalations: [] };
     }
     const text = ctx.addon.files.get("manifest.json")?.toString("utf8") ?? "";
+    // Permissions a reachable API call provably requires. The deterministic
+    // analysis is authoritative: the LLM must never override a proven-used
+    // permission, so any flag the model put on one is dropped here. This mirrors
+    // the same guard in the unused-permission-manual sibling check.
+    const used = getPermissionAnalysis(ctx).usedPermissions;
     const findings = [];
     const escalations = [];
     for (const { permission, status, reason } of entries) {
@@ -57,6 +70,11 @@ export default {
       }
       const line = manifestTokenLine(text, permission);
       const loc = line ? { line } : undefined;
+      if (used.has(permission)) {
+        // Deterministically proven used; the LLM cannot override that.
+        ctx.note?.("manifest.json", loc, permission, "pass");
+        continue;
+      }
       const data = { reason: reason ?? "" };
       if (status === "unused") {
         ctx.note?.("manifest.json", loc, permission, "fail");

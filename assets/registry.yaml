@@ -761,8 +761,11 @@ prompts:
     only home. Then add a separate bullet group titled "Permission review". Go
     through every declared permission (the declared permissions block lists them)
     and judge from the code whether it is actually needed, noting briefly what
-    justifies each or that it appears unused. A permission can be justified in two
-    ways. It is justified if the add-on calls an API that requires it (for example
+    justifies each or that it appears unused. The declared permissions block ends
+    with a line of permissions already confirmed used by static analysis; treat
+    each of those as justified without re-checking it, and never add it to
+    unusedPermissions. Assess only the remaining declared permissions. A
+    permission can be justified in two ways. It is justified if the add-on calls an API that requires it (for example
     the "downloads" permission for downloads.download). It is also justified if the
     add-on reads a property of returned data that the permission gates (for example
     the "accountsRead" permission gates a message header’s folder property, so
@@ -795,8 +798,8 @@ prompts:
     permissions your permission review found wanting, so the tool can raise them
     in the report. Add an entry for every declared permission (or host match
     pattern) that you judged unused or could not confirm is used, and omit the ones
-    that are clearly justified. Use the exact permission string as written in the
-    manifest. Set status to "unused" when you are confident the add-on does not
+    that are clearly justified and any on the confirmed-used line. Use the exact
+    permission string as written in the manifest. Set status to "unused" when you are confident the add-on does not
     need it, or "unsure" when you genuinely cannot tell (a human then decides).
     Give a one sentence reason for each. Prefer "unsure" over guessing.
     This is an advisory overview. The formal findings in the review report above
