@@ -127,6 +127,30 @@ test("bridge extracts tabs.create url and *.setPopup paths", () => {
   assert.deepEqual(paths(code), ["compose.html", "page.html", "popup.html"]);
 });
 
+// Each ref is tagged with the directory its path resolves against at runtime:
+// the MV2 tabs.* injection trio is page-relative ("page"), every other loader is
+// root-relative ("root"). The resolver (script-hosts.js) uses this to pick the
+// base, so the tag must come straight from the method name.
+test("tags page-relative trio base:page, other loaders base:root", () => {
+  const code = `
+    browser.tabs.executeScript({ file: "inject.js" });
+    browser.tabs.insertCSS({ file: "style.css" });
+    browser.tabs.removeCSS({ file: "old.css" });
+    browser.runtime.getURL("page.html");
+    browser.scripting.executeScript({ files: ["mv3.js"] });
+    browser.tabs.create({ url: "tab.html" });
+  `;
+  const base = Object.fromEntries(
+    scanLoaderRefs(code, 0, schema, 2).refs.map((r) => [r.path, r.base])
+  );
+  assert.equal(base["inject.js"], "page");
+  assert.equal(base["style.css"], "page");
+  assert.equal(base["old.css"], "page");
+  assert.equal(base["page.html"], "root");
+  assert.equal(base["mv3.js"], "root");
+  assert.equal(base["tab.html"], "root");
+});
+
 // Version-specific bridge entries respect the run's manifest version: the
 // default action is browserAction in MV2, renamed to action in MV3, and
 // tabs.executeScript is MV2-only (scripting.* covers MV3).

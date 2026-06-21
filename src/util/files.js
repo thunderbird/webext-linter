@@ -36,3 +36,14 @@ export function extname(file) {
 export function basename(file) {
   return file.slice(file.lastIndexOf("/") + 1);
 }
+
+/**
+ * The directory portion of an add-on-relative posix path, or "" if the path has
+ * no directory (a root-level file).
+ * @param {string} file
+ * @returns {string}
+ */
+export function dirname(file) {
+  const i = file.lastIndexOf("/");
+  return i === -1 ? "" : file.slice(0, i);
+}

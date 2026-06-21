@@ -140,6 +140,26 @@ test("reachability follows schema-derived and bridge loader APIs", () => {
   assert.ok(reach.reachable.has("page.html")); // bridge tabs.create
 });
 
+// A tabs.executeScript({file}) path is page-relative in Gecko: it resolves
+// against the calling script's host PAGE directory, not the extension root. Here
+// background.js (loaded by src/background.html) injects "message-unescape.js",
+// which lives next to the page in src/ - so it is reachable, not an orphan. (The
+// isabelle regression: a bare filename next to the background page.)
+test("reachability resolves tabs.executeScript file page-relative (Gecko)", () => {
+  const manifest = {
+    manifest_version: 2,
+    background: { page: "src/background.html" },
+  };
+  const files = {
+    "manifest.json": JSON.stringify(manifest),
+    "src/background.html": `<script src="background.js"></script>`,
+    "src/background.js": `browser.tabs.executeScript(id, { file: "message-unescape.js" });`,
+    "src/message-unescape.js": `console.log(1);`,
+  };
+  const reach = buildReachability(ctxFrom(files, manifest));
+  assert.ok(reach.reachable.has("src/message-unescape.js"));
+});
+
 // unused-files pre-flight: junk and a clearly-orphaned file are findings (the
 // registry stamps their severity); a file whose name is only string-mentioned
 // is an ambiguous case the rule escalates (the orchestrator decides its fate);

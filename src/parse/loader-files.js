@@ -65,6 +65,19 @@ const BRIDGE = new Map([
   ["messageDisplayAction.setPopup", { stringKeys: ["popup"] }],
 ]);
 
+// Methods whose file path Gecko resolves relative to the CALLING PAGE's document
+// base URL (the "current page URL"), not the extension root - unlike every other
+// loader here. Only the MV2 tabs.* injection trio behaves this way; the MV3
+// scripting.* replacements resolve their files root-relative in both browsers.
+// A ref from one of these carries base:"page" so the resolver (reachability /
+// bundled-files, via script-hosts.js) resolves it against the host page's
+// directory; everything else stays base:"root".
+const PAGE_RELATIVE_FILE_METHODS = new Set([
+  "tabs.executeScript",
+  "tabs.insertCSS",
+  "tabs.removeCSS",
+]);
+
 /**
  * Scan JS for file paths passed to file-loading API calls.
  * @param {string} code  JavaScript source text.
@@ -74,8 +87,11 @@ const BRIDGE = new Map([
  * @param {?number} [manifestVersion]  The add-on's manifest_version, so a
  *   version-specific bridge entry (e.g. browserAction vs action) applies only
  *   for its version. Null leaves every bridge entry in play.
- * @returns {{refs: {path: string, line: number, column: number}[],
- *   hasDynamic: boolean, parseError: string|null}}
+ * @returns {{refs: {path: string, line: number, column: number,
+ *   base: "page"|"root"}[], hasDynamic: boolean, parseError: string|null}}
+ *   Each ref's `base` is the directory its path resolves against at runtime:
+ *   "page" for the page-relative trio (see PAGE_RELATIVE_FILE_METHODS), else
+ *   "root" (extension-root-relative).
  */
 export function scanLoaderRefs(
   code,
@@ -91,6 +107,10 @@ export function scanLoaderRefs(
   const refs = [];
   const seenRef = new Set();
   const state = { hasDynamic: false };
+  // The resolution base of the call currently being walked, set per CallExpression
+  // before its arguments are extracted (both extraction branches funnel through
+  // `take`, which has no method context of its own).
+  let currentBase = "root";
   /**
    * Record a string-literal path at a file-path slot, or note a dynamic value.
    * @param {AstNode} node  The value AST node sitting at the slot.
@@ -106,7 +126,7 @@ export function scanLoaderRefs(
       const key = `${line}:${column}:${path}`;
       if (!seenRef.has(key)) {
         seenRef.add(key);
-        refs.push({ path, line, column });
+        refs.push({ path, line, column, base: currentBase });
       }
     } else if (isDynamicValue(node)) {
       state.hasDynamic = true; // a runtime-built path static analysis can't follow
@@ -122,6 +142,9 @@ export function scanLoaderRefs(
         return;
       }
       const args = path.node.arguments;
+      // Derive the resolution base from the method name, independent of which
+      // extraction branch (schema-directed or bridge) handles the call.
+      currentBase = PAGE_RELATIVE_FILE_METHODS.has(dotted) ? "page" : "root";
       if (loaders?.has(dotted) && canWalk) {
         const params = schema.resolveApi(dotted.split(".")).def?.parameters;
         if (Array.isArray(params)) {

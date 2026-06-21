@@ -22,6 +22,7 @@ import { finding } from "../../report/finding.js";
 import { scanLoaderRefs } from "../../parse/loader-files.js";
 import { classifyUrl } from "../../scan/url.js";
 import { manifestFileRefs, normalizeRef } from "../lib/manifest-refs.js";
+import { scriptHostDirs, resolvePageRelative } from "../lib/script-hosts.js";
 
 // A reference is a packaged-file candidate (so a missing target is an error)
 // only when it is a relative / root-relative path with no URI scheme. This
@@ -51,6 +52,9 @@ export default {
     }
 
     // 2. Files referenced by file-loading API calls (schema-directed + bridge).
+    // The page-relative trio (base:"page") is resolved against the calling
+    // script's host page directory (Gecko's rule), the rest root-relative.
+    const hostDirs = scriptHostDirs(ctx);
     const seen = new Set();
     for (const src of ctx.jsSources) {
       const { refs } = scanLoaderRefs(
@@ -69,7 +73,11 @@ export default {
         }
         seen.add(dedupKey);
         const loc = { line: ref.line, column: ref.column };
-        const present = has(ref.path);
+        const present =
+          ref.base === "page"
+            ? resolvePageRelative(addon.files, hostDirs, src.file, ref.path) !=
+              null
+            : has(ref.path);
         ctx.note?.(src.file, loc, ref.path, present ? "pass" : "fail");
         if (!present) {
           out.push(finding({ file: src.file, loc, item: ref.path }));

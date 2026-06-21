@@ -6,8 +6,9 @@
 // background-page-module check (a <script src> in the background page).
 //
 // Belongs here: manifestFileRefs (manifest -> referenced paths), normalizeRef
-// (raw path -> relative key, purely lexical), and resolveRef (raw path +
-// referrer -> packaged key, directory-aware).
+// (raw path -> relative key, purely lexical), resolveRef (raw path + referrer ->
+// packaged key, directory-aware), and resolveInDir (raw path + explicit base
+// directory -> packaged key; the page-relative variant resolveRef delegates to).
 //
 // Does NOT belong here: walking the reference graph - that is reachability.js.
 // web_accessible_resources shapes - web-accessible-resources.js. The
@@ -95,6 +96,28 @@ export function normalizeRef(p) {
  * @returns {string|null}
  */
 export function resolveRef(files, fromFile, raw) {
+  const dir =
+    fromFile == null
+      ? null
+      : fromFile.includes("/")
+        ? fromFile.slice(0, fromFile.lastIndexOf("/"))
+        : "";
+  return resolveInDir(files, dir, raw);
+}
+
+/**
+ * Resolve a reference against an explicit base DIRECTORY, or null if it is not a
+ * packaged file. `dir` null means extension-root-relative (as for the manifest /
+ * getURL / a generated background page); `dir === ""` is the add-on root; any
+ * other value is that directory. A leading "/" in `raw` is always root-relative.
+ * Used to resolve a page-relative loader path against the directory of the page
+ * that hosts the calling script (see script-hosts.js). `.`/`..` are normalized.
+ * @param {Map<string, Buffer>} files
+ * @param {string|null} dir
+ * @param {string} raw
+ * @returns {string|null}
+ */
+export function resolveInDir(files, dir, raw) {
   let p = String(raw ?? "")
     .replace(/\\/g, "/")
     .replace(/[?#].*$/, "")
@@ -102,12 +125,9 @@ export function resolveRef(files, fromFile, raw) {
   if (p === "") {
     return null;
   }
-  if (p.startsWith("/") || fromFile == null) {
+  if (p.startsWith("/") || dir == null) {
     p = p.replace(/^\/+/, "");
   } else {
-    const dir = fromFile.includes("/")
-      ? fromFile.slice(0, fromFile.lastIndexOf("/"))
-      : "";
     p = dir ? `${dir}/${p}` : p;
   }
   const parts = [];
