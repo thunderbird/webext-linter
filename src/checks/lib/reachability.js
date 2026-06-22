@@ -47,13 +47,7 @@ import {
   scanExperimentInjectedRefs,
 } from "../../parse/core-loaders.js";
 import { nonAuthoredJs } from "./bundled.js";
-import {
-  asArray,
-  asObject,
-  isExperiment,
-  DOC_METADATA_RE,
-  DEPENDENCY_FILE_RE,
-} from "./util.js";
+import { asArray, asObject, isExperiment, isDocFile } from "./util.js";
 import {
   experimentFileRefs,
   experimentSubtreeRoot,
@@ -84,15 +78,6 @@ const TEXT_EXTS = new Set([
   ".yaml",
   ".yml",
 ]);
-// Human-readable docs/metadata the add-on never loads at runtime. A path here is
-// a prose mention (e.g. a README screenshot), not a loader reference, so - like
-// manifest.json - these are excluded from the basename net. Otherwise an asset
-// referenced only by a README looks "mentioned" and never gets flagged.
-const DOC_FILE = new RegExp(
-  `${DOC_METADATA_RE.source}|${DEPENDENCY_FILE_RE.source}|\\.(md|markdown|txt|rst)$`,
-  "i"
-);
-
 /**
  * @typedef {object} Reachability
  * @property {Set<string>} reachable       Files reachable from any entry point.
@@ -504,7 +489,7 @@ function makeMentions(files) {
   for (const [file, buf] of files) {
     if (
       file !== "manifest.json" &&
-      !DOC_FILE.test(file) &&
+      !isDocFile(file) &&
       TEXT_EXTS.has(extname(file))
     ) {
       lines.set(file, buf.toString("utf8").split("\n"));

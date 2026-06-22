@@ -26,22 +26,18 @@ import {
   referrerSupported,
   loaderSites,
   loaderTrace,
-  DOC_METADATA_RE,
+  isDocMetadataFile,
   DEPENDENCY_FILE_RE,
 } from "../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../lib/reachability.js").Reachability} Reachability */
 
-// Never flag: documentation / project metadata the add-on ships but never loads
-// (license, readme, Description.md and the like - by name, doc extensions only),
-// dependency manifests / lock files, the manifest, and locale message catalogs.
-const ALLOW = [
-  DOC_METADATA_RE,
-  DEPENDENCY_FILE_RE,
-  /^manifest\.json$/i,
-  /^_locales\//,
-];
+// Never flag: dependency manifests / lock files, the manifest, and locale message
+// catalogs. Documentation / project metadata (license, readme, and the like) is
+// exempted separately by isDocMetadataFile (a doc-type file whose name contains a
+// known doc name).
+const ALLOW = [DEPENDENCY_FILE_RE, /^manifest\.json$/i, /^_locales\//];
 
 // Definite "should not ship" by name: OS/editor junk, source maps, archives.
 const JUNK = [
@@ -74,7 +70,11 @@ export default {
     let n = 0;
 
     for (const file of addon.files.keys()) {
-      if (vendored.has(file) || ALLOW.some((re) => re.test(file))) {
+      if (
+        vendored.has(file) ||
+        isDocMetadataFile(file) ||
+        ALLOW.some((re) => re.test(file))
+      ) {
         continue;
       }
       if (JUNK.some((re) => re.test(file))) {

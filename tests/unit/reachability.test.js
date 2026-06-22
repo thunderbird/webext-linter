@@ -247,17 +247,20 @@ test("unused-files: a basename colliding with a referenced library file is still
   assert.ok(!found.includes("lib/button.js")); // reachable, used
 });
 
-// Docs/metadata the add-on ships (Description.md, README.md, ...) are allowlisted
-// by NAME, but only with a documentation extension or none - a code file that
-// merely shares the name (history.js, README.js) is NOT exempt and stays subject
-// to the unused-files check, so the allowlist cannot hide code.
+// Docs/metadata the add-on ships are exempt when the basename CONTAINS a known doc
+// name and the file is a doc type (a documentation extension or none) - so localized
+// variants with any separator (README_DE.md, README.de.md) are covered, while a code
+// file that merely shares the name (history.js, README.js) is NOT exempt and stays
+// subject to the unused-files check, so the exemption cannot hide code.
 test("unused-files: docs allowlisted by name; same-named code still flagged", () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
     "bg.js": `console.log(1);`,
     "Description.md": "# store listing",
-    "Description_DE.md": "# localized variant",
+    "Description_DE.md": "# localized variant (underscore)",
+    "README.de.md": "# localized variant (dotted)",
+    "Description.fr.md": "# localized variant (dotted)",
     "CONTRIBUTING.md": "# how to help",
     "CODE_OF_CONDUCT.md": "# be nice",
     "TODO.md": "- things",
@@ -271,6 +274,8 @@ test("unused-files: docs allowlisted by name; same-named code still flagged", ()
   for (const doc of [
     "Description.md",
     "Description_DE.md",
+    "README.de.md",
+    "Description.fr.md",
     "CONTRIBUTING.md",
     "CODE_OF_CONDUCT.md",
     "TODO.md",

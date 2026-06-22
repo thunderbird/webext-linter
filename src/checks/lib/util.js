@@ -17,24 +17,54 @@
 // rule's verdict logic - src/checks/rules/*.
 
 import { DISPLAY_TRUNCATE_LENGTH } from "../../config.js";
+import { basename, extname } from "../../util/files.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("./reachability.js").Reachability} Reachability */
 /** @typedef {import("../../addon/load.js").Manifest} Manifest */
 
-// Documentation / project-metadata files an add-on may ship (for tooling, its
-// store listing, or the i18n runtime) but never loads at runtime: license,
-// readme, changelog, the vendor manifest, contributing/description/etc. Matched
-// by base NAME, so the match is limited to a documentation extension
-// (.md/.markdown/.txt/.rst) or none - a code file that merely shares the name
-// (README.js, history.js, security.js) is NOT exempt and stays subject to the
-// unused-files check. An optional [_-]<token> tail matches localized / variant
-// names (README_DE, README-pt-BR, CHANGELOG_v2, LICENSE-MIT, Description_pt-BR),
-// and the trailing `$` keeps it to the final path segment (so README/foo.js,
-// a file UNDER a README dir, is not swept in). Shared so the unused-files ALLOW
-// list and reachability's doc-file test agree.
-export const DOC_METADATA_RE =
-  /(^|\/)(LICENSE|COPYING|README|CHANGELOG|AUTHORS|NOTICE|VENDORS?|DESCRIPTION|CONTRIBUTING|INSTALL|HISTORY|SECURITY|CODE_OF_CONDUCT|TODO)(?:[_-][a-z0-9]+)*(?:\.(?:md|markdown|txt|rst))?$/i;
+// Documentation file extensions; an extensionless file (LICENSE, AUTHORS) also
+// counts as a doc type.
+const DOC_EXTENSIONS = new Set([".md", ".markdown", ".txt", ".rst"]);
+
+// Base NAMES (lowercased) of documentation / project-metadata files an add-on may
+// ship (for tooling, its store listing, or the i18n runtime) but never loads at
+// runtime. Matched as a SUBSTRING of the basename.
+const DOC_NAMES = [
+  "license",
+  "copying",
+  "readme",
+  "changelog",
+  "authors",
+  "notice",
+  "vendor",
+  "description",
+  "contributing",
+  "install",
+  "history",
+  "security",
+  "code_of_conduct",
+  "todo",
+];
+
+/**
+ * Whether a packaged file is documentation / project metadata the add-on ships but
+ * never loads at runtime: a doc-TYPE file (a DOC_EXTENSIONS extension, or none -
+ * LICENSE, AUTHORS) whose basename CONTAINS a DOC_NAME. Substring + doc-type, so
+ * localized / variant names (README_DE, README.de.md, CHANGELOG.v2.md) are all
+ * covered, while a same-named CODE file (README.js, history.js) is not. Shared so
+ * the unused-files ALLOW list and reachability's doc-file test agree.
+ * @param {string} file
+ * @returns {boolean}
+ */
+export function isDocMetadataFile(file) {
+  const ext = extname(file);
+  if (ext !== "" && !DOC_EXTENSIONS.has(ext)) {
+    return false;
+  }
+  const base = basename(file).toLowerCase();
+  return DOC_NAMES.some((name) => base.includes(name));
+}
 
 // Dependency manifests / lock files (a valid third-party-library declaration).
 // Matched as EXACT filenames - the extension is part of the identity, so unlike
@@ -42,6 +72,21 @@ export const DOC_METADATA_RE =
 // risk of exempting a same-named code file.
 export const DEPENDENCY_FILE_RE =
   /(^|\/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$/i;
+
+/**
+ * Broader doc test for reachability's mention net: a named doc, a dependency
+ * manifest / lock file, or ANY doc-extension file (even unnamed, e.g. notes.md) -
+ * all prose / metadata, never a runtime loader.
+ * @param {string} file
+ * @returns {boolean}
+ */
+export function isDocFile(file) {
+  return (
+    isDocMetadataFile(file) ||
+    DEPENDENCY_FILE_RE.test(file) ||
+    DOC_EXTENSIONS.has(extname(file))
+  );
+}
 
 /**
  * Drop findings that duplicate file+line+column+item+data (the discriminators
