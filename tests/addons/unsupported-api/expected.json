@@ -1,0 +1,6 @@
+{
+  "_comment": "runtime.onRestartRequired is annotated version_added: false (a Firefox API documented but unsupported in Thunderbird). unknown-api must flag it as unsupported - this guards the SchemaIndex.isUnsupported(version_added:false) detection from regressing.",
+  "expect": {
+    "unknown-api": ["background.js:5"]
+  }
+}

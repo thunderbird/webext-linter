@@ -2,6 +2,12 @@
   {
     "namespace": "runtime",
     "annotations": [{ "version_added": "57" }],
-    "events": [{ "name": "onMessage" }]
+    "events": [
+      { "name": "onMessage" },
+      {
+        "name": "onRestartRequired",
+        "annotations": [{ "version_added": false }]
+      }
+    ]
   }
 ]

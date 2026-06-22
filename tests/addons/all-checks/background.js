@@ -4,8 +4,8 @@
 browser.bogusApi.doThing();
 browser.messages.frobnicate();
 
-// deprecated-api: a deprecated method, a version-incompatible method, and a
-// deprecated namespace.
+// deprecated-api: a deprecated method (oldOne) and a deprecated namespace
+// (legacy). strict-min-version-api: future, added after strict_min_version 128.0.
 browser.messages.oldOne();
 browser.messages.future();
 browser.legacy.doThing();

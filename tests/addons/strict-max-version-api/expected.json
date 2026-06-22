@@ -1,0 +1,7 @@
+{
+  "_comment": "An Experiment (so strict_max_version is legitimate, and experiment-missing-strict-max-version stays silent) capped at 110.* but calling messages.tags.list (added in TB 121) - strict-max-version-api errors. Reviewed with experiments allowed so experiment-not-allowed stays silent.",
+  "options": { "--allow-experiments": true },
+  "expect": {
+    "strict-max-version-api": ["background.js:2"]
+  }
+}

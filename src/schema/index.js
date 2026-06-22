@@ -95,7 +95,8 @@ export const REL_URL_FORMATS = new Set([
 /**
  * One entry in a schema node's `annotations[]`.
  * @typedef {object} Annotation
- * @property {string} [version_added]  Version the API first appeared in.
+ * @property {string|boolean} [version_added]  Version the API first appeared in;
+ *   `false` marks it unsupported in this app, `true`/`"≤N"` mean baseline.
  * @property {string|boolean} [deprecated]  Deprecation message or flag.
  * @property {boolean} [unsupported]  Unsupported flag.
  * @property {string} [api_documentation_url]  Thunderbird API doc URL.
@@ -532,8 +533,19 @@ export class SchemaIndex {
     return a ? a.deprecated : null;
   }
 
+  // An API is unsupported when explicitly flagged, or when the schema annotates
+  // its introduction as `version_added: false` - the schemas carry no
+  // `unsupported` key, so `false` (the observed quirk `"false"` too) is how a
+  // documented-but-unavailable Firefox API is marked in Thunderbird.
   static isUnsupported(def) {
-    return def?.unsupported === true;
+    if (def?.unsupported === true) {
+      return true;
+    }
+    return Boolean(
+      def?.annotations?.some(
+        (x) => x.version_added === false || x.version_added === "false"
+      )
+    );
   }
 
   static docUrl(def) {

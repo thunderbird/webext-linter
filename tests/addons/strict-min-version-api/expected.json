@@ -1,0 +1,6 @@
+{
+  "_comment": "Realistic regression fixture modeled on the mboxsleuth submission: strict_min_version 115.0 while messages.tags.list/create were added in Thunderbird 121. strict-min-version-api flags both call sites.",
+  "expect": {
+    "strict-min-version-api": ["background.js:5", "background.js:6"]
+  }
+}

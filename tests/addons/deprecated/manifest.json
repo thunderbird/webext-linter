@@ -4,5 +4,6 @@
   "version": "1.0",
   "permissions": ["messagesRead"],
   "background": { "scripts": ["background.js"] },
+  "browser_specific_settings": { "gecko": { "strict_min_version": "128.0" } },
   "icons": { "16": "icon.png", "48": "icon.png" }
 }

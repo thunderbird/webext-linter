@@ -13,6 +13,8 @@
       "trademark-violation",
       "unknown-api",
       "deprecated-api",
+      "strict-max-version-api",
+      "strict-min-version-api",
       "missing-permission",
       "missing-manifest-key",
       "manifest-invalid-json",
@@ -69,11 +71,12 @@
     ]
   },
   "summary": {
-    "error": 0,
+    "error": 1,
     "warning": 0,
-    "info": 2,
+    "info": 1,
     "byRule": {
-      "deprecated-api": 2
+      "deprecated-api": 1,
+      "strict-min-version-api": 1
     }
   },
   "findings": [
@@ -90,16 +93,16 @@
       "message": "\"messages.oldOne\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
-      "ruleId": "deprecated-api",
-      "severity": "info",
+      "ruleId": "strict-min-version-api",
+      "severity": "error",
       "file": "background.js",
       "loc": {
         "line": 3,
         "column": 8
       },
-      "item": "messages.future",
-      "hint": null,
-      "message": "\"messages.future\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.\nRead more: https://webextension-api.thunderbird.net/."
+      "item": "browser.messages.future()",
+      "hint": "added in Thunderbird 200",
+      "message": "The add-on is setting strict_min_version to 128.0 but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly."
     }
   ]
 }

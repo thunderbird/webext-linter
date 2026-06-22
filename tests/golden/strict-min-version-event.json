@@ -1,0 +1,107 @@
+{
+  "meta": {
+    "action": "review",
+    "addon": "<root>/tests/addons/strict-min-version-event",
+    "addonKind": "dir",
+    "reviewed": true,
+    "schemaSource": "local:<root>/tests/schema-fixture",
+    "schemaBranch": null,
+    "schemaChannel": null,
+    "applicationVersion": "128.0",
+    "manifestVersion": 3,
+    "checksRun": [
+      "trademark-violation",
+      "unknown-api",
+      "deprecated-api",
+      "strict-max-version-api",
+      "strict-min-version-api",
+      "missing-permission",
+      "missing-manifest-key",
+      "manifest-invalid-json",
+      "manifest-missing",
+      "manifest-missing-key",
+      "manifest-version-mismatch",
+      "manifest-unknown-permission",
+      "unrecognized-manifest-key",
+      "mistyped-manifest-value",
+      "bundled-files",
+      "sync-xhr",
+      "unsafe-html",
+      "debugger-statement",
+      "async-onmessage",
+      "minimize-host-permissions",
+      "missing-library",
+      "obfuscated-code",
+      "api-coverage",
+      "unparsable-file",
+      "experiment-missing-strict-max-version",
+      "non-experiment-strict-max-version",
+      "unpinned-dependency",
+      "vendor-vulnerable",
+      "vendor-vuln-unknown",
+      "unpinned-vendor-source",
+      "vendor-modified",
+      "vendor-unverified",
+      "missing-vendor-file",
+      "disguised-resource",
+      "disguised-stylesheet",
+      "disguised-window",
+      "disguised-navigation",
+      "cleartext-transmission",
+      "privacy-policy",
+      "native-messaging",
+      "default-locale-missing",
+      "default-locale-unused",
+      "addon-icon-missing",
+      "background-module",
+      "background-page-module",
+      "eval-call",
+      "function-constructor",
+      "string-timer",
+      "csp-unsafe-eval",
+      "csp-unsafe-inline",
+      "missing-english-localization",
+      "unused-files",
+      "minimize-web-accessible-resources",
+      "remote-script",
+      "remote-eval",
+      "data-exfiltration",
+      "unused-permission",
+      "unused-permission-manual"
+    ]
+  },
+  "summary": {
+    "error": 1,
+    "warning": 1,
+    "info": 0,
+    "byRule": {
+      "strict-min-version-api": 1,
+      "non-experiment-strict-max-version": 1
+    }
+  },
+  "findings": [
+    {
+      "ruleId": "strict-min-version-api",
+      "severity": "error",
+      "file": "background.js",
+      "loc": {
+        "line": 5,
+        "column": 0
+      },
+      "item": "browser.compose.onAfterSend.addListener",
+      "hint": "added in Thunderbird 105",
+      "message": "The add-on is setting strict_min_version to 102.0 but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly."
+    },
+    {
+      "ruleId": "non-experiment-strict-max-version",
+      "severity": "warning",
+      "file": "manifest.json",
+      "loc": {
+        "line": 8
+      },
+      "item": "129.*",
+      "hint": null,
+      "message": "This add-on pins strict_max_version \"129.*\". The WebExtension APIs are stable and designed to keep add-ons forward-compatible across Thunderbird versions, so a maximum version is usually unnecessary and only blocks installs on newer Thunderbird."
+    }
+  ]
+}

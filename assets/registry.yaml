@@ -15,13 +15,29 @@ deterministic-checks:
     "{{item}}" is not supported in the targeted Thunderbird version.
     Read more: https://webextension-api.thunderbird.net/.
 
-# Flags deprecated APIs, and APIs added after the targeted Thunderbird version.
+# Flags deprecated APIs.
 - title: Deprecated WebExtension API
   severity: info
   check: deprecated-api.js
   response: |-
     "{{item}}" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
     Read more: https://webextension-api.thunderbird.net/.
+
+# Flags functions/events added after the declared strict_max_version: the add-on
+# caps support below the Thunderbird where the API first appeared.
+- title: API newer than strict_max_version
+  severity: error
+  check: strict-max-version-api.js
+  response: |-
+    The add-on is setting strict_max_version to {{max}} but uses functions or events added in a later Thunderbird. Raise strict_max_version, or stop using these APIs.
+
+# Flags functions/events added after the declared strict_min_version: the add-on
+# claims support for Thunderbird versions where the API does not yet exist.
+- title: API newer than strict_min_version
+  severity: error
+  check: strict-min-version-api.js
+  response: |-
+    The add-on is setting strict_min_version to {{min}} but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
 
 # Flags an API call whose required permission is not declared.
 - title: Missing permission

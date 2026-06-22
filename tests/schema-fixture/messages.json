@@ -54,7 +54,18 @@
   {
     "namespace": "messages.tags",
     "functions": [
-      { "name": "list", "async": true, "permissions": ["messagesTagsList"] }
+      {
+        "name": "list",
+        "async": true,
+        "permissions": ["messagesTagsList"],
+        "annotations": [{ "version_added": "121" }]
+      },
+      {
+        "name": "create",
+        "async": true,
+        "permissions": ["messagesTagsList"],
+        "annotations": [{ "version_added": "121" }]
+      }
     ]
   },
   {
@@ -69,7 +80,8 @@
               "messagesRead",
               "accountsRead",
               "messagesMove",
-              "messagesTagsList"
+              "messagesTagsList",
+              "compose"
             ]
           }
         ]

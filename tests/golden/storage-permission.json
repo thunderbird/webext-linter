@@ -13,6 +13,8 @@
       "trademark-violation",
       "unknown-api",
       "deprecated-api",
+      "strict-max-version-api",
+      "strict-min-version-api",
       "missing-permission",
       "missing-manifest-key",
       "manifest-invalid-json",

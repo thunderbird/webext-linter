@@ -1,14 +1,15 @@
 ── Issues ──
 
-Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
+Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+1) The add-on is setting strict_min_version to 128.0 but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
+ - background.js:3 - browser.messages.future() - added in Thunderbird 200
+
+We would like to share the following information with you:
+
+2) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
  - background.js:2 - Use list() instead.
-
-2) "messages.future" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
-Read more: https://webextension-api.thunderbird.net/.
- - background.js:3
 
 ── Extended manual review ──
 
@@ -89,4 +90,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 0 warning(s), 2 info, 11 manual review step(s)
+1 error(s), 0 warning(s), 1 info, 11 manual review step(s)

@@ -8,5 +8,6 @@
   "content_scripts": [
     { "matches": ["*://*/*"], "js": ["content.js", "missing.js"] }
   ],
-  "weirdTopLevelKey": true
+  "weirdTopLevelKey": true,
+  "browser_specific_settings": { "gecko": { "strict_min_version": "128.0" } }
 }

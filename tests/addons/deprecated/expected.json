@@ -1,6 +1,7 @@
 {
-  "_comment": "oldOne is deprecated; future requires a newer Thunderbird than the schema.",
+  "_comment": "oldOne is deprecated (deprecated-api); future was added in TB 200, newer than the declared strict_min_version 128.0 (strict-min-version-api).",
   "expect": {
-    "deprecated-api": ["background.js:2","background.js:3"]
+    "deprecated-api": ["background.js:2"],
+    "strict-min-version-api": ["background.js:3"]
   }
 }

@@ -191,6 +191,19 @@ export function strictMaxVersion(manifest) {
 }
 
 /**
+ * The declared gecko strict_min_version, from browser_specific_settings or the
+ * legacy applications key, or undefined.
+ * @param {Manifest} manifest
+ * @returns {string|undefined}
+ */
+export function strictMinVersion(manifest) {
+  return (
+    manifest?.browser_specific_settings?.gecko?.strict_min_version ??
+    manifest?.applications?.gecko?.strict_min_version
+  );
+}
+
+/**
  * The value if it is an array, else [] (defensive manifest-shape guard).
  * @param {unknown} v
  * @returns {unknown[]}

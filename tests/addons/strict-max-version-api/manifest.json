@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Strict Max Too New",
+  "version": "1.0",
+  "permissions": ["messagesTagsList"],
+  "browser_specific_settings": { "gecko": { "strict_max_version": "110.*" } },
+  "experiment_apis": { "myapi": {} },
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

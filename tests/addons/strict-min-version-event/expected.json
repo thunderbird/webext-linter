@@ -1,0 +1,7 @@
+{
+  "_comment": "Realistic regression fixture modeled on the mailmindr submission: strict_min_version 102.0 while the compose.onAfterSend event was added in Thunderbird 105 (strict-min-version-api). The pinned strict_max_version on this non-Experiment also trips non-experiment-strict-max-version. Exercises the version check on an EVENT (not just functions).",
+  "expect": {
+    "strict-min-version-api": ["background.js:5"],
+    "non-experiment-strict-max-version": ["manifest.json:8"]
+  }
+}

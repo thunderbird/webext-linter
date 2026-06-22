@@ -1,0 +1,12 @@
+[
+  {
+    "namespace": "compose",
+    "permissions": ["compose"],
+    "events": [
+      {
+        "name": "onAfterSend",
+        "annotations": [{ "version_added": "105" }]
+      }
+    ]
+  }
+]

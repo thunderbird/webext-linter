@@ -44,8 +44,11 @@ import {
   runOneCheck,
 } from "../../src/checks/registry.js";
 import { finding } from "../../src/report/finding.js";
+import unknownApi from "../../src/checks/rules/unknown-api.js";
+import strictMaxVersionApi from "../../src/checks/rules/strict-max-version-api.js";
+import strictMinVersionApi from "../../src/checks/rules/strict-min-version-api.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
-import { buildSchemaIndex } from "../../src/schema/index.js";
+import { buildSchemaIndex, SchemaIndex } from "../../src/schema/index.js";
 import { parseVendorManifest } from "../../src/normalize/vendor.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -523,8 +526,9 @@ test("unused-permission-manual lists permissions only when no list was produced"
 
 // ---- deprecated-api ----
 // A deprecated API's hint is the schema's own deprecation message (the migration
-// note), not a link to the deprecated item. An API that is only "too new"
-// (version_added beyond the target) carries no deprecation message, so no hint.
+// note), not a link to the deprecated item. A "too new" API (version_added beyond
+// the supported range) is NOT deprecated-api's concern - it belongs to the
+// strict-min/strict-max-version-api checks, so deprecated-api ignores it.
 test("deprecated-api hint is the schema deprecation message, not a doc link", () => {
   const ctx = {
     schema,
@@ -541,8 +545,211 @@ test("deprecated-api hint is the schema deprecation message, not a doc link", ()
   const out = deprecatedApi.run(ctx);
   const old = out.find((f) => f.item === "messages.oldOne");
   assert.equal(old.hint, "Use list() instead."); // schema message, not a URL
-  const fut = out.find((f) => f.item === "messages.future");
-  assert.equal(fut.hint ?? null, null); // too-new, no message -> no hint
+  // messages.future is "too new", not deprecated -> deprecated-api ignores it.
+  assert.equal(
+    out.some((f) => f.item === "messages.future"),
+    false
+  );
+});
+
+// ---- unknown-api: version_added:false is unsupported ----
+// The schemas carry no `unsupported` key; a documented-but-unavailable Firefox
+// API is marked `version_added: false`. unknown-api must flag it (and only it).
+test("unknown-api flags version_added:false as unsupported", () => {
+  const local = buildSchemaIndex({
+    files: {
+      t: [
+        {
+          namespace: "t",
+          functions: [
+            { name: "gone", annotations: [{ version_added: false }] },
+            { name: "ok", annotations: [{ version_added: "60" }] },
+          ],
+        },
+      ],
+    },
+  });
+  assert.equal(
+    SchemaIndex.isUnsupported(local.resolveApi(["t", "gone"]).def),
+    true
+  );
+  const ctx = {
+    schema: local,
+    apiUsages: [
+      {
+        file: "bg.js",
+        usages: [
+          { root: "browser", segments: ["t", "gone"], line: 1, column: 0 },
+          { root: "browser", segments: ["t", "ok"], line: 2, column: 0 },
+        ],
+      },
+    ],
+  };
+  const out = unknownApi.run(ctx);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].item, "browser.t.gone");
+});
+
+// ---- strict-max-version-api ----
+// version_added beyond the declared strict_max_version: no supported install has
+// the API. Major-granularity compare (strict_max is conventionally "N.*").
+const maxCtx = (max, usages) => ({
+  schema,
+  addon: {
+    manifest: max
+      ? { browser_specific_settings: { gecko: { strict_max_version: max } } }
+      : {},
+  },
+  apiUsages: [{ file: "bg.js", usages }],
+});
+
+test("strict-max-version-api flags an API added after strict_max_version", () => {
+  const out = strictMaxVersionApi.run(
+    maxCtx("140.*", [
+      {
+        root: "messenger",
+        segments: ["messages", "future"],
+        line: 12,
+        column: 4,
+      }, // va 200
+      {
+        root: "messenger",
+        segments: ["messages", "list"],
+        line: 13,
+        column: 4,
+      }, // va 66
+    ])
+  );
+  assert.equal(out.length, 1);
+  assert.equal(out[0].item, "messenger.messages.future()");
+  assert.equal(out[0].hint, "added in Thunderbird 200");
+  assert.equal(out[0].data.max, "140.*");
+  assert.equal(out[0].file, "bg.js");
+  assert.deepEqual(out[0].loc, { line: 12, column: 4 });
+});
+
+test("strict-max-version-api passes when strict_max_version covers the API", () => {
+  const out = strictMaxVersionApi.run(
+    maxCtx("250.*", [
+      {
+        root: "messenger",
+        segments: ["messages", "future"],
+        line: 1,
+        column: 0,
+      }, // 200 <= 250
+    ])
+  );
+  assert.equal(out.length, 0);
+});
+
+test("strict-max-version-api is skipped without strict_max_version", () => {
+  const out = strictMaxVersionApi.run(
+    maxCtx(null, [
+      {
+        root: "messenger",
+        segments: ["messages", "future"],
+        line: 1,
+        column: 0,
+      },
+    ])
+  );
+  assert.equal(out.length, 0);
+});
+
+// ---- strict-min-version-api ----
+// version_added newer than the declared strict_min_version: installs at the low
+// end of the supported range lack the API. Tuple compare (minor/patch matter).
+const minCtx = (min, usages) => ({
+  schema,
+  addon: {
+    manifest: min
+      ? { browser_specific_settings: { gecko: { strict_min_version: min } } }
+      : {},
+  },
+  apiUsages: [{ file: "bg.js", usages }],
+});
+
+test("strict-min-version-api flags APIs added after strict_min_version", () => {
+  const out = strictMinVersionApi.run(
+    minCtx("60.0", [
+      {
+        root: "messenger",
+        segments: ["messages", "future"],
+        line: 12,
+        column: 4,
+      }, // va 200
+      {
+        root: "messenger",
+        segments: ["messages", "list"],
+        line: 13,
+        column: 4,
+      }, // va 66
+    ])
+  );
+  assert.equal(out.length, 2); // 200 and 66 both > 60
+  const f = out.find((x) => x.item === "messenger.messages.future()");
+  assert.equal(f.hint, "added in Thunderbird 200");
+  assert.equal(f.data.min, "60.0");
+  assert.equal(f.file, "bg.js");
+  assert.deepEqual(f.loc, { line: 12, column: 4 });
+});
+
+test("strict-min-version-api passes when strict_min_version >= version_added", () => {
+  const out = strictMinVersionApi.run(
+    minCtx("128.0", [
+      { root: "messenger", segments: ["messages", "list"], line: 1, column: 0 }, // 66 <= 128
+    ])
+  );
+  assert.equal(out.length, 0);
+});
+
+test("strict-min-version-api is skipped without strict_min_version", () => {
+  const out = strictMinVersionApi.run(
+    minCtx(null, [
+      {
+        root: "messenger",
+        segments: ["messages", "future"],
+        line: 1,
+        column: 0,
+      },
+    ])
+  );
+  assert.equal(out.length, 0);
+});
+
+test("strict-min-version-api compares minor/patch components", () => {
+  const local = buildSchemaIndex({
+    files: {
+      t: [
+        {
+          namespace: "t",
+          functions: [
+            { name: "f", annotations: [{ version_added: "140.4.1" }] },
+          ],
+        },
+      ],
+    },
+  });
+  const run = (min) =>
+    strictMinVersionApi.run({
+      schema: local,
+      addon: {
+        manifest: {
+          browser_specific_settings: { gecko: { strict_min_version: min } },
+        },
+      },
+      apiUsages: [
+        {
+          file: "bg.js",
+          usages: [
+            { root: "browser", segments: ["t", "f"], line: 1, column: 0 },
+          ],
+        },
+      ],
+    });
+  assert.equal(run("140.4.0").length, 1); // 140.4.1 > 140.4.0 -> flag
+  assert.equal(run("140.4.1").length, 0); // equal -> not flagged
+  assert.equal(run("140.5.0").length, 0); // 140.4.1 < 140.5.0 -> not flagged
 });
 
 // ---- permission analysis: dead files are ignored ----
