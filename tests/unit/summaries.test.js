@@ -180,15 +180,16 @@ test("buildAddonText lists declared permissions split by kind", () => {
 
 // buildAddonSummarizer returns { bytes, run }: run() sends the registry prompt +
 // the current add-on via ctx.llm.reviewAddon, and yields the structured
-// { summary, unusedPermissions }; bytes is the sent message's UTF-8 size.
+// { summary, recheck }; bytes is the sent message's UTF-8 size.
 test("buildAddonSummarizer sends prompt+add-on and returns the structured review", async () => {
   let received;
   const review = {
     summary: "The add-on logs on startup.",
-    unusedPermissions: [
+    recheck: [
       {
-        permission: "tabs",
-        status: "unused",
+        check: "unused-permission",
+        item: "tabs",
+        verdict: "fail",
         reason: "no tab property is read",
       },
     ],

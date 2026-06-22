@@ -7,14 +7,14 @@ deterministic-checks:
 # separate manual check).
 - title: Trademark violation
   severity: error
-  check: trademark-violation.js
+  check: trademark-violation
   response: |-
     This extension uses a registered trademark of Mozilla in its name or icon and is unallowable under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). For Mozilla trademarks, the usage of “Mozilla” and “Thunderbird” are generally not allowed in the add-on name, except in the following format: “ADD-ON NAME for Thunderbird.”
 
 # Flags API namespaces or members absent from the schema, or marked unsupported.
 - title: Unknown or unsupported WebExtension API
   severity: error
-  check: unknown-api.js
+  check: unknown-api
   response: |-
     "{{item}}" is not supported in the targeted Thunderbird version.
     Read more: https://webextension-api.thunderbird.net/.
@@ -22,7 +22,7 @@ deterministic-checks:
 # Flags deprecated APIs.
 - title: Deprecated WebExtension API
   severity: info
-  check: deprecated-api.js
+  check: deprecated-api
   response: |-
     "{{item}}" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
     Read more: https://webextension-api.thunderbird.net/.
@@ -31,7 +31,7 @@ deterministic-checks:
 # caps support below the Thunderbird where the API first appeared.
 - title: API newer than strict_max_version
   severity: error
-  check: strict-max-version-api.js
+  check: strict-max-version-api
   response: |-
     The add-on is setting strict_max_version to {{max}} but uses functions or events added in a later Thunderbird. Raise strict_max_version, or stop using these APIs.
 
@@ -39,28 +39,28 @@ deterministic-checks:
 # claims support for Thunderbird versions where the API does not yet exist.
 - title: API newer than strict_min_version
   severity: error
-  check: strict-min-version-api.js
+  check: strict-min-version-api
   response: |-
     The add-on is setting strict_min_version to {{min}} but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
 
 # Flags an API call whose required permission is not declared.
 - title: Missing permission
   severity: error
-  check: missing-permission.js
+  check: missing-permission
   response: |-
     "{{item}}" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
 
 # Flags an API call that needs a manifest key (e.g. "action") not declared.
 - title: Missing manifest key
   severity: error
-  check: missing-manifest-key.js
+  check: missing-manifest-key
   response: |-
     {{item}} needs a manifest key that is not declared: {{keys}}. Add one of those keys to manifest.json.
 
 # manifest.json is present but not valid JSON.
 - title: Invalid manifest JSON
   severity: error
-  check: manifest-invalid-json.js
+  check: manifest-invalid-json
   response: |-
     Invalid manifest.json: manifest.json is not valid JSON.
     Read more: https://webextension-api.thunderbird.net/.
@@ -68,7 +68,7 @@ deterministic-checks:
 # No manifest.json at the add-on root.
 - title: Missing manifest
   severity: error
-  check: manifest-missing.js
+  check: manifest-missing
   response: |-
     Invalid manifest.json: no manifest.json at the add-on root.
     Read more: https://webextension-api.thunderbird.net/.
@@ -76,7 +76,7 @@ deterministic-checks:
 # A required top-level manifest key is absent.
 - title: Missing required manifest key
   severity: error
-  check: manifest-missing-key.js
+  check: manifest-missing-key
   response: |-
     Invalid manifest.json: one or more required properties are missing.
     Read more: https://webextension-api.thunderbird.net/.
@@ -84,7 +84,7 @@ deterministic-checks:
 # manifest_version disagrees with the schema set being reviewed.
 - title: Manifest version mismatch
   severity: error
-  check: manifest-version-mismatch.js
+  check: manifest-version-mismatch
   response: |-
     Invalid manifest.json: manifest_version {{item}} does not match the schema set (Manifest V{{schema}}).
     Read more: https://webextension-api.thunderbird.net/.
@@ -93,7 +93,7 @@ deterministic-checks:
 # data-collection permission, nor a match pattern.
 - title: Unknown permission
   severity: error
-  check: manifest-unknown-permission.js
+  check: manifest-unknown-permission
   response: |-
     Invalid manifest.json: one or more requested permissions are unknown.
     Read more: https://webextension-api.thunderbird.net/.
@@ -101,7 +101,7 @@ deterministic-checks:
 # An unknown top-level manifest key (Thunderbird ignores it).
 - title: Unrecognized manifest key
   severity: info
-  check: unrecognized-manifest-key.js
+  check: unrecognized-manifest-key
   response: |-
     Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.
     Read more: https://webextension-api.thunderbird.net/.
@@ -109,7 +109,7 @@ deterministic-checks:
 # A known manifest key with a wrong-typed value (Thunderbird misreads it).
 - title: Mistyped manifest value
   severity: warning
-  check: mistyped-manifest-value.js
+  check: mistyped-manifest-value
   response: |-
     Manifest entry issue: "{{item}}" {{detail}}. Thunderbird ignores or misreads such entries.
     Read more: https://webextension-api.thunderbird.net/.
@@ -118,21 +118,21 @@ deterministic-checks:
 # the package.
 - title: Missing referenced file
   severity: error
-  check: bundled-files.js
+  check: bundled-files
   response: |-
     "{{item}}" is referenced but not bundled with the add-on. Please include every referenced file in the package.
 
 # Flags synchronous XMLHttpRequest (open(..., false)), which blocks the UI thread.
 - title: Synchronous XMLHttpRequests
   severity: error
-  check: sync-xhr.js
+  check: sync-xhr
   response: |-
     The add-on makes a synchronous XMLHttpRequest, which can lock up the user interface. Please use an asynchronous request instead.
 
 # Flags dynamic content written to innerHTML/outerHTML/srcdoc/insertAdjacentHTML.
 - title: Modifying innerHTML, unsanitized HTML
   severity: warning
-  check: unsafe-html.js
+  check: unsafe-html
   response: |-
     Dynamic content is assigned via "{{item}}". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
@@ -140,14 +140,14 @@ deterministic-checks:
 # Flags unconditional debugger statements left in shipped code.
 - title: Debugger statement
   severity: error
-  check: debugger-statement.js
+  check: debugger-statement
   response: |-
     Unconditional debugger statement. Please remove it or move it behind a config flag.
 
 # Flags an async listener passed to runtime.onMessage.addListener().
 - title: Async listener in runtime.onMessage()
   severity: warning
-  check: async-onmessage.js
+  check: async-onmessage
   response: |-
     Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
@@ -156,53 +156,91 @@ deterministic-checks:
 # over the add-on’s authored JS. Style/fixable rules are excluded (read-only tool).
 - title: JavaScript code errors
   severity: info
-  check: code-sanity.js
+  check: code-sanity
   response: |-
     Static analysis flagged a likely code error: {{item}}
 
 # Flags broad host permissions (<all_urls> or a "*" host) requested as required.
 - title: Minimize host permissions
   severity: info
-  check: minimize-host-permissions.js
+  check: minimize-host-permissions
   response: |-
     The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
     Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
 
-# Flags a declared permission the --full-summary LLM pass judged unused (a
-# warning) or could not confirm is used (manual review). Always runs, reading the
-# structured list that pass stored on the context: when the list holds entries
-# they are evaluated, otherwise there is nothing to evaluate (its mirror,
-# Unused permissions, raises the by-hand reminder). The {{reason}} slot carries
-# the model’s developer-facing why.
-- title: Possibly unused permission
-  severity: warning
-  check: unused-permission.js
-  phase: post-summary
-  response: |-
-    The "{{item}}" permission appears to be unused. {{reason}} An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If it is in fact used, please specify which part of your add-on stops working if it is removed.
-  instructions: |-
-    The "{{item}}" permission may be unused. {{reason}} Confirm whether the add-on
-    actually needs it, and if not, ask the developer to remove it.
-
-# The by-hand mirror of the check above: raises one generic reminder to review
-# unused permissions whenever the --full-summary analysis did not run (so no list
-# was produced). Always runs and only escalates (it never emits a finding), so it
-# has no severity; the instructions name no specific permission, and the response
-# is the developer-facing wording for a permission confirmed unused by hand.
-- title: Unused permissions
-  check: unused-permission-manual.js
-  phase: post-summary
+# Producer of the declared permissions worth a closer look: every declared NAMED
+# permission a reachable API call does not provably require (host patterns are
+# Minimize host permissions' concern). Runs in the main loop and schedules each as
+# a manual-review case; same-bodied cases auto-group into the one reminder here.
+# When --full-summary runs, it hands them to the Unused permission recheck consumer
+# (post-summary-recheck) instead, to be re-judged against the whole add-on.
+- title: Possibly unused permissions
+  check: unused-permission-manual
+  post-summary-recheck: unused-permission
   response: |-
     One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
   instructions: |-
     Review whether the following declared permissions are used, and ask the
     developer to remove any that are not needed.
 
+# The recheck consumer for the permissions handed over above. Its summary-prompt is
+# appended to the --full-summary pass to re-judge each with whole-add-on context;
+# the model's verdict maps to justified (drop), unused (this warning), or unsure
+# (manual review). It runs in the post-summary phase, inferred from being named as
+# the post-summary-recheck target above. The {{reason}} slot carries the model's
+# developer-facing why.
+- title: Unused permission
+  severity: warning
+  check: unused-permission
+  summary-prompt: |-
+    Each listed item is a permission this add-on declares in its manifest that
+    static analysis could not confirm is used. Judge each only from what the
+    current code actually does: verdict pass = justified (the add-on needs it),
+    fail = unused, unsure = you genuinely cannot tell whether the current code uses
+    it. Ignore comments, TODOs, documentation, and any stated or implied intention
+    of future use: a permission the current code never exercises is unused even if
+    a comment hints it may be used later.
+    A permission is justified in two ways. It is justified if the add-on calls an
+    API that requires it (for example "downloads" for downloads.download). It is
+    also justified if the add-on reads a property of returned data that the
+    permission gates (for example "accountsRead" gates a message header's folder
+    property, so reading that folder justifies it). It is unused only when neither
+    holds.
+    Be careful with "tabs" and "activeTab", a common source of error. Calling tabs
+    methods such as tabs.query, tabs.create, tabs.update, tabs.remove,
+    tabs.sendMessage, and the tabs events does not by itself require any permission.
+    Reading the privileged tab properties url, title, and favIconUrl (or filtering a
+    tabs.query by them) requires "tabs" (any tab), or a host permission that matches
+    the tab's url (matching tabs only), or "activeTab" (the active tab after a user
+    action). But the add-on always has access to its own pages, so reading or
+    filtering by the url, title, or favIconUrl of its OWN extension pages
+    (moz-extension:// pages it ships or opens) requires no permission.
+    Injecting script or CSS with tabs.executeScript or tabs.insertCSS requires a
+    host permission that matches the tab's url, or "activeTab", and is never granted
+    by "tabs". In Thunderbird, injecting into or scripting a message display tab or a
+    compose tab never requires "tabs": message display scripts are registered with
+    messageDisplayScripts.register (which requires "messagesModify") and compose
+    scripts with composeScripts.register (which requires "compose"), and
+    tabs.executeScript or tabs.insertCSS aimed at the message pane or a compose
+    window does not require "tabs".
+    Treat "activeTab" as justified when an injection or property read is confined to
+    the active tab after a user gesture such as a toolbar or menu click, a keyboard
+    shortcut, or a button on a bundled page. A broad host permission such as
+    "<all_urls>" usually makes "tabs" redundant for property reads.
+    A permission gated only by an API call the current code never makes is fail
+    (unused), not unsure. Reserve unsure for genuine ambiguity about current use,
+    such as a permission-gated property that might be read.
+  response: |-
+    The "{{item}}" permission appears to be unused. {{reason}} An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If it is in fact used, please specify which part of your add-on stops working if it is removed.
+  instructions: |-
+    The "{{item}}" permission may be unused. {{reason}} Confirm whether the add-on
+    actually needs it, and if not, ask the developer to remove it.
+
 # Flags a bundled-looking third-party library - JS or CSS - (banner/UMD/.min.
 # name/known name) not declared in a VENDOR file.
 - title: Missing third-party library reference
   severity: error
-  check: missing-library.js
+  check: missing-library
   response: |-
     The following file(s) appear to be third-party libraries. Please link to their sources and ensure each bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice).
     Example: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html#safely-sanitizing-external-markup-with-dompurify
@@ -212,7 +250,7 @@ deterministic-checks:
 # asks for the original sources.
 - title: Source Archive (minified or obfuscated code) required
   severity: error
-  check: obfuscated-code.js
+  check: obfuscated-code
   response: |-
     The following file(s) are minified, obfuscated or otherwise machine-generated code, which cannot be reviewed in this form. The simplest fix is to ship the original, human-readable code directly (the add-on does not need to be minified or obfuscated). Alternatively, upload the original sources as a source code archive that includes the build instructions and build process needed to generate the final XPI, using the source code upload field available during submission or on the version page in the developer hub.
     Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
@@ -221,7 +259,7 @@ deterministic-checks:
 # developer could make on ATN instead of resubmitting.
 - title: 'strict_max_version can be updated on ATN'
   severity: info
-  check: strict-max-version-bump-only.js
+  check: strict-max-version-bump-only
   diff: true
   response: |-
     Instead of submitting a new version that only increases the strict_max_version entry in your manifest, you can update the max version setting of the most recent submission directly on this add-on’s ATN admin page.
@@ -229,14 +267,14 @@ deterministic-checks:
 # Reports dynamic/aliased API access the static analysis cannot resolve.
 - title: Static analysis coverage
   severity: info
-  check: api-coverage.js
+  check: api-coverage
   response: |-
     Limited static-analysis coverage: {{item}}
 
 # Reports a file that failed to parse, so its API checks were skipped.
 - title: Unparsable file
   severity: info
-  check: unparsable-file.js
+  check: unparsable-file
   response: |-
     Limited static-analysis coverage: could not be parsed, so API checks were skipped ({{detail}})
 
@@ -247,7 +285,7 @@ deterministic-checks:
 # experiment-modified. The per-experiment reason is appended to each location line.
 - title: Experiment APIs not accepted
   severity: error
-  check: experiment-not-allowed.js
+  check: experiment-not-allowed
   phase: invalid-experiment
   response: |-
     We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). The following cannot be accepted:
@@ -257,7 +295,7 @@ deterministic-checks:
 # outdated (it would be accepted if it were the unmodified latest upstream copy).
 - title: Modified or outdated Experiment draft
   severity: error
-  check: experiment-modified.js
+  check: experiment-modified
   response: |-
     "{{item}}" is a published Thunderbird Experiment API draft, but this add-on bundles a modified or outdated copy. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments.
 
@@ -265,7 +303,7 @@ deterministic-checks:
 # strict_max_version.
 - title: Experiment missing strict_max_version
   severity: error
-  check: experiment-missing-strict-max-version.js
+  check: experiment-missing-strict-max-version
   response: |-
     This add-on uses Experiment APIs but declares no strict_max_version. Experiments rely on internal APIs that change between major Thunderbird versions, so they must set browser_specific_settings.gecko.strict_max_version.
 
@@ -273,7 +311,7 @@ deterministic-checks:
 # Thunderbird API instead of adding a new one.
 - title: Experiment overrides a built-in API
   severity: error
-  check: experiment-overrides-api.js
+  check: experiment-overrides-api
   response: |-
     The Experiment API "{{item}}" overrides or extends a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under a new, distinct API namespace.
 
@@ -281,7 +319,7 @@ deterministic-checks:
 # Thunderbird; the APIs are forward-compatible).
 - title: Unnecessary strict_max_version
   severity: warning
-  check: non-experiment-strict-max-version.js
+  check: non-experiment-strict-max-version
   response: |-
     This add-on pins strict_max_version "{{item}}". The WebExtension APIs are stable and designed to keep add-ons forward-compatible across Thunderbird versions, so a maximum version is usually unnecessary and only blocks installs on newer Thunderbird.
 
@@ -294,7 +332,7 @@ deterministic-checks:
 # warns when a declared file is missing.
 - title: Unpinned dependency
   severity: error
-  check: unpinned-dependency.js
+  check: unpinned-dependency
   response: |-
     A bundled dependency is not pinned to an exact version: {{item}}, declared as "{{spec}}". A version range can resolve to different releases over time, so the bundled copy cannot be verified against a known upstream. Pin it to an exact version in package.json, or commit the lock file (package-lock.json, npm-shrinkwrap.json, yarn.lock, or pnpm-lock.yaml) that records the exact version used.
 
@@ -305,7 +343,7 @@ deterministic-checks:
 # band (high/critical -> error, moderate/medium -> warning, else info).
 - title: Vulnerable dependency
   severity: auto
-  check: vendor-vulnerable.js
+  check: vendor-vulnerable
   response: |-
     A bundled dependency has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). Update {{item}} to {{fixed}} or later, re-bundle, and resubmit. If you believe the advisory does not apply to how this add-on uses the dependency, let us know why.
 
@@ -314,19 +352,19 @@ deterministic-checks:
 # unchecked (npm-sourced entries above are audited).
 - title: Vendored library not vulnerability-checked
   severity: info
-  check: vendor-vuln-unknown.js
+  check: vendor-vuln-unknown
   response: |-
     The bundled third-party file {{item}} is sourced from a GitHub URL ({{source}}), so its known-vulnerability status could not be determined automatically - automated auditing against the OSV database covers npm-hosted sources only. To have this library checked, declare it in your VENDOR file with an npm source (unpkg or jsDelivr /npm) pinned to an exact version.
 
 - title: Unpinned vendored source
   severity: error
-  check: unpinned-vendor-source.js
+  check: unpinned-vendor-source
   response: |-
     A vendored file cites a source that is not pinned to an immutable version: {{item}} is linked to {{url}}, which is a branch or unversioned URL rather than a pinned release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from.
 
 - title: Modified vendored library
   severity: error
-  check: vendor-modified.js
+  check: vendor-modified
   response: |-
     A bundled third-party file does not match its declared source: {{item}} does not match the bytes its declared source ({{url}}) serves, so it appears to have been modified from the upstream release. Ship the file exactly as the source publishes it, or correct the declared source to the release the file actually came from.
 
@@ -334,7 +372,7 @@ deterministic-checks:
 # automatically to manual review (its `instructions`); it emits no findings, so
 # it carries no severity.
 - title: Vendored library needs manual verification
-  check: vendor-unverified.js
+  check: vendor-unverified
   response: |-
     The following bundled third-party file(s) could not be automatically verified against their upstream source. For each, make sure your VENDOR file gives the library’s exact upstream version and a source URL that pins that release on a trusted host (unpkg, jsDelivr, or a raw GitHub URL), and that the bundled copy is unmodified, so it can be verified automatically.
   instructions: |-
@@ -345,7 +383,7 @@ deterministic-checks:
 # Flags a VENDOR entry (file + source URL) whose file is absent from the package.
 - title: Missing vendored file
   severity: warning
-  check: missing-vendor-file.js
+  check: missing-vendor-file
   response: |-
     One or more files listed in "{{item}}" are not present in the submission. Add each file to the submission, or remove its entry from "{{item}}".
 
@@ -354,25 +392,25 @@ deterministic-checks:
 # navigation); all read the shared outbound-sink scan.
 - title: Disguised data transmission (resource)
   severity: error
-  check: disguised-resource.js
+  check: disguised-resource
   response: |-
     This add-on appears to send data through a resource URL (image/iframe/media src) - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 - title: Disguised data transmission (stylesheet)
   severity: error
-  check: disguised-stylesheet.js
+  check: disguised-stylesheet
   response: |-
     This add-on appears to send data through a stylesheet or CSS url() - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 - title: Disguised data transmission (window)
   severity: error
-  check: disguised-window.js
+  check: disguised-window
   response: |-
     This add-on appears to send data through a window.open() to a remote URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 - title: Disguised data transmission (navigation)
   severity: error
-  check: disguised-navigation.js
+  check: disguised-navigation
   response: |-
     This add-on appears to send data through a page navigation - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
@@ -380,14 +418,14 @@ deterministic-checks:
 # connection - any cleartext transmission, whatever the payload.
 - title: Unencrypted data transmission
   severity: error
-  check: cleartext-transmission.js
+  check: cleartext-transmission
   response: |-
     Data is sent over an unencrypted connection to {{item}}. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
 
 # Preflight -> manual review: data sent to a hardcoded remote host means the
 # listing must carry a privacy policy, which is not part of the package.
 - title: Remote data transmission needs a privacy policy
-  check: privacy-policy.js
+  check: privacy-policy
   response: |-
     Please add a privacy policy to this add-on that details which user data is being sent and to what services. The critical things to describe in the policy are how your extension collects, uses, stores, shares or discloses information about people. If your add-on makes it apparent to websites that it is installed, this must also be mentioned. The policy should be about the extension only, not a copy of the website’s privacy policy. It should also be the actual text, as opposed to a link to a privacy policy on a website. The privacy policy can be added in the add-on settings under "Manage Authors & License" on addons.thunderbird.net. For more information, please check our Review Policies [1], and Mozilla’s own privacy policy [2] as an example.
 
@@ -402,7 +440,7 @@ deterministic-checks:
 # Preflight -> manual review: the nativeMessaging permission lets the add-on talk
 # to a native application that is not part of the package.
 - title: Native messaging needs disclosure
-  check: native-messaging.js
+  check: native-messaging
   response: |-
     This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged. The native host itself does not need to be part of the package.
   instructions: |-
@@ -415,7 +453,7 @@ deterministic-checks:
 # will not load the add-on.
 - title: Missing default_locale
   severity: error
-  check: default-locale-missing.js
+  check: default-locale-missing
   response: |-
     A _locales directory is present but the manifest declares no default_locale, so Thunderbird will refuse to load the add-on. Add a default_locale naming the fallback locale (e.g. "en").
 
@@ -423,7 +461,7 @@ deterministic-checks:
 # will not load the add-on.
 - title: Unused default_locale
   severity: error
-  check: default-locale-unused.js
+  check: default-locale-unused
   response: |-
     The manifest declares default_locale but the add-on ships no _locales directory, so Thunderbird will refuse to load the add-on. Add the _locales/<lang>/messages.json files, or remove default_locale.
 
@@ -432,7 +470,7 @@ deterministic-checks:
 # Advisory only (info); static themes and dictionaries are exempt (see the check).
 - title: Add-on icon missing
   severity: info
-  check: addon-icon-missing.js
+  check: addon-icon-missing
   response: |-
     Adding an add-on icon in manifest.json improves user acceptance.
     Read more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons
@@ -441,7 +479,7 @@ deterministic-checks:
 # "type": "module", or it will not load.
 - title: Background script needs type module
   severity: error
-  check: background-module.js
+  check: background-module
   response: |-
     The following background code location(s) use ES module syntax (import/export), but the manifest’s background is not declared "type": "module", so Thunderbird will fail to load the background script(s). Add "type": "module" to the background entry.
 
@@ -449,7 +487,7 @@ deterministic-checks:
 # JS but is not declared type="module" - the page fails to load that script.
 - title: Background page script needs type module
   severity: error
-  check: background-page-module.js
+  check: background-page-module
   response: |-
     The following background page code location(s) load a script that uses ES module syntax (import/export), but the <script> tag is not declared type="module", so Thunderbird will fail to load the background page. Add type="module" to the <script> tag.
 
@@ -459,31 +497,31 @@ deterministic-checks:
 # read the shared dynamic-execution scan.
 - title: eval() usage
   severity: error
-  check: eval-call.js
+  check: eval-call
   response: |-
     Dynamic code execution via "eval()" is not allowed.
 
 - title: Function constructor usage
   severity: error
-  check: function-constructor.js
+  check: function-constructor
   response: |-
     Dynamic code execution via "the Function constructor" is not allowed.
 
 - title: Code-string timer
   severity: error
-  check: string-timer.js
+  check: string-timer
   response: |-
     Dynamic code execution via "a code string passed to setTimeout/setInterval" is not allowed.
 
 - title: CSP allows 'unsafe-eval'
   severity: error
-  check: csp-unsafe-eval.js
+  check: csp-unsafe-eval
   response: |-
     Dynamic code execution via "content_security_policy 'unsafe-eval'" is not allowed.
 
 - title: CSP allows 'unsafe-inline'
   severity: error
-  check: csp-unsafe-inline.js
+  check: csp-unsafe-inline
   response: |-
     Dynamic code execution via "content_security_policy 'unsafe-inline'" is not allowed.
 
@@ -495,7 +533,7 @@ deterministic-checks:
 # manual review via `instructions`.
 - title: Missing English localization
   severity: warning
-  check: missing-english-localization.js
+  check: missing-english-localization
   instructions: |-
     This add-on ships no English localization, so user-facing text may be
     hardcoded in another language. Review its strings by hand and confirm if an
@@ -513,7 +551,8 @@ llm-checks:
 # ambiguous (dynamically-loadable) ones are escalated to the LLM.
 - title: Unused, hidden or duplicate files or folders
   severity: error
-  check: unused-files.js
+  check: unused-files
+  post-summary-recheck: unused-files-recheck
   prompt: |-
     Each candidate is a site in the add-on, named in its note as "does this site
     load F", where F is a packaged file not reachable from any manifest entry
@@ -549,10 +588,35 @@ llm-checks:
   response: |-
     The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
 
+# Recheck consumer for unused-files (above): re-judges the files it could not
+# resolve from a single site, now with the whole add-on in view. Its summary-prompt
+# is appended to the --full-summary pass; pass -> loaded (drop), fail -> an unused
+# finding, unsure -> manual review. Same wording as unused-files (its findings read
+# identically); the post-summary phase is inferred from being its recheck target.
+- title: Unused, hidden or duplicate files or folders
+  severity: error
+  check: unused-files-recheck
+  summary-prompt: |-
+    Each listed item is a packaged file not reachable from any manifest entry point
+    that the per-file analysis could not resolve to a loader. With the whole add-on
+    in view, decide whether ANYTHING in it loads or uses each file at runtime: a
+    static or dynamic import, a getURL or executeScript/insertCSS, an HTML or CSS
+    reference, a data or configuration entry the add-on consumes, or a runtime-built
+    path that plausibly resolves to it (for example code building
+    "icons/icon-${theme}-${size}.png" loads the icons in that family). Verdict pass
+    = it is loaded somewhere (keep it), fail = nothing in the add-on loads it (it is
+    unused and safe to remove), unsure = you genuinely cannot tell. Judge only the
+    listed files, by their packaged path.
+  instructions: |-
+    The following files are not reachable from any entry point but may be loaded
+    dynamically. Confirm by hand whether they are unused and safe to remove.
+  response: |-
+    The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
+
 # LLM check: over-broad or unloaded web_accessible_resources exposure.
 - title: Minimize web_accessible_resources
   severity: warning
-  check: minimize-web-accessible-resources.js
+  check: minimize-web-accessible-resources
   prompt: |-
     Each candidate is a site (file:line) that references a web_accessible_resources
     file F, named in the candidate note as "does this site load F for a web
@@ -586,7 +650,7 @@ llm-checks:
 # sources that permit remote code.
 - title: Remote script injection
   severity: error
-  check: remote-script.js
+  check: remote-script
   prompt: |-
     Each candidate is a site (file:line) that loads or injects script or code
     from a source static analysis could not resolve to a bundled file. For each
@@ -604,7 +668,7 @@ llm-checks:
 # checks above.
 - title: Remote eval
   severity: error
-  check: remote-eval.js
+  check: remote-eval
   prompt: |-
     Each candidate is a site (file:line) that executes code built or fetched at
     runtime, such as fetch().then(eval). For each candidate, determine whether the
@@ -620,7 +684,7 @@ llm-checks:
 # only with an options-page opt-in, judged from the options page in evidence.
 - title: User-data exfiltration
   severity: error
-  check: data-exfiltration.js
+  check: data-exfiltration
   prompt: |-
     Each candidate is a site (file:line) that sends data to a remote server (via
     fetch, XMLHttpRequest, WebSocket, EventSource, or sendBeacon). Sending user
@@ -809,78 +873,18 @@ prompts:
     a user might find surprising. If nothing meaningful changed, say so.
   add-on-summary: |-
     Review this Thunderbird WebExtension add-on from its (almost complete) current
-    sources below and report by calling the report_addon_review tool. Fill its two
-    fields as follows.
+    sources below and report by calling the report_addon_review tool.
     The "summary" field is prose for a reviewer. Cover, as a few concise bullet
-    points: what the add-on does (its main features), the notable APIs it uses,
-    and how it interacts with the network or the user’s data. Then list any
-    security- or privacy-relevant observations. Be factual and specific. Do not
-    list the declared permissions in this part, the permission review is their
-    only home. Then add a separate bullet group titled "Permission review". Go
-    through every declared permission (the declared permissions block lists them)
-    and judge from the code whether it is actually needed, noting briefly what
-    justifies each or that it appears unused. The declared permissions block ends
-    with a line of permissions already confirmed used by static analysis; treat
-    each of those as justified without re-checking it, and never add it to
-    unusedPermissions. Assess only the remaining declared permissions. A
-    permission can be justified in two ways. It is justified if the add-on calls
-    an API that requires it (for example the "downloads" permission for
-    downloads.download). It is also justified if the add-on reads a property of
-    returned data that the permission gates (for example the "accountsRead"
-    permission gates a message header’s folder property, so reading that folder
-    justifies it). A permission appears unused only when neither holds.
-    Judge every permission only from what the current code actually does. Ignore
-    comments, TODOs, documentation, and any stated or implied intention of future
-    use: a permission the current code never exercises is unused even if a comment
-    or doc hints it may be used later.
-    Be careful with the "tabs" and "activeTab" permissions and with host
-    permissions, a common source of error. Calling tabs methods such as tabs.query,
-    tabs.create, tabs.update, tabs.remove, tabs.sendMessage, and the tabs events
-    does not by itself require any permission. Two capabilities are what actually
-    require one. Reading the privileged tab properties url, title, and favIconUrl
-    (or filtering a tabs.query by them) requires "tabs" (any tab), or a host
-    permission that matches the tab’s url (matching tabs only), or "activeTab"
-    (the active tab after a user action).
-    But the add-on always has access to its own pages, so reading or filtering by
-    the url, title, or favIconUrl of its OWN extension pages (moz-extension://
-    pages it ships or opens, such as a bundled UI page) requires no permission: a
-    tabs.query that filters by the URL of the add-on's own page does not need the
-    "tabs" permission.
-    Injecting script or CSS with tabs.executeScript or tabs.insertCSS requires a
-    host permission that matches the tab’s url, or "activeTab", and is never
-    granted by "tabs". In Thunderbird, injecting into or scripting a message
-    display tab or a compose tab never requires "tabs" either. Message display
-    scripts are registered with messageDisplayScripts.register, which requires
-    "messagesModify", and compose scripts with composeScripts.register, which
-    requires "compose", and tabs.executeScript or tabs.insertCSS aimed at the
-    message pane or a compose window does not require "tabs".
-    Treat a host permission as justified when it is used for injection, network
-    access to that origin (a fetch, XMLHttpRequest, WebSocket, EventSource, or
-    sendBeacon to it), or reading those properties of matching tabs.
-    Requests to remote origins need a host permission for that origin to bypass
-    CORS, even when the target URL is built at runtime or entered by the user.
-    Such an add-on either uses broad host permissions to cover *any* URL the user
-    might enter (often "<all_urls>"), or uses an optional host permission (which
-    is preferred by reviewers). Never treat a host permission as unused merely
-    because the fetched URL is dynamic or user-provided.
-    Treat "activeTab" as justified when an injection or property read is confined
-    to the active tab after a user gesture such as a toolbar or menu click, a
-    keyboard shortcut, or a button on a bundled page. A broad host permission such
-    as "<all_urls>" usually makes "tabs" redundant for property reads.
-    The "unusedPermissions" field is the machine-readable list of just the
-    permissions your permission review found wanting, so the tool can raise them
-    in the report. Add an entry for every declared permission (or host match
-    pattern) that you judged unused or could not confirm is used, and omit the
-    ones that are clearly justified. Use the exact permission string as written
-    in the manifest. Set status to "unused" when you are confident the current
-    code does not need it, or "unsure" when you genuinely cannot tell whether the
-    current code uses it (a human then decides).
-    A permission gated only by an API call the current code never makes is
-    "unused", not "unsure". Reserve "unsure" for genuine ambiguity about current
-    use, such as a permission-gated property that might be read. Give a one
-    sentence reason for each. Prefer "unsure" over guessing.
-    This is an advisory overview. The formal findings in the review report above
-    are authoritative, not this summary.
+    points: what the add-on does (its main features), the notable APIs it uses, and
+    how it interacts with the network or the user’s data. Then list any security- or
+    privacy-relevant observations. Be factual and specific.
+    If the sources below end with one or more "recheck:" sections, also fill the
+    "recheck" field. Each section names a check id and lists items to judge against
+    that section's rubric; return one "recheck" entry per listed item, giving the
+    matching check id, the exact item text, your verdict, and a one-sentence reason.
+    Judge only the listed items and never add others.
+    This is an advisory overview. The formal findings in the review report above are
+    authoritative, not this summary.
   vendor-parse: |-
     The text below is an add-on’s VENDOR file: a developer’s free-form list of the
     bundled third-party library files it ships, each with the source URL it was

@@ -88,6 +88,11 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   that runs (see runChecks).
  * @property {string} [prompt]  LLM rubric for an ambiguous case (llm checks).
  * @property {string} [instructions]  Manual-review message (llm checks).
+ * @property {string} [postSummaryRecheck]  Id of a post-summary recheck consumer
+ *   this check hands its manual items to when the full summary runs (see
+ *   runChecks and src/checks/lib/recheck.js).
+ * @property {string} [summaryPrompt]  (recheck consumer) The rubric appended to
+ *   the full-summary prompt to re-judge the items handed to this check.
  * @property {Function} run
  */
 
@@ -106,6 +111,11 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   --allow-experiments is off: the review short-circuits to the reject check
  *   only, with no LLM (see runChecks and buildRunContext).
  * @property {{evaluate: Function}} [llm]  LLM client, present only with a token.
+ * @property {boolean} [recheckActive]  Set by reviewAddon when the full summary
+ *   will run: checks with a `post-summary-recheck` hand their manual items to the
+ *   summary to re-judge, instead of straight to manual review.
+ * @property {Map<string, object[]>} [recheck]  Manual items handed to each
+ *   recheck consumer (keyed by its id), awaiting the summary's verdicts.
  * @property {Function} [note]  Narrate a file:line investigation note to the
  *   feed: (file, loc, item, verdict) -> void. Set by runChecks, absent in tests.
  */
@@ -275,6 +285,15 @@ export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
 export async function loadChecks(registry, { only, skip } = {}) {
   const onlySet = only?.length ? new Set(only) : null;
   const skipSet = skip?.length ? new Set(skip) : null;
+  // Ids named as some entry's `post-summary-recheck` target: those checks are
+  // recheck consumers, so they run in the post-summary phase even when they do
+  // not also declare `phase` (being referenced is enough to classify them).
+  const recheckTargets = new Set(
+    registry
+      .checkEntries()
+      .map((e) => e["post-summary-recheck"])
+      .filter((id) => typeof id === "string" && id)
+  );
   const checks = [];
   for (const entry of registry.checkEntries()) {
     const id = stem(entry.check);
@@ -284,21 +303,23 @@ export async function loadChecks(registry, { only, skip } = {}) {
     if (skipSet && skipSet.has(id)) {
       continue;
     }
-    const file = path.join(RULES_DIR, entry.check);
+    // `check:` is the check id; the module is rules/<id>.js (a stray trailing
+    // ".js" in the id is tolerated by stem()).
+    const file = path.join(RULES_DIR, `${id}.js`);
     if (!fs.existsSync(file)) {
       throw new Error(
-        `check module not found: rules/${entry.check} (referenced by "${entry.title}")`
+        `check module not found: rules/${id}.js (referenced by "${entry.title}")`
       );
     }
     const mod = await import(pathToFileURL(file).href);
     const run = mod.default?.run ?? mod.run;
     if (typeof run !== "function") {
-      throw new Error(`rules/${entry.check} exports no run() function`);
+      throw new Error(`rules/${id}.js exports no run() function`);
     }
     const severity = entry.severity || "error";
     if (!VALID_CHECK_SEVERITIES.has(severity)) {
       throw new Error(
-        `rules/${entry.check} has an invalid severity "${severity}" ` +
+        `rules/${id}.js has an invalid severity "${severity}" ` +
           `(expected one of: ${[...VALID_CHECK_SEVERITIES].join(", ")})`
       );
     }
@@ -308,9 +329,18 @@ export async function loadChecks(registry, { only, skip } = {}) {
       severity,
       kind: entry.kind,
       diff: typeof entry.diff === "boolean" ? entry.diff : undefined,
-      phase: entry.phase,
+      phase:
+        entry.phase ?? (recheckTargets.has(id) ? "post-summary" : undefined),
       prompt: entry.prompt,
       instructions: entry.instructions,
+      postSummaryRecheck:
+        typeof entry["post-summary-recheck"] === "string"
+          ? entry["post-summary-recheck"]
+          : undefined,
+      summaryPrompt:
+        typeof entry["summary-prompt"] === "string"
+          ? entry["summary-prompt"]
+          : undefined,
       run,
     });
   }
@@ -440,7 +470,22 @@ export async function runChecks(ctx, registry, opts = {}) {
   for (const [i, check] of checks.entries()) {
     const out = await runOneCheck(ctx, check, `[${i + 1}/${total}]`);
     findings.push(...out.findings);
-    manualItems.push(...out.manualItems);
+    // A check with `post-summary-recheck: R` hands its manual items to the
+    // recheck consumer R, but only when the full summary will actually run to
+    // re-judge them (ctx.recheckActive). Otherwise they go to manual review as
+    // usual, so every no-summary path (and the golden harness) is unchanged.
+    if (
+      check.postSummaryRecheck &&
+      ctx.recheckActive &&
+      out.manualItems.length
+    ) {
+      const bucket = (ctx.recheck ??= new Map());
+      const held = bucket.get(check.postSummaryRecheck) ?? [];
+      held.push(...out.manualItems);
+      bucket.set(check.postSummaryRecheck, held);
+    } else {
+      manualItems.push(...out.manualItems);
+    }
   }
   // Close the live activity list with a blank line, so it is separated from the
   // report that follows. A no-op when progress is disabled.

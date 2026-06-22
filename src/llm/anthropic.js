@@ -117,7 +117,7 @@ export async function callText({
 
 /**
  * The structured --full-summary review: a forced report_addon_review tool whose
- * input is { summary, unusedPermissions }.
+ * input is { summary, recheck }.
  * @param {object} params
  * @param {string} params.token @param {string} [params.model]
  * @param {string} [params.baseURL] @param {Array<object>|string} [params.system]
@@ -143,8 +143,8 @@ export async function callReview({
       {
         name: REVIEW_TOOL,
         description:
-          "Report the add-on summary and the declared permissions that appear " +
-          "unused.",
+          "Report the add-on summary and your verdict on each item listed in a " +
+          "recheck section.",
         input_schema: ADDON_REVIEW_SCHEMA,
       },
     ],

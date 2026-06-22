@@ -61,10 +61,11 @@ export const RESULT_SCHEMA = {
 export const LLM_VERDICTS = new Set(["fail", "pass", "unsure"]);
 
 // The --full-summary structured result: the prose summary the reviewer reads,
-// plus the subset of declared permissions the model judged unused or could not
-// confirm. The tool turns each into an Issue (a warning for "unused", a
-// manual-review note for "unsure" - see the unused-permission check), with the
-// per-entry reason as the developer-facing why.
+// plus `recheck` - one verdict per item handed to a post-summary recheck consumer
+// (unused permissions, unused files, ...) so it can be re-judged with whole-add-on
+// context. Each consumer maps its own verdicts to Issues / manual-review notes -
+// see src/checks/lib/recheck.js. `recheck` is omitted when nothing was handed
+// over, so it is not required.
 export const ADDON_REVIEW_SCHEMA = {
   type: "object",
   properties: {
@@ -72,49 +73,43 @@ export const ADDON_REVIEW_SCHEMA = {
       type: "string",
       description:
         "The prose add-on summary for the reviewer: what the add-on does, " +
-        "notable APIs, network/data use, security notes, and the full " +
-        "permission review covering every declared permission.",
+        "notable APIs, network/data use, and security notes.",
     },
-    unusedPermissions: {
+    recheck: {
       type: "array",
       description:
-        "Every declared permission (or host match pattern) you judged unused " +
-        "or could not confirm is used. Omit permissions that are clearly " +
-        "justified.",
+        "Your verdict for each item listed in a 'recheck:' section below. " +
+        "Judge only the listed items; never add others.",
       items: {
         type: "object",
         properties: {
-          permission: {
+          check: {
             type: "string",
             description:
-              "The exact declared permission or host match pattern, as written " +
-              "in the manifest.",
+              "The check id from the recheck section header the item is under.",
           },
-          status: {
+          item: {
             type: "string",
-            enum: ["unused", "unsure"],
+            description: "The exact item text, as listed in that section.",
+          },
+          verdict: {
+            type: "string",
+            enum: ["fail", "pass", "unsure"],
             description:
-              "unused = confident the current code does not need it (ignore " +
-              "future/planned use); unsure = cannot tell whether the current " +
-              "code uses it (a human then reviews it).",
+              "Apply that section's rubric: fail = the issue it looks for is " +
+              "present; pass = it is absent; unsure = you cannot tell.",
           },
           reason: {
             type: "string",
-            description:
-              "One short sentence on why it appears unused, or what you could " +
-              "not determine.",
+            description: "One short sentence supporting the verdict.",
           },
         },
-        required: ["permission", "status"],
+        required: ["check", "item", "verdict"],
       },
     },
   },
-  required: ["summary", "unusedPermissions"],
+  required: ["summary"],
 };
-
-// Allowed unused-permission statuses - anything else coerces to the safe
-// "unsure" (a human reviews rather than the tool raising a warning).
-export const REVIEW_STATUSES = new Set(["unused", "unsure"]);
 
 /**
  * @typedef {object} LlmVerdict  One verdict, keyed to a candidate id.
@@ -130,18 +125,18 @@ export const REVIEW_STATUSES = new Set(["unused", "unsure"]);
  */
 
 /**
- * @typedef {object} UnusedPermission  One declared permission the model flagged.
- * @property {string} permission  The exact declared permission / match pattern.
- * @property {"unused"|"unsure"} status  unused = warning, unsure = manual
- *   review.
+ * @typedef {object} RecheckVerdict  One re-judged item from the full summary.
+ * @property {string} check  Id of the recheck consumer the item belongs to.
+ * @property {string} item  The exact item text it was listed under.
+ * @property {"fail"|"pass"|"unsure"} verdict  fail = issue present (finding),
+ *   pass = absent (drop), unsure = a human reviews.
  * @property {string} reason  Short developer-facing why (may be "").
  */
 
 /**
  * @typedef {object} AddonReview  The --full-summary structured result.
- * @property {string} summary  The prose add-on summary (incl. permission
- *   review).
- * @property {UnusedPermission[]} unusedPermissions  The flagged subset.
+ * @property {string} summary  The prose add-on summary.
+ * @property {RecheckVerdict[]} recheck  One verdict per re-judged item.
  */
 
 /**
@@ -163,26 +158,29 @@ export function coerceResult(input) {
 
 /**
  * Defensively normalize a structured add-on-review result into an AddonReview: a
- * string summary (else ""), and an unusedPermissions list with each entry's
- * permission kept verbatim, an unknown status coerced to "unsure", and a string
- * reason (else ""). Entries with no permission string are dropped.
+ * string summary (else ""), and a recheck list keeping each entry's check + item
+ * verbatim, an unknown verdict coerced to the safe "unsure", and a string reason
+ * (else ""). Entries missing a check or item string are dropped.
  * @param {unknown} input
  * @returns {AddonReview}
  */
 export function coerceReview(input) {
   const obj = input && typeof input === "object" ? input : {};
   const summary = typeof obj.summary === "string" ? obj.summary : "";
-  const unusedPermissions = (
-    Array.isArray(obj.unusedPermissions) ? obj.unusedPermissions : []
-  )
+  const recheck = (Array.isArray(obj.recheck) ? obj.recheck : [])
     .filter(
-      (p) => p && typeof p === "object" && typeof p.permission === "string"
+      (r) =>
+        r &&
+        typeof r === "object" &&
+        typeof r.check === "string" &&
+        r.check &&
+        typeof r.item === "string"
     )
-    .filter((p) => p.permission)
-    .map((p) => ({
-      permission: p.permission,
-      status: REVIEW_STATUSES.has(p.status) ? p.status : "unsure",
-      reason: typeof p.reason === "string" ? p.reason : "",
+    .map((r) => ({
+      check: r.check,
+      item: r.item,
+      verdict: LLM_VERDICTS.has(r.verdict) ? r.verdict : "unsure",
+      reason: typeof r.reason === "string" ? r.reason : "",
     }));
-  return { summary, unusedPermissions };
+  return { summary, recheck };
 }

@@ -1,93 +1,35 @@
-// Turns the --full-summary LLM pass's structured unused-permission list into
-// Issues. That pass (src/checks/summaries.js -> ctx.llm.reviewAddon) judges
-// every declared permission and stores the unused/unsure subset on
-// ctx.addon.unusedPermissions; this check only reads it and emits a finding or a
-// manual-review escalation per entry. It makes no LLM call of its own.
+// The post-summary recheck consumer for declared permissions. The producer
+// (unused-permission-manual) hands over every declared named permission a
+// reachable API call does not provably require. When --full-summary runs, those
+// items are appended to the add-on summary under this entry's `summary-prompt`
+// rubric; the model returns a verdict per permission, and this check maps each:
+// pass -> justified (drop), fail -> a warning finding ("{{item}} appears unused"),
+// unsure or no verdict -> manual review. The model's per-permission reason rides
+// along as data.reason for the {{reason}} slot in both texts.
 //
-// The orchestrator runs it AFTER the add-on summary (so the list exists) rather
-// than in the main loop - see src/pipeline.js reviewAddon. It always runs and
-// reads the checks memory: when it holds entries they are evaluated, otherwise
-// (no analysis ran: no token / no --full-summary / LLM error) there is nothing
-// to evaluate, so it logs a `skipped` note. Its mirror,
-// unused-permission-manual, raises the by-hand reminder in exactly that no-list
-// case.
+// It makes no decision of its own: the mapping is the shared resolveRecheck
+// (src/checks/lib/recheck.js), driven by ctx.recheck (the handed-over items) and
+// ctx.addon.recheck (the summary's verdicts). It runs in the post-summary phase
+// because it is named as unused-permission-manual's post-summary-recheck target
+// (the orchestrator infers the phase from that reference). With no summary nothing
+// is handed over, so it emits nothing and the producer's reminder stands.
 //
-//   - status "unused" -> a warning finding (the model is confident it is not
-//     needed); the developer-facing wording is the registry "response".
-//   - status "unsure" -> a manual-review escalation (the model could not tell);
-//     the registry "instructions" message is its text.
-//
-// Before either, any entry naming a permission a reachable API call provably
-// requires (usedPermissions in lib/permissions.js) is dropped with a `pass`
-// note: the deterministic analysis is authoritative, so the LLM cannot flag a
-// proven-used permission. This is the same guard the unused-permission-manual
-// mirror applies; without it a non-deterministic model flag leaks straight to a
-// finding even though another check proved the permission used.
-//
-// The model's per-entry reason rides along as data.reason, filling the
-// {{reason}} slot in both the finding response and the manual instructions.
-//
-// Belongs here: mapping each stored entry to a finding / escalation and a feed
-// note. Does NOT belong here: producing the list (-> src/checks/summaries.js via
-// the LLM), the wording (-> assets/registry.yaml), or routing the escalation to
-// manual review (-> src/checks/escalation.js via the orchestrator).
+// Belongs here: only the delegation. Does NOT belong here: enumerating the
+// permissions (-> unused-permission-manual), the wording (-> assets/registry.yaml),
+// or the verdict mapping (-> src/checks/lib/recheck.js).
 
-import { finding } from "../../report/finding.js";
-import { manifestTokenLine } from "../lib/util.js";
-import { getPermissionAnalysis } from "../lib/permissions.js";
+import { resolveRecheck } from "../lib/recheck.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
+/** @typedef {import("../registry.js").LoadedCheck} LoadedCheck */
 
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {{findings: import("../../report/finding.js").Finding[],
-   *   escalations: {item: string, data: {reason: string}}[]}}
+   * @param {LoadedCheck} check
+   * @returns {{findings: object[], escalations: object[]}}
    */
-  run(ctx) {
-    const entries = ctx.addon?.unusedPermissions;
-    if (!Array.isArray(entries) || !entries.length) {
-      // No analysis produced a list (or it found none), so there is nothing to
-      // evaluate. The unused-permission-manual mirror handles the reminder.
-      ctx.note?.(
-        "manifest.json",
-        null,
-        "no permission list to evaluate",
-        "skipped"
-      );
-      return { findings: [], escalations: [] };
-    }
-    const text = ctx.addon.files.get("manifest.json")?.toString("utf8") ?? "";
-    // Permissions a reachable API call provably requires. The deterministic
-    // analysis is authoritative: the LLM must never override a proven-used
-    // permission, so any flag the model put on one is dropped here. This mirrors
-    // the same guard in the unused-permission-manual sibling check.
-    const used = getPermissionAnalysis(ctx).usedPermissions;
-    const findings = [];
-    const escalations = [];
-    for (const { permission, status, reason } of entries) {
-      if (!permission) {
-        continue;
-      }
-      const line = manifestTokenLine(text, permission);
-      const loc = line ? { line } : undefined;
-      if (used.has(permission)) {
-        // Deterministically proven used. The LLM cannot override that.
-        ctx.note?.("manifest.json", loc, permission, "pass");
-        continue;
-      }
-      const data = { reason: reason ?? "" };
-      if (status === "unused") {
-        ctx.note?.("manifest.json", loc, permission, "fail");
-        findings.push(
-          finding({ file: "manifest.json", loc, item: permission, data })
-        );
-      } else {
-        // "unsure" (the only other status coerceReview emits): a human decides.
-        ctx.note?.("manifest.json", loc, permission, "unsure");
-        escalations.push({ item: permission, data });
-      }
-    }
-    return { findings, escalations };
+  run(ctx, check) {
+    return resolveRecheck(ctx, check);
   },
 };

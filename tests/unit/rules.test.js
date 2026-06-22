@@ -383,54 +383,43 @@ test("manualChecks gates diff:false entries to new submissions", () => {
   assert.ok(titles(true).includes("Check the submission for spam"));
 });
 
-// ---- unused-permission (consumes the --full-summary list) ----
-// The check reads ctx.addon.unusedPermissions (which the add-on summary stores):
-// a "unused" entry becomes a warning finding carrying the reason on the
-// permission's manifest line, an "unsure" entry a manual-review escalation
-// carrying the reason. No stored list (no token / no --full-summary) -> a no-op.
-test("unused-permission turns the stored list into findings + escalations", () => {
-  const manifest = JSON.stringify(
-    { manifest_version: 3, permissions: ["tabs", "downloads"] },
-    null,
-    2
-  );
-  const ctx = {
-    addon: {
-      files: new Map([["manifest.json", Buffer.from(manifest)]]),
-      unusedPermissions: [
-        {
-          permission: "tabs",
-          status: "unused",
-          reason: "no tab property read",
-        },
-        { permission: "downloads", status: "unsure", reason: "cannot tell" },
-      ],
-    },
+// ---- unused-permission-manual (producer of permissions to vet) ----
+// It always enumerates the declared NAMED permissions a reachable API call does
+// not provably require, one escalation each (anchored to the manifest line); host
+// match patterns are skipped. When --full-summary runs the orchestrator hands
+// these to the unused-permission recheck consumer; otherwise they auto-group into
+// the by-hand reminder.
+test("unused-permission-manual lists the unprovable declared named permissions", () => {
+  const manifest = {
+    permissions: ["tabs", "https://example.com/*"],
+    optional_permissions: ["storage"],
   };
-  const out = unusedPermission.run(ctx);
-  assert.equal(out.findings.length, 1);
-  assert.equal(out.findings[0].file, "manifest.json");
-  assert.equal(out.findings[0].item, "tabs");
-  assert.equal(out.findings[0].data.reason, "no tab property read");
-  assert.equal(out.findings[0].loc.line, 4); // the "tabs" line in the manifest
-  assert.deepEqual(out.escalations, [
-    { item: "downloads", data: { reason: "cannot tell" } },
+  const ctx = {
+    schema,
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+      ]),
+    },
+    // No API usages -> nothing is provably used -> every named permission is
+    // still escalated for the reviewer (the host match pattern is skipped).
+    apiUsages: [],
+  };
+  const out = unusedPermissionManual.run(ctx);
+  assert.equal(out.findings.length, 0);
+  assert.deepEqual(out.escalations.map((e) => e.item).sort(), [
+    "storage",
+    "tabs",
   ]);
-});
-
-test("unused-permission is a no-op without the stored list", () => {
-  assert.deepEqual(unusedPermission.run({ addon: { files: new Map() } }), {
-    findings: [],
-    escalations: [],
-  });
+  assert.ok(out.escalations.every((e) => e.file === "manifest.json"));
 });
 
 // The deterministic analysis is authoritative: a permission a reachable API call
-// provably requires (here messagesRead, via messages.get) must never be flagged,
-// even if the LLM non-deterministically put it on the unused list. Only the
-// unprovable rest (messagesUpdate) survives. Reproduces llm-and-summary-2.log,
-// where messagesRead leaked to a [fail] finding.
-test("unused-permission drops permissions the deterministic analysis proved used", () => {
+// provably requires (here messagesRead, via messages.get) is dropped here, so it
+// never reaches the reviewer or the recheck consumer. Only the unprovable rest
+// (messagesUpdate) is escalated.
+test("unused-permission-manual drops permissions proved used by static analysis", () => {
   const manifest = {
     manifest_version: 3,
     permissions: ["messagesRead", "messagesUpdate"],
@@ -446,15 +435,6 @@ test("unused-permission drops permissions the deterministic analysis proved used
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
         ["bg.js", Buffer.from("")],
       ]),
-      // The LLM flagged BOTH declared permissions, including the proven-used one.
-      unusedPermissions: [
-        { permission: "messagesRead", status: "unused", reason: "no read API" },
-        {
-          permission: "messagesUpdate",
-          status: "unused",
-          reason: "no update API",
-        },
-      ],
     },
     apiUsages: [
       {
@@ -463,16 +443,11 @@ test("unused-permission drops permissions the deterministic analysis proved used
       },
     ],
   };
-  const out = unusedPermission.run(ctx);
-  const flagged = out.findings
-    .map((f) => f.item)
-    .concat(out.escalations.map((e) => e.item));
-  assert.ok(!flagged.includes("messagesRead")); // gated out by the deterministic set
+  const out = unusedPermissionManual.run(ctx);
   assert.deepEqual(
-    out.findings.map((f) => f.item),
-    ["messagesUpdate"]
+    out.escalations.map((e) => e.item),
+    ["messagesUpdate"] // messagesRead is gated out (provably used)
   );
-  assert.equal(out.escalations.length, 0);
   // The override is recorded as a pass note, so the feed shows it was dropped.
   assert.deepEqual(
     notes.find((n) => n.item === "messagesRead"),
@@ -480,48 +455,80 @@ test("unused-permission drops permissions the deterministic analysis proved used
   );
 });
 
-// ---- unused-permission-manual (the by-hand reminder mirror) ----
-// It escalates one generic reminder (item: null) only when no list was produced;
-// a defined list (even empty) means the permissions were assessed, so it is a
-// no-op. The reminder's text comes from the registry entry's {{item}}-free
-// instructions, so a null item is fine.
-test("unused-permission-manual lists permissions only when no list was produced", () => {
-  // No list -> one escalation per declared named permission, anchored to the
-  // manifest line; host match patterns are skipped (minimize-host's concern).
-  const manifest = {
-    permissions: ["tabs", "https://example.com/*"],
-    optional_permissions: ["storage"],
-  };
+// ---- unused-permission (recheck consumer) ----
+// Given the items handed to it (ctx.recheck) and the summary's verdicts
+// (ctx.addon.recheck), it maps each: fail -> a warning finding carrying the reason
+// on the permission's manifest line, pass -> dropped, unsure -> a manual-review
+// escalation. The mapping itself is resolveRecheck (see recheck.test.js); this
+// confirms the module is wired to it.
+test("unused-permission maps the summary's recheck verdicts to findings + escalations", () => {
+  const check = { id: "unused-permission" };
   const ctx = {
-    schema,
+    recheck: new Map([
+      [
+        "unused-permission",
+        [
+          {
+            ruleId: "unused-permission-manual",
+            item: "tabs",
+            file: "manifest.json",
+            loc: { line: 4 },
+          },
+          {
+            ruleId: "unused-permission-manual",
+            item: "downloads",
+            file: "manifest.json",
+            loc: { line: 5 },
+          },
+          {
+            ruleId: "unused-permission-manual",
+            item: "storage",
+            file: "manifest.json",
+            loc: { line: 6 },
+          },
+        ],
+      ],
+    ]),
     addon: {
-      manifest,
-      files: new Map([
-        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
-      ]),
+      recheck: [
+        {
+          check: "unused-permission",
+          item: "tabs",
+          verdict: "fail",
+          reason: "no tab property read",
+        },
+        {
+          check: "unused-permission",
+          item: "downloads",
+          verdict: "unsure",
+          reason: "cannot tell",
+        },
+        {
+          check: "unused-permission",
+          item: "storage",
+          verdict: "pass",
+          reason: "used by storage.local",
+        },
+      ],
     },
-    // No API usages -> nothing is provably used -> every named permission is
-    // still escalated for the reviewer.
-    apiUsages: [],
   };
-  const out = unusedPermissionManual.run(ctx);
-  assert.equal(out.findings.length, 0);
-  assert.deepEqual(out.escalations.map((e) => e.item).sort(), [
-    "storage",
-    "tabs",
-  ]);
-  assert.ok(out.escalations.every((e) => e.file === "manifest.json"));
-  // A produced list (even empty) -> nothing (the permissions were assessed).
+  const out = unusedPermission.run(ctx, check);
+  assert.equal(out.findings.length, 1);
+  assert.equal(out.findings[0].item, "tabs"); // fail -> finding
+  assert.equal(out.findings[0].data.reason, "no tab property read");
+  assert.equal(out.findings[0].loc.line, 4); // the permission's manifest line
   assert.deepEqual(
-    unusedPermissionManual.run({ addon: { unusedPermissions: [] } }),
-    { findings: [], escalations: [] }
+    out.escalations.map((e) => e.item),
+    ["downloads"] // unsure -> manual; storage (pass) is dropped
   );
-  assert.deepEqual(
-    unusedPermissionManual.run({
-      addon: { unusedPermissions: [{ permission: "tabs", status: "unused" }] },
-    }),
-    { findings: [], escalations: [] }
-  );
+  assert.equal(out.escalations[0].data.reason, "cannot tell");
+});
+
+test("unused-permission is a no-op with nothing handed over", () => {
+  assert.deepEqual(unusedPermission.run({}, { id: "unused-permission" }), {
+    findings: [],
+    escalations: [],
+  });
 });
 
 // ---- deprecated-api ----

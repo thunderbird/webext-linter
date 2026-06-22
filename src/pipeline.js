@@ -244,9 +244,8 @@ export async function runPipeline(opts) {
   }
 
   // 2. Schema review. reviewAddon also generates the advisory AI summaries at
-  // the tail of the activity feed (the add-on summary's unused-permission list
-  // feeds the unused-permission check, which runs there too), so they come back
-  // here.
+  // the tail of the activity feed (the add-on summary's recheck verdicts feed the
+  // post-summary recheck consumers, which run there too), so they come back here.
   const result = await reviewAddon(
     addon,
     opts,
@@ -332,14 +331,14 @@ async function generateSummary(deferred, label, budget) {
 }
 
 /**
- * Generate the --full-summary add-on review and store its structured
- * unused-permission list on the context (the unused-permission checks, which run
- * next, read it). Mirrors generateSummary but unpacks the review object: the
- * prose goes to the returned summary (printed after the report), the
- * unusedPermissions onto ctx.addon. The list is set ONLY when the model actually
- * returned a review, so a missing `ctx.addon.unusedPermissions` is the clean
- * signal that no analysis happened (LLM error here, or never called). Undefined
- * when there is no summary to make.
+ * Generate the --full-summary add-on review and store its recheck verdicts on the
+ * context (the post-summary recheck consumers, which run next, read them). Mirrors
+ * generateSummary but unpacks the review object: the prose goes to the returned
+ * summary (printed after the report), the recheck verdicts onto ctx.addon.recheck.
+ * They are set ONLY when the model actually returned a review, so a missing
+ * `ctx.addon.recheck` is the clean signal that no analysis happened (LLM error
+ * here, or never called) - the consumers then fall their handed-over items back to
+ * manual review. Undefined when there is no summary to make.
  * @param {import("./checks/registry.js").RunContext} ctx
  * @param {import("./checks/registry.js").Registry} registry
  * @param {Set<string>} unused  Files the review found unreachable (excluded).
@@ -348,9 +347,9 @@ async function generateSummary(deferred, label, budget) {
  */
 async function generateAddonSummary(ctx, registry, unused, budget) {
   // Permissions a reachable API call provably requires (memoized, already
-  // computed by the main-loop missing-permission checks). The prompt marks these
-  // as settled so the model assesses only the unprovable rest, and the
-  // unused-permission check independently drops any the model still flags.
+  // computed by the main-loop missing-permission checks). Passed to the prompt's
+  // declared-permissions block as context; the producer (unused-permission-manual)
+  // already excluded these, so the summary only re-judges the unprovable rest.
   const used = getPermissionAnalysis(ctx).usedPermissions;
   const deferred = buildAddonSummarizer(ctx, registry, { unused, used });
   if (!deferred) {
@@ -369,7 +368,7 @@ async function generateAddonSummary(ctx, registry, unused, budget) {
     return { bytes: deferred.bytes, text: null, error: reason };
   }
   if (review) {
-    ctx.addon.unusedPermissions = review.unusedPermissions;
+    ctx.addon.recheck = review.recheck;
   }
   return { bytes: deferred.bytes, text: review?.summary ?? null };
 }
@@ -458,6 +457,13 @@ async function reviewAddon(
   const baseSkip = eslint
     ? (checksSkip ?? [])
     : [...(checksSkip ?? []), "code-sanity"];
+  // When the full add-on summary will run, a check that declares a
+  // `post-summary-recheck` hands its manual items to that recheck consumer to be
+  // re-judged with whole-add-on context (runChecks diverts them; the summary
+  // judges them; the consumer resolves them - see src/checks/lib/recheck.js).
+  // Without the summary this is false, so those items go straight to manual
+  // review exactly as before.
+  ctx.recheckActive = !invalidExperiment && fullSummary && Boolean(ctx.llm);
   progress(""); // close the Setup section before runChecks prints "── Activity ──"
   const { findings, checks, manualItems, deferred, total } = await runChecks(
     ctx,
@@ -468,10 +474,11 @@ async function reviewAddon(
   // Advisory AI summaries, generated at the tail of the activity feed (a
   // `LLM: Generating ...` line shows what is being waited on). The prose is
   // printed after the report by the caller (src/cli.js). The add-on summary runs
-  // first to match that display order, and because it produces the
-  // unused-permission list the check below needs. It excludes files the review
-  // found unreachable - that set is a product of reachability (unused-files), so
-  // it exists only now, which is why the summary runs after the checks.
+  // first to match that display order, and because it re-judges the recheck items
+  // handed to it (ctx.recheck) - storing the verdicts on ctx.addon.recheck for
+  // the post-summary recheck consumers below. It excludes files the review found
+  // unreachable - that set is a product of reachability (unused-files), so it
+  // exists only now, which is why the summary runs after the checks.
   let summarizeAddon;
   if (!invalidExperiment && fullSummary) {
     const unused = new Set(
@@ -488,12 +495,12 @@ async function reviewAddon(
     );
   }
 
-  // The post-summary checks (phase: post-summary), run now that the add-on
-  // summary has populated ctx.addon.unusedPermissions, through the identical
-  // per-check path as the loop - runOneCheck stamps id/severity and routes
-  // escalations to manual review. They honor --checks/--skip (already applied by
-  // loadChecks). Numbering continues from the main loop so the feed reads
-  // [1/total] .. [total/total]. This list is empty for an invalid Experiment.
+  // The post-summary checks (phase: post-summary, incl. the recheck consumers),
+  // run now that the add-on summary has populated ctx.addon.recheck, through the
+  // identical per-check path as the loop - runOneCheck stamps id/severity and
+  // routes escalations to manual review. They honor --checks/--skip (already
+  // applied by loadChecks). Numbering continues from the main loop so the feed
+  // reads [1/total] .. [total/total]. This list is empty for an invalid Experiment.
   const ran = [...checks];
   for (const [j, check] of deferred.entries()) {
     const out = await runOneCheck(

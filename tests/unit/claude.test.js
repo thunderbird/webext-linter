@@ -52,55 +52,66 @@ test("coerceResult survives hostile shapes", () => {
 });
 
 // Well-formed --full-summary review input passes through; the summary defaults
-// to "" when absent, and each unused-permission entry keeps its permission,
-// coerces an unknown status to the safe "unsure", and defaults a missing reason
-// to "". An entry with no permission string is dropped.
+// to "" when absent, and each recheck entry keeps its check + item, coerces an
+// unknown verdict to the safe "unsure", and defaults a missing reason to "". An
+// entry missing a check or item string is dropped.
 test("coerceReview normalizes the report_addon_review input", () => {
   assert.deepEqual(
     coerceReview({
       summary: "S",
-      unusedPermissions: [
-        { permission: "tabs", status: "unused", reason: "r" },
+      recheck: [
+        {
+          check: "unused-permission",
+          item: "tabs",
+          verdict: "fail",
+          reason: "r",
+        },
       ],
     }),
     {
       summary: "S",
-      unusedPermissions: [
-        { permission: "tabs", status: "unused", reason: "r" },
+      recheck: [
+        {
+          check: "unused-permission",
+          item: "tabs",
+          verdict: "fail",
+          reason: "r",
+        },
       ],
     }
   );
 
   const messy = coerceReview({
-    unusedPermissions: [
-      { permission: "tabs", status: "maybe" }, // unknown status -> unsure
-      { permission: "downloads", status: "unsure", reason: 5 }, // bad reason -> ""
-      { status: "unused", reason: "no permission" }, // no permission -> dropped
+    recheck: [
+      { check: "c", item: "tabs", verdict: "maybe" }, // unknown verdict -> unsure
+      { check: "c", item: "downloads", verdict: "pass", reason: 5 }, // bad reason -> ""
+      { check: "c", verdict: "fail" }, // no item -> dropped
+      { item: "x", verdict: "fail" }, // no check -> dropped
     ],
   });
   assert.equal(messy.summary, ""); // missing summary -> ""
-  assert.deepEqual(messy.unusedPermissions, [
-    { permission: "tabs", status: "unsure", reason: "" },
-    { permission: "downloads", status: "unsure", reason: "" },
+  assert.deepEqual(messy.recheck, [
+    { check: "c", item: "tabs", verdict: "unsure", reason: "" },
+    { check: "c", item: "downloads", verdict: "pass", reason: "" },
   ]);
 });
 
-// Hostile shapes never throw and never invent an entry: a non-array
-// unusedPermissions, a non-object input, and entries whose permission has the
-// wrong type all degrade to safe defaults.
+// Hostile shapes never throw and never invent an entry: a non-array recheck, a
+// non-object input, and entries whose check/item has the wrong type all degrade
+// to safe defaults.
 test("coerceReview survives hostile shapes", () => {
-  assert.deepEqual(coerceReview({ unusedPermissions: "oops" }), {
+  assert.deepEqual(coerceReview({ recheck: "oops" }), {
     summary: "",
-    unusedPermissions: [],
+    recheck: [],
   });
   for (const bad of ["x", 5, [], true, null]) {
-    assert.deepEqual(coerceReview(bad), { summary: "", unusedPermissions: [] });
+    assert.deepEqual(coerceReview(bad), { summary: "", recheck: [] });
   }
   const r = coerceReview({
     summary: 7, // non-string -> ""
-    unusedPermissions: [{ permission: 5, status: "unused" }], // non-string perm
+    recheck: [{ check: 5, item: "tabs", verdict: "fail" }], // non-string check
   });
-  assert.deepEqual(r, { summary: "", unusedPermissions: [] });
+  assert.deepEqual(r, { summary: "", recheck: [] });
 });
 
 // Pins the default model to the Sonnet tier so the client does not silently

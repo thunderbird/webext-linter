@@ -74,7 +74,7 @@ test("createLlmClient forwards the url to the transports as baseURL", async () =
     },
     callReview: async (p) => {
       seen.review = p;
-      return { summary: "", unusedPermissions: [] };
+      return { summary: "", recheck: [] };
     },
   });
   await llm.evaluate({ rubric: "R", candidates: [{ id: "E1", file: "a.js" }] });

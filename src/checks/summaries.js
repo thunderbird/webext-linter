@@ -9,9 +9,8 @@
 // files, --full-summary).
 //
 // The diff summary is free-form prose; the add-on summary is structured (prose
-// plus the machine-readable unused-permission list, via the forced
-// report_addon_review tool), since the unused-permission check consumes that
-// list to raise Issues.
+// plus the machine-readable recheck verdicts, via the forced report_addon_review
+// tool), since the post-summary recheck consumers map those verdicts to Issues.
 //
 // Belongs here: buildDiffText / buildAddonText (the deterministic payloads) and
 // the two summarizer builders. Does NOT belong here: the prompt text ->
@@ -19,14 +18,15 @@
 // adapters (callText / callReview, selected by src/llm/provider.js) through
 // src/checks/llm-client.js (summarize / reviewAddon). The unused-file set ->
 // derived from review findings in src/pipeline.js. Displaying the summaries ->
-// src/cli.js. The unused-permission list -> the unused-permission check
-// (src/checks/rules/unused-permission.js). File classification ->
-// src/checks/lib/bundled.js and src/util/files.js.
+// src/cli.js. Composing the recheck sections and mapping verdicts to Issues ->
+// src/checks/lib/recheck.js. File classification -> src/checks/lib/bundled.js and
+// src/util/files.js.
 
 import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
 import { canonicalJson } from "../util/json.js";
 import { nonAuthoredJs } from "./lib/bundled.js";
 import { declaredPermissions } from "./lib/permissions.js";
+import { buildRecheckSections } from "./lib/recheck.js";
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
 /** @typedef {import("./registry.js").Registry} Registry */
@@ -99,11 +99,11 @@ function deferredSummary(ctx, message) {
 
 /**
  * Like deferredSummary, but for the add-on review: run() yields the structured
- * { summary, unusedPermissions } via ctx.llm.reviewAddon (the forced
- * report_addon_review tool) rather than free-form prose, since the add-on
- * summary also returns the machine-readable unused-permission list. run() may
- * THROW on an LLM error; the pipeline catches it and narrates the failure - an
- * advisory summary must never abort the review.
+ * { summary, recheck } via ctx.llm.reviewAddon (the forced report_addon_review
+ * tool) rather than free-form prose, since the add-on summary also returns the
+ * machine-readable recheck verdicts. run() may THROW on an LLM error; the pipeline
+ * catches it and narrates the failure - an advisory summary must never abort the
+ * review.
  * @param {RunContext} ctx
  * @param {string} message  The full text sent to the model.
  * @returns {DeferredReview}
@@ -303,10 +303,11 @@ export function buildSummarizer(ctx, registry) {
 
 /**
  * Prepare the deferred "Summary of add-on" (--full-summary): the (almost) full
- * current add-on handed to the LLM with the registry "add-on-summary" prompt.
- * The model returns prose plus the structured unused-permission list (the
- * unused-permission check consumes the latter). Returns null when there is no
- * token or no prompt.
+ * current add-on handed to the LLM with the registry "add-on-summary" prompt,
+ * plus a recheck section for any items earlier checks handed over (ctx.recheck).
+ * The model returns prose plus the structured recheck verdicts (the post-summary
+ * recheck consumers map those to Issues). Returns null when there is no token or
+ * no prompt.
  * @param {RunContext} ctx
  * @param {Registry} registry
  * @param {{unused?: Set<string>, used?: Set<string>}} [opts]  unused = files the
@@ -327,5 +328,12 @@ export function buildAddonSummarizer(
   if (!text || !prompt) {
     return null;
   }
-  return deferredReview(ctx, `${prompt}\n\n${text}`);
+  // Items earlier checks handed to a post-summary recheck consumer (ctx.recheck):
+  // their rubrics + item lists, appended so this one pass re-judges them with
+  // whole-add-on context. Empty (and a no-op) when nothing was handed over.
+  const recheck = buildRecheckSections(ctx, registry);
+  const message = recheck
+    ? `${prompt}\n\n${text}\n\n${recheck}`
+    : `${prompt}\n\n${text}`;
+  return deferredReview(ctx, message);
 }

@@ -20,16 +20,17 @@ Read more: https://webextension-api.thunderbird.net/.
 
 Continue manual review for the following checks:
 
-1) Missing English localization: This add-on ships no English localization, so
+1) Possibly unused permissions: Review whether the following declared
+   permissions are used, and ask the developer to remove any that are not
+   needed.
+Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
+ - manifest.json:4 - bogusPermission
+
+2) Missing English localization: This add-on ships no English localization, so
    user-facing text may be hardcoded in another language. Review its strings by
    hand and confirm if an English localization is provided.
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
-
-2) Unused permissions: Review whether the following declared permissions are
-   used, and ask the developer to remove any that are not needed.
-Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
- - manifest.json:4 - bogusPermission
 
 ── Standard manual review ──
 

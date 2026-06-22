@@ -171,7 +171,7 @@ export async function callReview({
     messages: messagesFor(flattenSystem(system), prompt),
     ...functionTool(
       REVIEW_TOOL,
-      "Report the add-on summary and the declared permissions that appear unused.",
+      "Report the add-on summary and your verdict on each item listed in a recheck section.",
       ADDON_REVIEW_SCHEMA
     ),
   });
