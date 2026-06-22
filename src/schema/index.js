@@ -124,6 +124,10 @@ export class SchemaIndex {
     this.globalTypes = new Map();
     /** @type {Set<string>} "<namespace>.<method>" of file-loading functions */
     this.fileLoaderMethods = new Set();
+    /** @type {Set<string>} dotted API prefixes a valid Experiment adds (e.g.
+     * "calendar.items"); filled by registerExperimentNamespaces, consulted by
+     * resolveApi to mark genuinely-new experiment APIs as known. */
+    this.experimentNamespaces = new Set();
     this.applicationVersion = null;
 
     this._build();
@@ -381,6 +385,9 @@ export class SchemaIndex {
       return { kind: "root" };
     }
     // Longest matching namespace prefix wins (handles dotted sub-namespaces).
+    // A real API always takes precedence over an experiment registration, so an
+    // experiment grafting onto a built-in namespace does NOT mask it here (that
+    // collision is flagged by the experiment-overrides-api check).
     for (let n = pathSegments.length; n >= 1; n--) {
       const nsName = pathSegments.slice(0, n).join(".");
       const ns = this.namespaces.get(nsName);
@@ -388,7 +395,45 @@ export class SchemaIndex {
         return this._resolveMembers(ns, nsName, pathSegments, n);
       }
     }
+    // No real namespace matched: a path under a registered experiment prefix is a
+    // genuinely-new experiment API - known, not unknown.
+    const exp = this._matchExperiment(pathSegments);
+    if (exp) {
+      return { kind: "experiment", namespace: exp };
+    }
     return { kind: "unknown-namespace", namespace: pathSegments[0] };
+  }
+
+  /**
+   * Register the dotted API prefixes a valid Experiment declares (e.g.
+   * "calendar.items"), so resolveApi treats genuinely-new experiment APIs as
+   * known rather than unknown.
+   * @param {string[]} prefixes
+   */
+  registerExperimentNamespaces(prefixes) {
+    for (const p of prefixes) {
+      if (p) {
+        this.experimentNamespaces.add(p);
+      }
+    }
+  }
+
+  /**
+   * The longest registered experiment prefix that `segments` falls under, or null.
+   * @param {string[]} segments
+   * @returns {?string}
+   */
+  _matchExperiment(segments) {
+    if (this.experimentNamespaces.size === 0) {
+      return null;
+    }
+    for (let n = segments.length; n >= 1; n--) {
+      const name = segments.slice(0, n).join(".");
+      if (this.experimentNamespaces.has(name)) {
+        return name;
+      }
+    }
+    return null;
   }
 
   /**

@@ -46,9 +46,11 @@ import { nonAuthoredJs } from "./bundled.js";
 import {
   asArray,
   asObject,
+  isExperiment,
   DOC_METADATA_RE,
   DEPENDENCY_FILE_RE,
 } from "./util.js";
+import { experimentFileRefs, experimentSubtreeRoot } from "./experiments.js";
 import {
   basename,
   extname,
@@ -226,6 +228,23 @@ function compute(ctx) {
   }
   for (const raw of extraSeeds(manifest)) {
     seed(generalSeeds, raw);
+  }
+  // A valid Experiment's bundled files are platform entry points, not unused: its
+  // schema/parent/child scripts plus every file in its subtree (helper .sys.mjs
+  // modules loaded via privileged imports reachability can't follow). Applies to
+  // both the pristine and the --allow-experiments cases.
+  if (!ctx.invalidExperiment && isExperiment(manifest)) {
+    for (const raw of experimentFileRefs(manifest)) {
+      seed(generalSeeds, raw);
+    }
+    const expRoot = experimentSubtreeRoot(manifest);
+    if (expRoot) {
+      for (const f of files.keys()) {
+        if (f.startsWith(expRoot)) {
+          generalSeeds.add(f);
+        }
+      }
+    }
   }
   for (const entry of warResourceList(manifest)) {
     for (const pat of entry.resources) {

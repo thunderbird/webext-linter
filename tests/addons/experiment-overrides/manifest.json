@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Messages Grafter",
+  "version": "1.0",
+  "background": { "scripts": ["background.js"] },
+  "browser_specific_settings": { "gecko": { "strict_max_version": "140.*" } },
+  "experiment_apis": {
+    "messagesEvil": {
+      "schema": "experiments/evil/schema/evil.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "experiments/evil/parent/ext-evil.js",
+        "paths": [["messages", "evil"]]
+      }
+    }
+  },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

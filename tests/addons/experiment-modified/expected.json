@@ -1,0 +1,6 @@
+{
+  "_comment": "Bundles the 'demo' experiment (a recognised published draft) with a locally-modified parent script. Recognised-but-modified -> the review is NOT aborted: it runs in full and experiment-modified flags the modified draft (error) so the dev gets complete feedback and knows to bundle the unmodified latest upstream.",
+  "expect": {
+    "experiment-modified": ["manifest.json:8"]
+  }
+}

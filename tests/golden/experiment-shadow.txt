@@ -1,0 +1,11 @@
+── Issues ──
+
+Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
+
+1) We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). The following cannot be accepted:
+Read more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews
+ - manifest.json:6 - the messages.evil API shadows the built-in messages API
+
+── Summary ──
+
+1 error(s), 0 warning(s), 0 info, 0 manual review step(s)

@@ -38,6 +38,7 @@ import {
   DEFAULT_CHANNEL,
   VALID_CHANNELS,
   DEFAULT_CACHE,
+  EXPERIMENTS_CACHE,
   MAX_LLM_REQUESTS_PER_RUN,
 } from "./config.js";
 import {
@@ -210,6 +211,18 @@ export function helpText() {
       "--schema-force-refresh",
       "Re-download the schema even if a cached copy exists.",
     ],
+    [
+      "--experiments-zip <path>",
+      "Use a local allowed-experiments repo (zip or directory) instead of downloading.",
+    ],
+    [
+      "--experiments-cache <dir>",
+      `Where the fetched allowed-experiments zip is cached (default: ${EXPERIMENTS_CACHE}).`,
+    ],
+    [
+      "--experiments-force-refresh",
+      "Re-download the allowed-experiments list even if a cached copy exists.",
+    ],
   ];
 
   const checks = [
@@ -300,6 +313,9 @@ const OPTIONS = {
   "schema-zip": { type: "string" },
   "schema-cache": { type: "string" },
   "schema-force-refresh": { type: "boolean" },
+  "experiments-zip": { type: "string" },
+  "experiments-cache": { type: "string" },
+  "experiments-force-refresh": { type: "boolean" },
   "checks-only": { type: "string" },
   "checks-skip": { type: "string" },
   eslint: { type: "boolean" },
@@ -511,6 +527,9 @@ function pipelineOptsFromValues(values) {
     schemaZip: values["schema-zip"],
     schemaCache: values["schema-cache"] || DEFAULT_CACHE,
     schemaForceRefresh: values["schema-force-refresh"],
+    experimentsZip: values["experiments-zip"],
+    experimentsCache: values["experiments-cache"] || EXPERIMENTS_CACHE,
+    experimentsForceRefresh: values["experiments-force-refresh"],
     checksOnly: splitList(values["checks-only"]),
     checksSkip: splitList(values["checks-skip"]),
     eslint: values.eslint,

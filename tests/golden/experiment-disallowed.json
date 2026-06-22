@@ -31,8 +31,8 @@
         "column": 0
       },
       "item": null,
-      "hint": null,
-      "message": "We are currently not accepting new submissions using Experiment APIs.\nRead more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews"
+      "hint": "the myapi API is not a published Thunderbird API draft",
+      "message": "We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). The following cannot be accepted:\nRead more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews"
     }
   ]
 }

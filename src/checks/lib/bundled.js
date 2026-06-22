@@ -62,7 +62,12 @@ const LIB_NAME =
 export function classifyBundled(addon) {
   const vendored = addon.vendor?.set ?? new Set();
   const classified = [];
-  const nonAuthored = new Set(vendored);
+  // Files of a PRISTINE allowed Experiment are vetted upstream code, not the
+  // developer's - the byte-match IS their review, so the source-level scanners
+  // skip them like a vendored library. (Custom --allow-experiments code is not
+  // trusted, so it stays linted: trustedFiles is empty there.)
+  const trusted = addon.experiments?.trustedFiles ?? new Set();
+  const nonAuthored = new Set([...vendored, ...trusted]);
   for (const [file, buf] of addon.files) {
     const ext = extname(file);
     if (

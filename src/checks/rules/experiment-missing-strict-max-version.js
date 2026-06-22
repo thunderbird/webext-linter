@@ -1,8 +1,9 @@
-// An accepted Experiment (declares experiment_apis) must pin a
-// strict_max_version. Experiments call internal APIs that change between major
-// Thunderbird versions, so without a maximum they break silently on upgrade.
-// Only relevant when experiments are allowed (--allow-experiments) - otherwise
-// experiment-not-allowed already rejects the submission. Silent for
+// A valid Experiment (declares experiment_apis and is reviewed rather than
+// rejected - allowed via --allow-experiments or a pristine upstream copy) must
+// pin a strict_max_version. Experiments call internal APIs that change between
+// major Thunderbird versions, so without a maximum they break silently on
+// upgrade. This is a default-phase check, so it runs only when the experiment is
+// valid (an invalid one short-circuits to experiment-not-allowed). Silent for
 // non-Experiments and for Experiments that already declare a max.
 //
 // Belongs here: flagging an allowed Experiment that omits strict_max_version.
@@ -31,10 +32,6 @@ export default {
     }
     if (!isExperiment(m)) {
       ctx.note?.("manifest.json", null, "not an Experiment", "skipped");
-      return [];
-    }
-    if (!ctx.options?.allowExperiments) {
-      ctx.note?.("manifest.json", null, "experiments not allowed", "skipped");
       return [];
     }
     const max = strictMaxVersion(m);

@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Shadow Experiment",
+  "version": "1.0",
+  "experiment_apis": {
+    "shadowMessages": {
+      "parent": { "scopes": ["addon_parent"], "paths": [["messages", "evil"]] }
+    }
+  },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

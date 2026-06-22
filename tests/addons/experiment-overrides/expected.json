@@ -1,0 +1,7 @@
+{
+  "_comment": "An Experiment (allowed via --allow-experiments) whose declared API path grafts onto the built-in 'messages' namespace -> experiment-overrides-api error. The experiment's own files are reachable but, being custom (not a pristine upstream copy), are still linted.",
+  "options": { "--allow-experiments": true },
+  "expect": {
+    "experiment-overrides-api": ["manifest.json:7"]
+  }
+}

@@ -22,6 +22,7 @@ import { formatReview } from "../src/report/format.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..");
 const SCHEMA_FIXTURE = path.join(here, "schema-fixture");
+const EXPERIMENTS_FIXTURE = path.join(here, "experiments-fixture");
 const ADDONS_DIR = path.join(here, "addons");
 const GOLDEN_DIR = path.join(here, "golden");
 const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
@@ -153,6 +154,7 @@ async function main() {
         ...pipelineOptsFromArgv(optionsToArgv(options)),
         addon,
         schemaZip: SCHEMA_FIXTURE,
+        experimentsZip: EXPERIMENTS_FIXTURE,
         vendorNet: OFFLINE_NET,
       });
       problems = diff(expected, locationsByRule(review.findings));

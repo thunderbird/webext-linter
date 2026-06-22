@@ -236,16 +236,26 @@ deterministic-checks:
   response: |-
     Limited static-analysis coverage: could not be parsed, so API checks were skipped ({{detail}})
 
-# Rejects an Experiment (declares experiment_apis) unless --allow-experiments.
-# phase: invalid-experiment - the orchestrator runs ONLY this check (and nothing
-# else, no LLM) when the add-on is an Experiment and --allow-experiments is off.
+# Aborts the review of an Experiment that uses an UNSUPPORTED experiment (an
+# unknown API draft, or one shadowing a built-in). phase: invalid-experiment - the
+# orchestrator runs ONLY this check (and nothing else, no LLM). A recognised but
+# modified draft does NOT land here; it is reviewed normally and flagged by
+# experiment-modified. The per-experiment reason is appended to each location line.
 - title: Experiment APIs not accepted
   severity: error
   check: experiment-not-allowed.js
   phase: invalid-experiment
   response: |-
-    We are currently not accepting new submissions using Experiment APIs.
+    We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). The following cannot be accepted:
     Read more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews
+
+# Flags a recognised published Experiment draft that is bundled modified or
+# outdated (it would be accepted if it were the unmodified latest upstream copy).
+- title: Modified or outdated Experiment draft
+  severity: error
+  check: experiment-modified.js
+  response: |-
+    "{{item}}" is a published Thunderbird Experiment API draft, but this add-on bundles a modified or outdated copy. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments.
 
 # Flags an accepted Experiment (--allow-experiments) that declares no
 # strict_max_version.
@@ -254,6 +264,14 @@ deterministic-checks:
   check: experiment-missing-strict-max-version.js
   response: |-
     This add-on uses Experiment APIs but declares no strict_max_version. Experiments rely on internal APIs that change between major Thunderbird versions, so they must set browser_specific_settings.gecko.strict_max_version.
+
+# Flags an Experiment whose declared API overrides or grafts onto a built-in
+# Thunderbird API instead of adding a new one.
+- title: Experiment overrides a built-in API
+  severity: error
+  check: experiment-overrides-api.js
+  response: |-
+    The Experiment API "{{item}}" overrides or extends a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under a new, distinct API namespace.
 
 # Flags a non-Experiment that pins strict_max_version (only blocks newer
 # Thunderbird; the APIs are forward-compatible).

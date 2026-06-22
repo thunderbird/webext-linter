@@ -1,0 +1,6 @@
+{
+  "_comment": "An Experiment (no --allow-experiments) whose declared API path grafts onto the built-in 'messages' namespace. Unrecognised as a published draft -> unsupported -> the review aborts; experiment-not-allowed reports the shadowing reason on the entry line.",
+  "expect": {
+    "experiment-not-allowed": ["manifest.json:6"]
+  }
+}

@@ -13,6 +13,19 @@ export const VALID_CHANNELS = ["release", "beta", "esr"];
 export const DEFAULT_CACHE = ".schema-cache";
 
 /**
+ * The upstream repository of allowed Thunderbird Experiments. An add-on that
+ * bundles one of these UNCHANGED is auto-accepted (not treated as an invalid
+ * Experiment); see src/experiments/*.
+ */
+export const EXPERIMENTS_REPO = "thunderbird/webext-experiments";
+
+/** Branch of EXPERIMENTS_REPO to fetch for the allow-list. */
+export const EXPERIMENTS_BRANCH = "main";
+
+/** Directory where the fetched experiments zip is cached (--experiments-cache). */
+export const EXPERIMENTS_CACHE = ".experiments-cache";
+
+/**
  * Default model per LLM_API_TYPE when LLM_API_MODEL is not set. DEFAULT_MODEL_CLAUDE is
  * the claude (Anthropic) default; DEFAULT_MODEL_OPENAI the chatgpt (OpenAI) one
  * (gpt-4.1 for its 1M-token context - add-ons can be large; gpt-4o's 128k

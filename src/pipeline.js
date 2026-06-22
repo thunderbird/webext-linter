@@ -34,6 +34,8 @@ import { classifyBundled } from "./checks/lib/bundled.js";
 import { getPermissionAnalysis } from "./checks/lib/permissions.js";
 import { collapseUnused } from "./checks/lib/unused-folders.js";
 import { isExperiment } from "./checks/lib/util.js";
+import { experimentApiPaths } from "./checks/lib/experiments.js";
+import { verifyExperiments } from "./experiments/verify.js";
 import { createLlmBudget } from "./llm/budget.js";
 import { debug, progress, llmErrorText } from "./util/log.js";
 import { red } from "./util/color.js";
@@ -61,6 +63,9 @@ import {
  * @property {string} [schemaZip]
  * @property {string} [schemaCache]
  * @property {boolean} [schemaForceRefresh]
+ * @property {string} [experimentsZip]  Local allowed-experiments zip/dir (skips network).
+ * @property {string} [experimentsCache]  Where to cache the fetched experiments zip.
+ * @property {boolean} [experimentsForceRefresh]  Re-fetch the allow-list.
  * @property {string[]} [checksOnly]
  * @property {string[]} [checksSkip]
  * @property {boolean} [eslint]  Run the opt-in ESLint code-sanity check (off by
@@ -115,8 +120,26 @@ export async function runPipeline(opts) {
   // checks, advisory summaries, or the vendor-parse fallback), and no manual
   // reminders. The vendor pre-processing below feeds only the normal checks (and
   // its parse can call the LLM), so it is skipped in that mode too.
-  const invalidExperiment =
+  let invalidExperiment =
     isExperiment(addon.manifest) && !opts.allowExperiments;
+  // ...unless every bundled experiment is a recognised allowed upstream experiment
+  // (github.com/thunderbird/webext-experiments). We abort (short-circuit to the
+  // single experiment-not-allowed entry) ONLY when an experiment is unsupported
+  // (an unknown API name, which includes one shadowing a built-in). A recognised
+  // experiment that is merely modified/outdated does NOT abort - the full review
+  // runs so the developer gets complete feedback, and experiment-modified flags it.
+  // The allow-list is fetched only here (an experiment without --allow-experiments);
+  // a fetch failure throws, so the run hard-exits (2) rather than letting a missing
+  // allow-list masquerade as a reject.
+  if (invalidExperiment) {
+    addon.experiments = await verifyExperiments(addon, opts);
+    const abort = addon.experiments.groups.some(
+      (g) => g.status === "unsupported"
+    );
+    if (!abort) {
+      invalidExperiment = false;
+    }
+  }
 
   const findings = [];
   const meta = {
@@ -379,6 +402,13 @@ async function reviewAddon(
     refresh: schemaForceRefresh,
   });
   const schema = buildSchemaIndex(loadSchemaFiles(zipPath));
+  // A valid Experiment's declared APIs are part of its platform: register them so
+  // the developer's calls into them (e.g. browser.calendar.*) resolve instead of
+  // tripping unknown-api. (experiment-overrides-api separately flags a path that
+  // collides with a built-in.)
+  if (!invalidExperiment && isExperiment(addon.manifest)) {
+    schema.registerExperimentNamespaces(experimentApiPaths(addon.manifest));
+  }
 
   setupStep("Parsing add-on sources");
   // The checks layer assembles its own context (sources, API usage, diff

@@ -876,13 +876,16 @@ test("experiment-missing-strict-max-version flags an allowed Experiment lacking 
     0 // experiment WITH a max -> ok
   );
   assert.equal(run({ name: "x" }).length, 0); // not an experiment -> silent
-  // Experiments disabled -> silent (experiment-not-allowed handles it).
+  // The check no longer gates on allowExperiments: whether it runs at all is the
+  // orchestrator's job (phase: default runs only for a VALID experiment - allowed
+  // via the flag or a pristine upstream copy). Reached directly without the flag,
+  // it still flags an experiment lacking a max.
   assert.equal(
     experimentMissingMax.run({
       addon: { manifest: { experiment_apis: { a: {} } } },
       options: {},
     }).length,
-    0
+    1
   );
 });
 

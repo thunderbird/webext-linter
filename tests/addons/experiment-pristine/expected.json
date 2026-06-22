@@ -1,0 +1,4 @@
+{
+  "_comment": "Bundles the upstream 'demo' experiment UNCHANGED. Pristine -> the add-on is NOT rejected (no --allow-experiments needed): browser.demo.* resolves (registered), the experiment files are reachable (not unused) and trusted (not linted), strict_max_version is pinned. A clean review.",
+  "expect": {}
+}
