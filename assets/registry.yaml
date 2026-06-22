@@ -1,3 +1,7 @@
+# Note: Responses should not contain line breaks, as they can be copied into the
+#       response window on ATN, which will reflow them. Line breaks will create
+#       ugly-looking response messages sent to the developer.
+
 deterministic-checks:
 # Flags use of a Mozilla/Thunderbird trademark in the add-on name (the icon is a
 # separate manual check).
@@ -541,15 +545,24 @@ llm-checks:
   prompt: |-
     Each candidate is a site (file:line) that references a web_accessible_resources
     file F, named in the candidate note as "does this site load F for a web
-    context". For that candidate, decide only whether this site loads F for a web
-    context (a content script, a page, or a plausible external web page).
+    context". web_accessible_resources is only needed when something OUTSIDE the
+    add-on reads F: a content script (which runs in the web page's world), a real
+    web page, or another extension. The add-on opening or embedding its own file
+    or page from its own extension contexts (the background, a popup, sidebar,
+    options or tab page, or an iframe of F inside another of the add-on's own
+    pages) never needs it. For that candidate, decide only whether this site
+    exposes F to such an external web context.
 
-    Verdict pass (this site loads F): a getURL, a fetch, an HTML or CSS reference,
-    or a dynamic or data-built path. A reference need not be a manifest entry
-    point.
+    Verdict pass (this site exposes F to a web context): the reference is in a
+    content script, or it builds a URL or markup handed to a web page or another
+    extension - a getURL, a fetch, an HTML or CSS reference, or a dynamic or
+    data-built path reachable from such a context. A reference need not be a
+    manifest entry point.
 
-    Verdict fail (this site does not load F): the reference is incidental, or it
-    is unrelated code.
+    Verdict fail (this site does not expose F): the reference is incidental or
+    unrelated code, or F is loaded only by the add-on's own extension code (its
+    background or its own pages, including an iframe of F inside one of them),
+    which does not require web_accessible_resources.
 
     Use unsure only when you genuinely cannot tell.
   instructions: |-
