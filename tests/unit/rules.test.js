@@ -1221,6 +1221,45 @@ test("loadChecks throws hard when a check: names a missing module", async () => 
   }
 });
 
+// A post-summary-recheck producer must name a real consumer that carries a
+// summary-prompt; otherwise its diverted items would be silently dropped, so the
+// loader rejects the registry.
+test("loadChecks rejects a dangling or prompt-less post-summary-recheck target", async () => {
+  const tmp = path.join(os.tmpdir(), `recheck-registry-${process.pid}.yaml`);
+  const write = (body) => fs.writeFileSync(tmp, body);
+  try {
+    // Target names no check at all.
+    write(
+      "deterministic-checks:\n- title: P\n  check: producer-x\n  post-summary-recheck: nope\n"
+    );
+    await assert.rejects(() => loadChecks(loadRegistry(tmp)), /is not a check/);
+    // Target is a real check, but it carries no summary-prompt.
+    write(
+      "deterministic-checks:\n" +
+        "- title: P\n  check: producer-x\n  post-summary-recheck: consumer-x\n" +
+        "- title: C\n  check: consumer-x\n"
+    );
+    await assert.rejects(() => loadChecks(loadRegistry(tmp)), /summary-prompt/);
+  } finally {
+    fs.rmSync(tmp);
+  }
+});
+
+// A check carrying a summary-prompt is classified post-summary without an explicit
+// phase (it is re-judged by the add-on summary, which runs then); a producer
+// (post-summary-recheck but no summary-prompt) stays in the main loop.
+test("loadChecks classifies a summary-prompt check as post-summary", async () => {
+  const checks = await loadChecks(loadRegistry());
+  assert.equal(
+    checks.find((c) => c.id === "unused-permission")?.phase,
+    "post-summary"
+  );
+  assert.equal(
+    checks.find((c) => c.id === "unused-permission-manual")?.phase,
+    undefined
+  );
+});
+
 // loadChecks validates the severity token: error/warning/info/auto are allowed,
 // anything else is a loud config error (the module exists; only the severity is
 // bad - so this is distinct from the missing-module failure above).

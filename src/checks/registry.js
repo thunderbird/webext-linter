@@ -92,7 +92,8 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   this check hands its manual items to when the full summary runs (see
  *   runChecks and src/checks/lib/recheck.js).
  * @property {string} [summaryPrompt]  (recheck consumer) The rubric appended to
- *   the full-summary prompt to re-judge the items handed to this check.
+ *   the full-summary prompt to re-judge the items handed to this check. Its
+ *   presence also classifies the check as post-summary (see loadChecks).
  * @property {Function} run
  */
 
@@ -285,15 +286,29 @@ export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
 export async function loadChecks(registry, { only, skip } = {}) {
   const onlySet = only?.length ? new Set(only) : null;
   const skipSet = skip?.length ? new Set(skip) : null;
-  // Ids named as some entry's `post-summary-recheck` target: those checks are
-  // recheck consumers, so they run in the post-summary phase even when they do
-  // not also declare `phase` (being referenced is enough to classify them).
-  const recheckTargets = new Set(
-    registry
-      .checkEntries()
-      .map((e) => e["post-summary-recheck"])
-      .filter((id) => typeof id === "string" && id)
-  );
+  // A `post-summary-recheck: X` producer must name a real check X that carries a
+  // `summary-prompt` (that prompt is what re-judges the handed-over items; a
+  // dangling target would divert them into ctx.recheck to be silently dropped).
+  // Validated over the whole registry - config integrity is independent of
+  // --only/--skip.
+  for (const e of registry.checkEntries()) {
+    const target = e["post-summary-recheck"];
+    if (typeof target !== "string" || !target) {
+      continue;
+    }
+    const consumer = registry.checkEntry(target);
+    if (!consumer) {
+      throw new Error(
+        `post-summary-recheck target "${target}" (from "${e.title}") is not a check`
+      );
+    }
+    const prompt = consumer["summary-prompt"];
+    if (typeof prompt !== "string" || !prompt) {
+      throw new Error(
+        `post-summary-recheck target "${target}" (from "${e.title}") has no summary-prompt`
+      );
+    }
+  }
   const checks = [];
   for (const entry of registry.checkEntries()) {
     const id = stem(entry.check);
@@ -329,8 +344,10 @@ export async function loadChecks(registry, { only, skip } = {}) {
       severity,
       kind: entry.kind,
       diff: typeof entry.diff === "boolean" ? entry.diff : undefined,
+      // A `summary-prompt` marks a recheck consumer: it is re-judged by the add-on
+      // summary, so it must run AFTER it (an explicit `phase` still wins).
       phase:
-        entry.phase ?? (recheckTargets.has(id) ? "post-summary" : undefined),
+        entry.phase ?? (entry["summary-prompt"] ? "post-summary" : undefined),
       prompt: entry.prompt,
       instructions: entry.instructions,
       postSummaryRecheck:
