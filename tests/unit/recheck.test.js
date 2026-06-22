@@ -146,11 +146,16 @@ test("loc-bearing items with no item token key on file:line", () => {
 
 // ---- buildRecheckSections: the prompt fragment ----
 // One section per consumer with handed items, carrying that consumer's
-// summary-prompt and the de-duplicated item keys, labeled with the check id so the
-// model can echo it back. Empty when nothing was handed over.
+// summary-prompt, the de-duplicated item keys (labeled with the check id so the
+// model can echo it back), and a per-section instruction to surface fail/unsure
+// verdicts as a bullet labeled with the consumer's title. Empty when nothing was
+// handed over.
 test("buildRecheckSections composes a labeled section per consumer", () => {
   const registry = {
-    checkEntry: (id) => ({ "summary-prompt": `RUBRIC for ${id}` }),
+    checkEntry: (id) => ({
+      "summary-prompt": `RUBRIC for ${id}`,
+      title: "Unused permission",
+    }),
   };
   const ctx = {
     recheck: new Map([
@@ -163,6 +168,23 @@ test("buildRecheckSections composes a labeled section per consumer", () => {
   assert.ok(out.includes('check="unused-permission"'));
   assert.ok(out.includes("- tabs"));
   assert.ok(out.includes("- storage"));
+  // The orchestrator attaches a per-section bullet instruction, labeled with the
+  // consumer's registry title, so every recheck surfaces its verdicts uniformly.
+  assert.ok(out.includes("add a separate bullet point"));
+  assert.ok(out.includes('labeled "Unused permission"'));
+});
+
+// The bullet label falls back to the check id when the consumer entry has no title.
+test("buildRecheckSections labels the bullet with the id when no title", () => {
+  const registry = {
+    checkEntry: (id) => ({ "summary-prompt": `RUBRIC for ${id}` }),
+  };
+  const out = buildRecheckSections(
+    { recheck: new Map([["x", [handed("a", 1)]]]) },
+    registry
+  );
+  assert.ok(out.includes("add a separate bullet point"));
+  assert.ok(out.includes('labeled "x"'));
 });
 
 test("buildRecheckSections is empty when nothing was handed over", () => {

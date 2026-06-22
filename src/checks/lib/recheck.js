@@ -56,8 +56,12 @@ function itemKey(ref) {
 /**
  * The add-on-summary prompt fragment that asks the model to re-judge every item
  * handed to a recheck consumer. One section per consumer (with items), each
- * carrying that consumer's `summary-prompt` rubric and its item keys. Returns ""
- * when nothing was handed over, so the summary prompt is unchanged.
+ * carrying that consumer's `summary-prompt` rubric, its item keys, and a uniform
+ * instruction to surface any fail/unsure verdict as a labeled bullet in the prose
+ * summary (the label is the consumer's registry title). Attaching that instruction
+ * here, in the orchestrator, is what makes every recheck reach the summary - not
+ * each consumer's own rubric. Returns "" when nothing was handed over, so the
+ * summary prompt is unchanged.
  * @param {RunContext} ctx
  * @param {import("../registry.js").Registry} registry
  * @returns {string}
@@ -72,7 +76,8 @@ export function buildRecheckSections(ctx, registry) {
     if (!items.length) {
       continue;
     }
-    const prompt = registry.checkEntry(id)?.["summary-prompt"];
+    const entry = registry.checkEntry(id);
+    const prompt = entry?.["summary-prompt"];
     if (!prompt) {
       // A recheck target with no rubric: leave its items unjudged - the consumer
       // (resolveRecheck) falls them back to manual review, so none are lost.
@@ -87,11 +92,19 @@ export function buildRecheckSections(ctx, registry) {
         keys.push(key);
       }
     }
+    // The bullet instruction is attached to every section here, in the orchestrator,
+    // so all rechecks surface their verdicts uniformly - not left to each consumer's
+    // rubric. The label is the consumer's registry title (its id as a fallback).
+    const label = entry.title || id;
     sections.push(
       `=== recheck: ${id} ===\n${prompt}\n\n` +
         "Items to judge (return one entry in the recheck field for each, with " +
         `check="${id}" and the exact item text):\n` +
-        keys.map((k) => `- ${k}`).join("\n")
+        keys.map((k) => `- ${k}`).join("\n") +
+        `\n\nFor every item above you judge "fail" or "unsure", add a separate ` +
+        `bullet point to the prose "summary" field, labeled "${label}", naming ` +
+        "those items with a one-line reason, so the reviewer sees them in the " +
+        "overview and not only in the structured result."
     );
   }
   return sections.join("\n\n");
