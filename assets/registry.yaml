@@ -883,6 +883,11 @@ prompts:
     that section's rubric; return one "recheck" entry per listed item, giving the
     matching check id, the exact item text, your verdict, and a one-sentence reason.
     Judge only the listed items and never add others.
+    Also reflect these verdicts in the prose summary: for each recheck section in
+    which you judged any item "fail" (or were "unsure"), add a bullet point to the
+    summary naming those items with a one-line reason, labeled after what the
+    section judges (for example "Permission review" or "Unused files"), so the
+    reviewer sees them in the overview and not only in the structured result.
     This is an advisory overview. The formal findings in the review report above are
     authoritative, not this summary.
   vendor-parse: |-
