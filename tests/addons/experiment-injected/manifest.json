@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Experiment Injected",
+  "version": "1.0",
+  "browser_specific_settings": { "gecko": { "strict_max_version": "140.*" } },
+  "background": { "scripts": ["background.js"] },
+  "experiment_apis": {
+    "wl": {
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "experiments/wl/parent.js",
+        "paths": [["wl"]]
+      }
+    },
+    "ui": {
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "experiments/ui/parent.js",
+        "paths": [["ui"]]
+      }
+    },
+    "mystery": {
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "experiments/mystery/parent.js",
+        "paths": [["mystery"]]
+      }
+    }
+  },
+  "icons": { "16": "icon.png" }
+}

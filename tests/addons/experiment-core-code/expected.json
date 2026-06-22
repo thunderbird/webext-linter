@@ -1,0 +1,5 @@
+{
+  "_comment": "An Experiment reviewed with --allow-experiments. Its parent script is privileged CORE code: messenger.reloadMessage() (absent from the schema) must NOT be flagged unknown-api, and must not count toward permissions. It pulls in content/helper.js via rootURI.resolve() (root-relative) and modules/MyMod.sys.mjs via a resource:// URL matched by file name - both reachable, not unused. A resource:// core module with no bundled counterpart is ignored, not flagged. A clean review.",
+  "options": { "--allow-experiments": true },
+  "expect": {}
+}

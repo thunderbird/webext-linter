@@ -15,14 +15,20 @@
 
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
+import { buildReachability } from "../lib/reachability.js";
 
 export default {
   run(ctx) {
     const findings = [];
     const { schema } = ctx;
     const seen = new Set(); // report each deprecated api once
+    // Privileged Experiment/core code is not WebExtension schema (skip it).
+    const experimentFiles = buildReachability(ctx).experimentReachable;
 
     for (const src of ctx.apiUsages) {
+      if (experimentFiles.has(src.file)) {
+        continue;
+      }
       for (const usage of src.usages) {
         if (usage.segments.length === 0) {
           continue;

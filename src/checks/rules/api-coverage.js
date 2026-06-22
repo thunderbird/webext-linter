@@ -10,6 +10,7 @@
 // api-coverage registry entry, stamped by src/checks/registry.js).
 
 import { finding } from "../../report/finding.js";
+import { buildReachability } from "../lib/reachability.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -20,7 +21,12 @@ export default {
    */
   run(ctx) {
     const findings = [];
+    // Privileged Experiment/core code is not WebExtension schema (skip it).
+    const experimentFiles = buildReachability(ctx).experimentReachable;
     for (const src of ctx.apiUsages || []) {
+      if (experimentFiles.has(src.file)) {
+        continue;
+      }
       for (const lim of src.limitations || []) {
         // lim.reason is the parser's own diagnostic (data), passed through.
         findings.push(

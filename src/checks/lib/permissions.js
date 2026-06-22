@@ -93,7 +93,9 @@ export function analyzePermissions(ctx) {
   // surfaces such files for review. Their API calls never execute.
   const reach = buildReachability(ctx);
   for (const src of ctx.apiUsages) {
-    if (!reach.isLive(src.file)) {
+    // Skip dead code, and privileged Experiment/core code (it runs with full
+    // privileges and uses no permissions, so it bears on neither used nor missing).
+    if (!reach.isLive(src.file) || reach.experimentReachable.has(src.file)) {
       continue;
     }
     for (const usage of src.usages) {

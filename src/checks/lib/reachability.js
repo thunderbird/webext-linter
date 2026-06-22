@@ -42,6 +42,10 @@ import { scanHtmlRemoteRefs } from "../../scan/html.js";
 import { scanCssRemoteRefs } from "../../scan/css.js";
 import { scanLocalImports } from "../../parse/local-imports.js";
 import { scanLoaderRefs } from "../../parse/loader-files.js";
+import {
+  scanCoreLoaderRefs,
+  scanExperimentInjectedRefs,
+} from "../../parse/core-loaders.js";
 import { nonAuthoredJs } from "./bundled.js";
 import {
   asArray,
@@ -50,7 +54,12 @@ import {
   DOC_METADATA_RE,
   DEPENDENCY_FILE_RE,
 } from "./util.js";
-import { experimentFileRefs, experimentSubtreeRoot } from "./experiments.js";
+import {
+  experimentFileRefs,
+  experimentSubtreeRoot,
+  experimentApiNamespaces,
+  classifyExperimentNamespaces,
+} from "./experiments.js";
 import {
   basename,
   extname,
@@ -88,6 +97,11 @@ const DOC_FILE = new RegExp(
  * @typedef {object} Reachability
  * @property {Set<string>} reachable       Files reachable from any entry point.
  * @property {Set<string>} webReachable    Files reachable from a content script.
+ * @property {Set<string>} experimentReachable  Files reachable from the Experiment
+ *   subtree, following core-code loaders (rootURI.resolve paths + registered
+ *   chrome://resource:// URLs matched by file name). This privileged CORE code is
+ *   exempt from the schema/permission checks (it does not use the WebExtension
+ *   schema or permissions). Empty when the add-on is not an Experiment.
  * @property {boolean} hasDynamicLoaders  A live, authored file builds a load
  *   path at run time (dead-code and non-authored/library loaders are excluded).
  * @property {{file: string, kind: string}[]} dynamicLoaderSites  Live, authored.
@@ -129,7 +143,21 @@ export function buildReachability(ctx) {
  */
 function compute(ctx) {
   const { addon } = ctx;
-  const files = addon.files;
+  const files = addon?.files;
+  // A context with no files (degenerate / unit harness) has nothing reachable;
+  // return an inert graph so every consumer (incl. the API checks) is a no-op.
+  if (!files) {
+    return {
+      reachable: new Set(),
+      webReachable: new Set(),
+      experimentReachable: new Set(),
+      hasDynamicLoaders: false,
+      dynamicLoaderSites: [],
+      mentionsOf: () => [],
+      isLive: () => false,
+      closureFrom: () => new Set(),
+    };
+  }
   const manifest = addon.manifest || {};
 
   // Non-authored (vendored / library / minified) JS. We still parse it for
@@ -229,22 +257,28 @@ function compute(ctx) {
   for (const raw of extraSeeds(manifest)) {
     seed(generalSeeds, raw);
   }
-  // A valid Experiment's bundled files are platform entry points, not unused:
-  // its schema/parent/child scripts plus every file in its subtree (helper
-  // .sys.mjs modules loaded via privileged imports reachability can't follow).
-  // Applies to both the pristine and the --allow-experiments cases.
+  // A valid Experiment's bundled files are platform entry points, not unused: its
+  // schema/parent/child scripts plus every file in its subtree. Collected as a
+  // SEPARATE seed set (folded into generalSeeds too) so the Experiment closure
+  // below can be queried on its own - to exempt that privileged CORE code from the
+  // schema/permission checks. Applies to both the pristine and --allow-experiments
+  // cases.
+  const experimentSeeds = new Set();
   if (!ctx.invalidExperiment && isExperiment(manifest)) {
     for (const raw of experimentFileRefs(manifest)) {
-      seed(generalSeeds, raw);
+      seed(experimentSeeds, raw);
     }
     const expRoot = experimentSubtreeRoot(manifest);
     if (expRoot) {
       for (const f of files.keys()) {
         if (f.startsWith(expRoot)) {
-          generalSeeds.add(f);
+          experimentSeeds.add(f);
         }
       }
     }
+  }
+  for (const f of experimentSeeds) {
+    generalSeeds.add(f);
   }
   for (const entry of warResourceList(manifest)) {
     for (const pat of entry.resources) {
@@ -269,7 +303,106 @@ function compute(ctx) {
     }
   }
 
-  const reachable = bfs(generalSeeds, outEdges);
+  // The WebExtension tracer's set, before any core-loader edge: today's reachable.
+  const baseReachable = bfs(generalSeeds, outEdges);
+
+  // basename -> packaged files of that name, for references matched by file NAME
+  // (registered chrome://resource:// URLs and Experiment-injected names).
+  const byBasename = new Map();
+  for (const f of files.keys()) {
+    const b = basename(f);
+    let list = byBasename.get(b);
+    if (!list) {
+      byBasename.set(b, (list = []));
+    }
+    list.push(f);
+  }
+  const srcByFile = new Map((ctx.jsSources || []).map((s) => [s.file, s]));
+  // Resolve a {kind, value} ref to packaged files. A name match excludes files the
+  // WebExtension tracer already reached, so a name is not mis-attributed to a used
+  // file; an unmatched name is a core/app file and yields nothing (never flagged).
+  const refTargets = (r) =>
+    r.kind === "path"
+      ? [resolveRef(files, null, r.value)].filter(Boolean)
+      : (byBasename.get(r.value) ?? []).filter((t) => !baseReachable.has(t));
+
+  // Files the add-on hands to an Experiment API. We classify by what the experiment
+  // DOES with the parameter (its parent.script): a SUBSCRIPT-LOADED file runs as
+  // privileged core code (seed it -> exempt); a file loaded into a WebExtension
+  // <browser> stays WebExtension code (ignored here -> still checked); an
+  // undetermined one is deferred (seeded/exempt now, plus an `unsure` feed note a
+  // later summary-prompt can resolve). Scanned across ALL files, since the
+  // registration lives in the add-on's own WebExtension code.
+  const webextInjected = new Set();
+  if (!ctx.invalidExperiment && isExperiment(manifest)) {
+    const classes = classifyExperimentNamespaces(addon);
+    const namespaces = experimentApiNamespaces(manifest);
+    for (const src of ctx.jsSources || []) {
+      for (const r of scanExperimentInjectedRefs(
+        src.code,
+        namespaces,
+        src.lineOffset
+      ).refs) {
+        const cls = classes.get(r.ns);
+        for (const t of refTargets(r)) {
+          if (cls === "core" || cls === "unsure") {
+            experimentSeeds.add(t); // privileged context -> exempt
+            if (cls === "unsure") {
+              ctx.note?.(src.file, { line: r.line }, t, "unsure");
+            }
+          } else if (cls === "webext") {
+            // A WebExtension page loaded into a browser: it runs (so not unused),
+            // but stays WebExtension code (still API-checked).
+            webextInjected.add(t);
+          }
+        }
+      }
+    }
+  }
+
+  // The Experiment dependency tree: a BFS from the Experiment seeds following the
+  // normal edges PLUS the core-code loaders (rootURI.resolve paths, and registered
+  // chrome://resource:// URLs matched by file NAME) - scanned ONLY here, on
+  // Experiment-tree files. Discovered edges go into outEdges, so the loaded add-on
+  // files are reachable (not flagged unused).
+  const experimentReachable = new Set();
+  if (experimentSeeds.size) {
+    const queue = [...experimentSeeds];
+    while (queue.length) {
+      const f = queue.pop();
+      if (experimentReachable.has(f)) {
+        continue;
+      }
+      experimentReachable.add(f);
+      for (const e of outEdges.get(f) ?? []) {
+        if (!experimentReachable.has(e)) {
+          queue.push(e);
+        }
+      }
+      const src = srcByFile.get(f);
+      if (!src || skipParse.has(f)) {
+        continue;
+      }
+      for (const r of scanCoreLoaderRefs(src.code, src.lineOffset).refs) {
+        for (const t of refTargets(r)) {
+          addEdge(f, t);
+          if (!experimentReachable.has(t)) {
+            queue.push(t);
+          }
+        }
+      }
+    }
+  }
+
+  // Experiment-loaded files (core and WebExtension alike) join the reachable set so
+  // they are not flagged unused.
+  const reachable = baseReachable;
+  for (const f of experimentReachable) {
+    reachable.add(f);
+  }
+  for (const f of webextInjected) {
+    reachable.add(f);
+  }
   const webReachable = bfs(webSeeds, outEdges);
   /** @param {string} file @returns {boolean} Reached from any entry point. */
   const isLive = (file) => reachable.has(file) || webReachable.has(file);
@@ -281,6 +414,7 @@ function compute(ctx) {
   return {
     reachable,
     webReachable,
+    experimentReachable,
     hasDynamicLoaders: liveLoaders.length > 0,
     dynamicLoaderSites: liveLoaders,
     mentionsOf: makeMentions(files),

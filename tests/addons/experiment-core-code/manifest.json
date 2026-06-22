@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Experiment Core Code",
+  "version": "1.0",
+  "background": { "scripts": ["background.js"] },
+  "browser_specific_settings": { "gecko": { "strict_max_version": "140.*" } },
+  "experiment_apis": {
+    "demo": {
+      "schema": "experiments/demo/schema/demo.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "experiments/demo/parent/ext-demo.js",
+        "paths": [["demo"]]
+      }
+    }
+  },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}
