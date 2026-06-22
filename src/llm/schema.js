@@ -94,8 +94,9 @@ export const ADDON_REVIEW_SCHEMA = {
             type: "string",
             enum: ["unused", "unsure"],
             description:
-              "unused = confident the add-on does not need it; unsure = cannot " +
-              "tell either way (a human then reviews it).",
+              "unused = confident the current code does not need it (ignore " +
+              "future/planned use); unsure = cannot tell whether the current " +
+              "code uses it (a human then reviews it).",
           },
           reason: {
             type: "string",

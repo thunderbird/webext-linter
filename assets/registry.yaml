@@ -799,31 +799,46 @@ prompts:
     with a line of permissions already confirmed used by static analysis; treat
     each of those as justified without re-checking it, and never add it to
     unusedPermissions. Assess only the remaining declared permissions. A
-    permission can be justified in two ways. It is justified if the add-on calls an API that requires it (for example
-    the "downloads" permission for downloads.download). It is also justified if the
-    add-on reads a property of returned data that the permission gates (for example
-    the "accountsRead" permission gates a message header’s folder property, so
-    reading that folder justifies it). A permission appears unused only when
-    neither holds. Be careful with the "tabs" and "activeTab" permissions and with
-    host permissions, a common source of error. Calling tabs methods such as
-    tabs.query, tabs.create, tabs.update, tabs.remove, tabs.sendMessage, and the
-    tabs events does not by itself require any permission. Two capabilities are
-    what actually require one. Reading the privileged tab properties url, title,
-    and favIconUrl (or filtering a tabs.query by them) requires "tabs" (any tab),
-    or a host permission that matches the tab’s url (matching tabs only), or
-    "activeTab" (the active tab after a user action). Injecting script or CSS with
-    tabs.executeScript or tabs.insertCSS requires a host permission that matches
-    the tab’s url, or "activeTab", and is never granted by "tabs". In Thunderbird,
-    injecting into or scripting a message display tab or a compose tab never
-    requires "tabs" either. Message display scripts are registered with
-    messageDisplayScripts.register, which requires "messagesModify", and compose
-    scripts with composeScripts.register, which requires "compose", and
-    tabs.executeScript or tabs.insertCSS aimed at the message pane or a compose
-    window does not require "tabs". So treat "tabs"
-    as justified only when the add-on reads one of those three properties (or
-    filters a query by them) for tabs that its host permissions do not already
-    cover. Treat a host permission as justified when it is used for injection,
-    network access to that origin, or reading those properties of matching tabs.
+    permission can be justified in two ways. It is justified if the add-on calls
+    an API that requires it (for example the "downloads" permission for
+    downloads.download). It is also justified if the add-on reads a property of
+    returned data that the permission gates (for example the "accountsRead"
+    permission gates a message header’s folder property, so reading that folder
+    justifies it). A permission appears unused only when neither holds.
+    Judge every permission only from what the current code actually does. Ignore
+    comments, TODOs, documentation, and any stated or implied intention of future
+    use: a permission the current code never exercises is unused even if a comment
+    or doc hints it may be used later.
+    Be careful with the "tabs" and "activeTab" permissions and with host
+    permissions, a common source of error. Calling tabs methods such as tabs.query,
+    tabs.create, tabs.update, tabs.remove, tabs.sendMessage, and the tabs events
+    does not by itself require any permission. Two capabilities are what actually
+    require one. Reading the privileged tab properties url, title, and favIconUrl
+    (or filtering a tabs.query by them) requires "tabs" (any tab), or a host
+    permission that matches the tab’s url (matching tabs only), or "activeTab"
+    (the active tab after a user action).
+    But the add-on always has access to its own pages, so reading or filtering by
+    the url, title, or favIconUrl of its OWN extension pages (moz-extension://
+    pages it ships or opens, such as a bundled UI page) requires no permission: a
+    tabs.query that filters by the URL of the add-on's own page does not need the
+    "tabs" permission.
+    Injecting script or CSS with tabs.executeScript or tabs.insertCSS requires a
+    host permission that matches the tab’s url, or "activeTab", and is never
+    granted by "tabs". In Thunderbird, injecting into or scripting a message
+    display tab or a compose tab never requires "tabs" either. Message display
+    scripts are registered with messageDisplayScripts.register, which requires
+    "messagesModify", and compose scripts with composeScripts.register, which
+    requires "compose", and tabs.executeScript or tabs.insertCSS aimed at the
+    message pane or a compose window does not require "tabs".
+    Treat a host permission as justified when it is used for injection, network
+    access to that origin (a fetch, XMLHttpRequest, WebSocket, EventSource, or
+    sendBeacon to it), or reading those properties of matching tabs.
+    Requests to remote origins need a host permission for that origin to bypass
+    CORS, even when the target URL is built at runtime or entered by the user.
+    Such an add-on either uses broad host permissions to cover *any* URL the user
+    might enter (often "<all_urls>"), or uses an optional host permission (which
+    is preferred by reviewers). Never treat a host permission as unused merely
+    because the fetched URL is dynamic or user-provided.
     Treat "activeTab" as justified when an injection or property read is confined
     to the active tab after a user gesture such as a toolbar or menu click, a
     keyboard shortcut, or a button on a bundled page. A broad host permission such
@@ -831,11 +846,15 @@ prompts:
     The "unusedPermissions" field is the machine-readable list of just the
     permissions your permission review found wanting, so the tool can raise them
     in the report. Add an entry for every declared permission (or host match
-    pattern) that you judged unused or could not confirm is used, and omit the ones
-    that are clearly justified and any on the confirmed-used line. Use the exact
-    permission string as written in the manifest. Set status to "unused" when you are confident the add-on does not
-    need it, or "unsure" when you genuinely cannot tell (a human then decides).
-    Give a one sentence reason for each. Prefer "unsure" over guessing.
+    pattern) that you judged unused or could not confirm is used, and omit the
+    ones that are clearly justified. Use the exact permission string as written
+    in the manifest. Set status to "unused" when you are confident the current
+    code does not need it, or "unsure" when you genuinely cannot tell whether the
+    current code uses it (a human then decides).
+    A permission gated only by an API call the current code never makes is
+    "unused", not "unsure". Reserve "unsure" for genuine ambiguity about current
+    use, such as a permission-gated property that might be read. Give a one
+    sentence reason for each. Prefer "unsure" over guessing.
     This is an advisory overview. The formal findings in the review report above
     are authoritative, not this summary.
   vendor-parse: |-
