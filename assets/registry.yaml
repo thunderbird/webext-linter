@@ -669,7 +669,7 @@ llm-checks:
     The following resources are exposed via web_accessible_resources but nothing
     in the add-on loads them. Confirm by hand whether they need to be exposed.
   response: |-
-    One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise remove these entries to reduce the add-on’s exposed surface.
+    One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise, remove these entries to reduce the add-on’s exposed surface.
 
 # Recheck consumer for minimize-web-accessible-resources (above): re-judges the
 # entries it could not clear from a single referencing site, now with the whole
@@ -693,7 +693,7 @@ llm-checks:
     The following resources are exposed via web_accessible_resources but nothing
     in the add-on loads them. Confirm by hand whether they need to be exposed.
   response: |-
-    One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise remove these entries to reduce the add-on’s exposed surface.
+    One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise, remove these entries to reduce the add-on’s exposed surface.
 
 # LLM check: remote <script>/<link>/@import/importScripts/injection and CSP
 # sources that permit remote code.
