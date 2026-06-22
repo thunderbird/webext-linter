@@ -515,23 +515,34 @@ llm-checks:
   severity: error
   check: unused-files.js
   prompt: |-
-    Each candidate is a site in the add-on (a file:line) whose code or data
-    mentions another packaged file F, named in the candidate note as "does this
-    site load F". For that candidate, decide only whether this site actually
-    loads or uses F at runtime.
+    Each candidate is a site in the add-on, named in its note as "does this site
+    load F", where F is a packaged file not reachable from any manifest entry
+    point. Decide only whether this site loads or uses F at runtime. A candidate is
+    one of two kinds, which you can tell apart from the candidate list:
+    - it has a file:line where the site names F (F's basename appears there); or
+    - it has no line and is a runtime loader: code that builds load paths at
+      runtime (a dynamic import, getURL, executeScript/insertCSS, setIcon, and the
+      like), so it may load F WITHOUT naming F literally.
 
     Verdict pass (this site loads F): a static or dynamic import, a getURL or
-    executeScript, an HTML or CSS reference, a runtime-built path, or a data or
-    configuration entry the add-on consumes (for example one entry in a list of
-    selectable sounds, themes, or icons). It may load F only when a user chooses
-    it, and a valid functional reference is enough.
+    executeScript, an HTML or CSS reference, or a data or configuration entry the
+    add-on consumes (for example one entry in a list of selectable sounds, themes,
+    or icons). For a runtime loader, a runtime-built path that could plausibly
+    resolve to F is enough: if the site builds paths like
+    "icons/icon-${theme}-${size}.png" and F is one of those icons (same directory,
+    extension, and naming family), treat F as loaded. It may load F only when a
+    user chooses it, and a valid functional reference is enough.
 
-    Verdict fail (this site does not load F): the mention is incidental (a
-    comment, documentation, or packaging metadata the add-on does not consume),
-    or it is unrelated code.
+    Verdict fail (this site does not load F): the mention is incidental (a comment,
+    documentation, or packaging metadata the add-on does not consume), it is
+    unrelated code, or it is a runtime loader whose built paths clearly target a
+    different directory or file type than F (for example a loader that builds
+    "icons/*.png" paths cannot load icon-source.svg).
 
-    Use unsure only when you genuinely cannot tell. F’s own contents do not
-    matter, only whether this site loads it.
+    Use unsure only as a last resort, when you genuinely cannot tell. Do NOT answer
+    unsure merely because F's literal filename does not appear here: a runtime
+    loader need not name F, and a plausible runtime-path match is a pass. F's own
+    contents do not matter, only whether this site loads it.
   instructions: |-
     The following files are not reachable from any entry point but may be loaded
     dynamically. Confirm by hand whether they are unused and safe to remove.
