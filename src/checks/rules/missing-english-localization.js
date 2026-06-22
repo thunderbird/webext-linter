@@ -24,11 +24,13 @@ import { visibleText } from "../../scan/html-parse.js";
 
 const ENGLISH_DIR = /^en([-_]|$)/i;
 const HTML_FILE = /\.x?html?$/i;
-// franc is unreliable on short samples, so below this many characters of
-// user-facing text we do not trust a non-English verdict and defer to a human.
+// The franc library is unreliable on short samples, so below this many
+// characters of user-facing text we do not trust a non-English verdict and
+// defer to a human.
 const MIN_CONFIDENT = 40;
-// franc-all scores the top language 1 and the rest relative to it. When English
-// scores this close to a non-English top language, the call is too close to flag.
+// The franc-all library scores the top language 1 and the rest relative to it.
+// When English scores this close to a non-English top language, the call is too
+// close to flag.
 const NEAR_TIE = 0.9;
 
 export default {
@@ -88,6 +90,12 @@ export default {
  */
 function detectHardcodedLanguage(ctx) {
   const text = userFacingText(ctx.addon);
+  /**
+   * Record an advisory note against manifest.json.
+   * @param {string} msg  The note text.
+   * @param {string} verdict  The verdict label (e.g. "pass", "unsure").
+   * @returns {void}
+   */
   const note = (msg, verdict) =>
     ctx.note?.("manifest.json", null, msg, verdict);
   if (!text) {

@@ -1,15 +1,16 @@
 // Turns the --full-summary LLM pass's structured unused-permission list into
-// Issues. That pass (src/checks/summaries.js -> ctx.llm.reviewAddon) judges every
-// declared permission and stores the unused/unsure subset on
+// Issues. That pass (src/checks/summaries.js -> ctx.llm.reviewAddon) judges
+// every declared permission and stores the unused/unsure subset on
 // ctx.addon.unusedPermissions; this check only reads it and emits a finding or a
 // manual-review escalation per entry. It makes no LLM call of its own.
 //
 // The orchestrator runs it AFTER the add-on summary (so the list exists) rather
 // than in the main loop - see src/pipeline.js reviewAddon. It always runs and
 // reads the checks memory: when it holds entries they are evaluated, otherwise
-// (no analysis ran: no token / no --full-summary / LLM error) there is nothing to
-// evaluate, so it logs a `skipped` note. Its mirror, unused-permission-manual,
-// raises the by-hand reminder in exactly that no-list case.
+// (no analysis ran: no token / no --full-summary / LLM error) there is nothing
+// to evaluate, so it logs a `skipped` note. Its mirror,
+// unused-permission-manual, raises the by-hand reminder in exactly that no-list
+// case.
 //
 //   - status "unused" -> a warning finding (the model is confident it is not
 //     needed); the developer-facing wording is the registry "response".
@@ -17,14 +18,14 @@
 //     the registry "instructions" message is its text.
 //
 // Before either, any entry naming a permission a reachable API call provably
-// requires (usedPermissions in lib/permissions.js) is dropped with a `pass` note:
-// the deterministic analysis is authoritative, so the LLM cannot flag a
+// requires (usedPermissions in lib/permissions.js) is dropped with a `pass`
+// note: the deterministic analysis is authoritative, so the LLM cannot flag a
 // proven-used permission. This is the same guard the unused-permission-manual
 // mirror applies; without it a non-deterministic model flag leaks straight to a
 // finding even though another check proved the permission used.
 //
-// The model's per-entry reason rides along as data.reason, filling the {{reason}}
-// slot in both the finding response and the manual instructions.
+// The model's per-entry reason rides along as data.reason, filling the
+// {{reason}} slot in both the finding response and the manual instructions.
 //
 // Belongs here: mapping each stored entry to a finding / escalation and a feed
 // note. Does NOT belong here: producing the list (-> src/checks/summaries.js via
@@ -71,7 +72,7 @@ export default {
       const line = manifestTokenLine(text, permission);
       const loc = line ? { line } : undefined;
       if (used.has(permission)) {
-        // Deterministically proven used; the LLM cannot override that.
+        // Deterministically proven used. The LLM cannot override that.
         ctx.note?.("manifest.json", loc, permission, "pass");
         continue;
       }

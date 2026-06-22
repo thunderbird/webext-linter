@@ -8,10 +8,10 @@
 // is caught. No-op when strict_min_version is absent or unparsable.
 //
 // Belongs here: the version_added vs strict_min_version comparison and per-api
-// dedup. Does NOT belong here: extracting browser.* usage (src/parse/api-usage.js
-// via ctx.apiUsages), reading schema annotations (SchemaIndex.versionAdded /
-// resolveApi), the wording (assets/registry.yaml) or severity (its registry
-// entry, stamped by runChecks).
+// dedup. Does NOT belong here: extracting browser.* usage
+// (src/parse/api-usage.js via ctx.apiUsages), reading schema annotations
+// (SchemaIndex.versionAdded / resolveApi), the wording (assets/registry.yaml) or
+// severity (its registry entry, stamped by runChecks).
 
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
@@ -53,8 +53,9 @@ export default {
         const va =
           SchemaIndex.versionAdded(res.def) ||
           SchemaIndex.versionAdded(res.namespaceDef);
-        // null -> skip: boolean false (handled by unknown-api), true/absent
-        // (supported), and "≤N" (pre-WebExtension, always available).
+        // A null version means skip: boolean false (handled by unknown-api),
+        // true/absent (supported), and "≤N" (pre-WebExtension, always
+        // available).
         const added = parseVersion(va);
         if (!added || cmpVersion(added, min) <= 0) {
           continue;
@@ -86,7 +87,7 @@ export default {
 
 /**
  * Parse a version string into numeric components ([115,0] for "115.0",
- * [140,4,1] for "140.4.1"); leading non-digits per component are dropped
+ * [140,4,1] for "140.4.1"). Leading non-digits per component are dropped
  * ("0a1" -> 0). Returns null when nothing numeric reads, or when "≤"/"<"-
  * prefixed: "≤59" etc. predate WebExtension support (Thunderbird 60+), so the
  * API is always available to any real add-on and is skipped.

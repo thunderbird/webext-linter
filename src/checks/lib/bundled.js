@@ -41,8 +41,8 @@ const LIB_NAME =
  * run it before normalize. The result is stored on addon.bundled.
  *
  * `nonAuthored` is the VENDOR.md-declared third-party files plus any JS or CSS
- * tagged library / minified / obfuscated. The source-level finding scanners (the eval
- * checks, unsafe-html, remote-script, code-sanity) skip these to save time
+ * tagged library / minified / obfuscated. The source-level finding scanners (the
+ * eval checks, unsafe-html, remote-script, code-sanity) skip these to save time
  * and noise - minified or obfuscated code is forbidden anyway (obfuscated-code /
  * missing-library reject it and request the original sources, which are then
  * reviewed), and vendored files are declared third-party. Reachability skips
@@ -64,8 +64,8 @@ export function classifyBundled(addon) {
   const classified = [];
   // Files of a PRISTINE allowed Experiment are vetted upstream code, not the
   // developer's - the byte-match IS their review, so the source-level scanners
-  // skip them like a vendored library. (Custom --allow-experiments code is not
-  // trusted, so it stays linted: trustedFiles is empty there.)
+  // skip them like a vendored library. Custom --allow-experiments code is not
+  // trusted, so it stays linted: trustedFiles is empty there.
   const trusted = addon.experiments?.trustedFiles ?? new Set();
   const nonAuthored = new Set([...vendored, ...trusted]);
   for (const [file, buf] of addon.files) {
@@ -78,7 +78,7 @@ export function classifyBundled(addon) {
     }
     const text = buf.toString("utf8");
     if (text.length < 1024) {
-      continue; // too small to be a bundled library or a worrying blob
+      continue; // too small to be a bundled library or a worrying blob.
     }
     const tag = { file, ...classify(text, file) };
     classified.push(tag);
@@ -127,7 +127,8 @@ function classify(text, file) {
   // The UMD-wrapper and obfuscation signals below are JS-only - a stylesheet has
   // no module wrapper and is never "obfuscated" in the packer sense - so gate
   // them. The name (.min.*, library stem), banner and geometry signals apply to
-  // JS and CSS alike (a vendored bootstrap.min.css trips them just as jquery does).
+  // JS and CSS alike (a vendored bootstrap.min.css trips them just as jquery
+  // does).
   const isJs = JS_EXTENSIONS.has(extname(file));
 
   const library =

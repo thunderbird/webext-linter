@@ -38,8 +38,8 @@ import { red } from "../util/color.js";
  * @property {{name: string, spec: string}[]} unpinned  Deps with no pin.
  * @property {VendorEntry[]} missing  VENDOR entries whose file is absent.
  * @property {boolean} unparsedVendor  A VENDOR file exists but yielded nothing.
- * @property {?string} vendorFile  The VENDOR filename (e.g. "VENDOR.md"), or null;
- *   the anchor file for VENDOR-sourced vulnerability/unaudited findings.
+ * @property {?string} vendorFile  The VENDOR filename (e.g. "VENDOR.md"), or
+ *   null; the anchor file for VENDOR-sourced vulnerability/unaudited findings.
  * @property {import("./verify.js").VendorVuln[]} vulnerabilities  Pinned npm
  *   packages (package.json deps + npm VENDOR entries) with known OSV advisories
  *   (filled by verifyVendor's audit; empty offline).
@@ -53,14 +53,15 @@ const EXACT = /^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
  * @param {object} params
  * @param {Addon} params.addon
  * @param {?string} [params.parsePrompt]  The registry prompts.vendor-parse text.
- * @param {boolean} [params.enabled]  Whether the LLM is enabled (--llm-enabled);
- *   gates the LLM parse fallback. Decoupled from the token (a keyless provider
- *   has none).
+ * @param {boolean} [params.enabled]  Whether the LLM is enabled
+ *   (--llm-enabled); gates the LLM parse fallback. Decoupled from the token (a
+ *   keyless provider has none).
  * @param {?string} [params.token]  LLM token (a real key, or undefined keyless).
  * @param {string} [params.model]
  * @param {string} [params.url]  Override the LLM API base URL (LLM_API_URL).
  * @param {string} [params.type]  LLM_API_TYPE (claude | chatgpt | ollama).
- * @param {Function} [params.callText]  Injectable transport (else the provider's).
+ * @param {Function} [params.callText]  Injectable transport (else the
+ *   provider's).
  * @param {import("../llm/budget.js").LlmBudget} [params.budget]  Run-wide model
  *   request cap; the parse fallback is skipped once it is exhausted.
  * @returns {Promise<VendorStore>}
@@ -78,7 +79,7 @@ export async function resolveVendor({
 }) {
   const vendorFile = readVendorFile(addon);
   const manifest = dedupeByPath(parseVendorManifest(addon));
-  // The LLM parse fallback is one model request; count it against the run-wide
+  // The LLM parse fallback is one model request. Count it against the run-wide
   // cap and skip it (deterministic only) once that is spent. Gated on the LLM
   // being enabled, not on a token (Ollama is keyless).
   const wantLlmParse =
@@ -97,7 +98,7 @@ export async function resolveVendor({
         }))
       );
     } catch (err) {
-      // Report the failure at this step (visible without --verbose); the
+      // Report the failure at this step (visible without --verbose). The
       // deterministic parse still stands, so the review continues.
       progress(
         red(`  vendor parse: LLM fallback failed - ${llmErrorText(err)}`)
@@ -144,7 +145,7 @@ export async function resolveVendor({
     unpinned,
     missing,
     vendorFile: vendorFile?.name ?? null,
-    // Filled by verifyVendor's OSV audit (network); empty for offline runs.
+    // Filled by verifyVendor's OSV audit (network). Empty for offline runs.
     vulnerabilities: [],
     // "Unparsed" only when we extracted nothing at all - neither a matched entry
     // nor a missing-file declaration. A parseable-but-missing VENDOR goes to the

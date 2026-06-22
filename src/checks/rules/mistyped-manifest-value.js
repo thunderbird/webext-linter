@@ -5,10 +5,10 @@
 // manifest.
 //
 // Belongs here: low-noise value-type violations (the REPORTABLE ajv keywords).
-// Does NOT belong here: unknown top-level keys (-> unrecognized-manifest-key.js),
-// deriving the JSON Schema (-> src/schema/json-schema.js: buildManifestJsonSchema),
-// authored wording (-> assets/registry.yaml), and severity (-> that registry
-// entry).
+// Does NOT belong here: unknown top-level keys (->
+// unrecognized-manifest-key.js), deriving the JSON Schema (->
+// src/schema/json-schema.js: buildManifestJsonSchema), authored wording (->
+// assets/registry.yaml), and severity (-> that registry entry).
 
 import Ajv from "ajv";
 import { finding } from "../../report/finding.js";

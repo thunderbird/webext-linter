@@ -33,7 +33,7 @@ export function getOutboundSinks(ctx) {
 /**
  * Whether a sink is a disguised exfiltration: a covert channel to a remote
  * destination carrying data (appended to the URL, or a user-data API call in
- * it). The shared gate for the disguised-* checks; a static remote load with no
+ * it). The shared gate for the disguised-* checks. A static remote load with no
  * data is not exfiltration.
  * @param {FileSink} sink
  * @returns {boolean}

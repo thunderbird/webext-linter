@@ -47,7 +47,7 @@ import { runLlmCheck, manualEscalations } from "./escalation.js";
 /** @typedef {import("../report/finding.js").Severity} Severity */
 
 // The severity token a check entry may declare. error/warning/info are stamped
-// onto every finding the check emits; "auto" instead delegates the per-finding
+// onto every finding the check emits. "auto" instead delegates the per-finding
 // severity to the check itself (it sets f.severity, defaulting to error if it
 // sets none or an invalid value) - see runOneCheck. "auto" is a config-only
 // token: a finding never carries it.
@@ -61,7 +61,8 @@ const VALID_CHECK_SEVERITIES = new Set([...CONCRETE_SEVERITIES, AUTO_SEVERITY]);
 
 /**
  * Whether `s` is a concrete finding severity (error/warning/info) - i.e. a value
- * a finding may actually carry into the report. "auto"/null/anything else is not.
+ * a finding may actually carry into the report. "auto"/null/anything else is
+ * not.
  * @param {unknown} s @returns {boolean}
  */
 function isConcreteSeverity(s) {
@@ -176,10 +177,10 @@ export class Registry {
    * The by-hand to-do items: every `manual-checks` entry eligible in the current
    * review mode, already in the rendered {title, instructions, response} shape
    * (these carry no `{{item}}`). Entries are diff-gated like checks (see
-   * diffEligible): e.g. the "Forked add-on" reminder is `diff: false`, so it shows
-   * only for a new submission, not when reviewing against a --diff-to baseline. An
-   * llm check that escalates with no token is surfaced by the orchestrator
-   * (escalation.js), not here.
+   * diffEligible): e.g. the "Forked add-on" reminder is `diff: false`, so it
+   * shows only for a new submission, not when reviewing against a --diff-to
+   * baseline. An llm check that escalates with no token is surfaced by the
+   * orchestrator (escalation.js), not here.
    * @param {boolean} [inDiffMode]  Reviewing against a --diff-to baseline.
    * @returns {{title: string, instructions?: string, response: ?string}[]}
    */
@@ -355,10 +356,10 @@ export function formatNote(file, loc, item, verdict) {
 }
 
 /**
- * Whether a registry entry runs in the current review mode, per its `diff` field:
- * `diff: true` only with a --diff-to baseline, `diff: false` only without one (a
- * new submission), an omitted `diff` in both. Shared by the check gate (runChecks)
- * and the manual-checks gate (Registry.manualChecks).
+ * Whether a registry entry runs in the current review mode, per its `diff`
+ * field: `diff: true` only with a --diff-to baseline, `diff: false` only without
+ * one (a new submission), an omitted `diff` in both. Shared by the check gate
+ * (runChecks) and the manual-checks gate (Registry.manualChecks).
  * @param {{diff?: boolean}} entry @param {boolean} inDiffMode
  * @returns {boolean}
  */
@@ -394,15 +395,15 @@ export async function runChecks(ctx, registry, opts = {}) {
   // Two gates pick which checks run. The `diff` gate (a registry field) keys off
   // the mode: `diff: true` (e.g. strict-max-version-bump-only) needs a --diff-to
   // baseline (ctx.previous), `diff: false` is new-submission only (the same gate
-  // also applies to manual-checks entries - see diffEligible/manualChecks, used by
-  // the new-submission-only "Forked add-on" reminder), an omitted `diff` runs in
-  // both. The `phase` gate then picks the review
-  // PROFILE: an invalid Experiment (ctx.invalidExperiment - Experiment APIs with
-  // --allow-experiments off) runs ONLY the `phase: invalid-experiment` reject
-  // check and nothing else; a normal review runs the default-phase checks in this
-  // loop and returns the `phase: post-summary` checks as `deferred` for the
-  // caller to run after the AI add-on summary. A filtered-out check never runs
-  // and never appears in the feed or meta.checksRun.
+  // also applies to manual-checks entries - see diffEligible/manualChecks, used
+  // by the new-submission-only "Forked add-on" reminder), an omitted `diff` runs
+  // in both. The `phase` gate then picks the review PROFILE: an invalid
+  // Experiment (ctx.invalidExperiment - Experiment APIs with --allow-experiments
+  // off) runs ONLY the `phase: invalid-experiment` reject check and nothing
+  // else. A normal review runs the default-phase checks in this loop and returns
+  // the `phase: post-summary` checks as `deferred` for the caller to run after
+  // the AI add-on summary. A filtered-out check never runs and never appears in
+  // the feed or meta.checksRun.
   const loaded = await loadChecks(registry, opts);
   const inDiffMode = Boolean(ctx.previous);
   const eligible = loaded.filter((c) => diffEligible(c, inDiffMode));
@@ -491,9 +492,10 @@ export async function runOneCheck(ctx, check, label) {
         // may have set on f.severity is ignored (overwritten) here.
         f.severity = check.severity;
       } else if (!isConcreteSeverity(f.severity)) {
-        // severity: auto - the check owns each finding's severity, but it must
-        // produce a concrete one. A missing/invalid value is a check bug; fail
-        // safe to error (the report consumers all assume a concrete severity).
+        // The severity:auto case - the check owns each finding's severity, but
+        // it must produce a concrete one. A missing/invalid value is a check
+        // bug. Fail safe to error (the report consumers all assume a concrete
+        // severity).
         debug(
           `[registry] ${check.id} is severity:auto but emitted ${JSON.stringify(
             f.severity

@@ -1,8 +1,9 @@
-// Selects the LLM provider adapter by LLM_API_TYPE. Both adapters expose the same
-// four operations (callVerdicts / callText / callReview / listModels), so the rest
-// of the tool is provider-agnostic - it asks getProvider(type) for the functions
-// and never imports an adapter directly. ollama reuses the OpenAI adapter (its
-// endpoint is OpenAI-compatible), with a local default base URL and no API key.
+// Selects the LLM provider adapter by LLM_API_TYPE. Both adapters expose the
+// same four operations (callVerdicts / callText / callReview / listModels), so
+// the rest of the tool is provider-agnostic - it asks getProvider(type) for the
+// functions and never imports an adapter directly. ollama reuses the OpenAI
+// adapter (its endpoint is OpenAI-compatible), with a local default base URL and
+// no API key.
 //
 // Belongs here: the type -> adapter map, every per-provider requirement (default
 // model, default base URL, whether a key is required, whether the model can be
@@ -29,8 +30,8 @@ const PROVIDERS = {
     defaultModel: DEFAULT_MODEL_OPENAI,
     requiresKey: true,
   },
-  // Local, OpenAI-compatible. No key; a local default endpoint; the chosen model
-  // must be pulled, which checkModelAvailable verifies up front.
+  // Local, OpenAI-compatible. No key, a local default endpoint. The chosen
+  // model must be pulled, which checkModelAvailable verifies up front.
   ollama: {
     adapter: openai,
     defaultModel: DEFAULT_MODEL_OLLAMA,
@@ -55,8 +56,8 @@ export function isLlmType(type) {
 }
 
 /**
- * The provider adapter (callVerdicts / callText / callReview / listModels) for an
- * LLM_API_TYPE. Defaults to claude; throws on an unknown type.
+ * The provider adapter (callVerdicts / callText / callReview / listModels) for
+ * an LLM_API_TYPE. Defaults to claude. Throws on an unknown type.
  * @param {string} [type]
  * @returns {{callVerdicts: Function, callText: Function, callReview: Function,
  *   listModels: Function}}
@@ -112,12 +113,19 @@ export function validateLlmConfig(type, { apiKey } = {}) {
 }
 
 /**
+ * @typedef {object} CheckModelOpts
+ * @property {string} model  The chosen model id.
+ * @property {string} [token]  API token (keyless providers have none).
+ * @property {string} [baseURL]  Override the API base URL.
+ * @property {Function} [listModels]  Injectable model lister (tests).
+ */
+/**
  * Confirm the chosen model is actually available, for providers that can be
  * checked cheaply up front (Ollama - a local list call). A no-op (null) for the
  * cloud providers, which validate the model at call time. Returns an actionable
  * error string, or null. `listModels` is injectable for tests.
  * @param {string} type
- * @param {{model: string, token?: string, baseURL?: string, listModels?: Function}} opts
+ * @param {CheckModelOpts} opts
  * @returns {Promise<?string>}
  */
 export async function checkModelAvailable(
@@ -139,7 +147,8 @@ export async function checkModelAvailable(
     );
   }
   const names = (models ?? []).map((m) => m.id);
-  // Ollama lists a tagged id ("llama3.1:latest"); a bare "llama3.1" means ":latest".
+  // Ollama lists a tagged id ("llama3.1:latest"). A bare "llama3.1" means
+  // ":latest".
   const ok = names.some(
     (n) => n === model || n.split(":")[0] === model.split(":")[0]
   );

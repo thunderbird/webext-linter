@@ -1,9 +1,9 @@
 // The provider-agnostic LLM contract: the two forced structured-output schemas
-// (RESULT_SCHEMA / ADDON_REVIEW_SCHEMA) and the defensive coercion of the model's
-// answer into typed results. Both providers (anthropic.js, openai.js) drive the
-// model to return JSON matching these schemas - Anthropic via a forced tool_use,
-// OpenAI via a forced function call - and run the raw JSON through the same
-// coercers, so the rest of the tool sees one shape regardless of provider.
+// (RESULT_SCHEMA / ADDON_REVIEW_SCHEMA) and the defensive coercion of the
+// model's answer into typed results. Both providers (anthropic.js, openai.js)
+// drive the model to return JSON matching these schemas - Anthropic via a forced
+// tool_use, OpenAI via a forced function call - and run the raw JSON through the
+// same coercers, so the rest of the tool sees one shape regardless of provider.
 //
 // Belongs here: the schemas, the tool/function names, the allowed enum sets, the
 // coercers, and the result typedefs. Does NOT belong here: the HTTP calls (->
@@ -14,12 +14,13 @@ export const RESULT_TOOL = "report_verdicts";
 export const REVIEW_TOOL = "report_addon_review";
 
 // The structured result every LLM check must return. The orchestrator gives the
-// model a list of CANDIDATES, each with an id; the model returns one verdict per
+// model a list of CANDIDATES, each with an id. The model returns one verdict per
 // id and nothing else. It has no field in which to name a file or subject, so it
-// cannot redirect an outcome to something it was not asked about - the identity of
-// every finding/note is owned by the orchestrator. The verdict is three-way so an
-// unsure model defers to a human instead of silently passing. The optional per-id
-// reason is shown in the activity feed only (never the developer-facing text).
+// cannot redirect an outcome to something it was not asked about - the identity
+// of every finding/note is owned by the orchestrator. The verdict is three-way
+// so an unsure model defers to a human instead of silently passing. The optional
+// per-id reason is shown in the activity feed only (never the developer-facing
+// text).
 export const RESULT_SCHEMA = {
   type: "object",
   properties: {
@@ -59,11 +60,11 @@ export const RESULT_SCHEMA = {
 // registry.js): the LLM never returns "skipped".
 export const LLM_VERDICTS = new Set(["fail", "pass", "unsure"]);
 
-// The --full-summary structured result: the prose summary the reviewer reads, plus
-// the subset of declared permissions the model judged unused or could not confirm.
-// The tool turns each into an Issue (a warning for "unused", a manual-review note
-// for "unsure" - see the unused-permission check), with the per-entry reason as the
-// developer-facing why.
+// The --full-summary structured result: the prose summary the reviewer reads,
+// plus the subset of declared permissions the model judged unused or could not
+// confirm. The tool turns each into an Issue (a warning for "unused", a
+// manual-review note for "unsure" - see the unused-permission check), with the
+// per-entry reason as the developer-facing why.
 export const ADDON_REVIEW_SCHEMA = {
   type: "object",
   properties: {
@@ -123,19 +124,22 @@ export const REVIEW_STATUSES = new Set(["unused", "unsure"]);
 
 /**
  * @typedef {object} LlmResult
- * @property {LlmVerdict[]} verdicts  One entry per candidate id (others dropped).
+ * @property {LlmVerdict[]} verdicts  One entry per candidate id (others
+ *   dropped).
  */
 
 /**
  * @typedef {object} UnusedPermission  One declared permission the model flagged.
  * @property {string} permission  The exact declared permission / match pattern.
- * @property {"unused"|"unsure"} status  unused = warning, unsure = manual review.
+ * @property {"unused"|"unsure"} status  unused = warning, unsure = manual
+ *   review.
  * @property {string} reason  Short developer-facing why (may be "").
  */
 
 /**
  * @typedef {object} AddonReview  The --full-summary structured result.
- * @property {string} summary  The prose add-on summary (incl. permission review).
+ * @property {string} summary  The prose add-on summary (incl. permission
+ *   review).
  * @property {UnusedPermission[]} unusedPermissions  The flagged subset.
  */
 

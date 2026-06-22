@@ -1,13 +1,14 @@
 // LLM check: files that should not ship in a published add-on. The deterministic
 // pre-flight (reachability.js follows import/getURL/HTML/CSS plus file-loading
 // API edges) resolves the clear cases as findings: hidden/junk by name, and a
-// clearly-unreferenced file (its basename appears in no other file AND the add-on
-// uses no dynamic loaders). For an ambiguous file (its name appears in live code,
-// or the add-on builds load paths at runtime) we cannot tell statically whether
-// any of those sites really loads it, so each suspected loader SITE becomes an
-// LLM candidate ("does this site load F?"). The orchestrator gathers one verdict
-// per site (or routes to manual with no token); this check then aggregates per
-// file F: if any site loads it, F is used; if none does, F is unused.
+// clearly-unreferenced file (its basename appears in no other file AND the
+// add-on uses no dynamic loaders). For an ambiguous file (its name appears in
+// live code, or the add-on builds load paths at runtime) we cannot tell
+// statically whether any of those sites really loads it, so each suspected
+// loader SITE becomes an LLM candidate ("does this site load F?"). The
+// orchestrator gathers one verdict per site (or routes to manual with no token);
+// this check then aggregates per file F: if any site loads it, F is used; if
+// none does, F is unused.
 //
 // Belongs here: the ALLOW / JUNK name lists, classifying each packaged file as a
 // finding / candidate / clean against reachability, the per-site candidate set,
@@ -66,7 +67,9 @@ export default {
     const vendored = addon.vendor?.set ?? new Set();
     const findings = [];
     const candidates = [];
-    /** @type {{ids: string[], finding: object, item: string}[]} one per file F. */
+    /**
+     * @type {{ids: string[], finding: object, item: string}[]} one per file F.
+     */
     const groups = [];
     let n = 0;
 
@@ -82,9 +85,9 @@ export default {
       if (reach.reachable.has(file)) {
         continue;
       }
-      // Unreachable. A reference from live code (whether it is a real load is the
-      // model's call) or a live dynamic loader makes it ambiguous; a file named
-      // only by dead code with no live loader is a clear orphan.
+      // Unreachable. A reference from live code (whether it is a real load is
+      // the model's call) or a live dynamic loader makes it ambiguous. A file
+      // named only by dead code with no live loader is a clear orphan.
       const mentions = reach.mentionsOf(file);
       const supported = mentions.some((m) => referrerSupported(reach, m.file));
       const orphan = !supported && !reach.hasDynamicLoaders;

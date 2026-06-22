@@ -17,10 +17,10 @@ import { readVendorFile } from "../../normalize/vendor.js";
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../escalation.js").Escalation} Escalation */
 
-// Results this check owns, each mapped to its manual-review reason. The reason is
-// URL-free: the source URL is listed separately on the location line (which reads
-// "<VENDOR file> - <declared file> - <source URL> - <reason>"), so it is not
-// repeated here.
+// Results this check owns, each mapped to its manual-review reason. The reason
+// is URL-free: the source URL is listed separately on the location line (which
+// reads "<VENDOR file> - <declared file> - <source URL> - <reason>"), so it is
+// not repeated here.
 const REASON = {
   "no-url": "no source URL declared",
   untrusted: "source not on a trusted host",

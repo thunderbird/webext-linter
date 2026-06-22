@@ -107,7 +107,11 @@ function compute(ctx) {
     }
   }
 
-  /** @param {string} file @param {string} dir  @returns {boolean} newly added. */
+  /**
+   * @param {string} file
+   * @param {string} dir
+   * @returns {boolean} Newly added.
+   */
   const record = (file, dir) => {
     let s = map.get(file);
     if (!s) {
@@ -164,8 +168,8 @@ function compute(ctx) {
 
   // Every packaged HTML page is a context for the scripts it includes. A script
   // runs in a document only if that document loads it (via <script src> or a
-  // static import from such a script), so "the pages a script can run in" is just
-  // the HTML files that include it - the real structural signal, covering
+  // static import from such a script), so "the pages a script can run in" is
+  // just the HTML files that include it - the real structural signal, covering
   // manifest-declared pages (background.page, popups, options, sidebar) AND ones
   // opened at runtime (tabs.create/windows.create/window.open) or embedded as an
   // <iframe src> uniformly, with no manifest allowlist to keep in sync.

@@ -67,7 +67,7 @@ export function eachElement(html, callback) {
 /**
  * Collect the visible text of an HTML document: every `#text` node's content,
  * skipping the rawtext children of `script`/`style` (code, not user-facing
- * copy). Whitespace is preserved as-is; the caller collapses it. Used by the
+ * copy). Whitespace is preserved as-is. The caller collapses it. Used by the
  * language check to extract user-facing strings.
  * @param {string} html  HTML source text.
  * @returns {string}  Text fragments joined by single spaces.

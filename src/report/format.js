@@ -4,9 +4,8 @@
 //
 // Belongs here: report LAYOUT and chrome - the ReviewMeta typedef, section
 // titles, ordering/sorting, line wrapping, the summary line, and the text +
-// JSON serialization (including stripping the internal data and the
-// human-only manualReview from JSON). Section/structural strings are code-owned
-// here.
+// JSON serialization (including stripping the internal data and the human-only
+// manualReview from JSON). Section/structural strings are code-owned here.
 //
 // Does NOT belong here: per-finding review wording - resolving ruleId/item into
 // a `message` is the resolver's job (src/report/responses.js), and that prose
@@ -54,11 +53,11 @@ const SEV_COLOR = {
  * @property {string[]} [checksRun]  Ids of the checks that ran.
  * @property {string} [reviewUrl]  ATN reviewer review-page URL, appended to the
  *   Manual review section. Text reports only; dropped from JSON.
- * @property {import("./finding.js").ManualItem[]} [manualReview]  The manual-review
- *   to-do list, each item tagged with `extended`. The report splits it into an
- *   "Extended manual review" section (items that escalated - whole-check and
- *   per-item escalations) followed by a "Standard manual review" section (the
- *   always-by-hand manual-checks). Text-only; dropped from JSON.
+ * @property {import("./finding.js").ManualItem[]} [manualReview]  The
+ *   manual-review to-do list, each item tagged with `extended`. The report
+ *   splits it into an "Extended manual review" section (items that escalated -
+ *   whole-check and per-item escalations) followed by a "Standard manual review"
+ *   section (the always-by-hand manual-checks). Text-only; dropped from JSON.
  */
 
 /**
@@ -73,9 +72,9 @@ export function formatText(review) {
     ...reviewBodyLines(review),
     ...summaryLines(review.findings, manual.length),
   ];
-  // The "Reviewing …" header is now printed live before the review (src/pipeline.js),
-  // not here, so drop the blank that section() prepends to the first (Issues)
-  // section - the report body opens directly at "── Issues ──".
+  // The "Reviewing …" header is now printed live before the review
+  // (src/pipeline.js), not here, so drop the blank that section() prepends to
+  // the first (Issues) section, opening the report body at "── Issues ──".
   if (lines[0] === "") {
     lines.shift();
   }
@@ -148,13 +147,14 @@ export function headerLines(meta) {
 }
 
 /**
- * Issues: one numbered entry per distinct message (see renderGroup/groupByMessage)
- * - the response printed VERBATIM, then its "- file:line" locations. Grouped by
- * severity under registry-defined headings (numbering continuous across the
- * severity groups) when headings are supplied, otherwise a single flat list.
+ * Issues: one numbered entry per distinct message (see renderGroup and
+ * groupByMessage) - the response printed VERBATIM, then its "- file:line"
+ * locations. Grouped by severity under registry-defined headings (numbering
+ * continuous across the severity groups) when headings are supplied, otherwise
+ * a single flat list.
  *
  * A registry-owned verdict preamble opens the section: with no findings it is
- * the whole body (`verdictIntros.none`); with findings it is `rejected` (any
+ * the whole body (`verdictIntros.none`). With findings it is `rejected` (any
  * error) or `feedback` (warnings/info only), glued directly to the FIRST
  * severity heading - one space, no blank line - and printed verbatim (no
  * rewrap), like the findings below it.
@@ -186,7 +186,7 @@ function issuesLines(issues, issueHeadings, verdictIntros) {
       const text = first && intro ? `${intro} ${heading ?? ""}` : heading;
       if (text) {
         // Verbatim, like the findings: no 80-column rewrap. The registry owns
-        // the intro/heading wording on one line; any authored break is kept.
+        // the intro/heading wording on one line. Any authored break is kept.
         out.push(...text.split("\n").map(tint));
       }
       first = false;
@@ -231,11 +231,11 @@ function groupByMessage(findings) {
 
 /**
  * Render one Issues entry: the shared registry response VERBATIM (no 80-column
- * rewrap, no hanging indent - a long line runs off, and the registry's own break
- * before "Read more:" lands at column 0), then one location line per finding -
- * any remediation hint is appended to that line after " - ". Every entry uses
- * this form, so a unique message is just a one-location list.
- * (Manual review still wraps - see manualLines.)
+ * rewrap, no hanging indent - a long line runs off, and the registry's own
+ * break before "Read more:" lands at column 0), then one location line per
+ * finding - any remediation hint is appended to that line after " - ". Every
+ * entry uses this form, so a unique message is just a one-location list. Manual
+ * review still wraps - see manualLines.
  * @param {number} n  1-based entry number.
  * @param {import("./finding.js").Finding[]} findings  All sharing one message.
  * @returns {string[]}
@@ -268,7 +268,11 @@ function excludedMarker(n) {
   return ` - … and ${n} more, excluded from this list`;
 }
 
-/** The "Title: instructions" line of a manual item (its grouping key). */
+/**
+ * The "Title: instructions" line of a manual item (its grouping key).
+ * @param {import("./finding.js").ManualItem} m
+ * @returns {string}
+ */
 function manualBody(m) {
   return m.instructions
     ? `${m.title}: ${m.instructions.replace(/\s+/g, " ").trim()}`
@@ -280,11 +284,11 @@ function manualBody(m) {
  * body collapse into one numbered entry (like Issues) - the body is still
  * 80-column wrapped. When the entry has a developer-facing `response`, it is
  * labelled "Suggested response:" and printed under the instructions in dim grey,
- * flush-left and verbatim (a ready-to-send block) so it does not pull focus from
- * the blue instructions. Each item that carries a locus is then listed beneath as
- * "- file:line - item", in the same grey as the response. Standalone reminders (no
- * locus) carry no list. Returns [] when there are no items, so an absent section
- * prints nothing.
+ * flush-left and verbatim (a ready-to-send block) so it does not pull focus
+ * from the blue instructions. Each item that carries a locus is then listed
+ * beneath as "- file:line - item", in the same grey as the response. Standalone
+ * reminders (no locus) carry no list. Returns [] when there are no items, so an
+ * absent section prints nothing.
  * @param {import("./finding.js").ManualItem[]} items
  * @param {string} title  Section heading, e.g. "Extended manual review".
  * @returns {string[]}
@@ -315,9 +319,9 @@ function manualSection(items, title) {
     out.push(...wrapEntry(++n, body).map(blue));
     // The developer-facing response, if any: labelled "Suggested response:" and
     // printed in dim grey, flush-left at column 0 (verbatim, like the Issues
-    // responses), sitting between the instructions and the locus list so it reads
-    // as a ready-to-send block without pulling focus from the blue instructions.
-    // Shared across the group, so taken from the first item.
+    // responses), sitting between the instructions and the locus list so it
+    // reads as a ready-to-send block without pulling focus from the blue
+    // instructions. Shared across the group, so taken from the first item.
     const response = group[0].response;
     if (response) {
       const lines = response.split("\n");
@@ -326,7 +330,7 @@ function manualSection(items, title) {
         out.push(grey(line));
       }
     }
-    // List a locus only when there is one (escalated items); standalone
+    // List a locus only when there is one (escalated items). Standalone
     // reminders have no file/item and render as the wrapped body alone. The
     // list is display-capped like Issues (see renderGroup). Tinted in the same
     // grey as the response (not the instructions' blue), so it reads as detail.

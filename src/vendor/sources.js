@@ -5,7 +5,7 @@
 //
 // Belongs here: parsing the trusted host shapes (unpkg, jsDelivr npm + gh,
 // raw.githubusercontent) plus the github.com/.../blob -> raw rewrite, and the
-// pinned-ref heuristic. Does NOT belong here: the host allowlist policy
+// pinned-ref heuristic. Does NOT belong here: the host allowlist policy itself
 // (-> src/config.js VENDOR_TRUSTED_HOSTS), fetching/comparing/popularity
 // (-> src/vendor/verify.js), or the finding/manual routing (-> the check).
 

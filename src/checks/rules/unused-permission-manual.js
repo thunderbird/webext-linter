@@ -1,24 +1,25 @@
 // The by-hand reminder mirror of unused-permission. The --full-summary LLM pass
-// stores its verdict list on ctx.addon.unusedPermissions; when that analysis did
-// NOT run (no --full-summary, no token, or the LLM call errored) the key is never
-// set, so nothing assessed the declared permissions and the reviewer should check
-// them by hand. This check raises that one generic reminder.
+// stores its verdict list on ctx.addon.unusedPermissions; when that analysis
+// did NOT run (no --full-summary, no token, or the LLM call errored) the key is
+// never set, so nothing assessed the declared permissions and the reviewer
+// should check them by hand. This check raises that one generic reminder.
 //
-// It always runs (after the add-on summary, like unused-permission) and reads the
-// same checks memory:
+// It always runs (after the add-on summary, like unused-permission) and reads
+// the same checks memory:
 //   - a list is present (Array.isArray) -> the permissions were assessed, so the
 //     reminder is not needed: log a `skipped` note and emit nothing.
 //   - no list -> escalate one manual-review case per declared named permission
 //     the add-on does not PROVABLY use, each anchored to its manifest.json line,
-//     so the report lists only the permissions the reviewer must vet by hand (the
-//     registry "Unused permissions" instructions name no specific one; auto-group
-//     lists them). A permission a reachable API call requires (usedPermissions in
-//     lib/permissions.js) is definitely used, so it is dropped from the list.
+//     so the report lists only the permissions the reviewer must vet by hand
+//     (the registry "Unused permissions" instructions name no specific one;
+//     auto-group lists them). A permission a reachable API call requires
+//     (usedPermissions in lib/permissions.js) is definitely used, so it is
+//     dropped from the list.
 //
-// Belongs here: the present-or-not decision and enumerating the permissions. Does
-// NOT belong here: the reminder wording (-> assets/registry.yaml), producing the
-// list (-> src/checks/summaries.js via the LLM), or the per-permission Issues
-// (-> src/checks/rules/unused-permission.js).
+// Belongs here: the present-or-not decision and enumerating the permissions.
+// Does NOT belong here: the reminder wording (-> assets/registry.yaml),
+// producing the list (-> src/checks/summaries.js via the LLM), or the
+// per-permission Issues (-> src/checks/rules/unused-permission.js).
 
 import { asArray, isMatchPattern, manifestTokenLine } from "../lib/util.js";
 import { getPermissionAnalysis } from "../lib/permissions.js";

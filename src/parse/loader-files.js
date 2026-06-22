@@ -67,11 +67,11 @@ const BRIDGE = new Map([
 
 // Methods whose file path Gecko resolves relative to the CALLING PAGE's document
 // base URL (the "current page URL"), not the extension root - unlike every other
-// loader here. Only the MV2 tabs.* injection trio behaves this way; the MV3
+// loader here. Only the MV2 tabs.* injection trio behaves this way. The MV3
 // scripting.* replacements resolve their files root-relative in both browsers.
 // A ref from one of these carries base:"page" so the resolver (reachability /
 // bundled-files, via script-hosts.js) resolves it against the host page's
-// directory; everything else stays base:"root".
+// directory. Everything else stays base:"root".
 const PAGE_RELATIVE_FILE_METHODS = new Set([
   "tabs.executeScript",
   "tabs.insertCSS",
@@ -107,9 +107,9 @@ export function scanLoaderRefs(
   const refs = [];
   const seenRef = new Set();
   const state = { hasDynamic: false };
-  // The resolution base of the call currently being walked, set per CallExpression
-  // before its arguments are extracted (both extraction branches funnel through
-  // `take`, which has no method context of its own).
+  // The resolution base of the call currently being walked, set per
+  // CallExpression before its arguments are extracted (both extraction branches
+  // funnel through `take`, which has no method context of its own).
   let currentBase = "root";
   /**
    * Record a string-literal path at a file-path slot, or note a dynamic value.
@@ -319,11 +319,11 @@ function dottedApiPath(callee) {
  * @returns {boolean}
  */
 function isDynamicValue(node) {
-  // A runtime.getURL(...) call sitting in a loader slot (e.g. windows.create({url:
-  // getURL("popup.html")})) is a resolved-URL value, not a runtime-built path: the
-  // getURL call is itself captured by the getURL loader, where it is static if its
-  // argument is a literal and dynamic otherwise. So it must not re-flag the outer
-  // slot as dynamic.
+  // A runtime.getURL(...) call sitting in a loader slot (e.g.
+  // windows.create({url: getURL("popup.html")})) is a resolved-URL value, not a
+  // runtime-built path: the getURL call is itself captured by the getURL loader,
+  // where it is static if its argument is a literal and dynamic otherwise. So it
+  // must not re-flag the outer slot as dynamic.
   if (
     node?.type === "CallExpression" &&
     dottedApiPath(node.callee) === "runtime.getURL"

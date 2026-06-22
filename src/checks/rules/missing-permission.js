@@ -1,15 +1,15 @@
 // A permission required by a called API but not declared in the manifest.
 //
-// Belongs here: selecting the `missingPermissions` slice of the shared permission
-// analysis and emitting it as this check's findings. The "API needs a manifest
-// key" case is missing-manifest-key.js (a different remedy).
+// Belongs here: selecting the `missingPermissions` slice of the shared
+// permission analysis and emitting it as this check's findings. The "API needs a
+// manifest key" case is missing-manifest-key.js (a different remedy).
 //
 // Does NOT belong here: the analysis itself - matching API usages to required
 // permissions and manifest keys (-> getPermissionAnalysis in
 // src/checks/lib/permissions.js, shared with missing-manifest-key.js). The
-// required-permission schema data it consumes (->
-// src/schema/index.js). Authored wording (-> assets/registry.yaml). Severity (->
-// the missing-permission registry entry, stamped by src/checks/registry.js).
+// required-permission schema data it consumes (-> src/schema/index.js). Authored
+// wording (-> assets/registry.yaml). Severity (-> the missing-permission
+// registry entry, stamped by src/checks/registry.js).
 
 import { getPermissionAnalysis } from "../lib/permissions.js";
 

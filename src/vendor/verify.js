@@ -53,16 +53,19 @@ import {
  * @property {string} version  The bundled (pinned) version audited.
  * @property {string[]} ids  Advisory ids (CVE preferred, else OSV/GHSA).
  * @property {string} severity  Highest reported severity, or "unknown".
- * @property {string[]} fixed  Versions the advisories were fixed in (may be empty).
- * @property {string} file  Where the finding anchors (package.json or the VENDOR file).
+ * @property {string[]} fixed  Versions the advisories were fixed in (may be
+ *   empty).
+ * @property {string} file  Where the finding anchors (package.json or the
+ *   VENDOR file).
  * @property {string} token  The string locating the declaration line in `file`.
  */
 /**
- * @typedef {object} MetaNode  A node in an unpkg "?meta" listing. unpkg returns a
- * flat `files` array whose entries each carry a `path` and a `type` that is the
- * file's MIME type (e.g. "application/javascript") - NOT the literal "file". The
- * listing root (and any directory node in the older nested form) instead carries
- * a `files` child array, so a node is a FILE when it has a `path` and no `files`.
+ * @typedef {object} MetaNode  A node in an unpkg "?meta" listing. unpkg returns
+ * a flat `files` array whose entries each carry a `path` and a `type` that is
+ * the file's MIME type (e.g. "application/javascript") - NOT the literal
+ * "file". The listing root (and any directory node in the older nested form)
+ * instead carries a `files` child array, so a node is a FILE when it has a
+ * `path` and no `files`.
  * @property {string} [path]  The published path.
  * @property {string} [type]  A file's MIME type, or "directory" (nested form).
  * @property {string} [integrity]  A file's Subresource-Integrity hash, e.g.
@@ -125,12 +128,13 @@ export async function verifyVendor(addon, net = defaultNet) {
  * Audit a pinned npm package@version against the OSV vulnerability database.
  * Best-effort: a package with known advisories is recorded on
  * `vendor.vulnerabilities` (one entry aggregating its advisories, anchored at
- * `file`/`token`) for the vendor-vulnerable check; any network or parse error - or
- * an injected net without `postJson` (offline runs, the golden harness) - records
- * nothing. Drives both package.json deps and npm-sourced VENDOR entries.
+ * `file`/`token`) for the vendor-vulnerable check. Any network or parse error -
+ * or an injected net without `postJson` (offline runs, the golden harness) -
+ * records nothing. Drives both package.json deps and npm-sourced VENDOR entries.
  * @param {string} name  npm package name.
  * @param {string} version  The bundled (pinned) version.
- * @param {string} file  Where the finding anchors (package.json / the VENDOR file).
+ * @param {string} file  Where the finding anchors (package.json / the VENDOR
+ *   file).
  * @param {string} token  The string locating the declaration line in `file`.
  * @param {VendorStore} vendor @param {VendorNet} net
  * @returns {Promise<void>}
@@ -139,7 +143,8 @@ async function auditNpm(name, version, file, token, vendor, net) {
   let vulns;
   try {
     const res = await net.postJson(VENDOR_OSV_API, {
-      // OSV npm versions carry no "v" prefix; a vendored URL may (e.g. "@v1.2.3").
+      // OSV npm versions carry no "v" prefix. A vendored URL may (e.g.
+      // "@v1.2.3").
       version: String(version).replace(/^v/i, ""),
       package: { name, ecosystem: "npm" },
     });
@@ -172,8 +177,26 @@ async function auditNpm(name, version, file, token, vendor, net) {
 }
 
 /**
+ * @typedef {object} OsvAffected  One `affected` range group of an OSV record.
+ * @property {{ecosystem?: string, name?: string}} [package]  The affected
+ *   package (ecosystem + name).
+ * @property {{events?: {fixed?: string}[]}[]} [ranges]  Version ranges, each
+ *   carrying `fixed` events.
+ */
+/**
+ * @typedef {object} OsvVuln  An OSV vulnerability record (the fields this module
+ *   reads from the OSV query response).
+ * @property {string} [id]  The OSV/GHSA id.
+ * @property {string[]} [aliases]  Alias ids (a CVE may appear here).
+ * @property {OsvAffected[]} [affected]  Affected package/version ranges.
+ * @property {{severity?: string}} [database_specific]  Database-specific data,
+ *   e.g. GHSA's severity label.
+ * @property {{score?: string}[]} [severity]  Severity entries (e.g. a CVSS
+ *   vector string under `score`).
+ */
+/**
  * The advisory's preferred id: a CVE alias if present, else the OSV/GHSA id.
- * @param {object} v  An OSV vuln record.
+ * @param {OsvVuln} v  An OSV vuln record.
  * @returns {string}
  */
 function advisoryId(v) {
@@ -184,7 +207,7 @@ function advisoryId(v) {
 /**
  * The fixed versions OSV lists for `name` (npm) in this advisory: the `fixed`
  * events of every matching `affected` range.
- * @param {object} v  An OSV vuln record. @param {string} name
+ * @param {OsvVuln} v  An OSV vuln record. @param {string} name
  * @returns {string[]}
  */
 function fixedVersions(v, name) {
@@ -218,7 +241,7 @@ const SEVERITY_RANK = [
  * A human severity label for an OSV vuln: the database-specific label (GHSA's
  * LOW/MODERATE/HIGH/CRITICAL) when present, else derived coarsely from a CVSS
  * vector, else "unknown".
- * @param {object} v  An OSV vuln record.
+ * @param {OsvVuln} v  An OSV vuln record.
  * @returns {string}
  */
 function vulnSeverity(v) {
@@ -264,7 +287,8 @@ async function verifyUrl(entry, addon, net) {
  * Match packaged files against a pinned npm package's published files by
  * Subresource-Integrity hash (the per-file sha256 in the "?meta" listing),
  * recording each match as vendored. The match is purely local - the listing is
- * the only fetch; no file bytes are downloaded - so it scales to large packages.
+ * the only fetch and no file bytes are downloaded - so it scales to large
+ * packages.
  * @param {{name: string, version: string}} pkg
  * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
  * @returns {Promise<void>}
@@ -347,9 +371,9 @@ function eolNormalize(buf) {
 
 /**
  * The published file nodes (each `{path, integrity, ...}`) an unpkg "?meta"
- * listing contains. A node is a file when it has a `path` and no `files` child of
- * its own - which covers both unpkg's flat listing (every entry is a file, its
- * `type` a MIME type) and the older nested tree (directories carry a `files`
+ * listing contains. A node is a file when it has a `path` and no `files` child
+ * of its own - which covers both unpkg's flat listing (every entry is a file,
+ * its `type` a MIME type) and the older nested tree (directories carry a `files`
  * array). Keying off `type === "file"` would miss the flat form, whose entries
  * carry a MIME type instead.
  * @param {MetaNode} node @param {MetaNode[]} [out]
@@ -370,11 +394,10 @@ function metaFiles(node, out = []) {
 
 /**
  * Whether the source clears the trust bar: a broadly-used library (npm monthly
- * downloads or GitHub stars over the configured bar)
- * OR a github source from a first-party trusted org (VENDOR_TRUSTED_GITHUB_ORGS,
- * e.g. Thunderbird), which is accepted by provenance regardless of stars and
- * without a popularity lookup. A lookup error counts as "not popular" (the case
- * then goes to manual review).
+ * downloads or GitHub stars over the configured bar) OR a github source from a
+ * first-party trusted org (VENDOR_TRUSTED_GITHUB_ORGS, e.g. Thunderbird), which
+ * is accepted by provenance regardless of stars and without a popularity lookup.
+ * A lookup error counts as "not popular" (the case then goes to manual review).
  * @param {VendorSource} src @param {VendorNet} net
  * @returns {Promise<boolean>}
  */

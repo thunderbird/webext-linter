@@ -37,12 +37,14 @@ import { sortKeys } from "../util/json.js";
  * @param {string} opts.token  LLM API token.
  * @param {string} opts.systemIntro  The reviewer role prompt (registry-owned,
  *   resolved by the caller from prompts.system-intro) - the first system block.
- * @param {string} [opts.type]  LLM_API_TYPE (claude | chatgpt); picks the provider.
+ * @param {string} [opts.type]  LLM_API_TYPE (claude | chatgpt); picks the
+ *   provider.
  * @param {string} [opts.model]
  * @param {string} [opts.url]  Override the LLM API base URL (LLM_API_URL).
  * @param {Function} [opts.callVerdicts]  Injectable verdict transport (tests).
  * @param {Function} [opts.callText]  Injectable free-form transport (tests).
- * @param {Function} [opts.callReview]  Injectable add-on-review transport (tests).
+ * @param {Function} [opts.callReview]  Injectable add-on-review transport
+ *   (tests).
  * @returns {{evaluate: (criterion: string, label?: string) =>
  *   Promise<LlmResult>, summarize: (prompt: string) => Promise<string>,
  *   reviewAddon: (prompt: string) =>
@@ -84,18 +86,19 @@ export function createLlmClient({
 
   return {
     /**
-     * Judge a batch of candidates and return one verdict per id. The orchestrator
-     * mints the ids and owns what each means; the model only verdicts them. The
-     * candidates are split into batches bounded by distinct corpus file count
-     * (MAX_FILES_PER_BATCH), one model call each, over the shared cached system
-     * context. Returned ids outside the batch are ignored; any candidate the
-     * model omits (or a whole batch that errored) defaults to "unsure", so the
-     * caller can route it to manual review. Never throws.
+     * Judge a batch of candidates and return one verdict per id. The
+     * orchestrator mints the ids and owns what each means. The model only
+     * verdicts them. The candidates are split into batches bounded by distinct
+     * corpus file count (MAX_FILES_PER_BATCH), one model call each, over the
+     * shared cached system context. Returned ids outside the batch are ignored.
+     * Any candidate the model omits (or a whole batch that errored) defaults to
+     * "unsure", so the caller can route it to manual review. Never throws.
      * @param {object} req
      * @param {string} req.rubric  The check's rubric (registry prompt).
      * @param {Array<{id: string, file?: string, line?: number, note?: string,
-     *   corpus?: string[]}>} req.candidates  Each id points at a file:line site;
-     *   `corpus` lists the add-on files the model needs for it (default: `file`).
+     *   corpus?: string[]}>} req.candidates  Each id points at a file:line site.
+     *   `corpus` lists the add-on files the model needs for it (default:
+     *   `file`).
      * @returns {Promise<Map<string, {verdict: "fail"|"pass"|"unsure",
      *   reason: string|null}>>}
      */
@@ -104,7 +107,7 @@ export function createLlmClient({
       const list = (candidates ?? []).filter((c) => c && c.id);
       for (const batch of batchByFiles(list)) {
         // Run-wide request cap: once the budget is spent (and not extended) stop
-        // calling the model; the fill below defaults the rest to "unsure", so
+        // calling the model. The fill below defaults the rest to "unsure", so
         // they escalate to manual review like a token-less run.
         if (budget && !(await budget.consume())) {
           break;
@@ -122,8 +125,8 @@ export function createLlmClient({
             criterion,
           });
         } catch (err) {
-          // Report the failed batch at this step (visible without --verbose);
-          // its candidates fall back to "unsure" -> manual review, as without a
+          // Report the failed batch at this step (visible without --verbose).
+          // Its candidates fall back to "unsure" -> manual review, as without a
           // token. The review itself never aborts on an LLM error.
           progress(red(`      ↳ LLM review failed - ${llmErrorText(err)}`));
           for (const c of batch) {
@@ -242,7 +245,8 @@ function batchByFiles(candidates) {
  * file:line plus an optional note), and a FILES section with the batch's corpus
  * bodies. File contents come from the add-on, not the model.
  * @param {string} rubric
- * @param {Array<{id: string, file?: string, line?: number, note?: string}>} batch
+ * @param {Array<{id: string, file?: string, line?: number,
+ *   note?: string}>} batch
  * @param {string[]} paths  The batch's deduped corpus paths.
  * @param {RunContext} ctx
  * @returns {string}

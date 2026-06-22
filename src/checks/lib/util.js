@@ -68,11 +68,11 @@ export function dedupe(findings) {
 }
 
 /**
- * Whether the LLM is enabled for this run - controlled ONLY by --llm-enabled (the
- * CLI sets ctx.options.llmEnabled from it; see resolveLlm in cli.js). Decoupled
- * from credentials: a keyless provider (Ollama) is still enabled. An enabled run
- * with an invalid config fails hard at the Setup pre-flight, so by the time a
- * check reads this the config is known-good.
+ * Whether the LLM is enabled for this run - controlled ONLY by --llm-enabled
+ * (the CLI sets ctx.options.llmEnabled from it, see resolveLlm in cli.js).
+ * Decoupled from credentials: a keyless provider (Ollama) is still enabled. An
+ * enabled run with an invalid config fails hard at the Setup pre-flight, so by
+ * the time a check reads this the config is known-good.
  * @param {RunContext} ctx
  * @returns {boolean}
  */
@@ -99,7 +99,7 @@ export function referrerSupported(reach, f) {
 
 /**
  * The suspected loader sites of an unreachable file F, for per-site LLM judging:
- * when live code names F, the live mention sites (file:line); otherwise the live
+ * when live code names F, the live mention sites (file:line), otherwise the live
  * runtime-loader sites (file, no line). Deduped. The caller excludes F from
  * `mentions`.
  * @param {Reachability} reach
@@ -110,6 +110,12 @@ export function referrerSupported(reach, f) {
 export function loaderSites(reach, mentions, supported) {
   const seen = new Set();
   const out = [];
+  /**
+   * Record one loader site, skipping a file:line already seen.
+   * @param {string} file
+   * @param {?number} line
+   * @returns {void}
+   */
   const add = (file, line) => {
     const key = `${file}:${line ?? ""}`;
     if (!seen.has(key)) {

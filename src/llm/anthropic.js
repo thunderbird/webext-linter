@@ -1,7 +1,7 @@
 // The Anthropic (Claude) provider adapter: the forced structured-result tool and
 // the calls, over @anthropic-ai/sdk. Structured output is forced via tool_choice
-// (this SDK version predates messages.parse), then run through the shared coercers
-// in schema.js, so callers get a typed result regardless of provider.
+// (this SDK version predates messages.parse), then run through the shared
+// coercers in schema.js, so callers get a typed result regardless of provider.
 //
 //   - @anthropic-ai/sdk is imported lazily (only when a token is present), so a
 //     deterministic-only run never loads it,
@@ -10,8 +10,8 @@
 // Belongs here: the Anthropic request/response shape (callVerdicts / callText /
 // callReview / listModels) and the lazy SDK import. Does NOT belong here: the
 // schemas + coercion (-> schema.js), the per-review add-on context and transport
-// (-> src/checks/llm-client.js), the provider selection (-> src/llm/provider.js),
-// or any model-facing prompt (-> the registry).
+// (-> src/checks/llm-client.js), the provider selection (-> src/llm/provider.js)
+// itself, or any model-facing prompt (-> the registry).
 
 import { MAX_RESPONSE_TOKENS } from "../config.js";
 import {
@@ -155,9 +155,23 @@ export async function callReview({
 }
 
 /**
+ * @typedef {object} ContentBlock  One block in a Claude message's content.
+ * @property {string} type  Block type, e.g. "text" or "tool_use".
+ * @property {string} [name]  The tool name (tool_use blocks).
+ * @property {*} [input]  The tool's input arguments (tool_use blocks).
+ */
+/**
+ * @typedef {object} ClaudeMessage  A Claude messages.create response.
+ * @property {ContentBlock[]} content  The response content blocks.
+ */
+/**
+ * @typedef {object} ToolInput  The raw arguments of a forced tool_use block (a
+ *   RESULT_SCHEMA or ADDON_REVIEW_SCHEMA shape, validated by the coercers).
+ */
+/**
  * The input of the forced tool_use block, or throw if the model returned none.
- * @param {object} message @param {string} toolName
- * @returns {object}
+ * @param {ClaudeMessage} message @param {string} toolName
+ * @returns {ToolInput}
  */
 function toolInput(message, toolName) {
   const block = (message.content || []).find(

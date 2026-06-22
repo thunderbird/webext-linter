@@ -33,7 +33,9 @@ import { declaredPermissions } from "./lib/permissions.js";
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
 /** @typedef {import("../llm/schema.js").AddonReview} AddonReview */
 /** @typedef {{bytes: number, run: () => Promise<?string>}} DeferredSummary */
-/** @typedef {{bytes: number, run: () => Promise<?AddonReview>}} DeferredReview */
+/**
+ * @typedef {{bytes: number, run: () => Promise<?AddonReview>}} DeferredReview
+ */
 
 // Authored text file types whose full contents are worth quoting to the model.
 const TEXT_EXTS = new Set([
@@ -202,16 +204,23 @@ export function buildDiffText(ctx) {
  * (optional_permissions), and the host match patterns. An explicit anchor so the
  * LLM judges every declared permission even though the manifest is also quoted.
  * A final line names the declared permissions the deterministic analysis already
- * proved used (`used`); the prompt tells the model to treat those as justified
+ * proved used (`used`). The prompt tells the model to treat those as justified
  * and not assess them, so it spends its judgment only on the unsettled rest.
  * @param {Manifest} manifest
- * @param {Set<string>} [used]  Permissions a reachable API call provably requires.
+ * @param {Set<string>} [used]  Permissions a reachable API call provably
+ *   requires.
  * @returns {string}
  */
 function declaredPermissionsBlock(manifest, used = new Set()) {
   const { required, named, hosts } = declaredPermissions(manifest);
   const optional = [...named].filter((p) => !required.has(p));
   const confirmed = [...named].filter((p) => used.has(p));
+  /**
+   * Render one labeled list line, or "(none)" when the list is empty.
+   * @param {string} label
+   * @param {string[]} items
+   * @returns {string}
+   */
   const line = (label, items) =>
     `${label}: ${items.length ? [...items].join(", ") : "(none)"}`;
   return [
@@ -233,8 +242,8 @@ function declaredPermissionsBlock(manifest, used = new Set()) {
  * may approach the context window.
  * @param {RunContext} ctx
  * @param {{unused?: Set<string>, used?: Set<string>}} [opts]  unused = files the
- *   review found unreachable; used = permissions provably required by a reachable
- *   API call (annotated in the declared-permissions block).
+ *   review found unreachable; used = permissions provably required by a
+ *   reachable API call (annotated in the declared-permissions block).
  * @returns {?string}
  */
 export function buildAddonText(
@@ -294,8 +303,8 @@ export function buildSummarizer(ctx, registry) {
 
 /**
  * Prepare the deferred "Summary of add-on" (--full-summary): the (almost) full
- * current add-on handed to the LLM with the registry "add-on-summary" prompt. The
- * model returns prose plus the structured unused-permission list (the
+ * current add-on handed to the LLM with the registry "add-on-summary" prompt.
+ * The model returns prose plus the structured unused-permission list (the
  * unused-permission check consumes the latter). Returns null when there is no
  * token or no prompt.
  * @param {RunContext} ctx

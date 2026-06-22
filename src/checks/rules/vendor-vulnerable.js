@@ -6,16 +6,17 @@
 // vulnerable package, anchored at its declaration line (the package.json
 // dependency, or the VENDOR-file source line). Deterministic, no network.
 //
-// The registry entry is severity:auto, so this check sets each finding's severity
-// from the advisory's OSV band (its registry severity is delegated here): high /
-// critical -> error, moderate / medium -> warning, everything else (low / unknown)
-// -> info. Every recorded vulnerability is reported; none are dropped.
+// The registry entry is severity:auto, so this check sets each finding's
+// severity from the advisory's OSV band (its registry severity is delegated
+// here): high / critical -> error, moderate / medium -> warning, everything else
+// (low / unknown) -> info. Every recorded vulnerability is reported; none are
+// dropped.
 //
 // Belongs here: turning each recorded vulnerability into a finding (+ a feed
-// note), and mapping its band to a finding severity. Does NOT belong here: the OSV
-// query/parse (-> src/vendor/verify.js), the pinned-version resolution
-// (-> src/vendor/resolve.js + src/vendor/locks.js), and the wording
-// (-> assets/registry.yaml).
+// note), and mapping its band to a finding severity. Does NOT belong here: the
+// OSV query/parse (-> src/vendor/verify.js), the pinned-version resolution (->
+// src/vendor/resolve.js + src/vendor/locks.js), and the wording (->
+// assets/registry.yaml).
 
 import { finding, SEVERITY } from "../../report/finding.js";
 import { manifestTokenLine, lineContaining } from "../lib/util.js";
@@ -25,9 +26,9 @@ import { manifestTokenLine, lineContaining } from "../lib/util.js";
 
 /**
  * Map an OSV/GHSA severity band to a finding severity. GHSA labels the middle
- * band "moderate" while raw CVSS calls it "medium"; both map to warning. Anything
- * not high/critical/moderate/medium (low, unknown, an unrecognized label) is
- * informational - reported, but neither an error nor a warning.
+ * band "moderate" while raw CVSS calls it "medium". Both map to warning.
+ * Anything not high/critical/moderate/medium (low, unknown, an unrecognized
+ * label) is informational - reported, but neither an error nor a warning.
  * @param {string} band  The recorded OSV band (auditNpm lowercases it).
  * @returns {Severity}
  */
@@ -53,6 +54,11 @@ export default {
     const { addon } = ctx;
     const vulns = addon?.vendor?.vulnerabilities ?? [];
     const textByFile = new Map();
+    /**
+     * Read a packaged file's text, memoizing it per path.
+     * @param {string} file  The packaged file path to read.
+     * @returns {string}  The file's UTF-8 text, or "" when absent.
+     */
     const fileText = (file) => {
       if (!textByFile.has(file)) {
         textByFile.set(file, addon.files?.get(file)?.toString("utf8") ?? "");

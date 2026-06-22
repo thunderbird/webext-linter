@@ -36,9 +36,9 @@ export function scanLocalImports(code, lineOffset = 0) {
   /** @param {any} node  The source/argument node. */
   const add = (node) => {
     // A fully-static source path (a string, or a template/concat whose computed
-    // part is only a ?query/#fragment) is a reference, not a dynamic import. Keep
-    // only local refs - remote/embedded sources are the remote-script check's
-    // concern, not a packaged-file edge.
+    // part is only a ?query/#fragment) is a reference, not a dynamic import.
+    // Keep only local refs - remote/embedded sources are the remote-script
+    // check's concern, not a packaged-file edge.
     const path =
       node?.type === "StringLiteral" ? node.value : staticPathOf(node);
     if (path != null) {

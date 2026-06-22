@@ -3,15 +3,15 @@
 // single entry (the top-most such folder), recursively, so a fully-unused tree
 // reports as one line instead of dozens. Pure path math - no I/O, no findings.
 //
-// Belongs here: the folder-collapse path logic. Does NOT belong here: WHICH files
-// are unused (-> src/checks/rules/unused-files.js + the escalation resolution) or
-// how the collapsed entries render (-> src/report/format.js). The caller
-// (src/pipeline.js) applies this to the final unused-files findings and manual
-// refs, after every check has already scanned every file.
+// Belongs here: the folder-collapse path logic. Does NOT belong here: WHICH
+// files are unused (-> src/checks/rules/unused-files.js + the escalation
+// resolution) or how the collapsed entries render (-> src/report/format.js). The
+// caller (src/pipeline.js) applies this to the final unused-files findings and
+// manual refs, after every check has already scanned every file.
 
 /**
- * The ancestor directories of a path, shallowest first.
- * "a/b/c.js" -> ["a", "a/b"]; "x.js" -> [].
+ * The ancestor directories of a path, shallowest first. For example, "a/b/c.js"
+ * yields ["a", "a/b"], and "x.js" yields [].
  * @param {string} path
  * @returns {string[]}
  */
@@ -28,9 +28,10 @@ function ancestors(path) {
  * Collapse fully-unused folders. A directory is "fully unused" when `allFiles`
  * has at least one path under it and every such path is in `unusedFiles` (so a
  * kept/used/other-bucket file under it blocks the collapse). Each unused file is
- * mapped to its TOP-MOST fully-unused ancestor; files with none stay as-is.
+ * mapped to its TOP-MOST fully-unused ancestor. Files with none stay as-is.
  * @param {Iterable<string>} unusedFiles  Paths flagged unused (one bucket).
- * @param {Iterable<string>} allFiles  Every packaged file path (the denominator).
+ * @param {Iterable<string>} allFiles  Every packaged file path (the
+ *   denominator).
  * @returns {string[]}  Collapsed entries, sorted: folders end with "/", files
  *   are verbatim.
  */
@@ -39,6 +40,12 @@ export function collapseUnused(unusedFiles, allFiles) {
   // Per-directory tallies: total packaged files under it, and unused ones.
   const total = new Map();
   const unused = new Map();
+  /**
+   * Increment the tally for `key` in `map` (treating a missing key as 0).
+   * @param {Map<string, number>} map
+   * @param {string} key
+   * @returns {Map<string, number>}
+   */
   const bump = (map, key) => map.set(key, (map.get(key) ?? 0) + 1);
   for (const f of allFiles) {
     for (const dir of ancestors(f)) {
@@ -50,6 +57,11 @@ export function collapseUnused(unusedFiles, allFiles) {
       bump(unused, dir);
     }
   }
+  /**
+   * Whether a directory has packaged files and every one of them is unused.
+   * @param {string} dir
+   * @returns {boolean}
+   */
   const fullyUnused = (dir) =>
     total.get(dir) > 0 && total.get(dir) === unused.get(dir);
 

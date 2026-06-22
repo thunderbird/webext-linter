@@ -5,9 +5,10 @@
 // call whose third argument is the boolean literal false, and emitting a finding
 // at the open() call site.
 // Does NOT belong here: Babel parse/traverse plumbing (-> src/parse/ast.js, the
-// only Babel front door), the non-authored skip-list (-> src/checks/lib/bundled.js),
-// authored wording (-> assets/registry.yaml), severity (-> that registry entry,
-// stamped by src/checks/registry.js), and report formatting (-> src/report/format.js).
+// only Babel front door), the non-authored skip-list (->
+// src/checks/lib/bundled.js), authored wording (-> assets/registry.yaml),
+// severity (-> that registry entry, stamped by src/checks/registry.js), and
+// report formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
 import { parseJs, traverse, nodeLoc } from "../../parse/ast.js";

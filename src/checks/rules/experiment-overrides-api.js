@@ -9,8 +9,8 @@
 // built-in, and locating the experiment_apis line. Does NOT belong here:
 // detecting Experiment status (-> isExperiment), parsing experiment_apis (->
 // experimentApiPaths in src/checks/lib/experiments.js), schema resolution (->
-// SchemaIndex.resolveApi), wording (-> assets/registry.yaml), or severity (-> that
-// registry entry, stamped by src/checks/registry.js).
+// SchemaIndex.resolveApi), wording (-> assets/registry.yaml), or severity (->
+// that registry entry, stamped by src/checks/registry.js).
 
 import { finding } from "../../report/finding.js";
 import { isExperiment, manifestTokenLine } from "../lib/util.js";

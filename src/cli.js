@@ -140,7 +140,7 @@ function optionLine(flag, desc) {
  * header, a status line naming the LLM and the transmitted payload size, then
  * (once the deferred call returns) the model's wrapped prose - or a short note
  * if it could not be produced. The summary was already generated during the
- * activity feed (see src/pipeline.js); this only prints its prose. Writes to
+ * activity feed (see src/pipeline.js). This only prints its prose. Writes to
  * stdout and returns the whole block so the caller can also copy it into a
  * --report-out file.
  * @param {object} section
@@ -162,13 +162,14 @@ function summarySection({ title, summary }) {
 
 /**
  * Resolve the LLM config for this run. The LLM is opt-in and `--llm-enabled` is
- * the SOLE enabler (`wants`); the LLM_API_* env vars only configure it and never
- * turn it on. The config is validated later, hard-failing at the pipeline's Setup
- * pre-flight if it is unusable. LLM_API_TYPE picks the provider (claude | chatgpt
- * | ollama, default claude) and hence the default model (LLM_API_MODEL override)
- * and default base URL (LLM_API_URL override; Ollama defaults to its localhost
- * endpoint). The key is the real LLM_API_KEY or undefined - a keyless provider
- * (Ollama) needs none, so it is never a fabricated placeholder here.
+ * the SOLE enabler (`wants`). The LLM_API_* env vars only configure it and never
+ * turn it on. The config is validated later, hard-failing at the pipeline's
+ * Setup pre-flight if it is unusable. LLM_API_TYPE picks the provider (claude |
+ * chatgpt | ollama, default claude) and hence the default model (LLM_API_MODEL
+ * override) and default base URL. LLM_API_URL overrides that base URL, and
+ * Ollama defaults to its localhost endpoint. The key is the real LLM_API_KEY or
+ * undefined - a keyless provider (Ollama) needs none, so it is never a
+ * fabricated placeholder here.
  * @param {Record<string, string|boolean|string[]>} values
  * @returns {{wants: boolean, apiKey?: string, apiUrl?: string, apiType?: string,
  *   model?: string}}
@@ -335,7 +336,7 @@ const OPTIONS = {
  * The interactive "the LLM request cap was reached - run more?" prompt, handed
  * to the pipeline's request budget (src/llm/budget.js). Reads stdin and writes
  * the question to stderr so it never mixes into the stdout report. Only wired up
- * for an interactive text run; a non-"y" answer (or EOF) stops, and the run's
+ * for an interactive text run. A non-"y" answer (or EOF) stops, and the run's
  * remaining LLM work escalates to manual review.
  * @param {number} used  Requests already made this run.
  * @returns {Promise<boolean>}  Whether to allow MAX_LLM_REQUESTS_PER_RUN more.
@@ -433,12 +434,13 @@ export async function main(argv) {
   }
 
   // The LLM is opt-in (--llm-enabled). Its config (key requirement, an unknown
-  // type, a missing/unreachable local model) is validated at the pipeline's Setup
-  // pre-flight, which hard-fails there - so there is nothing to check here.
+  // type, a missing/unreachable local model) is validated at the pipeline's
+  // Setup pre-flight, which hard-fails there - so there is nothing to check
+  // here.
 
   // The run-wide LLM request cap prompts to continue only at an interactive text
-  // terminal; JSON/piped/CI runs have no one to ask, so they hard-stop at the cap
-  // (remaining LLM work escalates to manual review).
+  // terminal. JSON/piped/CI runs have no one to ask, so they hard-stop at the
+  // cap (remaining LLM work escalates to manual review).
   const interactive =
     format === "text" && Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
@@ -458,7 +460,7 @@ export async function main(argv) {
   }
 
   // The report body (Issues + manual sections) lands first. The advisory LLM
-  // summaries (text only) were already generated during the activity feed; their
+  // summaries (text only) were already generated during the activity feed. Their
   // prose prints next, and the review tally (── Summary ──) prints LAST so the
   // verdict closes the report after the add-on and change summaries.
   let rendered;
@@ -467,7 +469,7 @@ export async function main(argv) {
     rendered = formatReviewBody(result);
     process.stdout.write(rendered + "\n");
     // Add-on overview first, then the change delta. Both were generated during
-    // the activity feed (src/pipeline.js); here we only print their prose.
+    // the activity feed (src/pipeline.js). Here we only print their prose.
     if (result.summarizeAddon) {
       summaryBlock += summarySection({
         title: "Summary of add-on",
@@ -563,7 +565,7 @@ export function pipelineOptsFromArgv(argv) {
 /**
  * Print the models the configured provider's token can use, then exit (the
  * --llm-list-models command). Needs a token, but no add-on path. The provider is
- * LLM_API_TYPE (default claude); LLM_API_URL overrides the endpoint.
+ * LLM_API_TYPE (default claude). LLM_API_URL overrides the endpoint.
  *
  * @returns {Promise<number>} process exit code
  */

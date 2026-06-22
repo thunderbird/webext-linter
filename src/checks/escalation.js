@@ -14,8 +14,9 @@
 // narrating each batch to the live feed. Does NOT belong here: judging verdicts
 // or building candidates - that is a check under src/checks/rules/*. The batched
 // transport (one model call per file-bounded batch) is src/checks/llm-client.js.
-// Looping over checks and stamping severity is runChecks (src/checks/registry.js).
-// Turning a ManualRef into user text is src/report/responses.js via the registry.
+// Looping over checks and stamping severity is runChecks
+// (src/checks/registry.js). Turning a ManualRef into user text is
+// src/report/responses.js via the registry.
 
 import { progress } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
@@ -57,7 +58,7 @@ import { wrapText } from "../util/text.js";
 
 /**
  * Run an LLM check's candidates through the model and let the check interpret
- * the verdicts. With a token, one verdict per id (batched in llm-client); with
+ * the verdicts. With a token, one verdict per id (batched in llm-client). With
  * none, every candidate defaults to "unsure" so resolve routes it to manual.
  * Findings come back unstamped (runChecks stamps ruleId/severity).
  * @param {RunContext} ctx
@@ -69,8 +70,9 @@ export async function runLlmCheck(ctx, check, step) {
   const candidates = step.candidates ?? [];
   let verdicts;
   if (ctx.llm && candidates.length) {
-    // Print the header BEFORE the request so the feed shows what is being waited
-    // on while the (often slow, many-candidate) model call runs; verdicts follow.
+    // Print the header BEFORE the request so the feed shows what is being
+    // waited on while the (often slow, many-candidate) model call runs. The
+    // verdicts follow.
     narrateBatchHeader(check, candidates);
     verdicts = await ctx.llm.evaluate({ rubric: check.prompt, candidates });
     narrateBatchVerdicts(candidates, verdicts);
@@ -88,8 +90,9 @@ export async function runLlmCheck(ctx, check, step) {
 
 /**
  * @param {LoadedCheck} check
- * @param {{item?: ?string, file?: ?string, loc?: object, data?: object}} c  The
- *   manual case: its `{{item}}` token plus an optional locus (file/loc) and data.
+ * @param {{item?: ?string, file?: ?string, loc?: object, data?: object}} c
+ *   The manual case: its `{{item}}` token plus an optional locus (file/loc) and
+ *   data.
  * @param {"escalation"|"llm-error"} kind
  * @returns {ManualRef}
  */
@@ -106,7 +109,7 @@ function manualRef(check, c, kind) {
 
 /**
  * Route a deterministic check's escalations straight to manual review. The LLM
- * is the authority for judgment cases; a deterministic check escalates only
+ * is the authority for judgment cases. A deterministic check escalates only
  * cases a human must inspect, so they never reach the model.
  * @param {LoadedCheck} check
  * @param {Escalation[]} escalations
@@ -119,10 +122,10 @@ export function manualEscalations(check, escalations) {
   };
 }
 
-// The live activity feed (stderr, TTY only; off for piped/JSON/test runs).
+// The live activity feed (stderr, TTY only, off for piped/JSON/test runs).
 const HEAD = "      ↳ ";
 const SECTION = "        ";
-// pass green, fail red, unsure blue - a no-op unless the CLI enabled color.
+// Pass green, fail red, unsure blue - a no-op unless the CLI enabled color.
 const VERDICT_COLOR = { pass: green, fail: red, unsure: blue };
 
 /**
@@ -139,9 +142,9 @@ function narrateBatchHeader(check, candidates) {
 
 /**
  * Narrate the verdicts of a batched LLM review (printed after the model call):
- * each candidate as a bullet `<file>:<line> VERDICT - reason`, tinted by verdict.
- * The internal id is never shown - the reviewer sees the file:line site it points
- * at.
+ * each candidate as a bullet `<file>:<line> VERDICT - reason`, tinted by
+ * verdict. The internal id is never shown - the reviewer sees the file:line site
+ * it points at.
  * @param {LlmStep["candidates"]} candidates
  * @param {Map<string, {verdict: string, reason: ?string}>} verdicts
  */
@@ -152,7 +155,7 @@ function narrateBatchVerdicts(candidates, verdicts) {
     const where = `${c.file ?? "(add-on)"}${loc}`;
     const why = v.reason ? ` - ${v.reason}` : "";
     const tint = VERDICT_COLOR[v.verdict] ?? ((s) => s);
-    // A bullet per candidate so the verdicts read as a separated list; wrapText
+    // A bullet per candidate so the verdicts read as a separated list. wrapText
     // hangs continuation lines past the marker.
     wrapText(`• ${where} ${v.verdict.toUpperCase()}${why}`, SECTION).forEach(
       (line) => progress(tint(line))

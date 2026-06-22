@@ -1,16 +1,17 @@
 // The report-assembly resolver: the single place that turns the registry into
-// the strings shown to the user. A Finding carries only structured data (ruleId,
-// a single `item`/subject, and optional `data` slots describing that item). The
-// entry's `response` is the frame: `{{item}}` is filled with the finding's item
-// and each named `{{slot}}` with the matching `data` value - so the check authors
-// no prose, and `data` only adds detail ABOUT the one item (never a second
-// subject; one finding has one item). A manual ref resolves to a {title,
-// instructions} pair. `{{item}}` and `{{slot}}` are the only injection points, so
-// all prose lives in the registry.
+// the strings shown to the user. A Finding carries only structured data
+// (ruleId, a single `item`/subject, and optional `data` slots describing that
+// item). The entry's `response` is the frame: `{{item}}` is filled with the
+// finding's item and each named `{{slot}}` with the matching `data` value - so
+// the check authors no prose, and `data` only adds detail ABOUT the one item
+// (never a second subject; one finding has one item). A manual ref resolves to a
+// {title, instructions} pair. `{{item}}` and `{{slot}}` are the only injection
+// points, so all prose lives in the registry.
 //
 // Belongs here: template resolution only - filling {{item}}/{{slot}} and
 // resolving a manual ref to {title, instructions}. Reads the registry via
 // src/checks/registry.js.
+//
 // Does NOT belong here: the authored wording itself, which lives in
 // assets/registry.yaml. Section chrome, ordering and text/JSON output belong to
 // src/report/format.js. The finding data shape is in src/report/finding.js.
@@ -24,9 +25,11 @@ const PLACEHOLDER = "{{item}}";
  * single space and trim, but PRESERVE newlines. Issues responses are printed
  * VERBATIM (src/report/format.js renderFinding), so a line break authored in the
  * response - e.g. the deliberate one before "Read more:" - shows in the report.
- * Keep each registry response on one physical line except such breaks. (Manual-
- * review instructions are re-collapsed by manualLines, so their wraps don't
- * survive there regardless.)
+ * Keep each registry response on one physical line except such breaks.
+ * Manual-review instructions are re-collapsed by manualLines, so their wraps
+ * don't survive there regardless.
+ * @param {string} s
+ * @returns {string}
  */
 const collapse = (s) =>
   s
@@ -104,7 +107,7 @@ export function renderManualItems(refs, registry) {
       title: entry?.title ?? ref.ruleId,
       instructions: fill(template, ref.item, ref.data) ?? "",
       // The developer-facing response (printed under the instructions). Filled
-      // like the instructions; null when the entry has no response.
+      // like the instructions. Null when the entry has no response.
       response: fill(entry?.response, ref.item, ref.data),
       file: ref.file ?? null,
       loc: ref.loc ?? null,

@@ -22,10 +22,10 @@
 // (file/loc/item/data) only.
 //
 // Does NOT belong here: the rules' wiring and any severity or text - that lives
-// in the missing-permission / missing-manifest-key rules under src/checks/rules/*
-// and in assets/registry.yaml (resolved by src/report/responses.js). The
-// API-needs-which-permission schema knowledge - src/schema/index.js.
-// Match-pattern helpers - lib/util.js.
+// in the missing-permission / missing-manifest-key rules under
+// src/checks/rules/* and in assets/registry.yaml (resolved by
+// src/report/responses.js). The API-needs-which-permission schema knowledge -
+// src/schema/index.js. Match-pattern helpers - lib/util.js.
 
 import { finding } from "../../report/finding.js";
 import { asArray, isMatchPattern } from "./util.js";
@@ -47,10 +47,10 @@ const GATED_KINDS = new Set(["function", "event", "property", "namespace"]);
  * @typedef {object} PermissionAnalysis
  * @property {import("../../report/finding.js").Finding[]} missingPermissions  A
  *   required permission (item) not declared in the manifest.
- * @property {import("../../report/finding.js").Finding[]} missingManifestKeys  An
- *   API (item) needing a manifest key (data.keys) that is not declared.
- * @property {Set<string>} usedPermissions  Named permissions a reachable API call
- *   provably requires (so the add-on is definitely using them). The
+ * @property {import("../../report/finding.js").Finding[]} missingManifestKeys
+ *   An API (item) needing a manifest key (data.keys) that is not declared.
+ * @property {Set<string>} usedPermissions  Named permissions a reachable API
+ *   call provably requires (so the add-on is definitely using them). The
  *   unused-permission-manual check drops these from its by-hand checklist. Only
  *   ever proves a permission USED - a permission absent here may still be needed
  *   via a gated property a static scan cannot see (see the file header).
@@ -88,9 +88,9 @@ export function analyzePermissions(ctx) {
   // namespace -> { alts:Set<key>, example, file, loc } for "manifest:<key>".
   const manifestKeyReqs = new Map();
 
-  // Only usages in files that actually run count: a dead (unreachable) file must
-  // neither require a permission nor fulfil a declared one. unused-files surfaces
-  // such files for review; their API calls never execute.
+  // Only usages in files that actually run count: a dead (unreachable) file
+  // must neither require a permission nor fulfil a declared one. unused-files
+  // surfaces such files for review. Their API calls never execute.
   const reach = buildReachability(ctx);
   for (const src of ctx.apiUsages) {
     if (!reach.isLive(src.file)) {

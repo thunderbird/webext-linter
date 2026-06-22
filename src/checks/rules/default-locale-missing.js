@@ -1,7 +1,7 @@
-// A packaged _locales directory requires a default_locale manifest key;
-// without it Thunderbird refuses to load the add-on. Errors when _locales is
-// present but default_locale is absent. The inverse (default_locale with no
-// _locales) is default-locale-unused.js.
+// A packaged _locales directory requires a default_locale manifest key; without
+// it Thunderbird refuses to load the add-on. Errors when _locales is present but
+// default_locale is absent. The inverse (default_locale with no _locales) is
+// default-locale-unused.js.
 //
 // Belongs here: the present-_locales / absent-default_locale verdict. Does NOT
 // belong here: the _locales scan (-> getLocales in src/checks/lib/locales.js,

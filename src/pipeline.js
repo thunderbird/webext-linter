@@ -49,10 +49,10 @@ import {
 /** @typedef {import("./report/finding.js").Finding} Finding */
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
 /**
- * An advisory summary already generated during the activity feed: the transmitted
- * byte size and the model's prose (null if the call failed), plus a one-line
- * `error` reason when it failed (shown in the report's summary section). The
- * caller prints the prose after the report.
+ * An advisory summary already generated during the activity feed: the
+ * transmitted byte size and the model's prose (null if the call failed), plus a
+ * one-line `error` reason when it failed (shown in the report's summary
+ * section). The caller prints the prose after the report.
  * @typedef {{bytes: number, text: ?string, error?: string}} GeneratedSummary
  */
 
@@ -63,8 +63,10 @@ import {
  * @property {string} [schemaZip]
  * @property {string} [schemaCache]
  * @property {boolean} [schemaForceRefresh]
- * @property {string} [experimentsZip]  Local allowed-experiments zip/dir (skips network).
- * @property {string} [experimentsCache]  Where to cache the fetched experiments zip.
+ * @property {string} [experimentsZip]  Local allowed-experiments zip/dir (skips
+ *   network).
+ * @property {string} [experimentsCache]  Where to cache the fetched experiments
+ *   zip.
  * @property {boolean} [experimentsForceRefresh]  Re-fetch the allow-list.
  * @property {string[]} [checksOnly]
  * @property {string[]} [checksSkip]
@@ -77,7 +79,8 @@ import {
  * @property {boolean} [reviewUrl]  Look up the ATN reviewer review-page URL and
  *   put it on meta.reviewUrl - set for text reports, off for JSON/the harness.
  * @property {boolean} [llmEnabled]  The sole LLM on-switch (--llm-enabled).
- * @property {string} [llmApiKey]  Real API key, or undefined (a keyless provider).
+ * @property {string} [llmApiKey]  Real API key, or undefined (a keyless
+ *   provider).
  * @property {string} [llmModel]
  * @property {string} [llmApiUrl]  Override the LLM API base URL (LLM_API_URL).
  * @property {string} [llmApiType]  LLM_API_TYPE (claude | chatgpt | ollama).
@@ -89,20 +92,27 @@ import {
  * @property {import("./checks/registry.js").Registry} [registry]  Parsed
  *   registry threaded from the caller, parsed once here otherwise.
  * @property {(used: number) => boolean | Promise<boolean>} [confirmMore]  Asked
- *   when the run hits the LLM request cap (MAX_LLM_REQUESTS_PER_RUN): truthy runs
- *   that many more, falsy stops. The CLI supplies an interactive prompt only at a
- *   terminal; omitted means hard-stop at the cap (see src/llm/budget.js).
+ *   when the run hits the LLM request cap (MAX_LLM_REQUESTS_PER_RUN): truthy
+ *   runs that many more, falsy stops. The CLI supplies an interactive prompt
+ *   only at a terminal. Omitted means hard-stop at the cap (see
+ *   src/llm/budget.js).
+ */
+
+/**
+ * @typedef {object} PipelineResult
+ * @property {Finding[]} findings
+ * @property {ReviewMeta} meta
+ * @property {Record<string, string>} [issueHeadings]
+ * @property {Record<string, string>} [verdictIntros]
+ * @property {GeneratedSummary} [summarize]
+ * @property {GeneratedSummary} [summarizeAddon]
  */
 
 /**
  * Run the review pipeline and return the structured result.
  *
  * @param {PipelineOpts} opts
- * @returns {Promise<{findings: Finding[], meta: ReviewMeta,
- *   issueHeadings?: Record<string, string>,
- *   verdictIntros?: Record<string, string>,
- *   summarize?: GeneratedSummary,
- *   summarizeAddon?: GeneratedSummary}>}
+ * @returns {Promise<PipelineResult>}
  */
 export async function runPipeline(opts) {
   const { addonPath } = opts;
@@ -122,15 +132,16 @@ export async function runPipeline(opts) {
   // its parse can call the LLM), so it is skipped in that mode too.
   let invalidExperiment =
     isExperiment(addon.manifest) && !opts.allowExperiments;
-  // ...unless every bundled experiment is a recognised allowed upstream experiment
-  // (github.com/thunderbird/webext-experiments). We abort (short-circuit to the
-  // single experiment-not-allowed entry) ONLY when an experiment is unsupported
-  // (an unknown API name, which includes one shadowing a built-in). A recognised
-  // experiment that is merely modified/outdated does NOT abort - the full review
-  // runs so the developer gets complete feedback, and experiment-modified flags it.
-  // The allow-list is fetched only here (an experiment without --allow-experiments);
-  // a fetch failure throws, so the run hard-exits (2) rather than letting a missing
-  // allow-list masquerade as a reject.
+  // ...unless every bundled experiment is a recognised allowed upstream
+  // experiment (github.com/thunderbird/webext-experiments). We abort
+  // (short-circuit to the single experiment-not-allowed entry) ONLY when an
+  // experiment is unsupported (an unknown API name, which includes one shadowing
+  // a built-in). A recognised experiment that is merely modified/outdated does
+  // NOT abort - the full review runs so the developer gets complete feedback,
+  // and experiment-modified flags it. The allow-list is fetched only here (an
+  // experiment without --allow-experiments). A fetch failure throws, so the run
+  // hard-exits (2) rather than letting a missing allow-list masquerade as a
+  // reject.
   if (invalidExperiment) {
     addon.experiments = await verifyExperiments(addon, opts);
     const abort = addon.experiments.groups.some(
@@ -152,8 +163,9 @@ export async function runPipeline(opts) {
   // Run-wide model-request cap, shared by every LLM site this run: the vendor
   // parse, the LLM checks (each candidate batch is one request), and the
   // summaries. `confirmMore` (the interactive "run 25 more?" prompt) is supplied
-  // by the CLI; without it (JSON, piped, tests) the run hard-stops at the cap and
-  // the remaining LLM work escalates to manual review. See src/llm/budget.js.
+  // by the CLI. Without it (JSON, piped, tests) the run hard-stops at the cap
+  // and the remaining LLM work escalates to manual review. See
+  // src/llm/budget.js.
   const llmBudget = createLlmBudget({
     step: MAX_LLM_REQUESTS_PER_RUN,
     confirmMore: opts.confirmMore,
@@ -161,24 +173,29 @@ export async function runPipeline(opts) {
 
   // The "Setup" feed section: a numbered line per slow pre-review step, in the
   // same [i/total] style as the Activity check loop, so the otherwise-silent
-  // pause after the banner (vendor network verification, schema fetch, AST parse)
-  // shows what is running. The add-on is already loaded above - like Activity
-  // counting its checks before the loop, the total is known here: the vendor step
-  // is skipped for a rejected Experiment, so it is one fewer then. A no-op when
-  // progress is off (JSON, the golden harness).
+  // pause after the banner (vendor network verification, schema fetch, AST
+  // parse) shows what is running. The add-on is already loaded above - like
+  // Activity counting its checks before the loop, the total is known here: the
+  // vendor step is skipped for a rejected Experiment, so it is one fewer then. A
+  // no-op when progress is off (JSON, the golden harness).
   const setupTotal = (invalidExperiment ? 3 : 4) + (opts.llmEnabled ? 1 : 0);
   let setupDone = 0;
+  /**
+   * Emit the next numbered "Setup" feed line.
+   *
+   * @param {string} label  Names the step shown after the [done/total] counter.
+   */
   const setupStep = (label) =>
     progress(`  [${++setupDone}/${setupTotal}] ${label}`);
   progress("── Setup ──");
   progress("");
   setupStep("Reading add-on");
 
-  // The LLM pre-flight: shown in the Setup feed with the chosen type + model, and
-  // a HARD FAIL on a bad config. Runs whenever --llm-enabled, regardless of
-  // whether this run will actually use the LLM (a rejected Experiment included) -
-  // if you ask for the LLM, its config must be usable. A throw here is surfaced by
-  // main()'s catch as a stderr message + exit 2.
+  // The LLM pre-flight: shown in the Setup feed with the chosen type + model,
+  // and a HARD FAIL on a bad config. Runs whenever --llm-enabled, regardless of
+  // whether this run will actually use the LLM (a rejected Experiment included)
+  // - if you ask for the LLM, its config must be usable. A throw here is
+  // surfaced by main()'s catch as a stderr message + exit 2.
   if (opts.llmEnabled) {
     setupStep(`Checking the LLM (${opts.llmApiType}, ${opts.llmModel})`);
     const configError = validateLlmConfig(opts.llmApiType, {
@@ -226,9 +243,10 @@ export async function runPipeline(opts) {
     addon.bundled = classifyBundled(addon);
   }
 
-  // 2. Schema review. reviewAddon also generates the advisory AI summaries at the
-  // tail of the activity feed (the add-on summary's unused-permission list feeds
-  // the unused-permission check, which runs there too), so they come back here.
+  // 2. Schema review. reviewAddon also generates the advisory AI summaries at
+  // the tail of the activity feed (the add-on summary's unused-permission list
+  // feeds the unused-permission check, which runs there too), so they come back
+  // here.
   const result = await reviewAddon(
     addon,
     opts,
@@ -243,9 +261,10 @@ export async function runPipeline(opts) {
 
   // Surface the review header now - before the ATN review-page lookup below, a
   // network call that can stall the feed for seconds - so the reviewer sees what
-  // was reviewed the moment the Activity feed ends, instead of staring at a frozen
-  // screen. It is removed from the report body (src/report/format.js) so it is not
-  // printed twice. A no-op when progress is off (JSON, the golden harness).
+  // was reviewed the moment the Activity feed ends, instead of staring at a
+  // frozen screen. It is removed from the report body (src/report/format.js) so
+  // it is not printed twice. A no-op when progress is off (JSON, the golden
+  // harness).
   progress("");
   for (const line of headerLines(meta)) {
     progress(line);
@@ -270,11 +289,13 @@ export async function runPipeline(opts) {
   return {
     findings,
     meta,
-    // Severity-group headings + the verdict preamble for the text Issues section.
+    // Severity-group headings + the verdict preamble for the text Issues
+    // section.
     issueHeadings: registry.issueHeadings(),
     verdictIntros: registry.verdictIntros(),
     // AI summaries generated above (each undefined unless its flag + a token
-    // warrant it). The caller prints the prose after the report - see src/cli.js.
+    // warrant it). The caller prints the prose after the report - see
+    // src/cli.js.
     summarize,
     summarizeAddon,
   };
@@ -282,10 +303,10 @@ export async function runPipeline(opts) {
 
 /**
  * Generate one advisory prose summary at the tail of the activity feed: narrate
- * `LLM: Generating <label> (<size>) ...` so the reviewer sees what is being waited
- * on, then run the deferred model call. Returns { bytes, text } (text null on an
- * LLM error), or undefined when there is nothing to summarize (no token, no diff,
- * ...). The caller prints the prose after the report.
+ * `LLM: Generating <label> (<size>) ...` so the reviewer sees what is being
+ * waited on, then run the deferred model call. Returns { bytes, text } (text
+ * null on an LLM error), or undefined when there is nothing to summarize (no
+ * token, no diff, ...). The caller prints the prose after the report.
  * @param {import("./checks/summaries.js").DeferredSummary|null} deferred
  * @param {string} label  Names the summary in the feed, e.g. "diff summary".
  * @param {import("./llm/budget.js").LlmBudget} [budget]  Run-wide request cap.
@@ -302,7 +323,7 @@ async function generateSummary(deferred, label, budget) {
   try {
     return { bytes: deferred.bytes, text: await deferred.run() };
   } catch (err) {
-    // An advisory summary must never abort the review; report the failure at
+    // An advisory summary must never abort the review. Report the failure at
     // this step (visible without --verbose) and carry the reason to the report.
     const reason = llmErrorText(err);
     progress(red(`  LLM: ${label} failed - ${reason}`));
@@ -326,7 +347,7 @@ async function generateSummary(deferred, label, budget) {
  * @returns {Promise<GeneratedSummary|undefined>}
  */
 async function generateAddonSummary(ctx, registry, unused, budget) {
-  // Permissions a reachable API call provably requires (memoized; already
+  // Permissions a reachable API call provably requires (memoized, already
   // computed by the main-loop missing-permission checks). The prompt marks these
   // as settled so the model assesses only the unprovable rest, and the
   // unused-permission check independently drops any the model still flags.
@@ -402,10 +423,10 @@ async function reviewAddon(
     refresh: schemaForceRefresh,
   });
   const schema = buildSchemaIndex(loadSchemaFiles(zipPath));
-  // A valid Experiment's declared APIs are part of its platform: register them so
-  // the developer's calls into them (e.g. browser.calendar.*) resolve instead of
-  // tripping unknown-api. (experiment-overrides-api separately flags a path that
-  // collides with a built-in.)
+  // A valid Experiment's declared APIs are part of its platform: register them
+  // so the developer's calls into them (e.g. browser.calendar.*) resolve instead
+  // of tripping unknown-api. Note that experiment-overrides-api separately flags
+  // a path that collides with a built-in.
   if (!invalidExperiment && isExperiment(addon.manifest)) {
     schema.registerExperimentNamespaces(experimentApiPaths(addon.manifest));
   }
@@ -425,14 +446,15 @@ async function reviewAddon(
   });
 
   // The registry.yaml file drives which checks run, by `phase`: runChecks runs
-  // the default-phase checks in its loop now and returns the `phase: post-summary`
-  // checks (the two unused-permission checks, which read the add-on summary's
-  // result) as `deferred` to run after the summary below; an invalid Experiment
-  // runs only its reject check (runChecks picks the profile from
-  // ctx.invalidExperiment). The orchestrator returns issues-only findings plus
-  // the manual refs it produced (escalations with no token / unsure / error);
-  // each throwing check is isolated so one failure can't abort all. The ESLint
-  // code-sanity check is opt-in: without --eslint it is excluded here.
+  // the default-phase checks in its loop now and returns the post-summary checks
+  // marked `phase: post-summary` (the two unused-permission checks, which read
+  // the add-on summary's result) as `deferred` to run after the summary below.
+  // An invalid Experiment runs only its reject check (runChecks picks the
+  // profile from ctx.invalidExperiment). The orchestrator returns issues-only
+  // findings plus the manual refs it produced (escalations with no token /
+  // unsure / error). Each throwing check is isolated so one failure can't abort
+  // all. The ESLint code-sanity check is opt-in: without --eslint it is excluded
+  // here.
   const baseSkip = eslint
     ? (checksSkip ?? [])
     : [...(checksSkip ?? []), "code-sanity"];
@@ -444,7 +466,7 @@ async function reviewAddon(
   );
 
   // Advisory AI summaries, generated at the tail of the activity feed (a
-  // `LLM: Generating ...` line shows what is being waited on); the prose is
+  // `LLM: Generating ...` line shows what is being waited on). The prose is
   // printed after the report by the caller (src/cli.js). The add-on summary runs
   // first to match that display order, and because it produces the
   // unused-permission list the check below needs. It excludes files the review
@@ -471,7 +493,7 @@ async function reviewAddon(
   // per-check path as the loop - runOneCheck stamps id/severity and routes
   // escalations to manual review. They honor --checks/--skip (already applied by
   // loadChecks). Numbering continues from the main loop so the feed reads
-  // [1/total] .. [total/total]. (Empty for an invalid Experiment.)
+  // [1/total] .. [total/total]. This list is empty for an invalid Experiment.
   const ran = [...checks];
   for (const [j, check] of deferred.entries()) {
     const out = await runOneCheck(
@@ -486,10 +508,11 @@ async function reviewAddon(
 
   // Condense the unused-files report: when every packaged file under a folder is
   // unused, collapse it to the top-most such folder (recursively). Output-only -
-  // it runs after every check has scanned every file, so other rules still report
-  // each nested file at its exact path. Applied separately to the findings (clear
-  // orphans/junk) and the manual escalations (ambiguous), so certainty is not
-  // mixed (a folder split across both buckets collapses in neither).
+  // it runs after every check has scanned every file, so other rules still
+  // report each nested file at its exact path. Applied separately to the
+  // findings (clear orphans/junk) and the manual escalations (ambiguous), so
+  // certainty is not mixed (a folder split across both buckets collapses in
+  // neither).
   const allFiles = [...addon.files.keys()];
   collapseUnusedFolders(findings, allFiles);
   collapseUnusedFolders(manualItems, allFiles);
@@ -499,7 +522,7 @@ async function reviewAddon(
     // The built run context is returned for any post-review use by the caller.
     ctx,
     // The advisory summaries, generated above (each undefined unless its flag +
-    // a token warrant it); the caller prints their prose after the report.
+    // a token warrant it). The caller prints their prose after the report.
     summarize,
     summarizeAddon,
     meta: {
@@ -511,7 +534,7 @@ async function reviewAddon(
       checksRun: ran.map((c) => c.id),
       // One manual-review list, tagged by origin so the report can split it into
       // two sections: `extended` items are checks that escalated (the
-      // orchestrator's refs, resolved to their registry text); the rest are the
+      // orchestrator's refs, resolved to their registry text). The rest are the
       // by-hand `manual-checks` entries (Standard), diff-gated like the checks
       // (e.g. the new-submission-only "Forked add-on" reminder). An outright
       // Experiment reject prints only the reject finding, so it carries none.
@@ -536,7 +559,7 @@ async function reviewAddon(
  * (see collapseUnused). Only acts when at least one folder forms, so the common
  * "nothing collapses" case leaves the array untouched (no reordering). The first
  * unused-files entry serves as the template, so the collapsed entries keep its
- * `ruleId` + `severity` (findings) / `ruleId` + `kind` (manual refs); each new
+ * `ruleId` + `severity` (findings) / `ruleId` + `kind` (manual refs). Each new
  * entry sets `file` to the collapsed path and clears `loc`/`item`.
  * @param {Array<{ruleId?: string, file?: ?string}>} entries
  * @param {string[]} allFiles  Every packaged file path (the denominator).

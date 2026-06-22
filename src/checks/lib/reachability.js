@@ -88,8 +88,8 @@ const DOC_FILE = new RegExp(
  * @typedef {object} Reachability
  * @property {Set<string>} reachable       Files reachable from any entry point.
  * @property {Set<string>} webReachable    Files reachable from a content script.
- * @property {boolean} hasDynamicLoaders  A live, authored file builds a load path
- *   at run time (dead-code and non-authored/library loaders are excluded).
+ * @property {boolean} hasDynamicLoaders  A live, authored file builds a load
+ *   path at run time (dead-code and non-authored/library loaders are excluded).
  * @property {{file: string, kind: string}[]} dynamicLoaderSites  Live, authored.
  * @property {(file: string) => {file: string, line: number}[]} mentionsOf
  *   Lines in OTHER files that reference `file` by its basename - path-aware: an
@@ -134,9 +134,9 @@ function compute(ctx) {
 
   // Non-authored (vendored / library / minified) JS. We still parse it for
   // outgoing edges (so what it statically loads stays reachable), but its own
-  // runtime-built loaders are NOT add-on loader sites: a third-party library does
-  // not load the add-on's own files, so its dynamic loads must not make every
-  // unreferenced add-on file look ambiguous.
+  // runtime-built loaders are NOT add-on loader sites: a third-party library
+  // does not load the add-on's own files, so its dynamic loads must not make
+  // every unreferenced add-on file look ambiguous.
   const nonAuthored = nonAuthoredJs(ctx);
   // JS we do NOT parse for outgoing edges. Off by default (see config.js):
   // skipping a non-authored file would drop its loader edges and make the files
@@ -194,7 +194,7 @@ function compute(ctx) {
     }
     // File-loading API calls (schema-directed + bridge): getURL, executeScript/
     // insertCSS, the register family, setIcon, tabs.create, ... Most paths are
-    // extension-root-relative; the page-relative trio (base:"page") resolves
+    // extension-root-relative. The page-relative trio (base:"page") resolves
     // against the calling script's host page directory instead.
     const loaded = scanLoaderRefs(
       src.code,
@@ -229,10 +229,10 @@ function compute(ctx) {
   for (const raw of extraSeeds(manifest)) {
     seed(generalSeeds, raw);
   }
-  // A valid Experiment's bundled files are platform entry points, not unused: its
-  // schema/parent/child scripts plus every file in its subtree (helper .sys.mjs
-  // modules loaded via privileged imports reachability can't follow). Applies to
-  // both the pristine and the --allow-experiments cases.
+  // A valid Experiment's bundled files are platform entry points, not unused:
+  // its schema/parent/child scripts plus every file in its subtree (helper
+  // .sys.mjs modules loaded via privileged imports reachability can't follow).
+  // Applies to both the pristine and the --allow-experiments cases.
   if (!ctx.invalidExperiment && isExperiment(manifest)) {
     for (const raw of experimentFileRefs(manifest)) {
       seed(generalSeeds, raw);
@@ -308,7 +308,11 @@ function bfs(seeds, outEdges) {
   return reached;
 }
 
-/** Escape a string for literal use inside a RegExp. */
+/**
+ * Escape a string for literal use inside a RegExp.
+ * @param {string} s
+ * @returns {string}
+ */
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -317,11 +321,12 @@ function escapeRegExp(s) {
  * Whether a line that contains `target`'s basename could actually reference
  * `target` - as opposed to a DIFFERENT packaged file that happens to share the
  * basename. Each path-like token ending in the basename is resolved (relative to
- * the mentioning file AND root-relative); a token that resolves to some OTHER
+ * the mentioning file AND root-relative). A token that resolves to some OTHER
  * packaged file points elsewhere. The line refers to `target` UNLESS every such
  * token points elsewhere - a bare basename, an unresolvable token, or one
  * resolving to `target` itself all keep the line (the net stays recall-first).
- * @param {string} line @param {RegExp} tokenRe  Global regex for "<path>basename".
+ * @param {string} line
+ * @param {RegExp} tokenRe  Global regex for "<path>basename".
  * @param {string} fromFile  The mentioning file (for relative resolution).
  * @param {string} target  The file whose reference we are looking for.
  * @param {Map<string, Buffer>} files

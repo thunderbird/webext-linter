@@ -62,12 +62,13 @@ export function nodeLoc(node, lineOffset = 0) {
 }
 
 /**
- * The fully-static file path an argument node resolves to, or null if any part of
- * the *path* is computed. Beyond a plain string this catches two runtime-built
- * shapes whose file is still fixed, so they are references, not dynamic loaders:
+ * The fully-static file path an argument node resolves to, or null if any part
+ * of the *path* is computed. Beyond a plain string this catches two
+ * runtime-built shapes whose file is still fixed, so they are references, not
+ * dynamic loaders:
  *   - a template literal with no interpolation (`"foo.js"` in backticks), and
  *   - a template or string concatenation whose computed part lands only in a
- *     `?query` or `#fragment` (e.g. `getURL(`popup.html?id=${x}`)` -> popup.html).
+ *     `?query` or `#fragment` (e.g. `popup.html?id=${x}` -> popup.html).
  * StringLiteral is handled by callers and returns its value here too.
  * @param {AstNode} node
  * @returns {string|null}

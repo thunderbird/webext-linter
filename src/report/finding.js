@@ -10,11 +10,11 @@
 // data-only helpers over a finding set - the finding() factory, hasErrors,
 // sortFindings and countByRule. This file defines the data SHAPE only.
 //
-// Does NOT belong here: how a finding reads - turning ruleId/item/data
-// into a `message` string is the resolver's job (src/report/responses.js), and
-// the authored wording itself lives in assets/registry.yaml. Layout, section
-// chrome and JSON shaping live in src/report/format.js. Which severity a rule
-// gets, and verdict/escalation decisions, live in the registry and
+// Does NOT belong here: how a finding reads - turning ruleId/item/data into a
+// `message` string is the resolver's job (src/report/responses.js), and the
+// authored wording itself lives in assets/registry.yaml. Layout, section chrome
+// and JSON shaping live in src/report/format.js. Which severity a rule gets, and
+// verdict/escalation decisions, live in the registry and
 // src/checks/escalation.js - not here.
 
 /** @typedef {"error" | "warning" | "info"} Severity */
@@ -140,10 +140,10 @@ export function sortFindings(findings) {
  * @property {string|null} [item]
  * @property {boolean} [listItem]  List `item` on the location line (the
  *   instructions did not consume `{{item}}`); set by the resolver.
- * @property {boolean} [extended]  True for a check that escalated to manual review
- *   (rendered under "Extended manual review"); false/absent for a registry
- *   manual-checks entry (rendered under "Standard manual review"). Set by the
- *   pipeline when it assembles the list.
+ * @property {boolean} [extended]  True for a check that escalated to manual
+ *   review (rendered under "Extended manual review"); false/absent for a
+ *   registry manual-checks entry (rendered under "Standard manual review"). Set
+ *   by the pipeline when it assembles the list.
  */
 
 /**

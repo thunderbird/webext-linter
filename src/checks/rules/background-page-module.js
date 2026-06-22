@@ -39,7 +39,7 @@ export default {
     }
 
     // The page's external scripts are .js files already parsed once into
-    // ctx.jsSources; reuse that, falling back to parsing the bytes ourselves.
+    // ctx.jsSources. Reuse that, falling back to parsing the bytes ourselves.
     const sources = new Map((ctx.jsSources ?? []).map((s) => [s.file, s]));
     const out = [];
     eachElement(buf.toString("utf8"), (el) => {

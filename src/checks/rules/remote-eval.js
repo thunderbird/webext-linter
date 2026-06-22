@@ -7,9 +7,10 @@
 //
 // Belongs here: the candidate per ambiguous fetch().then(eval) hit and the 1:1
 // verdict mapping. Does NOT belong here: the scan (-> getEvalScan in
-// src/checks/lib/eval-scan.js), the model transport (-> src/checks/llm-client.js),
-// the resolve pattern (-> src/checks/lib/verdict-resolve.js), and authored
-// wording (-> assets/registry.yaml).
+// src/checks/lib/eval-scan.js), the model transport (->
+// src/checks/llm-client.js), the resolve pattern (->
+// src/checks/lib/verdict-resolve.js), and authored wording (->
+// assets/registry.yaml).
 
 import { getEvalScan } from "../lib/eval-scan.js";
 import { perCandidateResolve } from "../lib/verdict-resolve.js";

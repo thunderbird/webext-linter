@@ -1,8 +1,9 @@
-// The OpenAI (ChatGPT) provider adapter: the same four operations as anthropic.js
-// (callVerdicts / callText / callReview / listModels), over the openai SDK.
-// Structured output is forced via function-calling (a forced tool_choice on a
-// function whose `parameters` is the shared JSON schema), then run through the
-// same coercers in schema.js, so callers get an identical typed result.
+// The OpenAI (ChatGPT) provider adapter: the same four operations as
+// anthropic.js (callVerdicts / callText / callReview / listModels), over the
+// openai SDK. Structured output is forced via function-calling (a forced
+// tool_choice on a function whose `parameters` is the shared JSON schema), then
+// run through the same coercers in schema.js, so callers get an identical typed
+// result.
 //
 //   - the openai SDK is imported lazily (only when a token is present),
 //   - the Anthropic-style `system` text-block array is flattened to one string
@@ -90,8 +91,17 @@ function functionTool(name, description, schema) {
 }
 
 /**
+ * @typedef {object} ChatCompletion  An OpenAI chat.completions.create response.
+ * @property {Array<{message: {tool_calls?: Array<{function?: {arguments?:
+ *   string}}>}}>} choices  The response choices (the first carries the call).
+ */
+/**
+ * @typedef {object} CallArgs  The parsed arguments of a forced function call (a
+ *   RESULT_SCHEMA or ADDON_REVIEW_SCHEMA shape, validated by the coercers).
+ */
+/**
  * The arguments object of the model's forced function call, or throw if absent.
- * @param {object} res @returns {object}
+ * @param {ChatCompletion} res @returns {CallArgs}
  */
 function callArgs(res) {
   const call = res?.choices?.[0]?.message?.tool_calls?.[0];

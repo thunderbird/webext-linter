@@ -18,10 +18,9 @@
 //
 // Belongs here: the SchemaIndex query API the rest of the app consults -
 // resolveApi/resolveRef, requiredPermissions, validPermissions,
-// validManifestKeys, manifestVersionMajor,
-// fileLoaderMethods, and the static annotation helpers (versionAdded,
-// deprecation, isUnsupported, docUrl). It consumes the parsed files and calls
-// merge.js to build its registries.
+// validManifestKeys, manifestVersionMajor, fileLoaderMethods, and the static
+// annotation helpers (versionAdded, deprecation, isUnsupported, docUrl). It
+// consumes the parsed files and calls merge.js to build its registries.
 //
 // Does NOT belong here: the merge algorithm itself (src/schema/merge.js),
 // fetching or reading files (src/schema/fetch.js and src/schema/load.js), ajv
@@ -395,8 +394,8 @@ export class SchemaIndex {
         return this._resolveMembers(ns, nsName, pathSegments, n);
       }
     }
-    // No real namespace matched: a path under a registered experiment prefix is a
-    // genuinely-new experiment API - known, not unknown.
+    // No real namespace matched: a path under a registered experiment prefix is
+    // a genuinely-new experiment API - known, not unknown.
     const exp = this._matchExperiment(pathSegments);
     if (exp) {
       return { kind: "experiment", namespace: exp };
@@ -419,7 +418,8 @@ export class SchemaIndex {
   }
 
   /**
-   * The longest registered experiment prefix that `segments` falls under, or null.
+   * The longest registered experiment prefix that `segments` falls under, or
+   * null.
    * @param {string[]} segments
    * @returns {?string}
    */
@@ -578,10 +578,14 @@ export class SchemaIndex {
     return a ? a.deprecated : null;
   }
 
-  // An API is unsupported when explicitly flagged, or when the schema annotates
-  // its introduction as `version_added: false` - the schemas carry no
-  // `unsupported` key, so `false` (the observed quirk `"false"` too) is how a
-  // documented-but-unavailable Firefox API is marked in Thunderbird.
+  /**
+   * An API is unsupported when explicitly flagged, or when the schema annotates
+   * its introduction as `version_added: false` - the schemas carry no
+   * `unsupported` key, so `false` (the observed quirk `"false"` too) is how a
+   * documented-but-unavailable Firefox API is marked in Thunderbird.
+   * @param {SchemaNode} def  The merged schema definition for the API.
+   * @returns {boolean}
+   */
   static isUnsupported(def) {
     if (def?.unsupported === true) {
       return true;

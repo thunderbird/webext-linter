@@ -18,9 +18,9 @@ import { progress } from "../util/log.js";
 /**
  * @param {object} opts
  * @param {number} opts.step  The initial cap AND the per-confirmation increment.
- * @param {(used: number) => boolean | Promise<boolean>} [opts.confirmMore]  Asked
- *   when the cap is reached: a truthy answer grants `step` more requests (and is
- *   re-asked at the next multiple), a falsy answer stops. Omitted (a
+ * @param {(used: number) => boolean | Promise<boolean>} [opts.confirmMore]
+ *   Asked when the cap is reached: a truthy answer grants `step` more requests
+ *   (and is re-asked at the next multiple), a falsy answer stops. Omitted (a
  *   non-interactive run) means stop at the cap with no prompt.
  * @returns {LlmBudget}
  */

@@ -1,13 +1,14 @@
 // A default_locale manifest key requires a packaged _locales directory; without
 // it Thunderbird refuses to load the add-on. Errors when default_locale is
 // declared but no _locales directory is present, locating the default_locale
-// line. The inverse (_locales with no default_locale) is default-locale-missing.js.
+// line. The inverse (_locales with no default_locale) is
+// default-locale-missing.js.
 //
 // Belongs here: the declared-default_locale / absent-_locales verdict and
 // locating the default_locale line. Does NOT belong here: the _locales scan (->
 // getLocales in src/checks/lib/locales.js, memoized and shared with
-// default-locale-missing), finding a manifest key's line (-> manifestTokenLine in
-// src/checks/lib/util.js), authored wording (-> assets/registry.yaml), and
+// default-locale-missing), finding a manifest key's line (-> manifestTokenLine
+// in src/checks/lib/util.js), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 
 import { finding } from "../../report/finding.js";

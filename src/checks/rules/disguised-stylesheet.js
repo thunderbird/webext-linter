@@ -1,6 +1,6 @@
-// Data smuggled out through a stylesheet or CSS url() built with appended runtime
-// data - a channel not meant for data transmission, so it is an error regardless
-// of consent.
+// Data smuggled out through a stylesheet or CSS url() built with appended
+// runtime data - a channel not meant for data transmission, so it is an error
+// regardless of consent.
 //
 // Belongs here: turning style-url covert sinks into findings. Does NOT belong
 // here: the sink scan and the shared exfil gate (-> getOutboundSinks/

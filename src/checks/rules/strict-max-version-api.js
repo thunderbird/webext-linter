@@ -10,10 +10,10 @@
 // ceiling below the schema to violate).
 //
 // Belongs here: the version_added vs strict_max_version comparison and per-api
-// dedup. Does NOT belong here: extracting browser.* usage (src/parse/api-usage.js
-// via ctx.apiUsages), reading schema annotations (SchemaIndex.versionAdded /
-// resolveApi), the wording (assets/registry.yaml) or severity (its registry
-// entry, stamped by runChecks).
+// dedup. Does NOT belong here: extracting browser.* usage
+// (src/parse/api-usage.js via ctx.apiUsages), reading schema annotations
+// (SchemaIndex.versionAdded / resolveApi), the wording (assets/registry.yaml) or
+// severity (its registry entry, stamped by runChecks).
 
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";

@@ -1,18 +1,19 @@
 // Rejects (and short-circuits the review for) an Experiment add-on whose
 // experiment is NOT a recognised published Thunderbird API draft - i.e. an
-// `unsupported` experiment (an unknown API name, which includes one that shadows a
-// built-in). Recognised-but-modified experiments do NOT reach this check: the
+// `unsupported` experiment (an unknown API name, which includes one that shadows
+// a built-in). Recognised-but-modified experiments do NOT reach this check: the
 // pipeline keeps them on the normal review path, where experiment-modified flags
-// them. Silent when experiments are allowed (--allow-experiments) or the add-on is
-// not an Experiment.
+// them. Silent when experiments are allowed (--allow-experiments) or the add-on
+// is not an Experiment.
 //
-// Belongs here: turning the per-experiment classification (ctx.addon.experiments,
-// computed by src/experiments/verify.js) into one finding per unsupported
-// experiment, and refining the reason to "shadows a built-in" when its declared
-// path resolves to a real API (ctx.schema.resolveApi). Does NOT belong here:
-// detecting Experiment status (isExperiment), classifying the files
-// (src/experiments/verify.js), authored heading wording (assets/registry.yaml), or
-// severity (that registry entry, stamped by src/checks/registry.js).
+// Belongs here: turning the per-experiment classification
+// (ctx.addon.experiments, computed by src/experiments/verify.js) into one
+// finding per unsupported experiment, and refining the reason to "shadows a
+// built-in" when its declared path resolves to a real API
+// (ctx.schema.resolveApi). Does NOT belong here: detecting Experiment status
+// (isExperiment), classifying the files (src/experiments/verify.js), authored
+// heading wording (assets/registry.yaml), or severity (that registry entry,
+// stamped by src/checks/registry.js).
 
 import { finding } from "../../report/finding.js";
 import { isExperiment, manifestTokenLine } from "../lib/util.js";

@@ -15,22 +15,25 @@ export const DEFAULT_CACHE = ".schema-cache";
 /**
  * The upstream repository of allowed Thunderbird Experiments. An add-on that
  * bundles one of these UNCHANGED is auto-accepted (not treated as an invalid
- * Experiment); see src/experiments/*.
+ * Experiment). See src/experiments/*.
  */
 export const EXPERIMENTS_REPO = "thunderbird/webext-experiments";
 
 /** Branch of EXPERIMENTS_REPO to fetch for the allow-list. */
 export const EXPERIMENTS_BRANCH = "main";
 
-/** Directory where the fetched experiments zip is cached (--experiments-cache). */
+/**
+ * Directory where the fetched experiments zip is cached (--experiments-cache).
+ */
 export const EXPERIMENTS_CACHE = ".experiments-cache";
 
 /**
- * Default model per LLM_API_TYPE when LLM_API_MODEL is not set. DEFAULT_MODEL_CLAUDE is
- * the claude (Anthropic) default; DEFAULT_MODEL_OPENAI the chatgpt (OpenAI) one
- * (gpt-4.1 for its 1M-token context - add-ons can be large; gpt-4o's 128k
- * overflowed); DEFAULT_MODEL_OLLAMA the ollama (local) one - a tool-capable model
- * that must be pulled (`ollama pull llama3.1`).
+ * Default model per LLM_API_TYPE when LLM_API_MODEL is not set.
+ * DEFAULT_MODEL_CLAUDE is the claude (Anthropic) default. DEFAULT_MODEL_OPENAI
+ * is the chatgpt (OpenAI) one (gpt-4.1 for its 1M-token context, since add-ons
+ * can be large, where gpt-4o's 128k overflowed). DEFAULT_MODEL_OLLAMA is the
+ * ollama (local) one, a tool-capable model that must first be pulled by running
+ * `ollama pull llama3.1`.
  */
 export const DEFAULT_MODEL_CLAUDE = "claude-sonnet-4-6";
 export const DEFAULT_MODEL_OPENAI = "gpt-4.1";
@@ -48,24 +51,24 @@ export const MAX_RESPONSE_TOKENS = 8192;
 /**
  * Max distinct add-on files an LLM check sends in one batched request. A check
  * collects all its candidates (each an id pointing at a file:line site) and asks
- * the model for a verdict per id in one call; the corpus is the union of the
+ * the model for a verdict per id in one call. The corpus is the union of the
  * files those candidates need. When that union would exceed this many files the
  * candidates are split across several calls (a single candidate whose own corpus
  * is larger still gets its own call). The bound is files, not bytes, because the
- * files are the real work the model reads; a call that still overruns the context
- * window errors and its candidates fall back to manual review. Tunable.
+ * files are the real work the model reads. A call that still overruns the
+ * context window errors and its candidates fall back to manual review. Tunable.
  */
 export const MAX_FILES_PER_BATCH = 12;
 
 /**
- * Cap on the TOTAL model requests one run may make before pausing - across every
- * LLM check (each candidate batch is one request), the advisory summaries, and
- * the vendor-parse fallback. MAX_FILES_PER_BATCH bounds a single request; this
- * bounds their count, so a pathological add-on cannot fan out into thousands of
- * calls. On reaching it the run asks (at an interactive terminal) whether to run
- * this many more, re-asking at every multiple; non-interactively it stops and the
- * remaining LLM work escalates to manual review. Doubles as the per-confirmation
- * increment. See src/llm/budget.js. Tunable.
+ * Cap on the TOTAL model requests one run may make before pausing - across
+ * every LLM check (each candidate batch is one request), the advisory
+ * summaries, and the vendor-parse fallback. MAX_FILES_PER_BATCH bounds a single
+ * request. This bounds their count, so a pathological add-on cannot fan out into
+ * thousands of calls. On reaching it the run asks (at an interactive terminal)
+ * whether to run this many more, re-asking at every multiple. Non-interactively
+ * it stops and the remaining LLM work escalates to manual review. Doubles as the
+ * per-confirmation increment. See src/llm/budget.js. Tunable.
  */
 export const MAX_LLM_REQUESTS_PER_RUN = 25;
 
@@ -131,10 +134,11 @@ export const VENDOR_GITHUB_MIN_STARS = 100;
  * GitHub orgs whose repos are trusted by provenance (first-party sources), so a
  * vendored file pinned to one is accepted WITHOUT meeting the stars bar above.
  * The bundled bytes are still compared to upstream, so a modified copy is still
- * reported. Owner match is exact + case-insensitive; covers every github source
- * form (github.com blob, raw.githubusercontent, jsDelivr gh) since all classify
- * to kind "github" with this owner. Thunderbird's own add-on helper repos
- * (e.g. thunderbird/webext-support) live here but are below the generic bar.
+ * reported. Owner match is exact + case-insensitive. It covers every github
+ * source form (github.com blob, raw.githubusercontent, jsDelivr gh) since all
+ * classify to kind "github" with this owner. Thunderbird's own add-on helper
+ * repos (e.g. thunderbird/webext-support) live here but are below the generic
+ * bar.
  */
 export const VENDOR_TRUSTED_GITHUB_ORGS = ["thunderbird"];
 
@@ -144,10 +148,10 @@ export const VENDOR_FETCH_MAX_BYTES = 12 * 1024 * 1024;
 
 /**
  * OSV vulnerability database query endpoint (https://osv.dev). A pinned
- * package.json dependency (name@version, exact or lock-resolved) is POSTed here to
- * learn whether the bundled version has known advisories. No API token; OSV
- * ingests the GitHub Advisory DB, so it covers `npm audit`'s npm data and more.
- * Best-effort: a failed lookup just skips (no finding).
+ * package.json dependency (name@version, exact or lock-resolved) is POSTed here
+ * to learn whether the bundled version has known advisories. No API token is
+ * needed. OSV ingests the GitHub Advisory DB, so it covers `npm audit`'s npm
+ * data and more. Best-effort: a failed lookup just skips (no finding).
  */
 export const VENDOR_OSV_API = "https://api.osv.dev/v1/query";
 

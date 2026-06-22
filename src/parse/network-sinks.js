@@ -13,11 +13,10 @@
 //
 // Does NOT belong here: the verdict and wording (-> src/checks/rules/
 // disguised-*.js, cleartext-transmission.js, privacy-policy.js,
-// data-exfiltration.js, assets/registry.yaml),
-// the once-per-run aggregation (-> src/checks/lib/outbound-sinks.js), URL
-// classification (-> src/scan/url.js), and Babel access (-> src/parse/ast.js).
-// Not yet covered: <form> action submits, document.write, the anchor ping
-// attribute.
+// data-exfiltration.js, assets/registry.yaml), the once-per-run aggregation
+// (-> src/checks/lib/outbound-sinks.js), URL classification (-> src/scan/url.js)
+// and Babel access (-> src/parse/ast.js). Not yet covered: <form> action
+// submits, document.write, the anchor ping attribute.
 
 import { parseJs, traverse, nodeLoc } from "./ast.js";
 import { classifyUrl } from "../scan/url.js";
@@ -67,7 +66,8 @@ const DATA_APIS = new Set([
  * @property {"overt"|"covert"} channel  Overt = a transmission API; covert = a
  *   resource load that can disguise data as a URL.
  * @property {"remote"|"embedded"|"local"|"dynamic"} destClass  Destination.
- * @property {boolean} cleartext  The destination scheme is non-TLS (http/ws/ftp).
+ * @property {boolean} cleartext  The destination scheme is non-TLS
+ *   (http/ws/ftp).
  * @property {?string} host  The destination host, or null when local/dynamic.
  * @property {boolean} dataAppended  A remote URL built with a dynamic part
  *   (data put into the URL, the disguised-send pattern).

@@ -11,8 +11,8 @@
 //   otherwise -> one manual note on F.
 //
 // Belongs here: the two reusable resolve patterns. Does NOT belong here:
-// building the candidate list (-> the check) or the verdict transport
-// (-> src/checks/llm-client.js).
+// building the candidate list (-> the check) or the verdict transport (->
+// src/checks/llm-client.js).
 
 import { finding } from "../../report/finding.js";
 
@@ -21,7 +21,8 @@ import { finding } from "../../report/finding.js";
 /**
  * One candidate, one outcome.
  * @param {Array<{id: string, finding: object, item: ?string}>} cases  Per
- *   candidate: its finding args (used on `fail`) and the manual `{{item}}` token.
+ *   candidate: its finding args (used on `fail`) and the manual `{{item}}`
+ *   token.
  * @returns {(verdicts: VerdictMap) =>
  *   {findings: object[], manual: {item: ?string}[]}}
  */

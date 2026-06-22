@@ -1,11 +1,12 @@
 // Obtains the upstream allowed-Experiments repo as a local zip. Either returns a
-// user-supplied --experiments-zip path as-is, or downloads the branch from GitHub
-// (codeload) into the cache dir. Mirrors src/schema/fetch.js (one request for the
-// whole branch, atomic download-into-cache, reuse of a cached/supplied source).
+// user-supplied --experiments-zip path as-is, or downloads the branch from
+// GitHub (codeload) into the cache dir. Mirrors src/schema/fetch.js (one request
+// for the whole branch, atomic download-into-cache, reuse of a cached/supplied
+// source).
 //
-// Belongs here: network and on-disk cache IO that resolves the experiments source
-// to a local zip (or directory) path. Does NOT belong here: reading the files out
-// of it or hashing them (src/experiments/verify.js).
+// Belongs here: network and on-disk cache IO that resolves the experiments
+// source to a local zip (or directory) path. Does NOT belong here: reading the
+// files out of it or hashing them (src/experiments/verify.js).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -20,10 +21,11 @@ function codeloadUrl(branch) {
 
 /**
  * @typedef {object} ResolveExperimentsZipOpts
- * @property {string} [experimentsZip]  Explicit local zip or directory; skips network.
- * @property {string} [branch]          Branch to download (default EXPERIMENTS_BRANCH).
- * @property {string} [cacheDir]        Where to store the downloaded zip.
- * @property {boolean} [refresh]        Re-download even if a cached copy exists.
+ * @property {string} [experimentsZip]  Explicit local zip or directory; skips
+ *   the network.
+ * @property {string} [branch]  Branch to download (default EXPERIMENTS_BRANCH).
+ * @property {string} [cacheDir]  Where to store the downloaded zip.
+ * @property {boolean} [refresh]  Re-download even if a cached copy exists.
  */
 
 /**

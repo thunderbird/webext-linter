@@ -6,15 +6,15 @@
 //
 // Belongs here: higher-level HTML scanning - walking elements and extracting
 // their external references with kind, line, and URL classification, plus the
-// CSS references that live inline in HTML (<style> blocks and style= attributes),
-// routed through the same css.js scanner the .css files use.
+// CSS references that live inline in HTML (<style> blocks and style=
+// attributes), routed through the same css.js scanner the .css files use.
 //
 // Does NOT belong here: the low-level parse5 wrapper and element walking, which
-// is src/scan/html-parse.js. The CSS @import/url() scan itself is src/scan/css.js
-// (reused here). Extracting inline <script> bodies for the JS layer is
-// src/addon/sources.js. URL remote/local classification is src/scan/url.js.
-// Verdicts and wording live in the checks (src/checks/rules/*) and the registry
-// (assets/registry.yaml).
+// is src/scan/html-parse.js. The CSS @import/url() scan itself is
+// src/scan/css.js (reused here). Extracting inline <script> bodies for the JS
+// layer is src/addon/sources.js. URL remote/local classification is
+// src/scan/url.js. Verdicts and wording live in the checks (src/checks/rules/*)
+// and the registry (assets/registry.yaml).
 
 import { classifyUrl } from "./url.js";
 import { eachElement } from "./html-parse.js";
@@ -100,19 +100,19 @@ export function scanHtmlRemoteRefs(html) {
 }
 
 /**
- * Scan the CSS that lives INSIDE an HTML document - `<style>` blocks and `style=`
- * attributes - for the same `@import`/`url()` references scanCssRemoteRefs finds
- * in a .css file, with line numbers offset to the HTML file. Lets the
- * remote-script check treat inline CSS exactly like a stylesheet, so a remote
- * `@import` in a `<style>` block or a remote `url()` in a style attribute is not
- * missed. Returns the same CssRef shape as scanCssRemoteRefs.
+ * Scan the CSS that lives INSIDE an HTML document - `<style>` blocks and
+ * `style=` attributes - for the same `@import`/`url()` references
+ * scanCssRemoteRefs finds in a .css file, with line numbers offset to the HTML
+ * file. Lets the remote-script check treat inline CSS exactly like a stylesheet,
+ * so a remote `@import` in a `<style>` block or a remote `url()` in a style
+ * attribute is not missed. Returns the same CssRef shape as scanCssRemoteRefs.
  * @param {string} html  HTML source text.
  * @returns {import("./css.js").CssRef[]}
  */
 export function scanHtmlInlineCssRefs(html) {
   const refs = [];
   eachElement(html, (el) => {
-    // A <style> block: its rawtext is a CSS stylesheet; the body begins at
+    // A <style> block: its rawtext is a CSS stylesheet. The body begins at
     // rawText.startLine, so a ref's CSS line maps to the file by that offset.
     if (el.tag === "style" && el.rawText && el.rawText.value.trim() !== "") {
       const offset = el.rawText.startLine - 1;

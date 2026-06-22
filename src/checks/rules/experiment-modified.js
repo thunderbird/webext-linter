@@ -1,14 +1,15 @@
-// Flags a bundled Experiment that IS a recognised published Thunderbird API draft
-// but is not the unmodified latest version (locally modified or an older draft).
-// Such a submission stays on the normal review path (so the developer gets full
-// feedback) but is rejected by this error until they bundle the unmodified latest
-// upstream copy. Silent for non-Experiments, pristine experiments, and unsupported
-// ones (those abort via experiment-not-allowed).
+// Flags a bundled Experiment that IS a recognised published Thunderbird API
+// draft but is not the unmodified latest version (locally modified or an older
+// draft). Such a submission stays on the normal review path (so the developer
+// gets full feedback) but is rejected by this error until they bundle the
+// unmodified latest upstream copy. Silent for non-Experiments, pristine
+// experiments, and unsupported ones (those abort via experiment-not-allowed).
 //
-// Belongs here: turning the per-experiment classification (ctx.addon.experiments,
-// from src/experiments/verify.js) into one finding per `modified` experiment. Does
-// NOT belong here: classifying the files (src/experiments/verify.js), authored
-// wording (assets/registry.yaml), or severity (that registry entry).
+// Belongs here: turning the per-experiment classification
+// (ctx.addon.experiments, from src/experiments/verify.js) into one finding per
+// `modified` experiment. Does NOT belong here: classifying the files
+// (src/experiments/verify.js), authored wording (assets/registry.yaml), or
+// severity (that registry entry).
 
 import { finding } from "../../report/finding.js";
 import { isExperiment } from "../lib/util.js";

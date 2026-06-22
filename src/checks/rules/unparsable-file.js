@@ -2,9 +2,9 @@
 // static-analysis coverage gap (info), reported with the parser's own error.
 //
 // Belongs here: turning per-file parse errors recorded in ctx.apiUsages into
-// findings. Does NOT belong here: dynamic-access limitations (-> api-coverage.js),
-// producing ctx.apiUsages (the upstream parse step), authored wording (->
-// assets/registry.yaml), and severity (-> that registry entry).
+// findings. Does NOT belong here: dynamic-access limitations (->
+// api-coverage.js), producing ctx.apiUsages (the upstream parse step), authored
+// wording (-> assets/registry.yaml), and severity (-> that registry entry).
 
 import { finding } from "../../report/finding.js";
 
