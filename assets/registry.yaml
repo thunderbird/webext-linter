@@ -534,6 +534,30 @@ deterministic-checks:
 - title: Missing English localization
   severity: warning
   check: missing-english-localization
+  post-summary-recheck: missing-english-localization-recheck
+  instructions: |-
+    This add-on ships no English localization, so user-facing text may be
+    hardcoded in another language. Review its strings by hand and confirm if an
+    English localization is provided.
+  response: |-
+    Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
+    An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
+
+# Recheck consumer for missing-english-localization (above): re-judges the
+# low-confidence language case (too little text, or a near-tie with English) with a
+# model reading ALL the user-facing text. pass -> English / nothing to localize
+# (drop), fail -> a finding, unsure -> manual. Same wording as the producer;
+# post-summary phase inferred.
+- title: Missing English localization
+  severity: warning
+  check: missing-english-localization-recheck
+  summary-prompt: |-
+    The listed item (manifest.json) stands for the add-on's user-facing text - the
+    manifest name and description plus the visible text of its HTML pages, all
+    quoted among the sources above. Reading all of it together, decide: verdict fail
+    = the user-facing text is hardcoded in a non-English language (an English
+    localization should be added), pass = it is English, or there is nothing to
+    localize, unsure = you genuinely cannot tell. Judge only this item.
   instructions: |-
     This add-on ships no English localization, so user-facing text may be
     hardcoded in another language. Review its strings by hand and confirm if an
@@ -617,6 +641,7 @@ llm-checks:
 - title: Minimize web_accessible_resources
   severity: warning
   check: minimize-web-accessible-resources
+  post-summary-recheck: minimize-web-accessible-resources-recheck
   prompt: |-
     Each candidate is a site (file:line) that references a web_accessible_resources
     file F, named in the candidate note as "does this site load F for a web
@@ -640,6 +665,30 @@ llm-checks:
     which does not require web_accessible_resources.
 
     Use unsure only when you genuinely cannot tell.
+  instructions: |-
+    The following resources are exposed via web_accessible_resources but nothing
+    in the add-on loads them. Confirm by hand whether they need to be exposed.
+  response: |-
+    One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise remove these entries to reduce the add-on’s exposed surface.
+
+# Recheck consumer for minimize-web-accessible-resources (above): re-judges the
+# entries it could not clear from a single referencing site, now with the whole
+# add-on in view. pass -> needed (drop), fail -> a needless-exposure finding,
+# unsure -> manual. Same wording as the producer; post-summary phase inferred.
+- title: Minimize web_accessible_resources
+  severity: warning
+  check: minimize-web-accessible-resources-recheck
+  summary-prompt: |-
+    Each listed item is a web_accessible_resources entry the per-site analysis
+    could not clear. web_accessible_resources is only needed when something OUTSIDE
+    the add-on reads the file: a content script (it runs in the web page's world), a
+    real web page, or another extension. The add-on opening or embedding its own
+    file or page from its own extension contexts (background, popup, sidebar,
+    options or tab page, or an iframe of it inside another of the add-on's own
+    pages) never needs it. With the whole add-on in view, decide for each entry:
+    verdict pass = something external reads it (keep it), fail = nothing external
+    reads it (it is needless and should be removed), unsure = you cannot tell. Judge
+    only the listed entries.
   instructions: |-
     The following resources are exposed via web_accessible_resources but nothing
     in the add-on loads them. Confirm by hand whether they need to be exposed.
@@ -685,6 +734,7 @@ llm-checks:
 - title: User-data exfiltration
   severity: error
   check: data-exfiltration
+  post-summary-recheck: data-exfiltration-recheck
   prompt: |-
     Each candidate is a site (file:line) that sends data to a remote server (via
     fetch, XMLHttpRequest, WebSocket, EventSource, or sendBeacon). Sending user
@@ -696,6 +746,33 @@ llm-checks:
     options page, when it has one, is among the files below. For each candidate,
     determine whether user data is transmitted WITHOUT such consent (verdict fail)
     or not (verdict pass). Use unsure when you genuinely cannot tell.
+  instructions: |-
+    The following code locations transmit data to a remote server. Confirm by
+    hand that any user data they send is gated behind an explicit opt-in (a
+    documented options-page setting) and is never sent without consent.
+  response: |-
+    The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
+
+# Recheck consumer for data-exfiltration (above): re-judges each transmission site
+# it could not clear, now with the whole add-on in view, so a user opt-in defined in
+# any settings or background module is visible (not only the options page in the
+# narrow corpus). pass -> consented (drop), fail -> an exfiltration finding, unsure
+# -> manual. Same wording as the producer; post-summary phase inferred.
+- title: User-data exfiltration
+  severity: error
+  check: data-exfiltration-recheck
+  summary-prompt: |-
+    Each listed item is a code location (file:line) that sends data to a remote
+    server (fetch, XMLHttpRequest, WebSocket, EventSource, or sendBeacon). Sending
+    user data such as message content, attachments, contacts, or credentials to a
+    remote host is allowed ONLY if the user actively enabled it - by entering the
+    destination URL or credentials on an options page that lists what is
+    transmitted, or via an explicit off-by-default opt-in for a hard-coded URL.
+    Thunderbird has no built-in data-collection consent prompt. With the whole
+    add-on in view (every settings page, background flag, and stored preference),
+    decide for each location: verdict fail = user data is transmitted WITHOUT such
+    consent, pass = it is not, unsure = you cannot tell. Judge only the listed
+    locations.
   instructions: |-
     The following code locations transmit data to a remote server. Confirm by
     hand that any user data they send is gated behind an explicit opt-in (a

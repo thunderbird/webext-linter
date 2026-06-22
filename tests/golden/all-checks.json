@@ -71,7 +71,10 @@
       "remote-eval",
       "data-exfiltration",
       "unused-permission",
-      "unused-files-recheck"
+      "missing-english-localization-recheck",
+      "unused-files-recheck",
+      "minimize-web-accessible-resources-recheck",
+      "data-exfiltration-recheck"
     ]
   },
   "summary": {

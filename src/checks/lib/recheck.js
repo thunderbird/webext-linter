@@ -37,12 +37,20 @@ import { finding } from "../../report/finding.js";
 /**
  * The key that ties a handed-over manual item to the summary's verdict for it:
  * the item token when present (e.g. a permission), else the file (e.g. an unused
- * file). The recheck section lists these, and the model echoes them back.
- * @param {{item?: ?string, file?: ?string}} ref
+ * file) - narrowed to `file:line` when the item carries a locus, so a per-site
+ * producer (several sinks in one file) does not collapse to a single key. The
+ * recheck section lists these keys, and the model echoes them back.
+ * @param {{item?: ?string, file?: ?string, loc?: ?{line?: number}}} ref
  * @returns {?string}
  */
 function itemKey(ref) {
-  return ref.item ?? ref.file ?? null;
+  if (ref.item != null) {
+    return ref.item;
+  }
+  if (ref.file == null) {
+    return null;
+  }
+  return ref.loc?.line != null ? `${ref.file}:${ref.loc.line}` : ref.file;
 }
 
 /**

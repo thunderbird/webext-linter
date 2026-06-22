@@ -107,6 +107,43 @@ test("resolveRecheck is a no-op when nothing was handed over", () => {
   );
 });
 
+// A per-site producer hands items with no `item` token but a `loc` (e.g.
+// data-exfiltration's per-sink manual items). Those key on file:line, so two sinks
+// in the same file get distinct verdicts instead of collapsing to one key.
+test("loc-bearing items with no item token key on file:line", () => {
+  const sink = (line) => ({
+    ruleId: "p",
+    item: null,
+    file: "bg.js",
+    loc: { line },
+    kind: "escalation",
+    data: null,
+  });
+  const ctx = {
+    recheck: new Map([["x", [sink(4), sink(7)]]]),
+    addon: {
+      recheck: [
+        { check: "x", item: "bg.js:4", verdict: "fail", reason: "a" },
+        { check: "x", item: "bg.js:7", verdict: "pass", reason: "b" },
+      ],
+    },
+  };
+  // The two same-file sinks resolve independently: 4 -> finding, 7 -> dropped.
+  const out = resolveRecheck(ctx, { id: "x" });
+  assert.deepEqual(
+    out.findings.map((f) => f.loc.line),
+    [4]
+  );
+  assert.deepEqual(out.escalations, []);
+  // ...and they are listed in the prompt as distinct file:line keys.
+  const section = buildRecheckSections(
+    { recheck: new Map([["x", [sink(4), sink(7)]]]) },
+    { checkEntry: () => ({ "summary-prompt": "R" }) }
+  );
+  assert.ok(section.includes("- bg.js:4"));
+  assert.ok(section.includes("- bg.js:7"));
+});
+
 // ---- buildRecheckSections: the prompt fragment ----
 // One section per consumer with handed items, carrying that consumer's
 // summary-prompt and the de-duplicated item keys, labeled with the check id so the
