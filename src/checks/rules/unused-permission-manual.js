@@ -24,6 +24,10 @@ import { getPermissionAnalysis } from "../lib/permissions.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
+// Permissions that gate no callable API, so static analysis can never prove use;
+// they are justified by their mere presence and must not be flagged unused.
+const NO_API_GATE = new Set(["unlimitedStorage"]);
+
 export default {
   /**
    * @param {RunContext} ctx
@@ -47,8 +51,9 @@ export default {
         seen.add(p);
         const line = manifestTokenLine(text, p);
         const loc = line ? { line } : null;
-        if (used.has(p)) {
-          // A reachable API call needs it - definitely used, not a manual case.
+        if (used.has(p) || NO_API_GATE.has(p)) {
+          // A reachable call requires it, or it gates no callable API (always
+          // justified) - either way not a manual case.
           ctx.note?.("manifest.json", loc, p, "pass");
           continue;
         }

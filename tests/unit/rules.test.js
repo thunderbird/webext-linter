@@ -455,6 +455,38 @@ test("unused-permission-manual drops permissions proved used by static analysis"
   );
 });
 
+// A permission that gates no callable API (unlimitedStorage) can never be proved
+// used by static analysis, but it is justified by its mere presence - so it is
+// exempt: dropped here (noted pass), never escalated as unused.
+test("unused-permission-manual exempts unlimitedStorage (gates no API)", () => {
+  const manifest = { permissions: ["unlimitedStorage", "tabs"] };
+  const notes = [];
+  const ctx = {
+    schema,
+    note: (file, loc, item, verdict) => notes.push({ item, verdict }),
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+      ]),
+    },
+    apiUsages: [],
+  };
+  const out = unusedPermissionManual.run(ctx);
+  // tabs is still escalated; unlimitedStorage is exempt.
+  assert.deepEqual(
+    out.escalations.map((e) => e.item),
+    ["tabs"]
+  );
+  assert.deepEqual(
+    notes.find((n) => n.item === "unlimitedStorage"),
+    {
+      item: "unlimitedStorage",
+      verdict: "pass",
+    }
+  );
+});
+
 // ---- unused-permission (recheck consumer) ----
 // Given the items handed to it (ctx.recheck) and the summary's verdicts
 // (ctx.addon.recheck), it maps each: fail -> a warning finding carrying the reason
@@ -862,6 +894,43 @@ test("trademark-violation flags forbidden brands in the (resolved) name", () => 
     flags("__MSG_extName__", { "_locales/en/messages.json": locale }),
     1
   );
+});
+
+// The finding cites the manifest line of the `name` property and the offending
+// (resolved) name, not a bare "manifest.json".
+test("trademark-violation anchors the finding on the name line with the name", () => {
+  const withManifest = (name, files) => ({
+    addon: {
+      manifest: { manifest_version: 3, name, version: "1" },
+      files: new Map(
+        Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
+      ),
+    },
+  });
+  // A literal name: the line of the `name` property, and the name as the item.
+  const literal = trademarkViolation.run(
+    withManifest("Firefox Helper", {
+      "manifest.json":
+        '{\n  "manifest_version": 3,\n  "name": "Firefox Helper"\n}\n',
+    })
+  );
+  assert.equal(literal.length, 1);
+  assert.equal(literal[0].loc.line, 3);
+  assert.equal(literal[0].item, "Firefox Helper");
+
+  // A __MSG__ name: still anchored on the manifest `name` line, but the item is the
+  // resolved locale string (the actual offending name).
+  const localized = trademarkViolation.run(
+    withManifest("__MSG_extName__", {
+      "manifest.json": '{\n  "name": "__MSG_extName__"\n}\n',
+      "_locales/en/messages.json": JSON.stringify({
+        extName: { message: "Firefox Sync" },
+      }),
+    })
+  );
+  assert.equal(localized.length, 1);
+  assert.equal(localized[0].loc.line, 2);
+  assert.equal(localized[0].item, "Firefox Sync");
 });
 
 // ---- strict_max_version (Experiment vs not) ----
