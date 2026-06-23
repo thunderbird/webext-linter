@@ -5,9 +5,8 @@
 // either a bug or privileged code mis-packaged as a WebExtension file. So the check
 // runs ONLY on the pure WebExtension dependency tree (pureWebExtensionReachable):
 // files reached from a WebExtension entry point without crossing into an Experiment
-// API. This positively excludes privileged Experiment/core code (and the mixed/
-// "unsure" files) and dead code - independent of how completely the Experiment tree
-// was traced, so an untraceable privileged loader cannot cause a false positive.
+// API. This positively excludes experiment implementation code and dead code, so an
+// untraceable privileged loader cannot cause a false positive.
 //
 // Belongs here: the core-symbol list and visiting GLOBAL references to it (a name
 // shadowed by a local binding / import is the developer's own symbol, not ours).

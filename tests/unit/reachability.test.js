@@ -93,36 +93,47 @@ test("webReachable from content scripts; WAR globs expand", () => {
 
 // pureWebExtensionReachable: the positive WebExtension tree core-symbol gates on -
 // reachable from a WebExtension entry over ordinary edges, never crossing into an
-// Experiment API. The Experiment parent script and its subtree are excluded (they
-// are experimentReachable instead); dead code is excluded too.
-test("pureWebExtensionReachable excludes the Experiment tree and dead code", () => {
+// Experiment API. The experiment implementation files are excluded; a plain `.html`
+// parameter to an Experiment API (a content page) IS folded in, while an `.xhtml`/`.js`
+// parameter (privileged) is not; dead code is excluded too.
+test("pureWebExtensionReachable: webext tree + .html experiment params only", () => {
   const manifest = {
     manifest_version: 2,
     background: { scripts: ["bg.js"] },
     experiment_apis: {
-      exp: { schema: "exp/schema.json", parent: { script: "exp/impl.js" } },
+      wl: { schema: "exp/schema.json", parent: { script: "exp/impl.js" } },
     },
   };
   const files = {
     "manifest.json": JSON.stringify(manifest),
-    "bg.js": `import "./helper.js";`,
+    "bg.js":
+      `import "./helper.js";\n` +
+      `messenger.wl.openPage("ui/page.html");\n` +
+      `messenger.wl.registerWindow("win.xhtml", "overlay.js");`,
     "helper.js": `export const x = 1;`,
-    "exp/impl.js": `var { X } = ChromeUtils.importESModule("resource://e/exp/mod.sys.mjs");`,
+    "ui/page.html": `<script src="page.js"></script>`,
+    "ui/page.js": `messenger.runtime.getURL("x");`,
+    "win.xhtml": ``,
+    "overlay.js": `console.log(1);`,
+    "exp/impl.js": `var { X } = ChromeUtils.importESModule("resource://e/mod.sys.mjs");`,
     "exp/schema.json": "[]",
-    "exp/mod.sys.mjs": `export const X = 1;`,
     "dead.js": `console.log(1);`,
   };
-  const reach = buildReachability(ctxFrom(files, manifest));
-  // A WebExtension entry and its ordinary import are in the pure tree.
-  assert.ok(reach.pureWebExtensionReachable.has("bg.js"));
-  assert.ok(reach.pureWebExtensionReachable.has("helper.js"));
-  // The Experiment parent script and its module are NOT pure, but ARE experiment.
-  assert.ok(!reach.pureWebExtensionReachable.has("exp/impl.js"));
-  assert.ok(reach.experimentReachable.has("exp/impl.js"));
-  assert.ok(!reach.pureWebExtensionReachable.has("exp/mod.sys.mjs"));
-  assert.ok(reach.experimentReachable.has("exp/mod.sys.mjs"));
-  // Dead code is in neither.
-  assert.ok(!reach.pureWebExtensionReachable.has("dead.js"));
+  const pure = buildReachability(
+    ctxFrom(files, manifest)
+  ).pureWebExtensionReachable;
+  // WebExtension entry + its ordinary import.
+  assert.ok(pure.has("bg.js"));
+  assert.ok(pure.has("helper.js"));
+  // A plain .html experiment param and its standard closure are folded in.
+  assert.ok(pure.has("ui/page.html"));
+  assert.ok(pure.has("ui/page.js"));
+  // An .xhtml / .js experiment param is privileged -> excluded.
+  assert.ok(!pure.has("win.xhtml"));
+  assert.ok(!pure.has("overlay.js"));
+  // Experiment implementation files and dead code are excluded.
+  assert.ok(!pure.has("exp/impl.js"));
+  assert.ok(!pure.has("dead.js"));
 });
 
 // A non-literal getURL sets hasDynamicLoaders; the basename safety net finds a

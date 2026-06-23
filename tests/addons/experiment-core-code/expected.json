@@ -1,5 +1,5 @@
 {
-  "_comment": "An Experiment reviewed with --allow-experiments. Its parent script is privileged CORE code: messenger.reloadMessage() (absent from the schema) must NOT be flagged unknown-api, and must not count toward permissions. It pulls in content/helper.js via rootURI.resolve() (root-relative) and modules/MyMod.sys.mjs via a resource:// URL matched by file name - both reachable, not unused. A resource:// core module with no bundled counterpart is ignored, not flagged. A clean review.",
+  "_comment": "An Experiment reviewed with --allow-experiments. The experiment implementation files are outside the pure WebExtension tree, so they are neither validated nor reported: the parent script's messenger.reloadMessage() (absent from the schema) is NOT flagged unknown-api and does not count toward permissions, and the files it loads at runtime (content/helper.js, modules/MyMod.sys.mjs) are not flagged unused (unused-files reports only junk for Experiments). A clean review.",
   "options": { "--allow-experiments": true },
   "expect": {}
 }

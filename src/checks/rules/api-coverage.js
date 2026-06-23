@@ -21,10 +21,11 @@ export default {
    */
   run(ctx) {
     const findings = [];
-    // Privileged Experiment/core code is not WebExtension schema (skip it).
-    const experimentFiles = buildReachability(ctx).experimentReachable;
+    // Only report coverage gaps in the pure WebExtension tree (experiment/core and
+    // dead code are out).
+    const webext = buildReachability(ctx).pureWebExtensionReachable;
     for (const src of ctx.apiUsages || []) {
-      if (experimentFiles.has(src.file)) {
+      if (!webext.has(src.file)) {
         continue;
       }
       for (const lim of src.limitations || []) {

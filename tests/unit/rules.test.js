@@ -280,7 +280,14 @@ test("api-coverage flags dynamic limits; unparsable-file flags parse failures", 
     },
     { file: "ok.js", limitations: [] },
   ];
-  const cov = apiCoverage.run({ apiUsages });
+  // dyn.js must be in the pure WebExtension tree for api-coverage to report it.
+  const cov = apiCoverage.run({
+    apiUsages,
+    addon: {
+      manifest: { background: { scripts: ["dyn.js"] } },
+      files: new Map([["dyn.js", Buffer.from("")]]),
+    },
+  });
   assert.equal(cov.length, 1);
   const dyn = cov[0];
   assert.equal(dyn.file, "dyn.js");
@@ -579,6 +586,10 @@ test("unused-permission is a no-op with nothing handed over", () => {
 test("deprecated-api hint is the schema deprecation message, not a doc link", () => {
   const ctx = {
     schema,
+    addon: {
+      manifest: { background: { scripts: ["bg.js"] } },
+      files: new Map([["bg.js", Buffer.from("")]]),
+    },
     apiUsages: [
       {
         file: "bg.js",
@@ -622,6 +633,10 @@ test("unknown-api flags version_added:false as unsupported", () => {
   );
   const ctx = {
     schema: local,
+    addon: {
+      manifest: { background: { scripts: ["bg.js"] } },
+      files: new Map([["bg.js", Buffer.from("")]]),
+    },
     apiUsages: [
       {
         file: "bg.js",
@@ -643,9 +658,14 @@ test("unknown-api flags version_added:false as unsupported", () => {
 const maxCtx = (max, usages) => ({
   schema,
   addon: {
-    manifest: max
-      ? { browser_specific_settings: { gecko: { strict_max_version: max } } }
-      : {},
+    // bg.js must be in the pure WebExtension tree for the validators to check it.
+    files: new Map([["bg.js", Buffer.from("")]]),
+    manifest: {
+      background: { scripts: ["bg.js"] },
+      ...(max
+        ? { browser_specific_settings: { gecko: { strict_max_version: max } } }
+        : {}),
+    },
   },
   apiUsages: [{ file: "bg.js", usages }],
 });
@@ -709,9 +729,14 @@ test("strict-max-version-api is skipped without strict_max_version", () => {
 const minCtx = (min, usages) => ({
   schema,
   addon: {
-    manifest: min
-      ? { browser_specific_settings: { gecko: { strict_min_version: min } } }
-      : {},
+    // bg.js must be in the pure WebExtension tree for the validators to check it.
+    files: new Map([["bg.js", Buffer.from("")]]),
+    manifest: {
+      background: { scripts: ["bg.js"] },
+      ...(min
+        ? { browser_specific_settings: { gecko: { strict_min_version: min } } }
+        : {}),
+    },
   },
   apiUsages: [{ file: "bg.js", usages }],
 });
@@ -782,7 +807,9 @@ test("strict-min-version-api compares minor/patch components", () => {
     strictMinVersionApi.run({
       schema: local,
       addon: {
+        files: new Map([["bg.js", Buffer.from("")]]),
         manifest: {
+          background: { scripts: ["bg.js"] },
           browser_specific_settings: { gecko: { strict_min_version: min } },
         },
       },
@@ -877,6 +904,10 @@ test("strict-min-version-api ignores a guarded non-existent API (unknown-api own
 
   const flagged = unknownApi.run({
     schema,
+    addon: {
+      manifest: { background: { scripts: ["bg.js"] } },
+      files: new Map([["bg.js", Buffer.from("")]]),
+    },
     apiUsages: [{ file: "bg.js", usages }],
   });
   assert.equal(flagged.length, 1);

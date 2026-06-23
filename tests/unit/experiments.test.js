@@ -10,8 +10,6 @@ import { fileURLToPath } from "node:url";
 
 import {
   experimentApiPaths,
-  experimentFileRefs,
-  experimentSubtreeRoot,
   experimentGroups,
 } from "../../src/checks/lib/experiments.js";
 import {
@@ -62,11 +60,6 @@ const demoFiles = () =>
 // ---- manifest helpers ----
 test("experiment helpers read paths, file refs and the subtree root", () => {
   assert.deepEqual(experimentApiPaths(DEMO_MANIFEST), ["demo"]);
-  assert.deepEqual(experimentFileRefs(DEMO_MANIFEST).sort(), [
-    "experiments/demo/parent/ext-demo.js",
-    "experiments/demo/schema/demo.json",
-  ]);
-  assert.equal(experimentSubtreeRoot(DEMO_MANIFEST), "experiments/demo/");
   // A multi-segment path joins with dots; an entry without paths falls back to key.
   assert.deepEqual(
     experimentApiPaths({

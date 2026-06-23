@@ -20,12 +20,12 @@ export default {
   run(ctx) {
     const findings = [];
     const { schema } = ctx;
-    // Privileged Experiment/core code uses Thunderbird internals, not the
-    // WebExtension schema, so it must not be validated against it.
-    const experimentFiles = buildReachability(ctx).experimentReachable;
+    // Only validate the pure WebExtension tree; experiment/core code (and dead code)
+    // is outside it and uses Thunderbird internals, not the WebExtension schema.
+    const webext = buildReachability(ctx).pureWebExtensionReachable;
 
     for (const src of ctx.apiUsages) {
-      if (experimentFiles.has(src.file)) {
+      if (!webext.has(src.file)) {
         continue;
       }
       for (const usage of src.usages) {

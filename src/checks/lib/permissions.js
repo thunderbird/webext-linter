@@ -98,14 +98,12 @@ export function analyzePermissions(ctx) {
   // namespace -> { alts:Set<key>, example, file, loc } for "manifest:<key>".
   const manifestKeyReqs = new Map();
 
-  // Only usages in files that actually run count: a dead (unreachable) file
-  // must neither require a permission nor fulfil a declared one. unused-files
-  // surfaces such files for review. Their API calls never execute.
+  // Only usages in the pure WebExtension tree count: dead code and privileged
+  // Experiment/core code (which uses no manifest permissions) are outside it, so they
+  // bear on neither used nor missing permissions.
   const reach = buildReachability(ctx);
   for (const src of ctx.apiUsages) {
-    // Skip dead code, and privileged Experiment/core code (it runs with full
-    // privileges and uses no permissions, so it bears on neither used nor missing).
-    if (!reach.isLive(src.file) || reach.experimentReachable.has(src.file)) {
+    if (!reach.pureWebExtensionReachable.has(src.file)) {
       continue;
     }
     for (const usage of src.usages) {

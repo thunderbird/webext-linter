@@ -18,10 +18,17 @@
 // same-basename file elsewhere (a library's own button.js) does not make an
 // unrelated file look mentioned.
 //
+// `pureWebExtensionReachable` is the positive "this is WebExtension code" set the
+// API/permission validators (unknown-api, deprecated-api, api-coverage, strict-
+// min/max-version-api, permissions, core-symbol-in-webext) check against: the
+// closure from the manifest WebExtension entry points over standard edges, PLUS
+// any plain `.html` file passed as an Experiment-API parameter (a content page),
+// and never crossing into experiment implementation code.
+//
 // Belongs here: building the reference graph and the Reachability result
-// (reachable/webReachable sets, the dynamic-loader flag, mentionsOf), memoized
-// per ctx in a WeakMap. The seeding and resolution that need the packaged file
-// set.
+// (reachable/webReachable/pureWebExtensionReachable sets, the dynamic-loader flag,
+// mentionsOf), memoized per ctx in a WeakMap. The seeding and resolution that need
+// the packaged file set.
 //
 // Does NOT belong here: extracting the edges themselves - HTML/CSS refs come
 // from src/scan/html.js and src/scan/css.js, JS imports from
@@ -42,18 +49,10 @@ import { scanHtmlRemoteRefs } from "../../scan/html.js";
 import { scanCssRemoteRefs } from "../../scan/css.js";
 import { scanLocalImports } from "../../parse/local-imports.js";
 import { scanLoaderRefs } from "../../parse/loader-files.js";
-import {
-  scanCoreLoaderRefs,
-  scanExperimentInjectedRefs,
-} from "../../parse/core-loaders.js";
+import { scanExperimentInjectedRefs } from "../../parse/core-loaders.js";
 import { nonAuthoredJs } from "./bundled.js";
 import { asArray, asObject, isExperiment, isDocFile } from "./util.js";
-import {
-  experimentFileRefs,
-  experimentSubtreeRoot,
-  experimentApiNamespaces,
-  classifyExperimentNamespaces,
-} from "./experiments.js";
+import { experimentApiNamespaces } from "./experiments.js";
 import {
   basename,
   extname,
@@ -78,19 +77,21 @@ const TEXT_EXTS = new Set([
   ".yaml",
   ".yml",
 ]);
+
+// Plain HTML (a content page). An Experiment can only LOAD such a file - i.e. as a
+// WebExtension page - so a `.html` parameter to an Experiment API bridges into the
+// WebExtension tree. Privileged UI is `.xhtml` and privileged logic a `.js` script,
+// so those are deliberately excluded.
+const PLAIN_HTML = new Set([".html", ".htm"]);
 /**
  * @typedef {object} Reachability
  * @property {Set<string>} reachable       Files reachable from any entry point.
  * @property {Set<string>} webReachable    Files reachable from a content script.
- * @property {Set<string>} experimentReachable  Files reachable from the Experiment
- *   subtree, following core-code loaders (rootURI.resolve paths + registered
- *   chrome://resource:// URLs matched by file name). This privileged CORE code is
- *   exempt from the schema/permission checks (it does not use the WebExtension
- *   schema or permissions). Empty when the add-on is not an Experiment.
  * @property {Set<string>} pureWebExtensionReachable  Files reachable from a
- *   WebExtension entry point over ordinary edges WITHOUT crossing into an
- *   Experiment API - the positive "this is sandbox code" set (excludes experiment
- *   core/unsure files and dead code). core-symbol-in-webext gates on it.
+ *   WebExtension entry point over standard edges, plus `.html` files passed as
+ *   Experiment-API parameters (and their closures) - the positive "this is
+ *   WebExtension code" set every validator checks against. Experiment implementation
+ *   code is never traced into it.
  * @property {boolean} hasDynamicLoaders  A live, authored file builds a load
  *   path at run time (dead-code and non-authored/library loaders are excluded).
  * @property {{file: string, kind: string}[]} dynamicLoaderSites  Live, authored.
@@ -139,7 +140,6 @@ function compute(ctx) {
     return {
       reachable: new Set(),
       webReachable: new Set(),
-      experimentReachable: new Set(),
       pureWebExtensionReachable: new Set(),
       hasDynamicLoaders: false,
       dynamicLoaderSites: [],
@@ -247,29 +247,6 @@ function compute(ctx) {
   for (const raw of extraSeeds(manifest)) {
     seed(generalSeeds, raw);
   }
-  // A valid Experiment's bundled files are platform entry points, not unused: its
-  // schema/parent/child scripts plus every file in its subtree. Collected as a
-  // SEPARATE seed set (folded into generalSeeds too) so the Experiment closure
-  // below can be queried on its own - to exempt that privileged CORE code from the
-  // schema/permission checks. Applies to both the pristine and --allow-experiments
-  // cases.
-  const experimentSeeds = new Set();
-  if (!ctx.invalidExperiment && isExperiment(manifest)) {
-    for (const raw of experimentFileRefs(manifest)) {
-      seed(experimentSeeds, raw);
-    }
-    const expRoot = experimentSubtreeRoot(manifest);
-    if (expRoot) {
-      for (const f of files.keys()) {
-        if (f.startsWith(expRoot)) {
-          experimentSeeds.add(f);
-        }
-      }
-    }
-  }
-  for (const f of experimentSeeds) {
-    generalSeeds.add(f);
-  }
   for (const entry of warResourceList(manifest)) {
     for (const pat of entry.resources) {
       if (isOverBroadResource(pat)) {
@@ -293,11 +270,12 @@ function compute(ctx) {
     }
   }
 
-  // The WebExtension tracer's set, before any core-loader edge: today's reachable.
-  const baseReachable = bfs(generalSeeds, outEdges);
+  // The general WebExtension reachable set, from the manifest entry points over
+  // standard edges. unused-files (non-Experiment) and isLive read this.
+  const reachable = bfs(generalSeeds, outEdges);
 
-  // basename -> packaged files of that name, for references matched by file NAME
-  // (registered chrome://resource:// URLs and Experiment-injected names).
+  // basename -> packaged files of that name, for an Experiment-API parameter matched
+  // by file NAME (a chrome://resource:// URL the add-on hands to an experiment).
   const byBasename = new Map();
   for (const f of files.keys()) {
     const b = basename(f);
@@ -307,25 +285,19 @@ function compute(ctx) {
     }
     list.push(f);
   }
-  const srcByFile = new Map((ctx.jsSources || []).map((s) => [s.file, s]));
-  // Resolve a {kind, value} ref to packaged files. A name match excludes files the
-  // WebExtension tracer already reached, so a name is not mis-attributed to a used
-  // file; an unmatched name is a core/app file and yields nothing (never flagged).
+  /** Resolve an injected {kind, value} ref to packaged files. */
   const refTargets = (r) =>
     r.kind === "path"
       ? [resolveRef(files, null, r.value)].filter(Boolean)
-      : (byBasename.get(r.value) ?? []).filter((t) => !baseReachable.has(t));
+      : (byBasename.get(r.value) ?? []);
 
-  // Files the add-on hands to an Experiment API. We classify by what the experiment
-  // DOES with the parameter (its parent.script): a SUBSCRIPT-LOADED file runs as
-  // privileged core code (seed it -> exempt); a file loaded into a WebExtension
-  // <browser> stays WebExtension code (ignored here -> still checked); an
-  // undetermined one is deferred (seeded/exempt now, plus an `unsure` feed note a
-  // later summary-prompt can resolve). Scanned across ALL files, since the
-  // registration lives in the add-on's own WebExtension code.
-  const webextInjected = new Set();
+  // The ONE bridge across the WebExtension->Experiment boundary: a plain `.html` file
+  // passed as a parameter to an Experiment API is a content page - i.e. a WebExtension
+  // page (privileged UI would be `.xhtml`, privileged logic a `.js` script). So such
+  // files seed the WebExtension tree (their standard closure follows); everything else
+  // an experiment loads stays outside it. Deterministic, no classification, no LLM.
+  const htmlInjectedSeeds = new Set();
   if (!ctx.invalidExperiment && isExperiment(manifest)) {
-    const classes = classifyExperimentNamespaces(addon);
     const namespaces = experimentApiNamespaces(manifest);
     for (const src of ctx.jsSources || []) {
       for (const r of scanExperimentInjectedRefs(
@@ -333,82 +305,23 @@ function compute(ctx) {
         namespaces,
         src.lineOffset
       ).refs) {
-        const cls = classes.get(r.ns);
         for (const t of refTargets(r)) {
-          if (cls === "core" || cls === "unsure") {
-            experimentSeeds.add(t); // privileged context -> exempt
-            if (cls === "unsure") {
-              ctx.note?.(src.file, { line: r.line }, t, "unsure");
-            }
-          } else if (cls === "webext") {
-            // A WebExtension page loaded into a browser: it runs (so not unused),
-            // but stays WebExtension code (still API-checked).
-            webextInjected.add(t);
+          if (PLAIN_HTML.has(extname(t))) {
+            htmlInjectedSeeds.add(t);
           }
         }
       }
     }
   }
 
-  // The pure WebExtension dependency tree: reachable from a WebExtension entry point
-  // over ordinary edges, WITHOUT crossing into Experiment APIs. Seeds are the entry
-  // points (manifestFileRefs already covers background/options/popups/content scripts)
-  // plus WAR and the `webext`-classified injected pages, but NOT the Experiment seeds
-  // (its parent/child scripts, subtree, and the core/unsure injected files all land in
-  // experimentSeeds). The base outEdges carry no WebExtension->Experiment-API edge, so
-  // this never reaches privileged code. A POSITIVE set, independent of how completely
-  // experimentReachable traces privileged loads - core-symbol-in-webext gates on it.
-  const webextSeeds = new Set(webextInjected);
-  for (const s of generalSeeds) {
-    if (!experimentSeeds.has(s)) {
-      webextSeeds.add(s);
-    }
-  }
-  const pureWebExtensionReachable = bfs(webextSeeds, outEdges);
+  // The pure WebExtension dependency tree every check validates against: the closure
+  // (standard WebExtension edges only) from the manifest entry points PLUS the `.html`
+  // Experiment-API parameters. It never traces into experiment implementation code.
+  const pureWebExtensionReachable = bfs(
+    new Set([...generalSeeds, ...htmlInjectedSeeds]),
+    outEdges
+  );
 
-  // The Experiment dependency tree: a BFS from the Experiment seeds following the
-  // normal edges PLUS the core-code loaders (rootURI.resolve paths, and registered
-  // chrome://resource:// URLs matched by file NAME) - scanned ONLY here, on
-  // Experiment-tree files. Discovered edges go into outEdges, so the loaded add-on
-  // files are reachable (not flagged unused).
-  const experimentReachable = new Set();
-  if (experimentSeeds.size) {
-    const queue = [...experimentSeeds];
-    while (queue.length) {
-      const f = queue.pop();
-      if (experimentReachable.has(f)) {
-        continue;
-      }
-      experimentReachable.add(f);
-      for (const e of outEdges.get(f) ?? []) {
-        if (!experimentReachable.has(e)) {
-          queue.push(e);
-        }
-      }
-      const src = srcByFile.get(f);
-      if (!src || skipParse.has(f)) {
-        continue;
-      }
-      for (const r of scanCoreLoaderRefs(src.code, src.lineOffset).refs) {
-        for (const t of refTargets(r)) {
-          addEdge(f, t);
-          if (!experimentReachable.has(t)) {
-            queue.push(t);
-          }
-        }
-      }
-    }
-  }
-
-  // Experiment-loaded files (core and WebExtension alike) join the reachable set so
-  // they are not flagged unused.
-  const reachable = baseReachable;
-  for (const f of experimentReachable) {
-    reachable.add(f);
-  }
-  for (const f of webextInjected) {
-    reachable.add(f);
-  }
   const webReachable = bfs(webSeeds, outEdges);
   /** @param {string} file @returns {boolean} Reached from any entry point. */
   const isLive = (file) => reachable.has(file) || webReachable.has(file);
@@ -420,7 +333,6 @@ function compute(ctx) {
   return {
     reachable,
     webReachable,
-    experimentReachable,
     pureWebExtensionReachable,
     hasDynamicLoaders: liveLoaders.length > 0,
     dynamicLoaderSites: liveLoaders,

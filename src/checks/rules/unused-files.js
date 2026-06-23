@@ -27,6 +27,7 @@ import {
   loaderSites,
   loaderTrace,
   isDocMetadataFile,
+  isExperiment,
   DEPENDENCY_FILE_RE,
 } from "../lib/util.js";
 
@@ -61,6 +62,11 @@ export default {
     }
     const reach = buildReachability(ctx);
     const vendored = addon.vendor?.set ?? new Set();
+    // An Experiment loads its files by mechanisms static analysis can't trace, so
+    // "not reachable" is unreliable there - we'd mostly flag working experiment code.
+    // Report only unambiguous junk; a separate "review the whole Experiment" check
+    // (out of scope) prompts the manual pass.
+    const experiment = isExperiment(addon.manifest);
     const findings = [];
     const candidates = [];
     /**
@@ -81,6 +87,9 @@ export default {
         ctx.note?.(file, null, "hidden/junk file", "fail");
         findings.push(finding({ file }));
         continue;
+      }
+      if (experiment) {
+        continue; // junk only for Experiments; reachability-unused is unreliable
       }
       if (reach.reachable.has(file)) {
         continue;
