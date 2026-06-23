@@ -733,8 +733,9 @@ test("strict-min-version-api flags APIs added after strict_min_version", () => {
       }, // va 66
     ])
   );
-  assert.equal(out.length, 2); // 200 and 66 both > 60
-  const f = out.find((x) => x.item === "messenger.messages.future()");
+  assert.equal(out.findings.length, 2); // 200 and 66 both > 60, both unguarded
+  assert.equal(out.llm, undefined); // nothing guarded -> no LLM candidates
+  const f = out.findings.find((x) => x.item === "messenger.messages.future()");
   assert.equal(f.hint, "added in Thunderbird 200");
   assert.equal(f.data.min, "60.0");
   assert.equal(f.file, "bg.js");
@@ -747,7 +748,7 @@ test("strict-min-version-api passes when strict_min_version >= version_added", (
       { root: "messenger", segments: ["messages", "list"], line: 1, column: 0 }, // 66 <= 128
     ])
   );
-  assert.equal(out.length, 0);
+  assert.equal(out.findings.length, 0);
 });
 
 test("strict-min-version-api is skipped without strict_min_version", () => {
@@ -761,7 +762,7 @@ test("strict-min-version-api is skipped without strict_min_version", () => {
       },
     ])
   );
-  assert.equal(out.length, 0);
+  assert.equal(out.findings.length, 0);
 });
 
 test("strict-min-version-api compares minor/patch components", () => {
@@ -794,9 +795,92 @@ test("strict-min-version-api compares minor/patch components", () => {
         },
       ],
     });
-  assert.equal(run("140.4.0").length, 1); // 140.4.1 > 140.4.0 -> flag
-  assert.equal(run("140.4.1").length, 0); // equal -> not flagged
-  assert.equal(run("140.5.0").length, 0); // 140.4.1 < 140.5.0 -> not flagged
+  assert.equal(run("140.4.0").findings.length, 1); // 140.4.1 > 140.4.0 -> flag
+  assert.equal(run("140.4.1").findings.length, 0); // equal -> not flagged
+  assert.equal(run("140.5.0").findings.length, 0); // 140.4.1 < 140.5.0 -> not flagged
+});
+
+// A too-new API carrying a guard signal (usage.guarded, set by api-usage.js for
+// optional chaining / a feature-detection or version gate) is not a hard error: it
+// becomes one LLM candidate, judged from the call's file. resolve maps the verdict.
+test("strict-min-version-api defers a guarded too-new API to the LLM", () => {
+  const out = strictMinVersionApi.run(
+    minCtx("60.0", [
+      {
+        root: "messenger",
+        segments: ["messages", "future"],
+        line: 5,
+        column: 2,
+        guarded: true,
+      }, // va 200, guarded
+    ])
+  );
+  assert.equal(out.findings.length, 0); // not a deterministic finding
+  assert.equal(out.llm.candidates.length, 1);
+  const c = out.llm.candidates[0];
+  assert.equal(c.file, "bg.js");
+  assert.deepEqual(c.corpus, ["bg.js"]); // local judgement: just the call's file
+  assert.match(c.note, /messenger\.messages\.future/);
+  // fail -> finding, pass -> drop, unsure (no verdict) -> manual.
+  const fail = out.llm.resolve(new Map([[c.id, { verdict: "fail" }]]));
+  assert.equal(fail.findings.length, 1);
+  assert.equal(fail.findings[0].item, "messenger.messages.future()");
+  assert.equal(fail.findings[0].data.min, "60.0");
+  const pass = out.llm.resolve(new Map([[c.id, { verdict: "pass" }]]));
+  assert.equal(pass.findings.length, 0);
+  assert.equal(pass.manual.length, 0);
+  const unsure = out.llm.resolve(new Map()); // no token / no verdict -> manual
+  assert.equal(unsure.manual.length, 1);
+});
+
+// An API used UNGUARDED anywhere is a hard error, even if another site is guarded:
+// the unguarded site wins and there is no LLM candidate for it.
+test("strict-min-version-api: an unguarded site wins over a guarded one", () => {
+  const out = strictMinVersionApi.run(
+    minCtx("60.0", [
+      {
+        root: "messenger",
+        segments: ["messages", "future"],
+        line: 5,
+        column: 2,
+        guarded: true,
+      },
+      {
+        root: "messenger",
+        segments: ["messages", "future"],
+        line: 9,
+        column: 0,
+      }, // unguarded
+    ])
+  );
+  assert.equal(out.llm, undefined); // no candidate - it is a hard finding
+  assert.equal(out.findings.length, 1);
+  assert.deepEqual(out.findings[0].loc, { line: 9, column: 0 });
+});
+
+// Scope guard: feature detection does NOT launder a non-existent API. A guarded
+// call to an API absent from the schema is ignored here (it never becomes a
+// candidate) and stays unknown-api's concern, which still flags it.
+test("strict-min-version-api ignores a guarded non-existent API (unknown-api owns it)", () => {
+  const usages = [
+    {
+      root: "messenger",
+      segments: ["fake", "nope"],
+      line: 1,
+      column: 0,
+      guarded: true,
+    },
+  ];
+  const out = strictMinVersionApi.run(minCtx("60.0", usages));
+  assert.equal(out.findings.length, 0);
+  assert.equal(out.llm, undefined); // never a candidate
+
+  const flagged = unknownApi.run({
+    schema,
+    apiUsages: [{ file: "bg.js", usages }],
+  });
+  assert.equal(flagged.length, 1);
+  assert.match(flagged[0].item, /^messenger\.fake/); // unknown at the namespace
 });
 
 // ---- permission analysis: dead files are ignored ----

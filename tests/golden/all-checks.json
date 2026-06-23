@@ -15,7 +15,6 @@
       "unknown-api",
       "deprecated-api",
       "strict-max-version-api",
-      "strict-min-version-api",
       "missing-permission",
       "missing-manifest-key",
       "manifest-invalid-json",
@@ -67,6 +66,7 @@
       "csp-unsafe-eval",
       "csp-unsafe-inline",
       "missing-english-localization",
+      "strict-min-version-api",
       "unused-files",
       "minimize-web-accessible-resources",
       "remote-script",
@@ -87,7 +87,6 @@
     "byRule": {
       "unknown-api": 2,
       "deprecated-api": 2,
-      "strict-min-version-api": 1,
       "missing-permission": 3,
       "missing-manifest-key": 1,
       "manifest-unknown-permission": 1,
@@ -101,6 +100,7 @@
       "minimize-host-permissions": 1,
       "addon-icon-missing": 1,
       "eval-call": 1,
+      "strict-min-version-api": 1,
       "unused-files": 2,
       "remote-script": 2
     }

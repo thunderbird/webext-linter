@@ -15,7 +15,6 @@
       "unknown-api",
       "deprecated-api",
       "strict-max-version-api",
-      "strict-min-version-api",
       "missing-permission",
       "missing-manifest-key",
       "manifest-invalid-json",
@@ -66,6 +65,7 @@
       "csp-unsafe-eval",
       "csp-unsafe-inline",
       "missing-english-localization",
+      "strict-min-version-api",
       "unused-files",
       "minimize-web-accessible-resources",
       "remote-script",
@@ -84,8 +84,8 @@
     "warning": 1,
     "info": 0,
     "byRule": {
-      "strict-min-version-api": 1,
-      "non-experiment-strict-max-version": 1
+      "non-experiment-strict-max-version": 1,
+      "strict-min-version-api": 1
     }
   },
   "findings": [

@@ -44,14 +44,6 @@ deterministic-checks:
   response: |-
     The add-on is setting strict_max_version to {{max}} but uses functions or events added in a later Thunderbird. Raise strict_max_version, or stop using these APIs.
 
-# Flags functions/events added after the declared strict_min_version: the add-on
-# claims support for Thunderbird versions where the API does not yet exist.
-- title: API newer than strict_min_version
-  severity: error
-  check: strict-min-version-api
-  response: |-
-    The add-on is setting strict_min_version to {{min}} but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
-
 # Flags an API call whose required permission is not declared.
 - title: Missing permission
   severity: error
@@ -658,6 +650,40 @@ deterministic-checks:
 # manual review instead - no token, the LLM is unsure, or it errored). A
 # confident LLM "fail" emits a normal finding rendered from `response`.
 llm-checks:
+# LLM check: functions/events added after the declared strict_min_version. The
+# deterministic pre-flight (strict-min-version-api.js) emits an UNGUARDED too-new
+# call as a finding directly; a call carrying a guard signal (optional chaining, a
+# typeof/existence check, a getBrowserInfo version gate) becomes one candidate the
+# LLM judges from the call's file: pass (safely guarded) -> drop, fail (runs
+# unconditionally) -> finding, unsure -> manual. Only real, schema-resolved APIs
+# reach here; a non-existent API is unknown-api's concern, never guarded away.
+- title: API newer than strict_min_version
+  severity: error
+  check: strict-min-version-api
+  prompt: |-
+    Each candidate is a call site of a WebExtension API that DOES exist and is
+    supported, but was added in a Thunderbird newer than the add-on's declared
+    strict_min_version (the candidate's note names the API and the version it was
+    added in). Do NOT question whether the API exists - it does. Decide only one
+    thing from the shown file: is the call guarded so it runs ONLY on Thunderbird
+    versions that actually have the API?
+    Verdict pass (safely guarded): the access is protected so it cannot run on older
+    versions - optional chaining on the API path (messenger.foo?.bar), an existence
+    or typeof test (if (messenger.foo.bar) or typeof messenger.foo.bar ===
+    "function"), or a runtime version gate (a messenger.runtime.getBrowserInfo()
+    version comparison) around the call, with the feature genuinely optional or a
+    fallback for older versions.
+    Verdict fail (runs unconditionally): the API is called with no such guard, so the
+    call throws on the still-supported versions below the one that added it.
+    Use unsure only when you genuinely cannot tell whether a guard protects this call.
+  instructions: |-
+    The "{{item}}" API was added after the declared strict_min_version. Confirm by
+    hand whether the call is safely guarded (feature detection or a version check) so
+    it only runs where the API exists; if not, ask the developer to raise
+    strict_min_version or guard the call.
+  response: |-
+    The add-on is setting strict_min_version to {{min}} but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
+
 # LLM check: hidden/junk files and files reachable from no entry point; the
 # ambiguous (dynamically-loadable) ones are escalated to the LLM.
 - title: Unused, hidden or duplicate files or folders
