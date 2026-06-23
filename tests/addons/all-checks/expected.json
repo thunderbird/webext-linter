@@ -10,7 +10,7 @@
     "missing-manifest-key": ["background.js:19"],
     "manifest-unknown-permission": ["manifest.json:5"],
     "unrecognized-manifest-key": ["manifest.json:11"],
-    "bundled-files": ["manifest.json"],
+    "bundled-files": ["manifest.json:9"],
     "sync-xhr": ["background.js:26"],
     "remote-script": ["options.html:4","styles.css:1"],
     "eval-call": ["background.js:22"],

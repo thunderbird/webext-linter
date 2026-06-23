@@ -68,6 +68,40 @@ test("flags a genuinely missing content script, not a present one", () => {
   assert.match(out[0].item, /missing\.js/);
 });
 
+// A missing manifest reference anchors at the manifest.json line that cites it
+// (located by the quoted path), not just the file with no location.
+test("anchors a missing manifest reference at its manifest.json line", () => {
+  const manifestText = [
+    "{",
+    '  "manifest_version": 3,',
+    '  "background": {',
+    '    "page": "chrome/content/dummy.html"',
+    "  }",
+    "}",
+  ].join("\n");
+  const out = bundledFiles.run(
+    ctxWith(
+      { manifest_version: 3, background: { page: "chrome/content/dummy.html" } },
+      { "manifest.json": manifestText }
+    )
+  );
+  assert.equal(out.length, 1);
+  assert.equal(out[0].file, "manifest.json");
+  assert.equal(out[0].item, "chrome/content/dummy.html");
+  assert.equal(out[0].loc.line, 4); // the line citing the path
+});
+
+// Without a packaged manifest.json text to locate the path in, the finding still
+// names the file but carries no line (graceful fallback to the prior behavior).
+test("missing manifest reference falls back to no line when manifest.json text is absent", () => {
+  const out = bundledFiles.run(
+    ctxWith({ content_scripts: [{ js: ["missing.js"] }] })
+  );
+  assert.equal(out.length, 1);
+  assert.equal(out[0].file, "manifest.json");
+  assert.equal(out[0].loc, null);
+});
+
 // A file registered via a schema-derived loader (messageDisplayScripts.register)
 // must be bundled: an absent one is flagged, a present one is not.
 test("flags a missing file referenced by a schema-derived loader", () => {

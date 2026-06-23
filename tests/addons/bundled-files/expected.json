@@ -1,6 +1,6 @@
 {
-  "_comment": "content_scripts references missing.js, which is not bundled.",
+  "_comment": "content_scripts references missing.js, which is not bundled; the finding anchors at the manifest.json line that cites it.",
   "expect": {
-    "bundled-files": ["manifest.json"]
+    "bundled-files": ["manifest.json:5"]
   }
 }

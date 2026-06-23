@@ -23,6 +23,7 @@ import { scanLoaderRefs } from "../../parse/loader-files.js";
 import { classifyUrl } from "../../scan/url.js";
 import { manifestFileRefs, normalizeRef } from "../lib/manifest-refs.js";
 import { scriptHostDirs, resolvePageRelative } from "../lib/script-hosts.js";
+import { manifestTokenLine } from "../lib/util.js";
 
 // A reference is a packaged-file candidate (so a missing target is an error)
 // only when it is a relative / root-relative path with no URI scheme. This
@@ -37,16 +38,22 @@ export default {
     /** @param {string} p @returns {boolean} whether the file is bundled. */
     const has = (p) => addon.files.has(normalizeRef(p));
 
-    // 1. Files referenced from the manifest.
+    // 1. Files referenced from the manifest. Anchor on the manifest.json line
+    // that cites the path (located by its quoted form), so the finding points at
+    // the actual reference, not just the file; null loc when it cannot be found.
     if (addon.manifest) {
+      const manifestText =
+        addon.files.get("manifest.json")?.toString("utf8") ?? "";
       for (const { path } of manifestFileRefs(addon.manifest)) {
         if (typeof path !== "string") {
           continue;
         }
+        const line = manifestTokenLine(manifestText, path);
+        const loc = line ? { line } : null;
         const present = has(path);
-        ctx.note?.("manifest.json", null, path, present ? "pass" : "fail");
+        ctx.note?.("manifest.json", loc, path, present ? "pass" : "fail");
         if (!present) {
-          out.push(finding({ file: "manifest.json", item: path }));
+          out.push(finding({ file: "manifest.json", loc, item: path }));
         }
       }
     }

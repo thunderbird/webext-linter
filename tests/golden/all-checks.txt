@@ -34,12 +34,12 @@ Read more: https://webextension-api.thunderbird.net/.
 10) Unconditional debugger statement. Please remove it or move it behind a config flag.
  - background.js:32
 
-11) "missing.js" is referenced but not bundled with the add-on. Please include every referenced file in the package.
- - manifest.json
-
-12) Invalid manifest.json: one or more requested permissions are unknown.
+11) Invalid manifest.json: one or more requested permissions are unknown.
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json:5 - bogusPermission
+
+12) "missing.js" is referenced but not bundled with the add-on. Please include every referenced file in the package.
+ - manifest.json:9
 
 13) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
  - options.html
