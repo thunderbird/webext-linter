@@ -2,7 +2,7 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) This add-on is using privileged Thunderbird internals that are not available to WebExtension code: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage.
+1) This add-on is using privileged Thunderbird internals in a WebExtension context, where they are not available: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage.
  - background.js:1 - Services
  - background.js:2 - ChromeUtils
 

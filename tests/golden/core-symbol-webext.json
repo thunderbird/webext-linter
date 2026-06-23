@@ -98,7 +98,7 @@
       },
       "item": "Services",
       "hint": null,
-      "message": "This add-on is using privileged Thunderbird internals that are not available to WebExtension code: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage."
+      "message": "This add-on is using privileged Thunderbird internals in a WebExtension context, where they are not available: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage."
     },
     {
       "ruleId": "core-symbol-in-webext",
@@ -110,7 +110,7 @@
       },
       "item": "ChromeUtils",
       "hint": null,
-      "message": "This add-on is using privileged Thunderbird internals that are not available to WebExtension code: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage."
+      "message": "This add-on is using privileged Thunderbird internals in a WebExtension context, where they are not available: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage."
     }
   ]
 }
