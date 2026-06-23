@@ -48,8 +48,10 @@ export default {
         finding({
           file: vendorName,
           loc,
-          item: path,
-          data: { source },
+          // The generic message has no {{item}} slot, so `item` surfaces on the
+          // location line: show the unauditable CDN source URL (the actionable
+          // thing), not the local vendored path.
+          item: source,
         })
       );
     }

@@ -429,8 +429,8 @@ deterministic-checks:
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the deterministic repo-name candidate, then an
 # LLM-proposed name, each re-proved by content hash); surfaced as info so the
-# reviewer knows it went unaudited. The file path + source render on the location
-# line, so the body needs no {{item}}/{{source}} slots.
+# reviewer knows it went unaudited. The source URL renders on the location line
+# (as the finding's item), so the body needs no {{item}}/{{source}} slots.
 - title: Vendored library not vulnerability-checked
   severity: info
   check: vendor-vuln-unknown

@@ -740,10 +740,9 @@ test("vendor-vuln-unknown: one info per unaudited entry, at its VENDOR source li
   };
   const out = vendorVulnUnknown.run(ctx);
   assert.equal(out.length, 1);
-  assert.equal(out[0].item, "vendor/list.js");
+  assert.equal(out[0].item, ghUrl); // the source URL surfaces on the locus line
   assert.equal(out[0].file, "VENDOR.md");
   assert.equal(out[0].loc.line, 2); // the source URL line
-  assert.equal(out[0].data.source, ghUrl);
 });
 
 test("vendor-vuln-unknown: no unaudited entries -> no findings", () => {
