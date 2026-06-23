@@ -37,6 +37,7 @@ import addonIconMissing from "../../src/checks/rules/addon-icon-missing.js";
 import backgroundModule from "../../src/checks/rules/background-module.js";
 import unusedPermission from "../../src/checks/rules/unused-permission.js";
 import unusedPermissionManual from "../../src/checks/rules/unused-permission-manual.js";
+import unusedPermissionManualPre from "../../src/checks/rules/unused-permission-manual-pre-d308076.js";
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
 import { getPermissionAnalysis } from "../../src/checks/lib/permissions.js";
 import {
@@ -394,6 +395,8 @@ test("unused-permission-manual lists the unprovable declared named permissions",
   const manifest = {
     permissions: ["tabs", "https://example.com/*"],
     optional_permissions: ["storage"],
+    // >= 154 so the post-D308076 producer (this module) enumerates.
+    browser_specific_settings: { gecko: { strict_min_version: "154" } },
   };
   const ctx = {
     schema,
@@ -425,6 +428,7 @@ test("unused-permission-manual drops permissions proved used by static analysis"
     manifest_version: 3,
     permissions: ["messagesRead", "messagesUpdate"],
     background: { scripts: ["bg.js"] },
+    browser_specific_settings: { gecko: { strict_min_version: "154" } },
   };
   const notes = [];
   const ctx = {
@@ -460,7 +464,10 @@ test("unused-permission-manual drops permissions proved used by static analysis"
 // used by static analysis, but it is justified by its mere presence - so it is
 // exempt: dropped here (noted pass), never escalated as unused.
 test("unused-permission-manual exempts unlimitedStorage (gates no API)", () => {
-  const manifest = { permissions: ["unlimitedStorage", "tabs"] };
+  const manifest = {
+    permissions: ["unlimitedStorage", "tabs"],
+    browser_specific_settings: { gecko: { strict_min_version: "154" } },
+  };
   const notes = [];
   const ctx = {
     schema,
@@ -848,6 +855,7 @@ test("unused-permission-manual omits permissions a reachable call requires", () 
   const manifest = {
     permissions: ["messagesRead", "tabs"],
     background: { scripts: ["bg.js"] },
+    browser_specific_settings: { gecko: { strict_min_version: "154" } },
   };
   const ctx = {
     schema,
@@ -866,6 +874,72 @@ test("unused-permission-manual omits permissions a reachable call requires", () 
     out.escalations.map((e) => e.item),
     ["tabs"]
   );
+});
+
+// ---- the two version-gated producers (D308076) ----
+// unused-permission-manual and unused-permission-manual-pre-d308076 share one
+// enumeration; the strict_min_version gate decides which fires. >= 154 -> the
+// post-fix producer; below 154 or absent/unparsable -> the pre-D308076 producer.
+// Exactly one enumerates per add-on, so exactly one consumer prompt is appended.
+const permProducerCtx = (strictMin) => {
+  const manifest = {
+    permissions: ["tabs"],
+    ...(strictMin === undefined
+      ? {}
+      : {
+          browser_specific_settings: {
+            gecko: { strict_min_version: strictMin },
+          },
+        }),
+  };
+  return {
+    schema,
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+      ]),
+    },
+    apiUsages: [],
+  };
+};
+
+test("post-D308076 producer fires only for strict_min_version >= 154", () => {
+  for (const min of ["154", "154.0", "200"]) {
+    assert.deepEqual(
+      unusedPermissionManual
+        .run(permProducerCtx(min))
+        .escalations.map((e) => e.item),
+      ["tabs"],
+      `min=${min}`
+    );
+  }
+  for (const min of ["153.9", "128", undefined, "abc", "≤59"]) {
+    assert.deepEqual(
+      unusedPermissionManual.run(permProducerCtx(min)).escalations,
+      [],
+      `min=${String(min)}`
+    );
+  }
+});
+
+test("pre-D308076 producer fires for below-154 / absent / unparsable", () => {
+  for (const min of ["153.9", "128", undefined, "abc", "≤59"]) {
+    assert.deepEqual(
+      unusedPermissionManualPre
+        .run(permProducerCtx(min))
+        .escalations.map((e) => e.item),
+      ["tabs"],
+      `min=${String(min)}`
+    );
+  }
+  for (const min of ["154", "154.0", "200"]) {
+    assert.deepEqual(
+      unusedPermissionManualPre.run(permProducerCtx(min)).escalations,
+      [],
+      `min=${min}`
+    );
+  }
 });
 
 // ---- trademark-violation (deterministic name check) ----

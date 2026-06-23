@@ -1,7 +1,11 @@
-// The post-summary recheck consumer for declared permissions. The producer
+// The post-summary recheck consumer for declared permissions on the POST-D308076
+// path (strict_min_version >= Thunderbird 154). The producer
 // (unused-permission-manual) hands over every declared named permission a
-// reachable API call does not provably require. When --full-summary runs, those
-// items are appended to the add-on summary under this entry's `summary-prompt`
+// reachable API call does not provably require. (The pre-154 path is the sibling
+// pair unused-permission-manual-pre-d308076 -> unused-permission-pre-d308076,
+// with a more relaxed tabs rubric; exactly one pair fires per add-on.)
+// When --full-summary runs, those items are appended to the add-on summary under
+// this entry's `summary-prompt`
 // rubric; the model returns a verdict per permission, and this check maps each:
 // pass -> justified (drop), fail -> a warning finding ("{{item}} appears unused"),
 // unsure or no verdict -> manual review. The model's per-permission reason rides

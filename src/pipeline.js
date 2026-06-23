@@ -446,8 +446,8 @@ async function reviewAddon(
 
   // The registry.yaml file drives which checks run, by `phase`: runChecks runs
   // the default-phase checks in its loop now and returns the post-summary checks
-  // marked `phase: post-summary` (the two unused-permission checks, which read
-  // the add-on summary's result) as `deferred` to run after the summary below.
+  // marked `phase: post-summary` (the unused-permission recheck consumers, which
+  // read the add-on summary's result) as `deferred` to run after the summary below.
   // An invalid Experiment runs only its reject check (runChecks picks the
   // profile from ctx.invalidExperiment). The orchestrator returns issues-only
   // findings plus the manual refs it produced (escalations with no token /

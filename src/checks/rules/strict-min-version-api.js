@@ -15,7 +15,7 @@
 
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
-import { strictMinVersion } from "../lib/util.js";
+import { strictMinVersion, parseVersion, cmpVersion } from "../lib/util.js";
 import { buildReachability } from "../lib/reachability.js";
 
 export default {
@@ -90,48 +90,3 @@ export default {
     return findings;
   },
 };
-
-/**
- * Parse a version string into numeric components ([115,0] for "115.0",
- * [140,4,1] for "140.4.1"). Leading non-digits per component are dropped
- * ("0a1" -> 0). Returns null when nothing numeric reads, or when "≤"/"<"-
- * prefixed: "≤59" etc. predate WebExtension support (Thunderbird 60+), so the
- * API is always available to any real add-on and is skipped.
- * @param {unknown} v
- * @returns {number[]|null}
- */
-function parseVersion(v) {
-  if (typeof v !== "string") {
-    return null;
-  }
-  const s = v.trim();
-  if (/^[≤<]/.test(s)) {
-    return null;
-  }
-  const nums = [];
-  for (const part of s.split(".")) {
-    const d = /^\d+/.exec(part);
-    if (!d) {
-      break;
-    }
-    nums.push(parseInt(d[0], 10));
-  }
-  return nums.length ? nums : null;
-}
-
-/**
- * Component-wise compare two version tuples (missing components are 0).
- * @param {number[]} a @param {number[]} b
- * @returns {number} -1 if a<b, 0 if equal, 1 if a>b.
- */
-function cmpVersion(a, b) {
-  const n = Math.max(a.length, b.length);
-  for (let i = 0; i < n; i++) {
-    const x = a[i] ?? 0;
-    const y = b[i] ?? 0;
-    if (x !== y) {
-      return x < y ? -1 : 1;
-    }
-  }
-  return 0;
-}

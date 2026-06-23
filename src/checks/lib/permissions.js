@@ -28,8 +28,18 @@
 // src/schema/index.js. Match-pattern helpers - lib/util.js.
 
 import { finding } from "../../report/finding.js";
-import { asArray, isMatchPattern } from "./util.js";
+import { asArray, isMatchPattern, manifestTokenLine } from "./util.js";
 import { buildReachability } from "./reachability.js";
+
+// Permissions that gate no callable API, so static analysis can never prove use;
+// they are justified by their mere presence and must not be flagged unused.
+const NO_API_GATE = new Set(["unlimitedStorage"]);
+
+// The Thunderbird version that fixes D308076: from here on, a tabs.query filtering
+// by url/title on the add-on's own pages no longer needs "tabs". The two
+// version-gated unused-permission-manual producers split on this (one fires at or
+// above it, the other below / when unset), feeding their own recheck consumer.
+export const D308076_FIXED_IN = "154";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../addon/load.js").Manifest} Manifest */
@@ -178,6 +188,45 @@ export function analyzePermissions(ctx) {
  */
 export function getPermissionAnalysis(ctx) {
   return (ctx.addon.permissionAnalysis ??= analyzePermissions(ctx));
+}
+
+/**
+ * Enumerate the declared named permissions that warrant a closer look: every one
+ * a reachable API call does NOT provably require, anchored to its manifest.json
+ * line, as manual-review escalations. A permission a reachable call provably
+ * requires (usedPermissions) or that gates no callable API (NO_API_GATE) is
+ * justified and dropped. Host match patterns are minimize-host-permissions'
+ * concern and are skipped. Shared by the unused-permission-manual producers,
+ * which differ only in the strict_min_version gate around this call.
+ * @param {RunContext} ctx
+ * @returns {{findings: [], escalations:
+ *   {item: string, file: string, loc: ?object}[]}}
+ */
+export function enumerateUnusedPermissions(ctx) {
+  const used = getPermissionAnalysis(ctx).usedPermissions;
+  const m = ctx.addon?.manifest ?? {};
+  const text = ctx.addon?.files?.get("manifest.json")?.toString("utf8");
+  const seen = new Set();
+  const escalations = [];
+  for (const list of [m.permissions, m.optional_permissions]) {
+    for (const p of asArray(list)) {
+      if (typeof p !== "string" || isMatchPattern(p) || seen.has(p)) {
+        continue;
+      }
+      seen.add(p);
+      const line = manifestTokenLine(text, p);
+      const loc = line ? { line } : null;
+      if (used.has(p) || NO_API_GATE.has(p)) {
+        // A reachable call requires it, or it gates no callable API (always
+        // justified) - either way not a manual case.
+        ctx.note?.("manifest.json", loc, p, "pass");
+        continue;
+      }
+      ctx.note?.("manifest.json", loc, p, "unsure");
+      escalations.push({ item: p, file: "manifest.json", loc });
+    }
+  }
+  return { findings: [], escalations };
 }
 
 /**

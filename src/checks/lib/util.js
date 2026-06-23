@@ -255,6 +255,66 @@ export function strictMinVersion(manifest) {
 }
 
 /**
+ * Parse a version string into numeric components ([115,0] for "115.0",
+ * [140,4,1] for "140.4.1"). Leading non-digits per component are dropped
+ * ("0a1" -> 0). Returns null when nothing numeric reads, or when "≤"/"<"-
+ * prefixed: "≤59" etc. predate WebExtension support (Thunderbird 60+), so the
+ * API is always available to any real add-on and is skipped.
+ * @param {unknown} v
+ * @returns {number[]|null}
+ */
+export function parseVersion(v) {
+  if (typeof v !== "string") {
+    return null;
+  }
+  const s = v.trim();
+  if (/^[≤<]/.test(s)) {
+    return null;
+  }
+  const nums = [];
+  for (const part of s.split(".")) {
+    const d = /^\d+/.exec(part);
+    if (!d) {
+      break;
+    }
+    nums.push(parseInt(d[0], 10));
+  }
+  return nums.length ? nums : null;
+}
+
+/**
+ * Component-wise compare two version tuples (missing components are 0).
+ * @param {number[]} a @param {number[]} b
+ * @returns {number} -1 if a<b, 0 if equal, 1 if a>b.
+ */
+export function cmpVersion(a, b) {
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    if (x !== y) {
+      return x < y ? -1 : 1;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Whether the add-on's declared strict_min_version is at least `version`. Only a
+ * parsable strict_min_version that compares >= counts; an absent or unparsable
+ * value (or one this linter skips, like "≤59") returns false - the relaxed,
+ * pre-D308076 default.
+ * @param {Manifest} manifest
+ * @param {string} version  The threshold, e.g. "154".
+ * @returns {boolean}
+ */
+export function strictMinAtLeast(manifest, version) {
+  const min = parseVersion(strictMinVersion(manifest));
+  const threshold = parseVersion(version);
+  return Boolean(min) && Boolean(threshold) && cmpVersion(min, threshold) >= 0;
+}
+
+/**
  * The value if it is an array, else [] (defensive manifest-shape guard).
  * @param {unknown} v
  * @returns {unknown[]}

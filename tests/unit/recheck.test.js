@@ -222,7 +222,13 @@ test("buildRecheckSections skips a consumer with no summary-prompt", () => {
 // When ctx.recheckActive, runChecks hands them to ctx.recheck instead of manual
 // review; otherwise they stay in manual review and ctx.recheck is never created.
 const producerCtx = () => {
-  const manifest = { manifest_version: 3, permissions: ["tabs", "storage"] };
+  const manifest = {
+    manifest_version: 3,
+    permissions: ["tabs", "storage"],
+    // >= 154 so the post-D308076 producer (unused-permission-manual) enumerates;
+    // its pre-D308076 sibling no-ops here.
+    browser_specific_settings: { gecko: { strict_min_version: "154" } },
+  };
   return {
     addon: {
       manifest,
@@ -264,4 +270,35 @@ test("runChecks leaves a producer's manual items in manual review when inactive"
     "tabs",
   ]);
   assert.equal(ctx.recheck, undefined); // nothing was diverted
+});
+
+// The pre-D308076 producer fires when strict_min_version is below 154 / absent,
+// and diverts to its own consumer (whose summary-prompt keeps "tabs" justified
+// when filtered by url/title). The post-fix producer no-ops, so its consumer
+// bucket is never created - exactly one prompt reaches the summary.
+test("runChecks diverts the pre-D308076 producer to its own consumer", async () => {
+  const registry = loadRegistry();
+  const manifest = { manifest_version: 3, permissions: ["tabs", "storage"] };
+  const ctx = {
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+      ]),
+      permissionAnalysis: { usedPermissions: new Set() },
+    },
+    recheckActive: true,
+  };
+  await runChecks(ctx, registry, {
+    only: ["unused-permission-manual", "unused-permission-manual-pre-d308076"],
+  });
+  assert.deepEqual(
+    ctx.recheck
+      .get("unused-permission-pre-d308076")
+      .map((m) => m.item)
+      .sort(),
+    ["storage", "tabs"]
+  );
+  // The post-fix producer no-opped (no >=154 minimum), so its bucket is empty.
+  assert.equal(ctx.recheck.get("unused-permission"), undefined);
 });
