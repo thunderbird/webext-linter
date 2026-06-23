@@ -15,6 +15,7 @@ import codeSanity from "../../src/checks/rules/code-sanity.js";
 import deprecatedApi from "../../src/checks/rules/deprecated-api.js";
 import missingPermission from "../../src/checks/rules/missing-permission.js";
 import experimentMissingMax from "../../src/checks/rules/experiment-missing-strict-max-version.js";
+import experimentManualReview from "../../src/checks/rules/experiment-manual-review.js";
 import nonExperimentMax from "../../src/checks/rules/non-experiment-strict-max-version.js";
 import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
@@ -1189,6 +1190,17 @@ test("experiment-missing-strict-max-version flags an allowed Experiment lacking 
     }).length,
     1
   );
+});
+
+// Every Experiment submission escalates one whole-add-on manual review (a
+// locus-less reminder, no findings); a non-Experiment escalates nothing.
+test("experiment-manual-review escalates one reminder for an Experiment only", () => {
+  const run = (manifest) => experimentManualReview.run({ addon: { manifest } });
+  const exp = run({ experiment_apis: { a: {} } });
+  assert.deepEqual(exp.findings, []);
+  assert.equal(exp.escalations.length, 1);
+  assert.deepEqual(exp.escalations[0], {}); // whole-add-on, no locus
+  assert.deepEqual(run({ name: "x" }).escalations, []); // not an experiment
 });
 
 // A non-Experiment that pins strict_max_version warns and surfaces the value;

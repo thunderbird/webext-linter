@@ -5,7 +5,18 @@ No issues found.
 
 Continue manual review for the following checks:
 
-1) Missing English localization: This add-on ships no English localization, so
+1) Experiment code review: This is an Experiment submission, which requires
+   careful code review since it has full access to Thunderbird's internals. The
+   Experiment surface should be kept to a minimum and must not affect
+   Thunderbird's usability, stability, performance, or security. To reduce
+   review time, it may help to review only the differences from the last
+   approved submission.
+Suggested response: This is an Experiment submission, which requires careful code design and
+planning, since it has full access to Thunderbird's internals. The Experiment
+surface should be kept to a minimum and must not affect Thunderbird's
+usability, stability, performance, or security.
+
+2) Missing English localization: This add-on ships no English localization, so
    user-facing text may be hardcoded in another language. Review its strings by
    hand and confirm if an English localization is provided.
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
@@ -81,4 +92,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 0 warning(s), 0 info, 11 manual review step(s)
+0 error(s), 0 warning(s), 0 info, 12 manual review step(s)

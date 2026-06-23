@@ -139,8 +139,11 @@ residue.
 | `disguised-stylesheet` | Data smuggled out through a stylesheet or CSS `url()` built with appended runtime data (error, regardless of consent). |
 | `disguised-window` | Data smuggled out through a `window.open()` to a remote URL built with appended runtime data (error, regardless of consent). |
 | `eval-call` | An `eval()` call in authored JS - dynamic code execution (error). |
+| `experiment-manual-review` | Every reviewed Experiment (declares `experiment_apis`) - routed to manual review with a reminder that Experiments have full access to Thunderbird's internals and need a careful human code review. Fires for pristine, modified, and `--allow-experiments` submissions; silent for non-Experiments and outright-rejected ones. |
 | `experiment-missing-strict-max-version` | An accepted Experiment (`--allow-experiments`) that sets no `strict_max_version` (error). Silent when experiments are disallowed, since `experiment-not-allowed` already rejects it. |
+| `experiment-modified` | A bundled Experiment that is a recognised published Thunderbird API draft but a modified or outdated copy (error) - the submission stays on the normal review path but is rejected until the unmodified latest upstream copy is bundled. |
 | `experiment-not-allowed` | An Experiment (declares `experiment_apis`) when experiments are not enabled via `--allow-experiments` (error, on by default). |
+| `experiment-overrides-api` | An Experiment whose declared API path overrides or grafts onto a built-in Thunderbird API instead of adding a new namespace (error). |
 | `fork-check` | New-submission manual prompt (`diff: false` - the inverse of a diff check, so it is skipped when reviewing an update against a `--diff-to` baseline): confirm a forked add-on is clearly distinguished from the original and offers a significant difference in functionality and/or code - routed to manual review. |
 | `function-constructor` | A `new Function(...)` (the Function constructor) in authored JS - dynamic code execution (error). |
 | `manifest-invalid-json` | manifest.json is present but is not valid JSON (error). |

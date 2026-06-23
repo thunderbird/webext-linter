@@ -394,6 +394,23 @@ deterministic-checks:
   response: |-
     The Experiment API "{{item}}" overrides or extends a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under a new, distinct API namespace.
 
+# A deterministic check that escalates a whole-add-on manual review for every
+# Experiment submission: Experiments have full access to Thunderbird internals, so
+# they need a careful human review. Emits no findings, so it carries no severity.
+- title: Experiment code review
+  check: experiment-manual-review
+  instructions: |-
+    This is an Experiment submission, which requires careful code review since it
+    has full access to Thunderbird's internals. The Experiment surface should be
+    kept to a minimum and must not affect Thunderbird's usability, stability,
+    performance, or security. To reduce review time, it may help to review only
+    the differences from the last approved submission.
+  response: |-
+    This is an Experiment submission, which requires careful code design and
+    planning, since it has full access to Thunderbird's internals. The Experiment
+    surface should be kept to a minimum and must not affect Thunderbird's
+    usability, stability, performance, or security.
+
 # Flags a non-Experiment that pins strict_max_version (only blocks newer
 # Thunderbird; the APIs are forward-compatible).
 - title: Unnecessary strict_max_version

@@ -39,6 +39,7 @@
       "experiment-modified",
       "experiment-missing-strict-max-version",
       "experiment-overrides-api",
+      "experiment-manual-review",
       "non-experiment-strict-max-version",
       "unpinned-dependency",
       "vendor-vulnerable",
