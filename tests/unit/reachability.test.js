@@ -214,6 +214,7 @@ test("unused-files: junk + orphan are findings; mentioned -> candidate", () => {
     "orphan.js": `console.log(1);`,
     "maybe.js": `console.log(2);`, // string-mentioned in bg.js -> ambiguous
     LICENSE: "MIT",
+    "vendor/d3/LICENCE": "ISC", // en-GB spelling, extensionless: allowlisted too
     "README.md": "# x",
     "README_DE.md": "# x", // localized doc variant: allowlisted, not flagged
   };
@@ -228,6 +229,8 @@ test("unused-files: junk + orphan are findings; mentioned -> candidate", () => {
   );
   assert.ok(manual.includes("maybe.js")); // ambiguous -> a manual note (no token)
   assert.ok(!found.includes("LICENSE") && !manual.includes("LICENSE"));
+  const licence = "vendor/d3/LICENCE";
+  assert.ok(!found.includes(licence) && !manual.includes(licence));
   // Localized README variants are docs too, neither flagged nor escalated.
   for (const doc of ["README.md", "README_DE.md"]) {
     assert.ok(!found.includes(doc) && !manual.includes(doc));

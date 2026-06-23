@@ -32,6 +32,7 @@ const DOC_EXTENSIONS = new Set([".md", ".markdown", ".txt", ".rst"]);
 // runtime. Matched as a SUBSTRING of the basename.
 const DOC_NAMES = [
   "license",
+  "licence",
   "copying",
   "readme",
   "changelog",
