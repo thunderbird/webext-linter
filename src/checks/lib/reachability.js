@@ -87,6 +87,10 @@ const TEXT_EXTS = new Set([
  *   chrome://resource:// URLs matched by file name). This privileged CORE code is
  *   exempt from the schema/permission checks (it does not use the WebExtension
  *   schema or permissions). Empty when the add-on is not an Experiment.
+ * @property {Set<string>} pureWebExtensionReachable  Files reachable from a
+ *   WebExtension entry point over ordinary edges WITHOUT crossing into an
+ *   Experiment API - the positive "this is sandbox code" set (excludes experiment
+ *   core/unsure files and dead code). core-symbol-in-webext gates on it.
  * @property {boolean} hasDynamicLoaders  A live, authored file builds a load
  *   path at run time (dead-code and non-authored/library loaders are excluded).
  * @property {{file: string, kind: string}[]} dynamicLoaderSites  Live, authored.
@@ -136,6 +140,7 @@ function compute(ctx) {
       reachable: new Set(),
       webReachable: new Set(),
       experimentReachable: new Set(),
+      pureWebExtensionReachable: new Set(),
       hasDynamicLoaders: false,
       dynamicLoaderSites: [],
       mentionsOf: () => [],
@@ -345,6 +350,22 @@ function compute(ctx) {
     }
   }
 
+  // The pure WebExtension dependency tree: reachable from a WebExtension entry point
+  // over ordinary edges, WITHOUT crossing into Experiment APIs. Seeds are the entry
+  // points (manifestFileRefs already covers background/options/popups/content scripts)
+  // plus WAR and the `webext`-classified injected pages, but NOT the Experiment seeds
+  // (its parent/child scripts, subtree, and the core/unsure injected files all land in
+  // experimentSeeds). The base outEdges carry no WebExtension->Experiment-API edge, so
+  // this never reaches privileged code. A POSITIVE set, independent of how completely
+  // experimentReachable traces privileged loads - core-symbol-in-webext gates on it.
+  const webextSeeds = new Set(webextInjected);
+  for (const s of generalSeeds) {
+    if (!experimentSeeds.has(s)) {
+      webextSeeds.add(s);
+    }
+  }
+  const pureWebExtensionReachable = bfs(webextSeeds, outEdges);
+
   // The Experiment dependency tree: a BFS from the Experiment seeds following the
   // normal edges PLUS the core-code loaders (rootURI.resolve paths, and registered
   // chrome://resource:// URLs matched by file NAME) - scanned ONLY here, on
@@ -400,6 +421,7 @@ function compute(ctx) {
     reachable,
     webReachable,
     experimentReachable,
+    pureWebExtensionReachable,
     hasDynamicLoaders: liveLoaders.length > 0,
     dynamicLoaderSites: liveLoaders,
     mentionsOf: makeMentions(files),

@@ -1098,10 +1098,16 @@ test("trademark-violation anchors the finding on the name line with the name", (
 // import are the developer's own and are exempt. (The Experiment-tree exemption is
 // covered by the core-symbol-webext golden fixture, which builds real reachability.)
 test("core-symbol-in-webext flags global core symbols, not locals/imports/properties", () => {
+  // bg.js must be in the pure WebExtension tree to be checked, so declare it as the
+  // background script and include it in the packaged files (the check now gates on
+  // pureWebExtensionReachable, not "every authored file").
   const run = (code) =>
     coreSymbolInWebext.run({
       jsSources: [{ file: "bg.js", code, lineOffset: 0 }],
-      addon: { manifest: { manifest_version: 3 }, files: new Map() },
+      addon: {
+        manifest: { manifest_version: 3, background: { scripts: ["bg.js"] } },
+        files: new Map([["bg.js", Buffer.from(code)]]),
+      },
       options: {},
     });
   // A bare global core reference is flagged (the root, not the property). The symbol

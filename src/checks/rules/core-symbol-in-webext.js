@@ -2,14 +2,17 @@
 // Components/Cc/Ci/Cu family, ...) used in PURE WebExtension code. A WebExtension
 // sandbox - background, content, options and popup scripts - has no chrome
 // privileges and does not expose these symbols, so a global reference to one is
-// either a bug or privileged code mis-packaged as a WebExtension file. Privileged
-// Experiment code legitimately uses them, so the Experiment dependency tree (which
-// also carries the mixed/"unsure" files) is exempt - mirroring unknown-api.
+// either a bug or privileged code mis-packaged as a WebExtension file. So the check
+// runs ONLY on the pure WebExtension dependency tree (pureWebExtensionReachable):
+// files reached from a WebExtension entry point without crossing into an Experiment
+// API. This positively excludes privileged Experiment/core code (and the mixed/
+// "unsure" files) and dead code - independent of how completely the Experiment tree
+// was traced, so an untraceable privileged loader cannot cause a false positive.
 //
 // Belongs here: the core-symbol list and visiting GLOBAL references to it (a name
 // shadowed by a local binding / import is the developer's own symbol, not ours).
-// Does NOT belong here: the Experiment vs WebExtension partition (->
-// src/checks/lib/reachability.js, experimentReachable), Babel plumbing (->
+// Does NOT belong here: the WebExtension vs Experiment partition (->
+// src/checks/lib/reachability.js, pureWebExtensionReachable), Babel plumbing (->
 // src/parse/ast.js), the non-authored skip-list (-> src/checks/lib/bundled.js),
 // authored wording / severity (-> assets/registry.yaml), report formatting (->
 // src/report/format.js).
@@ -46,11 +49,14 @@ export default {
   run(ctx) {
     const out = [];
     const skip = nonAuthoredJs(ctx); // a core symbol in a bundled library is not the dev's
-    // Privileged Experiment/core code (and the mixed/"unsure" files seeded into it)
-    // legitimately use these symbols - exempt, exactly as unknown-api does.
-    const exempt = buildReachability(ctx).experimentReachable;
+    // Only check files in the pure WebExtension dependency tree: reachable from a
+    // WebExtension entry point without crossing into an Experiment API. This excludes
+    // privileged Experiment/core code (and the mixed/"unsure" files), which
+    // legitimately uses these symbols, and dead code that never runs - positively,
+    // without depending on how completely the Experiment tree was traced.
+    const webext = buildReachability(ctx).pureWebExtensionReachable;
     for (const src of ctx.jsSources) {
-      if (skip.has(src.file) || exempt.has(src.file)) {
+      if (skip.has(src.file) || !webext.has(src.file)) {
         continue;
       }
       const { ast } = src.parsed ?? parseJs(src.code);

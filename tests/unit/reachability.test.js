@@ -91,6 +91,40 @@ test("webReachable from content scripts; WAR globs expand", () => {
   assert.ok(reach.reachable.has("res/unused.png"));
 });
 
+// pureWebExtensionReachable: the positive WebExtension tree core-symbol gates on -
+// reachable from a WebExtension entry over ordinary edges, never crossing into an
+// Experiment API. The Experiment parent script and its subtree are excluded (they
+// are experimentReachable instead); dead code is excluded too.
+test("pureWebExtensionReachable excludes the Experiment tree and dead code", () => {
+  const manifest = {
+    manifest_version: 2,
+    background: { scripts: ["bg.js"] },
+    experiment_apis: {
+      exp: { schema: "exp/schema.json", parent: { script: "exp/impl.js" } },
+    },
+  };
+  const files = {
+    "manifest.json": JSON.stringify(manifest),
+    "bg.js": `import "./helper.js";`,
+    "helper.js": `export const x = 1;`,
+    "exp/impl.js": `var { X } = ChromeUtils.importESModule("resource://e/exp/mod.sys.mjs");`,
+    "exp/schema.json": "[]",
+    "exp/mod.sys.mjs": `export const X = 1;`,
+    "dead.js": `console.log(1);`,
+  };
+  const reach = buildReachability(ctxFrom(files, manifest));
+  // A WebExtension entry and its ordinary import are in the pure tree.
+  assert.ok(reach.pureWebExtensionReachable.has("bg.js"));
+  assert.ok(reach.pureWebExtensionReachable.has("helper.js"));
+  // The Experiment parent script and its module are NOT pure, but ARE experiment.
+  assert.ok(!reach.pureWebExtensionReachable.has("exp/impl.js"));
+  assert.ok(reach.experimentReachable.has("exp/impl.js"));
+  assert.ok(!reach.pureWebExtensionReachable.has("exp/mod.sys.mjs"));
+  assert.ok(reach.experimentReachable.has("exp/mod.sys.mjs"));
+  // Dead code is in neither.
+  assert.ok(!reach.pureWebExtensionReachable.has("dead.js"));
+});
+
 // A non-literal getURL sets hasDynamicLoaders; the basename safety net finds a
 // string reference the structured parsers missed.
 test("dynamic loaders set the flag; mentionsOf finds bare-name references", () => {
