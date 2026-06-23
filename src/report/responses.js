@@ -112,6 +112,9 @@ export function renderManualItems(refs, registry) {
       file: ref.file ?? null,
       loc: ref.loc ?? null,
       item: ref.item ?? null,
+      // Per-locus suffix shown after file:line (like a finding's hint), e.g. a
+      // transmission method - independent of `item`/`listItem`.
+      hint: ref.hint ?? null,
       listItem:
         ref.item != null && template != null && !template.includes(PLACEHOLDER),
     };

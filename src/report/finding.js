@@ -138,6 +138,8 @@ export function sortFindings(findings) {
  * @property {string|null} [file]
  * @property {{line?: number, column?: number}|null} [loc]
  * @property {string|null} [item]
+ * @property {string|null} [hint]  Per-locus suffix shown after `file:line` (like
+ *   a finding's hint), independent of `item`/`listItem`.
  * @property {boolean} [listItem]  List `item` on the location line (the
  *   instructions did not consume `{{item}}`); set by the resolver.
  * @property {boolean} [extended]  True for a check that escalated to manual

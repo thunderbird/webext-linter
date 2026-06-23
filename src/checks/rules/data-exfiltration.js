@@ -24,6 +24,16 @@ import { perCandidateResolve } from "../lib/verdict-resolve.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
+// Human name of each outbound method (network-sinks.js mints the short codes), shown
+// on the locus line so the reviewer sees the channel used, not the file repeated.
+const METHOD = {
+  fetch: "fetch()",
+  beacon: "navigator.sendBeacon()",
+  xhr: "XMLHttpRequest",
+  websocket: "WebSocket",
+  eventsource: "EventSource",
+};
+
 export default {
   /**
    * @param {RunContext} ctx
@@ -45,23 +55,19 @@ export default {
       seen.add(key);
       const loc = { line: sink.line, column: sink.column };
       const id = `X${++n}`;
-      const item = sink.host ?? sink.file;
+      const method = METHOD[sink.type] ?? sink.type;
       candidates.push({
         id,
         file: sink.file,
         line: sink.line,
-        note: `transmits to a remote host (${sink.type})`,
+        note: `transmits to a remote host via ${method}`,
         corpus: optionsPath ? [sink.file, optionsPath] : [sink.file],
       });
-      // The finding lists file:line via its location; `item` stays for the
-      // manual escalation path (its {{item}} token), which is unchanged.
-      cases.push({ id, finding: { file: sink.file, loc }, item });
-      ctx.note?.(
-        sink.file,
-        loc,
-        `transmits to a remote host (${sink.type})`,
-        "unsure"
-      );
+      // The finding lists file:line via its location; `hint` (the transmission
+      // method) rides along so it survives the unsure->manual->recheck hand-off and
+      // is shown on the locus. `item` stays absent so the recheck key is file:line.
+      cases.push({ id, finding: { file: sink.file, loc, hint: method } });
+      ctx.note?.(sink.file, loc, method, "unsure");
     }
     if (!candidates.length) {
       return { findings: [] };

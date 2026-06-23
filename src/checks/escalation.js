@@ -40,6 +40,8 @@ import { wrapText } from "../util/text.js";
  *   text from the registry later).
  * @property {string} ruleId  The owning check.
  * @property {?string} item  The offending token, for the `{{item}}` slot.
+ * @property {?string} hint  Per-locus suffix shown after `file:line` (like a
+ *   finding's hint), independent of `item`/the recheck key. Null when none.
  * @property {?string} file  Locus path, listed under the manual entry, or null.
  * @property {{line?: number, column?: number}|null} loc  Locus line, or null.
  * @property {"escalation"|"llm-error"} kind  Picks the registry message used.
@@ -90,9 +92,9 @@ export async function runLlmCheck(ctx, check, step) {
 
 /**
  * @param {LoadedCheck} check
- * @param {{item?: ?string, file?: ?string, loc?: object, data?: object}} c
- *   The manual case: its `{{item}}` token plus an optional locus (file/loc) and
- *   data.
+ * @param {{item?: ?string, hint?: ?string, file?: ?string, loc?: object,
+ *   data?: object}} c  The manual case: its `{{item}}` token, an optional
+ *   per-locus `hint`, an optional locus (file/loc), and data.
  * @param {"escalation"|"llm-error"} kind
  * @returns {ManualRef}
  */
@@ -100,6 +102,7 @@ function manualRef(check, c, kind) {
   return {
     ruleId: check.id,
     item: c.item ?? null,
+    hint: c.hint ?? null,
     file: c.file ?? null,
     loc: c.loc ?? null,
     kind,

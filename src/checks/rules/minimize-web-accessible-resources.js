@@ -59,7 +59,7 @@ export default {
     };
     const findings = [];
     const candidates = [];
-    /** @type {{ids: string[], finding: object, item: string}[]} per WAR file. */
+    /** @type {{ids: string[], finding: object}[]} per WAR file. */
     const groups = [];
     let n = 0;
     const seen = new Set();
@@ -132,7 +132,6 @@ export default {
             groups.push({
               ids,
               finding: { file: "manifest.json", loc: lineOf(file), item: file },
-              item: file,
             });
           } else {
             ctx.note?.("manifest.json", null, trace, "fail");

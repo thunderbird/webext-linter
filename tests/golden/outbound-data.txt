@@ -45,8 +45,8 @@ An example can be found here: https://github.com/thunderbird/webext-examples/tre
    an explicit opt-in (a documented options-page setting) and is never sent
    without consent.
 Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
- - background.js:4
- - background.js:7
+ - background.js:4 - fetch()
+ - background.js:7 - fetch()
 
 ── Standard manual review ──
 

@@ -70,7 +70,7 @@ export default {
     const findings = [];
     const candidates = [];
     /**
-     * @type {{ids: string[], finding: object, item: string}[]} one per file F.
+     * @type {{ids: string[], finding: object}[]} one per file F.
      */
     const groups = [];
     let n = 0;
@@ -123,9 +123,8 @@ export default {
           corpus: [site.file],
         });
       }
-      // The finding lists `file` via its location; `item` stays for the manual
-      // escalation path (its {{item}} token), which is unchanged.
-      groups.push({ ids, finding: { file }, item: file });
+      // The finding lists `file` via its location (the recheck key is the file).
+      groups.push({ ids, finding: { file } });
     }
 
     if (!candidates.length) {

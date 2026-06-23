@@ -339,7 +339,8 @@ function manualSection(items, title, accent = blue) {
     const where = [];
     const loci = group.filter((m) => m.file || (m.listItem && m.item));
     for (const m of loci.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
-      where.push(` - ${locationLine(m)}`);
+      // Append any per-locus hint after file:line, mirroring renderGroup.
+      where.push(` - ${locationLine(m)}${m.hint ? ` - ${m.hint}` : ""}`);
     }
     if (loci.length > MAX_ENTRIES_PER_CATEGORY) {
       where.push(excludedMarker(loci.length - MAX_ENTRIES_PER_CATEGORY));

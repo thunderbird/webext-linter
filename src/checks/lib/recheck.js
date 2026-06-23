@@ -126,8 +126,8 @@ export function buildRecheckSections(ctx, registry, nonce) {
  * THIS consumer are consulted (the guard).
  * @param {RunContext} ctx
  * @param {LoadedCheck} check  The recheck consumer (its id keys ctx.recheck).
- * @returns {{findings: object[], escalations: {item: ?string, file: ?string,
- *   loc: ?object, data: object}[]}}
+ * @returns {{findings: object[], escalations: {item: ?string, hint: ?string,
+ *   file: ?string, loc: ?object, data: object}[]}}
  */
 export function resolveRecheck(ctx, check) {
   const handed = ctx.recheck?.get(check.id) ?? [];
@@ -148,7 +148,9 @@ export function resolveRecheck(ctx, check) {
     const key = itemKey(ref);
     const v = key != null ? verdicts.get(key) : undefined;
     const verdict = v?.verdict ?? "unsure";
-    const label = ref.item ?? ref.file ?? null;
+    // The feed suffix after `file:line`: the item token, else a per-locus hint
+    // (e.g. a transmission method). Never the file - that only repeated the locus.
+    const label = ref.item ?? ref.hint ?? null;
     if (verdict === "pass") {
       ctx.note?.(ref.file, ref.loc, label, "pass");
       continue; // the summary confirmed it is used / justified - drop it
@@ -157,7 +159,13 @@ export function resolveRecheck(ctx, check) {
     if (verdict === "fail") {
       ctx.note?.(ref.file, ref.loc, label, "fail");
       findings.push(
-        finding({ file: ref.file, loc: ref.loc, item: ref.item, data })
+        finding({
+          file: ref.file,
+          loc: ref.loc,
+          item: ref.item,
+          hint: ref.hint,
+          data,
+        })
       );
     } else {
       // unsure, or no verdict at all (the summary was skipped or errored): the
@@ -165,6 +173,7 @@ export function resolveRecheck(ctx, check) {
       ctx.note?.(ref.file, ref.loc, label, "unsure");
       escalations.push({
         item: ref.item ?? null,
+        hint: ref.hint ?? null,
         file: ref.file ?? null,
         loc: ref.loc ?? null,
         data,

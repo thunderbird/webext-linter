@@ -109,11 +109,13 @@ test("resolveRecheck is a no-op when nothing was handed over", () => {
 
 // A per-site producer hands items with no `item` token but a `loc` (e.g.
 // data-exfiltration's per-sink manual items). Those key on file:line, so two sinks
-// in the same file get distinct verdicts instead of collapsing to one key.
+// in the same file get distinct verdicts instead of collapsing to one key. A
+// per-locus `hint` (the transmission method) rides along but does NOT affect the key.
 test("loc-bearing items with no item token key on file:line", () => {
   const sink = (line) => ({
     ruleId: "p",
     item: null,
+    hint: "fetch()",
     file: "bg.js",
     loc: { line },
     kind: "escalation",
@@ -134,6 +136,7 @@ test("loc-bearing items with no item token key on file:line", () => {
     out.findings.map((f) => f.loc.line),
     [4]
   );
+  assert.equal(out.findings[0].hint, "fetch()"); // the method shows on the locus
   assert.deepEqual(out.escalations, []);
   // ...and they are listed in the wrapped item data as distinct file:line keys.
   const { items } = buildRecheckSections(

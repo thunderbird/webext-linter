@@ -38,6 +38,7 @@ test("runLlmCheck with no token defaults every candidate to unsure", async () =>
     {
       ruleId: "unused-files",
       item: "a.js",
+      hint: null,
       file: null,
       loc: null,
       kind: "escalation",
@@ -78,6 +79,7 @@ test("manualEscalations maps each escalation to a manual ref", () => {
   const out = manualEscalations(check, [
     {
       item: "x.js",
+      hint: "fetch()",
       file: "manifest.json",
       loc: { line: 3 },
       data: { reason: "why" },
@@ -89,6 +91,7 @@ test("manualEscalations maps each escalation to a manual ref", () => {
     {
       ruleId: "unused-files",
       item: "x.js",
+      hint: "fetch()",
       file: "manifest.json",
       loc: { line: 3 },
       kind: "escalation",
@@ -97,6 +100,7 @@ test("manualEscalations maps each escalation to a manual ref", () => {
     {
       ruleId: "unused-files",
       item: null,
+      hint: null,
       file: null,
       loc: null,
       kind: "escalation",
