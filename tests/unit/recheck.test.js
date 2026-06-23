@@ -135,21 +135,21 @@ test("loc-bearing items with no item token key on file:line", () => {
     [4]
   );
   assert.deepEqual(out.escalations, []);
-  // ...and they are listed in the prompt as distinct file:line keys.
-  const section = buildRecheckSections(
+  // ...and they are listed in the wrapped item data as distinct file:line keys.
+  const { items } = buildRecheckSections(
     { recheck: new Map([["x", [sink(4), sink(7)]]]) },
-    { checkEntry: () => ({ "summary-prompt": "R" }) }
+    { checkEntry: () => ({ "summary-prompt": "R" }) },
+    "NONCE"
   );
-  assert.ok(section.includes("- bg.js:4"));
-  assert.ok(section.includes("- bg.js:7"));
+  assert.ok(items.includes("- bg.js:4"));
+  assert.ok(items.includes("- bg.js:7"));
 });
 
-// ---- buildRecheckSections: the prompt fragment ----
-// One section per consumer with handed items, carrying that consumer's
-// summary-prompt, the de-duplicated item keys (labeled with the check id so the
-// model can echo it back), and a per-section instruction to surface fail/unsure
-// verdicts as a bullet labeled with the consumer's title. Empty when nothing was
-// handed over.
+// ---- buildRecheckSections: trusted rubric vs untrusted item data ----
+// Per consumer with handed items: the trusted RUBRIC (summary-prompt + the uniform
+// bullet instruction, labeled with the consumer's title) for the system prompt, and
+// the de-duplicated item keys WRAPPED in nonce markers (tagged with the check id) for
+// the untrusted user data. Both empty when nothing was handed over.
 test("buildRecheckSections composes a labeled section per consumer", () => {
   const registry = {
     checkEntry: (id) => ({
@@ -162,16 +162,19 @@ test("buildRecheckSections composes a labeled section per consumer", () => {
       ["unused-permission", [handed("tabs", 4), handed("storage", 5)]],
     ]),
   };
-  const out = buildRecheckSections(ctx, registry);
-  assert.ok(out.includes("recheck: unused-permission"));
-  assert.ok(out.includes("RUBRIC for unused-permission"));
-  assert.ok(out.includes('check="unused-permission"'));
-  assert.ok(out.includes("- tabs"));
-  assert.ok(out.includes("- storage"));
-  // The orchestrator attaches a per-section bullet instruction, labeled with the
-  // consumer's registry title, so every recheck surfaces its verdicts uniformly.
-  assert.ok(out.includes("add a separate bullet point"));
-  assert.ok(out.includes('labeled "Unused permission"'));
+  const { rubric, items } = buildRecheckSections(ctx, registry, "NONCE");
+  assert.ok(rubric.includes("recheck: unused-permission"));
+  assert.ok(rubric.includes("RUBRIC for unused-permission"));
+  assert.ok(rubric.includes('check="unused-permission"'));
+  // Item keys are in the wrapped, id-tagged user data, not the rubric.
+  assert.ok(
+    items.includes('[[[BEGIN RECHECK-ITEMS NONCE id="unused-permission"]]]')
+  );
+  assert.ok(items.includes("- tabs"));
+  assert.ok(items.includes("- storage"));
+  // The bullet instruction is in the rubric, labeled with the consumer's title.
+  assert.ok(rubric.includes("add a separate bullet point"));
+  assert.ok(rubric.includes('labeled "Unused permission"'));
 });
 
 // The bullet label falls back to the check id when the consumer entry has no title.
@@ -179,18 +182,28 @@ test("buildRecheckSections labels the bullet with the id when no title", () => {
   const registry = {
     checkEntry: (id) => ({ "summary-prompt": `RUBRIC for ${id}` }),
   };
-  const out = buildRecheckSections(
+  const { rubric } = buildRecheckSections(
     { recheck: new Map([["x", [handed("a", 1)]]]) },
-    registry
+    registry,
+    "NONCE"
   );
-  assert.ok(out.includes("add a separate bullet point"));
-  assert.ok(out.includes('labeled "x"'));
+  assert.ok(rubric.includes("add a separate bullet point"));
+  assert.ok(rubric.includes('labeled "x"'));
 });
 
 test("buildRecheckSections is empty when nothing was handed over", () => {
   const registry = { checkEntry: () => ({ "summary-prompt": "R" }) };
-  assert.equal(buildRecheckSections({}, registry), "");
-  assert.equal(buildRecheckSections({ recheck: new Map() }, registry), "");
+  assert.deepEqual(buildRecheckSections({}, registry, "N"), {
+    rubric: "",
+    items: "",
+  });
+  assert.deepEqual(
+    buildRecheckSections({ recheck: new Map() }, registry, "N"),
+    {
+      rubric: "",
+      items: "",
+    }
+  );
 });
 
 // A recheck target whose registry entry has no summary-prompt is skipped (its
@@ -198,7 +211,10 @@ test("buildRecheckSections is empty when nothing was handed over", () => {
 test("buildRecheckSections skips a consumer with no summary-prompt", () => {
   const registry = { checkEntry: () => ({}) };
   const ctx = { recheck: new Map([["x", [handed("a", 1)]]]) };
-  assert.equal(buildRecheckSections(ctx, registry), "");
+  assert.deepEqual(buildRecheckSections(ctx, registry, "N"), {
+    rubric: "",
+    items: "",
+  });
 });
 
 // ---- the runChecks divert ----

@@ -78,8 +78,8 @@ test("buildSummarizer sends prompt+diff and reports the transmitted size", async
   const ctx = {
     ...ctxFrom(prev, cur),
     llm: {
-      summarize: async (p) => {
-        received = p;
+      summarize: async (msg) => {
+        received = msg;
         return "Bumped version and changed background.js.";
       },
     },
@@ -90,9 +90,15 @@ test("buildSummarizer sends prompt+diff and reports the transmitted size", async
   assert.ok(s.bytes > 0);
   const out = await s.run();
   assert.equal(out, "Bumped version and changed background.js.");
-  assert.ok(received.includes(registry.prompt("change-summary")));
-  assert.ok(received.includes("background.js"));
-  assert.equal(s.bytes, Buffer.byteLength(received, "utf8"));
+  // Trusted instructions in system; the untrusted diff, nonce-wrapped, in user.
+  assert.ok(received.system.includes(registry.prompt("change-summary")));
+  assert.ok(received.user.includes("[[[BEGIN DIFF "));
+  assert.ok(received.user.includes("background.js"));
+  assert.equal(
+    s.bytes,
+    Buffer.byteLength(received.system, "utf8") +
+      Buffer.byteLength(received.user, "utf8")
+  );
 });
 
 // No baseline, no llm, or no change -> no summarizer at all (returns null).
@@ -143,10 +149,11 @@ test("buildAddonText includes authored files, excludes vendored and unused", () 
       "lib.js": "/* third-party lib */",
     }),
   };
-  const text = buildAddonText(ctx, { unused: new Set(["orphan.js"]) });
-  assert.ok(text.includes("=== manifest.json ==="));
-  assert.ok(text.includes("=== declared permissions ===")); // permission anchor
-  assert.ok(text.includes("console.log('bg')")); // authored: included
+  const text = buildAddonText(ctx, "NONCE", { unused: new Set(["orphan.js"]) });
+  assert.ok(text.includes("[[[BEGIN MANIFEST NONCE]]]"));
+  assert.ok(text.includes("[[[BEGIN PERMISSIONS NONCE]]]")); // permission anchor
+  assert.ok(text.includes('[[[BEGIN FILE NONCE path="background.js"]]]'));
+  assert.ok(text.includes("console.log('bg')")); // authored: included (verbatim)
   assert.ok(!text.includes("console.log('orphan')")); // unused: excluded
   assert.ok(!text.includes("third-party lib")); // vendored: excluded
 });
@@ -163,7 +170,7 @@ test("buildAddonText lists declared permissions split by kind", () => {
     optional_permissions: ["downloads"],
   });
   const ctx = { addon: addon({ "manifest.json": manifest }) };
-  const text = buildAddonText(ctx);
+  const text = buildAddonText(ctx, "NONCE");
   assert.match(text, /required permissions: messagesRead/);
   assert.match(text, /optional permissions: downloads/);
   assert.match(text, /host permissions: <all_urls>/);
@@ -171,7 +178,9 @@ test("buildAddonText lists declared permissions split by kind", () => {
   assert.match(text, /confirmed used by static analysis[^\n]*: \(none\)/);
   // With a proven-used set, the deterministically-used permission is named there
   // so the prompt can tell the model to leave it alone.
-  const annotated = buildAddonText(ctx, { used: new Set(["messagesRead"]) });
+  const annotated = buildAddonText(ctx, "NONCE", {
+    used: new Set(["messagesRead"]),
+  });
   assert.match(
     annotated,
     /confirmed used by static analysis[^\n]*: messagesRead/
@@ -200,8 +209,8 @@ test("buildAddonSummarizer sends prompt+add-on and returns the structured review
       "background.js": "console.log('bg');",
     }),
     llm: {
-      reviewAddon: async (p) => {
-        received = p;
+      reviewAddon: async (msg) => {
+        received = msg;
         return review;
       },
     },
@@ -212,9 +221,17 @@ test("buildAddonSummarizer sends prompt+add-on and returns the structured review
   assert.ok(s.bytes > 0);
   const out = await s.run();
   assert.deepEqual(out, review);
-  assert.ok(received.includes(registry.prompt("add-on-summary")));
-  assert.ok(received.includes("console.log('bg')"));
-  assert.equal(s.bytes, Buffer.byteLength(received, "utf8"));
+  // Trusted prompt in system; the untrusted add-on corpus, nonce-wrapped, in user.
+  assert.ok(received.system.includes(registry.prompt("add-on-summary")));
+  assert.ok(received.user.includes("[[[BEGIN FILE "));
+  assert.ok(received.user.includes("console.log('bg')"));
+  // Coverage guard: no add-on file body leaks into the trusted system role.
+  assert.ok(!received.system.includes("console.log('bg')"));
+  assert.equal(
+    s.bytes,
+    Buffer.byteLength(received.system, "utf8") +
+      Buffer.byteLength(received.user, "utf8")
+  );
 });
 
 // run() propagates an LLM error; the pipeline (generateAddonSummary) catches it

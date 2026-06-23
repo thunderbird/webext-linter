@@ -30,6 +30,7 @@
 // or the recheck output schema (-> src/llm/schema.js).
 
 import { finding } from "../../report/finding.js";
+import { wrap } from "./untrusted.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../registry.js").LoadedCheck} LoadedCheck */
@@ -54,24 +55,25 @@ function itemKey(ref) {
 }
 
 /**
- * The add-on-summary prompt fragment that asks the model to re-judge every item
- * handed to a recheck consumer. One section per consumer (with items), each
- * carrying that consumer's `summary-prompt` rubric, its item keys, and a uniform
- * instruction to surface any fail/unsure verdict as a labeled bullet in the prose
- * summary (the label is the consumer's registry title). Attaching that instruction
- * here, in the orchestrator, is what makes every recheck reach the summary - not
- * each consumer's own rubric. Returns "" when nothing was handed over, so the
- * summary prompt is unchanged.
+ * The recheck contribution to the add-on-summary prompt, split by trust: the trusted
+ * `rubric` (each consumer's `summary-prompt` plus a uniform instruction to surface
+ * fail/unsure verdicts as a labeled bullet) joins the SYSTEM prompt, while the
+ * untrusted `items` (file paths etc.) are wrapped in nonce markers for the USER data,
+ * each tagged with its check id so the model can correlate. Attaching the bullet
+ * instruction here, in the orchestrator, is what makes every recheck reach the
+ * summary - not each consumer's own rubric. Both are "" when nothing was handed over.
  * @param {RunContext} ctx
  * @param {import("../registry.js").Registry} registry
- * @returns {string}
+ * @param {string} nonce  The per-review nonce wrapping the item lists.
+ * @returns {{rubric: string, items: string}}
  */
-export function buildRecheckSections(ctx, registry) {
+export function buildRecheckSections(ctx, registry, nonce) {
   const buckets = ctx.recheck;
   if (!buckets || !buckets.size) {
-    return "";
+    return { rubric: "", items: "" };
   }
-  const sections = [];
+  const rubrics = [];
+  const itemBlocks = [];
   for (const [id, items] of buckets) {
     if (!items.length) {
       continue;
@@ -92,22 +94,29 @@ export function buildRecheckSections(ctx, registry) {
         keys.push(key);
       }
     }
-    // The bullet instruction is attached to every section here, in the orchestrator,
-    // so all rechecks surface their verdicts uniformly - not left to each consumer's
-    // rubric. The label is the consumer's registry title (its id as a fallback).
+    if (!keys.length) {
+      continue;
+    }
     const label = entry.title || id;
-    sections.push(
+    rubrics.push(
       `=== recheck: ${id} ===\n${prompt}\n\n` +
-        "Items to judge (return one entry in the recheck field for each, with " +
-        `check="${id}" and the exact item text):\n` +
-        keys.map((k) => `- ${k}`).join("\n") +
-        `\n\nFor every item above you judge "fail" or "unsure", add a separate ` +
-        `bullet point to the prose "summary" field, labeled "${label}", naming ` +
-        "those items with a one-line reason, so the reviewer sees them in the " +
-        "overview and not only in the structured result."
+        `Judge each item in the data block tagged RECHECK-ITEMS id=${JSON.stringify(id)}; ` +
+        `return one recheck entry per item with check="${id}" and the exact item ` +
+        'text. For every item you judge "fail" or "unsure", add a separate bullet ' +
+        `point to the prose "summary" field, labeled "${label}", naming those items ` +
+        "with a one-line reason, so the reviewer sees them in the overview and not " +
+        "only in the structured result."
+    );
+    itemBlocks.push(
+      wrap(
+        nonce,
+        "RECHECK-ITEMS",
+        keys.map((k) => `- ${k}`).join("\n"),
+        `id=${JSON.stringify(id)}`
+      )
     );
   }
-  return sections.join("\n\n");
+  return { rubric: rubrics.join("\n\n"), items: itemBlocks.join("\n\n") };
 }
 
 /**

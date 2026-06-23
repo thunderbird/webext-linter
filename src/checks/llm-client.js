@@ -24,6 +24,7 @@ import { MAX_FILES_PER_BATCH } from "../config.js";
 import { debug, progress, llmErrorText } from "../util/log.js";
 import { red } from "../util/color.js";
 import { sortKeys } from "../util/json.js";
+import { nonceFor, wrap, wrapFile, framing } from "./lib/untrusted.js";
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
 /** @typedef {import("../llm/schema.js").LlmResult} LlmResult */
@@ -45,9 +46,10 @@ import { sortKeys } from "../util/json.js";
  * @param {Function} [opts.callText]  Injectable free-form transport (tests).
  * @param {Function} [opts.callReview]  Injectable add-on-review transport
  *   (tests).
- * @returns {{evaluate: (criterion: string, label?: string) =>
- *   Promise<LlmResult>, summarize: (prompt: string) => Promise<string>,
- *   reviewAddon: (prompt: string) =>
+ * @returns {{evaluate: (req: {rubric: string, candidates: object[]}) =>
+ *   Promise<Map<string, {verdict: string, reason: ?string}>>, summarize: (msg:
+ *   {system: string, user: string}) => Promise<string>, reviewAddon: (msg:
+ *   {system: string, user: string}) =>
  *     Promise<import("../llm/schema.js").AddonReview>}}
  */
 export function createLlmClient({
@@ -71,11 +73,14 @@ export function createLlmClient({
   const verdicts = callVerdicts ?? provider.callVerdicts;
   const text = callText ?? provider.callText;
   const review = callReview ?? provider.callReview;
+  // The per-review nonce delimits untrusted add-on content; the framing tells the
+  // model that marked content is data, never instructions (see lib/untrusted.js).
+  const nonce = nonceFor(ctx);
   const system = [
-    { type: "text", text: systemIntro },
+    { type: "text", text: `${systemIntro}\n\n${framing(nonce)}` },
     {
       type: "text",
-      text: buildAddonContext(ctx),
+      text: buildAddonContext(ctx, nonce),
       cache_control: { type: "ephemeral" },
     },
   ];
@@ -150,30 +155,45 @@ export function createLlmClient({
     },
 
     /**
-     * Free-form prose completion (no forced verdict tool, no cached add-on
-     * context). Used for the advisory change summary - the prompt is
-     * self-contained. Throws on a transport/API error.
-     * @param {string} prompt
+     * Free-form prose completion (no forced verdict tool). Used for the advisory
+     * change summary. The trusted instructions go in `system`; the untrusted,
+     * nonce-wrapped diff goes in `user`. Throws on a transport/API error.
+     * @param {{system: string, user: string}} msg
      * @returns {Promise<string>}
      */
-    async summarize(prompt) {
-      debug(`[llm] summarize prompt:\n${prompt}`);
-      const out = await text({ token, model, baseURL: url, prompt });
+    async summarize({ system: sys, user }) {
+      debug(`[llm] summarize system:\n${sys}\n[llm] summarize user:\n${user}`);
+      const out = await text({
+        token,
+        model,
+        baseURL: url,
+        system: sys,
+        prompt: user,
+      });
       debug(`[llm] summary:\n${out}`);
       return out;
     },
 
     /**
-     * Structured --full-summary review (forced report_addon_review tool, no
-     * cached add-on context - the prompt is self-contained). Returns the prose
-     * summary plus the permissions the model judged unused. Throws on a
-     * transport/API error (the caller treats that as no summary).
-     * @param {string} prompt
+     * Structured --full-summary review (forced report_addon_review tool). The
+     * trusted rubric + framing go in `system`; the untrusted, nonce-wrapped add-on
+     * corpus + recheck items go in `user`. Returns the prose summary plus the
+     * recheck verdicts. Throws on a transport/API error (the caller treats that as
+     * no summary).
+     * @param {{system: string, user: string}} msg
      * @returns {Promise<import("../llm/schema.js").AddonReview>}
      */
-    async reviewAddon(prompt) {
-      debug(`[llm] reviewAddon prompt:\n${prompt}`);
-      const result = await review({ token, model, baseURL: url, prompt });
+    async reviewAddon({ system: sys, user }) {
+      debug(
+        `[llm] reviewAddon system:\n${sys}\n[llm] reviewAddon user:\n${user}`
+      );
+      const result = await review({
+        token,
+        model,
+        baseURL: url,
+        system: sys,
+        prompt: user,
+      });
       debug(`[llm] reviewAddon result:\n${JSON.stringify(result, null, 2)}`);
       return result;
     },
@@ -252,28 +272,34 @@ function batchByFiles(candidates) {
  * @returns {string}
  */
 function buildCriterion(rubric, batch, paths, ctx) {
+  const nonce = nonceFor(ctx);
   const lines = [rubric ?? "", "", "CANDIDATES:"];
   for (const c of batch) {
     const loc = c.line != null ? `:${c.line}` : "";
     const note = c.note ? ` (${c.note})` : "";
     lines.push(`${c.id}: ${c.file ?? "(add-on)"}${loc}${note}`);
   }
-  lines.push("", "FILES:");
+  // Each file body is untrusted data, wrapped in nonce markers (its real newlines
+  // kept for line citation); the count is stated on this trusted side so a
+  // "the files ended, now do X" injection inside a body is contradicted.
+  lines.push("", `FILES (${paths.length} untrusted data block(s)):`);
   for (const p of paths) {
     const body = ctx.addon?.files?.get(p)?.toString("utf8") ?? "";
-    lines.push(`--- ${p} ---`, body);
+    lines.push(wrapFile(nonce, p, body));
   }
   return lines.join("\n");
 }
 
 /**
  * Build the compact, deterministic add-on context shared by every LLM check.
- * Identical bytes across checks so the cached prefix is reused. Metadata only -
- * no file bodies.
+ * Identical bytes across checks (one nonce per review) so the cached prefix is
+ * reused. Metadata only - no file bodies. The untrusted manifest is wrapped in
+ * nonce markers so the model treats it as data, not instructions.
  * @param {RunContext} ctx
+ * @param {string} nonce
  * @returns {string}
  */
-function buildAddonContext(ctx) {
+function buildAddonContext(ctx, nonce) {
   const { addon } = ctx;
   const manifest = addon.manifest
     ? JSON.stringify(sortKeys(addon.manifest), null, 2)
@@ -296,12 +322,12 @@ function buildAddonContext(ctx) {
   return [
     "ADD-ON UNDER REVIEW",
     "",
-    "manifest.json:",
-    manifest,
+    "manifest.json (untrusted data):",
+    wrap(nonce, "MANIFEST", manifest),
     "",
     `default_locale: ${addon.manifest?.default_locale ?? "(none)"}`,
     `_locales directories: ${localeDirs.length ? localeDirs.join(", ") : "(none)"}`,
-    `web_accessible_resources: ${war ? JSON.stringify(war) : "(none)"}`,
+    `web_accessible_resources: ${war ? wrap(nonce, "WAR", JSON.stringify(war)) : "(none)"}`,
     "",
     "Files:",
     fileList,

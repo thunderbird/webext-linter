@@ -119,8 +119,10 @@ test("callText sends a free-form request and returns the text", async () => {
   assert.equal(req.model, "test-model");
 });
 
-// A deterministic add-on so the assembled context is byte-stable.
+// A deterministic add-on so the assembled context is byte-stable. __nonce pins the
+// per-review nonce (normally random) so the wrapped-data markers are golden-stable.
 const ctx = {
+  __nonce: "0123456789abcdef",
   addon: {
     manifest: {
       manifest_version: 3,

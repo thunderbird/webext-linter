@@ -27,6 +27,7 @@ import { canonicalJson } from "../util/json.js";
 import { nonAuthoredJs } from "./lib/bundled.js";
 import { declaredPermissions } from "./lib/permissions.js";
 import { buildRecheckSections } from "./lib/recheck.js";
+import { nonceFor, wrap, wrapFile, framing } from "./lib/untrusted.js";
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
 /** @typedef {import("./registry.js").Registry} Registry */
@@ -90,10 +91,10 @@ function fenced(out, h, s) {
  * @param {string} message  The full text sent to the model.
  * @returns {DeferredSummary}
  */
-function deferredSummary(ctx, message) {
+function deferredSummary(ctx, { system, user }) {
   return {
-    bytes: Buffer.byteLength(message, "utf8"),
-    run: () => ctx.llm.summarize(message),
+    bytes: Buffer.byteLength(system, "utf8") + Buffer.byteLength(user, "utf8"),
+    run: () => ctx.llm.summarize({ system, user }),
   };
 }
 
@@ -105,13 +106,14 @@ function deferredSummary(ctx, message) {
  * catches it and narrates the failure - an advisory summary must never abort the
  * review.
  * @param {RunContext} ctx
- * @param {string} message  The full text sent to the model.
+ * @param {{system: string, user: string}} msg  The trusted system text and the
+ *   untrusted, nonce-wrapped user data sent to the model.
  * @returns {DeferredReview}
  */
-function deferredReview(ctx, message) {
+function deferredReview(ctx, { system, user }) {
   return {
-    bytes: Buffer.byteLength(message, "utf8"),
-    run: () => ctx.llm.reviewAddon(message),
+    bytes: Buffer.byteLength(system, "utf8") + Buffer.byteLength(user, "utf8"),
+    run: () => ctx.llm.reviewAddon({ system, user }),
   };
 }
 
@@ -248,6 +250,7 @@ function declaredPermissionsBlock(manifest, used = new Set()) {
  */
 export function buildAddonText(
   ctx,
+  nonce,
   { unused = new Set(), used = new Set() } = {}
 ) {
   const files = ctx.addon?.files;
@@ -255,17 +258,18 @@ export function buildAddonText(
     return null;
   }
   const skip = nonAuthoredJs(ctx);
-  const out = [];
-  fenced(
-    out,
-    "=== manifest.json ===",
-    canonicalJson(ctx.addon.manifest ?? null)
-  );
+  // Every block is untrusted add-on content, wrapped in nonce markers so the model
+  // treats it as data (file bodies stay verbatim - real newlines for line citation).
+  const out = [
+    wrap(nonce, "MANIFEST", canonicalJson(ctx.addon.manifest ?? null)),
+  ];
   if (ctx.addon.manifest) {
-    fenced(
-      out,
-      "=== declared permissions ===",
-      declaredPermissionsBlock(ctx.addon.manifest, used)
+    out.push(
+      wrap(
+        nonce,
+        "PERMISSIONS",
+        declaredPermissionsBlock(ctx.addon.manifest, used)
+      )
     );
   }
   for (const file of [...files.keys()].sort()) {
@@ -276,7 +280,7 @@ export function buildAddonText(
     ) {
       continue;
     }
-    fenced(out, `=== ${file} ===`, fileText(file, files));
+    out.push(wrapFile(nonce, file, fileText(file, files)));
   }
   return out.join("\n");
 }
@@ -298,7 +302,13 @@ export function buildSummarizer(ctx, registry) {
   if (!diff || !prompt) {
     return null;
   }
-  return deferredSummary(ctx, `${prompt}\n\n${diff}`);
+  // Trusted instructions (framing + prompt) in system; the untrusted diff, wrapped
+  // in nonce markers, in user.
+  const nonce = nonceFor(ctx);
+  return deferredSummary(ctx, {
+    system: `${framing(nonce)}\n\n${prompt}`,
+    user: wrap(nonce, "DIFF", diff),
+  });
 }
 
 /**
@@ -323,17 +333,21 @@ export function buildAddonSummarizer(
   if (!ctx?.llm) {
     return null;
   }
-  const text = buildAddonText(ctx, { unused, used });
   const prompt = registry.prompt("add-on-summary");
-  if (!text || !prompt) {
+  if (!prompt) {
+    return null;
+  }
+  const nonce = nonceFor(ctx);
+  const text = buildAddonText(ctx, nonce, { unused, used });
+  if (!text) {
     return null;
   }
   // Items earlier checks handed to a post-summary recheck consumer (ctx.recheck):
-  // their rubrics + item lists, appended so this one pass re-judges them with
-  // whole-add-on context. Empty (and a no-op) when nothing was handed over.
-  const recheck = buildRecheckSections(ctx, registry);
-  const message = recheck
-    ? `${prompt}\n\n${text}\n\n${recheck}`
-    : `${prompt}\n\n${text}`;
-  return deferredReview(ctx, message);
+  // the trusted RUBRICS join the system prompt; the untrusted ITEM lists are wrapped
+  // into the user data. Empty (and a no-op) when nothing was handed over.
+  const { rubric, items } = buildRecheckSections(ctx, registry, nonce);
+  return deferredReview(ctx, {
+    system: `${framing(nonce)}\n\n${prompt}${rubric ? `\n\n${rubric}` : ""}`,
+    user: items ? `${text}\n\n${items}` : text,
+  });
 }

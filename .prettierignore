@@ -5,5 +5,6 @@ tests/schema-fixture/
 README.md
 
 # Generated / vendored.
+tests/golden/
 node_modules/
 .schema-cache/
