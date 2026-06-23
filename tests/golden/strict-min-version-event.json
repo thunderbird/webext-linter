@@ -10,6 +10,7 @@
     "applicationVersion": "128.0",
     "manifestVersion": 3,
     "checksRun": [
+      "core-symbol-in-webext",
       "trademark-violation",
       "unknown-api",
       "deprecated-api",

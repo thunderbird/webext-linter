@@ -22,6 +22,7 @@ import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
 import apiCoverage from "../../src/checks/rules/api-coverage.js";
 import strictMaxBumpOnly from "../../src/checks/rules/strict-max-version-bump-only.js";
 import trademarkViolation from "../../src/checks/rules/trademark-violation.js";
+import coreSymbolInWebext from "../../src/checks/rules/core-symbol-in-webext.js";
 import missingEnglish from "../../src/checks/rules/missing-english-localization.js";
 import disguisedResource from "../../src/checks/rules/disguised-resource.js";
 import disguisedStylesheet from "../../src/checks/rules/disguised-stylesheet.js";
@@ -931,6 +932,36 @@ test("trademark-violation anchors the finding on the name line with the name", (
   assert.equal(localized.length, 1);
   assert.equal(localized[0].loc.line, 2);
   assert.equal(localized[0].item, "Firefox Sync");
+});
+
+// ---- core-symbol-in-webext (privileged globals in pure WebExtension code) ----
+// A GLOBAL reference to a core symbol (Services, ChromeUtils, Cc/Ci, ...) is flagged;
+// a property of that name, an object key, and a name shadowed by a local binding or
+// import are the developer's own and are exempt. (The Experiment-tree exemption is
+// covered by the core-symbol-webext golden fixture, which builds real reachability.)
+test("core-symbol-in-webext flags global core symbols, not locals/imports/properties", () => {
+  const run = (code) =>
+    coreSymbolInWebext.run({
+      jsSources: [{ file: "bg.js", code, lineOffset: 0 }],
+      addon: { manifest: { manifest_version: 3 }, files: new Map() },
+      options: {},
+    });
+  // A bare global core reference is flagged (the root, not the property). The symbol
+  // rides on `item`; the resolver surfaces it on the collapsed locus line (golden).
+  assert.deepEqual(
+    run(`Services.wm.getMostRecentWindow("x");`).map((f) => f.item),
+    ["Services"]
+  );
+  assert.equal(run(`ChromeUtils.importESModule("x");`).length, 1);
+  assert.equal(run(`Cc["@m/x"].getService(Ci.nsIFoo);`).length, 2); // Cc + Ci
+  // Shadowed / imported / declared names are the dev's own symbol - exempt.
+  assert.equal(run(`const Services = api(); Services.foo();`).length, 0);
+  assert.equal(run(`import { Services } from "x"; Services.foo();`).length, 0);
+  assert.equal(run(`function f(Services) { return Services.x; }`).length, 0);
+  // A property or object key named like a core symbol is not a global reference.
+  assert.equal(run(`obj.Services.foo(); ({ Services: 1 });`).length, 0);
+  // De-duped per symbol: many uses of Services -> one finding.
+  assert.equal(run(`Services.a(); Services.b(); Services.c();`).length, 1);
 });
 
 // ---- strict_max_version (Experiment vs not) ----

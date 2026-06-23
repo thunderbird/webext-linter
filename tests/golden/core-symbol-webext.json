@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/default-locale-unused",
+    "addon": "<root>/tests/addons/core-symbol-webext",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "local:<root>/tests/schema-fixture",
@@ -78,25 +78,37 @@
     ]
   },
   "summary": {
-    "error": 1,
+    "error": 2,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "default-locale-unused": 1
+      "core-symbol-in-webext": 2
     }
   },
   "findings": [
     {
-      "ruleId": "default-locale-unused",
+      "ruleId": "core-symbol-in-webext",
       "severity": "error",
-      "file": "manifest.json",
+      "file": "background.js",
       "loc": {
-        "line": 5,
+        "line": 1,
         "column": 0
       },
-      "item": null,
+      "item": "Services",
       "hint": null,
-      "message": "The manifest declares default_locale but the add-on ships no _locales directory, so Thunderbird will refuse to load the add-on. Add the _locales/<lang>/messages.json files, or remove default_locale."
+      "message": "This add-on is using privileged Thunderbird internals that are not available to WebExtension code: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage."
+    },
+    {
+      "ruleId": "core-symbol-in-webext",
+      "severity": "error",
+      "file": "background.js",
+      "loc": {
+        "line": 2,
+        "column": 12
+      },
+      "item": "ChromeUtils",
+      "hint": null,
+      "message": "This add-on is using privileged Thunderbird internals that are not available to WebExtension code: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage."
     }
   ]
 }

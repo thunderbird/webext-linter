@@ -15,7 +15,7 @@
 // src/util/json.js rather than adding JSON utilities here.
 
 import { SEVERITY, sortFindings, countByRule, hasErrors } from "./finding.js";
-import { red, yellow, blue, grey } from "../util/color.js";
+import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
 import { MAX_ENTRIES_PER_CATEGORY } from "../config.js";
 
 /** @param {string} s @returns {string} */
@@ -97,7 +97,7 @@ function reviewBodyLines(review) {
   const standard = manual.filter((m) => !m.extended);
   return [
     ...issuesLines(issues, issueHeadings, verdictIntros),
-    ...manualSection(extended, "Extended manual review"),
+    ...manualSection(extended, "Extended manual review", brightCyan),
     ...manualSection(standard, "Standard manual review"),
     ...manualTail(meta.reviewUrl, manual.length),
   ];
@@ -293,15 +293,17 @@ function manualBody(m) {
  * @param {string} title  Section heading, e.g. "Extended manual review".
  * @returns {string[]}
  */
-function manualSection(items, title) {
+function manualSection(items, title, accent = blue) {
   if (!items.length) {
     return [];
   }
   const out = section(title);
   out.push("");
-  // A manual-review section is all manual work, so it is all blue (a no-op
-  // unless color is enabled). Each line is tinted on its own for stripColor.
-  out.push(blue("Continue manual review for the following checks:"));
+  // A manual-review section is all manual work, so it is all the section's accent
+  // color (a no-op unless color is enabled) - Extended uses a vivid cyan, distinct
+  // from Standard's blue, so the two are easy to tell apart. Each line is tinted on
+  // its own for stripColor.
+  out.push(accent("Continue manual review for the following checks:"));
   const byBody = new Map();
   for (const m of items) {
     const body = manualBody(m);
@@ -315,8 +317,8 @@ function manualSection(items, title) {
   let n = 0;
   for (const [body, group] of byBody) {
     out.push("");
-    // The reviewer-facing instructions (blue, 80-col wrapped).
-    out.push(...wrapEntry(++n, body).map(blue));
+    // The reviewer-facing instructions (the section's accent, 80-col wrapped).
+    out.push(...wrapEntry(++n, body).map(accent));
     // The developer-facing response, if any: labelled "Suggested response:" and
     // printed in dim grey, flush-left at column 0 (verbatim, like the Issues
     // responses), sitting between the instructions and the locus list so it

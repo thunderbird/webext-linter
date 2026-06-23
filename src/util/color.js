@@ -43,6 +43,13 @@ export const yellow = (s) => paint(33, s);
  */
 export const blue = (s) => paint(94, s);
 /**
+ * Bold bright cyan (SGR 1;96) - the Extended manual-review accent. A vivid, distinct
+ * hue from the blue (SGR 94) Standard section so the escalated items stand out and
+ * the two sections are easy to tell apart.
+ * @param {string} s @returns {string}
+ */
+export const brightCyan = (s) => paint("1;96", s);
+/**
  * Dim grey (SGR 90 "bright black" - a muted grey that recedes against color).
  * @param {string} s @returns {string}
  */

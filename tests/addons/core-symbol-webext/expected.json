@@ -1,0 +1,7 @@
+{
+  "_comment": "Privileged core symbols are flagged only in PURE WebExtension code, collapsed into one entry with the symbol on each locus line. background.js (a WebExtension entry point) uses Services (line 1) and ChromeUtils (line 2) -> both FLAGGED. Everything else uses core symbols too but is exempt: the wl/mystery experiment parents (the experiment_apis subtree), content/legacy.js (subscript-loaded by wl = privileged core), and content/maybe.js (handed to the unsure 'mystery' namespace, deferred). Reviewed with --allow-experiments.",
+  "options": { "--allow-experiments": true },
+  "expect": {
+    "core-symbol-in-webext": ["background.js:1", "background.js:2"]
+  }
+}
