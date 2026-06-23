@@ -81,7 +81,10 @@ test("anchors a missing manifest reference at its manifest.json line", () => {
   ].join("\n");
   const out = bundledFiles.run(
     ctxWith(
-      { manifest_version: 3, background: { page: "chrome/content/dummy.html" } },
+      {
+        manifest_version: 3,
+        background: { page: "chrome/content/dummy.html" },
+      },
       { "manifest.json": manifestText }
     )
   );

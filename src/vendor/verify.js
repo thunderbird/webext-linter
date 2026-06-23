@@ -241,7 +241,14 @@ async function auditGithub(entry, src, addon, vendor, net, llm) {
     version &&
     (await npmHashMatches(repoName, version, bundled, net))
   ) {
-    await auditNpm(repoName, version, vendor.vendorFile, entry.sourceUrl, vendor, net);
+    await auditNpm(
+      repoName,
+      version,
+      vendor.vendorFile,
+      entry.sourceUrl,
+      vendor,
+      net
+    );
     return;
   }
 
@@ -256,7 +263,14 @@ async function auditGithub(entry, src, addon, vendor, net, llm) {
     const name = proposal?.name;
     const ver = String(proposal?.version ?? version).replace(/^v/i, "");
     if (name && ver && (await npmHashMatches(name, ver, bundled, net))) {
-      await auditNpm(name, ver, vendor.vendorFile, entry.sourceUrl, vendor, net);
+      await auditNpm(
+        name,
+        ver,
+        vendor.vendorFile,
+        entry.sourceUrl,
+        vendor,
+        net
+      );
       return;
     }
   }
@@ -290,7 +304,9 @@ async function npmHashMatches(name, version, bytes, net) {
   }
   const byHash = indexBySri(listing);
   for (const algo of new Set([...byHash.keys()].map((k) => k.split("-")[0]))) {
-    if (byHash.has(`${algo}-${createHash(algo).update(bytes).digest("base64")}`)) {
+    if (
+      byHash.has(`${algo}-${createHash(algo).update(bytes).digest("base64")}`)
+    ) {
       return true;
     }
   }
@@ -353,7 +369,10 @@ async function llmProposeNpm(entry, src, llm) {
   try {
     const j = JSON.parse(m[0]);
     return typeof j?.name === "string" && j.name
-      ? { name: j.name, version: typeof j.version === "string" ? j.version : null }
+      ? {
+          name: j.name,
+          version: typeof j.version === "string" ? j.version : null,
+        }
       : null;
   } catch {
     return null;
