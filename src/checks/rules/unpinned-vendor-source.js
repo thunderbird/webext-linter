@@ -11,6 +11,7 @@
 // resolving the store (-> src/vendor/resolve.js) and the registry wording.
 
 import { finding } from "../../report/finding.js";
+import { lineContaining } from "../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -20,17 +21,32 @@ export default {
    * @returns {import("../../report/finding.js").Finding[]}
    */
   run(ctx) {
-    const results = ctx.addon?.vendor?.results ?? [];
+    const vendor = ctx.addon?.vendor;
+    // Anchor on the VENDOR declaration (file + the line citing the source), with
+    // the URL on the locus line - mirrors vendor-vuln-unknown. The vendored file
+    // is `item`, surfaced in the response prose.
+    const vendorName = vendor?.vendorFile ?? null;
+    const vendorText = vendorName
+      ? (ctx.addon.files?.get(vendorName)?.toString("utf8") ?? "")
+      : "";
     const findings = [];
-    for (const { path, source } of results.filter(
+    for (const { path, source } of (vendor?.results ?? []).filter(
       (r) => r.outcome === "unpinned-source"
     )) {
-      ctx.note?.(path, null, `non-pinned source: ${source}`, "fail");
+      const line = lineContaining(vendorText, source);
+      const loc = line ? { line } : undefined;
+      ctx.note?.(
+        vendorName ?? path,
+        loc,
+        `non-pinned source: ${source}`,
+        "fail"
+      );
       findings.push(
         finding({
-          file: path,
+          file: vendorName ?? path,
+          loc,
           item: path,
-          data: { url: source },
+          hint: source,
         })
       );
     }

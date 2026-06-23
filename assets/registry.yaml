@@ -441,7 +441,7 @@ deterministic-checks:
   severity: error
   check: unpinned-vendor-source
   response: |-
-    A vendored file cites a source that is not pinned to an immutable version: {{item}} is linked to {{url}}, which is a branch or unversioned URL rather than a pinned release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from.
+    The vendored file {{item}} cites a source that is not pinned to an immutable version. It is linked to a branch or unversioned URL rather than a specific release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from.
 
 - title: Modified vendored library
   severity: error
