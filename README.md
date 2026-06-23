@@ -54,7 +54,7 @@ schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
 | `--diff-summary` | Add an AI assisted **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and `--llm-enabled`. |
-| `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes and a permission review (which declared permissions appear unused) - from its (almost) full current source (vendored and unused files excluded). Advisory, not a finding. Needs `--llm-enabled`. |
+| `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes and a permission review (which declared permissions appear unused) - from its (almost) full current source (vendored and unused files excluded). The same pass also **re-checks the unsure items** other checks escalated, judging them with full-add-on context, so confident cases resolve instead of landing in manual review (see [LLM checks](#llm-checks)). Advisory, not a finding. Needs `--llm-enabled`. |
 | `--verbose` | Verbose logging. |
 
 **Exit codes:** `0` no errors · `1` one or more error-severity findings · `2`
@@ -180,6 +180,12 @@ genuinely-ambiguous residue is escalated, per case. When LLM support is not enab
 with the check's rubric and that case's evidence (e.g. the offending file's
 source). The model returns a three-way verdict - **fail** / **pass** /
 **unsure** - so a confident result is final. Any **unsure** finding is routed to manual review.
+
+`--full-summary` adds a second pass over those unsure items. The whole-add-on
+summary re-judges each one with full-add-on context (richer than the per-case
+evidence of the first pass), so many resolve to a confident **pass**/**fail**
+instead of staying on the manual-review list. Without `--full-summary`, each
+unsure case simply goes to manual review as above.
 
 | Check id (`check:`) | Pre-flight (always) + what the LLM judges |
 | --- | --- |

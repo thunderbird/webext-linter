@@ -497,6 +497,21 @@ export async function main(argv) {
     const reviewSummary = formatSummary(result) + "\n";
     process.stdout.write(reviewSummary);
     summaryBlock += reviewSummary;
+    // Nudge toward --full-summary only when it would actually help: it would have
+    // re-judged the escalated (`extended`) manual items with full-add-on context.
+    // Gate strictly on that count - with no unsure items a re-run gains nothing,
+    // so we never push the user to spend tokens for nothing.
+    const unsureCount = (result.meta.manualReview ?? []).filter(
+      (m) => m.extended
+    ).length;
+    if (!values["full-summary"] && unsureCount > 0) {
+      const note =
+        "\n  (tip: re-run with --llm-enabled --full-summary to have the AI " +
+        `re-check the ${unsureCount} unsure item(s) above with full-add-on ` +
+        "context, instead of leaving them for manual review.)\n";
+      process.stdout.write(note);
+      summaryBlock += note;
+    }
   } else {
     rendered = formatReview(result, format);
     process.stdout.write(rendered + "\n");
