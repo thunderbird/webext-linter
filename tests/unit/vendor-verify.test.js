@@ -30,9 +30,15 @@ test("classifySource recognizes the trusted hosts and pinned refs", () => {
     "https://cdn.jsdelivr.net/gh/javve/list.js@v2.3.1/dist/list.js"
   );
   assert.deepEqual(
-    [gh.trusted, gh.pinned, gh.kind, gh.repo],
-    [true, true, "github", "javve/list.js"]
+    [gh.trusted, gh.pinned, gh.kind, gh.repo, gh.ref],
+    [true, true, "github", "javve/list.js", "v2.3.1"]
   );
+  // A raw.githubusercontent URL also exposes the ref (the audit derives the
+  // version from it).
+  const raw = classifySource(
+    "https://raw.githubusercontent.com/moment/moment/2.29.1/min/moment.min.js"
+  );
+  assert.deepEqual([raw.repo, raw.ref], ["moment/moment", "2.29.1"]);
 });
 
 test("classifySource rejects untrusted hosts, non-https, and mutable refs", () => {
@@ -118,6 +124,7 @@ const store = (over = {}) => ({
   unparsedVendor: false,
   vendorFile: null,
   vulnerabilities: [],
+  unaudited: [],
   ...over,
 });
 
@@ -418,6 +425,223 @@ test("verifyVendor: a failed OSV lookup records nothing (best-effort)", async ()
   assert.deepEqual(addon.vendor.vulnerabilities, []);
 });
 
+// ---- github -> npm resolution + audit (auditGithub, network injected) ----
+
+// The SRI a ?meta listing carries for a body the bundled file should match.
+const sriOf = (body) =>
+  `sha256-${createHash("sha256").update(body).digest("base64")}`;
+
+// An OSV response with one advisory affecting `name`, fixed in `fixed`.
+const osvFor = (name, fixed) => ({
+  vulns: [
+    {
+      id: "GHSA-xxxx-yyyy-zzzz",
+      aliases: ["CVE-2022-24785"],
+      database_specific: { severity: "HIGH" },
+      affected: [
+        {
+          package: { ecosystem: "npm", name },
+          ranges: [
+            { type: "SEMVER", events: [{ introduced: "0" }, { fixed }] },
+          ],
+        },
+      ],
+    },
+  ],
+});
+
+test("auditGithub: a github source whose npm twin matches by hash is OSV-audited", async () => {
+  const url =
+    "https://raw.githubusercontent.com/moment/moment/2.29.1/min/moment.min.js";
+  const body = "MOMENT\n";
+  const addon = addonWith(
+    { "VENDOR.md": `lib/moment.min.js\n${url}\n`, "lib/moment.min.js": body },
+    store({
+      vendorFile: "VENDOR.md",
+      set: new Set(["lib/moment.min.js"]),
+      manifest: [pinnedEntry("lib/moment.min.js", url)],
+    })
+  );
+  // The deterministic candidate (repo name "moment" @ "2.29.1") serves a listing
+  // whose SRI matches the bundled bytes, so the npm identity is proven.
+  const listing = {
+    files: [{ path: "/min/moment.min.js", integrity: sriOf(body) }],
+  };
+  await verifyVendor(
+    addon,
+    net({ bytes: body, listing, osv: osvFor("moment", "2.29.2") })
+  );
+  assert.deepEqual(addon.vendor.vulnerabilities, [
+    {
+      name: "moment",
+      version: "2.29.1",
+      ids: ["CVE-2022-24785"],
+      severity: "high",
+      fixed: ["2.29.2"],
+      file: "VENDOR.md", // anchored at the declared github URL, not the npm one
+      token: url,
+    },
+  ]);
+  assert.deepEqual(addon.vendor.unaudited, []);
+});
+
+test("auditGithub: a resolved+clean github twin records nothing (no vuln, not unaudited)", async () => {
+  const url =
+    "https://raw.githubusercontent.com/moment/moment/2.29.1/min/moment.min.js";
+  const body = "MOMENT\n";
+  const addon = addonWith(
+    { "VENDOR.md": `lib/moment.min.js\n${url}\n`, "lib/moment.min.js": body },
+    store({
+      vendorFile: "VENDOR.md",
+      manifest: [pinnedEntry("lib/moment.min.js", url)],
+    })
+  );
+  const listing = {
+    files: [{ path: "/min/moment.min.js", integrity: sriOf(body) }],
+  };
+  await verifyVendor(addon, net({ bytes: body, listing, osv: { vulns: [] } }));
+  assert.deepEqual(addon.vendor.vulnerabilities, []);
+  assert.deepEqual(addon.vendor.unaudited, []);
+});
+
+test("auditGithub: a github source with no npm hash-match (no LLM) is recorded unaudited", async () => {
+  const url = "https://raw.githubusercontent.com/who/what/1.0.0/lib.js";
+  const addon = addonWith(
+    { "VENDOR.md": `lib.js\n${url}\n`, "vendor/lib.js": "BODY\n" },
+    store({
+      vendorFile: "VENDOR.md",
+      manifest: [pinnedEntry("vendor/lib.js", url)],
+    })
+  );
+  // The candidate package serves a listing that matches nothing.
+  await verifyVendor(addon, net({ bytes: "BODY\n", listing: { files: [] } }));
+  assert.deepEqual(addon.vendor.unaudited, [
+    { path: "vendor/lib.js", source: url, repo: "who/what" },
+  ]);
+  assert.deepEqual(addon.vendor.vulnerabilities, []);
+});
+
+test("auditGithub: a first-party trusted org stays silent (no audit, not unaudited)", async () => {
+  const url =
+    "https://raw.githubusercontent.com/thunderbird/webext-support/" +
+    "6bbbf8ac2105d04c1b59083e8bd52e0046448ec7/modules/i18n/i18n.mjs";
+  const body = "BODY\n";
+  const addon = addonWith(
+    { "VENDOR.md": `i18n.mjs\n${url}\n`, "vendor/i18n.mjs": body },
+    store({
+      vendorFile: "VENDOR.md",
+      manifest: [pinnedEntry("vendor/i18n.mjs", url)],
+    })
+  );
+  await verifyVendor(addon, net({ bytes: body }));
+  assert.deepEqual(addon.vendor.vulnerabilities, []);
+  assert.deepEqual(addon.vendor.unaudited, []);
+});
+
+test("auditGithub: an LLM-proposed npm name is audited only after a hash match", async () => {
+  // The repo name "thing" is not the npm package; the deterministic candidate
+  // misses, the LLM proposes the real name "realpkg", which hash-matches.
+  const url =
+    "https://raw.githubusercontent.com/someuser/thing/1.0.0/dist/thing.js";
+  const body = "REAL\n";
+  const addon = addonWith(
+    { "VENDOR.md": `thing.js\n${url}\n`, "vendor/thing.js": body },
+    store({
+      vendorFile: "VENDOR.md",
+      manifest: [pinnedEntry("vendor/thing.js", url)],
+    })
+  );
+  const match = { files: [{ path: "/dist/thing.js", integrity: sriOf(body) }] };
+  const customNet = {
+    fetchBytes: async () => Buffer.from(body),
+    fetchJson: async (u) =>
+      u.includes("?meta")
+        ? u.includes("realpkg@1.0.0") // only the proposed package matches
+          ? match
+          : { files: [] }
+        : { downloads: 99999 },
+    postJson: async (_u, b) =>
+      b.package.name === "realpkg" ? osvFor("realpkg", "1.0.1") : { vulns: [] },
+  };
+  let asked = 0;
+  const llm = {
+    enabled: true,
+    resolvePrompt: "PROMPT",
+    callText: async () => {
+      asked++;
+      return '{"name":"realpkg","version":"1.0.0"}';
+    },
+  };
+  await verifyVendor(addon, customNet, llm);
+  assert.equal(asked, 1);
+  assert.equal(addon.vendor.vulnerabilities.length, 1);
+  assert.equal(addon.vendor.vulnerabilities[0].name, "realpkg");
+  assert.deepEqual(addon.vendor.unaudited, []);
+});
+
+test("auditGithub: an LLM proposal that does not hash-match is rejected -> unaudited", async () => {
+  const url =
+    "https://raw.githubusercontent.com/someuser/thing/1.0.0/dist/thing.js";
+  const body = "REAL\n";
+  const addon = addonWith(
+    { "VENDOR.md": `thing.js\n${url}\n`, "vendor/thing.js": body },
+    store({
+      vendorFile: "VENDOR.md",
+      manifest: [pinnedEntry("vendor/thing.js", url)],
+    })
+  );
+  const customNet = {
+    fetchBytes: async () => Buffer.from(body),
+    fetchJson: async (u) =>
+      u.includes("?meta") ? { files: [] } : { downloads: 99999 },
+    postJson: async () => ({ vulns: [] }),
+  };
+  const llm = {
+    enabled: true,
+    resolvePrompt: "PROMPT",
+    callText: async () => '{"name":"wrongpkg","version":"1.0.0"}',
+  };
+  await verifyVendor(addon, customNet, llm);
+  assert.deepEqual(addon.vendor.vulnerabilities, []);
+  assert.deepEqual(addon.vendor.unaudited, [
+    { path: "vendor/thing.js", source: url, repo: "someuser/thing" },
+  ]);
+});
+
+test("auditGithub: the LLM fallback is skipped when the budget is exhausted", async () => {
+  const url =
+    "https://raw.githubusercontent.com/someuser/thing/1.0.0/dist/thing.js";
+  const body = "REAL\n";
+  const addon = addonWith(
+    { "VENDOR.md": `thing.js\n${url}\n`, "vendor/thing.js": body },
+    store({
+      vendorFile: "VENDOR.md",
+      manifest: [pinnedEntry("vendor/thing.js", url)],
+    })
+  );
+  const customNet = {
+    fetchBytes: async () => Buffer.from(body),
+    fetchJson: async (u) =>
+      u.includes("?meta") ? { files: [] } : { downloads: 99999 },
+    postJson: async () => ({ vulns: [] }),
+  };
+  let asked = 0;
+  const llm = {
+    enabled: true,
+    resolvePrompt: "PROMPT",
+    budget: { consume: async () => false },
+    callText: async () => {
+      asked++;
+      return '{"name":"realpkg"}';
+    },
+  };
+  await verifyVendor(addon, customNet, llm);
+  assert.equal(asked, 0); // budget gate closed -> never asked
+  assert.deepEqual(addon.vendor.unaudited, [
+    { path: "vendor/thing.js", source: url, repo: "someuser/thing" },
+  ]);
+});
+
 // ---- the four checks (pure readers of addon.vendor) ----
 
 test("vendor-vulnerable: a recorded vulnerability becomes a finding at the package.json line", () => {
@@ -497,47 +721,34 @@ test("vendor-vulnerable: no recorded vulnerabilities -> no findings", () => {
   assert.deepEqual(vendorVulnerable.run(ctx), []);
 });
 
-// A github-sourced VENDOR lib has no npm identity to query OSV with, so it is
-// surfaced as an info "not vulnerability-checked" - one per trusted+pinned github
-// entry, anchored at its VENDOR source line. npm and untrusted entries are not.
-test("vendor-vuln-unknown: flags trusted+pinned github entries only", () => {
+// vendor-vuln-unknown is now a pure reader of vendor.unaudited (verify.js does
+// the github->npm resolution and decides what lands there). It emits one info per
+// entry, anchored at its VENDOR source line.
+test("vendor-vuln-unknown: one info per unaudited entry, at its VENDOR source line", () => {
   const ghUrl = "https://cdn.jsdelivr.net/gh/javve/list.js@v2.3.1/dist/list.js";
-  const npmUrl = "https://unpkg.com/lodash@4.17.20/lodash.js";
-  const vendorMd = `list.js\n${ghUrl}\nlodash.js\n${npmUrl}\n`;
+  const vendorMd = `list.js\n${ghUrl}\n`;
   const ctx = {
     addon: {
       files: new Map([["VENDOR.md", Buffer.from(vendorMd)]]),
       vendor: store({
         vendorFile: "VENDOR.md",
-        manifest: [
-          {
-            path: "vendor/list.js",
-            sourceUrl: ghUrl,
-            trusted: true,
-            pinned: true,
-          },
-          {
-            path: "vendor/lodash.js",
-            sourceUrl: npmUrl,
-            trusted: true,
-            pinned: true,
-          },
-          {
-            path: "vendor/x.js",
-            sourceUrl: "https://evil.example/x.js",
-            trusted: false,
-            pinned: false,
-          },
+        unaudited: [
+          { path: "vendor/list.js", source: ghUrl, repo: "javve/list.js" },
         ],
       }),
     },
   };
   const out = vendorVulnUnknown.run(ctx);
-  assert.equal(out.length, 1); // only the github entry
+  assert.equal(out.length, 1);
   assert.equal(out[0].item, "vendor/list.js");
   assert.equal(out[0].file, "VENDOR.md");
-  assert.equal(out[0].loc.line, 2); // the github source URL line
+  assert.equal(out[0].loc.line, 2); // the source URL line
   assert.equal(out[0].data.source, ghUrl);
+});
+
+test("vendor-vuln-unknown: no unaudited entries -> no findings", () => {
+  const ctx = { addon: { files: new Map(), vendor: store() } };
+  assert.deepEqual(vendorVulnUnknown.run(ctx), []);
 });
 
 test("unpinned-dependency: one finding per unpinned dep, anchored in package.json", () => {
@@ -556,11 +767,13 @@ test("unpinned-dependency: one finding per unpinned dep, anchored in package.jso
   assert.deepEqual(out[0].data, { spec: "^4.17.21" });
 });
 
-test("unpinned-vendor-source: one finding per unpinned-source result", () => {
+test("unpinned-vendor-source: anchored on the VENDOR line, URL as the hint", () => {
   const url = "https://unpkg.com/x/x.js";
   const ctx = {
     addon: {
+      files: new Map([["VENDOR", Buffer.from(`lib/x.js\n${url}\n`)]]),
       vendor: store({
+        vendorFile: "VENDOR",
         results: [
           { path: "lib/x.js", source: url, outcome: "unpinned-source" },
         ],
@@ -569,9 +782,10 @@ test("unpinned-vendor-source: one finding per unpinned-source result", () => {
   };
   const out = unpinnedVendorSource.run(ctx);
   assert.equal(out.length, 1);
-  assert.equal(out[0].file, "lib/x.js");
-  assert.equal(out[0].item, "lib/x.js");
-  assert.deepEqual(out[0].data, { url });
+  assert.equal(out[0].file, "VENDOR"); // anchored on the VENDOR declaration
+  assert.equal(out[0].loc.line, 2); // the line citing the source
+  assert.equal(out[0].item, "lib/x.js"); // the vendored file -> {{item}}
+  assert.equal(out[0].hint, url); // URL rides the locus line
 });
 
 test("vendor-modified: a modified result is a finding; verified passes silently", () => {

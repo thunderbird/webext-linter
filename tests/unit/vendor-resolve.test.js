@@ -26,7 +26,7 @@ test("resolveVendor uses the LLM fallback and drops hallucinated paths", async (
     called++;
     return '[{"file":"app.js","url":"https://unpkg.com/foo@1/app.js"},{"file":"ghost.js","url":"y"}]';
   };
-  const { set, manifest } = await resolveVendor({
+  const { set, manifest, vulnerabilities, unaudited } = await resolveVendor({
     addon,
     parsePrompt: "PARSE",
     enabled: true,
@@ -40,6 +40,8 @@ test("resolveVendor uses the LLM fallback and drops hallucinated paths", async (
     [["app.js", "https://unpkg.com/foo@1/app.js"]]
   );
   assert.deepEqual([...set], ["app.js"]);
+  // The network step fills these; resolveVendor leaves them empty.
+  assert.deepEqual([vulnerabilities, unaudited], [[], []]);
 });
 
 // Without a token the fallback never runs (deterministic only); an unmappable

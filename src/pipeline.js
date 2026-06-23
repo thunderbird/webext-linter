@@ -234,8 +234,18 @@ export async function runPipeline(opts) {
     // compare (EOL-tolerant), popularity, and the package.json<->file matching -
     // recording each file's result into the same shared store. A declaration
     // with nothing fetchable (or an injected offline transport, as the golden
-    // harness uses) makes no request, so offline runs stay deterministic.
-    await verifyVendor(addon, opts.vendorNet);
+    // harness uses) makes no request, so offline runs stay deterministic. The LLM
+    // params drive the github->npm resolution fallback (a github source whose npm
+    // twin the deterministic match misses); the same run-wide budget is shared.
+    await verifyVendor(addon, opts.vendorNet, {
+      enabled: opts.llmEnabled,
+      resolvePrompt: registry.prompt("vendor-npm-resolve"),
+      token: opts.llmApiKey,
+      model: opts.llmModel,
+      url: opts.llmApiUrl,
+      type: opts.llmApiType,
+      budget: llmBudget,
+    });
 
     // 1d. Classify the bundled (undeclared third-party) JS ONCE into
     // addon.bundled, read by the bundled checks (computed once, never

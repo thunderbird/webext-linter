@@ -426,14 +426,16 @@ deterministic-checks:
   response: |-
     A bundled dependency has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). Update {{item}} to {{fixed}} or later, re-bundle, and resubmit. If you believe the advisory does not apply to how this add-on uses the dependency, let us know why.
 
-# A VENDOR library sourced from a GitHub URL has no npm package identity, so it
-# cannot be audited against OSV; surfaced as info so the reviewer knows it went
-# unchecked (npm-sourced entries above are audited).
+# A vendored library the pre-step could not match to an npm package (src/vendor/
+# verify.js auditGithub tries the deterministic repo-name candidate, then an
+# LLM-proposed name, each re-proved by content hash); surfaced as info so the
+# reviewer knows it went unaudited. The file path + source render on the location
+# line, so the body needs no {{item}}/{{source}} slots.
 - title: Vendored library not vulnerability-checked
   severity: info
   check: vendor-vuln-unknown
   response: |-
-    The bundled third-party file {{item}} is sourced from a GitHub URL ({{source}}), so its known-vulnerability status could not be determined automatically - automated auditing against the OSV database covers npm-hosted sources only. To have this library checked, declare it in your VENDOR file with an npm source (unpkg or jsDelivr /npm) pinned to an exact version.
+    The add-on sourced a third-party file from a CDN, where its known-vulnerability status could not be determined automatically. To benefit from automated auditing against the OSV database, consider switching to an npm-hosted source and update your VENDOR file to point to a unpkg or jsDelivr package (pinned to an exact version).
 
 - title: Unpinned vendored source
   severity: error
@@ -1042,6 +1044,11 @@ verdict-intros:
 #                   structured {file, url} declarations, used during vendor
 #                   resolution when the deterministic scan comes up empty and a
 #                   token is set (token-less stays deterministic).
+#   vendor-npm-resolve: the LLM fallback that proposes the npm package a github-
+#                   sourced vendored library is published as, so it can be OSV-
+#                   audited. Used by verify.js when the deterministic repo-name
+#                   match misses; the proposal is re-proved by content hash before
+#                   any audit, so a wrong guess is harmless.
 prompts:
   system-intro: >-
     You are a Thunderbird WebExtension add-on reviewer. Each request gives you
@@ -1085,3 +1092,13 @@ prompts:
     objects, each {"file": "<add-on-relative path of the bundled file>", "url":
     "<source URL, or null if none is given>"}. Use forward slashes in paths and do
     not invent files or URLs that are not in the text. Return [] if it lists none.
+  vendor-npm-resolve: |-
+    The data below describes ONE third-party library file an add-on bundled,
+    copied from a GitHub repository: its repo ("owner/name"), the git ref it was
+    taken at, the bundled file's add-on-relative path, and the source URL.
+    Identify the npm package this library is published as, so it can be audited
+    for known vulnerabilities. Respond with ONLY a JSON object {"name": "<the exact
+    npm package name>", "version": "<the npm version matching the ref, or null>"}.
+    Use the exact npm package name, including an "@scope/" prefix for a scoped
+    package. If you cannot confidently identify a corresponding npm package,
+    respond {"name": null}. Do not invent a package name.

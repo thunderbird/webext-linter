@@ -10,7 +10,11 @@
 //     then gate on popularity (verified / not-popular) - except a github source
 //     from a first-party trusted org (e.g. github.com/thunderbird/...) is
 //     accepted by provenance, skipping the popularity bar. An unfetchable URL is
-//     escalated to manual review.
+//     escalated to manual review. An npm-sourced entry is also OSV-audited
+//     (auditNpm); a github-sourced one (bar a first-party org) is run through
+//     auditGithub, which tries to PROVE an npm twin by content-hash match (the
+//     deterministic repo-name candidate, then an optional LLM-proposed name,
+//     always re-proved by hash) and audit it, recording the rest as unaudited.
 //   - package.json dependencies pinned to a version: fetch the published file
 //     listing from unpkg ONCE (it carries a per-file sha256 integrity) and mark
 //     vendored any packaged file whose content hash matches a published file's
@@ -18,7 +22,7 @@
 //     large package. A file that does not hash-match is left alone, as it may be
 //     the author's own code or a modified copy. The same pinned name@version is
 //     also audited against OSV (auditNpm); known advisories are recorded for
-//     the vendor-vulnerable check. npm-sourced VENDOR entries are audited too.
+//     the vendor-vulnerable check.
 //
 // Belongs here: verifyVendor (the batch), the per-source compare, the popularity
 // lookup, and the default network transport. Does NOT belong here: URL
@@ -29,6 +33,8 @@
 import { createHash } from "node:crypto";
 
 import { classifySource } from "./sources.js";
+import { getProvider } from "../llm/provider.js";
+import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
 import {
   VENDOR_NPM_MIN_DOWNLOADS,
   VENDOR_GITHUB_MIN_STARS,
@@ -74,13 +80,30 @@ import {
  */
 
 /**
+ * @typedef {object} VendorLlm  The LLM params for the github->npm resolution
+ *   fallback, threaded from the pipeline (mirrors resolveVendor's LLM inputs).
+ *   When absent or `enabled` is false, github entries resolve deterministically
+ *   only (offline runs and the golden harness pass nothing).
+ * @property {boolean} [enabled]  Whether the LLM is enabled (--llm-enabled).
+ * @property {?string} [resolvePrompt]  The registry prompts.vendor-npm-resolve
+ *   text (the rubric for proposing an npm package).
+ * @property {?string} [token]  LLM token (a real key, or undefined keyless).
+ * @property {string} [model] @property {string} [url]  LLM base URL override.
+ * @property {string} [type]  LLM_API_TYPE (claude | chatgpt | ollama).
+ * @property {Function} [callText]  Injectable transport (else the provider's).
+ * @property {import("../llm/budget.js").LlmBudget} [budget]  Run-wide model cap.
+ */
+
+/**
  * Verify the resolved vendor declarations over the network, appending per-file
  * results to (and extending the skip-set of) the shared `addon.vendor` store.
  * @param {Addon} addon  Must already carry `addon.vendor` from resolveVendor.
  * @param {VendorNet} [net]
+ * @param {VendorLlm} [llm]  LLM params for the github->npm resolution fallback;
+ *   defaults to "no LLM" (deterministic resolution only).
  * @returns {Promise<void>}
  */
-export async function verifyVendor(addon, net = defaultNet) {
+export async function verifyVendor(addon, net = defaultNet, llm = {}) {
   const vendor = addon?.vendor;
   if (!vendor) {
     return;
@@ -96,8 +119,9 @@ export async function verifyVendor(addon, net = defaultNet) {
       });
       // An npm-sourced VENDOR lib is also audited for known vulnerabilities (the
       // same OSV query as a package.json dep), anchored at its VENDOR-file line.
-      // A github source has no npm identity, so the vendor-vuln-unknown check
-      // flags it as unaudited instead of guessing.
+      // A github source carries no npm identity directly, so auditGithub tries to
+      // PROVE one (content-hash match against a candidate npm package) and audit
+      // it too; an unprovable one is recorded as unaudited.
       const src = classifySource(entry.sourceUrl);
       if (src.kind === "npm") {
         await auditNpm(
@@ -108,6 +132,8 @@ export async function verifyVendor(addon, net = defaultNet) {
           vendor,
           net
         );
+      } else if (src.kind === "github") {
+        await auditGithub(entry, src, addon, vendor, net, llm);
       }
     }
   }
@@ -174,6 +200,164 @@ async function auditNpm(name, version, file, token, vendor, net) {
     file,
     token,
   });
+}
+
+/**
+ * Try to audit a github-sourced VENDOR entry via its npm twin. A first-party
+ * trusted org (VENDOR_TRUSTED_GITHUB_ORGS) stays completely silent - no audit,
+ * no unaudited record. Otherwise an npm identity is PROVEN by content-hash
+ * matching the bundled bytes against a candidate package's published files
+ * (npmHashMatches - path-independent, no bytes downloaded): the deterministic
+ * candidate first (repo name @ ref-without-v), then, only if that fails and the
+ * LLM is enabled, an LLM-proposed name that is RE-VERIFIED by the same hash match
+ * before any audit (the hash is the proof; a wrong guess is rejected, never
+ * audited). A proven identity is audited (auditNpm, anchored at the VENDOR-file
+ * source line - the developer sees the declared github URL, never the resolved
+ * npm one); an unresolved entry is recorded on vendor.unaudited for the
+ * vendor-vuln-unknown check.
+ * @param {VendorEntry & {trusted: boolean, pinned: boolean}} entry
+ * @param {VendorSource} src  The classified github source (carries repo + ref).
+ * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
+ * @param {VendorLlm} llm
+ * @returns {Promise<void>}
+ */
+async function auditGithub(entry, src, addon, vendor, net, llm) {
+  const owner = String(src.repo ?? "")
+    .split("/")[0]
+    .toLowerCase();
+  if (VENDOR_TRUSTED_GITHUB_ORGS.includes(owner)) {
+    return; // first-party (e.g. Thunderbird) - trusted by provenance, no audit
+  }
+  const bundled = addon.files.get(entry.path) ?? Buffer.alloc(0);
+  const version = String(src.ref ?? "").replace(/^v/i, "");
+
+  // (a) Deterministic: the npm package usually shares the repo name.
+  const repoName = String(src.repo ?? "")
+    .split("/")
+    .slice(1)
+    .join("/");
+  if (
+    repoName &&
+    version &&
+    (await npmHashMatches(repoName, version, bundled, net))
+  ) {
+    await auditNpm(repoName, version, vendor.vendorFile, entry.sourceUrl, vendor, net);
+    return;
+  }
+
+  // (b) LLM fallback: the model only PROPOSES a name (handling scoped/renamed
+  // packages the bare repo name misses); the hash match below re-proves it.
+  if (
+    llm.enabled &&
+    llm.resolvePrompt &&
+    (!llm.budget || (await llm.budget.consume()))
+  ) {
+    const proposal = await llmProposeNpm(entry, src, llm).catch(() => null);
+    const name = proposal?.name;
+    const ver = String(proposal?.version ?? version).replace(/^v/i, "");
+    if (name && ver && (await npmHashMatches(name, ver, bundled, net))) {
+      await auditNpm(name, ver, vendor.vendorFile, entry.sourceUrl, vendor, net);
+      return;
+    }
+  }
+
+  // (c) Unresolved - hand to vendor-vuln-unknown.
+  vendor.unaudited.push({
+    path: entry.path,
+    source: entry.sourceUrl,
+    repo: src.repo,
+  });
+}
+
+/**
+ * Whether `bytes` content-hash-matches ANY published file of the npm package
+ * name@version - a path-independent Subresource-Integrity match from the package
+ * "?meta" listing (the same proof verifyPackage uses, but for one buffer and
+ * fetching only the listing, no file bodies). Best-effort: any error, a net
+ * without fetchJson (offline / the golden harness), or a non-existent candidate
+ * package returns false, so the caller falls back / records the entry as
+ * unaudited rather than guessing.
+ * @param {string} name @param {string} version @param {Buffer} bytes
+ * @param {VendorNet} net
+ * @returns {Promise<boolean>}
+ */
+async function npmHashMatches(name, version, bytes, net) {
+  let listing;
+  try {
+    listing = await net.fetchJson(`https://unpkg.com/${name}@${version}/?meta`);
+  } catch {
+    return false;
+  }
+  const byHash = indexBySri(listing);
+  for (const algo of new Set([...byHash.keys()].map((k) => k.split("-")[0]))) {
+    if (byHash.has(`${algo}-${createHash(algo).update(bytes).digest("base64")}`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Index an unpkg "?meta" listing's published files by their SRI hash
+ * ("<algo>-<base64>" -> published path), first occurrence winning. unpkg emits
+ * standard padded base64, which matches Node's digest("base64"). Shared by
+ * verifyPackage (which needs the path) and npmHashMatches (which needs only
+ * membership).
+ * @param {MetaNode} listing
+ * @returns {Map<string, string>}
+ */
+function indexBySri(listing) {
+  const byHash = new Map();
+  for (const f of metaFiles(listing)) {
+    for (const sri of String(f.integrity ?? "")
+      .trim()
+      .split(/\s+/)) {
+      if (/^sha\d+-./.test(sri) && !byHash.has(sri)) {
+        byHash.set(sri, f.path);
+      }
+    }
+  }
+  return byHash;
+}
+
+/**
+ * Ask the LLM for the npm package (and version) a github-sourced library
+ * corresponds to. The reply is UNTRUSTED and only a hint - auditGithub re-proves
+ * it by hash before any audit. The repo/ref/file/source describing the library
+ * are wrapped in nonce markers as USER data, with the trusted rubric in the
+ * SYSTEM prompt (src/checks/lib/untrusted.js), exactly like resolveVendor's parse
+ * fallback.
+ * @param {VendorEntry} entry @param {VendorSource} src @param {VendorLlm} llm
+ * @returns {Promise<?{name: string, version: ?string}>}
+ */
+async function llmProposeNpm(entry, src, llm) {
+  const callText = llm.callText ?? getProvider(llm.type).callText;
+  const nonce = newNonce();
+  const body = JSON.stringify({
+    repo: src.repo,
+    ref: src.ref,
+    file: entry.path,
+    source: entry.sourceUrl,
+  });
+  const reply = await callText({
+    token: llm.token,
+    model: llm.model,
+    baseURL: llm.url,
+    system: `${framing(nonce)}\n\n${llm.resolvePrompt}`,
+    prompt: wrap(nonce, "VENDOR", body),
+  });
+  const m = String(reply).match(/\{[\s\S]*\}/);
+  if (!m) {
+    return null;
+  }
+  try {
+    const j = JSON.parse(m[0]);
+    return typeof j?.name === "string" && j.name
+      ? { name: j.name, version: typeof j.version === "string" ? j.version : null }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -306,18 +490,8 @@ async function verifyPackage(pkg, addon, vendor, net) {
   } catch {
     return; // can't list the package - its files (if shipped) are scanned as-is
   }
-  // Index the published files by their SRI hash. unpkg emits standard padded
-  // base64 (e.g. "sha256-<base64>"), which matches Node's digest("base64").
-  const byHash = new Map(); // "<algo>-<base64>" -> published path
-  for (const f of metaFiles(listing)) {
-    for (const sri of String(f.integrity ?? "")
-      .trim()
-      .split(/\s+/)) {
-      if (/^sha\d+-./.test(sri) && !byHash.has(sri)) {
-        byHash.set(sri, f.path);
-      }
-    }
-  }
+  // Index the published files by their SRI hash ("<algo>-<base64>" -> path).
+  const byHash = indexBySri(listing);
   const algos = [...new Set([...byHash.keys()].map((k) => k.split("-")[0]))];
   let popular = null; // looked up once, lazily, only if a file actually matches
   for (const [addonPath, mine] of addon.files) {

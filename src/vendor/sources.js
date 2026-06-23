@@ -18,6 +18,8 @@
  * @property {?string} pkg  npm package name (npm kind).
  * @property {?string} version  npm version, when given (npm kind); else null.
  * @property {?string} repo  "owner/repo" (github kind).
+ * @property {?string} ref  Git ref (version tag or commit) (github kind); else
+ *   null. The npm-resolution audit derives the version from this.
  */
 
 const UNTRUSTED = Object.freeze({
@@ -28,6 +30,7 @@ const UNTRUSTED = Object.freeze({
   pkg: null,
   version: null,
   repo: null,
+  ref: null,
 });
 
 // A concrete npm version (not a dist-tag like "latest"/"next").
@@ -105,6 +108,7 @@ function github(repo, ref, rawUrl) {
     trusted: true,
     kind: "github",
     repo,
+    ref: ref ?? null,
     rawUrl,
     pinned: Boolean(ref) && GIT_REF.test(ref),
   };

@@ -44,6 +44,10 @@ import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
  * @property {import("./verify.js").VendorVuln[]} vulnerabilities  Pinned npm
  *   packages (package.json deps + npm VENDOR entries) with known OSV advisories
  *   (filled by verifyVendor's audit; empty offline).
+ * @property {{path: string, source: ?string, repo: ?string}[]} unaudited
+ *   GitHub-sourced VENDOR entries that could not be resolved to a verified npm
+ *   identity for an OSV audit (filled by verifyVendor; empty offline). Read by
+ *   the vendor-vuln-unknown check to surface them as info.
  */
 
 // An exact semver (no range operators) - a concrete pinned version.
@@ -148,6 +152,9 @@ export async function resolveVendor({
     vendorFile: vendorFile?.name ?? null,
     // Filled by verifyVendor's OSV audit (network). Empty for offline runs.
     vulnerabilities: [],
+    // Filled by verifyVendor when a github source cannot be resolved to a
+    // verified npm identity (network). Empty for offline runs.
+    unaudited: [],
     // "Unparsed" only when we extracted nothing at all - neither a matched entry
     // nor a missing-file declaration. A parseable-but-missing VENDOR goes to the
     // missing-vendor-file check instead of a "could not be parsed" manual item.

@@ -1,22 +1,22 @@
-// Flags a VENDOR entry whose library cannot be checked for known
-// vulnerabilities: its source is a GitHub URL, which carries no npm package
-// identity to query OSV with. (npm-sourced VENDOR entries and package.json deps
-// ARE audited - see vendor-vulnerable / src/vendor/verify.js auditNpm.) Surfaced
-// as info so the reviewer knows the library is unaudited and can ask the
-// developer for an npm source. Deterministic, no network: it reads the resolved
-// addon.vendor.manifest and classifies each source offline.
+// Flags a vendored library that could not be checked for known vulnerabilities.
+// The network pre-step (src/vendor/verify.js auditGithub) already tried to prove
+// an npm identity for every github-sourced VENDOR entry - by content-hash
+// matching the bundled bytes against a candidate npm package, deterministically
+// and then via an LLM-proposed name - and audited the ones it could. The entries
+// it could NOT resolve are recorded on addon.vendor.unaudited; this check just
+// reads that and surfaces one info per entry, so the reviewer knows the library
+// went unaudited and the developer is nudged toward an npm-hosted source.
+// Deterministic, no network: a pure reader of the shared store.
 //
-// Only trusted + pinned entries qualify - the same gate as byte verification;
-// an untrusted/unpinned source already routes to vendor-unverified, so flagging
-// it as "unaudited" too would be redundant.
+// (First-party trusted-org github sources are never recorded as unaudited - they
+// are accepted by provenance - so they produce nothing here. npm-sourced entries
+// and resolved github twins are audited by vendor-vulnerable instead.)
 //
-// Belongs here: selecting trusted+pinned github VENDOR entries and emitting one
-// info finding + note each. Does NOT belong here: the OSV audit (-> vendor-
-// vulnerable / src/vendor/verify.js), source classification (-> src/vendor/
-// sources.js), or the wording (-> the registry).
+// Belongs here: turning each addon.vendor.unaudited entry into an info finding +
+// note. Does NOT belong here: the resolution/audit attempt (-> src/vendor/
+// verify.js), or the wording (-> the registry).
 
 import { finding } from "../../report/finding.js";
-import { classifySource } from "../../vendor/sources.js";
 import { lineContaining } from "../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -29,33 +29,27 @@ export default {
   run(ctx) {
     const { addon } = ctx;
     const vendor = addon?.vendor;
-    const manifest = vendor?.manifest ?? [];
+    const unaudited = vendor?.unaudited ?? [];
     const vendorName = vendor?.vendorFile ?? null;
     const vendorText = vendorName
       ? (addon.files?.get(vendorName)?.toString("utf8") ?? "")
       : "";
     const findings = [];
-    for (const entry of manifest) {
-      if (!entry.trusted || !entry.pinned) {
-        continue; // already handled by vendor-unverified
-      }
-      if (classifySource(entry.sourceUrl).kind !== "github") {
-        continue; // npm sources are OSV-audited by vendor-vulnerable
-      }
-      const line = lineContaining(vendorText, entry.sourceUrl);
+    for (const { path, source } of unaudited) {
+      const line = source ? lineContaining(vendorText, source) : null;
       const loc = line ? { line } : undefined;
       ctx.note?.(
         vendorName,
         loc,
-        `${entry.path} (source ${entry.sourceUrl}) could not be checked for known vulnerabilities`,
+        `${path} (source ${source}) could not be checked for known vulnerabilities`,
         "skipped"
       );
       findings.push(
         finding({
           file: vendorName,
           loc,
-          item: entry.path,
-          data: { source: entry.sourceUrl },
+          item: path,
+          data: { source },
         })
       );
     }
