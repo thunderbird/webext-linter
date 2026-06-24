@@ -1,13 +1,12 @@
 // LLM check: minimize web_accessible_resources. The deterministic pre-flight
 // resolves the clear cases as findings, with two concerns. (a) Over-broad
-// exposure - a resource pattern like "*" exposes the whole add-on, and MV3
-// matches like <all_urls> / *://*/* expose to every site. (b) A concrete exposed
-// resource that no content script or page loads (not web-reachable via
-// getURL/HTML/CSS) is a finding when clearly unloaded. When a resource is
-// ambiguous (live code names it, or the add-on uses dynamic loaders) each
-// suspected loader SITE becomes an LLM candidate ("does this site load F for a
-// web context?"); this check aggregates per exposed file F (any site loads it ->
-// the exposure is needed; none does -> needless).
+// exposure - a resource pattern like "*" exposes the whole add-on. (b) A
+// concrete exposed resource that no content script or page loads (not
+// web-reachable via getURL/HTML/CSS) is a finding when clearly unloaded. When a
+// resource is ambiguous (live code names it, or the add-on uses dynamic
+// loaders) each suspected loader SITE becomes an LLM candidate ("does this site
+// load F for a web context?"); this check aggregates per exposed file F (any
+// site loads it -> the exposure is needed; none does -> needless).
 //
 // Belongs here: classifying each web_accessible_resources entry as a finding, a
 // candidate, or clean, the per-site candidate set, and the per-F aggregation.
@@ -22,7 +21,6 @@
 
 import { finding } from "../../report/finding.js";
 import {
-  isBroadHost,
   referrerSupported,
   loaderTrace,
   loaderSites,
@@ -63,28 +61,29 @@ export default {
     const groups = [];
     let n = 0;
     const seen = new Set();
-    /** @param {string} key @param {?string} item  Emit one finding per key. */
-    const once = (key, item) => {
+    /**
+     * Emit one finding per key. `item` is the displayed entry; `locItem` is the
+     * manifest token to anchor on, which differs from `item` when a glob pattern
+     * exposed the file - the loc must point at the WAR pattern (e.g. "icons/*"),
+     * not the file's own coincidental line elsewhere (e.g. the "icons" field).
+     * @param {string} key @param {?string} item @param {?string} [locItem]
+     */
+    const once = (key, item, locItem = item) => {
       if (!seen.has(key)) {
         seen.add(key);
         findings.push(
-          finding({ file: "manifest.json", loc: lineOf(item), item })
+          finding({ file: "manifest.json", loc: lineOf(locItem), item })
         );
       }
     };
 
     for (const entry of entries) {
-      // (a) over-broad resource patterns and (MV3) matches.
+      // (a) over-broad resource patterns. A match like <all_urls> is not a file
+      // and does not belong in this resource-minimization finding.
       for (const pat of entry.resources) {
         if (isOverBroadResource(pat)) {
           ctx.note?.("manifest.json", null, `${pat} (over-broad)`, "fail");
           once(`res:${pat}`, pat);
-        }
-      }
-      for (const mt of entry.matches) {
-        if (isBroadHost(mt)) {
-          ctx.note?.("manifest.json", null, `${mt} (over-broad)`, "fail");
-          once(`match:${mt}`, mt);
         }
       }
 
@@ -131,11 +130,11 @@ export default {
             }
             groups.push({
               ids,
-              finding: { file: "manifest.json", loc: lineOf(file), item: file },
+              finding: { file: "manifest.json", loc: lineOf(pat), item: file },
             });
           } else {
             ctx.note?.("manifest.json", null, trace, "fail");
-            once(`unused-finding:${file}`, file);
+            once(`unused-finding:${file}`, file, pat);
           }
         }
       }

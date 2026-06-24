@@ -20,14 +20,13 @@
       <p class="lead">
         Resources exposed through <em>web_accessible_resources</em> that widen
         the add-on's attack surface more than necessary. Two concerns: an
-        over-broad exposure pattern (for example a wildcard exposing the whole
-        add-on, or an MV3 match like <em>&lt;all_urls&gt;</em> exposing it to
-        every site), and a concretely-exposed file that no web-facing context in
+        over-broad resource pattern (for example a wildcard exposing the whole
+        add-on), and a concretely-exposed file that no web-facing context in
         the add-on actually loads.
       </p>
       <p>
-        A deterministic pre-flight resolves the clear cases: over-broad patterns
-        and matches become findings outright, and a concrete exposed file that is
+        A deterministic pre-flight resolves the clear cases: an over-broad
+        resource pattern becomes a finding outright, and a concrete exposed file that is
         web-reachable is cleared. An exposed file that nothing web-facing loads,
         and that is named only by dead code with no dynamic loader, is reported
         as needless. When live code names the file or the add-on builds load
@@ -42,7 +41,7 @@
 flowchart TD
   A["web_accessible_resources entries"] --> Z{"Any entries declared?"}
   Z -- no --> S([skip — nothing to minimize])
-  Z -- yes --> B{"Over-broad resource pattern<br/>or over-broad match host?"}
+  Z -- yes --> B{"Over-broad resource pattern?"}
   B -- yes --> WARN([WARNING: over-broad<br/>exposure])
   B -- no --> C{"Concrete exposed file<br/>reachable by a web context?"}
   C -- yes --> OK([no finding — exposure needed])

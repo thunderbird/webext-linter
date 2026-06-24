@@ -419,8 +419,9 @@ test("unused-files: a doc-only reference does not count as a mention", () => {
   assert.ok(!manualItems(result).some((m) => m.file === "Images/banner.png"));
 });
 
-// minimize-WAR pre-flight: over-broad resource pattern and matches are findings;
-// a concrete resource no content script loads is a finding; a loaded one is fine.
+// minimize-WAR pre-flight: an over-broad resource pattern is a finding; a
+// concrete resource no content script loads is a finding; a loaded one is fine.
+// A match like <all_urls> is not a file and is never reported by this check.
 test("minimize-WAR flags over-broad exposure and unloaded resources", () => {
   const manifest = {
     manifest_version: 3,
@@ -439,7 +440,7 @@ test("minimize-WAR flags over-broad exposure and unloaded resources", () => {
     .run(ctxFrom(files, manifest))
     .findings.map((o) => o.item);
   assert.ok(items.includes("*")); // over-broad resource
-  assert.ok(items.includes("<all_urls>")); // over-broad matches
+  assert.ok(!items.includes("<all_urls>")); // a match is not a file - not reported
   assert.ok(items.includes("unused.png")); // exposed but unloaded (unambiguous)
   assert.ok(!items.includes("used.png")); // loaded by a content script
 });
@@ -539,4 +540,38 @@ test("minimize-WAR: a resource named only by dead code is a finding", () => {
   const result = minimizeWar.run(ctxFrom(files, manifest));
   assert.ok(result.findings.map((f) => f.item).includes("res.png"));
   assert.ok(!manualItems(result).some((m) => m.item === "res.png"));
+});
+
+// minimize-WAR: a match pattern (e.g. <all_urls>) is not a file and must never
+// appear in this resource-minimization finding; and a file exposed by a glob
+// anchors on the WAR pattern's line, not the file's coincidental occurrence
+// elsewhere in the manifest (here the "icons" field).
+test("minimize-WAR: no match patterns reported; globbed files anchor on the pattern line", () => {
+  const manifest = {
+    manifest_version: 3,
+    icons: { 16: "icons/icon16.png", 48: "icons/icon48.png" },
+    web_accessible_resources: [
+      { resources: ["icons/*"], matches: ["<all_urls>"] },
+    ],
+  };
+  const text = JSON.stringify(manifest, null, 2);
+  const files = {
+    "manifest.json": text,
+    "icons/icon16.png": ``,
+    "icons/icon48.png": ``,
+  };
+  const result = minimizeWar.run(ctxFrom(files, manifest));
+  const items = result.findings.map((f) => f.item);
+  // The match pattern is not a file - never reported here.
+  assert.ok(!items.includes("<all_urls>"));
+  // The exposed icon files are reported.
+  assert.ok(items.includes("icons/icon16.png"));
+  // Anchored on the WAR pattern line ("icons/*"), not the "icons" field line.
+  const patLine =
+    text.split(/\r?\n/).findIndex((l) => l.includes('"icons/*"')) + 1;
+  const iconsFieldLine =
+    text.split(/\r?\n/).findIndex((l) => l.includes('"icons/icon16.png"')) + 1;
+  assert.notEqual(patLine, iconsFieldLine); // the two tokens are on different lines
+  const f16 = result.findings.find((f) => f.item === "icons/icon16.png");
+  assert.equal(f16.loc.line, patLine);
 });
