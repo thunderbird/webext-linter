@@ -207,7 +207,7 @@ export class Registry {
 
   /**
    * The `check:` ids of the manual-checks entries. These are id metadata only -
-   * the canonical id for each manual check (matching its doc/checks/<id>.html
+   * the canonical id for each manual check (matching its docs/checks/<id>.html
    * page) - NOT runnable checks: they have no rule module and are deliberately
    * excluded from checkIds()/checkEntries(), so --checks-only/--checks-skip do
    * not act on them. Used for cross-referencing (docs, consistency tests).

@@ -396,7 +396,7 @@ test("manualChecks gates diff:false entries to new submissions", () => {
 
 // Every manual-checks entry carries a `check:` id (id metadata, not a runnable
 // check): the ids are present on all entries, unique, do not collide with the
-// rule-backed checkIds(), and each has a matching doc/checks/<id>.html page - so
+// rule-backed checkIds(), and each has a matching docs/checks/<id>.html page - so
 // the docs reference real registry ids, not invented ones.
 test("manual checks have unique, doc-backed check ids distinct from rule ids", () => {
   const reg = loadRegistry();
@@ -411,11 +411,11 @@ test("manual checks have unique, doc-backed check ids distinct from rule ids", (
     assert.ok(!runnable.has(id), `manual id ${id} collides with a rule id`);
   }
   // Each manual id has a documentation page (registry <-> docs stay in sync).
-  const docDir = path.join(here, "..", "..", "doc", "checks");
+  const docDir = path.join(here, "..", "..", "docs", "checks");
   for (const id of manualIds) {
     assert.ok(
       fs.existsSync(path.join(docDir, `${id}.html`)),
-      `missing doc/checks/${id}.html`
+      `missing docs/checks/${id}.html`
     );
   }
   // Sanity: the diff:false fork check is one of them.
