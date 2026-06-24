@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Experiment APIs not accepted</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Experiment APIs not accepted
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">experiment-not-allowed</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        An Experiment add-on whose experiment is not a recognised published
+        Thunderbird API draft — an unknown API name, including one that shadows a
+        built-in. Submissions like this are currently rejected, and the finding
+        short-circuits the rest of the review.
+      </p>
+      <p>
+        This is the only check that runs in the invalid-experiment phase: when
+        the pipeline decides an experiment is unsupported, it runs this check
+        alone and nothing else. Recognised but locally modified drafts do not
+        land here — they stay on the normal review path and are flagged by the
+        experiment-modified check instead. The check stays silent when
+        experiments are explicitly allowed and when the add-on is not an
+        Experiment. For each unsupported experiment the reason is refined to
+        "shadows a built-in" when its declared path actually resolves to a real
+        API.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A submission"] --> P{"Did the manifest parse?"}
+  P -- no --> S([skip])
+  P -- yes --> E{"Is it an Experiment?<br/>(declares experiment_apis)"}
+  E -- no --> OK([no finding])
+  E -- yes --> F{"Are experiments allowed?<br/>--allow-experiments"}
+  F -- yes --> S
+  F -- no --> G{"Any experiment classified<br/>as unsupported?"}
+  G -- no --> OK
+  G -- yes --> H{"Does its declared path<br/>resolve to a built-in API?"}
+  H -- yes --> ERR2([ERROR: API shadows<br/>a built-in API])
+  H -- no --> ERR([ERROR: not a published<br/>Thunderbird API draft])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class ERR2 err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told that new submissions using Experiment APIs are not
+        currently being accepted, except unmodified copies of the latest
+        published API drafts, with a link to the upstream drafts and to the
+        policy announcement.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/experiment-not-allowed.js</code> and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

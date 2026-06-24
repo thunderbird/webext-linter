@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unpinned dependency</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Unpinned dependency <span class="badge error">error</span></h1>
+        <div class="check-id">unpinned-dependency</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A dependency declared in package.json as a version range with nothing to
+        pin it to an exact release. A range can resolve to different versions
+        over time, so the bundled copy cannot be verified against a known
+        upstream.
+      </p>
+      <p>
+        Before the review begins, the vendor resolver reads the package.json
+        dependencies once. A dependency given as an exact version is considered
+        pinned; a range is accepted only if a committed lock file
+        (package-lock.json, npm-shrinkwrap.json, yarn.lock, or pnpm-lock.yaml)
+        records the exact version used. Specs that point at git, a URL, a file,
+        or a workspace are not npm-verifiable and are skipped. Whatever remains
+        unpinned is recorded, and this check turns each one into a finding.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A package.json dependency"] --> B{"Spec is an exact version?"}
+  B -- yes --> OK([no finding])
+  B -- no --> C{"Spec points at git, a URL,<br/>a file, or a workspace?"}
+  C -- yes --> S([skip])
+  C -- no --> D{"A lock file records<br/>the exact version?"}
+  D -- yes --> OK
+  D -- no --> ERR([ERROR: unpinned dependency])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told a bundled dependency is not pinned to an exact
+        version, that a range can resolve to different releases over time, and
+        that it should pin the version in package.json or commit a lock file
+        recording the exact version used.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/unpinned-dependency.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

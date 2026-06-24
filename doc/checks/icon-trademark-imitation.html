@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Check the icon for trademark or logo imitation</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Check the icon for trademark or logo imitation
+          <span class="badge manual">manual</span>
+        </h1>
+        <div class="check-id">icon-trademark-imitation</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This is a human-review item with no automated logic behind it, because
+        it is about an image the automated checks cannot see. A reviewer looks
+        at the add-on's icon.
+      </p>
+      <p>
+        The question is whether the icon imitates or incorporates the
+        Thunderbird or Mozilla logo. Using those marks on an add-on icon is not
+        allowed under Mozilla's trademark policy.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Reviewer inspects the<br/>add-on's icon"] --> B{"Does it imitate or incorporate<br/>the Thunderbird or Mozilla logo?"}
+  B -- no --> OK([no finding])
+  B -- yes --> M([flag for the developer / manual finding])
+
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class OK ok;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told the icon imitates or incorporates a Mozilla
+        trademark — the Thunderbird or Mozilla logo — which is not allowed, and
+        is asked to use a distinct icon.
+      </div>
+
+      <p class="source-note">
+        Source of truth: the manual-checks entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

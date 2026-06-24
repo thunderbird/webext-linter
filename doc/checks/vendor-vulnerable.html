@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vulnerable dependency</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Vulnerable dependency <span class="badge auto">auto</span></h1>
+        <div class="check-id">vendor-vulnerable</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A pinned third-party library whose bundled version has published security
+        advisories. This covers both a package.json dependency and an npm-sourced
+        VENDOR entry.
+      </p>
+      <p>
+        Before the review, every pinned npm package and version is audited once
+        against the OSV vulnerability database over the network. Each package
+        with known advisories is recorded with the advisory ids, the affected
+        version, the fixed versions, and a severity band. This check reads that
+        result and emits one finding per vulnerable package, anchored at its
+        declaration line. Its severity is <strong>auto</strong>: rather than a
+        fixed level, each finding takes its severity from the advisory band —
+        high or critical becomes an error, moderate or medium becomes a warning,
+        and anything else (low or unknown) is informational.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A pinned npm package@version<br/>(package.json dep or npm VENDOR entry)"] --> B{"OSV audit found<br/>known advisories?"}
+  B -- no --> OK([no finding])
+  B -- yes --> C{"Highest advisory band?"}
+  C -- "high / critical" --> ERR([ERROR: vulnerable dependency])
+  C -- "moderate / medium" --> WARN([WARNING: vulnerable dependency])
+  C -- "low / unknown" --> INFO([INFO: vulnerable dependency])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class WARN warn;
+  class INFO info;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told a bundled dependency has known security
+        vulnerabilities, with the affected version, the advisory ids, and the
+        severity, and is asked to update to a fixed release, re-bundle, and
+        resubmit — or to explain why the advisory does not apply to how the
+        add-on uses the dependency.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/vendor-vulnerable.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unparsable file</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Unparsable file <span class="badge info">info</span></h1>
+        <div class="check-id">unparsable-file</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A JavaScript file that failed to parse during analysis. Because its
+        syntax could not be read, the API checks for that file were skipped,
+        leaving a gap in the automated coverage.
+      </p>
+      <p>
+        It reads the per-file usage records gathered during parsing and reports
+        each file that carries a parse error, passing through the parser's own
+        error text. This is distinct from the api-coverage check, which reports
+        dynamic or aliased access in files that did parse.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A source file processed<br/>during analysis"] --> B{"Did the file fail to parse?"}
+  B -- no --> OK([no finding])
+  B -- yes --> INFO([INFO: file could not be parsed,<br/>API checks skipped])
+
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class INFO info;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The report notes that static-analysis coverage was limited because the
+        file could not be parsed and its API checks were skipped, quoting the
+        parser's error detail.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/unparsable-file.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

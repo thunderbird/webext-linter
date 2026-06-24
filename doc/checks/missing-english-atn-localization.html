@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing English ATN localization</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Missing English ATN localization
+          <span class="badge manual">manual</span>
+        </h1>
+        <div class="check-id">missing-english-atn-localization</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This is a human-review item with no automated logic behind it. A
+        reviewer checks which languages the add-on's ATN listing page is
+        available in.
+      </p>
+      <p>
+        English is Thunderbird's default language, so the listing is expected to
+        have an English version even when its primary localization is in another
+        language. The item catches listings that are missing that English
+        version.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Reviewer checks the<br/>ATN listing's localizations"] --> B{"Does it have an<br/>English version?"}
+  B -- yes --> OK([no finding])
+  B -- no --> M([flag for the developer / manual finding])
+
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class OK ok;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told the ATN listing should also have an English
+        localization, since English is Thunderbird's default language.
+      </div>
+
+      <p class="source-note">
+        Source of truth: the manual-checks entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

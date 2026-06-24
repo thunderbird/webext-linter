@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Invalid manifest JSON</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Invalid manifest JSON <span class="badge error">error</span></h1>
+        <div class="check-id">manifest-invalid-json</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A manifest.json is present at the add-on root but is not valid JSON, so
+        the submission cannot be read. This is the single finding in that case —
+        every other manifest check needs a parsed manifest, so they stay silent.
+      </p>
+      <p>
+        The actual parsing happens when the add-on is loaded; this check simply
+        reports the recorded parse error.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["manifest.json at the add-on root"] --> B{"Did it fail to parse as JSON?"}
+  B -- no --> OK([no finding — handled by<br/>the other manifest checks])
+  B -- yes --> ERR([ERROR: invalid manifest JSON])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told manifest.json is not valid JSON, with a link to the
+        WebExtension API documentation.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/manifest-invalid-json.js</code>
+        (parse error recorded by <code>src/addon/load.js</code>); wording in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

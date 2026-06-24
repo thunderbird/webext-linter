@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unencrypted data transmission</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Unencrypted data transmission
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">cleartext-transmission</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Data sent to a remote host over an unencrypted connection — a URL using
+        one of the non-TLS schemes http://, ws:// or ftp://. Anything sent in
+        cleartext can be read or tampered with in transit, so this is an error
+        whatever the payload is; there is no test for what is actually sent.
+      </p>
+      <p>
+        The check looks only at the developer's own JavaScript and only at overt
+        transmission APIs — fetch and its relatives such as XMLHttpRequest,
+        WebSocket, EventSource and sendBeacon — aimed at a remote host. Covert
+        loads that smuggle data through a URL are already a hard error in the
+        disguised-* checks, so they are deliberately not reported here to avoid
+        double-reporting the same line. An encrypted remote transmission over
+        https://, wss:// or ftps:// is fine.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["An outbound sink in the<br/>add-on's authored JavaScript"] --> B{"Authored code?<br/>(not a bundled library)"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Overt transmission API<br/>to a remote host?"}
+  C -- no --> OK([no finding — covert sinks<br/>handled by disguised-* checks])
+  C -- yes --> D{"Destination scheme is non-TLS?<br/>http / ws / ftp"}
+  D -- no --> OK2([no finding — encrypted<br/>transmission is fine])
+  D -- yes --> ERR([ERROR: cleartext data<br/>send to a remote host])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class OK2 ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that data is sent over an unencrypted connection to
+        the named host, and that all data must travel over an encrypted channel —
+        use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/cleartext-transmission.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

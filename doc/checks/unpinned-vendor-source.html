@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unpinned vendored source</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Unpinned vendored source <span class="badge error">error</span></h1>
+        <div class="check-id">unpinned-vendor-source</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A VENDOR-declared file whose source is on a trusted host but is not
+        pinned to an immutable reference — for example a link to a branch like
+        <em>main</em>, or an unversioned URL. Such a source can change after
+        review, so the bundled bytes cannot be verified against it.
+      </p>
+      <p>
+        Before the review, each declared source URL is classified offline. A
+        source on a trusted host counts as pinned only when it names a specific
+        version, tag, or full commit hash; a branch or an unversioned link does
+        not. Sources that are pinned move on to the byte comparison, and sources
+        on untrusted hosts are routed elsewhere. The trusted-but-not-pinned
+        sources are recorded, and this check turns each one into a finding.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A VENDOR entry's source URL"] --> B{"On a trusted host?"}
+  B -- no --> X([escalated to<br/>manual review])
+  B -- yes --> C{"Pinned to a version,<br/>tag, or commit?"}
+  C -- yes --> OK([no finding — fetched<br/>and byte-compared])
+  C -- no --> ERR([ERROR: unpinned<br/>vendored source])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR err;
+  class OK ok;
+  class X manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the vendored file cites a source that is not pinned to
+        an immutable version — a branch or unversioned URL — and is asked to link
+        to a specific version, tag, or commit so the file can be verified against
+        the exact bytes it was copied from.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/unpinned-vendor-source.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

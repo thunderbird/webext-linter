@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mistyped manifest value</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Mistyped manifest value <span class="badge warning">warning</span></h1>
+        <div class="check-id">mistyped-manifest-value</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A manifest key the schema does know about, but whose value has the wrong
+        type or shape — for instance a number where a string is expected, a
+        value outside an allowed range, or a list of the wrong length.
+        Thunderbird misreads or ignores such entries, so this is a warning.
+      </p>
+      <p>
+        The manifest is validated against a JSON Schema derived from the
+        annotated manifest schema. The check is deliberately conservative: it
+        only reports concrete, low-noise problems — wrong type, disallowed
+        enumerated value, out-of-range number, and wrong list length — and
+        ignores broader structural complaints. It never throws, and if the
+        schema cannot be built or compiled the check quietly disables itself so
+        a translation gap can never wrongly flag a valid manifest.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The reviewed add-on"] --> B{"Manifest present and parsed?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"JSON Schema built and<br/>compiled successfully?"}
+  C -- no --> S2([skip — check disables itself])
+  C -- yes --> D{"Does the manifest validate?"}
+  D -- yes --> OK([no finding])
+  D -- no --> E{"Any violation of a reportable<br/>keyword?<br/>type, enum, range, list length"}
+  E -- no --> OK
+  E -- yes --> WARN([WARNING: manifest value<br/>has the wrong type or shape])
+
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class WARN warn;
+  class OK ok;
+  class S skip;
+  class S2 skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that a named manifest entry has a problem with its
+        value and that Thunderbird ignores or misreads such entries, with a link
+        to the WebExtension API documentation.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/mistyped-manifest-value.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

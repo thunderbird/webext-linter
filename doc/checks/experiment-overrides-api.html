@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Experiment overrides a built-in API</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Experiment overrides a built-in API
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">experiment-overrides-api</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        An Experiment that declares an API which overrides a built-in
+        Thunderbird API or grafts a new member onto a built-in namespace.
+        Experiments may only add genuinely new APIs; they must not replace or
+        extend existing ones.
+      </p>
+      <p>
+        For each API path declared under experiment_apis, the check resolves the
+        path against the schema. A path that resolves to a registered experiment
+        or to a top-level namespace absent from the real schema is a genuinely
+        new API and is fine. Anything else collides with a built-in and is
+        reported. The check is silent for non-Experiments.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A submission"] --> E{"Did the manifest parse and<br/>is it an Experiment?"}
+  E -- no --> S([skip])
+  E -- yes --> L["For each declared<br/>experiment_apis path"]
+  L --> R{"Does the path resolve to a<br/>new API?<br/>(registered experiment or<br/>unknown top-level namespace)"}
+  R -- yes --> OK([no finding])
+  R -- no --> ERR([ERROR: Experiment overrides<br/>or extends a built-in API])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told the named Experiment API overrides or extends a
+        built-in Thunderbird API, that experiments may only add new APIs, and is
+        asked to expose the functionality under a new, distinct API namespace.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/experiment-overrides-api.js</code> and its entry
+        in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

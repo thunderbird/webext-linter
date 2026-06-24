@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Remote data transmission needs a privacy policy</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Remote data transmission needs a privacy policy
+          <span class="badge manual">manual</span>
+        </h1>
+        <div class="check-id">privacy-policy</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        An add-on that transmits data to a hardcoded remote server. When this
+        happens, the listing must carry a privacy policy that discloses what is
+        collected — but that policy lives in the listing field on the add-on
+        site, not in the package, so it cannot be verified automatically. The
+        trigger is deterministic, but the outcome is escalated to a human
+        reviewer rather than reported as a finding.
+      </p>
+      <p>
+        The check looks only at the developer's own JavaScript and only at overt
+        transmissions to a literal remote host. A purely dynamic destination is
+        left to the data-exfiltration review (which asks about consent), and a
+        covert disguised channel is already a hard error in the disguised-*
+        checks. This is the disclosure angle; it collects every distinct remote
+        host and escalates them for manual confirmation.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["An outbound sink in the<br/>add-on's authored JavaScript"] --> B{"Authored code?<br/>(not a bundled library)"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Overt transmission to a<br/>literal remote host?"}
+  C -- no --> D{"Any such transmission found<br/>across all sinks?"}
+  C -- yes --> D
+  D -- no --> OK([no finding])
+  D -- yes --> M([escalate to manual review])
+
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class OK ok;
+  class S skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        A reviewer is asked to confirm the listing carries a privacy policy that
+        details which user data is sent and to which services. The developer
+        guidance explains that the policy must be the actual text pasted into the
+        add-on site field — not a link to a remotely hosted policy — and that it
+        must describe how the extension collects, uses, stores, shares or
+        discloses information about people.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/privacy-policy.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

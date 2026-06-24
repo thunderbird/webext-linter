@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unused, hidden or duplicate files or folders</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Unused, hidden or duplicate files or folders
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">unused-files</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Files that should not ship in a published add-on: OS or editor junk and
+        hidden dotfiles, and files that no part of the add-on ever loads. Such
+        files complicate review, may leak information about the build system, and
+        needlessly inflate the package.
+      </p>
+      <p>
+        A deterministic pre-flight follows every static load edge — imports,
+        getURL, HTML and CSS references, and file-loading APIs — to decide what
+        is reachable. Dependency manifests, the manifest, locale catalogs and
+        documentation metadata are always exempt. Clear junk by name and a file
+        named only by dead code with no dynamic loader are reported directly.
+        When a file's name appears in live code, or the add-on builds load paths
+        at runtime, the linter cannot tell statically whether any site really
+        loads it, so each suspected loader site is handed to the model; the file
+        is unused only if no site loads it.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A packaged file"] --> B{"Vendored, doc metadata,<br/>dependency/lock, manifest,<br/>or a locale catalog?"}
+  B -- yes --> S([skip])
+  B -- no --> C{"Hidden/junk by name?<br/>dotfile, source map, archive,<br/>editor backup"}
+  C -- yes --> ERR([ERROR: hidden/junk file])
+  C -- no --> D{"Is the add-on an Experiment?"}
+  D -- yes --> S2([skip — reachability<br/>unreliable for Experiments])
+  D -- no --> E{"Statically reachable<br/>from an entry point?"}
+  E -- yes --> OK([no finding])
+  E -- no --> F{"Named only by dead code<br/>AND no dynamic loaders?"}
+  F -- yes --> ERR2([ERROR: orphan / unused file])
+  F -- no --> L{"LLM judges per loader site:<br/>does this site load the file?"}
+  L -- "at least one site loads it" --> OK
+  L -- "no site loads it" --> ERR2
+  L -- "unsure / no verdict" --> M([escalate to manual review])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR err;
+  class ERR2 err;
+  class OK ok;
+  class S skip;
+  class S2 skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the listed files or folders appear unused or hidden,
+        that they complicate review and bloat the package, and is asked to fix
+        its packaging so they are no longer included.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/unused-files.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

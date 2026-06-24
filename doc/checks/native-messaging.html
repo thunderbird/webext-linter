@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Native messaging needs disclosure</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Native messaging needs disclosure
+          <span class="badge manual">manual</span>
+        </h1>
+        <div class="check-id">native-messaging</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        An add-on that declares the <code>nativeMessaging</code> permission, which
+        lets it exchange messages with a native application running outside
+        Thunderbird. That native host is not part of the package, so a reviewer
+        must confirm the listing discloses what is exchanged, in keeping with the
+        No Surprises policy. The trigger is deterministic, but the outcome is
+        escalated to a human reviewer rather than reported as a finding.
+      </p>
+      <p>
+        The permission is the whole identity of this capability — the native
+        messaging APIs do not work without it — so the check keys purely off
+        whether the permission is declared, in either the permissions or the
+        optional permissions list. No JavaScript scan is needed. If the manifest
+        did not parse, or the permission is absent, nothing is escalated.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The add-on manifest"] --> B{"Manifest parsed?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"nativeMessaging declared?<br/>permissions or optional_permissions"}
+  C -- no --> OK([no finding])
+  C -- yes --> M([escalate to manual review])
+
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class OK ok;
+  class S skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        A reviewer is asked to confirm the add-on listing page discloses what
+        information is exchanged with the local application and that it complies
+        with the No Surprises policy. The native host itself does not need to be
+        part of the package.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/native-messaging.js</code> and
+        its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

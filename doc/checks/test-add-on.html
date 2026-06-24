@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Test the add-on and request testing information if needed</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Test the add-on and request testing information if needed
+          <span class="badge manual">manual</span>
+        </h1>
+        <div class="check-id">test-add-on</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This is a human-review item with no automated logic behind it. A
+        reviewer exercises the add-on's functionality in a dedicated test
+        profile to confirm it works as described.
+      </p>
+      <p>
+        While testing, the reviewer checks whether the review can proceed with
+        what is already available, or whether extra information — such as login
+        credentials for a website the add-on relies on — is needed to continue.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Reviewer tests the add-on<br/>in a test profile"] --> B{"Can the review continue<br/>with the available information?"}
+  B -- yes --> OK([no finding])
+  B -- no --> M([flag for the developer / manual finding])
+
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class OK ok;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is asked for detailed instructions on how to test the
+        add-on, and — if authentication is required — for a test username and
+        password supplied through the reviewer-only Whiteboard field.
+      </div>
+
+      <p class="source-note">
+        Source of truth: the manual-checks entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

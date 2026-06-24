@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Static analysis coverage</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Static analysis coverage <span class="badge info">info</span></h1>
+        <div class="check-id">api-coverage</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Places where the static analysis could not fully follow the code because
+        an API was reached dynamically or through an alias that cannot be
+        resolved without running the add-on. These are coverage gaps in the
+        runner's own analysis, not problems with the add-on itself.
+      </p>
+      <p>
+        It reads the per-file usage records gathered during parsing and forwards
+        each recorded limitation, using the parser's own diagnostic as the
+        message. Only files in the pure WebExtension tree are considered;
+        Experiment and core code as well as unreachable dead code are excluded. A
+        file that failed to parse outright is handled by the separate
+        unparsable-file check rather than here.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A parsed source file<br/>with recorded usages"] --> B{"In the pure WebExtension tree?<br/>(not Experiment/core, not dead code)"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Did the parser record any<br/>dynamic/aliased access<br/>it could not resolve?"}
+  C -- no --> OK([no finding])
+  C -- yes --> INFO([INFO: limited<br/>static-analysis coverage])
+
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class INFO info;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The report notes that static-analysis coverage was limited at the
+        flagged location, quoting the specific reason the access could not be
+        resolved, so a reviewer knows that part of the code was not fully
+        checked automatically.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/api-coverage.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

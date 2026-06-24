@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Minimize web_accessible_resources</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Minimize web_accessible_resources
+          <span class="badge warning">warning</span>
+        </h1>
+        <div class="check-id">minimize-web-accessible-resources</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Resources exposed through <em>web_accessible_resources</em> that widen
+        the add-on's attack surface more than necessary. Two concerns: an
+        over-broad exposure pattern (for example a wildcard exposing the whole
+        add-on, or an MV3 match like <em>&lt;all_urls&gt;</em> exposing it to
+        every site), and a concretely-exposed file that no web-facing context in
+        the add-on actually loads.
+      </p>
+      <p>
+        A deterministic pre-flight resolves the clear cases: over-broad patterns
+        and matches become findings outright, and a concrete exposed file that is
+        web-reachable is cleared. An exposed file that nothing web-facing loads,
+        and that is named only by dead code with no dynamic loader, is reported
+        as needless. When live code names the file or the add-on builds load
+        paths at runtime, each suspected loader site is handed to the model,
+        which judges whether that site exposes the file to a web context; the
+        exposure is needless only if no site does.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["web_accessible_resources entries"] --> Z{"Any entries declared?"}
+  Z -- no --> S([skip — nothing to minimize])
+  Z -- yes --> B{"Over-broad resource pattern<br/>or over-broad match host?"}
+  B -- yes --> WARN([WARNING: over-broad<br/>exposure])
+  B -- no --> C{"Concrete exposed file<br/>reachable by a web context?"}
+  C -- yes --> OK([no finding — exposure needed])
+  C -- no --> D{"Named only by dead code<br/>AND no dynamic loaders?"}
+  D -- yes --> WARN2([WARNING: needless exposure])
+  D -- no --> L{"LLM judges per loader site:<br/>does this site load the file<br/>for a web context?"}
+  L -- "at least one site exposes it" --> OK
+  L -- "no site exposes it" --> WARN2
+  L -- "unsure / no verdict" --> M([escalate to manual review])
+
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class WARN warn;
+  class WARN2 warn;
+  class OK ok;
+  class S skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told one or more web_accessible_resources entries may not
+        need to be exposed, that files belong there only when a web page or
+        content script must reach them, and is asked to remove the unnecessary
+        entries to reduce its exposed surface.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/minimize-web-accessible-resources.js</code> and
+        its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

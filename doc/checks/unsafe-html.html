@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Modifying innerHTML, unsanitized HTML</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Modifying innerHTML, unsanitized HTML
+          <span class="badge warning">warning</span>
+        </h1>
+        <div class="check-id">unsafe-html</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Dynamic content written into an HTML sink — <em>innerHTML</em>,
+        <em>outerHTML</em>, <em>srcdoc</em> or <em>insertAdjacentHTML</em>. If
+        that content can carry external or user-provided data and is not
+        sanitized, it is an injection risk.
+      </p>
+      <p>
+        This is a warning rather than an error: the construct is only dangerous
+        when the content is untrusted and unsanitized, which a static scan cannot
+        fully determine, so the check points the reviewer at each site instead of
+        deciding for them. Plain static-string content is not flagged. Bundled,
+        minified or otherwise non-authored files are skipped. Each remaining
+        dynamic-content sink hit becomes a finding naming the sink involved.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A JavaScript file in the add-on"] --> B{"Authored by the developer?<br/>not a bundled or minified library"}
+  B -- no --> S([skip])
+  B -- yes --> C["Scan for HTML sinks:<br/>innerHTML, outerHTML, srcdoc,<br/>insertAdjacentHTML"]
+  C --> D{"Is the content dynamic?<br/>not a plain static string"}
+  D -- no --> OK([no finding])
+  D -- yes --> WARN([WARNING: unsanitized<br/>HTML written to a sink])
+
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class WARN warn;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that dynamic content is assigned via the named sink,
+        and that if it can contain external or user-provided data it should be
+        sanitized (with DOMPurify or the Sanitizer API) or built using
+        textContent and createElement, with a link to the guide.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/unsafe-html.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

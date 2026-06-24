@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trademark violation</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Trademark violation <span class="badge error">error</span></h1>
+        <div class="check-id">trademark-violation</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Mozilla's trademark policy forbids certain brand names in an add-on's
+        name. "Firefox", "Mozilla" and "MZLA" are never allowed. "Thunderbird" is
+        only allowed in the trailing form "&lt;name&gt; for Thunderbird".
+      </p>
+      <p>
+        The check reads the add-on name from the manifest. If the name is a
+        localized <em>__MSG_…__</em> placeholder, it resolves the real text from
+        every locale file and checks each resolved name. All matching is
+        case-insensitive. The add-on icon is the other trademark vector, but
+        being an image it is left to manual review instead.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Add-on name in manifest.json"] --> B{"Is there a name?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Is the name a localized<br/>__MSG_key__ placeholder?"}
+  C -- yes --> R["Resolve the text from every<br/>_locales messages.json"]
+  C -- no --> D
+  R --> D{"Does the name contain<br/>Firefox, Mozilla or MZLA?"}
+  D -- yes --> ERR([ERROR: trademark violation])
+  D -- no --> E{"Does the name contain<br/>Thunderbird?"}
+  E -- no --> OK([no finding])
+  E -- yes --> F{"Only as the trailing<br/>'... for Thunderbird' form?"}
+  F -- yes --> OK
+  F -- no --> ERR
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told its name uses a registered Mozilla trademark, which is
+        not allowed except in the "&lt;name&gt; for Thunderbird" format.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/trademark-violation.js</code> and
+        its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

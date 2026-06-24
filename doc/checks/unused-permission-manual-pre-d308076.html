@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Possibly unused permissions (pre-D308076)</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Possibly unused permissions (pre-D308076)
+          <span class="badge manual">manual</span>
+        </h1>
+        <div class="check-id">unused-permission-manual-pre-d308076</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This check is a producer: it enumerates every declared named permission
+        that a reachable API call does not provably require, and escalates each one
+        for human review. A permission a reachable call provably needs, or one that
+        gates no callable API at all and so is justified by its mere presence, is
+        dropped. Host match patterns are out of scope here — they belong to the
+        minimize-host-permissions check.
+      </p>
+      <p>
+        It is the pre-D308076 sibling: it runs for add-ons whose minimum
+        Thunderbird version is below 154, or absent or unparsable, which are
+        treated as possibly running on older versions by default. The other sibling
+        producer covers versions at or above 154; exactly one of the two fires per
+        add-on. It feeds the more relaxed <code>unused-permission-pre-d308076</code>
+        recheck consumer, whose rubric keeps the <code>tabs</code> permission
+        justified whenever the code filters a tab query by url or title anywhere —
+        because before the fix that needs <code>tabs</code> even on the add-on's own
+        pages. When the whole-add-on summary pass is enabled, the escalated
+        permissions are handed to that consumer; otherwise they stand as a single
+        manual-review reminder.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The add-on manifest"] --> V{"strict_min_version &lt; 154,<br/>or absent / unparsable?"}
+  V -- no --> S([skip — sibling &gt;=154<br/>producer handles it])
+  V -- yes --> P["Each declared named permission<br/>(required + optional)"]
+  P --> H{"Is it a host match pattern?"}
+  H -- yes --> OK([no finding — host check's concern])
+  H -- no --> U{"Provably required by a reachable<br/>API call, or gates no callable API?"}
+  U -- yes --> OK2([no finding — justified])
+  U -- no --> ESC([escalate to manual review<br/>or hand to pre-D308076 consumer])
+
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class OK ok;
+  class OK2 ok;
+  class S skip;
+  class ESC manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that one or more declared permissions appear to be
+        unused and is asked to remove any it does not need, or to explain which
+        part of the add-on stops working without them.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/unused-permission-manual-pre-d308076.js</code> and
+        its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

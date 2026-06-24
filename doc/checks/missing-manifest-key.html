@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing manifest key</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Missing manifest key <span class="badge error">error</span></h1>
+        <div class="check-id">missing-manifest-key</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Some APIs only work when the manifest declares a particular key — for
+        example, the action API needs an <em>action</em> (or
+        <em>browser_action</em>) key. This check flags calls to such an API when
+        none of the keys it needs are declared.
+      </p>
+      <p>
+        It shares the same permission analysis as missing-permission. The
+        difference is the remedy: here the fix is to add a manifest key, not a
+        permission. The schema expresses "this API needs a key" as a
+        pseudo-permission of the form <em>manifest:&lt;key&gt;</em>, and the
+        manifest must declare at least one of the named keys.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["An API call in reachable code"] --> B{"Does the schema say it needs<br/>a manifest key? (e.g. 'action')"}
+  B -- no --> OK([no finding])
+  B -- yes --> C{"Is at least one of the<br/>required keys declared?"}
+  C -- yes --> OK
+  C -- no --> ERR([ERROR: missing manifest key])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told which manifest key the API needs and to add one of
+        those keys to manifest.json.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/missing-manifest-key.js</code> and
+        the shared analysis in <code>src/checks/lib/permissions.js</code>; wording
+        in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

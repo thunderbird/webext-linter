@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Forked add-on</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Forked add-on
+          <span class="badge manual">manual</span>
+        </h1>
+        <div class="check-id">forked-add-on</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This is a human-review item with no automated logic behind it. A
+        reviewer checks whether the submission is a fork of an existing add-on
+        that is still being actively maintained.
+      </p>
+      <p>
+        Forks are only allowed on ATN when their name clearly distinguishes them
+        from the original and they offer a significant difference in
+        functionality or code. Exceptions apply when the original is no longer
+        maintained. This item is skipped when reviewing an update against a
+        --diff-to baseline, since an established listing is not a new fork.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Submission under review"] --> G{"Reviewing a new submission<br/>(not a --diff-to update)?"}
+  G -- no --> S([skip])
+  G -- yes --> B{"Is it a fork of an existing,<br/>still-actively-maintained add-on?"}
+  B -- no --> OK([no finding])
+  B -- yes --> C{"Clearly distinguished from the original<br/>with a significant difference<br/>in functionality or code?"}
+  C -- yes --> OK
+  C -- no --> M([flag for the developer / manual finding])
+
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class OK ok;
+  class S skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told the submission appears to be a fork of an actively
+        maintained add-on that is not clearly distinguished with significant
+        differences, and is encouraged to contribute improvements to the
+        original project instead.
+      </div>
+
+      <p class="source-note">
+        Source of truth: the manual-checks entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

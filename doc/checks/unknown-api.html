@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unknown or unsupported WebExtension API</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Unknown or unsupported WebExtension API
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">unknown-api</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Calls to WebExtension APIs (<em>browser.*</em>, <em>messenger.*</em>,
+        <em>chrome.*</em>) that Thunderbird's annotated schema does not provide:
+        an unknown namespace, an unknown member of a known namespace, or a member
+        that exists but is explicitly marked unsupported.
+      </p>
+      <p>
+        Only the plain WebExtension code is checked — Experiment and privileged
+        code legitimately use Thunderbird internals rather than the WebExtension
+        schema, and dead code never runs, so both are excluded.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["An API call in the source"] --> B{"In reachable WebExtension code?"}
+  B -- no --> S([skip])
+  B -- yes --> C["Resolve the call against<br/>Thunderbird's schema"]
+  C --> D{"Namespace unknown?"}
+  D -- yes --> ERR([ERROR: unknown or<br/>unsupported API])
+  D -- no --> E{"Member unknown?"}
+  E -- yes --> ERR
+  E -- no --> F{"Marked 'unsupported'<br/>in the schema?"}
+  F -- yes --> ERR
+  F -- no --> OK([no finding])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the named API is not supported in the targeted
+        Thunderbird version, with a link to the WebExtension API documentation.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/unknown-api.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

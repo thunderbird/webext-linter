@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Background page script needs type module</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Background page script needs type module
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">background-page-module</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A background page is an HTML file that loads its scripts through
+        <em>&lt;script src&gt;</em> tags. When such a tag points at a JavaScript
+        file that uses ES module syntax but the tag is not declared as a module,
+        Thunderbird loads the file as a classic script and the module syntax fails,
+        breaking the background page.
+      </p>
+      <p>
+        The check reads the background page declared in the manifest, walks its
+        external script tags, and follows each one that resolves to a packaged
+        file. The sibling background-module check covers the manifest's
+        background scripts and service worker. Inline script blocks and tags that
+        already declare a module type, or whose target is remote or unresolved,
+        are out of scope.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The parsed manifest"] --> B{"Does the background declare<br/>an HTML page?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Is that page file present<br/>in the package?"}
+  C -- no --> S
+  C -- yes --> D["For each external script tag in the page"]
+  D --> E{"Does the tag already declare<br/>type=&quot;module&quot;?"}
+  E -- yes --> OK([no finding])
+  E -- no --> F{"Does its src resolve to a<br/>packaged JS file?"}
+  F -- no --> OK
+  F -- yes --> G{"Does that file use ES<br/>module syntax import / export?"}
+  G -- no --> OK
+  G -- yes --> ERR([ERROR: background page<br/>script needs type module])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the flagged background page loads a script that uses ES
+        module syntax while the script tag is not declared type="module", so the
+        page will fail to load, and must add type="module" to the tag.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/background-page-module.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

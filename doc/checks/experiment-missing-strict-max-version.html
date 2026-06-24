@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Experiment missing strict_max_version</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Experiment missing strict_max_version
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">experiment-missing-strict-max-version</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A valid Experiment that does not pin a strict_max_version. Experiments
+        call internal Thunderbird APIs that change between major versions, so
+        without a maximum supported version they can break silently when the
+        user upgrades.
+      </p>
+      <p>
+        This is a default-phase check, so it runs only once an experiment has
+        been accepted onto the normal review path — either because experiments
+        are allowed or because the bundled copy is a pristine upstream draft. An
+        unsupported experiment never reaches here, because it short-circuits to
+        the experiment-not-allowed check. The check is silent for
+        non-Experiments and for Experiments that already declare a maximum.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A submission"] --> P{"Did the manifest parse?"}
+  P -- no --> S([skip])
+  P -- yes --> E{"Is it an Experiment?<br/>(declares experiment_apis)"}
+  E -- no --> S
+  E -- yes --> V{"Does it pin a<br/>strict_max_version?"}
+  V -- yes --> OK([no finding])
+  V -- no --> ERR([ERROR: Experiment missing<br/>strict_max_version])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told the add-on uses Experiment APIs but declares no
+        strict_max_version, and that because experiments rely on internal APIs
+        that change between major Thunderbird versions they must set the gecko
+        strict_max_version in browser_specific_settings.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/experiment-missing-strict-max-version.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

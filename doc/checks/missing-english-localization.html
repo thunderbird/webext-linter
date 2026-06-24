@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing English localization</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Missing English localization <span class="badge warning">warning</span>
+        </h1>
+        <div class="check-id">missing-english-localization</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        English is Thunderbird's default language, so an add-on whose user-facing
+        text is not available in English leaves most users unable to read it. This
+        deterministic check decides, from the add-on's localization directories or
+        from its hardcoded text, whether an English version is present.
+      </p>
+      <p>
+        If the add-on uses a localization directory, the answer is settled by
+        whether an English directory exists. If it ships no localization
+        directories, the check detects the language of the hardcoded user-facing
+        text — the manifest name and description plus the visible text of every
+        packaged HTML page — with a language-detection library. Confident English
+        passes and confident non-English is a finding. When there is too little
+        text to trust, or English nearly ties the top language, the call is too
+        close to make automatically and is escalated to manual review.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The loaded add-on"] --> B{"Are the add-on files<br/>available?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Does it ship localization<br/>directories?"}
+  C -- yes --> D{"Is one of them an<br/>English directory?"}
+  D -- yes --> OK([no finding])
+  D -- no --> ERR([WARNING: missing<br/>English localization])
+  C -- no --> E{"Is there any hardcoded<br/>user-facing text?"}
+  E -- no --> OK
+  E -- yes --> F{"Too little text, or the<br/>language cannot be told?"}
+  F -- yes --> MAN([escalate to manual review])
+  F -- no --> G{"Is the detected language<br/>English?"}
+  G -- yes --> OK
+  G -- no --> H{"Does English nearly tie<br/>the top language?"}
+  H -- yes --> MAN
+  H -- no --> ERR
+
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR warn;
+  class OK ok;
+  class S skip;
+  class MAN manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is asked to include an English localization, since English is
+        Thunderbird's default language and most users who do not understand the
+        hardcoded language can read English, with a pointer to the i18n API and an
+        example. Low-confidence cases are instead handed to a human reviewer (and,
+        when the full summary runs, re-judged by the recheck consumer below).
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/missing-english-localization.js</code> and its entry
+        in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

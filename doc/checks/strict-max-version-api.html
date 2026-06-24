@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>API newer than strict_max_version</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          API newer than strict_max_version
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">strict-max-version-api</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        An add-on caps the Thunderbird versions it supports with
+        <em>strict_max_version</em>, but calls a function or event that was only
+        added in a <em>later</em> Thunderbird. No supported install would ever
+        have that API.
+      </p>
+      <p>
+        Comparison is by major version: a <em>strict_max_version</em> like "140.*"
+        covers every 140.x, so only a higher major counts as too new. When the
+        manifest declares no <em>strict_max_version</em> there is no ceiling to
+        violate, so the check does nothing.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The manifest and the API calls"] --> B{"Does the manifest declare<br/>strict_max_version?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"An API call in reachable code<br/>resolving to a function/event?"}
+  C -- no --> OK([no finding])
+  C -- yes --> D["Look up the Thunderbird version<br/>the API was added in"]
+  D --> E{"Added in a version &gt;<br/>strict_max_version?"}
+  E -- no --> OK
+  E -- yes --> ERR([ERROR: API newer than<br/>strict_max_version])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told to raise <em>strict_max_version</em> or stop using the
+        APIs added in a later Thunderbird.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/strict-max-version-api.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

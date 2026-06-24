@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing referenced file</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Missing referenced file <span class="badge error">error</span></h1>
+        <div class="check-id">bundled-files</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A file the add-on points to but does not actually ship. References are
+        gathered from two places: manifest entries (content script JS and CSS,
+        background scripts, pages and service workers, options pages, and action
+        popups) and file-loading API calls in the code (icon, theme and menu
+        registration, script and CSS injection, packaged-URL lookups, tab
+        creation, popup assignment, and so on).
+      </p>
+      <p>
+        Only references that look like packaged files are judged — relative or
+        root-relative paths with no URI scheme. Remote URLs, pseudo-schemes such
+        as moz-extension or about, and bare fragments are left to other checks.
+        Manifest references are anchored to the line that cites them; page-
+        relative loader references are resolved against the calling script's host
+        page directory, the rest against the package root. Each candidate that
+        is absent from the package produces a finding.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["References from the manifest<br/>and from file-loading API calls"] --> B{"Looks like a packaged file?<br/>relative path, no URI scheme,<br/>not a bare fragment"}
+  B -- no --> S([skip — remote or external])
+  B -- yes --> C{"Is the referenced file<br/>present in the package?"}
+  C -- yes --> OK([no finding])
+  C -- no --> ERR([ERROR: referenced file<br/>is not bundled])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that the named path is referenced but not bundled,
+        and asked to include every referenced file in the package.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/bundled-files.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

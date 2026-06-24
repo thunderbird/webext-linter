@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Async listener in runtime.onMessage()</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Async listener in runtime.onMessage()
+          <span class="badge warning">warning</span>
+        </h1>
+        <div class="check-id">async-onmessage</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        An async function passed straight to
+        <em>runtime.onMessage.addListener</em>. An async listener always returns
+        a Promise, which the messaging system reads as "I will respond" for
+        every message — that claims the response channel and breaks other
+        listeners.
+      </p>
+      <p>
+        The check looks only at the developer's own authored code; bundled,
+        minified or otherwise non-authored files are skipped. It matches the
+        specific call shape where a recognised API root's
+        <em>runtime.onMessage.addListener</em> is invoked, and flags it only when
+        the first argument is an async function or async arrow function. A plain
+        (non-async) listener is left alone.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A JavaScript file in the add-on"] --> B{"Authored by the developer?<br/>not a bundled or minified library"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Call matches<br/>runtime.onMessage.addListener<br/>on a known API root?"}
+  C -- no --> OK([no finding])
+  C -- yes --> D{"Is the first argument<br/>an async function?"}
+  D -- no --> OK
+  D -- yes --> WARN([WARNING: async listener<br/>on runtime.onMessage])
+
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class WARN warn;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told an asynchronous listener is attached to
+        runtime.onMessage, that this is error-prone and must be avoided, with a
+        link to the runtime messaging guide.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/async-onmessage.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>strict_max_version can be updated on ATN</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          strict_max_version can be updated on ATN
+          <span class="badge info">info</span>
+        </h1>
+        <div class="check-id">strict-max-version-bump-only</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A resubmission whose only meaningful change is a bump to the version and
+        the gecko strict_max_version. When nothing else in the add-on has
+        changed, the developer could have raised the maximum supported
+        Thunderbird version directly on the add-on's ATN admin page instead of
+        uploading a whole new version.
+      </p>
+      <p>
+        This is a diff check: it runs only when a baseline to compare against is
+        supplied. It compares file contents rather than the archive, so a
+        re-zip with different ordering or timestamps is not mistaken for a real
+        change. Every non-manifest file must be byte-identical, and the manifest
+        must differ only in the version and strict_max_version once key order is
+        normalised.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A resubmission"] --> P{"Run with a baseline<br/>to diff against?"}
+  P -- no --> S([skip])
+  P -- yes --> M{"Both manifests parsed<br/>on each side?"}
+  M -- no --> S
+  M -- yes --> F{"Every non-manifest file<br/>byte-identical to the baseline?"}
+  F -- no --> OK([no finding])
+  F -- yes --> V{"Did strict_max_version<br/>actually change?"}
+  V -- no --> OK
+  V -- yes --> R{"Is the rest of the manifest<br/>unchanged apart from<br/>version + strict_max_version?"}
+  R -- no --> OK
+  R -- yes --> INFO([INFO: strict_max_version<br/>can be updated on ATN])
+
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class INFO info;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told that instead of submitting a new version that only
+        raises strict_max_version, they can update the maximum version of the
+        most recent submission directly on the add-on's ATN admin page.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/strict-max-version-bump-only.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

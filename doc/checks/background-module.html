@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Background script needs type module</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Background script needs type module
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">background-module</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A background script that uses ES module syntax — static
+        <em>import</em> or <em>export</em> — only loads when the manifest declares
+        the background as a module. Without that declaration Thunderbird loads the
+        script as a classic script and the module syntax fails.
+      </p>
+      <p>
+        The check looks at the scripts the manifest lists under the background
+        entry (the <em>scripts</em> array and any <em>service_worker</em>). A
+        classic background script with no module syntax is fine. A background page
+        declared as HTML is handled by the sibling background-page-module check;
+        dynamic <em>import()</em> is a call, not module syntax, and does not count.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The parsed manifest"] --> B{"Is there a background object<br/>with script or service_worker entries?"}
+  B -- no --> S([skip])
+  B -- yes --> C["For each background script source"]
+  C --> D{"Could the script be parsed?"}
+  D -- no --> OK([no finding])
+  D -- yes --> E{"Does it use ES module syntax<br/>import / export?"}
+  E -- no --> OK
+  E -- yes --> F{"Is the background declared<br/>type: module?"}
+  F -- yes --> OK
+  F -- no --> ERR([ERROR: background script<br/>needs type module])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the flagged background code uses ES module syntax while
+        the background is not declared "type": "module", so Thunderbird will fail
+        to load it, and must add "type": "module" to the background entry.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/background-module.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

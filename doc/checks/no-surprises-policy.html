@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Check for "No Surprises" policy violations</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Check for "No Surprises" policy violations
+          <span class="badge manual">manual</span>
+        </h1>
+        <div class="check-id">no-surprises-policy</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This is a human-review item with no automated logic behind it. A
+        reviewer runs the add-on in a test profile and reads through its code,
+        looking for features or behavior that the user would not expect.
+      </p>
+      <p>
+        The concern is anything that is not documented on the ATN listing page
+        and could surprise the user. Comparing the submission against the last
+        accepted version with a diff can make any newly added, undisclosed
+        behavior easier to spot.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Reviewer tests the add-on and<br/>inspects the code, optionally diffing<br/>against the last accepted version"] --> B{"Is there an undocumented feature<br/>or behavior that could<br/>surprise the user?"}
+  B -- no --> OK([no finding])
+  B -- yes --> M([flag for the developer / manual finding])
+
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class OK ok;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told the add-on includes a feature unrelated to its
+        primary function and not mentioned in the ATN description, and that such
+        a feature must be strictly opt-in.
+      </div>
+
+      <p class="source-note">
+        Source of truth: the manual-checks entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

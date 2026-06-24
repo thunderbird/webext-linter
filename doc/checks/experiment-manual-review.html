@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Experiment code review</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Experiment code review <span class="badge manual">manual</span></h1>
+        <div class="check-id">experiment-manual-review</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Every Experiment submission. Experiments run with full access to
+        Thunderbird's internals, so beyond the automated checks they always need
+        a careful human code review of the whole add-on.
+      </p>
+      <p>
+        This check carries no automated severity. When the add-on is an
+        Experiment it emits a single whole-add-on escalation with no specific
+        location, which surfaces as a manual-review reminder. It is silent for
+        non-Experiments, and an unsupported experiment never reaches it because
+        such a submission aborts earlier in the invalid-experiment phase via the
+        experiment-not-allowed check.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A submission"] --> E{"Did the manifest parse and<br/>is it an Experiment?"}
+  E -- no --> S([skip])
+  E -- yes --> MAN([escalate to manual review])
+
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class S skip;
+  class MAN manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The reviewer is reminded that this is an Experiment submission requiring
+        careful code review because it has full access to Thunderbird's
+        internals, that the Experiment surface should be kept to a minimum and
+        must not harm usability, stability, performance, or security, and that
+        reviewing only the differences from the last approved submission can save
+        time.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/experiment-manual-review.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

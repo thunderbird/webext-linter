@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing permission</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Missing permission <span class="badge error">error</span></h1>
+        <div class="check-id">missing-permission</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        An add-on calls an API that requires a named permission, but that
+        permission is not declared in the manifest. The shared permission
+        analysis matches each reachable API call to the permission the schema
+        says it needs, and flags the ones the manifest does not request.
+      </p>
+      <p>
+        The check only ever proves a permission is <em>required</em>. It never
+        reports a declared permission as unused — a permission can be needed only
+        to read a permission-gated property of returned data, which a static scan
+        cannot confirm. (That advisory judgement is left to the optional
+        full-summary LLM pass.) An API that needs a manifest key rather than a
+        permission is handled by the missing-manifest-key check.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["An API call in reachable code"] --> B{"Does the schema say it requires<br/>a named permission?"}
+  B -- no --> OK([no finding])
+  B -- yes --> C{"Is that permission declared<br/>in the manifest?"}
+  C -- yes --> OK
+  C -- no --> ERR([ERROR: missing permission])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the named permission is required here but not declared,
+        and to add it to the requested permissions.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/missing-permission.js</code> and
+        the shared analysis in <code>src/checks/lib/permissions.js</code>; wording
+        in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Check the submission for spam</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Check the submission for spam
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">check-submission-spam</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This is a human-review item with no automated logic behind it. A
+        reviewer inspects the listing — name, summary, description and
+        screenshots — together with the add-on itself.
+      </p>
+      <p>
+        The goal is to decide whether the submission looks like spam or carries
+        inappropriate, misleading, or low-effort content. Because this protects
+        the catalogue from abusive listings, a confirmed problem is treated as a
+        hard rejection rather than a soft warning.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Reviewer inspects the listing<br/>name, summary, description, screenshots<br/>and the add-on itself"] --> B{"Does it look like spam, or contain<br/>inappropriate, misleading,<br/>or low-effort content?"}
+  B -- no --> OK([no finding])
+  B -- yes --> ERR([ERROR: inappropriate<br/>or spam content])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told that the add-on contains inappropriate content.
+      </div>
+
+      <p class="source-note">
+        Source of truth: the manual-checks entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

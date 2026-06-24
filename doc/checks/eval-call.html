@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>eval() usage</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>eval() usage <span class="badge error">error</span></h1>
+        <div class="check-id">eval-call</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A call to <em>eval()</em> in the add-on's own JavaScript. Passing a string
+        to eval runs it as code, which is dynamic code execution and is not
+        allowed.
+      </p>
+      <p>
+        A single shared scan walks every authored JavaScript source for the
+        dynamic-execution signals and tags each hit by kind; bundled third-party
+        libraries are excluded from that scan. This check reports each hit tagged
+        as an eval call, one finding per site.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["An authored JS source"] --> B{"Is it authored code,<br/>not a bundled library?"}
+  B -- no --> S([skip])
+  B -- yes --> C["Shared dynamic-execution scan"]
+  C --> D{"Any hit tagged as an<br/>eval call?"}
+  D -- no --> OK([no finding])
+  D -- yes --> ERR([ERROR: eval usage])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that dynamic code execution via eval() is not allowed.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/eval-call.js</code> and its entry
+        in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

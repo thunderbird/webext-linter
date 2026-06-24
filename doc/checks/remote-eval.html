@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Remote eval</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Remote eval <span class="badge error">error</span></h1>
+        <div class="check-id">remote-eval</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Code whose source may be remote being executed dynamically — the
+        statically-undecidable pattern of fetching something and then running it,
+        such as feeding the result of a fetch into eval. Executing remotely
+        fetched code is not allowed, because that code never goes through review.
+      </p>
+      <p>
+        The definite dynamic-execution cases — a literal eval, the Function
+        constructor, a string-valued timer, and unsafe-eval or unsafe-inline in
+        the content security policy — are handled by separate deterministic
+        checks. This check covers only the ambiguous case: a deterministic scan
+        finds each fetch-then-execute site, and because whether the executed code
+        is remote cannot be decided statically, each site is handed to the model,
+        which judges whether the code is fetched from a remote source.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A dynamic-execution site<br/>found by the eval scan"] --> B{"An ambiguous fetch-then-execute<br/>site, e.g. fetch().then(eval)?"}
+  B -- "no, a definite eval/Function/<br/>timer/CSP case" --> S([skip — handled by the<br/>deterministic eval checks])
+  B -- yes --> L{"LLM judges: is the executed<br/>code fetched from a remote<br/>source rather than static and local?"}
+  L -- "pass: static and local" --> OK([no finding])
+  L -- "fail: remote" --> ERR([ERROR: remote code executed])
+  L -- unsure --> M([escalate to manual review])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR err;
+  class OK ok;
+  class S skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that remotely fetched code is executed at the named
+        location, that remote code execution is not allowed, and is asked to
+        bundle all code with the add-on so it can be reviewed.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/remote-eval.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

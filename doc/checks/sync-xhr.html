@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Synchronous XMLHttpRequests</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Synchronous XMLHttpRequests <span class="badge error">error</span></h1>
+        <div class="check-id">sync-xhr</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A synchronous XMLHttpRequest — an <em>open</em> call whose third
+        argument is the boolean <em>false</em>. A synchronous request blocks the
+        UI thread until it completes, which can lock up the interface.
+      </p>
+      <p>
+        The check looks only at the developer's own authored code; bundled,
+        minified or otherwise non-authored files are skipped, since a library's
+        own request is not the developer's concern. Within authored code it
+        examines <em>open</em> member calls that carry an explicit boolean async
+        flag, and reports the ones where that flag is <em>false</em>. An
+        asynchronous call, or one without an explicit boolean flag, is left
+        alone.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A JavaScript file in the add-on"] --> B{"Authored by the developer?<br/>not a bundled or minified library"}
+  B -- no --> S([skip])
+  B -- yes --> C["For each .open member call"]
+  C --> D{"Third argument is an<br/>explicit boolean literal?"}
+  D -- no --> OK([no finding])
+  D -- yes --> E{"Is that boolean false?<br/>synchronous request"}
+  E -- no --> OK
+  E -- yes --> ERR([ERROR: synchronous<br/>XMLHttpRequest])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told it makes a synchronous XMLHttpRequest that can lock up
+        the user interface, and asked to use an asynchronous request instead.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/sync-xhr.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Debugger statement</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Debugger statement <span class="badge error">error</span></h1>
+        <div class="check-id">debugger-statement</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        An unconditional <em>debugger</em> statement left in shipped code. Such a
+        statement halts execution whenever developer tools are open, so it does
+        not belong in a released add-on.
+      </p>
+      <p>
+        The check looks only at the developer's own authored code; bundled,
+        minified or otherwise non-authored files are skipped. A
+        <em>debugger</em> statement placed inside an <em>if</em> is treated as
+        gated behind a config flag and allowed — since a debugger statement
+        cannot be made conditional any other way, an enclosing <em>if</em> is the
+        signal of intent. Only statements that always execute are flagged.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A JavaScript file in the add-on"] --> B{"Authored by the developer?<br/>not a bundled or minified library"}
+  B -- no --> S([skip])
+  B -- yes --> C["For each debugger statement"]
+  C --> D{"Enclosed by an if?<br/>gated behind a config flag"}
+  D -- yes --> OK([no finding — allowed])
+  D -- no --> ERR([ERROR: unconditional<br/>debugger statement])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told it contains an unconditional debugger statement and is
+        asked to remove it or move it behind a config flag.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/debugger-statement.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

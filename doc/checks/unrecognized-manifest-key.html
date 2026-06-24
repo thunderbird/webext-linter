@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unrecognized manifest key</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Unrecognized manifest key <span class="badge info">info</span></h1>
+        <div class="check-id">unrecognized-manifest-key</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A top-level key in manifest.json that the schema does not define.
+        Thunderbird simply ignores such keys, so this is reported only as
+        information, not as a defect that breaks loading.
+      </p>
+      <p>
+        It runs only when the manifest is present and parsed — a missing or
+        unparsable manifest is left to the manifest error checks. It also stays
+        silent if the schema lists no valid keys at all. Otherwise it walks
+        every top-level key and reports each one the schema does not know,
+        pointing at the relevant line in manifest.json where possible.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The reviewed add-on"] --> B{"Manifest present and parsed?"}
+  B -- no --> S([skip — left to the<br/>manifest error checks])
+  B -- yes --> C{"Schema defines a set of<br/>valid manifest keys?"}
+  C -- no --> S2([skip])
+  C -- yes --> D["For each top-level key<br/>in the manifest"]
+  D --> E{"Is the key defined<br/>by the schema?"}
+  E -- yes --> OK([no finding])
+  E -- no --> INFO([INFO: unrecognized<br/>manifest key, ignored])
+
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class INFO info;
+  class OK ok;
+  class S skip;
+  class S2 skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told which top-level manifest keys are unknown and will be
+        ignored by Thunderbird, with a link to the WebExtension API
+        documentation.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/unrecognized-manifest-key.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

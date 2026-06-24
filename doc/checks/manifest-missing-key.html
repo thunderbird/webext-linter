@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing required manifest key</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Missing required manifest key
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">manifest-missing-key</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A required top-level manifest key is absent. Every add-on must declare
+        <em>manifest_version</em>, <em>name</em> and <em>version</em>; if any of
+        these is missing the submission is invalid.
+      </p>
+      <p>
+        The check runs only on a manifest that parsed successfully. Each missing
+        required key is reported separately. Unknown permissions and a
+        manifest-version mismatch are handled by their own dedicated checks.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["manifest.json"] --> B{"Did it parse successfully?"}
+  B -- no --> OK([no finding — handled by<br/>missing / invalid manifest checks])
+  B -- yes --> C{"Are manifest_version, name<br/>and version all present?"}
+  C -- yes --> OK2([no finding])
+  C -- "one or more missing" --> ERR([ERROR: missing required<br/>manifest key — one per key])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+  class OK2 ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told one or more required manifest properties are missing,
+        with a link to the WebExtension API documentation.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/manifest-missing-key.js</code> and
+        its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

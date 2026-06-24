@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing English localization (recheck)</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Missing English localization (recheck)
+          <span class="badge warning">warning</span>
+        </h1>
+        <div class="check-id">missing-english-localization-recheck</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This is the post-summary recheck consumer for the deterministic
+        missing-English-localization check. When that check cannot settle the
+        language with confidence — too little text, or a near-tie with English — it
+        escalates the case here instead of guessing.
+      </p>
+      <p>
+        During the full-summary pass, that one item is appended to the add-on
+        summary and re-judged by a model that reads all of the user-facing text
+        together, which is far more reliable than language detection on a short
+        sample. The model's verdict is then mapped to an ordinary outcome: a
+        pass means the text is English or there is nothing to localize and the item
+        is dropped; a fail becomes a missing-English-localization finding; an
+        unsure verdict — or no verdict at all, when no summary ran — goes to manual
+        review. This check does no language analysis of its own; it only consumes
+        that verdict.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Items escalated by<br/>missing-english-localization"] --> B{"Was an item handed to<br/>this recheck consumer?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"What did the summary<br/>verdict say for the item?"}
+  C -- pass --> OK([no finding])
+  C -- fail --> ERR([WARNING: missing<br/>English localization])
+  C -- "unsure / no verdict" --> MAN([escalate to manual review])
+
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR warn;
+  class OK ok;
+  class S skip;
+  class MAN manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        On a fail verdict, the add-on is asked to include an English localization,
+        with the same guidance and i18n example as the producing check. Unsettled
+        items are handed to a human reviewer instead.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/missing-english-localization-recheck.js</code> and
+        its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>webext-linter — checks reference</title>
+    <link rel="stylesheet" href="assets/style.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <nav class="sidebar">
+        <div class="brand">
+          <h1>webext-linter</h1>
+          <p>Decision flowcharts for the checks the tool runs.</p>
+        </div>
+        <div id="toc-root"></div>
+      </nav>
+      <iframe
+        class="content-frame"
+        id="content"
+        title="Check detail"
+      ></iframe>
+    </div>
+
+    <script>
+      // Generated from assets/registry.yaml (regenerate via doc/REFRESH_DOCS_PROMPT.md).
+      // Order and grouping match the registry sections.
+      const CHECKS = [
+        // Deterministic checks
+        { id: "core-symbol-in-webext", group: "Deterministic checks", title: "Privileged core symbol in WebExtension code", severity: "error" },
+        { id: "trademark-violation", group: "Deterministic checks", title: "Trademark violation", severity: "error" },
+        { id: "unknown-api", group: "Deterministic checks", title: "Unknown or unsupported WebExtension API", severity: "error" },
+        { id: "deprecated-api", group: "Deterministic checks", title: "Deprecated WebExtension API", severity: "info" },
+        { id: "strict-max-version-api", group: "Deterministic checks", title: "API newer than strict_max_version", severity: "error" },
+        { id: "missing-permission", group: "Deterministic checks", title: "Missing permission", severity: "error" },
+        { id: "missing-manifest-key", group: "Deterministic checks", title: "Missing manifest key", severity: "error" },
+        { id: "manifest-invalid-json", group: "Deterministic checks", title: "Invalid manifest JSON", severity: "error" },
+        { id: "manifest-missing", group: "Deterministic checks", title: "Missing manifest", severity: "error" },
+        { id: "manifest-missing-key", group: "Deterministic checks", title: "Missing required manifest key", severity: "error" },
+        { id: "manifest-version-mismatch", group: "Deterministic checks", title: "Manifest version mismatch", severity: "error" },
+        { id: "manifest-unknown-permission", group: "Deterministic checks", title: "Unknown permission", severity: "error" },
+        { id: "unrecognized-manifest-key", group: "Deterministic checks", title: "Unrecognized manifest key", severity: "info" },
+        { id: "mistyped-manifest-value", group: "Deterministic checks", title: "Mistyped manifest value", severity: "warning" },
+        { id: "bundled-files", group: "Deterministic checks", title: "Missing referenced file", severity: "error" },
+        { id: "sync-xhr", group: "Deterministic checks", title: "Synchronous XMLHttpRequests", severity: "error" },
+        { id: "unsafe-html", group: "Deterministic checks", title: "Modifying innerHTML, unsanitized HTML", severity: "warning" },
+        { id: "debugger-statement", group: "Deterministic checks", title: "Debugger statement", severity: "error" },
+        { id: "async-onmessage", group: "Deterministic checks", title: "Async listener in runtime.onMessage()", severity: "warning" },
+        { id: "code-sanity", group: "Deterministic checks", title: "JavaScript code errors", severity: "info" },
+        { id: "minimize-host-permissions", group: "Deterministic checks", title: "Minimize host permissions", severity: "info" },
+        { id: "unused-permission-manual", group: "Deterministic checks", title: "Possibly unused permissions", severity: "manual" },
+        { id: "unused-permission-manual-pre-d308076", group: "Deterministic checks", title: "Possibly unused permissions", severity: "manual" },
+        { id: "unused-permission", group: "Deterministic checks", title: "Unused permission", severity: "warning" },
+        { id: "unused-permission-pre-d308076", group: "Deterministic checks", title: "Unused permission", severity: "warning" },
+        { id: "missing-library", group: "Deterministic checks", title: "Missing third-party library reference", severity: "error" },
+        { id: "obfuscated-code", group: "Deterministic checks", title: "Source Archive (minified or obfuscated code) required", severity: "error" },
+        { id: "strict-max-version-bump-only", group: "Deterministic checks", title: "'strict_max_version can be updated on ATN'", severity: "info" },
+        { id: "api-coverage", group: "Deterministic checks", title: "Static analysis coverage", severity: "info" },
+        { id: "unparsable-file", group: "Deterministic checks", title: "Unparsable file", severity: "info" },
+        { id: "experiment-not-allowed", group: "Deterministic checks", title: "Experiment APIs not accepted", severity: "error" },
+        { id: "experiment-modified", group: "Deterministic checks", title: "Modified or outdated Experiment draft", severity: "error" },
+        { id: "experiment-missing-strict-max-version", group: "Deterministic checks", title: "Experiment missing strict_max_version", severity: "error" },
+        { id: "experiment-overrides-api", group: "Deterministic checks", title: "Experiment overrides a built-in API", severity: "error" },
+        { id: "experiment-manual-review", group: "Deterministic checks", title: "Experiment code review", severity: "manual" },
+        { id: "non-experiment-strict-max-version", group: "Deterministic checks", title: "Unnecessary strict_max_version", severity: "warning" },
+        { id: "unpinned-dependency", group: "Deterministic checks", title: "Unpinned dependency", severity: "error" },
+        { id: "vendor-vulnerable", group: "Deterministic checks", title: "Vulnerable dependency", severity: "auto" },
+        { id: "vendor-vuln-unknown", group: "Deterministic checks", title: "Vendored library not vulnerability-checked", severity: "info" },
+        { id: "unpinned-vendor-source", group: "Deterministic checks", title: "Unpinned vendored source", severity: "error" },
+        { id: "vendor-modified", group: "Deterministic checks", title: "Modified vendored library", severity: "error" },
+        { id: "vendor-unverified", group: "Deterministic checks", title: "Vendored library needs manual verification", severity: "manual" },
+        { id: "missing-vendor-file", group: "Deterministic checks", title: "Missing vendored file", severity: "warning" },
+        { id: "disguised-resource", group: "Deterministic checks", title: "Disguised data transmission (resource)", severity: "error" },
+        { id: "disguised-stylesheet", group: "Deterministic checks", title: "Disguised data transmission (stylesheet)", severity: "error" },
+        { id: "disguised-window", group: "Deterministic checks", title: "Disguised data transmission (window)", severity: "error" },
+        { id: "disguised-navigation", group: "Deterministic checks", title: "Disguised data transmission (navigation)", severity: "error" },
+        { id: "cleartext-transmission", group: "Deterministic checks", title: "Unencrypted data transmission", severity: "error" },
+        { id: "privacy-policy", group: "Deterministic checks", title: "Remote data transmission needs a privacy policy", severity: "manual" },
+        { id: "native-messaging", group: "Deterministic checks", title: "Native messaging needs disclosure", severity: "manual" },
+        { id: "default-locale-missing", group: "Deterministic checks", title: "Missing default_locale", severity: "error" },
+        { id: "default-locale-unused", group: "Deterministic checks", title: "Unused default_locale", severity: "error" },
+        { id: "addon-icon-missing", group: "Deterministic checks", title: "Add-on icon missing", severity: "info" },
+        { id: "background-module", group: "Deterministic checks", title: "Background script needs type module", severity: "error" },
+        { id: "background-page-module", group: "Deterministic checks", title: "Background page script needs type module", severity: "error" },
+        { id: "eval-call", group: "Deterministic checks", title: "eval() usage", severity: "error" },
+        { id: "function-constructor", group: "Deterministic checks", title: "Function constructor usage", severity: "error" },
+        { id: "string-timer", group: "Deterministic checks", title: "Code-string timer", severity: "error" },
+        { id: "csp-unsafe-eval", group: "Deterministic checks", title: "CSP allows 'unsafe-eval'", severity: "error" },
+        { id: "csp-unsafe-inline", group: "Deterministic checks", title: "CSP allows 'unsafe-inline'", severity: "error" },
+        { id: "missing-english-localization", group: "Deterministic checks", title: "Missing English localization", severity: "warning" },
+        { id: "missing-english-localization-recheck", group: "Deterministic checks", title: "Missing English localization", severity: "warning" },
+        // LLM checks
+        { id: "strict-min-version-api", group: "LLM checks", title: "API newer than strict_min_version", severity: "error" },
+        { id: "unused-files", group: "LLM checks", title: "Unused, hidden or duplicate files or folders", severity: "error" },
+        { id: "unused-files-recheck", group: "LLM checks", title: "Unused, hidden or duplicate files or folders", severity: "error" },
+        { id: "minimize-web-accessible-resources", group: "LLM checks", title: "Minimize web_accessible_resources", severity: "warning" },
+        { id: "minimize-web-accessible-resources-recheck", group: "LLM checks", title: "Minimize web_accessible_resources", severity: "warning" },
+        { id: "remote-script", group: "LLM checks", title: "Remote script injection", severity: "error" },
+        { id: "remote-eval", group: "LLM checks", title: "Remote eval", severity: "error" },
+        { id: "data-exfiltration", group: "LLM checks", title: "User-data exfiltration", severity: "error" },
+        { id: "data-exfiltration-recheck", group: "LLM checks", title: "User-data exfiltration", severity: "error" },
+        // Manual review
+        { id: "check-submission-spam", group: "Manual review", title: "Check the submission for spam", severity: "error" },
+        { id: "test-add-on", group: "Manual review", title: "Test the add-on and request testing information if needed", severity: "manual" },
+        { id: "no-surprises-policy", group: "Manual review", title: "Check for \"No Surprises\" policy violations", severity: "manual" },
+        { id: "missing-payment-disclosure", group: "Manual review", title: "Check for a missing payment disclosure", severity: "manual" },
+        { id: "suitability-for-listing", group: "Manual review", title: "Check suitability for listing", severity: "manual" },
+        { id: "acceptable-use-policy", group: "Manual review", title: "Acceptable Use Policy", severity: "manual" },
+        { id: "icon-trademark-imitation", group: "Manual review", title: "Check the icon for trademark or logo imitation", severity: "manual" },
+        { id: "missing-atn-description", group: "Manual review", title: "Missing ATN description or details", severity: "manual" },
+        { id: "missing-english-atn-localization", group: "Manual review", title: "Missing English ATN localization", severity: "manual" },
+        { id: "forked-add-on", group: "Manual review", title: "Forked add-on", severity: "manual" },      ];
+
+      const root = document.getElementById("toc-root");
+      const frame = document.getElementById("content");
+      const links = new Map();
+      let lastGroup = null;
+
+      for (const c of CHECKS) {
+        if (c.group !== lastGroup) {
+          lastGroup = c.group;
+          const h = document.createElement("div");
+          h.className = "group-title";
+          h.textContent = c.group;
+          root.appendChild(h);
+          const ul = document.createElement("ul");
+          ul.className = "toc";
+          ul.id = "toc-" + c.group.replace(/\W+/g, "-").toLowerCase();
+          root.appendChild(ul);
+        }
+        const ul = root.lastElementChild;
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = "#" + c.id;
+        a.innerHTML =
+          '<span class="label">' + c.title + "</span>" +
+          '<span class="badge ' + c.severity + '">' + c.severity + "</span>";
+        li.appendChild(a);
+        ul.appendChild(li);
+        links.set(c.id, a);
+      }
+
+      function select(id) {
+        const target = links.has(id) ? id : CHECKS[0].id;
+        frame.src = "checks/" + target + ".html";
+        for (const [key, a] of links) {
+          a.classList.toggle("active", key === target);
+        }
+      }
+
+      window.addEventListener("hashchange", () =>
+        select(location.hash.slice(1))
+      );
+      select(location.hash.slice(1));
+    </script>
+  </body>
+</html>

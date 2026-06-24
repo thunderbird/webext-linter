@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Add-on icon missing</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Add-on icon missing <span class="badge info">info</span></h1>
+        <div class="check-id">addon-icon-missing</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        An add-on that declares no usable top-level <em>icons</em> entry ships no
+        defined add-on icon, so Thunderbird shows the generic puzzle-piece
+        placeholder in the Add-ons Manager. This is an advisory: defining an icon
+        improves user acceptance.
+      </p>
+      <p>
+        An icon counts as defined only when the <em>icons</em> object holds at
+        least one non-empty string path. An absent key, a non-object value, or an
+        object with no string paths all mean "no icon defined". Static themes and
+        dictionaries (language packs) are not represented by an add-on icon, so
+        they are exempt.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The loaded add-on"] --> B{"Did manifest.json parse?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Is this a static theme<br/>or a dictionary?"}
+  C -- yes --> S
+  C -- no --> D{"Does the icons key hold at least<br/>one non-empty string path?"}
+  D -- yes --> OK([no finding])
+  D -- no --> INFO([INFO: add-on icon missing])
+
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class INFO info;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is advised that adding an add-on icon in manifest.json improves
+        user acceptance, with a link to the supported manifest keys documentation.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/addon-icon-missing.js</code> and
+        its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

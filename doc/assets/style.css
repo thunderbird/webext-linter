@@ -1,0 +1,247 @@
+/* Shared styling for the webext-linter check documentation site:
+   the index shell (sidebar + content iframe) and the individual check pages. */
+
+:root {
+  --bg: #ffffff;
+  --bg-alt: #f6f7f9;
+  --border: #e2e5ea;
+  --text: #1c2024;
+  --text-muted: #5b626b;
+  --accent: #2d6cdf;
+  --accent-soft: #eaf1fd;
+  --error: #c0392b;
+  --warning: #b7791f;
+  --info: #2c7a7b;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.55;
+}
+
+/* ----------------------------------------------------------------- shell -- */
+
+.shell {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--bg-alt);
+  overflow-y: auto;
+  padding: 1.25rem 0 2rem;
+}
+
+.sidebar .brand {
+  padding: 0 1.25rem 0.75rem;
+}
+
+.sidebar .brand h1 {
+  font-size: 1.05rem;
+  margin: 0 0 0.25rem;
+}
+
+.sidebar .brand p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.sidebar .group-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 1.25rem 1.25rem 0.4rem;
+  font-weight: 600;
+}
+
+.toc {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc a {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.4rem 1.25rem;
+  text-decoration: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  border-left: 3px solid transparent;
+}
+
+.toc a:hover {
+  background: var(--accent-soft);
+}
+
+.toc a.active {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  font-weight: 600;
+}
+
+.toc a .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-frame {
+  border: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ------------------------------------------------------------ check page -- */
+
+.page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 2.5rem 2.5rem 4rem;
+}
+
+.page header.check-header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.page h1 {
+  font-size: 1.6rem;
+  margin: 0 0 0.5rem;
+}
+
+.page .check-id {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.page h2 {
+  font-size: 1.1rem;
+  margin: 2rem 0 0.6rem;
+}
+
+.page p {
+  margin: 0.6rem 0;
+}
+
+.page .lead {
+  font-size: 1.02rem;
+}
+
+/* ------------------------------------------------------------ severity --- */
+
+.badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  color: #fff;
+  vertical-align: middle;
+}
+
+.badge.error {
+  background: var(--error);
+}
+.badge.warning {
+  background: var(--warning);
+}
+.badge.info {
+  background: var(--info);
+}
+/* `auto`: severity is decided per finding (e.g. by advisory band). */
+.badge.auto {
+  background: #6b46c1;
+}
+/* `manual`: no automated severity — escalated to human review. */
+.badge.manual {
+  background: #5b626b;
+}
+
+/* In the TOC, badges are tiny and outlined for a quieter look. */
+.toc .badge {
+  font-size: 0.6rem;
+  padding: 0.05rem 0.4rem;
+  flex: none;
+}
+
+/* --------------------------------------------------------------- flow ----- */
+
+.flow {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.flow .mermaid {
+  margin: 0;
+}
+
+.outcome {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 0.75rem 1rem;
+  border-radius: 0 6px 6px 0;
+  margin: 0.75rem 0;
+}
+
+.outcome strong {
+  display: block;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.2rem;
+}
+
+.source-note {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 2.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.source-note code {
+  font-family: var(--mono);
+}
+
+.welcome {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 4rem 2rem;
+  color: var(--text-muted);
+}
+
+.welcome h1 {
+  color: var(--text);
+}

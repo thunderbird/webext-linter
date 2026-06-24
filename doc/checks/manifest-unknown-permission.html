@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unknown permission</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Unknown permission <span class="badge error">error</span></h1>
+        <div class="check-id">manifest-unknown-permission</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A value listed under <em>permissions</em> or
+        <em>optional_permissions</em> that the platform does not recognise. A
+        valid entry is either a known permission, a known data-collection
+        permission, or a host match pattern. Anything else makes the manifest
+        invalid.
+      </p>
+      <p>
+        The check runs only on a parsed manifest. It looks at every string in
+        the two permission lists and checks it against the schema's known
+        permission sets and the match-pattern rules. Non-string entries are
+        ignored, and each unknown value is reported individually, anchored to
+        its line in manifest.json where possible.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The reviewed add-on"] --> B{"Manifest parsed?"}
+  B -- no --> S([skip])
+  B -- yes --> C["For each value in permissions<br/>and optional_permissions"]
+  C --> D{"Is the value a string?"}
+  D -- no --> C
+  D -- yes --> E{"A match pattern, a known<br/>permission, or a known<br/>data-collection permission?"}
+  E -- yes --> OK([no finding])
+  E -- no --> ERR([ERROR: unknown permission])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told its manifest.json is invalid because one or more
+        requested permissions are unknown, with a link to the WebExtension API
+        documentation.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/manifest-unknown-permission.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

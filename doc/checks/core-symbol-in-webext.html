@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privileged core symbol in WebExtension code</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Privileged core symbol in WebExtension code
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">core-symbol-in-webext</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        WebExtension code — background, content, options and popup scripts — runs
+        in a sandbox with no chrome privileges. Privileged Thunderbird internals
+        such as <em>Services</em>, <em>ChromeUtils</em> and the
+        <em>Components / Cc / Ci / Cu</em> family simply do not exist there.
+      </p>
+      <p>
+        The check looks only at the developer's own files that are actually
+        reachable as plain WebExtension code. If one of those files refers to a
+        privileged global, that reference is either a bug or privileged code that
+        has been mis-packaged as a WebExtension file. A name that the file
+        defines or imports itself is the developer's own symbol, so it is left
+        alone.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A file in the add-on"] --> B{"Authored by the developer<br/>(not a bundled library)?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Reachable as plain WebExtension code?<br/>(not Experiment code, not dead code)"}
+  C -- no --> S
+  C -- yes --> D{"References a privileged core symbol?<br/>Services, ChromeUtils, Components, ..."}
+  D -- no --> OK([no finding])
+  D -- yes --> E{"Is that name a local variable<br/>or import in this file?"}
+  E -- yes --> OK
+  E -- no --> ERR([ERROR: privileged core<br/>symbol in WebExtension code])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told it uses privileged Thunderbird internals in a
+        WebExtension context where they are not available, and must remove the
+        usage.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/core-symbol-in-webext.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

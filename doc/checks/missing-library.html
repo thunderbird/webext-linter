@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing third-party library reference</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Missing third-party library reference
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">missing-library</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This check flags a bundled JavaScript or CSS file that looks like a
+        distributed third-party library but is not declared in a VENDOR file. It
+        recognises libraries by surface signals: a minifier banner comment, a
+        UMD/AMD module wrapper, a <code>.min.js</code> or <code>.min.css</code>
+        name, or a well-known library filename such as jQuery or Bootstrap.
+      </p>
+      <p>
+        The detection is heuristic and hash-free, so it cannot say which library
+        or which version a file is — only that the file appears to be a library
+        that should be linked to its upstream source. Minified or obfuscated code
+        that carries no library signals is a different situation, reported by the
+        obfuscated-code check, so this check leaves those to it.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A JavaScript or CSS file<br/>in the add-on"] --> Z{"Declared in a VENDOR file,<br/>or too small to be a bundle?"}
+  Z -- yes --> S([skip])
+  Z -- no --> L{"Library signals present?<br/>banner, UMD wrapper,<br/>.min name, or known stem"}
+  L -- no --> OK([no finding — obfuscated-code's<br/>concern if minified])
+  L -- yes --> ERR([ERROR: undeclared<br/>third-party library])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the named files appear to be third-party libraries and is
+        asked to link each to its source and ensure the bundled copy matches the
+        linked version, commonly via a VENDOR file at the add-on root.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/missing-library.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

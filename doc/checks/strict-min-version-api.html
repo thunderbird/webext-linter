@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>API newer than strict_min_version</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          API newer than strict_min_version
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">strict-min-version-api</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        The add-on declares a lowest supported Thunderbird release through
+        <em>strict_min_version</em>, but calls a WebExtension function or event
+        that was only added in a later release. On those older installs the API
+        does not yet exist, so an unconditional call throws.
+      </p>
+      <p>
+        Only real, schema-resolved APIs are considered — a misspelled or
+        non-existent name is left to the unknown-API check, so feature detection
+        cannot launder it. The same too-new API can be used safely if it is
+        guarded so it runs only where it exists (optional chaining, a typeof or
+        existence test, or a runtime version gate). A call that carries such a
+        guard signal is the ambiguous case: only there does the linter ask the
+        model whether the guard truly protects the call. An API used unguarded
+        anywhere becomes the hard finding outright.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["WebExtension API call site"] --> Z{"Parsable strict_min_version<br/>in the manifest?"}
+  Z -- no --> S([skip])
+  Z -- yes --> B{"Reachable as plain<br/>WebExtension code?<br/>not Experiment, not dead code"}
+  B -- no --> S
+  B -- yes --> C{"Resolves to a real schema<br/>function or event with a<br/>version_added?"}
+  C -- no --> S2([skip — unknown or<br/>always-available API])
+  C -- yes --> D{"version_added newer than<br/>strict_min_version?"}
+  D -- no --> OK([no finding])
+  D -- yes --> E{"Any use of this API<br/>unguarded?"}
+  E -- yes --> ERR([ERROR: too-new API<br/>called unconditionally])
+  E -- "no, only guarded uses" --> L{"LLM judges: is the call<br/>truly guarded so it runs only<br/>where the API exists?"}
+  L -- "pass: safely guarded" --> OK
+  L -- "fail: runs unconditionally" --> ERR
+  L -- unsure --> M([escalate to manual review])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR err;
+  class OK ok;
+  class S skip;
+  class S2 skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told it sets strict_min_version too low while using
+        functions or events added in a later Thunderbird, and is asked to raise
+        strict_min_version or guard the call.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/strict-min-version-api.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

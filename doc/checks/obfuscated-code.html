@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Source Archive (minified or obfuscated code) required</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Source Archive (minified or obfuscated code) required
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">obfuscated-code</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This check flags the developer's own JavaScript when it ships minified or
+        obfuscated and so cannot be reviewed as it stands. It detects minified line
+        geometry — at least one very long, dense line — javascript-obfuscator-style
+        hex identifiers in bulk, and eval-or-Function-of-decoded-string packers.
+      </p>
+      <p>
+        A file that looks like a recognised third-party library is excluded here,
+        because that is the missing-library check's concern; this check only fires
+        on machine-generated code that is not a known library. The detection has
+        high precision but partial recall, so it cannot catch every obfuscator.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A JavaScript file<br/>in the add-on"] --> Z{"Declared in a VENDOR file,<br/>or too small to be a bundle?"}
+  Z -- yes --> S([skip])
+  Z -- no --> L{"Recognized third-party library?"}
+  L -- yes --> S2([skip — missing-library's concern])
+  L -- no --> B{"Minified or obfuscated?<br/>line geometry, hex names,<br/>or a decoded-string packer"}
+  B -- no --> OK([no finding — readable])
+  B -- yes --> ERR([ERROR: minified or<br/>obfuscated code])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+  class S2 skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the named files are minified, obfuscated or otherwise
+        machine-generated and cannot be reviewed in that form, and is asked either
+        to ship the original human-readable code or to upload a source archive with
+        the build instructions needed to produce the final package.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/obfuscated-code.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vendored library not vulnerability-checked</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Vendored library not vulnerability-checked <span class="badge info">info</span></h1>
+        <div class="check-id">vendor-vuln-unknown</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A vendored library — typically sourced from a GitHub or CDN URL — that
+        could not be matched to a known npm package, so its known-vulnerability
+        status could not be determined automatically.
+      </p>
+      <p>
+        Before the review, every GitHub-sourced VENDOR entry is run through a
+        resolution step that tries to prove an npm identity for the bundled
+        bytes by content-hash match: first the repository name at the declared
+        ref, then, if the model is enabled, an LLM-proposed name re-proved by the
+        same hash. Entries it can resolve are audited against the OSV database by
+        the vulnerable-dependency check instead. First-party trusted-org GitHub
+        sources are accepted by provenance and produce nothing here. Whatever
+        remains unresolved is recorded as unaudited, and this check surfaces one
+        informational note per entry so the reviewer knows it went unchecked.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A trusted, pinned VENDOR entry"] --> B{"Source kind?"}
+  B -- "npm source" --> X([audited by<br/>vulnerable dependency])
+  B -- "first-party trusted org" --> OK([no finding — accepted<br/>by provenance])
+  B -- "other github source" --> C{"Bundled bytes hash-match<br/>a candidate npm package?"}
+  C -- yes --> X
+  C -- no --> INFO([INFO: vendored library<br/>not vulnerability-checked])
+
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class INFO info;
+  class OK ok;
+  class X skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told a third-party file was sourced from a CDN where its
+        known-vulnerability status could not be determined automatically, and is
+        nudged to switch to an npm-hosted source (a unpkg or jsDelivr package
+        pinned to an exact version) so it can be audited against the OSV
+        database.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/vendor-vuln-unknown.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

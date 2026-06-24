@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Modified vendored library</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Modified vendored library <span class="badge error">error</span></h1>
+        <div class="check-id">vendor-modified</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A declared third-party file whose bytes do not match what its pinned
+        source actually serves: it appears to have been modified from the
+        upstream release.
+      </p>
+      <p>
+        Before the review, every trusted and pinned VENDOR source is fetched once
+        and compared against the packaged file. The comparison tolerates
+        end-of-line differences. A single-file source is byte-compared against
+        the fetched copy; a whole-package tarball source is matched by hashing
+        each file inside it. A file that matches is recorded as verified; one
+        that does not match is recorded as modified. This check reads those
+        results, narrates the verified files as passes, and turns each modified
+        result into a finding.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A trusted, pinned vendored file"] --> B{"Could the source<br/>be fetched?"}
+  B -- no --> X([escalated to<br/>manual review])
+  B -- yes --> C{"Bytes match the source<br/>(EOL-tolerant)?"}
+  C -- yes --> OK([no finding — verified])
+  C -- no --> ERR([ERROR: modified<br/>vendored library])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR err;
+  class OK ok;
+  class X manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told a bundled third-party file does not match the bytes
+        its declared source serves and appears to have been modified, and is
+        asked to ship the file exactly as the source publishes it or to correct
+        the declared source to the release the file actually came from.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/vendor-modified.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

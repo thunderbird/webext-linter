@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CSP allows 'unsafe-inline'</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          CSP allows 'unsafe-inline' <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">csp-unsafe-inline</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        The manifest's content security policy allows the
+        <em>'unsafe-inline'</em> keyword. That keyword permits inline scripts to
+        run, which is a form of dynamic code execution, and is not allowed.
+      </p>
+      <p>
+        The shared dynamic-execution scan parses the manifest's content security
+        policy and records whether it allows 'unsafe-inline'. This check reports a
+        single finding when that flag is set, anchored to the policy line in
+        manifest.json.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The manifest content security policy"] --> B{"Does the policy allow<br/>'unsafe-inline'?"}
+  B -- no --> OK([no finding])
+  B -- yes --> ERR([ERROR: CSP allows unsafe-inline])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that dynamic code execution via a content security
+        policy that allows 'unsafe-inline' is not allowed.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/csp-unsafe-inline.js</code> and
+        its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

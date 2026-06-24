@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Deprecated WebExtension API</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Deprecated WebExtension API <span class="badge info">info</span>
+        </h1>
+        <div class="check-id">deprecated-api</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Calls to WebExtension APIs that still exist in the targeted Thunderbird
+        version but are marked deprecated in the schema. These keep working for
+        now, but should be migrated to a supported API.
+      </p>
+      <p>
+        Each deprecated function, event or property is reported once. When the
+        schema carries a deprecation message, that migration note is surfaced
+        with the finding. Only reachable WebExtension code is examined; APIs that
+        are absent or unsupported are handled by the unknown-api check instead.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["An API call in the source"] --> B{"In reachable WebExtension code?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Resolves to a function,<br/>event or property?"}
+  C -- no --> OK([no finding])
+  C -- yes --> D{"Marked deprecated<br/>in the schema?"}
+  D -- no --> OK
+  D -- yes --> INFO([INFO: deprecated API<br/>+ migration note])
+
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class INFO info;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the named API is deprecated in the targeted
+        Thunderbird version and should be migrated to a supported API.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/deprecated-api.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

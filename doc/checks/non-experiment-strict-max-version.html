@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unnecessary strict_max_version</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Unnecessary strict_max_version <span class="badge warning">warning</span></h1>
+        <div class="check-id">non-experiment-strict-max-version</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A regular MailExtension that pins a maximum Thunderbird version it will
+        install on. The WebExtension APIs are stable and designed to keep add-ons
+        forward-compatible, so a ceiling only blocks installs on newer
+        Thunderbird with no benefit.
+      </p>
+      <p>
+        The check looks at the manifest only. Experiments are left alone because
+        they reach into Thunderbird internals and legitimately need a maximum
+        version, and a non-Experiment that omits the ceiling is fine. It fires
+        only when a non-Experiment manifest actually declares one.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The add-on manifest"] --> B{"Did the manifest parse?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Is this an Experiment?"}
+  C -- yes --> S
+  C -- no --> D{"Does it declare a<br/>strict_max_version?"}
+  D -- no --> OK([no finding])
+  D -- yes --> WARN([WARNING: unnecessary<br/>strict_max_version])
+
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class WARN warn;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told it pins a maximum version that is usually unnecessary,
+        since the WebExtension APIs stay forward-compatible across Thunderbird
+        releases, and that the ceiling only blocks installs on newer Thunderbird.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/non-experiment-strict-max-version.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

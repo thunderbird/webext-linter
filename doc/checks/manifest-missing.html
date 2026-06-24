@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing manifest</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Missing manifest <span class="badge error">error</span></h1>
+        <div class="check-id">manifest-missing</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        There is no manifest.json at the add-on root at all, so the submission is
+        not a valid add-on. This fires only when the manifest is genuinely
+        absent.
+      </p>
+      <p>
+        A manifest that is present but unparsable is a different situation,
+        reported by the invalid-manifest-JSON check — so this check stays silent
+        in that case to avoid a duplicate finding.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The loaded add-on"] --> B{"Is a manifest.json present<br/>at the root?"}
+  B -- yes --> OK([no finding])
+  B -- "present but unparsable" --> OK2([no finding — reported by<br/>invalid manifest JSON])
+  B -- "absent entirely" --> ERR([ERROR: missing manifest])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+  class OK2 ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told there is no manifest.json at the add-on root, with a
+        link to the WebExtension API documentation.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/manifest-missing.js</code> (add-on
+        loaded by <code>src/addon/load.js</code>); wording in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

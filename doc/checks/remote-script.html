@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Remote script injection</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Remote script injection
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">remote-script</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Code loaded from somewhere other than the add-on's own package. Remote
+        scripts and libraries cannot be reviewed, so everything the add-on runs
+        must be bundled with it.
+      </p>
+      <p>
+        A deterministic pre-flight scans HTML, CSS, JavaScript and the manifest
+        for remote loads: remote
+        <em>&lt;script&gt;</em>/<em>&lt;link&gt;</em>/<em>&lt;iframe&gt;</em> and
+        media in HTML, remote <em>@import</em>/<em>url()</em> in CSS, remote
+        <em>import()</em>/<em>importScripts()</em> and module imports, runtime
+        <em>&lt;script&gt;</em> injection, remote WASM, and a content security
+        policy that permits a remote script source. Each of those definite remote
+        loads is a finding directly. Cases static analysis cannot resolve — a
+        non-literal URL, or an inline <em>data:</em>/<em>blob:</em> script source
+        — carry the offending file to the model, which judges whether the loaded
+        code is remote.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A reference in HTML, CSS,<br/>JS, or the manifest CSP"] --> B{"Authored code in scope?<br/>non-authored JS skipped"}
+  B -- "skipped JS" --> S([skip])
+  B -- yes --> C{"Definite remote load?<br/>remote script/link/iframe/media,<br/>@import/url, import/importScripts,<br/>script injection, WASM, or CSP host"}
+  C -- yes --> ERR([ERROR: remote code loaded])
+  C -- no --> D{"Statically resolvable<br/>to a bundled file?"}
+  D -- yes --> OK([no finding — bundled load])
+  D -- "no, undecidable URL or<br/>inline data:/blob: source" --> L{"LLM judges: is the loaded<br/>code remote rather than<br/>a packaged file?"}
+  L -- "pass: bundled" --> OK
+  L -- "fail: remote" --> ERR
+  L -- unsure --> M([escalate to manual review])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR err;
+  class OK ok;
+  class S skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that remote code is loaded from the named source, that
+        remote scripts and libraries are not allowed, and is asked to bundle all
+        code with the add-on so it can be reviewed.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/remote-script.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

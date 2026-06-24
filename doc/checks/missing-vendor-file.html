@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing vendored file</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Missing vendored file <span class="badge warning">warning</span></h1>
+        <div class="check-id">missing-vendor-file</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A VENDOR entry that names a file which is not actually present in the
+        submission — a stale entry or a file someone forgot to include.
+      </p>
+      <p>
+        Before the review, the VENDOR file is parsed and each declared path is
+        checked against the packaged files; the absent ones are recorded. This is
+        deliberately different from the package.json side, where a declared
+        dependency whose file is missing is ignored on purpose — dependencies are
+        installed or bundled at build time, so a not-yet-built submission may
+        legitimately omit them. A VENDOR entry, by contrast, must point at a file
+        that is really there. This check turns each missing VENDOR entry into a
+        finding.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A VENDOR entry (file + source URL)"] --> B{"Is the named file<br/>present in the submission?"}
+  B -- yes --> OK([no finding])
+  B -- no --> WARN([WARNING: missing<br/>vendored file])
+
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class WARN warn;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that one or more files listed in the VENDOR file are
+        not present in the submission, and is asked to add each missing file or
+        remove its entry from the VENDOR file.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/missing-vendor-file.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

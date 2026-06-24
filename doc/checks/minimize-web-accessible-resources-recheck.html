@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Minimize web_accessible_resources (recheck)</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Minimize web_accessible_resources (recheck)
+          <span class="badge warning">warning</span>
+        </h1>
+        <div class="check-id">minimize-web-accessible-resources-recheck</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This is the post-summary recheck consumer for the
+        minimize-web-accessible-resources check. It re-judges the exposed entries
+        that the per-site analysis could not clear — the residual ambiguous items
+        — now with the whole add-on in view rather than one referencing site at a
+        time.
+      </p>
+      <p>
+        It runs only in the post-summary phase. When a full add-on summary is
+        produced, those unresolved entries are appended to it under this entry's
+        summary rubric and re-judged: web_accessible_resources is needed only
+        when something outside the add-on — a content script, a real web page, or
+        another extension — reads the file; the add-on opening its own file or
+        page from its own contexts never needs it. With no summary, nothing is
+        handed over, this check emits nothing, and the producer's manual items
+        stand.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Entries the producer<br/>left unresolved"] --> B{"Did a full add-on<br/>summary run?"}
+  B -- no --> S([skip — nothing handed over;<br/>producer's items stand])
+  B -- yes --> L{"LLM judges with the whole<br/>add-on in view: does anything<br/>external read this file?"}
+  L -- "pass: needed by a web context" --> OK([no finding — exposure kept])
+  L -- "fail: nothing external reads it" --> WARN([WARNING: needless exposure])
+  L -- "unsure / no verdict" --> M([escalate to manual review])
+
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class WARN warn;
+  class OK ok;
+  class S skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told one or more web_accessible_resources entries may not
+        need to be exposed, that files belong there only when a web page or
+        content script must reach them, and is asked to remove the unnecessary
+        entries to reduce its exposed surface.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/minimize-web-accessible-resources-recheck.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Disguised data transmission (resource)</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Disguised data transmission (resource)
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">disguised-resource</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Data smuggled out of the add-on by hiding it inside a resource-load URL.
+        Setting an element's image, iframe or media source — directly or through
+        a setAttribute on a src or href attribute — to a remote address that is
+        built up with runtime data appended to it sends that data to the remote
+        host while looking like an ordinary resource load.
+      </p>
+      <p>
+        A resource URL is not a channel meant for transmitting data. Disguising
+        a data send this way is treated as an error regardless of any user
+        consent. The check looks only at the developer's own JavaScript and
+        fires only when the URL is covert, points somewhere remote, and actually
+        carries data — either a dynamic value concatenated into a remote URL or a
+        user-data API call sitting in the argument. A plain static remote
+        resource load with no data attached is not a finding.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["An outbound sink in the<br/>add-on's authored JavaScript"] --> B{"Authored code?<br/>(not a bundled library)"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Sink is a resource load?<br/>element src/href or setAttribute"}
+  C -- no --> OK([no finding — left to<br/>another check])
+  C -- yes --> D{"Covert channel to a<br/>non-local destination?"}
+  D -- no --> OK
+  D -- yes --> E{"Carries data?<br/>data appended to the URL<br/>or a user-data API call in it"}
+  E -- no --> OK
+  E -- yes --> ERR([ERROR: disguised data send<br/>via resource URL])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told it appears to send data through a resource URL such as
+        an image, iframe or media source — a channel not meant for transmission —
+        and that disguising a send this way is not allowed even with consent. It
+        is asked to use a normal request and disclose what is sent.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/disguised-resource.js</code> and
+        its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

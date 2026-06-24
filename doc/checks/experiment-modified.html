@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Modified or outdated Experiment draft</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Modified or outdated Experiment draft
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">experiment-modified</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A bundled Experiment that is a recognised published Thunderbird API
+        draft, but is not the unmodified latest version — it has been changed
+        locally or is an older draft. The submission keeps full review feedback
+        but is rejected until the unmodified latest upstream copy is bundled.
+      </p>
+      <p>
+        It reads the per-experiment classification computed earlier in the
+        pipeline and raises one error per experiment marked as modified. It stays
+        silent for non-Experiments, for pristine experiments, and for unsupported
+        ones — those last are handled in the invalid-experiment phase by the
+        experiment-not-allowed check.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A submission"] --> E{"Did the manifest parse and<br/>is it an Experiment?"}
+  E -- no --> S([skip])
+  E -- yes --> C{"Is the experiment classification<br/>available?"}
+  C -- no --> S
+  C -- yes --> M{"Any experiment classified<br/>as a modified or<br/>outdated draft?"}
+  M -- no --> OK([no finding])
+  M -- yes --> ERR([ERROR: modified or<br/>outdated Experiment draft])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told the named API is a published Thunderbird Experiment
+        draft but this add-on bundles a modified or outdated copy, and is asked
+        to bundle the unmodified latest version from the upstream repository.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/experiment-modified.js</code> and
+        its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

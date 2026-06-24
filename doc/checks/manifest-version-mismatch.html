@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manifest version mismatch</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Manifest version mismatch <span class="badge error">error</span></h1>
+        <div class="check-id">manifest-version-mismatch</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        The add-on's declared <em>manifest_version</em> disagrees with the
+        schema set it is being reviewed against — for example an MV2 add-on
+        reviewed against the MV3 schema, or the reverse. When the two do not
+        line up, the submission is invalid.
+      </p>
+      <p>
+        The check needs a manifest that actually parsed and a numeric
+        <em>manifest_version</em>, and it needs to know which major version the
+        active schema set targets. It simply compares those two numbers and
+        reports only when they differ.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The reviewed add-on"] --> B{"Manifest parsed and<br/>manifest_version is a number?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Schema set has a known<br/>major version?"}
+  C -- no --> S
+  C -- yes --> D{"manifest_version equals<br/>the schema major version?"}
+  D -- yes --> OK([no finding])
+  D -- no --> ERR([ERROR: manifest version<br/>does not match the schema set])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told its manifest.json is invalid because the declared
+        manifest version does not match the schema set being applied, with a
+        link to the WebExtension API documentation.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/manifest-version-mismatch.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

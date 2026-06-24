@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Minimize host permissions</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Minimize host permissions <span class="badge info">info</span></h1>
+        <div class="check-id">minimize-host-permissions</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This check looks for very broad host permissions that the manifest
+        requests as required, meaning they are granted at install time. A broad
+        pattern is the all-URLs pattern or any pattern whose host part is a bare
+        wildcard, which grants access to every site under that scheme.
+      </p>
+      <p>
+        It scans both the MV3 host-permissions list and the host match patterns
+        that appear in the MV2 permissions array. Named permissions in that array
+        are not hosts and are ignored here, as are well-formedness questions about
+        a pattern, which other checks handle. Each distinct broad pattern is
+        reported once, anchored to its line in the manifest.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The add-on manifest"] --> M{"Manifest parsed?"}
+  M -- no --> S([skip])
+  M -- yes --> P["Each entry in host_permissions<br/>and the permissions array"]
+  P --> H{"Is it a host match pattern?<br/>(not a named permission)"}
+  H -- no --> OK([no finding])
+  H -- yes --> B{"Broad host access?<br/>&lt;all_urls&gt; or a wildcard host"}
+  B -- no --> OK
+  B -- yes --> INFO([INFO: broad required<br/>host permission])
+
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class INFO info;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told it requests broad host permissions that are granted at
+        install, and is advised to request only the specific hosts it needs — or,
+        if broad access is genuinely required, to declare it as an optional host
+        permission the user grants on demand.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/minimize-host-permissions.js</code> and its entry
+        in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>
