@@ -76,10 +76,20 @@ const HOST_PARSERS = {
     }
     return UNTRUSTED;
   },
-  "raw.githubusercontent.com": (segs, url) =>
-    segs.length >= 4
+  // GitHub serves raw files both as <owner>/<repo>/<ref>/<path> and fully
+  // qualified as <owner>/<repo>/refs/(tags|heads)/<ref>/<path>. Read the real
+  // ref from the latter so a tag like refs/tags/v3.10.1 is seen as pinned, not
+  // the literal "refs". rawUrl stays the original URL (fetchable as-is).
+  "raw.githubusercontent.com": (segs, url) => {
+    if (segs[2] === "refs") {
+      return segs.length >= 6
+        ? github(`${segs[0]}/${segs[1]}`, segs[4], url)
+        : UNTRUSTED;
+    }
+    return segs.length >= 4
       ? github(`${segs[0]}/${segs[1]}`, segs[2], url)
-      : UNTRUSTED,
+      : UNTRUSTED;
+  },
   [GITHUB_INPUT_HOST]: (segs) => {
     const [owner, repo, type, ref, ...rest] = segs;
     // A single file: /blob/<ref>/<path> -> the raw file URL (byte-compared).

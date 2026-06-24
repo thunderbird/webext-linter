@@ -46,6 +46,24 @@ test("classifySource recognizes the trusted hosts and pinned refs", () => {
   assert.deepEqual([raw.repo, raw.ref], ["moment/moment", "2.29.1"]);
 });
 
+// GitHub also serves raw files with a fully-qualified refs/(tags|heads)/<ref>
+// path; the real ref must be read from it (not the literal "refs") so a version
+// tag is recognized as pinned.
+test("classifySource reads the ref from a refs/tags raw.githubusercontent URL", () => {
+  const tag = classifySource(
+    "https://raw.githubusercontent.com/Stuk/jszip/refs/tags/v3.10.1/dist/jszip.js"
+  );
+  assert.deepEqual(
+    [tag.repo, tag.ref, tag.pinned],
+    ["Stuk/jszip", "v3.10.1", true]
+  );
+  // A refs/heads/<branch> URL exposes the branch name and stays unpinned.
+  const branch = classifySource(
+    "https://raw.githubusercontent.com/o/r/refs/heads/main/x.js"
+  );
+  assert.deepEqual([branch.ref, branch.pinned], ["main", false]);
+});
+
 test("classifySource rejects untrusted hosts, non-https, and mutable refs", () => {
   assert.equal(classifySource("https://evil.example.com/x.js").trusted, false);
   // cdnjs is no longer an accepted source (a cdnjs lib is always on npm/github);
