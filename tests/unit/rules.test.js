@@ -35,6 +35,7 @@ import nativeMessaging from "../../src/checks/rules/native-messaging.js";
 import defaultLocaleMissing from "../../src/checks/rules/default-locale-missing.js";
 import defaultLocaleUnused from "../../src/checks/rules/default-locale-unused.js";
 import addonIconMissing from "../../src/checks/rules/addon-icon-missing.js";
+import unrecognizedManifestKey from "../../src/checks/rules/unrecognized-manifest-key.js";
 import backgroundModule from "../../src/checks/rules/background-module.js";
 import unusedPermission from "../../src/checks/rules/unused-permission.js";
 import unusedPermissionManual from "../../src/checks/rules/unused-permission-manual.js";
@@ -1843,6 +1844,31 @@ test("addon-icon-missing flags an extension with no defined add-on icon", () => 
     0
   );
   assert.equal(addonIconMissing.run({ addon: { manifest: null } }).length, 0);
+});
+
+// ---- unrecognized-manifest-key ----
+// An unknown top-level key is flagged, but a key that names an experiment_apis
+// entry is experiment-owned config the add-on reads - accepted, not flagged.
+test("unrecognized-manifest-key accepts experiment-owned keys", () => {
+  const run = (manifest) =>
+    unrecognizedManifestKey.run({
+      addon: {
+        manifest,
+        files: new Map([
+          ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+        ]),
+      },
+      schema: { validManifestKeys: new Set(["name", "experiment_apis"]) },
+    });
+  const out = run({
+    name: "x",
+    experiment_apis: { calendar_provider: {} },
+    calendar_provider: { capabilities: {} }, // owned by the experiment
+    bogusKey: 1, // genuinely unknown
+  });
+  const items = out.map((f) => f.item);
+  assert.ok(!items.includes("calendar_provider")); // experiment-owned -> accepted
+  assert.ok(items.includes("bogusKey")); // still flagged
 });
 
 // ---- background-module ----

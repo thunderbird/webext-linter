@@ -34,7 +34,7 @@ import { classifyBundled } from "./checks/lib/bundled.js";
 import { getPermissionAnalysis } from "./checks/lib/permissions.js";
 import { collapseUnused } from "./checks/lib/unused-folders.js";
 import { isExperiment } from "./checks/lib/util.js";
-import { experimentApiPaths } from "./checks/lib/experiments.js";
+import { experimentApiNamespaces } from "./checks/lib/experiments.js";
 import { verifyExperiments } from "./experiments/verify.js";
 import { createLlmBudget } from "./llm/budget.js";
 import { debug, progress, llmErrorText } from "./util/log.js";
@@ -432,12 +432,16 @@ async function reviewAddon(
     refresh: schemaForceRefresh,
   });
   const schema = buildSchemaIndex(loadSchemaFiles(zipPath));
-  // A valid Experiment's declared APIs are part of its platform: register them
-  // so the developer's calls into them (e.g. browser.calendar.*) resolve instead
-  // of tripping unknown-api. Note that experiment-overrides-api separately flags
-  // a path that collides with a built-in.
+  // A valid Experiment's declared APIs are part of its platform: register their
+  // base namespaces so the developer's calls into them (e.g. browser.calendar.*,
+  // including bare browser.calendar) resolve instead of tripping unknown-api -
+  // the developer owns the namespace, so we accept it wholesale rather than
+  // tracing each sub-API. Note that experiment-overrides-api separately flags a
+  // path that collides with a built-in.
   if (!invalidExperiment && isExperiment(addon.manifest)) {
-    schema.registerExperimentNamespaces(experimentApiPaths(addon.manifest));
+    schema.registerExperimentNamespaces(
+      experimentApiNamespaces(addon.manifest)
+    );
   }
 
   setupStep("Parsing add-on sources");

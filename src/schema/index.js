@@ -123,9 +123,10 @@ export class SchemaIndex {
     this.globalTypes = new Map();
     /** @type {Set<string>} "<namespace>.<method>" of file-loading functions */
     this.fileLoaderMethods = new Set();
-    /** @type {Set<string>} dotted API prefixes a valid Experiment adds (e.g.
-     * "calendar.items"); filled by registerExperimentNamespaces, consulted by
-     * resolveApi to mark genuinely-new experiment APIs as known. */
+    /** @type {Set<string>} base API namespaces a valid Experiment adds (e.g.
+     * "calendar"); filled by registerExperimentNamespaces, consulted by
+     * resolveApi (via longest-prefix match) to mark the namespace and everything
+     * under it as known. */
     this.experimentNamespaces = new Set();
     this.applicationVersion = null;
 

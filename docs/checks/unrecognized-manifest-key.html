@@ -24,7 +24,10 @@
         unparsable manifest is left to the manifest error checks. It also stays
         silent if the schema lists no valid keys at all. Otherwise it walks
         every top-level key and reports each one the schema does not know,
-        pointing at the relevant line in manifest.json where possible.
+        pointing at the relevant line in manifest.json where possible. A key
+        that names one of the add-on's own <em>experiment_apis</em> entries is
+        excepted — it is configuration the add-on's Experiment reads, so the
+        developer owns it.
       </p>
 
       <h2>Decision flow</h2>
@@ -36,7 +39,7 @@ flowchart TD
   B -- yes --> C{"Schema defines a set of<br/>valid manifest keys?"}
   C -- no --> S2([skip])
   C -- yes --> D["For each top-level key<br/>in the manifest"]
-  D --> E{"Is the key defined<br/>by the schema?"}
+  D --> E{"Defined by the schema, or<br/>names an experiment_apis entry?"}
   E -- yes --> OK([no finding])
   E -- no --> INFO([INFO: unrecognized<br/>manifest key, ignored])
 

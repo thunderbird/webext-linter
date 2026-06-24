@@ -80,6 +80,23 @@ test("flags unknown namespace and unknown member", () => {
   );
 });
 
+// A registered experiment base namespace is accepted wholesale: the bare
+// namespace and any sub-path under it resolve as a known experiment API (the
+// developer owns it), while an unrelated namespace stays unknown. Uses a fresh
+// index so the registration does not leak into the shared `schema`.
+test("a registered experiment base namespace covers its sub-paths", () => {
+  const idx = buildSchemaIndex(
+    loadSchemaFiles(path.join(here, "..", "schema-fixture"))
+  );
+  assert.equal(idx.resolveApi(["calendar"]).kind, "unknown-namespace");
+  idx.registerExperimentNamespaces(["calendar"]);
+  assert.equal(idx.resolveApi(["calendar"]).kind, "experiment");
+  assert.equal(idx.resolveApi(["calendar", "items"]).kind, "experiment");
+  assert.equal(idx.resolveApi(["calendar", "items", "get"]).kind, "experiment");
+  // An unrelated namespace is still unknown.
+  assert.equal(idx.resolveApi(["weatherWidget"]).kind, "unknown-namespace");
+});
+
 // A function's required permissions combine its own with the namespace-level
 // ones, yielding the deduplicated, sorted union for messages.move.
 test("required permissions merge namespace + function level", () => {

@@ -28,6 +28,12 @@
         code legitimately use Thunderbird internals rather than the WebExtension
         schema, and dead code never runs, so both are excluded.
       </p>
+      <p>
+        A namespace that the add-on's own Experiments define (the base namespace
+        of any <em>experiment_apis</em> entry, for example <em>calendar</em>) is
+        treated as known: the developer owns that API, so the whole namespace and
+        everything under it is accepted rather than tracing each sub-API.
+      </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
