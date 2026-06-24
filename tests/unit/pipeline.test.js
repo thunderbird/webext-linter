@@ -23,14 +23,17 @@ function tmpAddon(files) {
   return dir;
 }
 
-// Review reports the eval finding at its original line 1 (no pretty-print shift)
-// and leaves the source file on disk untouched (read-only: no reformat, no pack).
+// Review reports the finding at its original line 1 (no pretty-print shift) and
+// leaves the source file on disk untouched (read-only: no reformat, no pack).
+// (Uses a debugger statement as the probe: a WebExtension background script
+// cannot run eval & friends without a permissive CSP, so those file checks no
+// longer scan it - see eval-scan.js.)
 test("review: read-only; line numbers match the submitted source", async () => {
   const src = tmpAddon({
     "manifest.json":
       '{"manifest_version":3,"name":"Review Lines","version":"1.0",' +
       '"background":{"scripts":["bg.js"]}}',
-    "bg.js": 'const x=1;eval("y");\n',
+    "bg.js": "const x=1;debugger;\n",
   });
 
   const result = await runPipeline({
@@ -38,14 +41,16 @@ test("review: read-only; line numbers match the submitted source", async () => {
     schemaZip: SCHEMA_FIXTURE,
   });
 
-  const evalFinding = result.findings.find((f) => f.ruleId === "eval-call");
-  assert.ok(evalFinding, "expected an eval-call finding");
-  assert.equal(evalFinding.loc.line, 1);
+  const finding = result.findings.find(
+    (f) => f.ruleId === "debugger-statement"
+  );
+  assert.ok(finding, "expected a debugger-statement finding");
+  assert.equal(finding.loc.line, 1);
   assert.equal(result.meta.reviewed, true);
   // The source file on disk is untouched.
   assert.equal(
     fs.readFileSync(path.join(src, "bg.js"), "utf8"),
-    'const x=1;eval("y");\n'
+    "const x=1;debugger;\n"
   );
 
   fs.rmSync(src, { recursive: true, force: true });
@@ -54,16 +59,23 @@ test("review: read-only; line numbers match the submitted source", async () => {
 const EXPERIMENT_MANIFEST =
   '{"manifest_version":3,"name":"Exp","version":"1.0",' +
   '"background":{"scripts":["bg.js"]},' +
-  '"experiment_apis":{"myApi":{"schema":"s.json"}}}';
+  '"experiment_apis":{"myApi":{"schema":"s.json",' +
+  '"parent":{"scopes":["addon_parent"],"script":"impl.js","paths":[["myApi"]]}}}}';
+
+// The eval lives in the privileged Experiment implementation (impl.js), which is
+// OUTSIDE the pure WebExtension tree - the one place the eval-call file check
+// still scans (a WebExtension sandbox needs a permissive CSP to run eval, flagged
+// separately by csp-unsafe-*).
 
 // An Experiment add-on submitted without --allow-experiments rejects outright:
-// the review runs ONLY the experiment-not-allowed check (the eval that would
-// otherwise fire is never scanned), with no manual-review reminders and no AI
-// summaries.
+// the review runs ONLY the experiment-not-allowed check (the eval in impl.js that
+// would otherwise fire is never scanned), with no manual-review reminders and no
+// AI summaries.
 test("invalid Experiment: only the reject check runs, nothing else", async () => {
   const src = tmpAddon({
     "manifest.json": EXPERIMENT_MANIFEST,
-    "bg.js": 'eval("y");\n',
+    "bg.js": "browser.myApi.doThing();\n",
+    "impl.js": 'this.myApi = class { getAPI() { eval("y"); return {}; } };\n',
   });
 
   const result = await runPipeline({
@@ -84,11 +96,13 @@ test("invalid Experiment: only the reject check runs, nothing else", async () =>
 });
 
 // Control: with --allow-experiments the same add-on takes the normal path - the
-// eval-call check fires and the reject check does not run.
+// eval-call check fires (on the impl.js Experiment code, outside the WebExtension
+// tree) and the reject check does not run.
 test("allowed Experiment: normal review runs, no reject", async () => {
   const src = tmpAddon({
     "manifest.json": EXPERIMENT_MANIFEST,
-    "bg.js": 'eval("y");\n',
+    "bg.js": "browser.myApi.doThing();\n",
+    "impl.js": 'this.myApi = class { getAPI() { eval("y"); return {}; } };\n',
   });
 
   const result = await runPipeline({

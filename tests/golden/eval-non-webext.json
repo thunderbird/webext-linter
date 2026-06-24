@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/remote-code",
+    "addon": "<root>/tests/addons/eval-non-webext",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "local:<root>/tests/schema-fixture",
@@ -81,80 +81,51 @@
     ]
   },
   "summary": {
-    "error": 6,
+    "error": 3,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "unused-files": 2,
-      "remote-script": 4
+      "eval-call": 1,
+      "function-constructor": 1,
+      "string-timer": 1
     }
   },
   "findings": [
     {
-      "ruleId": "unused-files",
+      "ruleId": "eval-call",
       "severity": "error",
-      "file": "page.html",
-      "loc": null,
+      "file": "experiments/demo/parent/ext-demo.js",
+      "loc": {
+        "line": 8,
+        "column": 4
+      },
       "item": null,
       "hint": null,
-      "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
+      "message": "Dynamic code execution via \"eval()\" is not allowed."
     },
     {
-      "ruleId": "remote-script",
+      "ruleId": "function-constructor",
       "severity": "error",
-      "file": "page.html",
+      "file": "experiments/demo/parent/ext-demo.js",
       "loc": {
-        "line": 4,
-        "column": 0
+        "line": 9,
+        "column": 15
       },
-      "item": "https://cdn.example.com/lib.js",
-      "hint": null,
-      "message": "Remote code is loaded from \"https://cdn.example.com/lib.js\". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed."
-    },
-    {
-      "ruleId": "remote-script",
-      "severity": "error",
-      "file": "page.html",
-      "loc": {
-        "line": 7,
-        "column": 0
-      },
-      "item": "https://cdn.example.com/fonts.css",
-      "hint": null,
-      "message": "Remote code is loaded from \"https://cdn.example.com/fonts.css\". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed."
-    },
-    {
-      "ruleId": "remote-script",
-      "severity": "error",
-      "file": "page.html",
-      "loc": {
-        "line": 11,
-        "column": 0
-      },
-      "item": "https://cdn.example.com/bg.png",
-      "hint": null,
-      "message": "Remote code is loaded from \"https://cdn.example.com/bg.png\". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed."
-    },
-    {
-      "ruleId": "unused-files",
-      "severity": "error",
-      "file": "style.css",
-      "loc": null,
       "item": null,
       "hint": null,
-      "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
+      "message": "Dynamic code execution via \"the Function constructor\" is not allowed."
     },
     {
-      "ruleId": "remote-script",
+      "ruleId": "string-timer",
       "severity": "error",
-      "file": "style.css",
+      "file": "experiments/demo/parent/ext-demo.js",
       "loc": {
-        "line": 1,
-        "column": 0
+        "line": 10,
+        "column": 4
       },
-      "item": "https://cdn.example.com/theme.css",
+      "item": null,
       "hint": null,
-      "message": "Remote code is loaded from \"https://cdn.example.com/theme.css\". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed."
+      "message": "Dynamic code execution via \"a code string passed to setTimeout/setInterval\" is not allowed."
     }
   ]
 }

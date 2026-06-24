@@ -21,10 +21,14 @@
         and is not allowed.
       </p>
       <p>
-        A single shared scan walks every authored JavaScript source for the
-        dynamic-execution signals and tags each hit by kind; bundled third-party
-        libraries are excluded from that scan. This check reports each hit tagged
-        as a code-string timer, one finding per site.
+        A single shared scan walks authored JavaScript for the dynamic-execution
+        signals and tags each hit by kind. It looks only <em>outside</em> the
+        pure WebExtension tree: a WebExtension sandbox cannot evaluate a
+        code-string timer unless the manifest CSP allows it — and that permissive
+        CSP is reported separately by the <em>csp-unsafe-eval</em> check — so only
+        privileged Experiment / non-WebExtension code is scanned here. Bundled
+        third-party libraries are excluded too. This check reports each hit
+        tagged as a code-string timer, one finding per site.
       </p>
 
       <h2>Decision flow</h2>
@@ -33,7 +37,9 @@
 flowchart TD
   A["An authored JS source"] --> B{"Is it authored code,<br/>not a bundled library?"}
   B -- no --> S([skip])
-  B -- yes --> C["Shared dynamic-execution scan"]
+  B -- yes --> R{"Outside the pure WebExtension tree?<br/>WebExtension code is CSP-gated"}
+  R -- "no, WebExtension code" --> S2([skip — cannot run without a<br/>permissive CSP; see csp-unsafe-eval])
+  R -- yes --> C["Shared dynamic-execution scan"]
   C --> D{"Any hit tagged as a<br/>code-string setTimeout / setInterval?"}
   D -- no --> OK([no finding])
   D -- yes --> ERR([ERROR: code-string timer])
@@ -44,6 +50,7 @@ flowchart TD
   class ERR err;
   class OK ok;
   class S skip;
+  class S2 skip;
         </pre>
       </div>
 

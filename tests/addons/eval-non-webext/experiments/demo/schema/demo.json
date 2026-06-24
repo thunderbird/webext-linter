@@ -1,0 +1,8 @@
+[
+  {
+    "namespace": "demo",
+    "functions": [
+      { "name": "doThing", "type": "function", "async": true, "parameters": [] }
+    ]
+  }
+]

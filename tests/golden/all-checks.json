@@ -82,7 +82,7 @@
     ]
   },
   "summary": {
-    "error": 16,
+    "error": 15,
     "warning": 2,
     "info": 6,
     "byRule": {
@@ -100,7 +100,6 @@
       "code-sanity": 1,
       "minimize-host-permissions": 1,
       "addon-icon-missing": 1,
-      "eval-call": 1,
       "strict-min-version-api": 1,
       "unused-files": 2,
       "remote-script": 2
@@ -214,18 +213,6 @@
       "item": "action.onClicked",
       "hint": null,
       "message": "action.onClicked needs a manifest key that is not declared: \"action\". Add one of those keys to manifest.json."
-    },
-    {
-      "ruleId": "eval-call",
-      "severity": "error",
-      "file": "background.js",
-      "loc": {
-        "line": 22,
-        "column": 0
-      },
-      "item": null,
-      "hint": null,
-      "message": "Dynamic code execution via \"eval()\" is not allowed."
     },
     {
       "ruleId": "sync-xhr",

@@ -1,0 +1,9 @@
+{
+  "_comment": "An Experiment reviewed with --allow-experiments. The eval/Function/code-string-timer file checks (eval-call / function-constructor / string-timer) scan ONLY code outside the pure WebExtension tree: a WebExtension sandbox cannot execute these without a permissive CSP (reported separately by csp-unsafe-*), so the identical constructs in background.js are NOT flagged, while the privileged Experiment parent script - which has no CSP gate - IS flagged at each construct.",
+  "options": { "--allow-experiments": true },
+  "expect": {
+    "eval-call": ["experiments/demo/parent/ext-demo.js:8"],
+    "function-constructor": ["experiments/demo/parent/ext-demo.js:9"],
+    "string-timer": ["experiments/demo/parent/ext-demo.js:10"]
+  }
+}

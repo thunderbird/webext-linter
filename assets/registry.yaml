@@ -592,7 +592,10 @@ deterministic-checks:
 # Dynamic code execution: the definite cases are deterministic (eval / Function
 # constructor / code-string timers, and unsafe-eval/unsafe-inline in the CSP);
 # the ambiguous fetch().then(eval) case is the remote-eval llm check below. All
-# read the shared dynamic-execution scan.
+# read the shared dynamic-execution scan. The eval/Function/timer/fetch-eval file
+# scan only covers code OUTSIDE the pure WebExtension tree: a WebExtension sandbox
+# cannot run these without a permissive CSP (the unsafe-eval/unsafe-inline checks
+# report that), so only privileged Experiment / non-WebExtension code is scanned.
 - title: eval() usage
   severity: error
   check: eval-call
@@ -846,7 +849,8 @@ llm-checks:
 
 # LLM check: the statically-undecidable fetch().then(eval) case - is the executed
 # code remote? The definite eval/Function/timer/CSP cases are deterministic
-# checks above.
+# checks above. Like them, the shared scan only covers code OUTSIDE the pure
+# WebExtension tree (WebExtension code is CSP-gated, see unsafe-eval/unsafe-inline).
 - title: Remote eval
   severity: error
   check: remote-eval

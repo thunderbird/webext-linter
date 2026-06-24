@@ -15,6 +15,7 @@ import evalCall from "../../src/checks/rules/eval-call.js";
 import cspUnsafeEval from "../../src/checks/rules/csp-unsafe-eval.js";
 import cspUnsafeInline from "../../src/checks/rules/csp-unsafe-inline.js";
 import remoteEval from "../../src/checks/rules/remote-eval.js";
+import { getEvalScan } from "../../src/checks/lib/eval-scan.js";
 import { formatNote } from "../../src/checks/registry.js";
 
 // ---- url classifier ----
@@ -161,6 +162,46 @@ test("JS scan flags eval / Function / string timers", () => {
   assert.ok(
     !types(`setTimeout(() => doThing(), 10);`).includes("string-timer")
   );
+});
+
+// getEvalScan reports dynamic-execution hits only for code OUTSIDE the pure
+// WebExtension tree. A WebExtension file (here the manifest's background entry)
+// cannot run eval & friends without a permissive CSP - reported separately by
+// csp-unsafe-* - so its hits are dropped; a non-WebExtension file (here an
+// unreferenced privileged-style file, outside the tree) keeps all four hit types,
+// including the ambiguous fetch().then(eval) that feeds remote-eval.
+test("getEvalScan scopes hits to non-WebExtension files", () => {
+  const dyn =
+    `eval("x");\n` +
+    `const f = new Function("return 1");\n` +
+    `setTimeout("doThing()", 0);\n` +
+    `fetch(u).then((r) => r.text()).then(eval);\n`;
+  const ctx = fakeCtx(
+    { "bg.js": dyn, "exp.js": dyn },
+    {
+      manifest_version: 3,
+      name: "x",
+      version: "1",
+      background: { scripts: ["bg.js"] },
+    }
+  );
+  const hits = getEvalScan(ctx).hits;
+  // Every hit is from the non-WebExtension file; the WebExtension file is exempt.
+  assert.ok(hits.length > 0);
+  assert.ok(
+    hits.every((h) => h.file === "exp.js"),
+    JSON.stringify(hits)
+  );
+  // All four hit types survive (the three deterministic checks + remote-eval's).
+  const seen = new Set(hits.map((h) => h.type));
+  for (const t of [
+    "eval",
+    "function-constructor",
+    "string-timer",
+    "ambiguous-fetch-eval",
+  ]) {
+    assert.ok(seen.has(t), `missing hit type ${t}`);
+  }
 });
 
 // Assigning a literal remote URL to a created script element's .src is detected

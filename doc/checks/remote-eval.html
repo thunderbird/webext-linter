@@ -29,12 +29,19 @@
         is remote cannot be decided statically, each site is handed to the model,
         which judges whether the code is fetched from a remote source.
       </p>
+      <p>
+        Like the other dynamic-execution checks, the shared scan looks only
+        <em>outside</em> the pure WebExtension tree: a WebExtension sandbox cannot
+        execute fetched code without a permissive CSP — reported separately by the
+        <em>csp-unsafe-eval</em> check — so only privileged Experiment /
+        non-WebExtension code is considered here.
+      </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A dynamic-execution site<br/>found by the eval scan"] --> B{"An ambiguous fetch-then-execute<br/>site, e.g. fetch().then(eval)?"}
+  A["A dynamic-execution site found by the shared<br/>eval scan — outside the WebExtension tree"] --> B{"An ambiguous fetch-then-execute<br/>site, e.g. fetch().then(eval)?"}
   B -- "no, a definite eval/Function/<br/>timer/CSP case" --> S([skip — handled by the<br/>deterministic eval checks])
   B -- yes --> L{"LLM judges: is the executed<br/>code fetched from a remote<br/>source rather than static and local?"}
   L -- "pass: static and local" --> OK([no finding])
