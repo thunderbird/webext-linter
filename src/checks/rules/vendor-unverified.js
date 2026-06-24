@@ -13,17 +13,25 @@
 // authored instructions (-> assets/registry.yaml).
 
 import { readVendorFile } from "../../normalize/vendor.js";
+import { VENDOR_TRUSTED_HOSTS } from "../../config.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../escalation.js").Escalation} Escalation */
 
-// Results this check owns, each mapped to its manual-review reason. The reason
-// is URL-free: the source URL is listed separately on the location line (which
-// reads "<VENDOR file> - <declared file> - <source URL> - <reason>"), so it is
-// not repeated here.
+// The hosts vendor verification will fetch from, named in the untrusted reason so
+// the developer knows where to move the source. Derived from the single config
+// list (config.js VENDOR_TRUSTED_HOSTS) so it stays correct if that set changes.
+const TRUSTED_HOSTS = VENDOR_TRUSTED_HOSTS.map((h) => `https://${h}`).join(
+  ", "
+);
+
+// Results this check owns, each mapped to its manual-review reason. Reasons do
+// not repeat the source URL (it is listed separately on the location line, which
+// reads "<VENDOR file> - <declared file> - <source URL> - <reason>"); the
+// untrusted reason does name the trusted hosts the source could move to.
 const REASON = {
   "no-url": "no source URL declared",
-  untrusted: "source not on a trusted host",
+  untrusted: `source not on a trusted host (use ${TRUSTED_HOSTS})`,
   "not-popular": "not a confirmed widely-used library",
   unfetchable: "source could not be fetched",
 };

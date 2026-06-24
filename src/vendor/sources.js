@@ -5,9 +5,13 @@
 //
 // Belongs here: parsing the trusted host shapes (unpkg, jsDelivr npm + gh,
 // raw.githubusercontent) plus the github.com/.../blob -> raw rewrite, and the
-// pinned-ref heuristic. Does NOT belong here: the host allowlist policy itself
-// (-> src/config.js VENDOR_TRUSTED_HOSTS), fetching/comparing/popularity
-// (-> src/vendor/verify.js), or the finding/manual routing (-> the check).
+// pinned-ref heuristic. The host allowlist policy itself is config.js
+// VENDOR_TRUSTED_HOSTS - the single source of truth this module gates on (a host
+// it does not list is untrusted, no matter what a parser could do with it). Does
+// NOT belong here: fetching/comparing/popularity (-> src/vendor/verify.js), or
+// the finding/manual routing (-> the check).
+
+import { VENDOR_TRUSTED_HOSTS } from "../config.js";
 
 /**
  * @typedef {object} VendorSource
@@ -42,6 +46,69 @@ const VERSION = /^v?\d+(\.\d+)*([.-][0-9a-z.-]+)?$/i;
 // A pinned git ref: a version tag or a full 40-hex commit SHA.
 const GIT_REF = /^(v?\d+(\.\d+)*([.-][0-9a-z.-]+)?|[0-9a-f]{40})$/i;
 
+// An accepted INPUT host that is not itself a fetch host: a github.com/.../blob
+// URL is rewritten to raw.githubusercontent.com (which IS in VENDOR_TRUSTED_HOSTS)
+// before fetch, so github.com is allowed as an alias but never listed as a fetch
+// host in config.
+const GITHUB_INPUT_HOST = "github.com";
+
+// Per-host URL parsers. The keys are the only hosts classifySource will parse;
+// each value turns the path segments into a VendorSource. Trust is still gated on
+// VENDOR_TRUSTED_HOSTS below - this table only knows how to read each host's URL
+// shape, not whether the host is allowed.
+const HOST_PARSERS = {
+  "unpkg.com": (segs, url) => {
+    const { pkg, version } = npmFromPath(segs);
+    return pkg ? npm(pkg, version, url) : UNTRUSTED;
+  },
+  "cdn.jsdelivr.net": (segs, url) => {
+    if (segs[0] === "npm") {
+      const { pkg, version } = npmFromPath(segs.slice(1));
+      return pkg ? npm(pkg, version, url) : UNTRUSTED;
+    }
+    if (segs[0] === "gh" && segs.length >= 3) {
+      const { repo, ref } = ghSpec(segs[1], segs[2]);
+      return github(repo, ref, url);
+    }
+    return UNTRUSTED;
+  },
+  "raw.githubusercontent.com": (segs, url) =>
+    segs.length >= 4
+      ? github(`${segs[0]}/${segs[1]}`, segs[2], url)
+      : UNTRUSTED,
+  [GITHUB_INPUT_HOST]: (segs) => {
+    if (segs[2] !== "blob" || segs.length < 5) {
+      return UNTRUSTED;
+    }
+    const [owner, repo, , ref, ...rest] = segs;
+    const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${rest.join("/")}`;
+    return github(`${owner}/${repo}`, ref, raw);
+  },
+  // The npm registry serves the whole package as a versioned .tgz, e.g.
+  // /ical.js/-/ical.js-2.2.1.tgz - verified by extract + per-file hash match.
+  "registry.npmjs.org": (segs, url) => {
+    const { pkg, version } = npmTarballFromPath(segs);
+    return pkg && version
+      ? { ...npm(pkg, version, url), tarball: true }
+      : UNTRUSTED;
+  },
+};
+
+// The hosts a source URL may use: every config fetch host, plus the github.com
+// input alias. classifySource accepts nothing outside this set, so config is the
+// authority for what is trusted.
+const ALLOWED_HOSTS = new Set([...VENDOR_TRUSTED_HOSTS, GITHUB_INPUT_HOST]);
+
+// Fail fast on drift: a fetch host in config with no parser here would silently
+// be rejected by classifySource (no way to read its URL), so require one.
+for (const host of VENDOR_TRUSTED_HOSTS) {
+  if (!HOST_PARSERS[host]) {
+    throw new Error(
+      `No vendor source parser for trusted host "${host}" (src/vendor/sources.js HOST_PARSERS must cover every config.js VENDOR_TRUSTED_HOSTS entry)`
+    );
+  }
+}
+
 /**
  * Classify a declared source URL.
  * @param {?string} url
@@ -58,40 +125,11 @@ export function classifySource(url) {
     return UNTRUSTED;
   }
   const host = u.hostname.toLowerCase();
-  const segs = u.pathname.split("/").filter(Boolean);
-
-  if (host === "unpkg.com") {
-    const { pkg, version } = npmFromPath(segs);
-    return pkg ? npm(pkg, version, url) : UNTRUSTED;
-  }
-  if (host === "cdn.jsdelivr.net") {
-    if (segs[0] === "npm") {
-      const { pkg, version } = npmFromPath(segs.slice(1));
-      return pkg ? npm(pkg, version, url) : UNTRUSTED;
-    }
-    if (segs[0] === "gh" && segs.length >= 3) {
-      const { repo, ref } = ghSpec(segs[1], segs[2]);
-      return github(repo, ref, url);
-    }
+  if (!ALLOWED_HOSTS.has(host)) {
     return UNTRUSTED;
   }
-  if (host === "raw.githubusercontent.com" && segs.length >= 4) {
-    return github(`${segs[0]}/${segs[1]}`, segs[2], url);
-  }
-  if (host === "github.com" && segs[2] === "blob" && segs.length >= 5) {
-    const [owner, repo, , ref, ...rest] = segs;
-    const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${rest.join("/")}`;
-    return github(`${owner}/${repo}`, ref, raw);
-  }
-  // The npm registry serves the whole package as a versioned .tgz, e.g.
-  // /ical.js/-/ical.js-2.2.1.tgz - verified by extract + per-file hash match.
-  if (host === "registry.npmjs.org") {
-    const { pkg, version } = npmTarballFromPath(segs);
-    return pkg && version
-      ? { ...npm(pkg, version, url), tarball: true }
-      : UNTRUSTED;
-  }
-  return UNTRUSTED;
+  const segs = u.pathname.split("/").filter(Boolean);
+  return HOST_PARSERS[host](segs, url);
 }
 
 /**

@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 
 import { classifySource } from "../../src/vendor/sources.js";
+import { VENDOR_TRUSTED_HOSTS } from "../../src/config.js";
 import { verifyVendor } from "../../src/vendor/verify.js";
 import unpinnedDependency from "../../src/checks/rules/unpinned-dependency.js";
 import unpinnedVendorSource from "../../src/checks/rules/unpinned-vendor-source.js";
@@ -80,6 +81,45 @@ test("classifySource recognizes an npm-registry tarball (whole-package source)",
     classifySource("https://registry.npmjs.org/ical.js").trusted,
     false
   );
+});
+
+// A github.com/.../blob/<ref>/... URL is an accepted INPUT host: it is rewritten
+// to a raw.githubusercontent.com URL (the real fetch host) and classified github.
+test("classifySource accepts a github.com blob URL, rewriting it to raw", () => {
+  const gh = classifySource(
+    "https://github.com/moment/moment/blob/2.29.1/min/moment.min.js"
+  );
+  assert.deepEqual(
+    [gh.trusted, gh.pinned, gh.kind, gh.repo, gh.ref],
+    [true, true, "github", "moment/moment", "2.29.1"]
+  );
+  assert.equal(
+    gh.rawUrl,
+    "https://raw.githubusercontent.com/moment/moment/2.29.1/min/moment.min.js"
+  );
+  // A non-blob github.com URL is not a usable source.
+  assert.equal(
+    classifySource("https://github.com/moment/moment").trusted,
+    false
+  );
+});
+
+// Every fetch host in the config allowlist has a parser, so classifySource and
+// config.js VENDOR_TRUSTED_HOSTS cannot silently drift apart.
+test("every VENDOR_TRUSTED_HOSTS host classifies a pinned URL as trusted", () => {
+  const sample = {
+    "unpkg.com": "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js",
+    "cdn.jsdelivr.net":
+      "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js",
+    "raw.githubusercontent.com":
+      "https://raw.githubusercontent.com/moment/moment/2.29.1/min/moment.min.js",
+    "registry.npmjs.org":
+      "https://registry.npmjs.org/ical.js/-/ical.js-2.2.1.tgz",
+  };
+  for (const host of VENDOR_TRUSTED_HOSTS) {
+    assert.ok(sample[host], `add a sample URL for new trusted host ${host}`);
+    assert.equal(classifySource(sample[host]).trusted, true, host);
+  }
 });
 
 // ---- verifyVendor (network injected) ----
@@ -889,9 +929,12 @@ test("vendor-unverified: every unverifiable result escalates; verified does not"
   // file, the source URL (when there is one), and the URL-free reason.
   assert.ok(out.escalations.every((e) => e.file === "VENDOR"));
   assert.equal(out.escalations[0].item, "a.js - no source URL declared");
+  const trustedHosts = VENDOR_TRUSTED_HOSTS.map((h) => `https://${h}`).join(
+    ", "
+  );
   assert.equal(
     out.escalations[1].item,
-    "b.js - http://evil/x.js - source not on a trusted host"
+    `b.js - http://evil/x.js - source not on a trusted host (use ${trustedHosts})`
   );
 });
 
