@@ -6,6 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import AdmZip from "adm-zip";
 
 import { classifySource } from "../../src/vendor/sources.js";
 import { VENDOR_TRUSTED_HOSTS } from "../../src/config.js";
@@ -259,6 +260,49 @@ test("verifyVendor: an unfetchable tarball -> unfetchable", async () => {
   const addon = addonWith({ "vendor/foo.js": "BODY\n" }, store(tgzEntry()));
   await verifyVendor(addon, net({ throwOnFetch: true }));
   assert.equal(addon.vendor.results[0].outcome, "unfetchable");
+});
+
+// A folder entry resolves its github tree -> repo ZIP and verifies EACH file under
+// the directory against the archive's subpath: a file present upstream verifies, a
+// file that is not is `modified` (-> a vendor-modified finding).
+test("verifyVendor: a folder verifies each file against the repo archive subpath", async () => {
+  const SHA = "0123456789012345678901234567890123456789";
+  const TREE = `https://github.com/o/r/tree/${SHA}/modules/vfs`;
+  const zip = new AdmZip();
+  zip.addFile(`r-${SHA}/modules/vfs/a.js`, Buffer.from("AAA\n"));
+  zip.addFile(`r-${SHA}/modules/vfs/sub/c.js`, Buffer.from("CCC\n"));
+  zip.addFile(`r-${SHA}/other/d.js`, Buffer.from("DDD\n")); // outside the subpath
+  const addon = addonWith(
+    {
+      "vendor/lib/a.js": "AAA\n", // matches upstream
+      "vendor/lib/c.js": "CCC\n", // matches upstream (nested)
+      "vendor/lib/b.js": "LOCAL ONLY\n", // not upstream -> modified
+    },
+    store({
+      folders: new Set(["vendor/lib"]),
+      manifest: [
+        {
+          path: "vendor/lib",
+          sourceUrl: TREE,
+          trusted: true,
+          pinned: true,
+          kind: "folder",
+        },
+      ],
+    })
+  );
+  await verifyVendor(addon, net({ bytes: zip.toBuffer() }));
+  const byPath = Object.fromEntries(
+    addon.vendor.results.map((r) => [r.path, r.outcome])
+  );
+  assert.equal(addon.vendor.results.length, 3); // one per file under the folder
+  assert.notEqual(byPath["vendor/lib/a.js"], "modified");
+  assert.notEqual(byPath["vendor/lib/c.js"], "modified");
+  assert.equal(byPath["vendor/lib/b.js"], "modified");
+  // the modified file becomes a vendor-modified finding
+  assert.ok(
+    vendorModified.run({ addon }).some((f) => f.file === "vendor/lib/b.js")
+  );
 });
 
 test("verifyVendor: a real byte difference is modified, a niche lib not-popular", async () => {

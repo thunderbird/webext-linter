@@ -24,6 +24,7 @@
 
 import { extname, JS_EXTENSIONS, CSS_EXTENSIONS } from "../../util/files.js";
 import { BANNER_SCAN_CHARS } from "../../config.js";
+import { isVendored } from "../../vendor/resolve.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../addon/load.js").Addon} Addon */
@@ -60,20 +61,22 @@ const LIB_NAME =
  * @returns {Bundled}
  */
 export function classifyBundled(addon) {
-  const vendored = addon.vendor?.set ?? new Set();
   const classified = [];
   // Files of a PRISTINE allowed Experiment are vetted upstream code, not the
   // developer's - the byte-match IS their review, so the source-level scanners
   // skip them like a vendored library. Custom --allow-experiments code is not
   // trusted, so it stays linted: trustedFiles is empty there.
   const trusted = addon.experiments?.trustedFiles ?? new Set();
-  const nonAuthored = new Set([...vendored, ...trusted]);
+  const nonAuthored = new Set([...trusted]);
   for (const [file, buf] of addon.files) {
     const ext = extname(file);
-    if (
-      (!JS_EXTENSIONS.has(ext) && !CSS_EXTENSIONS.has(ext)) ||
-      vendored.has(file)
-    ) {
+    // A vendored file (an exact VENDOR entry OR a file under a vendored folder) is
+    // not the developer's code: skip scanning it and treat it as non-authored.
+    const vend = isVendored(addon.vendor, file);
+    if (vend) {
+      nonAuthored.add(file);
+    }
+    if ((!JS_EXTENSIONS.has(ext) && !CSS_EXTENSIONS.has(ext)) || vend) {
       continue;
     }
     const text = buf.toString("utf8");

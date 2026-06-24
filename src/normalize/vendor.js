@@ -4,14 +4,17 @@
 // skips any path listed here, and vendor verification fetches the declared
 // source to confirm it (src/vendor/verify.js).
 //
-// Real submissions write this file in many styles, so the parser works in blocks
-// (delimited by headings or blank lines) rather than per line. In each block it
-// pairs a LIBRARY-LIKE packaged file (the library signal - bundled.js - is the
-// primary identifier, so the add-on's own modules and the package name are ignored)
-// with the block's source URL (the first URL that points to a file; a bare
-// repository link is not a source). Tokens may be Markdown code-spans. This reads
-// the "File:"/"Source:", "path:" + "- URL:", "name.js : <url>", and `## Lib` block
-// styles alike. Deterministic extraction is best-effort - the LLM fallback
+// Real submissions write this file in many styles, so the parser scans sequentially.
+// It pairs a packaged file with its own source URL (a URL that points to a file; a
+// bare repository link is not a source), TRUSTING the declaration: any packaged file
+// paired with a source URL is vendored, whether or not the library heuristic
+// recognizes it (so a small readable module is not lost). A declaration flushes as
+// soon as a new token (or a second URL) follows a complete one, so an unindented list
+// with no blank lines still splits per declaration - in either order (file->source or
+// source->file) - instead of collapsing onto the first URL; headings/blank lines
+// (splitBlocks) only bound sections. Tokens may be Markdown code-spans. This reads the
+// "File:"/"Source:", "path:" + "- URL:", "name.js : <url>", and `## Lib` block styles
+// alike. Deterministic extraction is best-effort - the LLM fallback
 // (src/vendor/resolve.js) covers a free-form file the scan cannot map.
 //
 // Belongs here: the deterministic VENDOR parse only - locating the file
@@ -26,10 +29,9 @@
 // vendor verification pre-step + the vendor checks. This file makes no verdict.
 
 import { basename } from "../util/files.js";
-import { classify as librarySignal } from "../checks/lib/bundled.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
-/** @typedef {{path: string, sourceUrl: ?string}} VendorEntry */
+/** @typedef {{path: string, sourceUrl: ?string, kind?: string}} VendorEntry */
 
 // VENDOR filenames developers use (matched case-insensitively).
 const VENDOR_NAMES = new Set(["vendor", "vendor.md", "vendors", "vendors.md"]);
@@ -77,6 +79,8 @@ const STRONG_EXT = /\.[a-z][a-z0-9]*$/i;
  *   basename), else null.
  * @property {boolean} exists  The package has this path or its basename.
  * @property {boolean} strongFileLike  Has a letter-led extension.
+ * @property {?string} [dir]  Resolved packaged DIRECTORY (a folder declaration),
+ *   else null. Only set for no-extension tokens.
  */
 
 /**
@@ -88,6 +92,7 @@ const STRONG_EXT = /\.[a-z][a-z0-9]*$/i;
 function buildClassifier(addon) {
   const paths = new Set(addon.files.keys());
   const byBase = new Map();
+  const dirs = new Set(); // every directory prefix of a packaged file
   for (const p of addon.files.keys()) {
     const b = basename(p);
     const list = byBase.get(b);
@@ -96,11 +101,23 @@ function buildClassifier(addon) {
     } else {
       byBase.set(b, [p]);
     }
+    const parts = p.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      dirs.add(parts.slice(0, i).join("/"));
+    }
   }
   return (token) => {
     const norm = normalizeToken(token);
+    // A no-extension token may name a packaged DIRECTORY (a folder declaration);
+    // otherwise it is not a file reference.
     if (!LOOSE_EXT.test(norm)) {
-      return { norm, path: null, exists: false, strongFileLike: false };
+      return {
+        norm,
+        path: null,
+        exists: false,
+        strongFileLike: false,
+        dir: dirs.has(norm) ? norm : null,
+      };
     }
     const hits = byBase.get(basename(norm));
     return {
@@ -108,6 +125,7 @@ function buildClassifier(addon) {
       path: paths.has(norm) ? norm : hits && hits.length === 1 ? hits[0] : null,
       exists: paths.has(norm) || Boolean(hits && hits.length),
       strongFileLike: STRONG_EXT.test(norm),
+      dir: null,
     };
   };
 }
@@ -162,10 +180,27 @@ function pointsToFile(url) {
   return !(REPO_HOSTS.has(u.hostname.toLowerCase()) && segs.length <= 2);
 }
 
-/** Whether a packaged file's CONTENT/name marks it a third-party library. */
-function isLibraryFile(addon, path) {
-  const buf = addon.files.get(path);
-  return buf ? librarySignal(buf.toString("utf8"), path).library : false;
+/**
+ * Whether a URL points to a DIRECTORY we can resolve to a fetchable archive (so a
+ * folder declaration can be verified): a github `…/tree/<ref>/<path>` URL. The
+ * source classifier (src/vendor/sources.js) maps it to the repo ZIP + the subpath.
+ * A bare repo root is not a directory source.
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isDirSource(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  const segs = u.pathname.split("/").filter(Boolean);
+  return (
+    u.hostname.toLowerCase() === "github.com" &&
+    segs[2] === "tree" &&
+    segs.length >= 4
+  );
 }
 
 /**
@@ -199,15 +234,27 @@ function splitBlocks(text) {
 }
 
 /**
- * Scan the VENDOR file into one record per declaration: a LIBRARY-LIKE packaged
- * file (the path) paired with the block's source URL - a URL that points to a file
- * (a bare repository link is ignored). The library signal is the primary
- * identifier, so the add-on's own modules and the package name in a block are
- * ignored. A block whose only file-like token is ABSENT yields a missing record
- * (path null) instead. A block with no file source yields nothing (the VENDOR file
- * is "unparseable" when no block yields a record - see resolveVendor).
+ * Scan the VENDOR file into one record per declaration: a packaged file (the path)
+ * paired with its own source URL - a URL that points to a file (a bare repository
+ * link is ignored). We trust the developer's declaration: ANY packaged file paired
+ * with a source URL is vendored, whether or not the library heuristic recognizes it
+ * (so a small readable module like `i18n.mjs` is not lost). A declaration whose only
+ * file-like token is ABSENT yields a missing record (path null).
+ *
+ * Pairing is a stateful, self-delimiting scan: one in-flight declaration accumulates
+ * file/absent token(s) and a URL, and FLUSHES the moment a new token arrives after it
+ * is already complete (or a second URL arrives) - so `file -> source` (cardbook's
+ * no-blank-line list) and `source -> file` (the NC `## Lib` block) both pair their own
+ * file with their own URL, instead of every file collapsing onto the block's first
+ * URL. An incidental own-file mention that trails a completed declaration (DOMPurify's
+ * "Usage: `modules/htmlSanitizer.js`") lands in a fresh, URL-less declaration and is
+ * dropped. `splitBlocks` is kept only as an outer section boundary (a dangling URL
+ * cannot reach a file across a blank line / heading). A declaration with no source URL
+ * yields nothing (the VENDOR file is "unparseable" when no record is produced - see
+ * resolveVendor). Two files sharing one URL is a real record set here and flagged
+ * ambiguous in resolveVendor (a multi-file source must be declared as a folder).
  * @param {Addon} addon
- * @returns {{token: string, path: ?string, sourceUrl: ?string}[]}
+ * @returns {{token: string, path: ?string, kind: ?string, sourceUrl: ?string}[]}
  */
 function scanVendorRecords(addon) {
   const vendor = readVendorFile(addon);
@@ -216,41 +263,97 @@ function scanVendorRecords(addon) {
   }
   const classify = buildClassifier(addon);
   const records = [];
+
   for (const block of splitBlocks(vendor.text)) {
-    const urls = [];
-    const present = new Set(); // present library-like packaged paths
-    const absent = []; // absent strong-file-like tokens (missing candidates)
+    // The declaration being assembled. "Complete" = a URL AND a file/folder/absent
+    // token; the next token (or a second URL) then starts a fresh declaration.
+    let pending = { files: [], folder: null, absents: [], url: null };
+    const complete = () =>
+      pending.url != null &&
+      (pending.files.length || pending.folder || pending.absents.length);
+    const flush = () => {
+      const source = pending.url;
+      if (source && pending.folder) {
+        records.push({
+          token: pending.folder,
+          path: pending.folder,
+          kind: "folder",
+          sourceUrl: source,
+        });
+      } else if (source && pending.files.length) {
+        const seen = new Set();
+        for (const path of pending.files) {
+          if (!seen.has(path)) {
+            seen.add(path);
+            records.push({
+              token: path,
+              path,
+              kind: "file",
+              sourceUrl: source,
+            });
+          }
+        }
+      } else if (source && pending.absents.length) {
+        records.push({
+          token: pending.absents[0],
+          path: null,
+          kind: "file",
+          sourceUrl: source,
+        });
+      }
+      pending = { files: [], folder: null, absents: [], url: null };
+    };
+    // A new URL always starts a new declaration when one is already in flight.
+    const addUrl = (u) => {
+      if (pending.url != null) {
+        flush();
+      }
+      pending.url = u;
+    };
+    const addFile = (path) => {
+      if (complete()) {
+        flush();
+      }
+      pending.files.push(path);
+    };
+    const addFolder = (dir) => {
+      if (complete()) {
+        flush();
+      }
+      pending.folder = dir;
+    };
+    const addAbsent = (norm) => {
+      if (complete()) {
+        flush();
+      }
+      pending.absents.push(norm);
+    };
+
     for (const line of block) {
+      // URLs first, then the line's remaining tokens (textual order within one
+      // declaration does not matter - neither half completes it alone). A file URL
+      // pairs with a file token; a directory (github tree) URL pairs with a folder.
       const lineUrls = line.match(URLS_RE) || [];
-      urls.push(...lineUrls);
       let remainder = line;
-      for (const u of lineUrls) {
-        remainder = remainder.replace(u, " ");
+      for (const raw of lineUrls) {
+        remainder = remainder.replace(raw, " ");
+        const u = raw.replace(/[).,;'"]+$/, "");
+        if (pointsToFile(u) || isDirSource(u)) {
+          addUrl(u);
+        }
       }
       for (const token of remainder.split(/\s+/)) {
         const info = classify(token);
         if (info.path) {
-          if (isLibraryFile(addon, info.path)) {
-            present.add(info.path);
-          }
+          addFile(info.path);
+        } else if (info.dir) {
+          addFolder(info.dir);
         } else if (info.strongFileLike && !info.exists) {
-          absent.push(info.norm);
+          addAbsent(info.norm);
         }
       }
     }
-    const source = urls
-      .map((u) => u.replace(/[).,;'"]+$/, ""))
-      .find(pointsToFile);
-    if (!source) {
-      continue; // no file source -> nothing verifiable in this block
-    }
-    if (present.size) {
-      for (const path of present) {
-        records.push({ token: path, path, sourceUrl: source });
-      }
-    } else if (absent.length) {
-      records.push({ token: absent[0], path: null, sourceUrl: source });
-    }
+    flush(); // end of section: a boundary always ends the declaration
   }
   return records;
 }
@@ -268,7 +371,7 @@ export function parseVendorManifest(addon) {
   for (const r of scanVendorRecords(addon)) {
     if (r.path && !seen.has(r.path)) {
       seen.add(r.path);
-      entries.push({ path: r.path, sourceUrl: r.sourceUrl });
+      entries.push({ path: r.path, sourceUrl: r.sourceUrl, kind: r.kind });
     }
   }
   return entries;

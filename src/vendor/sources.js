@@ -27,6 +27,9 @@ import { VENDOR_TRUSTED_HOSTS } from "../config.js";
  * @property {?string} repo  "owner/repo" (github kind).
  * @property {?string} ref  Git ref (version tag or commit) (github kind); else
  *   null. The npm-resolution audit derives the version from this.
+ * @property {?string} subpath  For a github /tree/ DIRECTORY source: the path
+ *   within the repo whose files are the upstream set (rawUrl is the repo ZIP
+ *   archive). null for single-file/package sources.
  */
 
 const UNTRUSTED = Object.freeze({
@@ -39,6 +42,7 @@ const UNTRUSTED = Object.freeze({
   version: null,
   repo: null,
   ref: null,
+  subpath: null,
 });
 
 // A concrete npm version (not a dist-tag like "latest"/"next").
@@ -77,12 +81,22 @@ const HOST_PARSERS = {
       ? github(`${segs[0]}/${segs[1]}`, segs[2], url)
       : UNTRUSTED,
   [GITHUB_INPUT_HOST]: (segs) => {
-    if (segs[2] !== "blob" || segs.length < 5) {
-      return UNTRUSTED;
+    const [owner, repo, type, ref, ...rest] = segs;
+    // A single file: /blob/<ref>/<path> -> the raw file URL (byte-compared).
+    if (type === "blob" && segs.length >= 5) {
+      const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${rest.join("/")}`;
+      return github(`${owner}/${repo}`, ref, raw);
     }
-    const [owner, repo, , ref, ...rest] = segs;
-    const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${rest.join("/")}`;
-    return github(`${owner}/${repo}`, ref, raw);
+    // A directory: /tree/<ref>/<subpath> -> the repo ZIP archive; only files
+    // under <subpath> are the upstream set (a folder declaration, see verifyFolder).
+    if (type === "tree" && segs.length >= 4) {
+      const archive = `https://github.com/${owner}/${repo}/archive/${ref}.zip`;
+      return {
+        ...github(`${owner}/${repo}`, ref, archive),
+        subpath: rest.join("/"),
+      };
+    }
+    return UNTRUSTED;
   },
   // The npm registry serves the whole package as a versioned .tgz, e.g.
   // /ical.js/-/ical.js-2.2.1.tgz - verified by extract + per-file hash match.

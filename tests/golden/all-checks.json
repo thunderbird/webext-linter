@@ -50,6 +50,7 @@
       "vendor-unverified",
       "missing-vendor-file",
       "vendor-unparseable",
+      "vendor-ambiguous-source",
       "disguised-resource",
       "disguised-stylesheet",
       "disguised-window",

@@ -152,19 +152,73 @@ test("resolveVendor marks a library + repo-only-URL block as 'unparsed'", async 
   assert.equal(unparsedVendor, true);
 });
 
-// A declaration whose file is the add-on's own (non-library) code is not a vendor
-// entry, so the VENDOR file is "unparsed".
-test("resolveVendor marks a non-library declaration as 'unparsed'", async () => {
+// A packaged file paired with a source URL is trusted as a vendor entry even when
+// it is the add-on's own (non-library) code - verification, not the parser, decides.
+test("resolveVendor trusts a declared file + source URL", async () => {
   const addon = fakeAddon({
     "VENDOR.md":
       "File: modules/own.js\nSource: https://unpkg.com/x@1.0.0/own.js\n",
     "modules/own.js": "export function f() {}\n",
   });
-  const { manifest, missing, unparsedVendor } = await resolveVendor({
+  const { manifest, unparsedVendor } = await resolveVendor({
     addon,
     token: undefined,
   });
-  assert.equal(manifest.length, 0);
-  assert.equal(missing.length, 0);
-  assert.equal(unparsedVendor, true);
+  assert.deepEqual(
+    manifest.map((e) => [e.path, e.sourceUrl]),
+    [["modules/own.js", "https://unpkg.com/x@1.0.0/own.js"]]
+  );
+  assert.equal(unparsedVendor, false);
+});
+
+// A single source URL paired with more than one bundled FILE is ambiguous:
+// resolveVendor pulls those entries out of the manifest (not verified) and records
+// them on ambiguousSources, while keeping their paths vendored (skip-set).
+test("resolveVendor flags >1 file per source URL as ambiguous", async () => {
+  const addon = fakeAddon({
+    "VENDOR.md":
+      "## Bundle\n" +
+      "- bundled file: vendor/a.min.js\n" +
+      "- bundled file: vendor/b.min.js\n" +
+      "- source: https://unpkg.com/bundle@1.0.0/dist/bundle.js\n",
+    "vendor/a.min.js": "x",
+    "vendor/b.min.js": "x",
+  });
+  const { manifest, ambiguousSources, set } = await resolveVendor({
+    addon,
+    token: undefined,
+  });
+  assert.deepEqual(manifest, []); // not verified - ambiguous pairing
+  assert.equal(ambiguousSources.length, 1);
+  assert.equal(
+    ambiguousSources[0].source,
+    "https://unpkg.com/bundle@1.0.0/dist/bundle.js"
+  );
+  assert.deepEqual([...ambiguousSources[0].paths].sort(), [
+    "vendor/a.min.js",
+    "vendor/b.min.js",
+  ]);
+  assert.deepEqual([...set].sort(), ["vendor/a.min.js", "vendor/b.min.js"]);
+});
+
+// A `bundled directory` + a github tree URL is a folder entry: its path goes to
+// `folders` (prefix skip-set), not the exact-path `set`, and it is never ambiguous.
+test("resolveVendor records a folder declaration", async () => {
+  const TREE =
+    "https://github.com/o/r/tree/0123456789012345678901234567890123456789/dist/lib";
+  const addon = fakeAddon({
+    "VENDOR.md": `- bundled directory : vendor/lib\n- source : ${TREE}\n`,
+    "vendor/lib/a.js": "x",
+  });
+  const { manifest, folders, set, ambiguousSources } = await resolveVendor({
+    addon,
+    token: undefined,
+  });
+  assert.deepEqual(
+    manifest.map((e) => [e.path, e.kind]),
+    [["vendor/lib", "folder"]]
+  );
+  assert.deepEqual([...folders], ["vendor/lib"]);
+  assert.deepEqual([...set], []); // a folder is a prefix, not an exact path
+  assert.deepEqual(ambiguousSources, []);
 });

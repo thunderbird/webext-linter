@@ -30,7 +30,9 @@ import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
 /** @typedef {import("../normalize/vendor.js").VendorEntry} VendorEntry */
 /**
  * @typedef {object} VendorStore
- * @property {Set<string>} set  Vendored paths (skip-set).
+ * @property {Set<string>} set  Vendored file paths (exact-match skip-set).
+ * @property {Set<string>} folders  Vendored directory paths (prefix-match): every
+ *   file under one is vendored (a folder declaration). Use isVendored to test both.
  * @property {{path: string, source: ?string, outcome: string}[]} results
  *   Per-file outcomes (offline ones now, network ones added by verifyVendor).
  * @property {(VendorEntry & {trusted: boolean, pinned: boolean})[]} manifest
@@ -38,6 +40,9 @@ import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
  * @property {{name: string, version: string}[]} packages  Pinned deps.
  * @property {{name: string, spec: string}[]} unpinned  Deps with no pin.
  * @property {VendorEntry[]} missing  VENDOR entries whose file is absent.
+ * @property {{source: string, paths: string[]}[]} ambiguousSources  Source URLs
+ *   paired with more than one bundled file (the developer must split them or use a
+ *   folder). Read by the vendor-ambiguous-source check.
  * @property {boolean} unparsedVendor  A VENDOR file exists but yielded nothing.
  * @property {?string} vendorFile  The VENDOR filename (e.g. "VENDOR.md"), or
  *   null; the anchor file for VENDOR-sourced vulnerability/unaudited findings.
@@ -52,6 +57,29 @@ import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
 
 // An exact semver (no range operators) - a concrete pinned version.
 const EXACT = /^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
+
+/**
+ * Whether a packaged file is vendored: an exact VENDOR-file entry, or a file under
+ * a vendored folder declaration (prefix). The single test for "skip this file" used
+ * by the normalizer-adjacent checks (bundled.js, unused-files.js) and verifyPackage.
+ * @param {?{set?: Set<string>, folders?: Set<string>}} vendor  The vendor store.
+ * @param {string} file  Add-on-relative path.
+ * @returns {boolean}
+ */
+export function isVendored(vendor, file) {
+  if (!vendor) {
+    return false;
+  }
+  if (vendor.set?.has(file)) {
+    return true;
+  }
+  for (const dir of vendor.folders ?? []) {
+    if (file.startsWith(`${dir}/`)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Resolve the offline vendored declarations into `addon.vendor`.
@@ -112,12 +140,53 @@ export async function resolveVendor({
   }
 
   const set = new Set();
+  const folders = new Set();
   const results = [];
+
+  // One source URL paired with more than one bundled FILE is ambiguous: the
+  // developer must give each file its own source, or declare the containing
+  // folder as a single source. Pull those entries out of the manifest (we do not
+  // verify a guessed pairing) but keep their paths vendored (skip-set), and
+  // surface them via the vendor-ambiguous-source check. Folder entries are exempt
+  // - a folder legitimately covers many files.
+  const ambiguousSources = [];
+  {
+    const byUrl = new Map();
+    for (const e of manifest) {
+      if (e.kind === "folder" || !e.sourceUrl) {
+        continue;
+      }
+      const list = byUrl.get(e.sourceUrl) ?? [];
+      list.push(e.path);
+      byUrl.set(e.sourceUrl, list);
+    }
+    const bad = new Set();
+    for (const [source, paths] of byUrl) {
+      if (paths.length > 1) {
+        ambiguousSources.push({ source, paths });
+        bad.add(source);
+      }
+    }
+    for (let i = manifest.length - 1; i >= 0; i--) {
+      if (manifest[i].kind !== "folder" && bad.has(manifest[i].sourceUrl)) {
+        set.add(manifest[i].path); // still vendored, just unverifiable
+        manifest.splice(i, 1);
+      }
+    }
+  }
+
   for (const entry of manifest) {
     const src = classifySource(entry.sourceUrl);
     entry.trusted = src.trusted;
     entry.pinned = src.pinned;
-    set.add(entry.path); // a declared file is vendored regardless of its outcome
+    // A declared file/folder is vendored regardless of its outcome. A folder path
+    // is a directory PREFIX (its files are skipped/verified by prefix - see
+    // isVendored / verifyFolder), so it goes to `folders`, not the exact-path set.
+    if (entry.kind === "folder") {
+      folders.add(entry.path);
+    } else {
+      set.add(entry.path);
+    }
     if (!entry.sourceUrl) {
       results.push({ path: entry.path, source: null, outcome: "no-url" });
     } else if (!src.trusted) {
@@ -144,11 +213,13 @@ export async function resolveVendor({
 
   return {
     set,
+    folders,
     results,
     manifest,
     packages,
     unpinned,
     missing,
+    ambiguousSources,
     vendorFile: vendorFile?.name ?? null,
     // Filled by verifyVendor's OSV audit (network). Empty for offline runs.
     vulnerabilities: [],

@@ -178,7 +178,136 @@ test("present and missing library entries coexist", () => {
   ]);
 });
 
-// ---- invalid: yield no entry (Task 2 surfaces these as a parse-error finding) ----
+// Regression (cardbook): several declarations in ONE block with NO blank lines
+// between them - each a `bundled file`/`source file` pair - must keep their OWN
+// url. The old block-pooling stamped the block's FIRST file URL onto every file
+// (so jsep/zip wrongly "did not match" d3-dsv's url). The library-name and licence
+// bullets carry no file/url token and are inert.
+test("an unindented list with no blank lines pairs each file with its own url", () => {
+  const files = {
+    "VENDOR.md":
+      "Third-Party Libraries\n" +
+      "  - [d3-dsv]\n" +
+      "    - bundled file : vendor/d3-dsv/d3-dsv.js\n" +
+      "    - source file : https://unpkg.com/d3-dsv@3.0.1/dist/d3-dsv.js\n" +
+      "  - [jsep]\n" +
+      "    - bundled file : vendor/jsep/jsep.min.js\n" +
+      "    - source file : https://cdn.jsdelivr.net/npm/jsep@1.4.0/dist/jsep.min.js\n" +
+      "  - [zip]\n" +
+      "    - bundled file : vendor/zip/zip-full.js\n" +
+      "    - source file : https://raw.githubusercontent.com/gildas-lormeau/zip.js/abc/dist/zip-full.js\n",
+    "vendor/d3-dsv/d3-dsv.js": LIB,
+    "vendor/jsep/jsep.min.js": LIB,
+    "vendor/zip/zip-full.js": LIB,
+  };
+  assert.deepEqual(entries(files), [
+    [
+      "vendor/d3-dsv/d3-dsv.js",
+      "https://unpkg.com/d3-dsv@3.0.1/dist/d3-dsv.js",
+    ],
+    [
+      "vendor/jsep/jsep.min.js",
+      "https://cdn.jsdelivr.net/npm/jsep@1.4.0/dist/jsep.min.js",
+    ],
+    [
+      "vendor/zip/zip-full.js",
+      "https://raw.githubusercontent.com/gildas-lormeau/zip.js/abc/dist/zip-full.js",
+    ],
+  ]);
+});
+
+// Regression (cardbook, the real shape): some declarations name a file the library
+// heuristic does NOT recognize (a small readable .mjs). We TRUST the declaration, so
+// that file is its own entry with its own source - and, crucially, it does not leak
+// its URL onto the NEXT file (the off-by-one). Every declared file keeps its own URL.
+test("every declared file is an entry with its own url (no shift)", () => {
+  const files = {
+    "VENDOR.md":
+      "  - [a]\n" +
+      "    - bundled file : vendor/a.min.js\n" +
+      "    - source file : https://cdn.example.com/a/a.min.js\n" +
+      "  - [mod]\n" +
+      "    - bundled file : vendor/mod.mjs\n" +
+      "    - source file : https://cdn.example.com/mod/mod.mjs\n" +
+      "  - [b]\n" +
+      "    - bundled file : vendor/b.min.js\n" +
+      "    - source file : https://cdn.example.com/b/b.min.js\n",
+    "vendor/a.min.js": "x", // .min name -> library-ish
+    "vendor/mod.mjs": OWN, // not library-recognized, but declared -> trusted
+    "vendor/b.min.js": "x",
+  };
+  assert.deepEqual(entries(files), [
+    ["vendor/a.min.js", "https://cdn.example.com/a/a.min.js"],
+    ["vendor/mod.mjs", "https://cdn.example.com/mod/mod.mjs"],
+    ["vendor/b.min.js", "https://cdn.example.com/b/b.min.js"],
+  ]);
+});
+
+// Order-agnostic: a declaration whose source URL PRECEDES its file (with a bare
+// repo URL in between, which is ignored) still pairs correctly - even sharing a
+// block with the next declaration and no blank line between them.
+test("source-before-file declarations in one block pair correctly", () => {
+  const files = {
+    "VENDOR.md":
+      "- Source: https://registry.npmjs.org/dompurify/-/dompurify-3.4.7.tgz\n" +
+      "- Upstream repository: https://github.com/cure53/DOMPurify\n" +
+      "- Included file: `vendor/purify.js`\n" +
+      "- Source: https://unpkg.com/marked@9.0.0/marked.min.js\n" +
+      "- Included file: `vendor/marked.min.js`\n",
+    "vendor/purify.js": LIB,
+    "vendor/marked.min.js": LIB,
+  };
+  assert.deepEqual(entries(files), [
+    [
+      "vendor/purify.js",
+      "https://registry.npmjs.org/dompurify/-/dompurify-3.4.7.tgz",
+    ],
+    ["vendor/marked.min.js", "https://unpkg.com/marked@9.0.0/marked.min.js"],
+  ]);
+});
+
+// Two bundled files declared under ONE source: the PARSER reports both faithfully
+// (each pairs with that URL); resolveVendor then flags it as vendor-ambiguous-source
+// and pulls them out (see vendor-resolve.test.js) - a file source can verify only one
+// file, so a multi-file source must be declared as a folder.
+test("two files under one source are both parsed (resolve flags ambiguous)", () => {
+  const files = {
+    "VENDOR.md":
+      "## Bundle\n" +
+      "- bundled file: `vendor/a.min.js`\n" +
+      "- bundled file: `vendor/b.min.js`\n" +
+      "- source: https://unpkg.com/bundle@1.0.0/dist/bundle.js\n",
+    "vendor/a.min.js": LIB,
+    "vendor/b.min.js": LIB,
+  };
+  assert.deepEqual(entries(files), [
+    ["vendor/a.min.js", "https://unpkg.com/bundle@1.0.0/dist/bundle.js"],
+    ["vendor/b.min.js", "https://unpkg.com/bundle@1.0.0/dist/bundle.js"],
+  ]);
+});
+
+// A `bundled directory` token (a directory prefix of packaged files) paired with a
+// github tree URL is a FOLDER entry (kind:"folder"); the directory itself is the
+// path. Verification (verifyFolder) later checks every file under it.
+test("a bundled directory + a github tree URL is a folder entry", () => {
+  const TREE =
+    "https://github.com/o/r/tree/0123456789012345678901234567890123456789/dist/lib";
+  const m = parseVendorManifest(
+    fakeAddon({
+      "VENDOR.md":
+        "- bundled directory : vendor/lib\n" + `- source : ${TREE}\n`,
+      "vendor/lib/a.js": LIB,
+      "vendor/lib/b.js": LIB,
+    })
+  );
+  assert.deepEqual(
+    m.map((e) => [e.path, e.kind, e.sourceUrl]),
+    [["vendor/lib", "folder", TREE]]
+  );
+});
+
+// ---- trusted: a declared file + a source URL is an entry, even when the library
+// heuristic would not recognize the file (we ride along; verification decides) ----
 
 // Pure prose with no file/URL declaration.
 test("invalid: pure prose yields no entry", () => {
@@ -203,8 +332,10 @@ test("invalid: library file with only a repository URL (no file URL)", () => {
   assert.deepEqual(missing(files), []);
 });
 
-// A file Source URL but no library file in the block (only the add-on's own code).
-test("invalid: file URL but no library file in the block", () => {
+// A packaged file paired with a source URL is an entry even when the file is not
+// library-recognized (here the add-on's own `modules/own.js`): we trust the
+// declaration and let verification decide. (Old policy: this yielded no entry.)
+test("trusted: a declared own-file paired with a source URL is an entry", () => {
   const files = {
     "VENDOR.md":
       "## Helpers\n" +
@@ -212,19 +343,23 @@ test("invalid: file URL but no library file in the block", () => {
       "- Used by `modules/own.js`\n",
     "modules/own.js": OWN,
   };
-  assert.deepEqual(entries(files), []);
+  assert.deepEqual(entries(files), [
+    ["modules/own.js", "https://unpkg.com/x@1.0.0/dist/x.js"],
+  ]);
   assert.deepEqual(missing(files), []);
 });
 
-// A non-library file declared with file + URL: the library signal is the
-// identifier, so a non-library local file is not a vendor entry.
-test("invalid: a non-library file is not a vendor entry", () => {
+// File + URL where the file is the add-on's own code: still trusted (ride along),
+// so it is an entry and verification (not the parser) decides if it matches.
+test("trusted: a non-library file with file + URL is an entry", () => {
   const files = {
     "VENDOR.md":
       "File: modules/own.js\nSource: https://unpkg.com/x@1.0.0/own.js\n",
     "modules/own.js": OWN,
   };
-  assert.deepEqual(entries(files), []);
+  assert.deepEqual(entries(files), [
+    ["modules/own.js", "https://unpkg.com/x@1.0.0/own.js"],
+  ]);
   assert.deepEqual(missing(files), []);
 });
 

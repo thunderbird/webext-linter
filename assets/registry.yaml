@@ -494,6 +494,15 @@ deterministic-checks:
   response: |-
     A VENDOR file is present but no third-party library could be parsed from it. List each bundled library in its own block as the packaged file path together with a source URL that points to the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so it can be verified automatically.
 
+# Flags a single source URL declared as the source of more than one bundled file -
+# a file source can verify only one file, so the pairing is ambiguous. A multi-file
+# library must be declared as a directory with a single directory source.
+- title: Ambiguous vendored source
+  severity: error
+  check: vendor-ambiguous-source
+  response: |-
+    A single source URL ({{item}}) is declared as the source of more than one bundled file ({{files}}). A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL.
+
 # Flags data smuggled out through a channel not meant for it - always an error,
 # regardless of consent. One check per channel (resource/stylesheet/window/
 # navigation); all read the shared outbound-sink scan.

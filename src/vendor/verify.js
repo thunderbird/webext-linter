@@ -34,6 +34,8 @@ import { createHash } from "node:crypto";
 
 import { classifySource } from "./sources.js";
 import { tarballHashes } from "./tarball.js";
+import { zipHashesUnder } from "./archive.js";
+import { isVendored } from "./resolve.js";
 import { normalizedSha256 } from "../normalize/hash.js";
 import { getProvider } from "../llm/provider.js";
 import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
@@ -112,35 +114,42 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}) {
   }
   // VENDOR entries known trusted + pinned (the rest were settled offline).
   for (const entry of vendor.manifest) {
-    if (entry.trusted && entry.pinned) {
-      // A whole-package tarball source (npm registry) is extracted + per-file hash
-      // matched; a single-file source is byte-compared.
-      const src = classifySource(entry.sourceUrl);
-      const outcome = src.tarball
-        ? await verifyTarball(entry, addon, net)
-        : await verifyUrl(entry, addon, net);
-      vendor.results.push({
-        path: entry.path,
-        source: entry.sourceUrl,
-        outcome,
-      });
-      // An npm-sourced VENDOR lib is also audited for known vulnerabilities (the
-      // same OSV query as a package.json dep), anchored at its VENDOR-file line.
-      // A github source carries no npm identity directly, so auditGithub tries to
-      // PROVE one (content-hash match against a candidate npm package) and audit
-      // it too; an unprovable one is recorded as unaudited.
-      if (src.kind === "npm") {
-        await auditNpm(
-          src.pkg,
-          src.version,
-          vendor.vendorFile,
-          entry.sourceUrl,
-          vendor,
-          net
-        );
-      } else if (src.kind === "github") {
-        await auditGithub(entry, src, addon, vendor, net, llm);
-      }
+    if (!entry.trusted || !entry.pinned) {
+      continue;
+    }
+    // A folder declaration: every packaged file under the directory is matched
+    // against the repo archive (scoped to the declared subpath), one result each.
+    if (entry.kind === "folder") {
+      await verifyFolder(entry, addon, vendor, net);
+      continue;
+    }
+    // A whole-package tarball source (npm registry) is extracted + per-file hash
+    // matched; a single-file source is byte-compared.
+    const src = classifySource(entry.sourceUrl);
+    const outcome = src.tarball
+      ? await verifyTarball(entry, addon, net)
+      : await verifyUrl(entry, addon, net);
+    vendor.results.push({
+      path: entry.path,
+      source: entry.sourceUrl,
+      outcome,
+    });
+    // An npm-sourced VENDOR lib is also audited for known vulnerabilities (the
+    // same OSV query as a package.json dep), anchored at its VENDOR-file line.
+    // A github source carries no npm identity directly, so auditGithub tries to
+    // PROVE one (content-hash match against a candidate npm package) and audit
+    // it too; an unprovable one is recorded as unaudited.
+    if (src.kind === "npm") {
+      await auditNpm(
+        src.pkg,
+        src.version,
+        vendor.vendorFile,
+        entry.sourceUrl,
+        vendor,
+        net
+      );
+    } else if (src.kind === "github") {
+      await auditGithub(entry, src, addon, vendor, net, llm);
     }
   }
   for (const pkg of vendor.packages) {
@@ -519,6 +528,58 @@ async function verifyTarball(entry, addon, net) {
 }
 
 /**
+ * Verify a vendored FOLDER: resolve its github tree source to the repo ZIP archive,
+ * hash every upstream file under the declared subpath, then match EACH packaged file
+ * under the directory by content hash (the same membership test as verifyTarball,
+ * one result per file). A file not in the upstream set is `modified`; a fetch/parse
+ * failure records the whole folder `unfetchable` (so it escalates to manual review,
+ * not silence).
+ * @param {{path: string, sourceUrl: string}} entry  Folder entry (path = directory).
+ * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
+ * @returns {Promise<void>}
+ */
+async function verifyFolder(entry, addon, vendor, net) {
+  const src = classifySource(entry.sourceUrl);
+  let hashes;
+  try {
+    hashes = zipHashesUnder(
+      await net.fetchBytes(src.rawUrl),
+      src.subpath ?? ""
+    );
+  } catch {
+    vendor.results.push({
+      path: entry.path,
+      source: entry.sourceUrl,
+      outcome: "unfetchable",
+    });
+    return;
+  }
+  const prefix = `${entry.path.replace(/\/+$/, "")}/`;
+  let popular = null; // looked up once, lazily, only if a file actually matches
+  for (const [addonPath, mine] of addon.files) {
+    if (!addonPath.startsWith(prefix)) {
+      continue;
+    }
+    if (!hashes.has(normalizedSha256(mine))) {
+      vendor.results.push({
+        path: addonPath,
+        source: entry.sourceUrl,
+        outcome: "modified",
+      });
+      continue;
+    }
+    if (popular === null) {
+      popular = await isPopular(src, net);
+    }
+    vendor.results.push({
+      path: addonPath,
+      source: entry.sourceUrl,
+      outcome: popular ? "verified" : "not-popular",
+    });
+  }
+}
+
+/**
  * Match packaged files against a pinned npm package's published files by
  * Subresource-Integrity hash (the per-file sha256 in the "?meta" listing),
  * recording each match as vendored. The match is purely local - the listing is
@@ -546,8 +607,8 @@ async function verifyPackage(pkg, addon, vendor, net) {
   const algos = [...new Set([...byHash.keys()].map((k) => k.split("-")[0]))];
   let popular = null; // looked up once, lazily, only if a file actually matches
   for (const [addonPath, mine] of addon.files) {
-    if (vendor.set.has(addonPath)) {
-      continue; // already vendored (a VENDOR entry)
+    if (isVendored(vendor, addonPath)) {
+      continue; // already vendored (a VENDOR file entry or folder)
     }
     // A packaged file is vendored when its exact content hash matches a
     // published file (basename-independent - a renamed verbatim copy still

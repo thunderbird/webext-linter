@@ -20,6 +20,7 @@
 // assets/registry.yaml. Severity -> that registry entry, stamped by runChecks.
 
 import { finding } from "../../report/finding.js";
+import { isVendored } from "../../vendor/resolve.js";
 import { buildReachability } from "../lib/reachability.js";
 import { aggregateGroups } from "../lib/verdict-resolve.js";
 import {
@@ -61,7 +62,6 @@ export default {
       return { findings: [] };
     }
     const reach = buildReachability(ctx);
-    const vendored = addon.vendor?.set ?? new Set();
     // An Experiment loads its files by mechanisms static analysis can't trace, so
     // "not reachable" is unreliable there - we'd mostly flag working experiment code.
     // Report only unambiguous junk; a separate "review the whole Experiment" check
@@ -77,7 +77,7 @@ export default {
 
     for (const file of addon.files.keys()) {
       if (
-        vendored.has(file) ||
+        isVendored(addon.vendor, file) ||
         isDocMetadataFile(file) ||
         ALLOW.some((re) => re.test(file))
       ) {
