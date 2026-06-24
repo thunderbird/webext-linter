@@ -921,7 +921,7 @@ manual-checks:
 # Manual: inspect the listing + add-on for spam, inappropriate, or low-effort
 # content.
 - title: Check the submission for spam
-  severity: error
+  check: check-submission-spam
   instructions: |-
     Inspect the listing (name, summary, description, screenshots) and the add-on
     itself. Determine if it looks like spam or contains inappropriate, misleading,
@@ -931,6 +931,7 @@ manual-checks:
 
 # Manual: exercise the add-on in a test profile; may need credentials or info.
 - title: Test the add-on and request testing information if needed
+  check: test-add-on
   instructions: |-
     Test the add-on’s functionality in a test profile, and check if it needs
     additional information like credentials in order to continue the review.
@@ -939,6 +940,7 @@ manual-checks:
 
 # Manual: behavior not documented on the ATN listing (inspect the version diff).
 - title: Check for "No Surprises" policy violations
+  check: no-surprises-policy
   instructions: |-
     Test the add-on’s functionality in a test profile and inspect the code for
     any unexpected features or behavior that is not documented on the ATN
@@ -949,6 +951,7 @@ manual-checks:
 
 # Manual: payment is required but the ATN "needs payment" flag is off.
 - title: Check for a missing payment disclosure
+  check: missing-payment-disclosure
   instructions: |-
     Test the add-on’s functionality in a test profile. Verify whether the
     add-on requires a subscription or other form of payment to function but the
@@ -958,6 +961,7 @@ manual-checks:
 
 # Manual: limited/non-public audience (better self-hosted than publicly listed).
 - title: Check suitability for listing
+  check: suitability-for-listing
   instructions: |-
     Judge whether the add-on targets a limited or non-public audience (for
     example an internal, single-organization, or test-only add-on) and should
@@ -967,6 +971,7 @@ manual-checks:
 
 # Manual: name/summary/description/screenshots vs Mozilla’s Acceptable Use Policy.
 - title: Acceptable Use Policy
+  check: acceptable-use-policy
   instructions: |-
     Check the name, summary, description, and screenshots against Mozilla’s
     Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/).
@@ -975,6 +980,7 @@ manual-checks:
 
 # Manual: icon imitating the Thunderbird/Mozilla logo (an image checks can’t see).
 - title: Check the icon for trademark or logo imitation
+  check: icon-trademark-imitation
   instructions: |-
     Inspect the add-on’s icon, if it imitates or incorporates the Thunderbird or
     Mozilla logo.
@@ -983,6 +989,7 @@ manual-checks:
 
 # Manual: the ATN listing page lacks usage details/entry points or screenshots.
 - title: Missing ATN description or details
+  check: missing-atn-description
   instructions: |-
     Verify that the add-on listing page on ATN includes detailed instructions on
     how to use the add-on and where to find its entry points. It should also
@@ -992,6 +999,7 @@ manual-checks:
 
 # Manual: the ATN listing page should have an English version.
 - title: Missing English ATN localization
+  check: missing-english-atn-localization
   instructions: |-
     Verify that the ATN listing page also has an English version.
   response: |-
@@ -1001,6 +1009,7 @@ manual-checks:
 # distinguished from the original? `diff: false` skips it when reviewing an update
 # against a --diff-to baseline (an established listing is not a new fork).
 - title: Forked add-on
+  check: forked-add-on
   diff: false
   instructions: |-
     Check if the submission is a fork of an existing add-on. Such forks are only

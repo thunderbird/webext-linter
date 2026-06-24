@@ -206,6 +206,20 @@ export class Registry {
   }
 
   /**
+   * The `check:` ids of the manual-checks entries. These are id metadata only -
+   * the canonical id for each manual check (matching its doc/checks/<id>.html
+   * page) - NOT runnable checks: they have no rule module and are deliberately
+   * excluded from checkIds()/checkEntries(), so --checks-only/--checks-skip do
+   * not act on them. Used for cross-referencing (docs, consistency tests).
+   * @returns {string[]}
+   */
+  manualCheckIds() {
+    return (this.doc["manual-checks"] || [])
+      .map((e) => e && e.check)
+      .filter(Boolean);
+  }
+
+  /**
    * The headings shown above each severity group in the Issues section, as a
    * { error?, warning?, info? } -> string map (a missing key renders that group
    * with no heading).

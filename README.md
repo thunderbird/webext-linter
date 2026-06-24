@@ -117,8 +117,7 @@ Each `deterministic-checks` entry links to a module in
 [src/checks/rules/](src/checks/rules/) and supplies the severity for its
 findings. A deterministic check either decides each case as a finding or
 escalates it straight to manual review (e.g. `vendor-unverified`,
-`native-messaging`, `fork-check`). The LLM checks escalate only their ambiguous
-residue.
+`native-messaging`). The LLM checks escalate only their ambiguous residue.
 
 | Check | What it flags |
 | --- | --- |
@@ -144,7 +143,6 @@ residue.
 | `experiment-modified` | A bundled Experiment that is a recognised published Thunderbird API draft but a modified or outdated copy (error) - the submission stays on the normal review path but is rejected until the unmodified latest upstream copy is bundled. |
 | `experiment-not-allowed` | An Experiment (declares `experiment_apis`) when experiments are not enabled via `--allow-experiments` (error, on by default). |
 | `experiment-overrides-api` | An Experiment whose declared API path overrides or grafts onto a built-in Thunderbird API instead of adding a new namespace (error). |
-| `fork-check` | New-submission manual prompt (`diff: false` - the inverse of a diff check, so it is skipped when reviewing an update against a `--diff-to` baseline): confirm a forked add-on is clearly distinguished from the original and offers a significant difference in functionality and/or code - routed to manual review. |
 | `function-constructor` | A `new Function(...)` (the Function constructor) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
 | `manifest-invalid-json` | manifest.json is present but is not valid JSON (error). |
 | `manifest-missing` | No manifest.json at the add-on root (error). |
@@ -207,15 +205,18 @@ judgment over content the tool can't see (the store listing, screenshots, the
 icon). These live under `manual-checks` in the yaml and are surfaced in the
 report's **Standard manual review** to-do list.
 
-| Check | What the reviewer verifies |
+| Check id (`check:`) | What the reviewer verifies |
 | --- | --- |
-| Check the submission for spam | The listing and add-on for spam or inappropriate, misleading, or low-effort content. |
-| Test the add-on and request testing information if needed | Functionality in a test profile, fail if credentials or other info are needed to continue. |
-| Check for "No Surprises" policy violations | The code diff for behavior not documented on the ATN listing that could surprise the user. |
-| Check for a missing payment disclosure | Whether the add-on requires payment but the "needs payment" flag is not set on ATN. |
-| Check suitability for listing | Whether the add-on targets a limited or non-public audience (better self-hosted than listed). |
-| Acceptable Use Policy | The name, summary, description, and screenshots against Mozilla's Acceptable Use Policy. |
-| Check the icon for trademark or logo imitation | The icon for imitation of the Thunderbird or Mozilla logo (an image the automated checks can't inspect). |
+| `check-submission-spam` | The listing and add-on for spam or inappropriate, misleading, or low-effort content. |
+| `test-add-on` | Functionality in a test profile, fail if credentials or other info are needed to continue. |
+| `no-surprises-policy` | The code diff for behavior not documented on the ATN listing that could surprise the user. |
+| `missing-payment-disclosure` | Whether the add-on requires payment but the "needs payment" flag is not set on ATN. |
+| `suitability-for-listing` | Whether the add-on targets a limited or non-public audience (better self-hosted than listed). |
+| `acceptable-use-policy` | The name, summary, description, and screenshots against Mozilla's Acceptable Use Policy. |
+| `icon-trademark-imitation` | The icon for imitation of the Thunderbird or Mozilla logo (an image the automated checks can't inspect). |
+| `missing-atn-description` | The ATN listing page has usage instructions, entry points, and screenshots. |
+| `missing-english-atn-localization` | The ATN listing page also has an English version. |
+| `forked-add-on` | New-submission prompt (`diff: false`, skipped when reviewing against a `--diff-to` baseline): a forked add-on is clearly distinguished from the original and offers a significant difference in functionality and/or code. |
 
 
 ## Examples

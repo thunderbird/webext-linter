@@ -393,6 +393,35 @@ test("manualChecks gates diff:false entries to new submissions", () => {
   assert.ok(titles(true).includes("Check the submission for spam"));
 });
 
+// Every manual-checks entry carries a `check:` id (id metadata, not a runnable
+// check): the ids are present on all entries, unique, do not collide with the
+// rule-backed checkIds(), and each has a matching doc/checks/<id>.html page - so
+// the docs reference real registry ids, not invented ones.
+test("manual checks have unique, doc-backed check ids distinct from rule ids", () => {
+  const reg = loadRegistry();
+  const manualIds = reg.manualCheckIds();
+  const manualTitles = reg.manualChecks(false).concat(reg.manualChecks(true));
+  // One id per manual-checks entry (the diff:false "Forked add-on" included).
+  assert.equal(manualIds.length, 10);
+  assert.equal(new Set(manualIds).size, manualIds.length, "ids are unique");
+  // Manual ids are NOT in the runnable check namespace (no rule module).
+  const runnable = new Set(reg.checkIds());
+  for (const id of manualIds) {
+    assert.ok(!runnable.has(id), `manual id ${id} collides with a rule id`);
+  }
+  // Each manual id has a documentation page (registry <-> docs stay in sync).
+  const docDir = path.join(here, "..", "..", "doc", "checks");
+  for (const id of manualIds) {
+    assert.ok(
+      fs.existsSync(path.join(docDir, `${id}.html`)),
+      `missing doc/checks/${id}.html`
+    );
+  }
+  // Sanity: the diff:false fork check is one of them.
+  assert.ok(manualIds.includes("forked-add-on"));
+  assert.ok(manualTitles.length > 0);
+});
+
 // ---- unused-permission-manual (producer of permissions to vet) ----
 // It always enumerates the declared NAMED permissions a reachable API call does
 // not provably require, one escalation each (anchored to the manifest line); host

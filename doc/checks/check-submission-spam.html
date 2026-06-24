@@ -11,7 +11,7 @@
       <header class="check-header">
         <h1>
           Check the submission for spam
-          <span class="badge error">error</span>
+          <span class="badge manual">manual</span>
         </h1>
         <div class="check-id">check-submission-spam</div>
       </header>
@@ -24,9 +24,9 @@
       </p>
       <p>
         The goal is to decide whether the submission looks like spam or carries
-        inappropriate, misleading, or low-effort content. Because this protects
-        the catalogue from abusive listings, a confirmed problem is treated as a
-        hard rejection rather than a soft warning.
+        inappropriate, misleading, or low-effort content. Like the other manual
+        checks it carries no automated severity — a confirmed problem is raised
+        for the developer from the manual-review section.
       </p>
 
       <h2>Decision flow</h2>
@@ -35,12 +35,12 @@
 flowchart TD
   A["Reviewer inspects the listing<br/>name, summary, description, screenshots<br/>and the add-on itself"] --> B{"Does it look like spam, or contain<br/>inappropriate, misleading,<br/>or low-effort content?"}
   B -- no --> OK([no finding])
-  B -- yes --> ERR([ERROR: inappropriate<br/>or spam content])
+  B -- yes --> M([flag for the developer<br/>manual finding])
 
-  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
-  class ERR err;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
   class OK ok;
+  class M manual;
         </pre>
       </div>
 
