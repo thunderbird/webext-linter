@@ -7,6 +7,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import bundledFiles from "../../src/checks/rules/bundled-files.js";
+import {
+  resolveInDirStatus,
+  resolveRefStatus,
+} from "../../src/checks/lib/manifest-refs.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex } from "../../src/schema/index.js";
 
@@ -168,4 +172,89 @@ test("page-relative executeScript file is checked against the host page dir", ()
   const out = bundledFiles.run(missing);
   assert.equal(out.length, 1);
   assert.match(out[0].item, /message-unescape\.js/);
+});
+
+// resolveInDirStatus distinguishes a bundled file (ok) from an absent one
+// (missing) and from a ".." that climbs ABOVE the package root (escapes) - the
+// signal the check uses to tell "not bundled" from "wrong path". A ".." that
+// stays inside the package (a subdir going up to a sibling) is NOT an escape.
+test("resolveInDirStatus reports ok / missing / escapes", () => {
+  const files = new Map([
+    ["skin/x.svg", Buffer.from("")],
+    ["a/b.html", Buffer.from("")],
+  ]);
+  assert.deepEqual(resolveInDirStatus(files, null, "skin/x.svg"), {
+    kind: "ok",
+    key: "skin/x.svg",
+  });
+  assert.equal(
+    resolveInDirStatus(files, null, "skin/none.svg").kind,
+    "missing"
+  );
+  // root-relative leading ".." climbs above the root -> escapes
+  assert.equal(
+    resolveInDirStatus(files, null, "../skin/x.svg").kind,
+    "escapes"
+  );
+  // from subdir "a", ".." pops "a" (stays in root) and resolves the sibling
+  assert.deepEqual(resolveInDirStatus(files, "a", "../skin/x.svg"), {
+    kind: "ok",
+    key: "skin/x.svg",
+  });
+  // two levels up from a one-level dir escapes the root
+  assert.equal(
+    resolveInDirStatus(files, "a", "../../skin/x.svg").kind,
+    "escapes"
+  );
+});
+
+// resolveRefStatus derives the base directory from the referring file: a file at
+// the root resolves a leading ".." as an escape, while a file in a subdirectory
+// can reach a sibling tree.
+test("resolveRefStatus resolves relative to the referring file's directory", () => {
+  const files = new Map([["skin/x.svg", Buffer.from("")]]);
+  assert.equal(
+    resolveRefStatus(files, "bg.js", "../skin/x.svg").kind,
+    "escapes"
+  );
+  assert.equal(
+    resolveRefStatus(files, "ui/page.js", "../skin/x.svg").kind,
+    "ok"
+  );
+  assert.equal(resolveRefStatus(files, null, "skin/x.svg").kind, "ok");
+});
+
+// A tabs.create({url}) is document-relative (resolved against the calling page),
+// so the same "../sibling.html" verdict depends on where the caller runs: from a
+// SUBDIRECTORY page it resolves to a bundled sibling -> no finding (this is the
+// thunderbird_conversations options/ false positive that used to be flagged).
+test("document-relative tabs.create from a subdir page resolves a sibling - not flagged", () => {
+  const manifest = {
+    manifest_version: 2,
+    options_ui: { page: "options/options.html" },
+  };
+  const call = `browser.tabs.create({ url: "../target/target.html" });`;
+  const ctx = ctxWith(manifest, {
+    "options/options.html": `<script src="options.js"></script>`,
+    "options/options.js": call,
+    "target/target.html": "",
+  });
+  ctx.jsSources = [{ file: "options/options.js", code: call, lineOffset: 0 }];
+  assert.equal(bundledFiles.run(ctx).length, 0); // options/../target/target.html
+});
+
+// From a ROOT context (a background.scripts page lives at the generated root),
+// the same "../target/..." climbs above the package root -> a wrong path that is
+// still flagged (the conversations background/ case).
+test("document-relative tabs.create from a root context that escapes is flagged", () => {
+  const manifest = { manifest_version: 2, background: { scripts: ["bg.js"] } };
+  const call = `browser.tabs.create({ url: "../target/target.html" });`;
+  const ctx = ctxWith(manifest, {
+    "bg.js": call,
+    "target/target.html": "",
+  });
+  ctx.jsSources = [{ file: "bg.js", code: call, lineOffset: 0 }];
+  const out = bundledFiles.run(ctx);
+  assert.equal(out.length, 1);
+  assert.match(out[0].item, /target\.html/);
 });

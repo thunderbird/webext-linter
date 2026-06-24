@@ -212,8 +212,9 @@ function compute(ctx) {
     }
     // File-loading API calls (schema-directed + bridge): getURL, executeScript/
     // insertCSS, the register family, setIcon, tabs.create, ... Most paths are
-    // extension-root-relative. The page-relative trio (base:"page") resolves
-    // against the calling script's host page directory instead.
+    // extension-root-relative. Document-relative loaders (base:"page" - the MV2
+    // injection trio and tabs.create / windows.create url) resolve against the
+    // calling script's host page directory instead.
     const loaded = scanLoaderRefs(
       src.code,
       src.lineOffset,

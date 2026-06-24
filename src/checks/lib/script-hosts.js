@@ -24,7 +24,12 @@
 // loader-files.js), the reachability graph (-> reachability.js), or the lexical
 // path-resolution primitives (-> manifest-refs.js).
 
-import { resolveRef, resolveInDir } from "./manifest-refs.js";
+import {
+  resolveRef,
+  resolveInDir,
+  resolveRefStatus,
+  resolveInDirStatus,
+} from "./manifest-refs.js";
 import { scanHtmlRemoteRefs } from "../../scan/html.js";
 import { scanLocalImports } from "../../parse/local-imports.js";
 import { asArray } from "./util.js";
@@ -76,6 +81,38 @@ export function resolvePageRelative(files, hostDirs, fromScript, raw) {
     return null;
   }
   return resolveRef(files, null, raw);
+}
+
+/**
+ * Status variant of resolvePageRelative: resolve a page-relative loader path
+ * against the host page(s) of the calling script, distinguishing a path that
+ * escapes the package root ("wrong path") from a missing file. Prefer a host dir
+ * where the file is bundled ("ok"); otherwise, if any host dir keeps the path
+ * inside the package, report "missing"; only when every host dir escapes the
+ * root is it "escapes". With NO known host page, fall back to root-relative
+ * (matches resolvePageRelative's fallback).
+ * @param {Map<string, Buffer>} files
+ * @param {Map<string, Set<string>>} hostDirs  From scriptHostDirs.
+ * @param {string} fromScript  The script file making the call.
+ * @param {string} raw  The referenced path.
+ * @returns {import("./manifest-refs.js").RefStatus}
+ */
+export function resolvePageRelativeStatus(files, hostDirs, fromScript, raw) {
+  const dirs = hostDirs.get(fromScript);
+  if (dirs && dirs.size) {
+    let sawMissing = false;
+    for (const dir of dirs) {
+      const st = resolveInDirStatus(files, dir, raw);
+      if (st.kind === "ok") {
+        return st;
+      }
+      if (st.kind === "missing") {
+        sawMissing = true;
+      }
+    }
+    return sawMissing ? { kind: "missing" } : { kind: "escapes" };
+  }
+  return resolveRefStatus(files, null, raw);
 }
 
 /**

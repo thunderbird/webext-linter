@@ -128,10 +128,11 @@ test("bridge extracts tabs.create url and *.setPopup paths", () => {
 });
 
 // Each ref is tagged with the directory its path resolves against at runtime:
-// the MV2 tabs.* injection trio is page-relative ("page"), every other loader is
-// root-relative ("root"). The resolver (script-hosts.js) uses this to pick the
+// document-relative loaders (the MV2 tabs.* injection trio and tabs.create /
+// windows.create url) are "page"; root-relative loaders (getURL, scripting.*,
+// *.setPopup) are "root". The resolver (script-hosts.js) uses this to pick the
 // base, so the tag must come straight from the method name.
-test("tags page-relative trio base:page, other loaders base:root", () => {
+test("tags document-relative loaders base:page, root loaders base:root", () => {
   const code = `
     browser.tabs.executeScript({ file: "inject.js" });
     browser.tabs.insertCSS({ file: "style.css" });
@@ -148,7 +149,8 @@ test("tags page-relative trio base:page, other loaders base:root", () => {
   assert.equal(base["old.css"], "page");
   assert.equal(base["page.html"], "root");
   assert.equal(base["mv3.js"], "root");
-  assert.equal(base["tab.html"], "root");
+  // tabs.create url resolves against the calling document, so it is page-relative
+  assert.equal(base["tab.html"], "page");
 });
 
 // Version-specific bridge entries respect the run's manifest version: the

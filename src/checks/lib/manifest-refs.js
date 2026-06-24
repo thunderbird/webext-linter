@@ -144,3 +144,82 @@ export function resolveInDir(files, dir, raw) {
   const key = parts.join("/");
   return files.has(key) ? key : null;
 }
+
+/**
+ * @typedef {object} RefStatus
+ * @property {"ok"|"missing"|"escapes"} kind
+ *   - "ok": the reference resolves within the package and the file is bundled
+ *     (`key` is the resolved add-on-relative path);
+ *   - "missing": it resolves within the package but no such file is bundled;
+ *   - "escapes": a ".." segment climbs ABOVE the package root, so the path points
+ *     outside the add-on - a wrong path, regardless of whether a file happens to
+ *     sit at the root-clamped location.
+ * @property {string} [key]  Resolved packaged path, present only when kind ="ok".
+ */
+
+/**
+ * Like resolveInDir, but distinguishes a path that escapes the package root from
+ * one that merely points at a missing file. resolveInDir silently clamps ".."
+ * at the root (so an escaping path can masquerade as a present file); this
+ * variant reports that escape instead, which the bundled-files check needs to
+ * tell "wrong path" apart from "not bundled". An empty/blank reference is
+ * reported as "missing".
+ * @param {Map<string, Buffer>} files
+ * @param {string|null} dir  Base directory; null = extension-root-relative.
+ * @param {string} raw  Raw referenced path.
+ * @returns {RefStatus}
+ */
+export function resolveInDirStatus(files, dir, raw) {
+  let p = String(raw ?? "")
+    .replace(/\\/g, "/")
+    .replace(/[?#].*$/, "")
+    .trim();
+  if (p === "") {
+    return { kind: "missing" };
+  }
+  if (p.startsWith("/") || dir == null) {
+    p = p.replace(/^\/+/, "");
+  } else {
+    p = dir ? `${dir}/${p}` : p;
+  }
+  const parts = [];
+  let escaped = false;
+  for (const seg of p.split("/")) {
+    if (seg === "" || seg === ".") {
+      continue;
+    }
+    if (seg === "..") {
+      if (parts.length === 0) {
+        escaped = true; // climbed above the package root
+      } else {
+        parts.pop();
+      }
+    } else {
+      parts.push(seg);
+    }
+  }
+  if (escaped) {
+    return { kind: "escapes" };
+  }
+  const key = parts.join("/");
+  return files.has(key) ? { kind: "ok", key } : { kind: "missing" };
+}
+
+/**
+ * Directory-aware variant of resolveInDirStatus: resolve `raw` against
+ * `fromFile`'s directory (null/leading "/" = extension-root-relative), reporting
+ * a root escape. Mirrors resolveRef.
+ * @param {Map<string, Buffer>} files
+ * @param {string|null} fromFile
+ * @param {string} raw
+ * @returns {RefStatus}
+ */
+export function resolveRefStatus(files, fromFile, raw) {
+  const dir =
+    fromFile == null
+      ? null
+      : fromFile.includes("/")
+        ? fromFile.slice(0, fromFile.lastIndexOf("/"))
+        : "";
+  return resolveInDirStatus(files, dir, raw);
+}

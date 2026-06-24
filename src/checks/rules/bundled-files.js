@@ -21,8 +21,15 @@
 import { finding } from "../../report/finding.js";
 import { scanLoaderRefs } from "../../parse/loader-files.js";
 import { classifyUrl } from "../../scan/url.js";
-import { manifestFileRefs, normalizeRef } from "../lib/manifest-refs.js";
-import { scriptHostDirs, resolvePageRelative } from "../lib/script-hosts.js";
+import {
+  manifestFileRefs,
+  normalizeRef,
+  resolveRefStatus,
+} from "../lib/manifest-refs.js";
+import {
+  scriptHostDirs,
+  resolvePageRelativeStatus,
+} from "../lib/script-hosts.js";
 import { manifestTokenLine } from "../lib/util.js";
 
 // A reference is a packaged-file candidate (so a missing target is an error)
@@ -35,8 +42,12 @@ export default {
   run(ctx) {
     const { addon } = ctx;
     const out = [];
+    // A reference is satisfied only when it resolves WITHIN the package root to a
+    // bundled file ("ok"). "missing" (no such file) and "escapes" (a ".." that
+    // points outside the add-on - a wrong path) both fail; resolveRefStatus /
+    // resolvePageRelativeStatus tell them apart from a silently root-clamped hit.
     /** @param {string} p @returns {boolean} whether the file is bundled. */
-    const has = (p) => addon.files.has(normalizeRef(p));
+    const rootOk = (p) => resolveRefStatus(addon.files, null, p).kind === "ok";
 
     // 1. Files referenced from the manifest. Anchor on the manifest.json line
     // that cites the path (located by its quoted form), so the finding points at
@@ -50,7 +61,7 @@ export default {
         }
         const line = manifestTokenLine(manifestText, path);
         const loc = line ? { line } : null;
-        const present = has(path);
+        const present = rootOk(path);
         ctx.note?.("manifest.json", loc, path, present ? "pass" : "fail");
         if (!present) {
           out.push(finding({ file: "manifest.json", loc, item: path }));
@@ -82,9 +93,13 @@ export default {
         const loc = { line: ref.line, column: ref.column };
         const present =
           ref.base === "page"
-            ? resolvePageRelative(addon.files, hostDirs, src.file, ref.path) !=
-              null
-            : has(ref.path);
+            ? resolvePageRelativeStatus(
+                addon.files,
+                hostDirs,
+                src.file,
+                ref.path
+              ).kind === "ok"
+            : rootOk(ref.path);
         ctx.note?.(src.file, loc, ref.path, present ? "pass" : "fail");
         if (!present) {
           out.push(finding({ file: src.file, loc, item: ref.path }));

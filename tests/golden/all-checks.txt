@@ -35,7 +35,7 @@ Read more: https://webextension-api.thunderbird.net/.
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json:5 - bogusPermission
 
-11) "missing.js" is referenced but not bundled with the add-on. Please include every referenced file in the package.
+11) "missing.js" is referenced but not bundled with the add-on, or the path may be wrongly specified. Please include every referenced file in the package, and check that the used paths are correct.
  - manifest.json:9
 
 12) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
