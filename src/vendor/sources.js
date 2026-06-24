@@ -13,6 +13,9 @@
  * @typedef {object} VendorSource
  * @property {boolean} trusted  Host is one we may fetch from.
  * @property {boolean} pinned  Ref is immutable (a version/tag/commit).
+ * @property {boolean} tarball  rawUrl serves a whole-package tarball (the npm
+ *   registry), not a single file - verified by extracting + per-file hash match
+ *   instead of a single-file byte compare.
  * @property {?string} rawUrl  The raw URL to fetch (blob URLs rewritten to raw).
  * @property {?("npm"|"github")} kind  Source family, for popularity.
  * @property {?string} pkg  npm package name (npm kind).
@@ -25,6 +28,7 @@
 const UNTRUSTED = Object.freeze({
   trusted: false,
   pinned: false,
+  tarball: false,
   rawUrl: null,
   kind: null,
   pkg: null,
@@ -78,6 +82,14 @@ export function classifySource(url) {
     const [owner, repo, , ref, ...rest] = segs;
     const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${rest.join("/")}`;
     return github(`${owner}/${repo}`, ref, raw);
+  }
+  // The npm registry serves the whole package as a versioned .tgz, e.g.
+  // /ical.js/-/ical.js-2.2.1.tgz - verified by extract + per-file hash match.
+  if (host === "registry.npmjs.org") {
+    const { pkg, version } = npmTarballFromPath(segs);
+    return pkg && version
+      ? { ...npm(pkg, version, url), tarball: true }
+      : UNTRUSTED;
   }
   return UNTRUSTED;
 }
@@ -136,6 +148,30 @@ function npmFromPath(segs) {
   return {
     pkg: at >= 0 ? segs[0].slice(0, at) : segs[0],
     version: at >= 0 ? segs[0].slice(at + 1) : null,
+  };
+}
+
+/**
+ * Split an npm-registry tarball path into {pkg, version}. The shape is
+ * `<pkg>/-/<name>-<version>.tgz`, with `<pkg>` either "name" or "@scope/name" and
+ * `<name>` the unscoped package name. Returns nulls when it does not match.
+ * @param {string[]} segs  Path segments after registry.npmjs.org.
+ * @returns {{pkg: ?string, version: ?string}}
+ */
+function npmTarballFromPath(segs) {
+  const scoped = segs[0]?.startsWith("@");
+  const dash = scoped ? 2 : 1;
+  if (segs[dash] !== "-" || segs.length !== dash + 2) {
+    return { pkg: null, version: null };
+  }
+  const name = scoped ? segs[1] : segs[0];
+  const file = segs[dash + 1];
+  if (!name || !file.endsWith(".tgz") || !file.startsWith(`${name}-`)) {
+    return { pkg: null, version: null };
+  }
+  return {
+    pkg: scoped ? `${segs[0]}/${segs[1]}` : segs[0],
+    version: file.slice(name.length + 1, -4),
   };
 }
 

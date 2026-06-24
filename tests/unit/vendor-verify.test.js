@@ -16,6 +16,8 @@ import vendorUnverified from "../../src/checks/rules/vendor-unverified.js";
 import missingVendorFile from "../../src/checks/rules/missing-vendor-file.js";
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 import vendorVulnUnknown from "../../src/checks/rules/vendor-vuln-unknown.js";
+import { normalizedSha256 } from "../../src/normalize/hash.js";
+import { makeTgz } from "./tarball-fixture.js";
 
 // ---- classifySource (no network) ----
 test("classifySource recognizes the trusted hosts and pinned refs", () => {
@@ -60,6 +62,24 @@ test("classifySource rejects untrusted hosts, non-https, and mutable refs", () =
     false
   );
   assert.equal(classifySource("https://unpkg.com/foo/x.js").pinned, false);
+});
+
+test("classifySource recognizes an npm-registry tarball (whole-package source)", () => {
+  const t = classifySource(
+    "https://registry.npmjs.org/ical.js/-/ical.js-2.2.1.tgz"
+  );
+  assert.deepEqual(
+    [t.trusted, t.pinned, t.tarball, t.kind, t.pkg, t.version],
+    [true, true, true, "npm", "ical.js", "2.2.1"]
+  );
+  // Scoped package: /@scope/name/-/name-<ver>.tgz.
+  const s = classifySource("https://registry.npmjs.org/@a/b/-/b-1.2.3.tgz");
+  assert.deepEqual([s.tarball, s.pkg, s.version], [true, "@a/b", "1.2.3"]);
+  // A non-tarball registry URL (e.g. the packument) is not a usable source.
+  assert.equal(
+    classifySource("https://registry.npmjs.org/ical.js").trusted,
+    false
+  );
 });
 
 // ---- verifyVendor (network injected) ----
@@ -155,6 +175,49 @@ test("verifyVendor: an EOL-only difference still verifies", async () => {
   );
   await verifyVendor(addon, net({ bytes: "line1\nline2" })); // LF, no trailing
   assert.equal(addon.vendor.results[0].outcome, "verified");
+});
+
+// An npm-registry tarball source is verified by extracting the whole package and
+// matching the bundled file's content hash against any file inside (EOL-tolerant).
+const TGZ_URL = "https://registry.npmjs.org/foo/-/foo-1.0.0.tgz";
+const tgzEntry = () => ({
+  set: new Set(["vendor/foo.js"]),
+  manifest: [pinnedEntry("vendor/foo.js", TGZ_URL)],
+});
+
+test("verifyVendor: a file matching an npm-registry tarball -> verified", async () => {
+  const tgz = makeTgz({
+    "package/dist/foo.js": "BODY\n",
+    "package/package.json": "{}\n",
+  });
+  const addon = addonWith({ "vendor/foo.js": "BODY\n" }, store(tgzEntry()));
+  await verifyVendor(addon, net({ bytes: tgz }));
+  assert.deepEqual(addon.vendor.results, [
+    { path: "vendor/foo.js", source: TGZ_URL, outcome: "verified" },
+  ]);
+});
+
+test("verifyVendor: an EOL-only diff against a tarball entry still verifies", async () => {
+  const tgz = makeTgz({ "package/dist/foo.js": "a\r\nb\r\n" }); // CRLF upstream
+  const addon = addonWith({ "vendor/foo.js": "a\nb" }, store(tgzEntry())); // LF
+  await verifyVendor(addon, net({ bytes: tgz }));
+  assert.equal(addon.vendor.results[0].outcome, "verified");
+});
+
+test("verifyVendor: a tarball with no matching file -> modified", async () => {
+  const tgz = makeTgz({ "package/dist/foo.js": "UPSTREAM\n" });
+  const addon = addonWith(
+    { "vendor/foo.js": "LOCALLY CHANGED\n" },
+    store(tgzEntry())
+  );
+  await verifyVendor(addon, net({ bytes: tgz }));
+  assert.equal(addon.vendor.results[0].outcome, "modified");
+});
+
+test("verifyVendor: an unfetchable tarball -> unfetchable", async () => {
+  const addon = addonWith({ "vendor/foo.js": "BODY\n" }, store(tgzEntry()));
+  await verifyVendor(addon, net({ throwOnFetch: true }));
+  assert.equal(addon.vendor.results[0].outcome, "unfetchable");
 });
 
 test("verifyVendor: a real byte difference is modified, a niche lib not-popular", async () => {

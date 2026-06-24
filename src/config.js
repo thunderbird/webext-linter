@@ -121,6 +121,7 @@ export const VENDOR_TRUSTED_HOSTS = [
   "unpkg.com",
   "cdn.jsdelivr.net",
   "raw.githubusercontent.com",
+  "registry.npmjs.org",
 ];
 
 /**
@@ -145,6 +146,13 @@ export const VENDOR_TRUSTED_GITHUB_ORGS = ["thunderbird"];
 /** Limits when fetching an (untrusted, submission-declared) vendor source. */
 export const VENDOR_FETCH_TIMEOUT_MS = 10000;
 export const VENDOR_FETCH_MAX_BYTES = 12 * 1024 * 1024;
+
+/**
+ * Decompressed-size cap when extracting an npm-registry tarball source, to bound a
+ * decompression bomb (the compressed download is already capped by
+ * VENDOR_FETCH_MAX_BYTES). gunzip aborts past this.
+ */
+export const VENDOR_TARBALL_MAX_UNPACKED_BYTES = 64 * 1024 * 1024;
 
 /**
  * OSV vulnerability database query endpoint (https://osv.dev). A pinned

@@ -18,7 +18,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import AdmZip from "adm-zip";
 import JSON5 from "json5";
 
@@ -27,25 +26,16 @@ import { EXPERIMENTS_CACHE } from "../config.js";
 import { manifestTokenLine } from "../checks/lib/util.js";
 import { experimentGroups } from "../checks/lib/experiments.js";
 import { resolveExperimentsZip } from "./fetch.js";
+import { normalizedSha256 } from "../normalize/hash.js";
+
+// The EOL-tolerant content hash lives in a shared module (the vendor tarball matcher
+// reuses it); re-exported so this module's existing importers keep working.
+export { normalizedSha256 };
 
 // A file belongs to an experiment's implementation when it sits under an
 // `experiments/<name>/` directory (the upstream repo's layout, e.g.
 // "calendar/experiments/calendar/parent/ext-calendar-items.js").
 const IMPL_FILE = /(?:^|\/)experiments\/[^/]+\/.+/;
-
-/**
- * EOL-normalized SHA-256 (hex): CRLF/CR collapse to LF and trailing newlines are
- * ignored, so a CRLF/LF checkout is not treated as a local change. latin1 is
- * byte-preserving. Both upstream and add-on files are hashed this way.
- * @param {Buffer} buf
- * @returns {string}
- */
-export function normalizedSha256(buf) {
-  const norm = Buffer.isBuffer(buf)
-    ? buf.toString("latin1").replace(/\r\n?/g, "\n").replace(/\n+$/, "")
-    : "";
-  return createHash("sha256").update(norm, "latin1").digest("hex");
-}
 
 /**
  * Build the allow-list from the upstream repo zip or directory: the union of

@@ -33,6 +33,8 @@
 import { createHash } from "node:crypto";
 
 import { classifySource } from "./sources.js";
+import { tarballHashes } from "./tarball.js";
+import { normalizedSha256 } from "../normalize/hash.js";
 import { getProvider } from "../llm/provider.js";
 import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
 import {
@@ -111,7 +113,12 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}) {
   // VENDOR entries known trusted + pinned (the rest were settled offline).
   for (const entry of vendor.manifest) {
     if (entry.trusted && entry.pinned) {
-      const outcome = await verifyUrl(entry, addon, net);
+      // A whole-package tarball source (npm registry) is extracted + per-file hash
+      // matched; a single-file source is byte-compared.
+      const src = classifySource(entry.sourceUrl);
+      const outcome = src.tarball
+        ? await verifyTarball(entry, addon, net)
+        : await verifyUrl(entry, addon, net);
       vendor.results.push({
         path: entry.path,
         source: entry.sourceUrl,
@@ -122,7 +129,6 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}) {
       // A github source carries no npm identity directly, so auditGithub tries to
       // PROVE one (content-hash match against a candidate npm package) and audit
       // it too; an unprovable one is recorded as unaudited.
-      const src = classifySource(entry.sourceUrl);
       if (src.kind === "npm") {
         await auditNpm(
           src.pkg,
@@ -481,6 +487,32 @@ async function verifyUrl(entry, addon, net) {
     return "unfetchable";
   }
   if (!eolEqual(mine, fetched)) {
+    return "modified";
+  }
+  return (await isPopular(src, net)) ? "verified" : "not-popular";
+}
+
+/**
+ * Verify a packaged file against a whole-package npm-registry tarball: download the
+ * .tgz, hash every file inside (EOL-normalized), and accept the bundled file when its
+ * normalized hash is among them - the same content-match the experiment allow-list
+ * uses, just sourced from the tarball instead of a remote hash listing. A fetch,
+ * gunzip, or parse failure is reported as unfetchable (the bytes to compare against
+ * could not be obtained).
+ * @param {{path: string, sourceUrl: string}} entry
+ * @param {Addon} addon @param {VendorNet} net
+ * @returns {Promise<"verified"|"modified"|"not-popular"|"unfetchable">}
+ */
+async function verifyTarball(entry, addon, net) {
+  const src = classifySource(entry.sourceUrl);
+  const mine = addon.files.get(entry.path) ?? Buffer.alloc(0);
+  let hashes;
+  try {
+    hashes = tarballHashes(await net.fetchBytes(src.rawUrl));
+  } catch {
+    return "unfetchable";
+  }
+  if (!hashes.has(normalizedSha256(mine))) {
     return "modified";
   }
   return (await isPopular(src, net)) ? "verified" : "not-popular";
