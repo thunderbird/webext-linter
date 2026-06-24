@@ -119,11 +119,14 @@ export function nonAuthoredJs(ctx) {
 }
 
 /**
+ * The content signal for one file: whether it looks like a distributed third-party
+ * library, is minified, or is obfuscated. Pure (bytes + filename only), so the
+ * VENDOR parser reuses it to tell a vendored library from the add-on's own code.
  * @param {string} text
  * @param {string} file
  * @returns {{library: boolean, minified: boolean, obfuscated: boolean}}
  */
-function classify(text, file) {
+export function classify(text, file) {
   // The UMD-wrapper and obfuscation signals below are JS-only - a stylesheet has
   // no module wrapper and is never "obfuscated" in the packer sense - so gate
   // them. The name (.min.*, library stem), banner and geometry signals apply to

@@ -65,11 +65,13 @@ test("resolveVendor stays deterministic with no token", async () => {
 });
 
 // When the deterministic parse already maps the file, the fallback is skipped
-// even with a token (no wasted call).
+// even with a token (no wasted call). The declared file is library-like (.min), as
+// the accepted format requires.
 test("resolveVendor skips the fallback when the deterministic parse succeeds", async () => {
   const addon = fakeAddon({
-    "VENDOR.md": "File: app.js\nSource: https://unpkg.com/foo@1/app.js\n",
-    "app.js": "x",
+    "VENDOR.md":
+      "File: vendor/jszip.min.js\nSource: https://unpkg.com/jszip@3.10.1/dist/jszip.min.js\n",
+    "vendor/jszip.min.js": "x",
   });
   let called = 0;
   const { manifest } = await resolveVendor({
@@ -85,7 +87,12 @@ test("resolveVendor skips the fallback when the deterministic parse succeeds", a
   assert.equal(called, 0);
   assert.deepEqual(
     manifest.map((e) => [e.path, e.sourceUrl]),
-    [["app.js", "https://unpkg.com/foo@1/app.js"]]
+    [
+      [
+        "vendor/jszip.min.js",
+        "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js",
+      ],
+    ]
   );
 });
 
@@ -113,6 +120,45 @@ test("resolveVendor marks a pure-prose VENDOR as 'unparsed'", async () => {
   const addon = fakeAddon({
     VENDOR: "We bundle some stuff, see our docs.",
     "bg.js": "x",
+  });
+  const { manifest, missing, unparsedVendor } = await resolveVendor({
+    addon,
+    token: undefined,
+  });
+  assert.equal(manifest.length, 0);
+  assert.equal(missing.length, 0);
+  assert.equal(unparsedVendor, true);
+});
+
+const LIB = "/*! Lib v1 | (c) authors | MIT */\n(function () {})();\n";
+
+// A block that names a library file but only a bare repository URL (not a file
+// source) has no valid entry -> "unparsed" (a parse-error finding, not silently
+// dropped).
+test("resolveVendor marks a library + repo-only-URL block as 'unparsed'", async () => {
+  const addon = fakeAddon({
+    "VENDOR.md":
+      "## DOMPurify\n" +
+      "- Included file: `vendor/purify.js`\n" +
+      "- Upstream repository: https://github.com/cure53/DOMPurify\n",
+    "vendor/purify.js": LIB,
+  });
+  const { manifest, missing, unparsedVendor } = await resolveVendor({
+    addon,
+    token: undefined,
+  });
+  assert.equal(manifest.length, 0);
+  assert.equal(missing.length, 0);
+  assert.equal(unparsedVendor, true);
+});
+
+// A declaration whose file is the add-on's own (non-library) code is not a vendor
+// entry, so the VENDOR file is "unparsed".
+test("resolveVendor marks a non-library declaration as 'unparsed'", async () => {
+  const addon = fakeAddon({
+    "VENDOR.md":
+      "File: modules/own.js\nSource: https://unpkg.com/x@1.0.0/own.js\n",
+    "modules/own.js": "export function f() {}\n",
   });
   const { manifest, missing, unparsedVendor } = await resolveVendor({
     addon,

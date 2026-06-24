@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Unparseable Vendor",
+  "version": "1.0",
+  "description": "Ships a VENDOR file that cannot be parsed into a declaration.",
+  "permissions": ["messagesRead", "accountsRead", "messagesMove"],
+  "background": { "scripts": ["background.js"] },
+  "compose_action": { "default_title": "Compose" },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

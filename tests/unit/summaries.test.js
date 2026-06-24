@@ -145,8 +145,10 @@ test("buildAddonText includes authored files, excludes vendored and unused", () 
       "manifest.json": MV1,
       "background.js": "console.log('bg');",
       "orphan.js": "console.log('orphan');",
-      "VENDOR.md": "lib.js:\n  - Version: 1.0\n",
-      "lib.js": "/* third-party lib */",
+      "VENDOR.md":
+        "vendor/lib.min.js:\n  - Version: 1.0\n" +
+        "  - URL: https://unpkg.com/lib@1.0.0/dist/lib.min.js\n",
+      "vendor/lib.min.js": "/* third-party lib */",
     }),
   };
   const text = buildAddonText(ctx, "NONCE", { unused: new Set(["orphan.js"]) });

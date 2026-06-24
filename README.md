@@ -170,7 +170,8 @@ escalates it straight to manual review (e.g. `vendor-unverified`,
 | `unrecognized-manifest-key` | A top-level manifest key the schema does not define - Thunderbird ignores it (warning). |
 | `unsafe-html` | Dynamic content written to `innerHTML`/`outerHTML`/`srcdoc`/`insertAdjacentHTML` (warning). |
 | `vendor-modified` | A declared third-party file whose bytes don't match its pinned source (EOL-tolerant compare) - it appears modified from upstream (error). |
-| `vendor-unverified` | Declarations that can't be settled automatically - an untrusted-host source, a library not confirmed widely used, an unfetchable source, or an unparsable VENDOR file - routed to manual review. |
+| `vendor-unparseable` | A VENDOR file is present but no block pairs a library file with a source URL that points to a file, so nothing can be verified (error). |
+| `vendor-unverified` | Declarations that can't be settled automatically - an untrusted-host source, a library not confirmed widely used, or an unfetchable source - routed to manual review. |
 
 ### LLM checks
 

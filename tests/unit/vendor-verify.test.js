@@ -17,6 +17,7 @@ import vendorUnverified from "../../src/checks/rules/vendor-unverified.js";
 import missingVendorFile from "../../src/checks/rules/missing-vendor-file.js";
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 import vendorVulnUnknown from "../../src/checks/rules/vendor-vuln-unknown.js";
+import vendorUnparseable from "../../src/checks/rules/vendor-unparseable.js";
 import { normalizedSha256 } from "../../src/normalize/hash.js";
 import { makeTgz } from "./tarball-fixture.js";
 
@@ -959,16 +960,32 @@ test("missing-vendor-file: one warning per missing entry, listing the path", () 
   assert.equal(out[0].item, "VENDORS.md");
 });
 
-test("vendor-unverified: an unparsable VENDOR file escalates to manual", () => {
+// An unparsable VENDOR file is no longer a manual escalation here - it is the
+// vendor-unparseable check's error finding.
+test("vendor-unverified: an unparsable VENDOR file is not escalated here", () => {
   const ctx = {
     addon: {
       files: new Map([["VENDOR", Buffer.from("we bundle stuff, see docs")]]),
       vendor: store({ unparsedVendor: true }),
     },
   };
-  const out = vendorUnverified.run(ctx);
-  assert.equal(out.escalations.length, 1);
-  // The VENDOR file is the location; the item is just the reason.
-  assert.equal(out.escalations[0].file, "VENDOR");
-  assert.equal(out.escalations[0].item, "could not be parsed");
+  assert.deepEqual(vendorUnverified.run(ctx).escalations, []);
+});
+
+test("vendor-unparseable: an unparsable VENDOR file is an error finding", () => {
+  const out = vendorUnparseable.run({
+    addon: {
+      files: new Map([["VENDOR", Buffer.from("we bundle stuff, see docs")]]),
+      vendor: store({ unparsedVendor: true, vendorFile: "VENDOR" }),
+    },
+  });
+  assert.equal(out.length, 1);
+  assert.equal(out[0].file, "VENDOR");
+  // No finding when the VENDOR parsed (or is absent).
+  assert.equal(
+    vendorUnparseable.run({
+      addon: { files: new Map(), vendor: store({ unparsedVendor: false }) },
+    }).length,
+    0
+  );
 });

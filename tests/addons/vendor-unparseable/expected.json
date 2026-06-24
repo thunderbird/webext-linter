@@ -1,0 +1,6 @@
+{
+  "_comment": "A VENDOR file is present but no block pairs a library file with a file source URL (only prose + a bare repository link), so it cannot be parsed into a declaration: vendor-unparseable errors, anchored at the VENDOR file.",
+  "expect": {
+    "vendor-unparseable": ["VENDOR.md"]
+  }
+}

@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/outbound-data",
+    "addon": "<root>/tests/addons/vendor-unparseable",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "local:<root>/tests/schema-fixture",
@@ -86,21 +86,18 @@
     "warning": 0,
     "info": 0,
     "byRule": {
-      "cleartext-transmission": 1
+      "vendor-unparseable": 1
     }
   },
   "findings": [
     {
-      "ruleId": "cleartext-transmission",
+      "ruleId": "vendor-unparseable",
       "severity": "error",
-      "file": "background.js",
-      "loc": {
-        "line": 4,
-        "column": 0
-      },
-      "item": "api.example.com",
+      "file": "VENDOR.md",
+      "loc": null,
+      "item": null,
       "hint": null,
-      "message": "Data is sent over an unencrypted connection to api.example.com. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://."
+      "message": "A VENDOR file is present but no third-party library could be parsed from it. List each bundled library in its own block as the packaged file path together with a source URL that points to the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so it can be verified automatically."
     }
   ]
 }

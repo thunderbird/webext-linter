@@ -232,7 +232,8 @@ test("missing-library flags library-looking JS, not readable/VENDORed files", ()
   const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
   assert.equal(missingLibrary.run(filesCtx({ "bg.js": readable })).length, 0);
   // Declared in VENDOR.md -> skipped even with a banner.
-  const vendor = "lib/demo.js:\n - Version: 1.0\n - URL: https://x\n";
+  const vendor =
+    "lib/demo.js:\n - Version: 1.0\n - URL: https://unpkg.com/demolib@1.0.0/dist/demo.js\n";
   assert.equal(
     missingLibrary.run(filesCtx({ "VENDOR.md": vendor, "lib/demo.js": banner }))
       .length,

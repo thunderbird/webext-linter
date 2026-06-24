@@ -1,16 +1,16 @@
 // Routes the third-party declarations that cannot be settled automatically to
 // manual review: a source on a host we may not fetch, a library we cannot
-// confirm is widely used, a source we could not fetch, and a VENDOR file we
-// could not parse at all. The verification pre-step (src/vendor/resolve.js +
-// src/vendor/verify.js) recorded each of these on addon.vendor. This check
-// reads them and escalates one manual-review item per case. Deterministic, no
-// network - the deterministic->manual routing is wired in registry.js and
-// escalation.js.
+// confirm is widely used, and a source we could not fetch. The verification
+// pre-step (src/vendor/resolve.js + src/vendor/verify.js) recorded each of these
+// on addon.vendor. This check reads them and escalates one manual-review item per
+// case. Deterministic, no network - the deterministic->manual routing is wired in
+// registry.js and escalation.js. (A VENDOR file that parses to nothing is the
+// vendor-unparseable check's error finding, not a manual item here.)
 //
-// Belongs here: turning each unverifiable result (and an unparsable VENDOR file)
-// into a manual-review escalation (+ a feed note). Does NOT belong here: the
-// fetch/classify/parse work (-> src/vendor/{verify,sources,resolve}.js) and the
-// authored instructions (-> assets/registry.yaml).
+// Belongs here: turning each unverifiable result into a manual-review escalation
+// (+ a feed note). Does NOT belong here: the fetch/classify/parse work (->
+// src/vendor/{verify,sources,resolve}.js) and the authored instructions (->
+// assets/registry.yaml).
 
 import { readVendorFile } from "../../normalize/vendor.js";
 import { VENDOR_TRUSTED_HOSTS } from "../../config.js";
@@ -60,12 +60,8 @@ export default {
       }
     }
 
-    // A VENDOR file present but parsed to nothing (scan empty, LLM fallback
-    // unavailable or unhelpful): a human reads the declarations by hand.
-    if (vendor.unparsedVendor) {
-      ctx.note?.(vendorName, null, "could not be parsed", "unsure");
-      escalations.push({ file: vendorName, item: "could not be parsed" });
-    }
+    // A VENDOR file present but parsed to nothing is the vendor-unparseable check's
+    // job (an error finding), not a manual escalation here.
 
     return { findings: [], escalations };
   },

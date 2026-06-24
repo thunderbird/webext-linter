@@ -485,6 +485,15 @@ deterministic-checks:
   response: |-
     One or more files listed in "{{item}}" are not present in the submission. Add each file to the submission, or remove its entry from "{{item}}".
 
+# Flags a VENDOR file that exists but yields no parseable entry (no block pairs a
+# bundled library file with a source URL pointing to a file), so the declared
+# libraries cannot be verified.
+- title: Unparseable VENDOR file
+  severity: error
+  check: vendor-unparseable
+  response: |-
+    A VENDOR file is present but no third-party library could be parsed from it. List each bundled library in its own block as the packaged file path together with a source URL that points to the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so it can be verified automatically.
+
 # Flags data smuggled out through a channel not meant for it - always an error,
 # regardless of consent. One check per channel (resource/stylesheet/window/
 # navigation); all read the shared outbound-sink scan.

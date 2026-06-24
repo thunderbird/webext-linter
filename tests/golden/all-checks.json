@@ -49,6 +49,7 @@
       "vendor-modified",
       "vendor-unverified",
       "missing-vendor-file",
+      "vendor-unparseable",
       "disguised-resource",
       "disguised-stylesheet",
       "disguised-window",
