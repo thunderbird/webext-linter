@@ -24,19 +24,18 @@
         possible, fetched and compared. Four situations cannot be settled
         automatically: a declaration with no source URL, a source on a host the
         linter may not fetch from, a source that could not be fetched, and a
-        library that could not be confirmed as widely used. A VENDOR file that is
-        present but could not be parsed at all is escalated too. This check reads
-        those outcomes and raises one manual-review item per case.
+        library that could not be confirmed as widely used. This check reads those
+        outcomes and raises one manual-review item per case. (A VENDOR file that is
+        present but could not be parsed at all is a separate error finding — see
+        <em>Unparseable VENDOR file</em>.)
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A VENDOR declaration"] --> B{"Could the VENDOR file<br/>be parsed at all?"}
-  B -- "no, present but unparsable" --> M([escalate to manual review])
-  B -- yes --> C{"Source URL declared?"}
-  C -- no --> M
+  A["A VENDOR declaration"] --> C{"Source URL declared?"}
+  C -- no --> M([escalate to manual review])
   C -- yes --> D{"Source on a host<br/>we may fetch from?"}
   D -- no --> M
   D -- yes --> E{"Could the source<br/>be fetched?"}

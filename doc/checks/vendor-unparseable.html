@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unparseable VENDOR file</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Unparseable VENDOR file
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">vendor-unparseable</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        Developers declare every bundled third-party library in a VENDOR file so
+        each can be verified against its upstream source. An entry is a bundled
+        <em>library</em> file paired with a source URL that points to a
+        <em>file</em>, both within one block (separated by headings or blank
+        lines).
+      </p>
+      <p>
+        This check fires when a VENDOR file is present but nothing could be parsed
+        out of it — no block pairs a recognised library with a file source URL.
+        The add-on's own modules and the package name are not entries, and a bare
+        repository link (such as a <em>github.com/owner/repo</em> page) is not a
+        source. When the file declares a library that is merely missing from the
+        package, that is the <em>missing vendored file</em> check instead, not this
+        one.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The add-on's VENDOR file"] --> B{"Is a VENDOR file present?"}
+  B -- no --> S([skip — nothing to check])
+  B -- yes --> C{"Did any block pair a bundled<br/>library with a file source URL?"}
+  C -- yes --> OK([no finding — the entry is checked<br/>by the other vendor checks])
+  C -- no --> D{"Did it declare a library file<br/>that is simply absent?"}
+  D -- yes --> OK2([no finding — missing vendored<br/>file handles it])
+  D -- no --> ERR([ERROR: VENDOR file<br/>could not be parsed])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class OK2 ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that a VENDOR file is present but no third-party library
+        could be parsed from it, and is asked to list each bundled library in its
+        own block as the packaged file path plus a source URL that points to the
+        exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so
+        it can be verified automatically.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/vendor-unparseable.js</code> (the
+        VENDOR parse lives in <code>src/normalize/vendor.js</code>) and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>
