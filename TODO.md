@@ -15,12 +15,7 @@ and also use the same hash system to block certain libs, which are deemed unsafe
 
 # Detect correct schema reference
 
-Evaluate if it is needed to detect the proper schema version based on min or max
-version settings in the manifest. A submission which is limited to the current
-ESR should be verified against the ESR schema files?
-
-A version which claims to work with very old version of Thunderbird (min 102.0),
-should *also* be verified against 102?
+Evaluate if a submission which is limited to 140.* (ESR) should be verified against the ESR schema, or the standard release schema.
 
 # Improve schema files to remove special hardcoded cases
 
