@@ -305,22 +305,26 @@ function isTrackedScriptObj(obj, scriptVars) {
   return obj?.type === "Identifier" && scriptVars.has(obj.name);
 }
 /**
- * True for a non-computed member access on a global object whose property is
- * `name`, e.g. window.eval / self.importScripts / globalThis.setTimeout. Gating
- * on a known global keeps `someObj.eval()` (a method on a non-global) untouched.
+ * True for a member access on a global object whose property is `name`, dotted
+ * (window.eval) OR bracketed with a string literal (globalThis["eval"]) - the
+ * latter a common way to hide the sink. Gating on a known global keeps
+ * `someObj.eval()` / `someObj["eval"]()` (a method on a non-global) untouched.
  * @param {AstNode} node
  * @param {string} name
  * @returns {boolean}
  */
 function isGlobalMember(node, name) {
-  return (
-    node?.type === "MemberExpression" &&
-    !node.computed &&
-    node.object?.type === "Identifier" &&
-    GLOBAL_OBJECTS.has(node.object.name) &&
-    node.property?.type === "Identifier" &&
-    node.property.name === name
-  );
+  if (
+    node?.type !== "MemberExpression" ||
+    node.object?.type !== "Identifier" ||
+    !GLOBAL_OBJECTS.has(node.object.name)
+  ) {
+    return false;
+  }
+  const p = node.property;
+  return node.computed
+    ? p?.type === "StringLiteral" && p.value === name
+    : p?.type === "Identifier" && p.name === name;
 }
 /**
  * True for a string literal or a template literal with no interpolations.

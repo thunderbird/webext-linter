@@ -279,6 +279,29 @@ test("JS scan flags eval-family sinks reached via a global object", () => {
   );
 });
 
+// The same eval-family sinks accessed via a BRACKETED string property on a global
+// (globalThis["eval"], window["Function"]) are the same sinks - a common way to hide
+// them (provider_for_google_calendar used globalThis["eval"] over hex-escaped data).
+test("JS scan flags eval-family sinks reached via bracketed global access", () => {
+  assert.ok(types(`globalThis["eval"]("x");`).includes("eval"));
+  assert.ok(types(`window["eval"]("x");`).includes("eval"));
+  assert.ok(
+    types(`window["Function"]("return 1")();`).includes("function-constructor")
+  );
+  assert.ok(
+    types(`new globalThis["Function"]("return 1");`).includes(
+      "function-constructor"
+    )
+  );
+  assert.ok(
+    types(`self["importScripts"]("https://cdn/w.js");`).includes(
+      "remote-importscripts"
+    )
+  );
+  // Gating preserved: a bracketed "eval" on a NON-global object is not a sink.
+  assert.ok(!types(`myInterpreter["eval"]("x");`).includes("eval"));
+});
+
 // rel is parsed as space-separated tokens: "alternate stylesheet" matches via
 // its stylesheet token, but "stylesheet-x" and "x-preload" are single non-keyword
 // tokens and must not match, so only one remote css ref is reported.
