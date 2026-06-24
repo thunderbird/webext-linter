@@ -3,8 +3,7 @@
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
 1) The following file(s) appear to be third-party libraries. Please link to their sources and ensure each bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice).
-Example: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html#safely-sanitizing-external-markup-with-dompurify
-Read more: https://extensionworkshop.com/documentation/publish/third-party-library-usage/.
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
  - vendor/bootstrap/bootstrap.min.css
 
 ── Standard manual review ──
