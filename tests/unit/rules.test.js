@@ -214,31 +214,41 @@ test("code-sanity skips non-authored code, lints authored code", () => {
 });
 
 // ---- missing-library / obfuscated-code (shared bundled.js classifier) ----
-// missing-library flags JS that looks like a distributed library (banner, UMD,
-// *.min.js, known name), skipping readable code and VENDOR.md-declared files.
-test("missing-library flags library-looking JS, not readable/VENDORed files", () => {
-  const banner =
-    "/*! demolib v1.0.0 | (c) Demo */\n" +
-    "export const lib = { run() { return 1; } };\n".repeat(40); // >1 KB
-  assert.equal(
-    missingLibrary.run(filesCtx({ "lib/demo.js": banner })).length,
-    1
-  );
+// missing-library flags JS that looks like a distributed library (UMD, *.min.js,
+// known name), skipping the developer's readable code and VENDOR.md-declared
+// files. A "/*!" license banner is NOT a signal (a preserved comment is a weak,
+// fragile proxy), so a banner-bearing file with no other signal is not flagged.
+test("missing-library flags library-looking JS, not readable/banner/VENDORed files", () => {
   // *.min.js name alone is enough.
   assert.equal(
     missingLibrary.run(filesCtx({ "vendor/x.min.js": "a;".repeat(600) }))
       .length,
     1
   );
+  // A UMD wrapper (typeof exports + typeof define).
+  const umd =
+    "(function () { if (typeof exports === 'object' && typeof define === 'function') {} })();\n".repeat(
+      40
+    );
+  assert.equal(missingLibrary.run(filesCtx({ "lib/umd.js": umd })).length, 1);
+  // A "/*!" banner alone is NO LONGER a library signal -> not flagged.
+  const banner =
+    "/*! demolib v1.0.0 | (c) Demo */\n" +
+    "export const lib = { run() { return 1; } };\n".repeat(40); // >1 KB
+  assert.equal(
+    missingLibrary.run(filesCtx({ "lib/demo.js": banner })).length,
+    0
+  );
   // Readable code, no library signal -> not flagged.
   const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
   assert.equal(missingLibrary.run(filesCtx({ "bg.js": readable })).length, 0);
-  // Declared in VENDOR.md -> skipped even with a banner.
+  // A real library (*.min.js) declared in VENDOR.md -> skipped.
   const vendor =
-    "lib/demo.js:\n - Version: 1.0\n - URL: https://unpkg.com/demolib@1.0.0/dist/demo.js\n";
+    "vendor/x.min.js:\n - Version: 1.0\n - URL: https://unpkg.com/x@1.0.0/dist/x.min.js\n";
   assert.equal(
-    missingLibrary.run(filesCtx({ "VENDOR.md": vendor, "lib/demo.js": banner }))
-      .length,
+    missingLibrary.run(
+      filesCtx({ "VENDOR.md": vendor, "vendor/x.min.js": "a;".repeat(600) })
+    ).length,
     0
   );
 });
@@ -1343,20 +1353,22 @@ test("minimize-host-permissions notes broad (fail) and scoped (pass) hosts", () 
 });
 
 test("missing-library / obfuscated-code note a verdict per classified file", () => {
-  const banner =
-    "/*! demolib v1.0.0 */\n" +
-    "export const lib = { run() { return 1; } };\n".repeat(40);
+  // A UMD wrapper marks lib.js a library (a "/*!" banner no longer does).
+  const lib =
+    "(function () { if (typeof exports === 'object' && typeof define === 'function') {} })();\n".repeat(
+      40
+    );
   const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
   const libNotes = notesFrom(
     missingLibrary,
-    filesCtx({ "lib.js": banner, "app.js": readable })
+    filesCtx({ "lib.js": lib, "app.js": readable })
   );
   assert.equal(libNotes.find((n) => n.file === "lib.js").verdict, "fail");
   assert.equal(libNotes.find((n) => n.file === "app.js").verdict, "pass");
   // obfuscated-code defers libraries to missing-library, so it notes only app.js.
   const obfNotes = notesFrom(
     obfuscatedCode,
-    filesCtx({ "lib.js": banner, "app.js": readable })
+    filesCtx({ "lib.js": lib, "app.js": readable })
   );
   assert.deepEqual(
     obfNotes.map((n) => n.file),

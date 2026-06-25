@@ -121,24 +121,30 @@ test("missing-library reports an undeclared vendored CSS file", () => {
   assert.deepEqual(flagged, [file]);
 });
 
-// The "/*!" minifier banner only marks a library when it OPENS the file - a "/*!"
-// inside a CSS rule or a mid-file comment (authored code keeping a license note)
-// must not misclassify the file as a bundled library (would be a missing-library
-// false positive). A leading banner still counts.
-test("a mid-file /*! does not classify a file as a library", () => {
-  const file = "css/reports.css";
-  const midBanner = `.mainDiv{color:#fff}\n/*! keep this note */\n`.repeat(60);
-  const { classified, nonAuthored } = classifyBundled(
-    addonWith({ [file]: midBanner })
+// A "/*!" license banner is NOT a library signal (it was a weak, fragile proxy -
+// it both missed real banners and tripped on a developer's own "/*!"). A bundled
+// library is recognized by its .min name / known stem / UMD wrapper / minified
+// geometry / VENDOR.md declaration instead; a banner-bearing file with none of
+// those is the developer's own code (scanned, not skipped).
+test("a /*! banner alone does not classify a file as a library", () => {
+  const banner = (file, body) =>
+    classifyBundled(addonWith({ [file]: body })).classified.find(
+      (c) => c.file === file
+    )?.library;
+  // Neither a mid-file nor a leading "/*!" makes a plain-named file a library.
+  assert.equal(
+    banner("css/reports.css", `.mainDiv{color:#fff}\n/*! note */\n`.repeat(60)),
+    false
   );
-  assert.equal(classified.find((c) => c.file === file).library, false);
-  assert.ok(!nonAuthored.has(file));
-  // A banner that opens the file is still a library signal.
-  const leading = `/*! Bootstrap v5 */\n${".x{a:1}".repeat(200)}`;
-  const { classified: c2 } = classifyBundled(
-    addonWith({ "vendor/lib.css": leading })
+  assert.equal(
+    banner("css/app.css", `/*! Bootstrap v5 */\n${".x{a:1}".repeat(200)}`),
+    false
   );
-  assert.equal(c2.find((c) => c.file === "vendor/lib.css").library, true);
+  // The strong signals still classify: a .min name (banner or not).
+  assert.equal(
+    banner("vendor/x.min.css", `/*! lib */\n${".x{a:1}".repeat(200)}`),
+    true
+  );
 });
 
 test("a minified-by-geometry CSS is minified but not a library or obfuscated", () => {

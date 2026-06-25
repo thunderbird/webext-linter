@@ -145,16 +145,20 @@ export function nonAuthoredJs(ctx) {
 export function classify(text, file) {
   // The UMD-wrapper and obfuscation signals below are JS-only - a stylesheet has
   // no module wrapper and is never "obfuscated" in the packer sense - so gate
-  // them. The name (.min.*, library stem), banner and geometry signals apply to
-  // JS and CSS alike (a vendored bootstrap.min.css trips them just as jquery
-  // does).
+  // them. The name (.min.*, library stem) and geometry signals apply to JS and
+  // CSS alike (a vendored bootstrap.min.css trips them just as jquery does).
   const isJs = JS_EXTENSIONS.has(extname(file));
 
+  // No "/*!" license-banner signal: a preserved comment is a weak, fragile proxy -
+  // it missed real banners not at byte 0 (`;/*!`, `@charset"…";\n/*!`) and tripped
+  // on a developer's own "/*!" - so a bundled library is recognized only by its
+  // distribution name, a known stem, a UMD wrapper, or minified geometry (plus the
+  // authoritative VENDOR.md declaration, isVendored in classifyBundled). A library
+  // the strong signals miss is scanned; the resulting finding prompts the developer
+  // to declare it.
   const library =
     /\.min\.(?:js|css)$/i.test(file) ||
     LIB_NAME.test(file) ||
-    /^\s*\/\*!/.test(text) || // minifier banner - only when it opens the file, so
-    // a "/*!" inside a CSS rule or mid-file comment is not mistaken for one
     (isJs && /\btypeof exports\b/.test(text) && /\btypeof define\b/.test(text)); // UMD
 
   // Minified line geometry: at least one very long line, dense on average.
