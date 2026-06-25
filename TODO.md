@@ -1,11 +1,34 @@
 # Table of Contents
 
+- [Defects, false-positive and false-negative (WIP)](#wip)
 - [Hash-based library identification](#hash-based-library-identification)
 - [Detect correct schema reference](#detect-correct-schema-reference)
 - [Improve schema files to remove special hardcoded cases](#improve-schema-files-to-remove-special-hardcoded-cases)
 - [Full type check via typescript engine](#full-type-check-via-typescript-engine)
 - [Potential permission tracing via typescript engine](#potential-permission-tracing-via-typescript-engine)
 - [Unused-files pre-flight backstop (anchored templates + content type)](#unused-files-pre-flight-backstop-anchored-templates--content-type)
+- [Single-parse extraction pass (drop the double-parse)](#single-parse-extraction-pass-drop-the-double-parse)
+
+
+# WIP
+
+---
+
+- (check build types)
+
+---
+
+7) The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
+Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
+ - manifest.json - <all_urls>
+
+---
+
+1) "chrome/content/dummy.html" is referenced but not bundled with the add-on, or the path may be wrongly specified. Please include every referenced file in the package, and check that the used paths are correct.
+ - manifest.json:17 - <move file here>
+
+node verify.js /home/john/Downloads/reviews/new6/importexporttools_ng-15.0.1-tb.xpi --allow-experiments
+
 
 # Hash-based library identification
 
@@ -138,3 +161,64 @@ about the cases we truly cannot decide deterministically.
   but reports its type as string, so a small value step still folds
   getURL(literal) to the path. This is the same value-flow machinery as the
   gated-property permission tracing.
+
+# Single-parse extraction pass (drop the double-parse)
+
+The OOM crash on bundle-heavy add-ons is already fixed (commit 81ef546):
+buildRunContext frees the AST of every non-authored file (the multi-MB minified
+bundles), so peak memory is bounded. This is the follow-up optimization that was
+deferred there - it is NOT a correctness fix, the crash is gone. Two structural
+inefficiencies remain:
+
+1. Double-parse of authored JS. `classifyBundled` (the pre-normalize pipeline
+   step) parses each non-minified, non-library JS file once to compute the
+   AST-based obfuscation signal (`detectObfuscationAst`, src/checks/lib/
+   bundled.js), and then `buildRunContext` (src/checks/context.js) parses every
+   JS file again for api-usage and the checks' `src.parsed`. So an authored
+   non-minified file >= 1024 bytes is parsed twice per review.
+
+2. Authored ASTs are still all retained at once. The pipeline is check-major -
+   each of the ~10 AST consumers (eval-scan, outbound-sinks, core-symbol-in-
+   webext, sync-xhr, debugger-statement, async-onmessage, remote-script,
+   unsafe-html, background-page-module, plus api-usage) loops every file and
+   re-traverses `src.parsed` - so each authored file's AST must stay alive across
+   all checks. Memory is bounded today only because the big files happen to be
+   bundles (now freed); a pathological add-on with many large *authored* files
+   could still strain the heap.
+
+Both follow from the same root: the obfuscation signal is needed by
+`classifyBundled` (which builds the non-authored skip set) *before*
+`buildRunContext` does the main parse, and the checks consume `src.parsed`
+lazily during the review rather than reading a precomputed result.
+
+Idea (the extract-then-free pass). Parse each file exactly once, up front, and
+run every per-file AST extraction in that one pass, storing only the small
+extracted results on the source; then drop the AST (so peak memory is a single
+AST, authored or not). Concretely:
+
+- Reuse the existing standalone scanners as extractors: `parseApiUsage`
+  (api-usage.js), `scanRemoteJs` (remote-js.js -> eval-scan + remote-script),
+  `scanNetworkSinks` (network-sinks.js -> outbound-sinks), the unsafe-html
+  scanner (parse/unsafe-html.js), and `detectObfuscationAst` (bundled.js).
+- Extract the currently-inline traversals into standalone `src/parse/*` scanners
+  and call them in the same pass: core-symbol globals, sync-xhr `open(...,false)`,
+  debugger-statement, async-onmessage, background-page-module.
+- The ~10 consuming checks + `getEvalScan`/`getOutboundSinks` then read the
+  precomputed per-file results instead of re-traversing `src.parsed`;
+  `classifyBundled` reads the precomputed obfuscation signal instead of parsing.
+
+Ordering / caveat. The obfuscation signal feeds `classifyBundled`'s nonAuthored
+set, which is pipeline step 1d (pre-normalize), before the review context. So the
+single parse has to move ahead of `classifyBundled` (parse-first, then classify
+with the signals already available), or `classifyBundled`'s obfuscation result is
+merged in right after the shared parse. Whichever way, `classify()`'s minified /
+library detection is byte-geometry and MUST stay pre-normalize (that is the whole
+reason classifyBundled runs before normalize - see its header comment), so the
+reorder must keep the byte signals on the pre-normalize bytes and only let the
+AST-obfuscation share the one parse.
+
+This is a sizeable, behavior-preserving refactor (~10 check consumers +
+context.js + bundled.js + a few new src/parse/* scanners). Land it
+consumer-by-consumer with the 41 golden + unit suite green at each step; the
+end state removes the double-parse and bounds memory to one AST regardless of how
+much authored code an add-on ships.
