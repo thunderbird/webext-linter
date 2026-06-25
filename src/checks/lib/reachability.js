@@ -299,7 +299,7 @@ function compute(ctx) {
   // an experiment loads stays outside it. Deterministic, no classification, no LLM.
   const htmlInjectedSeeds = new Set();
   if (!ctx.invalidExperiment && isExperiment(manifest)) {
-    const namespaces = experimentApiNamespaces(manifest);
+    const namespaces = experimentApiNamespaces(manifest, ctx.addon?.files);
     for (const src of ctx.jsSources || []) {
       for (const r of scanExperimentInjectedRefs(
         src.code,

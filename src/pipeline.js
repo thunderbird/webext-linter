@@ -511,7 +511,7 @@ async function reviewAddon(
   // path that collides with a built-in.
   if (!invalidExperiment && isExperiment(addon.manifest)) {
     schema.registerExperimentNamespaces(
-      experimentApiNamespaces(addon.manifest)
+      experimentApiNamespaces(addon.manifest, addon.files)
     );
   }
 

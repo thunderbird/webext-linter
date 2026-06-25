@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   experimentApiPaths,
+  experimentApiNamespaces,
   experimentGroups,
 } from "../../src/checks/lib/experiments.js";
 import {
@@ -70,6 +71,53 @@ test("experiment helpers read paths, file refs and the subtree root", () => {
     }),
     ["calendar.items", "weatherKey"]
   );
+});
+
+// experimentApiNamespaces reads the exposed namespace from each entry's bundled
+// schema.json `namespace` (the manifest key and the binding path are arbitrary and
+// often differ), excluding the schema-only `manifest` block. Falls back to the
+// declared paths/key only when no schema file is readable.
+test("experimentApiNamespaces reads the schema.json namespace, not the key/path", () => {
+  // key 'qapp' + path 'qapp', but the schema exposes 'qnote' (real qnote case).
+  const manifest = {
+    experiment_apis: {
+      qapp: { schema: "api/qapp/schema.json", parent: { paths: [["qapp"]] } },
+    },
+  };
+  const files = new Map([
+    [
+      "api/qapp/schema.json",
+      Buffer.from('[{"namespace":"manifest"},{"namespace":"qnote"}]'),
+    ],
+  ]);
+  assert.deepEqual([...experimentApiNamespaces(manifest, files)], ["qnote"]);
+  // A dotted namespace registers its top segment (calendar.provider -> calendar).
+  const cal = {
+    experiment_apis: {
+      calProv: { schema: "s.json", parent: { paths: [["x"]] } },
+    },
+  };
+  const calFiles = new Map([
+    ["s.json", Buffer.from('[{"namespace":"calendar.provider"}]')],
+  ]);
+  assert.deepEqual([...experimentApiNamespaces(cal, calFiles)], ["calendar"]);
+});
+
+test("experimentApiNamespaces falls back to paths/key without a readable schema", () => {
+  const manifest = {
+    experiment_apis: {
+      Foo: { schema: "missing.json", parent: { paths: [["Bar"]] } }, // file absent -> path
+      Baz: {}, // no paths, no schema -> key
+    },
+  };
+  assert.deepEqual([...experimentApiNamespaces(manifest)].sort(), [
+    "Bar",
+    "Baz",
+  ]); // no files
+  assert.deepEqual([...experimentApiNamespaces(manifest, new Map())].sort(), [
+    "Bar",
+    "Baz",
+  ]); // schema not in the file map -> still falls back
 });
 
 // ---- normalizedSha256 is EOL-tolerant ----
