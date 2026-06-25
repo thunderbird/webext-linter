@@ -45,7 +45,11 @@ const SEVERITY_RANK = { error: 0, warning: 1, info: 2 };
  *   match role. Distinct from `item`: a finding may carry BOTH, rendering
  *   "file:line - <item> - <hint>" (e.g. an unsupported API call AND the version
  *   that added it). Use `item` for the subject (the thing identified/keyed), `hint`
- *   for extra colour about it.
+ *   for extra colour about it. THE TEST: a value is an `item` only if it is the
+ *   finding's UNIQUE offending identity - what dedup / itemKey would key on (an API
+ *   name, a remote URL, a manifest key); everything else is a `hint`. A per-site
+ *   recheck descriptor (a transmission method/channel) MUST stay `hint`: its recheck
+ *   keys on `file:line` (item left null), so an `item` would collide every site.
  * @property {Record<string, string|number>} [data]  Extra named values for
  *   `{{slot}}` placeholders in the response - additional detail ABOUT this
  *   finding's single `item`/subject (e.g. a source URL, an ajv message), data

@@ -40,7 +40,10 @@ import { wrap } from "./untrusted.js";
  * the item token when present (e.g. a permission), else the file (e.g. an unused
  * file) - narrowed to `file:line` when the item carries a locus, so a per-site
  * producer (several sinks in one file) does not collapse to a single key. The
- * recheck section lists these keys, and the model echoes them back.
+ * recheck section lists these keys, and the model echoes them back. So a per-site
+ * recheck case (data-exfiltration, disguised-transmission) MUST leave `item` null
+ * and key on `file:line`; its descriptor (the method/channel) rides on `hint`, not
+ * `item` - else two sinks of the same kind would collide (see report/finding.js).
  * @param {{item?: ?string, file?: ?string, loc?: ?{line?: number}}} ref
  * @returns {?string}
  */
