@@ -1,0 +1,6 @@
+{
+  "_comment": "Exercises the disguised covert-exfil split: the STRONG case (a user-data API call inside a resource URL) is a hard disguised-resource error; the WEAK case (a runtime value appended to a navigation URL, no user-data API) is a disguised-transmission LLM/manual item (see the golden), not a finding.",
+  "expect": {
+    "disguised-resource": ["background.js:6"]
+  }
+}
