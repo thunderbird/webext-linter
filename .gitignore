@@ -5,3 +5,4 @@ logs/
 .experiments-cache/
 *.tmp
 *.key
+run-nextpass.sh
