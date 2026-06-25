@@ -268,6 +268,10 @@ export function helpText() {
       "Add an AI Summary of the full add-on, what the add-on does, with security notes and a permission review (needs a Claude API key).",
     ],
     [
+      "--self-assessment-summary",
+      "After the deterministic review, make ONE AI call that audits the findings for false positives and scans the sources for false negatives (a linter self-check). Tries the LLM whether or not --llm-enabled is set, and just logs if no key is configured.",
+    ],
+    [
       "--eslint",
       "Run the ESLint code-sanity checks on authored JS (off by default).",
     ],
@@ -324,6 +328,7 @@ const OPTIONS = {
   "diff-to": { type: "string" },
   "diff-summary": { type: "boolean" },
   "full-summary": { type: "boolean" },
+  "self-assessment-summary": { type: "boolean" },
   "report-format": { type: "string" },
   "report-out": { type: "string" },
   "llm-enabled": { type: "boolean" },
@@ -493,6 +498,12 @@ export async function main(argv) {
       process.stdout.write(note);
       summaryBlock += note;
     }
+    if (result.selfAssessment) {
+      summaryBlock += summarySection({
+        title: "Self-assessment (FP/FN audit)",
+        summary: result.selfAssessment,
+      });
+    }
     // The review tally closes the report, after the advisory summaries above.
     const reviewSummary = formatSummary(result) + "\n";
     process.stdout.write(reviewSummary);
@@ -554,6 +565,7 @@ function pipelineOptsFromValues(values) {
     diffTo: values["diff-to"],
     diffSummary: values["diff-summary"],
     fullSummary: values["full-summary"],
+    selfAssessmentSummary: values["self-assessment-summary"],
     llmEnabled: llm.wants,
     llmApiKey: llm.apiKey,
     llmModel: llm.model,

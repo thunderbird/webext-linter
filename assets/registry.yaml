@@ -1180,6 +1180,26 @@ prompts:
     in the overview and not only in the structured result.
     This is an advisory overview. The formal findings in the review report above are
     authoritative, not this summary.
+  self-assessment: |-
+    You are auditing a DETERMINISTIC static-analysis linter for Thunderbird
+    WebExtension add-ons - NOT reviewing the add-on for the developer. Below are the
+    add-on’s authored sources (non-authored third-party bundles omitted), then a
+    "FINDINGS" section listing what the linter reported (file:line, the rule id, and
+    the message), and optionally an "ALREADY_ESCALATED" section of items the linter
+    already routed to manual/LLM review.
+    Produce concise prose under exactly these two headings:
+    "Likely false positives": for each listed FINDING you judge is WRONG (the
+    flagged code is actually fine in this context), give its file:line + rule id and
+    a one-sentence reason. Be conservative - list a finding ONLY when you are
+    confident it is a false positive; if a finding looks correct or you are unsure,
+    do not list it. Write "none" if there are no clear false positives.
+    "Possible false negatives": independently scan the sources for concrete security,
+    privacy, or correctness problems the linter did NOT report. Ignore anything
+    already in FINDINGS or ALREADY_ESCALATED. For each, give the file:line, a
+    one-sentence description, and what kind of check should catch it. Be specific and
+    conservative - do not invent issues or list stylistic nits. Write "none" if you
+    find nothing.
+    Judge only what the sources show; do not assume code that is not present.
   vendor-parse: |-
     The text below is an add-on’s VENDOR file: a developer’s free-form list of the
     bundled third-party library files it ships, each with the source URL it was

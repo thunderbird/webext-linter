@@ -10,6 +10,7 @@ import {
   buildAddonText,
   buildSummarizer,
   buildAddonSummarizer,
+  buildSelfAssessment,
 } from "../../src/checks/summaries.js";
 import { loadRegistry } from "../../src/checks/registry.js";
 import { parseVendorManifest } from "../../src/normalize/vendor.js";
@@ -269,4 +270,56 @@ test("registry exposes the change-summary, add-on-summary and system-intro promp
     assert.ok(p.length > 0, name);
   }
   assert.ok(registry.prompt("system-intro").includes("report_verdicts"));
+});
+
+// buildSelfAssessment carries the authored sources (minus unused/vendored, like
+// the add-on summary), a FINDINGS block of the deterministic results to audit, and
+// the already-escalated items - under the self-assessment prompt.
+test("buildSelfAssessment carries the sources, findings, and escalations", () => {
+  const ctx = {
+    addon: addon({
+      "manifest.json": MV1,
+      "background.js": "el.innerHTML = data;",
+      "orphan.js": "console.log('dead');",
+    }),
+  };
+  const registry = loadRegistry();
+  const findings = [
+    {
+      file: "background.js",
+      loc: { line: 1 },
+      ruleId: "unsafe-html",
+      message: "Dynamic content is assigned via .innerHTML.\nRead more: ...",
+    },
+  ];
+  const manualItems = [
+    { file: "background.js", loc: { line: 1 }, ruleId: "data-exfiltration" },
+  ];
+  const out = buildSelfAssessment(
+    ctx,
+    registry,
+    findings,
+    manualItems,
+    new Set(["orphan.js"])
+  );
+  assert.ok(out.system.includes(registry.prompt("self-assessment")));
+  // Sources are present; the unused file is excluded.
+  assert.ok(out.user.includes("el.innerHTML = data;"));
+  assert.ok(!out.user.includes("console.log('dead');"));
+  // The findings block lists the finding (first message line only) for the FP audit.
+  assert.ok(out.user.includes("FINDINGS"));
+  assert.ok(out.user.includes("background.js:1  [unsafe-html]"));
+  assert.ok(!out.user.includes("Read more: ...")); // only the first message line
+  // Already-escalated items are listed so they are not re-reported as misses.
+  assert.ok(out.user.includes("ALREADY_ESCALATED"));
+  assert.ok(out.user.includes("data-exfiltration"));
+  assert.equal(
+    out.bytes,
+    Buffer.byteLength(out.system, "utf8") + Buffer.byteLength(out.user, "utf8")
+  );
+  // No prompt -> null (defensive).
+  assert.equal(
+    buildSelfAssessment(ctx, { prompt: () => null }, findings),
+    null
+  );
 });

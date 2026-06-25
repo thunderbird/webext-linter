@@ -351,3 +351,84 @@ export function buildAddonSummarizer(
     user: items ? `${text}\n\n${items}` : text,
   });
 }
+
+/**
+ * One compact line per deterministic finding for the self-assessment FINDINGS
+ * block: "file:line  [rule]  <first line of the message>".
+ * @param {{file?: ?string, loc?: {line?: number}, ruleId: string,
+ *   message?: string}} f
+ * @returns {string}
+ */
+function findingLine(f) {
+  const where = f.file
+    ? `${f.file}${f.loc?.line != null ? `:${f.loc.line}` : ""}`
+    : "(add-on)";
+  const msg = (f.message ?? "").split("\n")[0];
+  return `- ${where}  [${f.ruleId}]  ${msg}`;
+}
+
+/**
+ * One line per already-escalated manual/LLM item, so the self-assessment does not
+ * re-report it as a missed issue. Reads whichever of title/ruleId/item is present.
+ * @param {{file?: ?string, loc?: {line?: number}, ruleId?: string, title?:
+ *   string, item?: ?string}} m
+ * @returns {string}
+ */
+function manualLine(m) {
+  const where = m.file
+    ? `${m.file}${m.loc?.line != null ? `:${m.loc.line}` : ""}`
+    : "(add-on)";
+  const label = m.title ?? m.ruleId ?? "manual review";
+  return `- ${where}  ${label}${m.item ? `  (${m.item})` : ""}`;
+}
+
+/**
+ * Prepare the --self-assessment-summary payload: the authored add-on sources (as
+ * the normal summary, minus non-authored bundles) plus a FINDINGS block of the
+ * deterministic results to audit for false positives, plus the already-escalated
+ * manual items as context (so the model does not re-report them as misses), under
+ * the registry "self-assessment" prompt. Free-form prose (caller runs it through
+ * llm.summarize), NOT a structured tool and NOT bound to ctx.llm - the caller owns
+ * the client and catches errors. Returns null when there is no prompt or no files.
+ * @param {RunContext} ctx
+ * @param {Registry} registry
+ * @param {Array<{file?: ?string, loc?: object, ruleId: string, message?: string}>}
+ *   findings  Rendered findings (renderFindings filled `message`).
+ * @param {Array<object>} [manualItems]  The run's manual/unsure escalations.
+ * @param {Set<string>} [unused]  Files the review found unreachable, excluded from
+ *   the sources exactly as the normal add-on summary does.
+ * @returns {?{system: string, user: string, bytes: number}}
+ */
+export function buildSelfAssessment(
+  ctx,
+  registry,
+  findings = [],
+  manualItems = [],
+  unused = new Set()
+) {
+  const prompt = registry.prompt("self-assessment");
+  if (!prompt) {
+    return null;
+  }
+  const nonce = nonceFor(ctx);
+  const text = buildAddonText(ctx, nonce, { unused });
+  if (!text) {
+    return null;
+  }
+  const findingsBody = findings.length
+    ? findings.map(findingLine).join("\n")
+    : "(no deterministic findings)";
+  const blocks = [text, wrap(nonce, "FINDINGS", findingsBody)];
+  if (manualItems.length) {
+    blocks.push(
+      wrap(nonce, "ALREADY_ESCALATED", manualItems.map(manualLine).join("\n"))
+    );
+  }
+  const system = `${framing(nonce)}\n\n${prompt}`;
+  const user = blocks.join("\n\n");
+  return {
+    system,
+    user,
+    bytes: Buffer.byteLength(system, "utf8") + Buffer.byteLength(user, "utf8"),
+  };
+}

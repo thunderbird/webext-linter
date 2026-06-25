@@ -24,7 +24,12 @@ import { loadAddon } from "./addon/load.js";
 import { resolveReviewUrl } from "./addon/atn.js";
 import { runChecks, runOneCheck, loadRegistry } from "./checks/registry.js";
 import { buildRunContext } from "./checks/context.js";
-import { buildSummarizer, buildAddonSummarizer } from "./checks/summaries.js";
+import {
+  buildSummarizer,
+  buildAddonSummarizer,
+  buildSelfAssessment,
+} from "./checks/summaries.js";
+import { createLlmClient } from "./checks/llm-client.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
 import { headerLines } from "./report/format.js";
 import { resolveVendor } from "./vendor/resolve.js";
@@ -76,6 +81,9 @@ import {
  * @property {string} [diffTo]  Path to the previous published version.
  * @property {boolean} [diffSummary]  Add an LLM "Summary of changes" section.
  * @property {boolean} [fullSummary]  Add an LLM "Summary of add-on" section.
+ * @property {boolean} [selfAssessmentSummary]  Add a final LLM FP/FN audit of the
+ *   deterministic findings (tries the LLM regardless of --llm-enabled, logs on
+ *   failure). Runs no LLM checks - only the one closing self-assessment call.
  * @property {boolean} [reviewUrl]  Look up the ATN reviewer review-page URL and
  *   put it on meta.reviewUrl - set for text reports, off for JSON/the harness.
  * @property {boolean} [llmEnabled]  The sole LLM on-switch (--llm-enabled).
@@ -106,6 +114,7 @@ import {
  * @property {Record<string, string>} [verdictIntros]
  * @property {GeneratedSummary} [summarize]
  * @property {GeneratedSummary} [summarizeAddon]
+ * @property {GeneratedSummary} [selfAssessment]
  */
 
 /**
@@ -264,7 +273,7 @@ export async function runPipeline(opts) {
   );
   findings.push(...result.findings);
   Object.assign(meta, result.meta);
-  const { summarize, summarizeAddon } = result;
+  const { summarize, summarizeAddon, selfAssessment } = result;
 
   // Surface the review header now - before the ATN review-page lookup below, a
   // network call that can stall the feed for seconds - so the reviewer sees what
@@ -305,6 +314,7 @@ export async function runPipeline(opts) {
     // src/cli.js.
     summarize,
     summarizeAddon,
+    selfAssessment,
   };
 }
 
@@ -379,6 +389,69 @@ async function generateAddonSummary(ctx, registry, unused, budget) {
     ctx.addon.recheck = review.recheck;
   }
   return { bytes: deferred.bytes, text: review?.summary ?? null };
+}
+
+/**
+ * The --self-assessment-summary FP/FN audit: one free-form LLM call that gets the
+ * authored sources plus the deterministic findings and reports likely false
+ * positives + possible false negatives. Independent of the LLM-check gating - it
+ * builds its OWN client and just TRIES the call, logging (never throwing) on a
+ * missing token or any model error, so the review is unaffected. Returns a
+ * GeneratedSummary, or undefined when there is nothing to send.
+ * @param {RunContext} ctx
+ * @param {Registry} registry
+ * @param {PipelineOpts} opts
+ * @param {Finding[]} findings  Rendered findings (message filled).
+ * @param {object[]} manualItems
+ * @param {Set<string>} unused  Unreachable files, excluded from the sources.
+ * @param {import("../llm/budget.js").LlmBudget} [budget]
+ * @returns {Promise<GeneratedSummary|undefined>}
+ */
+async function generateSelfAssessment(
+  ctx,
+  registry,
+  opts,
+  findings,
+  manualItems,
+  unused,
+  budget
+) {
+  const payload = buildSelfAssessment(
+    ctx,
+    registry,
+    findings,
+    manualItems,
+    unused
+  );
+  if (!payload) {
+    return undefined;
+  }
+  if (budget && !(await budget.consume())) {
+    return undefined; // run-wide request cap reached
+  }
+  progress(
+    `  LLM: Generating self-assessment (${humanSize(payload.bytes)}) ...`
+  );
+  try {
+    const client = createLlmClient({
+      ctx,
+      token: opts.llmApiKey,
+      systemIntro: registry.prompt("system-intro"),
+      type: opts.llmApiType,
+      model: opts.llmModel,
+      url: opts.llmApiUrl,
+      budget,
+    });
+    const text = await client.summarize({
+      system: payload.system,
+      user: payload.user,
+    });
+    return { bytes: payload.bytes, text };
+  } catch (err) {
+    const reason = llmErrorText(err);
+    progress(red(`  LLM: self-assessment skipped - ${reason}`));
+    return { bytes: payload.bytes, text: null, error: reason };
+  }
 }
 
 /**
@@ -536,6 +609,28 @@ async function reviewAddon(
   collapseUnusedFolders(findings, allFiles);
   collapseUnusedFolders(manualItems, allFiles);
 
+  // The self-assessment audit (--self-assessment-summary): a single final LLM call
+  // that critiques the now-complete deterministic findings for false positives and
+  // hunts for false negatives. It needs the rendered finding messages, so render
+  // them here (idempotent - the caller renders again before printing). It tries the
+  // LLM regardless of --llm-enabled and only logs on failure.
+  let selfAssessment;
+  if (!invalidExperiment && opts.selfAssessmentSummary) {
+    renderFindings(findings, registry);
+    const unused = new Set(
+      findings.filter((f) => f.ruleId === "unused-files").map((f) => f.file)
+    );
+    selfAssessment = await generateSelfAssessment(
+      ctx,
+      registry,
+      opts,
+      findings,
+      manualItems,
+      unused,
+      budget
+    );
+  }
+
   return {
     findings,
     // The built run context is returned for any post-review use by the caller.
@@ -544,6 +639,7 @@ async function reviewAddon(
     // a token warrant it). The caller prints their prose after the report.
     summarize,
     summarizeAddon,
+    selfAssessment,
     meta: {
       schemaSource,
       schemaBranch: branch,
