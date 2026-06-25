@@ -15,7 +15,7 @@ import {
   asArray,
   isBroadHost,
   isMatchPattern,
-  manifestTokenLine,
+  manifestPathLine,
 } from "../lib/util.js";
 
 export default {
@@ -24,21 +24,20 @@ export default {
     if (!m) {
       return [];
     }
-    const text = ctx.addon.files?.get("manifest.json")?.toString("utf8");
     const out = [];
     const seen = new Set();
-    for (const list of [m.host_permissions, m.permissions]) {
-      for (const p of asArray(list)) {
+    for (const key of ["host_permissions", "permissions"]) {
+      asArray(m[key]).forEach((p, i) => {
         // Only host match patterns are this check's concern (named permissions
         // in the MV2 array are not hosts); narrate each one, broad = fail.
         if (typeof p !== "string" || seen.has(p) || !isMatchPattern(p)) {
-          continue;
+          return;
         }
         seen.add(p);
         const broad = isBroadHost(p);
         ctx.note?.("manifest.json", null, p, broad ? "fail" : "pass");
         if (broad) {
-          const line = manifestTokenLine(text, p);
+          const line = manifestPathLine(ctx.addon, key, i);
           out.push(
             finding({
               file: "manifest.json",
@@ -47,7 +46,7 @@ export default {
             })
           );
         }
-      }
+      });
     }
     return out;
   },

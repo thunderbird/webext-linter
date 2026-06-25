@@ -18,6 +18,7 @@ import AdmZip from "adm-zip";
 import JSON5 from "json5";
 
 import { warn } from "../util/log.js";
+import { buildManifestLoc } from "./manifest-loc.js";
 
 /**
  * @typedef {object} GeckoSettings
@@ -92,6 +93,8 @@ import { warn } from "../util/log.js";
  *   -> contents.
  * @property {?Manifest} manifest  Parsed; null if missing/invalid.
  * @property {string|null} manifestError     Parse error message, if any.
+ * @property {?import("./manifest-loc.js").ManifestLoc} manifestLoc  Resolves a
+ *   manifest JSON path to its source line; null when there is no manifest.
  */
 
 /**
@@ -112,6 +115,7 @@ export function loadAddon(source) {
     files,
     manifest: null,
     manifestError: null,
+    manifestLoc: null,
   };
 
   const manifestBuf = files.get("manifest.json");
@@ -120,6 +124,7 @@ export function loadAddon(source) {
     if (text.charCodeAt(0) === 0xfeff) {
       text = text.slice(1);
     }
+    addon.manifestLoc = buildManifestLoc(text);
     try {
       addon.manifest = JSON5.parse(text);
     } catch (err) {

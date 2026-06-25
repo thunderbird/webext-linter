@@ -366,6 +366,21 @@ export function manifestTokenLine(manifestText, token) {
 }
 
 /**
+ * Exact 1-based source line of a manifest value addressed by its JSON path
+ * (e.g. manifestPathLine(addon, "host_permissions", 0)). Unlike
+ * manifestTokenLine this is unambiguous for repeated values and immune to
+ * \uXXXX escaping. Returns null when the add-on has no position index or the
+ * path is absent. Prefer this over manifestTokenLine for array values; the
+ * token search remains for unique top-level keys.
+ * @param {?import("../../addon/load.js").Addon} addon
+ * @param {...(string|number)} path
+ * @returns {number|null}
+ */
+export function manifestPathLine(addon, ...path) {
+  return addon?.manifestLoc?.lineAt(path) ?? null;
+}
+
+/**
  * 1-based line of the first line containing `needle` as a plain substring, or
  * null. Unlike manifestTokenLine (which matches a quoted JSON token), this suits
  * free-form text such as a VENDOR file, where a finding anchors on the verbatim

@@ -8,7 +8,7 @@
 // assets/registry.yaml), and severity (-> that registry entry).
 
 import { finding } from "../../report/finding.js";
-import { asArray, isMatchPattern, manifestTokenLine } from "../lib/util.js";
+import { asArray, isMatchPattern, manifestPathLine } from "../lib/util.js";
 
 export default {
   run(ctx) {
@@ -17,12 +17,11 @@ export default {
     if (!m) {
       return [];
     }
-    const text = ctx.addon.files?.get("manifest.json")?.toString("utf8");
     const out = [];
     for (const field of ["permissions", "optional_permissions"]) {
-      for (const p of asArray(m[field])) {
+      asArray(m[field]).forEach((p, i) => {
         if (typeof p !== "string") {
-          continue;
+          return;
         }
         if (
           isMatchPattern(p) ||
@@ -30,7 +29,7 @@ export default {
           schema.dataCollectionPermissions.has(p)
         ) {
           ctx.note?.("manifest.json", null, `'${p}'`, "pass");
-          continue;
+          return;
         }
         ctx.note?.(
           "manifest.json",
@@ -38,7 +37,7 @@ export default {
           `'${p}' (unknown permission)`,
           "fail"
         );
-        const line = manifestTokenLine(text, p);
+        const line = manifestPathLine(ctx.addon, field, i);
         out.push(
           finding({
             file: "manifest.json",
@@ -46,7 +45,7 @@ export default {
             item: p,
           })
         );
-      }
+      });
     }
     return out;
   },

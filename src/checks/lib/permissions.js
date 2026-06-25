@@ -28,7 +28,7 @@
 // src/schema/index.js. Match-pattern helpers - lib/util.js.
 
 import { finding } from "../../report/finding.js";
-import { asArray, isMatchPattern, manifestTokenLine } from "./util.js";
+import { asArray, isMatchPattern, manifestPathLine } from "./util.js";
 import { buildReachability } from "./reachability.js";
 
 // Permissions that gate no callable API, so static analysis can never prove use;
@@ -203,26 +203,25 @@ export function getPermissionAnalysis(ctx) {
 export function enumerateUnusedPermissions(ctx) {
   const used = getPermissionAnalysis(ctx).usedPermissions;
   const m = ctx.addon?.manifest ?? {};
-  const text = ctx.addon?.files?.get("manifest.json")?.toString("utf8");
   const seen = new Set();
   const escalations = [];
-  for (const list of [m.permissions, m.optional_permissions]) {
-    for (const p of asArray(list)) {
+  for (const key of ["permissions", "optional_permissions"]) {
+    asArray(m[key]).forEach((p, i) => {
       if (typeof p !== "string" || isMatchPattern(p) || seen.has(p)) {
-        continue;
+        return;
       }
       seen.add(p);
-      const line = manifestTokenLine(text, p);
+      const line = manifestPathLine(ctx.addon, key, i);
       const loc = line ? { line } : null;
       if (used.has(p) || NO_API_GATE.has(p)) {
         // A reachable call requires it, or it gates no callable API (always
         // justified) - either way not a manual case.
         ctx.note?.("manifest.json", loc, p, "pass");
-        continue;
+        return;
       }
       ctx.note?.("manifest.json", loc, p, "unsure");
       escalations.push({ item: p, file: "manifest.json", loc });
-    }
+    });
   }
   return { findings: [], escalations };
 }
