@@ -12,15 +12,18 @@
 
 # WIP
 
----
 
 - (check build types)
 
 ---
 
-7) The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
-Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
- - manifest.json - <all_urls>
+unsafe-html on DOMPurify-sanitized innerHTML (warnings): markdown-here (3×) and attachment-image-viewer (2×) assign innerHTML = DOMPurify.escapeHTML/sanitize(...); the check can't trace the sanitizer. Lower priority (warning, conservative-by-design), but a clear precision opportunity.
+
+---
+
+Approach to be able to get summary of large add-ons
+
+Two large add-ons (cardbook, grammar) are beyond the LLM size limit.
 
 
 # Hash-based library identification
