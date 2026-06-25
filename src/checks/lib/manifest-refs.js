@@ -108,10 +108,10 @@ export function resolveRef(files, fromFile, raw) {
 /**
  * Resolve a reference against an explicit base DIRECTORY, or null if it is not a
  * packaged file. `dir` null means extension-root-relative (as for the manifest /
- * getURL / a generated background page); `dir === ""` is the add-on root; any
- * other value is that directory. A leading "/" in `raw` is always root-relative.
- * Used to resolve a page-relative loader path against the directory of the page
- * that hosts the calling script (see script-hosts.js). `.`/`..` are normalized.
+ * getURL); `dir === ""` is the add-on root; any other value is that directory. A
+ * leading "/" in `raw` is always root-relative. Used to resolve a script-relative
+ * loader path against the calling script's own directory (dirname of the script).
+ * `.`/`..` are normalized.
  * @param {Map<string, Buffer>} files
  * @param {string|null} dir
  * @param {string} raw

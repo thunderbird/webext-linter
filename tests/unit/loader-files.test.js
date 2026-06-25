@@ -128,10 +128,10 @@ test("bridge extracts tabs.create url and *.setPopup paths", () => {
 });
 
 // Each ref is tagged with the directory its path resolves against at runtime:
-// document-relative loaders (the MV2 tabs.* injection trio and tabs.create /
+// script-relative loaders (the MV2 tabs.* injection trio and tabs.create /
 // windows.create url) are "page"; root-relative loaders (getURL, scripting.*,
-// *.setPopup) are "root". The resolver (script-hosts.js) uses this to pick the
-// base, so the tag must come straight from the method name.
+// *.setPopup) are "root". The resolver (reachability / bundled-files) uses this
+// tag to pick the base, so the tag must come straight from the method name.
 test("tags document-relative loaders base:page, root loaders base:root", () => {
   const code = `
     browser.tabs.executeScript({ file: "inject.js" });

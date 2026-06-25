@@ -185,19 +185,17 @@ test("reachability follows schema-derived and bridge loader APIs", () => {
   assert.ok(reach.reachable.has("page.html")); // bridge tabs.create
 });
 
-// A tabs.executeScript({file}) path is page-relative in Gecko: it resolves
-// against the calling script's host PAGE directory, not the extension root. Here
-// background.js (loaded by src/background.html) injects "message-unescape.js",
-// which lives next to the page in src/ - so it is reachable, not an orphan. (The
-// isabelle regression: a bare filename next to the background page.)
-test("reachability resolves tabs.executeScript file page-relative (Gecko)", () => {
+// A tabs.executeScript({file}) path resolves against the calling SCRIPT's own
+// directory in Gecko, not the extension root. Here src/background.js injects
+// "message-unescape.js", which lives next to it in src/ - so it is reachable, not
+// an orphan. (The isabelle regression: a bare filename next to the script.)
+test("reachability resolves tabs.executeScript file script-relative (Gecko)", () => {
   const manifest = {
     manifest_version: 2,
-    background: { page: "src/background.html" },
+    background: { scripts: ["src/background.js"] },
   };
   const files = {
     "manifest.json": JSON.stringify(manifest),
-    "src/background.html": `<script src="background.js"></script>`,
     "src/background.js": `browser.tabs.executeScript(id, { file: "message-unescape.js" });`,
     "src/message-unescape.js": `console.log(1);`,
   };

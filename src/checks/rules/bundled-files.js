@@ -25,12 +25,10 @@ import {
   manifestFileRefs,
   normalizeRef,
   resolveRefStatus,
+  resolveInDirStatus,
 } from "../lib/manifest-refs.js";
-import {
-  scriptHostDirs,
-  resolvePageRelativeStatus,
-} from "../lib/script-hosts.js";
 import { manifestTokenLine } from "../lib/util.js";
+import { dirname } from "../../util/files.js";
 
 // A reference is a packaged-file candidate (so a missing target is an error)
 // only when it is a relative / root-relative path with no URI scheme. This
@@ -44,8 +42,7 @@ export default {
     const out = [];
     // A reference is satisfied only when it resolves WITHIN the package root to a
     // bundled file ("ok"). "missing" (no such file) and "escapes" (a ".." that
-    // points outside the add-on - a wrong path) both fail; resolveRefStatus /
-    // resolvePageRelativeStatus tell them apart from a silently root-clamped hit.
+    // climbs outside the add-on - a wrong path) both fail.
     /** @param {string} p @returns {boolean} whether the file is bundled. */
     const rootOk = (p) => resolveRefStatus(addon.files, null, p).kind === "ok";
 
@@ -70,9 +67,9 @@ export default {
     }
 
     // 2. Files referenced by file-loading API calls (schema-directed + bridge).
-    // The page-relative trio (base:"page") is resolved against the calling
-    // script's host page directory (Gecko's rule), the rest root-relative.
-    const hostDirs = scriptHostDirs(ctx);
+    // A base:"page" loader path (tabs.create {url}, executeScript {file}, ...) is
+    // resolved against the calling SCRIPT's own directory (Gecko's rule); the rest
+    // are root-relative.
     const seen = new Set();
     for (const src of ctx.jsSources) {
       const { refs } = scanLoaderRefs(
@@ -93,12 +90,8 @@ export default {
         const loc = { line: ref.line, column: ref.column };
         const present =
           ref.base === "page"
-            ? resolvePageRelativeStatus(
-                addon.files,
-                hostDirs,
-                src.file,
-                ref.path
-              ).kind === "ok"
+            ? resolveInDirStatus(addon.files, dirname(src.file), ref.path)
+                .kind === "ok"
             : rootOk(ref.path);
         ctx.note?.(src.file, loc, ref.path, present ? "pass" : "fail");
         if (!present) {

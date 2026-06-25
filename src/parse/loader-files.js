@@ -65,18 +65,18 @@ const BRIDGE = new Map([
   ["messageDisplayAction.setPopup", { stringKeys: ["popup"] }],
 ]);
 
-// Methods whose file path Gecko resolves relative to the CALLING PAGE's document
-// base URL (the "current page URL"), not the extension root - unlike a plain
+// Methods whose file path Gecko resolves relative to the CALLING SCRIPT's own
+// location (its module/document URL), not the extension root - unlike a plain
 // root-relative loader. A ref from one of these carries base:"page" so the
-// resolver (reachability / bundled-files, via script-hosts.js) resolves it
-// against the host page's directory. Everything else stays base:"root".
-//   - The MV2 tabs.* injection trio: the `file` is resolved against the page the
-//     call runs in. The MV3 scripting.* replacements are root-relative in both
+// resolver (reachability / bundled-files) resolves it against the calling
+// script's OWN directory. Everything else stays base:"root".
+//   - The MV2 tabs.* injection trio: the `file` is resolved against the calling
+//     script. The MV3 scripting.* replacements are root-relative in both
 //     browsers, so they are NOT here.
 //   - tabs.create / windows.create: a relative `url` is resolved against the
-//     caller's document, so a path like "../sibling.html" from a subdirectory
-//     page legitimately resolves within the package (don't flag it), while the
-//     same from a root-level context escapes the root (a real wrong path).
+//     calling script, so "../sibling.html" from a script in a subdirectory
+//     legitimately resolves within the package (don't flag it), while the same
+//     from a root-level script escapes the root (a real wrong path).
 const PAGE_RELATIVE_FILE_METHODS = new Set([
   "tabs.executeScript",
   "tabs.insertCSS",

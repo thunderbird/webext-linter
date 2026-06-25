@@ -140,20 +140,17 @@ test("checks bridge loaders but ignores remote / scheme urls", () => {
   assert.equal(remote.length, 0);
 });
 
-// A tabs.executeScript({file}) path is page-relative (Gecko): present-ness is
-// checked against the calling script's host PAGE directory, not the extension
-// root. background.js (loaded by src/background.html) injects a sibling file:
-// present under the page dir -> no finding; absent there -> still flagged.
-test("page-relative executeScript file is checked against the host page dir", () => {
+// A tabs.executeScript({file}) path is resolved against the calling SCRIPT's own
+// directory (Gecko), not the extension root. src/background.js injects a sibling
+// file: present under the script's dir -> no finding; absent there -> flagged.
+test("executeScript {file} is checked against the calling script's directory", () => {
   const manifest = {
     manifest_version: 2,
-    background: { page: "src/background.html" },
+    background: { scripts: ["src/background.js"] },
   };
   const call = `browser.tabs.executeScript(id, { file: "message-unescape.js" });`;
-  const page = `<script src="background.js"></script>`;
 
   const present = ctxWith(manifest, {
-    "src/background.html": page,
     "src/background.js": call,
     "src/message-unescape.js": "",
   });
@@ -162,10 +159,7 @@ test("page-relative executeScript file is checked against the host page dir", ()
   ];
   assert.equal(bundledFiles.run(present).length, 0); // resolves to src/message-unescape.js
 
-  const missing = ctxWith(manifest, {
-    "src/background.html": page,
-    "src/background.js": call,
-  });
+  const missing = ctxWith(manifest, { "src/background.js": call });
   missing.jsSources = [
     { file: "src/background.js", code: call, lineOffset: 0 },
   ];
@@ -224,11 +218,10 @@ test("resolveRefStatus resolves relative to the referring file's directory", () 
   assert.equal(resolveRefStatus(files, null, "skin/x.svg").kind, "ok");
 });
 
-// A tabs.create({url}) is document-relative (resolved against the calling page),
-// so the same "../sibling.html" verdict depends on where the caller runs: from a
-// SUBDIRECTORY page it resolves to a bundled sibling -> no finding (this is the
-// thunderbird_conversations options/ false positive that used to be flagged).
-test("document-relative tabs.create from a subdir page resolves a sibling - not flagged", () => {
+// A tabs.create({url}) is resolved against the calling SCRIPT's own directory, so
+// "../target/target.html" from a script in a SUBDIRECTORY climbs out to a bundled
+// sibling -> no finding (the thunderbird_conversations options/ case).
+test("tabs.create {url} resolves against the script's dir (subdir climbs out)", () => {
   const manifest = {
     manifest_version: 2,
     options_ui: { page: "options/options.html" },
@@ -243,10 +236,26 @@ test("document-relative tabs.create from a subdir page resolves a sibling - not 
   assert.equal(bundledFiles.run(ctx).length, 0); // options/../target/target.html
 });
 
-// From a ROOT context (a background.scripts page lives at the generated root),
-// the same "../target/..." climbs above the package root -> a wrong path that is
-// still flagged (the conversations background/ case).
-test("document-relative tabs.create from a root context that escapes is flagged", () => {
+// The gmail-conversation-view case: a background.scripts module in a subdirectory
+// whose tabs.create url climbs out of that subdir to a bundled root-level file -
+// resolved against the SCRIPT's dir (background/), independent of the loading page.
+test("background.scripts in a subdir resolves a climbing tabs.create url - not flagged", () => {
+  const manifest = {
+    manifest_version: 2,
+    background: { scripts: ["background/bg.mjs"] },
+  };
+  const call = `browser.tabs.create({ url: "../assistant/assistant.html" });`;
+  const ctx = ctxWith(manifest, {
+    "background/bg.mjs": call,
+    "assistant/assistant.html": "",
+  });
+  ctx.jsSources = [{ file: "background/bg.mjs", code: call, lineOffset: 0 }];
+  assert.equal(bundledFiles.run(ctx).length, 0); // background/../assistant/assistant.html
+});
+
+// From a ROOT-level script, the same "../target/..." climbs above the package
+// root -> a wrong path, still flagged.
+test("tabs.create {url} from a root-level script that escapes is flagged", () => {
   const manifest = { manifest_version: 2, background: { scripts: ["bg.js"] } };
   const call = `browser.tabs.create({ url: "../target/target.html" });`;
   const ctx = ctxWith(manifest, {
