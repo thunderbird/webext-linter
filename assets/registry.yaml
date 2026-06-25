@@ -25,7 +25,7 @@ deterministic-checks:
   severity: error
   check: unknown-api
   response: |-
-    "{{item}}" is not supported in the targeted Thunderbird version.
+    The following WebExtension API is not supported in the targeted Thunderbird version.
     Read more: https://webextension-api.thunderbird.net/.
 
 # Flags deprecated APIs.

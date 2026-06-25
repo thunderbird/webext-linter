@@ -111,8 +111,8 @@
         "line": 4,
         "column": 0
       },
-      "item": null,
-      "hint": "https://cdn.example.com/lib.js",
+      "item": "https://cdn.example.com/lib.js",
+      "hint": null,
       "message": "Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed."
     },
     {
@@ -123,8 +123,8 @@
         "line": 7,
         "column": 0
       },
-      "item": null,
-      "hint": "https://cdn.example.com/fonts.css",
+      "item": "https://cdn.example.com/fonts.css",
+      "hint": null,
       "message": "Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed."
     },
     {
@@ -135,8 +135,8 @@
         "line": 11,
         "column": 0
       },
-      "item": null,
-      "hint": "https://cdn.example.com/bg.png",
+      "item": "https://cdn.example.com/bg.png",
+      "hint": null,
       "message": "Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed."
     },
     {
@@ -156,8 +156,8 @@
         "line": 1,
         "column": 0
       },
-      "item": null,
-      "hint": "https://cdn.example.com/theme.css",
+      "item": "https://cdn.example.com/theme.css",
+      "hint": null,
       "message": "Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed."
     }
   ]

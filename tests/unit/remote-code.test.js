@@ -120,8 +120,8 @@ test("remote-script flags a remote @import inside an inline <style>", () => {
     },
     { manifest_version: 3, name: "x", version: "1" }
   );
-  const hints = remoteScript.run(ctx).findings.map((f) => f.hint);
-  assert.ok(hints.some((h) => h.includes("cdn/f.css")));
+  const items = remoteScript.run(ctx).findings.map((f) => f.item);
+  assert.ok(items.some((i) => i.includes("cdn/f.css")));
 });
 
 // ---- JS ----
@@ -414,7 +414,7 @@ test("remote-script flags a remote CSP script-src host", () => {
     )
   );
   assert.equal(findings.length, 1);
-  assert.match(findings[0].hint, /cdn\.example\.com/); // the host rides on the hint
+  assert.match(findings[0].item, /cdn\.example\.com/); // the host is the subject (item)
 });
 
 // A clean fully-bundled add-on (local JS, no remote CSP or eval) produces zero

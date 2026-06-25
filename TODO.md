@@ -15,6 +15,26 @@
 
 - (check build types)
 
+---
+
+Reviewing /home/john/Downloads/reviews/experiments/owl-for-exchange__1.5.2__eule_fur_exchange-1.5.2-tb.zip
+schema release-mv2 · Thunderbird 151.0.1 · manifest_version 2
+
+── Issues ──
+
+Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
+
+1) "browser.autoComplete" is not supported in the targeted Thunderbird version.
+Read more: https://webextension-api.thunderbird.net/.
+ - eas/contacts.js:482
+ - eas/contacts.js:484
+
+2) "browser.calendar" is not supported in the targeted Thunderbird version.
+Read more: https://webextension-api.thunderbird.net/.
+ - shared/calendar.js:1
+ - shared/calendar.js:1
+ - shared/calendar.js:1
+
 # Hash-based library identification
 
 We currently use a popularity system to identify popular and well-maintained

@@ -18,13 +18,12 @@ const registry = loadRegistry();
 // break before "Read more:" is preserved (Issues prints responses verbatim).
 test("renderFindings fills {{item}} from the registry response by ruleId", () => {
   const f = {
-    ruleId: "unknown-api",
-    item: "browser.contextMenus",
+    ruleId: "unsafe-html",
+    item: "innerHTML",
     message: null,
   };
   renderFindings([f], registry);
-  assert.match(f.message, /browser\.contextMenus/);
-  assert.match(f.message, /is not supported/);
+  assert.match(f.message, /assigned via "innerHTML"/); // {{item}} filled in the prose
   assert.ok(!f.message.includes("{{item}}"));
   // The only line break is the one before "Read more:" - the prose itself is
   // one line (no 80-col wrapping survives into the message).

@@ -120,7 +120,7 @@
       },
       "item": "browser.bogusApi",
       "hint": null,
-      "message": "\"browser.bogusApi\" is not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The following WebExtension API is not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "unknown-api",
@@ -132,7 +132,7 @@
       },
       "item": "browser.messages.frobnicate",
       "hint": null,
-      "message": "\"browser.messages.frobnicate\" is not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The following WebExtension API is not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "missing-permission",
@@ -348,8 +348,8 @@
         "line": 4,
         "column": 0
       },
-      "item": null,
-      "hint": "https://cdn.example.com/remote.js",
+      "item": "https://cdn.example.com/remote.js",
+      "hint": null,
       "message": "Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed."
     },
     {
@@ -369,8 +369,8 @@
         "line": 1,
         "column": 0
       },
-      "item": null,
-      "hint": "https://fonts.example.com/font.css",
+      "item": "https://fonts.example.com/font.css",
+      "hint": null,
       "message": "Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed."
     }
   ]

@@ -79,7 +79,7 @@ export default {
     }
 
     for (const host of analyzeCsp(addon.manifest).remoteHosts) {
-      findings.push(finding({ file: "manifest.json", hint: host }));
+      findings.push(finding({ file: "manifest.json", item: host }));
       ctx.note?.("manifest.json", null, `CSP script-src ${host}`, "fail");
     }
 
@@ -123,7 +123,7 @@ function pushHtml(ctx, findings, esc, file, ref) {
   const loc = { line, column: 0 };
   const item = `<${tag}> ${trunc(url)}`;
   if (klass === "remote") {
-    findings.push(finding({ file, loc, hint: url }));
+    findings.push(finding({ file, loc, item: url }));
     ctx.note?.(file, loc, item, "fail");
   } else if (klass === "embedded" && kind === "script") {
     addCandidate(
@@ -152,7 +152,7 @@ function pushCss(ctx, findings, file, ref) {
     return; // local CSS url()/imports are bundled assets - benign, not noted
   }
   const loc = { line, column: 0 };
-  findings.push(finding({ file, loc, hint: url }));
+  findings.push(finding({ file, loc, item: url }));
   ctx.note?.(file, loc, `css ${trunc(url)}`, "fail");
 }
 
@@ -185,7 +185,7 @@ const UNDECIDABLE_JS = {
 function pushJs(ctx, findings, esc, file, hit) {
   const loc = { line: hit.line, column: hit.column };
   if (REMOTE_JS.has(hit.type)) {
-    findings.push(finding({ file, loc, hint: hit.url ?? null }));
+    findings.push(finding({ file, loc, item: hit.url ?? null }));
     ctx.note?.(
       file,
       loc,
