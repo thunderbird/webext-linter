@@ -22,13 +22,6 @@
 Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
  - manifest.json - <all_urls>
 
----
-
-1) "chrome/content/dummy.html" is referenced but not bundled with the add-on, or the path may be wrongly specified. Please include every referenced file in the package, and check that the used paths are correct.
- - manifest.json:17 - <move file here>
-
-node verify.js /home/john/Downloads/reviews/new6/importexporttools_ng-15.0.1-tb.xpi --allow-experiments
-
 
 # Hash-based library identification
 
