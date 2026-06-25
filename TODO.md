@@ -15,16 +15,6 @@
 
 - (check build types)
 
----
-
-unsafe-html on DOMPurify-sanitized innerHTML (warnings): markdown-here (3×) and attachment-image-viewer (2×) assign innerHTML = DOMPurify.escapeHTML/sanitize(...); the check can't trace the sanitizer. Lower priority (warning, conservative-by-design), but a clear precision opportunity.
-
----
-
-Approach to be able to get summary of large add-ons
-
-Two large add-ons (cardbook, grammar) are beyond the LLM size limit.
-
 
 # Hash-based library identification
 
