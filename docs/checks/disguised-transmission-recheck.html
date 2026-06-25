@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Disguised data transmission (recheck)</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Disguised data transmission (recheck)
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">disguised-transmission-recheck</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This is the post-summary recheck consumer for the disguised-transmission
+        check. It re-judges each covert sink the narrow per-location view could
+        not clear — the residual ambiguous items — now with the whole add-on in
+        view rather than just the one suspected site.
+      </p>
+      <p>
+        It runs only in the post-summary phase. When a full add-on summary is
+        produced, those unresolved locations are appended to it under this entry's
+        summary rubric and re-judged, so context elsewhere in the add-on can show
+        whether a dynamic remote URL is a legitimate load or a covert data send.
+        Each verdict maps directly: a legitimate dynamic URL is dropped, a smuggled
+        send becomes an error, and anything still unresolved goes to manual review.
+        With no summary, nothing is handed over, this check emits nothing, and the
+        producer's manual items stand.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Locations disguised-transmission<br/>left unresolved"] --> B{"Did a full add-on<br/>summary run?"}
+  B -- no --> S([skip — nothing handed over;<br/>producer's items stand])
+  B -- yes --> L{"LLM judges with the whole<br/>add-on in view: is data smuggled<br/>out through this channel?"}
+  L -- "pass: legitimate dynamic URL" --> OK([no finding])
+  L -- "fail: disguised data send" --> ERR([ERROR: disguised data transmission])
+  L -- "unsure / no verdict" --> M([escalate to manual review])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR err;
+  class OK ok;
+  class S skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the listed code locations appear to send data through a
+        resource or navigation URL — a channel not meant for transmission — that
+        disguising a send this way is not allowed even with consent, and that it
+        should use a normal request and disclose what is sent.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/disguised-transmission-recheck.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

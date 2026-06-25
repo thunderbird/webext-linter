@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Disguised data transmission</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Disguised data transmission
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">disguised-transmission</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A covert channel — a resource src/href, a CSS url(), a window.open() or a
+        page navigation — whose URL is built with a runtime value and points at a
+        remote host, but that carries no obvious user-data API call. Slipping data
+        out through a channel not meant for transmission is disguised
+        exfiltration.
+      </p>
+      <p>
+        On its own, "a remote URL with a dynamic piece" is a weak signal — it is
+        extremely common in legitimate code (navigating to a per-item page,
+        loading an image whose name varies). The strong case, where a
+        message/contacts-style data call sits directly in the URL, is caught as a
+        hard error by the deterministic disguised-resource / -stylesheet /
+        -window / -navigation checks. This check takes the weaker residue those
+        leave behind and asks the model, one suspected location at a time, whether
+        it is really an undisclosed data send. Each verdict maps directly: a send
+        is an error, a legitimate dynamic URL is dropped, and anything the model
+        cannot tell goes to manual review.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A covert outbound sink in<br/>the add-on's authored JavaScript"] --> B{"Weak covert case?<br/>dynamic value in a remote URL,<br/>no user-data API call"}
+  B -- no --> S([skip — strong case is the<br/>disguised-* hard errors;<br/>not covert is another check])
+  B -- yes --> L{"LLM judges this location:<br/>is data smuggled out<br/>through this channel?"}
+  L -- "pass: legitimate dynamic URL" --> OK([no finding])
+  L -- "fail: disguised data send" --> ERR([ERROR: disguised data transmission])
+  L -- unsure --> M([escalate to manual review<br/>— re-judged by the recheck])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR err;
+  class OK ok;
+  class S skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the listed code locations appear to send data through a
+        resource or navigation URL — a channel not meant for transmission — that
+        disguising a send this way is not allowed even with consent, and that it
+        should use a normal request and disclose what is sent. Locations the model
+        cannot resolve are deferred to the post-summary recheck.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/disguised-transmission.js</code> and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

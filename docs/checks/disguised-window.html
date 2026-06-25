@@ -27,10 +27,12 @@
         A window.open() URL is not a channel meant for transmitting data.
         Disguising a data send this way is treated as an error regardless of any
         user consent. The check looks only at the developer's own JavaScript and
-        fires only when the opened URL is covert, points somewhere remote, and
-        actually carries data — either a dynamic value concatenated into a remote
-        URL or a user-data API call sitting in the argument. Opening a plain
-        static remote URL with no data attached is not a finding.
+        fires on the strong case: a covert window.open() URL to a remote host with
+        a user-data API call (message content, contacts, credentials and the like)
+        sitting in it. The weaker case — merely a runtime value appended to a
+        remote URL, common in legitimate code — is left to the
+        disguised-transmission LLM check. Opening a plain static remote URL with
+        no data attached is not a finding.
       </p>
 
       <h2>Decision flow</h2>
@@ -43,8 +45,8 @@ flowchart TD
   C -- no --> OK([no finding — left to<br/>another check])
   C -- yes --> D{"Covert channel to a<br/>non-local destination?"}
   D -- no --> OK
-  D -- yes --> E{"Carries data?<br/>data appended to the URL<br/>or a user-data API call in it"}
-  E -- no --> OK
+  D -- yes --> E{"A user-data API call<br/>sits in the URL?<br/>(strong case)"}
+  E -- "no — only a dynamic value" --> T([weak case → disguised-transmission<br/>LLM check])
   E -- yes --> ERR([ERROR: disguised data send<br/>via window.open])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
@@ -53,6 +55,7 @@ flowchart TD
   class ERR err;
   class OK ok;
   class S skip;
+  class T skip;
         </pre>
       </div>
 

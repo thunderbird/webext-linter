@@ -71,6 +71,7 @@
         { id: "vendor-unverified", group: "Deterministic checks", title: "Vendored library needs manual verification", severity: "manual" },
         { id: "missing-vendor-file", group: "Deterministic checks", title: "Missing vendored file", severity: "warning" },
         { id: "vendor-unparseable", group: "Deterministic checks", title: "Unparseable VENDOR file", severity: "error" },
+        { id: "vendor-ambiguous-source", group: "Deterministic checks", title: "Ambiguous vendored source", severity: "error" },
         { id: "disguised-resource", group: "Deterministic checks", title: "Disguised data transmission (resource)", severity: "error" },
         { id: "disguised-stylesheet", group: "Deterministic checks", title: "Disguised data transmission (stylesheet)", severity: "error" },
         { id: "disguised-window", group: "Deterministic checks", title: "Disguised data transmission (window)", severity: "error" },
@@ -100,6 +101,8 @@
         { id: "remote-eval", group: "LLM checks", title: "Remote eval", severity: "error" },
         { id: "data-exfiltration", group: "LLM checks", title: "User-data exfiltration", severity: "error" },
         { id: "data-exfiltration-recheck", group: "LLM checks", title: "User-data exfiltration", severity: "error" },
+        { id: "disguised-transmission", group: "LLM checks", title: "Disguised data transmission", severity: "error" },
+        { id: "disguised-transmission-recheck", group: "LLM checks", title: "Disguised data transmission", severity: "error" },
         // Manual review
         { id: "check-submission-spam", group: "Manual review", title: "Check the submission for spam", severity: "manual" },
         { id: "test-add-on", group: "Manual review", title: "Test the add-on and request testing information if needed", severity: "manual" },

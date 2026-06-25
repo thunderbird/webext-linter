@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ambiguous vendored source</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Ambiguous vendored source
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">vendor-ambiguous-source</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A single source URL in the VENDOR file that is declared as the origin of
+        more than one bundled file. A file source can only verify one file
+        against the bytes at that URL, so pairing it with several files is
+        ambiguous — there is no way to know which file the source is meant to
+        attest.
+      </p>
+      <p>
+        The fix is to give each bundled file its own distinct source URL, or — if
+        the files genuinely come from one place — to declare the containing
+        directory once as a single directory source. The vendor resolver pulls
+        these ambiguous pairings out of the VENDOR file (it does not attempt to
+        verify them) and this check turns each into an error.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The VENDOR file's declarations"] --> B{"Any one source URL<br/>paired with more than<br/>one bundled file?"}
+  B -- no --> OK([no finding])
+  B -- yes --> ERR([ERROR: ambiguous vendored source<br/>— one URL, many files])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that one source URL is declared for several bundled
+        files, that a file source can verify only one file, and that it must
+        either give each file its own source URL or declare the containing
+        directory with a single directory source.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/vendor-ambiguous-source.js</code> and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>
