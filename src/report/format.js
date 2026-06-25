@@ -233,9 +233,11 @@ function groupByMessage(findings) {
  * Render one Issues entry: the shared registry response VERBATIM (no 80-column
  * rewrap, no hanging indent - a long line runs off, and the registry's own
  * break before "Read more:" lands at column 0), then one location line per
- * finding - any remediation hint is appended to that line after " - ". Every
- * entry uses this form, so a unique message is just a one-location list. Manual
- * review still wraps - see manualLines.
+ * finding. The locus has up to two parts: `locationLine` surfaces the SUBJECT
+ * (`item`) after "file:line" when the message did not name it (`listItem`), then
+ * the DETAIL (`hint`) is appended after " - " - so a finding with both renders
+ * "file:line - item - hint". Every entry uses this form, so a unique message is
+ * just a one-location list. Manual review still wraps - see manualLines.
  * @param {number} n  1-based entry number.
  * @param {import("./finding.js").Finding[]} findings  All sharing one message.
  * @returns {string[]}

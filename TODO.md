@@ -15,19 +15,6 @@
 
 - (check build types)
 
----
-
-Purge the item/listItem detail-line mechanism from the report contract
-
-The per-location detail line has two mechanisms: `hint` (rendered `- file:line - hint`,
-unconditionally) and `item` -> `listItem` (the resolver surfaces `item` on the locus only when the
-response has no `{{item}}` placeholder). remote-script now standardizes on `hint`. Verify whether the
-`item`/listItem path should be removed so there is a single way to render the per-location detail. It is
-NOT unused - `bundled-files.js` (L67/L105) and others still rely on `item` -> `listItem`, so this is an
-audit + migration (move those to `hint`, then drop the `listItem` flag in `src/report/responses.js` and
-its `locationLine` handling in `src/report/format.js`), not a one-liner.
-
-
 # Hash-based library identification
 
 We currently use a popularity system to identify popular and well-maintained

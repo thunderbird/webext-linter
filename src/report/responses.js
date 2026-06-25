@@ -70,9 +70,12 @@ function fill(template, item, data) {
  * ruleId: substitute the finding's `item` into the entry's `response` `{{item}}`
  * and any `data` values into the response's named `{{slot}}`s. Mutates in place.
  *
- * Also sets `listItem`: when the entry's response has NO `{{item}}` placeholder
- * but the finding carries an `item`, that identifier is not in the prose, so the
- * report lists it on the finding's location line instead (src/report/format.js).
+ * Also sets `listItem` - the item-on-locus mechanism, which is NOT the same as a
+ * `hint`. `item` is the finding's SUBJECT; when the response has NO `{{item}}`
+ * placeholder the subject is not in the prose, so the report surfaces it on the
+ * location line ("file:line - item", src/report/format.js). A `hint` (a separate
+ * DETAIL, e.g. a version or URL) is always appended after that, so a finding with
+ * both renders "file:line - item - hint". See FindingOpts in report/finding.js.
  * @param {import("./finding.js").Finding[]} findings
  * @param {import("../checks/registry.js").Registry} registry
  */

@@ -32,10 +32,20 @@ const SEVERITY_RANK = { error: 0, warning: 1, info: 2 };
  * @typedef {object} FindingOpts  What a check supplies - locus + data, no prose.
  * @property {string} [file]  Path relative to the add-on root.
  * @property {{line?: number, column?: number}} [loc]
- * @property {string} [item]  Offending token (API/permission/path) for the
- *   response's `{{item}}` slot.
- * @property {string} [hint]  Structured remediation pointer (e.g. an MDN URL),
- *   appended by the renderer - a value from the schema, not authored text.
+ * `item` and `hint` are the TWO distinct locus fields - do not conflate them:
+ * @property {string} [item]  The finding's SUBJECT: the offending token
+ *   (API / permission / manifest-key / host / symbol). It is machine-meaningful -
+ *   it fills the response's `{{item}}` slot, is the dedup key (lib/util.js dedupe)
+ *   and the post-summary recheck verdict key (lib/recheck.js itemKey). For DISPLAY
+ *   it is surfaced on the location line only when the message did not already name
+ *   it (the response/instructions has no `{{item}}`; see `listItem`).
+ * @property {string} [hint]  A supplementary per-location DETAIL, ALWAYS appended
+ *   after the locus ("file:line - hint"): an MDN URL, a Thunderbird version, a
+ *   transmission method, a remote/source URL, a reason. Display only - no dedup or
+ *   match role. Distinct from `item`: a finding may carry BOTH, rendering
+ *   "file:line - <item> - <hint>" (e.g. an unsupported API call AND the version
+ *   that added it). Use `item` for the subject (the thing identified/keyed), `hint`
+ *   for extra colour about it.
  * @property {Record<string, string|number>} [data]  Extra named values for
  *   `{{slot}}` placeholders in the response - additional detail ABOUT this
  *   finding's single `item`/subject (e.g. a source URL, an ajv message), data
@@ -60,9 +70,10 @@ const SEVERITY_RANK = { error: 0, warning: 1, info: 2 };
  *   slot values describing the item); stripped from JSON output.
  * @property {string|null} message  Filled by the report resolver from the
  *   registry; never set by a check.
- * @property {boolean} listItem  Set by the report resolver: show `item` on the
- *   finding's location line (the message did not consume `{{item}}`, so the
- *   identifier is surfaced there instead). Never set by a check.
+ * @property {boolean} listItem  Resolver flag: surface the SUBJECT (`item`) on the
+ *   location line because the message did not consume `{{item}}` (else the subject
+ *   would be invisible). This is the item-on-locus mechanism; `hint` (a DETAIL) is
+ *   appended separately and unconditionally. Never set by a check.
  */
 
 /**
@@ -137,11 +148,12 @@ export function sortFindings(findings) {
  *   `response`), printed under the instructions in the report; null when none.
  * @property {string|null} [file]
  * @property {{line?: number, column?: number}|null} [loc]
- * @property {string|null} [item]
- * @property {string|null} [hint]  Per-locus suffix shown after `file:line` (like
- *   a finding's hint), independent of `item`/`listItem`.
- * @property {boolean} [listItem]  List `item` on the location line (the
- *   instructions did not consume `{{item}}`); set by the resolver.
+ * @property {string|null} [item]  The SUBJECT (and recheck verdict key), surfaced
+ *   on the locus when the instructions don't name it (see `listItem`); as a Finding.
+ * @property {string|null} [hint]  A supplementary per-locus DETAIL appended after
+ *   `file:line`, always - distinct from `item`/`listItem` (as a Finding's hint).
+ * @property {boolean} [listItem]  Surface the SUBJECT (`item`) on the location line
+ *   (the instructions did not consume `{{item}}`); set by the resolver.
  * @property {boolean} [extended]  True for a check that escalated to manual
  *   review (rendered under "Extended manual review"); false/absent for a
  *   registry manual-checks entry (rendered under "Standard manual review"). Set
