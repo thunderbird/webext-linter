@@ -161,15 +161,17 @@ function summarySection({ title, summary }) {
 }
 
 /**
- * Resolve the LLM config for this run. The LLM is opt-in and `--llm-enabled` is
- * the SOLE enabler (`wants`). The LLM_API_* env vars only configure it and never
- * turn it on. The config is validated later, hard-failing at the pipeline's
- * Setup pre-flight if it is unusable. LLM_API_TYPE picks the provider (claude |
- * chatgpt | ollama, default claude) and hence the default model (LLM_API_MODEL
- * override) and default base URL. LLM_API_URL overrides that base URL, and
- * Ollama defaults to its localhost endpoint. The key is the real LLM_API_KEY or
- * undefined - a keyless provider (Ollama) needs none, so it is never a
- * fabricated placeholder here.
+ * Resolve the LLM config for this run. `--llm-enabled` is the SOLE enabler
+ * (`wants`) of the LLM CHECKS. The LLM_API_* env vars only configure the client
+ * and never turn the checks on. `--self-assessment-summary` ALSO pulls the
+ * provider config (its one closing model call needs it), but does NOT set `wants`
+ * - so it back-doors the model without enabling the checks. The config is
+ * validated later, hard-failing at the pipeline's Setup pre-flight if it is
+ * unusable. LLM_API_TYPE picks the provider (claude | chatgpt | ollama, default
+ * claude) and hence the default model (LLM_API_MODEL override) and default base
+ * URL. LLM_API_URL overrides that base URL, and Ollama defaults to its localhost
+ * endpoint. The key is the real LLM_API_KEY or undefined - a keyless provider
+ * (Ollama) needs none, so it is never a fabricated placeholder here.
  * @param {Record<string, string|boolean|string[]>} values
  * @returns {{wants: boolean, apiKey?: string, apiUrl?: string, apiType?: string,
  *   model?: string}}
@@ -180,12 +182,16 @@ function resolveLlm(values) {
   const apiKey = process.env.LLM_API_KEY || undefined;
   const apiUrl = process.env.LLM_API_URL || defaultBaseUrlFor(apiType);
   const model = process.env.LLM_API_MODEL || defaultModelFor(apiType);
+  // The provider config is forwarded whenever the LLM will be called - the checks
+  // (`wants`) or the self-assessment's single closing call - but `wants` alone
+  // enables the LLM checks.
+  const needsConfig = wants || values["self-assessment-summary"] === true;
   return {
     wants,
-    apiKey: wants ? apiKey : undefined,
-    apiUrl: wants ? apiUrl : undefined,
-    apiType: wants ? apiType : undefined,
-    model: wants ? model : undefined,
+    apiKey: needsConfig ? apiKey : undefined,
+    apiUrl: needsConfig ? apiUrl : undefined,
+    apiType: needsConfig ? apiType : undefined,
+    model: needsConfig ? model : undefined,
   };
 }
 

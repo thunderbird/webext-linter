@@ -225,6 +225,28 @@ test("LLM_API_MODEL sets llmModel only when --llm-enabled", () => {
   }
 });
 
+// --self-assessment-summary back-doors the LLM: it pulls the provider config
+// (LLM_API_KEY/TYPE) so its one closing call has a token, but it does NOT enable
+// the LLM checks (llmEnabled stays false).
+test("--self-assessment-summary forwards the config without enabling the checks", () => {
+  const saved = process.env.LLM_API_KEY;
+  process.env.LLM_API_KEY = "sk-test-key";
+  try {
+    const opts = pipelineOptsFromArgv(["--self-assessment-summary"]);
+    assert.equal(opts.selfAssessmentSummary, true);
+    assert.equal(opts.llmApiKey, "sk-test-key"); // config reaches the closing call
+    assert.equal(opts.llmEnabled, false); // but the LLM checks stay off
+    // Without the flag and without --llm-enabled, the key is NOT forwarded.
+    assert.equal(pipelineOptsFromArgv([]).llmApiKey, undefined);
+  } finally {
+    if (saved === undefined) {
+      delete process.env.LLM_API_KEY;
+    } else {
+      process.env.LLM_API_KEY = saved;
+    }
+  }
+});
+
 // LLM_API_TYPE=ollama is keyless and local: a localhost default base URL and the
 // llama3.1 default model, resolved with NO fabricated key (llmApiKey undefined).
 test("LLM_API_TYPE=ollama resolves keyless local defaults", () => {
