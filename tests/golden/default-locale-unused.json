@@ -74,12 +74,14 @@
       "remote-script",
       "remote-eval",
       "data-exfiltration",
+      "disguised-transmission",
       "unused-permission",
       "unused-permission-pre-d308076",
       "missing-english-localization-recheck",
       "unused-files-recheck",
       "minimize-web-accessible-resources-recheck",
-      "data-exfiltration-recheck"
+      "data-exfiltration-recheck",
+      "disguised-transmission-recheck"
     ]
   },
   "summary": {

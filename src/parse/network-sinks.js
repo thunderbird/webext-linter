@@ -153,7 +153,15 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
       const { left, right } = path.node;
       const prop = memberPropName(left);
       if (URL_PROPS.has(prop)) {
-        push("element-src", "covert", right, [], path.node);
+        // location.href = ... is a page navigation (like location.assign), not a
+        // resource load into an element (img/script/link .src/.href) - route it to
+        // the navigation channel so disguised-navigation, not disguised-resource,
+        // is the consumer.
+        const type =
+          prop === "href" && isLocation(left.object)
+            ? "navigation"
+            : "element-src";
+        push(type, "covert", right, [], path.node);
       } else if (STYLE_URL_PROPS.has(prop)) {
         push("style-url", "covert", right, [], path.node);
       }

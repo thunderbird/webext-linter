@@ -933,6 +933,54 @@ llm-checks:
   response: |-
     The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
 
+# LLM check: the WEAK disguised-transmission residue - a covert channel (resource
+# URL, stylesheet url(), window.open, or page navigation) built with a runtime
+# value but no user-data API call. The strong case (a user-data call in the URL) is
+# the deterministic disguised-* errors; this asks whether the dynamic URL is really
+# an undisclosed data send or just legitimate dynamic URL building.
+- title: Disguised data transmission
+  severity: error
+  check: disguised-transmission
+  post-summary-recheck: disguised-transmission-recheck
+  prompt: |-
+    Each candidate is a site (file:line) that builds a covert channel - a resource
+    URL (image/iframe/media src or href), a stylesheet url(), a window.open(), or a
+    page navigation (location.href/assign/replace) - to a remote host using a
+    runtime value, with no obvious user-data API call in it. Disguising data
+    transmission through a channel not meant for it (instead of a normal request)
+    is not allowed, even with consent. But building a remote URL from a runtime
+    value is also extremely common in legitimate code (navigating to a host path,
+    loading a CDN asset by name). For each candidate, determine whether it actually
+    smuggles user data (message content, attachments, contacts, credentials,
+    browsing/usage data) out through this channel (verdict fail) or is a legitimate
+    dynamic URL (verdict pass). Use unsure when you genuinely cannot tell.
+  instructions: |-
+    The following code locations build a resource or navigation URL to a remote
+    host with a runtime value. Confirm by hand whether any of them smuggle user
+    data out through that channel rather than a normal, disclosed request.
+  response: |-
+    The following code location(s) appear to send data through a resource or navigation URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
+
+# Recheck consumer for disguised-transmission (above): re-judges each weak covert
+# sink it could not clear, now with the whole add-on in view. pass -> legitimate
+# dynamic URL (drop), fail -> a disguised-transmission finding, unsure -> manual.
+- title: Disguised data transmission
+  severity: error
+  check: disguised-transmission-recheck
+  summary-prompt: |-
+    Each listed item is a code location (file:line) that builds a covert channel - a
+    resource URL, a stylesheet url(), a window.open(), or a page navigation - to a
+    remote host using a runtime value, with no obvious user-data API call. With the
+    whole add-on in view, decide for each location: verdict fail = it smuggles user
+    data out through this channel, pass = it is a legitimate dynamic URL, unsure =
+    you cannot tell. Judge only the listed locations.
+  instructions: |-
+    The following code locations build a resource or navigation URL to a remote
+    host with a runtime value. Confirm by hand whether any of them smuggle user
+    data out through that channel rather than a normal, disclosed request.
+  response: |-
+    The following code location(s) appear to send data through a resource or navigation URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
+
 
 manual-checks:
 # Manual: inspect the listing + add-on for spam, inappropriate, or low-effort

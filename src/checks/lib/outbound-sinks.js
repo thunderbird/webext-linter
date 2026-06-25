@@ -30,20 +30,32 @@ export function getOutboundSinks(ctx) {
   return (ctx.addon.outboundSinks ??= scanAll(ctx));
 }
 
+// A covert channel (resource/stylesheet/window/navigation) to a non-local
+// destination - the precondition for both gates below.
+const isCovertRemote = (sink) =>
+  sink.channel === "covert" && sink.destClass !== "local";
+
 /**
- * Whether a sink is a disguised exfiltration: a covert channel to a remote
- * destination carrying data (appended to the URL, or a user-data API call in
- * it). The shared gate for the disguised-* checks. A static remote load with no
- * data is not exfiltration.
+ * STRONG disguised exfiltration: a covert remote channel with a user-data API
+ * call in its argument (messages/contacts/... - the payload is provably user
+ * data). The deterministic gate for the hard-error disguised-* checks.
  * @param {FileSink} sink
  * @returns {boolean}
  */
-export function isCovertExfil(sink) {
-  return (
-    sink.channel === "covert" &&
-    sink.destClass !== "local" &&
-    (sink.dataAppended || sink.carriesData)
-  );
+export function isStrongCovertExfil(sink) {
+  return isCovertRemote(sink) && sink.carriesData;
+}
+
+/**
+ * WEAK disguised exfiltration: a covert remote channel that merely builds the URL
+ * with a runtime value (dataAppended) and carries no user-data API call. Common
+ * in legitimate code (e.g. navigating to `host/${id}`), so it is not a hard error
+ * but an LLM/manual candidate - the gate for the disguised-transmission check.
+ * @param {FileSink} sink
+ * @returns {boolean}
+ */
+export function isWeakCovertExfil(sink) {
+  return isCovertRemote(sink) && sink.dataAppended && !sink.carriesData;
 }
 
 /**

