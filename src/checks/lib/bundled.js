@@ -23,7 +23,6 @@
 // Extension-set helpers - src/util/files.js.
 
 import { extname, JS_EXTENSIONS, CSS_EXTENSIONS } from "../../util/files.js";
-import { BANNER_SCAN_CHARS } from "../../config.js";
 import { isVendored } from "../../vendor/resolve.js";
 import { parseJs, traverse } from "../../parse/ast.js";
 
@@ -154,7 +153,8 @@ export function classify(text, file) {
   const library =
     /\.min\.(?:js|css)$/i.test(file) ||
     LIB_NAME.test(file) ||
-    /\/\*!/.test(text.slice(0, BANNER_SCAN_CHARS)) || // minifier banner
+    /^\s*\/\*!/.test(text) || // minifier banner - only when it opens the file, so
+    // a "/*!" inside a CSS rule or mid-file comment is not mistaken for one
     (isJs && /\btypeof exports\b/.test(text) && /\btypeof define\b/.test(text)); // UMD
 
   // Minified line geometry: at least one very long line, dense on average.

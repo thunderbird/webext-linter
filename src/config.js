@@ -76,12 +76,6 @@ export const MAX_LLM_REQUESTS_PER_RUN = 25;
 export const DISPLAY_TRUNCATE_LENGTH = 80;
 
 /**
- * Leading characters of a JS file scanned for a "/*!" minifier banner when
- * classifying it as a bundled library (see classify in checks/lib/bundled.js).
- */
-export const BANNER_SCAN_CHARS = 1000;
-
-/**
  * Display cap: the most location lines a single grouped report entry lists (an
  * Issues or Manual-review entry with many "- file:line" locations). Beyond this,
  * the rest are replaced by one "... more, excluded from this list" marker. This

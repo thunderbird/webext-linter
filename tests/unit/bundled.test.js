@@ -121,6 +121,26 @@ test("missing-library reports an undeclared vendored CSS file", () => {
   assert.deepEqual(flagged, [file]);
 });
 
+// The "/*!" minifier banner only marks a library when it OPENS the file - a "/*!"
+// inside a CSS rule or a mid-file comment (authored code keeping a license note)
+// must not misclassify the file as a bundled library (would be a missing-library
+// false positive). A leading banner still counts.
+test("a mid-file /*! does not classify a file as a library", () => {
+  const file = "css/reports.css";
+  const midBanner = `.mainDiv{color:#fff}\n/*! keep this note */\n`.repeat(60);
+  const { classified, nonAuthored } = classifyBundled(
+    addonWith({ [file]: midBanner })
+  );
+  assert.equal(classified.find((c) => c.file === file).library, false);
+  assert.ok(!nonAuthored.has(file));
+  // A banner that opens the file is still a library signal.
+  const leading = `/*! Bootstrap v5 */\n${".x{a:1}".repeat(200)}`;
+  const { classified: c2 } = classifyBundled(
+    addonWith({ "vendor/lib.css": leading })
+  );
+  assert.equal(c2.find((c) => c.file === "vendor/lib.css").library, true);
+});
+
 test("a minified-by-geometry CSS is minified but not a library or obfuscated", () => {
   const { classified } = classifyBundled(
     addonWith({ "popup/app.css": MINIFIED_CSS })
