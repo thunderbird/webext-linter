@@ -859,10 +859,10 @@ llm-checks:
     (verdict fail) rather than a packaged file (verdict pass). Use unsure when you
     genuinely cannot tell.
   instructions: |-
-    "{{item}}" loads code from a source static analysis cannot resolve. Confirm
+    This site loads code from a source static analysis cannot resolve. Confirm
     by hand that it is bundled with the add-on and not fetched remotely.
   response: |-
-    Remote code is loaded from "{{item}}". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
+    Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed.
 
 # LLM check: the statically-undecidable fetch().then(eval) case - is the executed
 # code remote? The definite eval/Function/timer/CSP cases are deterministic

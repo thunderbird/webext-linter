@@ -42,44 +42,42 @@ Read more: https://webextension-api.thunderbird.net/.
  - options.html
  - styles.css
 
-13) Remote code is loaded from "https://cdn.example.com/remote.js". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
- - options.html:4
-
-14) Remote code is loaded from "https://fonts.example.com/font.css". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
- - styles.css:1
+13) Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed.
+ - options.html:4 - https://cdn.example.com/remote.js
+ - styles.css:1 - https://fonts.example.com/font.css
 
 We kindly ask you to resolve the following issues with your next release:
 
-15) Dynamic content is assigned via ".innerHTML". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.
+14) Dynamic content is assigned via ".innerHTML". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
  - background.js:29
 
-16) Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.
+15) Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
  - background.js:35
 
 We would like to share the following information with you:
 
-17) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+16) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
  - background.js:9 - Use list() instead.
 
-18) "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+17) "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
  - background.js:11 - The legacy API was removed; use messages instead.
 
-19) Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined.
+18) Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined.
  - background.js:41
 
-20) Adding an add-on icon in manifest.json improves user acceptance.
+19) Adding an add-on icon in manifest.json improves user acceptance.
 Read more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons
  - manifest.json
 
-21) The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
+20) The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
 Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
  - manifest.json:6 - <all_urls>
 
-22) Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.
+21) Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json:11 - weirdTopLevelKey
 

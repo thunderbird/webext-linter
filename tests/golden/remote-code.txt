@@ -6,17 +6,11 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
  - page.html
  - style.css
 
-2) Remote code is loaded from "https://cdn.example.com/lib.js". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
- - page.html:4
-
-3) Remote code is loaded from "https://cdn.example.com/fonts.css". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
- - page.html:7
-
-4) Remote code is loaded from "https://cdn.example.com/bg.png". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
- - page.html:11
-
-5) Remote code is loaded from "https://cdn.example.com/theme.css". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed.
- - style.css:1
+2) Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed.
+ - page.html:4 - https://cdn.example.com/lib.js
+ - page.html:7 - https://cdn.example.com/fonts.css
+ - page.html:11 - https://cdn.example.com/bg.png
+ - style.css:1 - https://cdn.example.com/theme.css
 
 ── Extended manual review ──
 

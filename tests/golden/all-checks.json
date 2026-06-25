@@ -348,9 +348,9 @@
         "line": 4,
         "column": 0
       },
-      "item": "https://cdn.example.com/remote.js",
-      "hint": null,
-      "message": "Remote code is loaded from \"https://cdn.example.com/remote.js\". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed."
+      "item": null,
+      "hint": "https://cdn.example.com/remote.js",
+      "message": "Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed."
     },
     {
       "ruleId": "unused-files",
@@ -369,9 +369,9 @@
         "line": 1,
         "column": 0
       },
-      "item": "https://fonts.example.com/font.css",
-      "hint": null,
-      "message": "Remote code is loaded from \"https://fonts.example.com/font.css\". Remote scripts and libraries are not allowed. Please bundle all code with your add-on so it can be reviewed."
+      "item": null,
+      "hint": "https://fonts.example.com/font.css",
+      "message": "Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed."
     }
   ]
 }
