@@ -240,7 +240,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "Dynamic content is assigned via \".innerHTML\". If it can contain external or user-provided data, sanitize it (DOMPurify or the Sanitizer API) or build the DOM with textContent / createElement.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Dynamic content is assigned via \".innerHTML\". Avoid writing HTML this way: use textContent, a <template>, or CSS to show/hide existing markup. If external or user-provided HTML must be rendered, sanitize it with the Sanitizer API (Element.setHTML(), Thunderbird 148+).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
       "ruleId": "debugger-statement",
