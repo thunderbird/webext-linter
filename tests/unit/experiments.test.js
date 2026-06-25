@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import {
   experimentApiPaths,
   experimentApiNamespaces,
+  experimentManifestKeys,
   experimentGroups,
 } from "../../src/checks/lib/experiments.js";
 import {
@@ -118,6 +119,53 @@ test("experimentApiNamespaces falls back to paths/key without a readable schema"
     "Bar",
     "Baz",
   ]); // schema not in the file map -> still falls back
+});
+
+// experimentManifestKeys reads the manifest keys an experiment's schema DECLARES
+// via a `manifest` $extend block (the calendar-tools shape: calendar_item_action),
+// so unrecognized-manifest-key does not flag the developer's own keys.
+test("experimentManifestKeys reads $extend-declared manifest keys from the schema", () => {
+  const manifest = {
+    experiment_apis: {
+      cal: { schema: "exp/calendar/schema.json", parent: { paths: [["cal"]] } },
+    },
+  };
+  const files = new Map([
+    [
+      "exp/calendar/schema.json",
+      Buffer.from(
+        JSON.stringify([
+          {
+            namespace: "manifest",
+            types: [
+              {
+                $extend: "WebExtensionManifest",
+                properties: {
+                  calendar_item_action: {},
+                  calendar_item_details: {},
+                },
+              },
+            ],
+          },
+          { namespace: "calendarItemAction" }, // the callable API, not a manifest key
+        ])
+      ),
+    ],
+  ]);
+  assert.deepEqual([...experimentManifestKeys(manifest, files)].sort(), [
+    "calendar_item_action",
+    "calendar_item_details",
+  ]);
+});
+
+// No experiment / no files / a schema without a manifest $extend block -> no keys.
+test("experimentManifestKeys is empty without a manifest $extend block", () => {
+  assert.deepEqual([...experimentManifestKeys({}, new Map())], []);
+  const absent = { experiment_apis: { x: { schema: "missing.json" } } };
+  assert.deepEqual([...experimentManifestKeys(absent, new Map())], []);
+  const noBlock = { experiment_apis: { x: { schema: "s.json" } } };
+  const files = new Map([["s.json", Buffer.from('[{"namespace":"x"}]')]]);
+  assert.deepEqual([...experimentManifestKeys(noBlock, files)], []);
 });
 
 // ---- normalizedSha256 is EOL-tolerant ----
