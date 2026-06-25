@@ -124,32 +124,30 @@ export async function runPipeline(opts) {
   // pre-loaded add-on (the test harness does, to drop its expected.json file).
   const addon = opts.addon ?? loadAddon(addonPath);
 
-  // An Experiment add-on (non-empty experiment_apis) submitted with
-  // --allow-experiments off is rejected outright: the review short-circuits to
-  // the single experiment-not-allowed check, with no other checks, no LLM (llm
-  // checks, advisory summaries, or the vendor-parse fallback), and no manual
-  // reminders. The vendor pre-processing below feeds only the normal checks (and
-  // its parse can call the LLM), so it is skipped in that mode too.
-  let invalidExperiment =
-    isExperiment(addon.manifest) && !opts.allowExperiments;
-  // ...unless every bundled experiment is a recognised allowed upstream
-  // experiment (github.com/thunderbird/webext-experiments). We abort
-  // (short-circuit to the single experiment-not-allowed entry) ONLY when an
-  // experiment is unsupported (an unknown API name, which includes one shadowing
-  // a built-in). A recognised experiment that is merely modified/outdated does
-  // NOT abort - the full review runs so the developer gets complete feedback,
-  // and experiment-modified flags it. The allow-list is fetched only here (an
-  // experiment without --allow-experiments). A fetch failure throws, so the run
-  // hard-exits (2) rather than letting a missing allow-list masquerade as a
-  // reject.
-  if (invalidExperiment) {
+  // Classify every Experiment add-on against the upstream drafts
+  // (github.com/thunderbird/webext-experiments), regardless of
+  // --allow-experiments: a bundled experiment whose name matches a known draft
+  // MUST be the unmodified upstream copy, which experiment-modified enforces.
+  // verifyExperiments fetches the allow-list only when a group actually bundles
+  // files (a bare experiment_apis declaration stays offline -> unsupported), and
+  // a fetch failure throws so the run hard-exits (2) rather than letting a
+  // missing allow-list masquerade as a verdict - we cannot verify identity
+  // without it.
+  //
+  // The flag governs only rejection, not classification. Without
+  // --allow-experiments an Experiment add-on is rejected outright (the review
+  // short-circuits to the single experiment-not-allowed check, no other checks,
+  // no LLM, no manual reminders, and the vendor pre-processing below is skipped)
+  // UNLESS every bundled experiment is a recognised upstream draft - a
+  // recognised-but-modified one does NOT abort, so the full review runs and
+  // experiment-modified flags it. With --allow-experiments the reviewer accepts
+  // them, so the full review always runs.
+  let invalidExperiment = false;
+  if (isExperiment(addon.manifest)) {
     addon.experiments = await verifyExperiments(addon, opts);
-    const abort = addon.experiments.groups.some(
-      (g) => g.status === "unsupported"
-    );
-    if (!abort) {
-      invalidExperiment = false;
-    }
+    invalidExperiment =
+      !opts.allowExperiments &&
+      addon.experiments.groups.some((g) => g.status === "unsupported");
   }
 
   const findings = [];

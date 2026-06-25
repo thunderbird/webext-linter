@@ -1,0 +1,7 @@
+{
+  "_comment": "Same modified 'demo' draft as experiment-modified, but reviewed WITH --allow-experiments. Classification runs regardless of the flag, so a bundled experiment matching a known upstream draft must still be byte-identical: experiment-modified flags the modified draft even though experiments are allowed.",
+  "options": { "--allow-experiments": true },
+  "expect": {
+    "experiment-modified": ["manifest.json:8"]
+  }
+}

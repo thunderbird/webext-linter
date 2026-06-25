@@ -25,10 +25,14 @@
       </p>
       <p>
         It reads the per-experiment classification computed earlier in the
-        pipeline and raises one error per experiment marked as modified. It stays
-        silent for non-Experiments, for pristine experiments, and for unsupported
-        ones — those last are handled in the invalid-experiment phase by the
-        experiment-not-allowed check.
+        pipeline — which now runs for every Experiment add-on, regardless of
+        <em>--allow-experiments</em>, so a modified copy of a known draft is
+        rejected whether or not experiments are allowed. It raises one error per
+        experiment marked as modified, and stays silent for non-Experiments and
+        pristine experiments. An unsupported experiment (not a known upstream
+        draft) is skipped here — there is nothing to compare against; without
+        <em>--allow-experiments</em> it is rejected in the invalid-experiment
+        phase by the experiment-not-allowed check.
       </p>
 
       <h2>Decision flow</h2>

@@ -5,12 +5,12 @@
   "background": { "scripts": ["background.js"] },
   "browser_specific_settings": { "gecko": { "strict_max_version": "140.*" } },
   "experiment_apis": {
-    "demo": {
+    "evalexp": {
       "schema": "experiments/demo/schema/demo.json",
       "parent": {
         "scopes": ["addon_parent"],
         "script": "experiments/demo/parent/ext-demo.js",
-        "paths": [["demo"]]
+        "paths": [["evalexp"]]
       }
     }
   },

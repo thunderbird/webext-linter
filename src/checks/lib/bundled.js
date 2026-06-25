@@ -63,10 +63,12 @@ const LIB_NAME =
  */
 export function classifyBundled(addon) {
   const classified = [];
-  // Files of a PRISTINE allowed Experiment are vetted upstream code, not the
-  // developer's - the byte-match IS their review, so the source-level scanners
-  // skip them like a vendored library. Custom --allow-experiments code is not
-  // trusted, so it stays linted: trustedFiles is empty there.
+  // Files of a recognised allowed Experiment (pristine or modified) are
+  // upstream-derived, not the developer's - the byte-match IS their review, so
+  // the source-level scanners skip them like a vendored library, regardless of
+  // --allow-experiments. trustedFiles is empty only when some experiment is
+  // unsupported (not a known upstream draft): then nothing is trusted and all of
+  // it stays linted.
   const trusted = addon.experiments?.trustedFiles ?? new Set();
   const nonAuthored = new Set([...trusted]);
   for (const [file, buf] of addon.files) {

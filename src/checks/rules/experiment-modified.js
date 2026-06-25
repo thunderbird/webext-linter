@@ -42,8 +42,17 @@ export default {
       if (g.status === "modified") {
         ctx.note?.("manifest.json", loc, `${g.name} (modified draft)`, "fail");
         findings.push(finding({ file: "manifest.json", loc, item: g.name }));
-      } else {
+      } else if (g.status === "pristine") {
         ctx.note?.("manifest.json", loc, g.name, "pass");
+      } else {
+        // unsupported: not a known upstream draft, so there is nothing to
+        // compare against - this check has no say (experiment-not-allowed does).
+        ctx.note?.(
+          "manifest.json",
+          loc,
+          `${g.name} (not a known upstream draft)`,
+          "skipped"
+        );
       }
     }
     return findings;
