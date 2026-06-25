@@ -25,6 +25,7 @@
 import { extname, JS_EXTENSIONS, CSS_EXTENSIONS } from "../../util/files.js";
 import { BANNER_SCAN_CHARS } from "../../config.js";
 import { isVendored } from "../../vendor/resolve.js";
+import { parseJs, traverse } from "../../parse/ast.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../addon/load.js").Addon} Addon */
@@ -84,6 +85,17 @@ export function classifyBundled(addon) {
       continue; // too small to be a bundled library or a worrying blob.
     }
     const tag = { file, ...classify(text, file) };
+    // classify()'s obfuscation signal is byte-based and so comment/string-blind -
+    // `eval(` or `fromCharCode` in a comment trips it. For an authored-candidate
+    // JS file (not already library/minified, which are non-authored regardless)
+    // recompute it on the AST, where comments and strings cannot count. Skipped
+    // for minified/library files, so the multi-MB bundles are never parsed here.
+    if (JS_EXTENSIONS.has(ext) && !tag.library && !tag.minified) {
+      const astVerdict = detectObfuscationAst(text);
+      if (astVerdict !== null) {
+        tag.obfuscated = astVerdict;
+      }
+    }
     classified.push(tag);
     if (tag.library || tag.minified || tag.obfuscated) {
       nonAuthored.add(file);
@@ -158,4 +170,85 @@ export function classify(text, file) {
   const obfuscated = hexNames >= 5 || packed;
 
   return { library, minified, obfuscated };
+}
+
+// Identifiers that denote the global object, so window.eval / globalThis.Function
+// are the same packer sinks as the bare forms (mirrors src/parse/remote-js.js).
+const GLOBAL_OBJECTS = new Set([
+  "window",
+  "self",
+  "globalThis",
+  "global",
+  "frames",
+  "top",
+  "parent",
+]);
+
+// The bare name a call/new targets: `eval`, `Function`, `atob`, or the dotted
+// `String.fromCharCode` - unwrapping a global-object receiver (window.eval -> eval)
+// but only for a non-computed member, so a string/comment can never be the name.
+function calleeName(callee) {
+  if (!callee) {
+    return null;
+  }
+  if (callee.type === "Identifier") {
+    return callee.name;
+  }
+  if (
+    callee.type === "MemberExpression" &&
+    !callee.computed &&
+    callee.property?.type === "Identifier" &&
+    callee.object?.type === "Identifier"
+  ) {
+    return GLOBAL_OBJECTS.has(callee.object.name)
+      ? callee.property.name
+      : `${callee.object.name}.${callee.property.name}`;
+  }
+  return null;
+}
+
+/**
+ * The obfuscation signal computed on the parsed AST instead of raw bytes: the
+ * same heuristic as classify() (>=5 `_0x….` identifiers, or an eval/Function call
+ * paired with an atob/String.fromCharCode decode) but blind to comments and string
+ * literals, where a mere mention of `eval(`/`fromCharCode` must NOT count. Used for
+ * authored-candidate files; minified/library files are non-authored regardless and
+ * are never parsed here (keeping the multi-MB bundles out of the parser).
+ * @param {string} text
+ * @returns {?boolean}  the verdict, or null when the file does not parse (the
+ *   caller then keeps classify()'s byte heuristic).
+ */
+export function detectObfuscationAst(text) {
+  const { ast, parseError } = parseJs(text);
+  if (parseError || !ast) {
+    return null;
+  }
+  let hexNames = 0;
+  let hasEval = false;
+  let hasDecode = false;
+  const visitInvocation = (path) => {
+    const name = calleeName(path.node.callee);
+    if (name === "eval" || name === "Function") {
+      hasEval = true;
+    } else if (name === "atob" || name === "String.fromCharCode") {
+      hasDecode = true;
+    }
+  };
+  try {
+    traverse(ast, {
+      Identifier(path) {
+        if (/^_0x[0-9a-f]{4,}$/i.test(path.node.name)) {
+          hexNames += 1;
+        }
+      },
+      CallExpression: visitInvocation,
+      NewExpression: visitInvocation,
+    });
+  } catch {
+    // @babel/traverse builds scope and throws on some pathological inputs (e.g. a
+    // duplicate `const`, common in machine-generated code). The walk is then
+    // undecidable, so fall back to classify()'s byte heuristic.
+    return null;
+  }
+  return hexNames >= 5 || (hasEval && hasDecode);
 }

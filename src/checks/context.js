@@ -55,15 +55,34 @@ export function buildRunContext({
   // analysis consumer (api-usage here, plus the sync-xhr / debugger-statement /
   // async-onmessage checks and the remote-js / unsafe-html scanners) reuses
   // src.parsed instead of re-parsing the same code.
+  //
+  // Memory: parse and extract api-usage, then RETAIN the AST only for files a
+  // source scanner will actually read. A non-authored file (vendored / library /
+  // minified / obfuscated - the multi-MB bundles among them) is skipped by every
+  // content scanner via nonAuthoredJs, and keeping all those ASTs at once is what
+  // exhausts the heap on a bundle-heavy add-on. Dropping src.parsed to null only
+  // frees memory: a consumer that does reach such a file re-parses on demand
+  // (src.parsed ?? parseJs), one file at a time, so findings are unchanged.
+  // (api-usage still runs on every file via the live parse above, and
+  // unparsable-file reads ctx.apiUsages, not src.parsed.) The skip set is the one
+  // classifyBundled already computed (addon.bundled, set before review); absent it
+  // - e.g. a direct buildRunContext with no pre-step - every AST is retained.
+  // A rejected Experiment runs only the reject check (no AST consumer) and skips
+  // the classifyBundled pre-step, so there is no skip set and nothing reads an
+  // AST: retain none of them (the parse only feeds api-usage above).
+  const nonAuthored = addon.bundled?.nonAuthored;
   const jsSources = collectJsSources(addon);
-  for (const src of jsSources) {
-    src.parsed = parseJs(src.code);
-  }
-  const apiUsages = jsSources.map((src) => ({
-    file: src.file,
-    inline: src.inline,
-    ...parseApiUsage(src.code, src.lineOffset, src.parsed),
-  }));
+  const apiUsages = jsSources.map((src) => {
+    const parsed = parseJs(src.code);
+    const usage = {
+      file: src.file,
+      inline: src.inline,
+      ...parseApiUsage(src.code, src.lineOffset, parsed),
+    };
+    src.parsed =
+      invalidExperiment || nonAuthored?.has(src.file) ? null : parsed;
+    return usage;
+  });
 
   /** @type {RunContext} */
   const ctx = {

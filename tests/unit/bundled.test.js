@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import {
   classifyBundled,
   classifyAddonJs,
+  detectObfuscationAst,
 } from "../../src/checks/lib/bundled.js";
 import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
@@ -34,6 +35,38 @@ test("classifyBundled flags an undeclared minified-by-geometry file", () => {
     [true, false, false]
   );
   assert.ok(nonAuthored.has("lib/blob.js"));
+});
+
+// The obfuscation signal is read off the parsed AST, not raw bytes, so a comment
+// or string that merely mentions eval(/Function(/atob(/fromCharCode does not count
+// (the byte heuristic's false positive) - only a real call/identifier does.
+test("detectObfuscationAst ignores eval/decode tokens in comments and strings", () => {
+  // Mentioned only in a comment / a string literal -> NOT obfuscated.
+  assert.equal(
+    detectObfuscationAst(
+      "// once: eval(x), String.fromCharCode(0x41), new Function(c)\nexport const ok = 1;"
+    ),
+    false
+  );
+  assert.equal(
+    detectObfuscationAst('const help = "use eval( and String.fromCharCode";'),
+    false
+  );
+  // A real eval-of-decoded-string packer, the same sink through a global-object
+  // receiver (window.eval / self.atob), and bulk _0x identifiers -> obfuscated.
+  assert.equal(detectObfuscationAst('const d = eval(atob("Zm9v"));'), true);
+  assert.equal(
+    detectObfuscationAst("globalThis.run = window.eval(self.atob(p));"),
+    true
+  );
+  assert.equal(
+    detectObfuscationAst(
+      "var _0xa1b2=1,_0xc3d4=2,_0xe5f6=3,_0x7890=4,_0xabcd=5;"
+    ),
+    true
+  );
+  // An unparseable file is undecidable -> null (caller keeps the byte heuristic).
+  assert.equal(detectObfuscationAst("function ("), null);
 });
 
 test("classification done before normalize survives reformatting (the fix)", () => {
