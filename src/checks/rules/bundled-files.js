@@ -20,6 +20,7 @@
 
 import { finding } from "../../report/finding.js";
 import { scanLoaderRefs } from "../../parse/loader-files.js";
+import { buildReachability } from "../lib/reachability.js";
 import { classifyUrl } from "../../scan/url.js";
 import {
   manifestFileRefs,
@@ -72,9 +73,19 @@ export default {
     // A base:"page" loader path (tabs.create {url}, executeScript {file}, menus
     // icons, ...) resolves against the calling script's HOST PAGE directory (".."
     // clamped at root); getURL/scripting.* (base:"root") are root-relative.
+    //
+    // Only LIVE scripts are checked: a script reached from no entry point never
+    // runs, so its loader calls never fire - a reference it makes to an absent
+    // file is dead-code noise (an unused-files matter), not a missing bundled
+    // file. isLive covers general + content-script reachability, so background,
+    // content, and page-hosted scripts stay checked; only true orphans are skipped.
+    const { isLive } = buildReachability(ctx);
     const hostDirs = scriptHostDirs(ctx);
     const seen = new Set();
     for (const src of ctx.jsSources) {
+      if (!isLive(src.file)) {
+        continue;
+      }
       const { refs } = scanLoaderRefs(
         src.code,
         src.lineOffset,

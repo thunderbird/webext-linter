@@ -28,9 +28,14 @@ function ctxWith(manifest, files = {}) {
 }
 
 // Build a ctx whose single JS source carries `code`, with the fixture schema so
-// derived loaders (messageDisplayScripts.register) are type-walked.
+// derived loaders (messageDisplayScripts.register) are type-walked. bg.js is
+// declared as a background script (and present in files) so it is LIVE - the
+// loader-ref check skips scripts no entry point reaches.
 function ctxWithJs(code, files = {}) {
-  const ctx = ctxWith({ manifest_version: 3 }, files);
+  const ctx = ctxWith(
+    { manifest_version: 3, background: { scripts: ["bg.js"] } },
+    { "bg.js": code, ...files }
+  );
   ctx.jsSources = [{ file: "bg.js", code, lineOffset: 0 }];
   ctx.schema = fixtureSchema;
   return ctx;
@@ -289,6 +294,29 @@ test("tabs.create {url} with a leading .. clamps at root", () => {
     },
   ];
   const out = bundledFiles.run(missing);
+  assert.equal(out.length, 1);
+  assert.match(out[0].item, /missing\.html/);
+});
+
+// A script reached from no entry point never runs, so its loader references are
+// not checked - that is an unused-files matter, not a missing bundled file. The
+// identical call from a live (declared) script IS flagged. (expression-search-ng
+// shape: an orphan page script whose tabs.create url never fires.)
+test("loader refs in a non-live (orphan) script are skipped", () => {
+  const call = `browser.tabs.create({ url: "missing.html" });`;
+
+  // Orphan: no manifest entry and no page loads it -> not live -> skipped.
+  const orphan = ctxWith({ manifest_version: 2 }, { "orphan.js": call });
+  orphan.jsSources = [{ file: "orphan.js", code: call, lineOffset: 0 }];
+  assert.equal(bundledFiles.run(orphan).length, 0);
+
+  // Live: declared as the background script -> checked -> the missing url flagged.
+  const live = ctxWith(
+    { manifest_version: 2, background: { scripts: ["bg.js"] } },
+    { "bg.js": call }
+  );
+  live.jsSources = [{ file: "bg.js", code: call, lineOffset: 0 }];
+  const out = bundledFiles.run(live);
   assert.equal(out.length, 1);
   assert.match(out[0].item, /missing\.html/);
 });
