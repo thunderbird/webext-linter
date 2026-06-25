@@ -141,9 +141,11 @@ test("checks bridge loaders but ignores remote / scheme urls", () => {
 });
 
 // A tabs.executeScript({file}) path is resolved against the calling SCRIPT's own
-// directory (Gecko), not the extension root. src/background.js injects a sibling
-// file: present under the script's dir -> no finding; absent there -> flagged.
-test("executeScript {file} is checked against the calling script's directory", () => {
+// page (Gecko's "current page URL"), not the script's own directory. A
+// background.scripts script's host page is the generated one at the extension
+// ROOT, so a bare `file` resolves at root: present there -> no finding; only
+// next to the script in a subdir -> flagged.
+test("executeScript {file} is checked against the host page (root for background.scripts)", () => {
   const manifest = {
     manifest_version: 2,
     background: { scripts: ["src/background.js"] },
@@ -152,14 +154,17 @@ test("executeScript {file} is checked against the calling script's directory", (
 
   const present = ctxWith(manifest, {
     "src/background.js": call,
-    "src/message-unescape.js": "",
+    "message-unescape.js": "", // at root, where the host page resolves it
   });
   present.jsSources = [
     { file: "src/background.js", code: call, lineOffset: 0 },
   ];
-  assert.equal(bundledFiles.run(present).length, 0); // resolves to src/message-unescape.js
+  assert.equal(bundledFiles.run(present).length, 0); // resolves to root message-unescape.js
 
-  const missing = ctxWith(manifest, { "src/background.js": call });
+  const missing = ctxWith(manifest, {
+    "src/background.js": call,
+    "src/message-unescape.js": "", // only next to the script, not at root
+  });
   missing.jsSources = [
     { file: "src/background.js", code: call, lineOffset: 0 },
   ];
@@ -237,9 +242,9 @@ test("tabs.create {url} resolves against the script's dir (subdir climbs out)", 
 });
 
 // The gmail-conversation-view case: a background.scripts module in a subdirectory
-// whose tabs.create url climbs out of that subdir to a bundled root-level file -
-// resolved against the SCRIPT's dir (background/), independent of the loading page.
-test("background.scripts in a subdir resolves a climbing tabs.create url - not flagged", () => {
+// whose tabs.create url uses "..". The host page is the generated root page, so
+// "../assistant/assistant.html" CLAMPS at root to the bundled assistant/ file.
+test("background.scripts: a climbing tabs.create url clamps to a bundled file - not flagged", () => {
   const manifest = {
     manifest_version: 2,
     background: { scripts: ["background/bg.mjs"] },
@@ -250,20 +255,40 @@ test("background.scripts in a subdir resolves a climbing tabs.create url - not f
     "assistant/assistant.html": "",
   });
   ctx.jsSources = [{ file: "background/bg.mjs", code: call, lineOffset: 0 }];
-  assert.equal(bundledFiles.run(ctx).length, 0); // background/../assistant/assistant.html
+  assert.equal(bundledFiles.run(ctx).length, 0); // clamps to assistant/assistant.html
 });
 
-// From a ROOT-level script, the same "../target/..." climbs above the package
-// root -> a wrong path, still flagged.
-test("tabs.create {url} from a root-level script that escapes is flagged", () => {
+// A leading ".." is CLAMPED at the package root (Gecko's URL resolution can't
+// climb above the origin), so "../target/target.html" from a root host page
+// resolves to the bundled "target/target.html" - not flagged. Only a clamped
+// path with no file behind it is flagged.
+test("tabs.create {url} with a leading .. clamps at root", () => {
   const manifest = { manifest_version: 2, background: { scripts: ["bg.js"] } };
-  const call = `browser.tabs.create({ url: "../target/target.html" });`;
-  const ctx = ctxWith(manifest, {
-    "bg.js": call,
+
+  const present = ctxWith(manifest, {
+    "bg.js": `browser.tabs.create({ url: "../target/target.html" });`,
     "target/target.html": "",
   });
-  ctx.jsSources = [{ file: "bg.js", code: call, lineOffset: 0 }];
-  const out = bundledFiles.run(ctx);
+  present.jsSources = [
+    {
+      file: "bg.js",
+      code: present.addon.files.get("bg.js").toString(),
+      lineOffset: 0,
+    },
+  ];
+  assert.equal(bundledFiles.run(present).length, 0); // clamps to target/target.html
+
+  const missing = ctxWith(manifest, {
+    "bg.js": `browser.tabs.create({ url: "../nope/missing.html" });`,
+  });
+  missing.jsSources = [
+    {
+      file: "bg.js",
+      code: missing.addon.files.get("bg.js").toString(),
+      lineOffset: 0,
+    },
+  ];
+  const out = bundledFiles.run(missing);
   assert.equal(out.length, 1);
-  assert.match(out[0].item, /target\.html/);
+  assert.match(out[0].item, /missing\.html/);
 });

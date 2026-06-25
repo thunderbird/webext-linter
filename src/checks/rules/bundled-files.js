@@ -24,11 +24,11 @@ import { classifyUrl } from "../../scan/url.js";
 import {
   manifestFileRefs,
   normalizeRef,
+  resolveRef,
   resolveRefStatus,
-  resolveInDirStatus,
 } from "../lib/manifest-refs.js";
+import { scriptHostDirs, resolvePageRelative } from "../lib/script-hosts.js";
 import { manifestTokenLine } from "../lib/util.js";
-import { dirname } from "../../util/files.js";
 
 // A reference is a packaged-file candidate (so a missing target is an error)
 // only when it is a relative / root-relative path with no URI scheme. This
@@ -40,9 +40,11 @@ export default {
   run(ctx) {
     const { addon } = ctx;
     const out = [];
-    // A reference is satisfied only when it resolves WITHIN the package root to a
-    // bundled file ("ok"). "missing" (no such file) and "escapes" (a ".." that
-    // climbs outside the add-on - a wrong path) both fail.
+    // Manifest paths are root-relative: satisfied only when the path resolves
+    // WITHIN the package root to a bundled file ("ok"). "missing" (no such file)
+    // and "escapes" (a ".." climbing outside the add-on - a wrong path) both
+    // fail. (Loader-API refs below clamp ".." instead, matching Gecko's URL
+    // resolution, so they never "escape".)
     /** @param {string} p @returns {boolean} whether the file is bundled. */
     const rootOk = (p) => resolveRefStatus(addon.files, null, p).kind === "ok";
 
@@ -67,9 +69,10 @@ export default {
     }
 
     // 2. Files referenced by file-loading API calls (schema-directed + bridge).
-    // A base:"page" loader path (tabs.create {url}, executeScript {file}, ...) is
-    // resolved against the calling SCRIPT's own directory (Gecko's rule); the rest
-    // are root-relative.
+    // A base:"page" loader path (tabs.create {url}, executeScript {file}, menus
+    // icons, ...) resolves against the calling script's HOST PAGE directory (".."
+    // clamped at root); getURL/scripting.* (base:"root") are root-relative.
+    const hostDirs = scriptHostDirs(ctx);
     const seen = new Set();
     for (const src of ctx.jsSources) {
       const { refs } = scanLoaderRefs(
@@ -90,9 +93,9 @@ export default {
         const loc = { line: ref.line, column: ref.column };
         const present =
           ref.base === "page"
-            ? resolveInDirStatus(addon.files, dirname(src.file), ref.path)
-                .kind === "ok"
-            : rootOk(ref.path);
+            ? resolvePageRelative(addon.files, hostDirs, src.file, ref.path) !=
+              null
+            : resolveRef(addon.files, null, ref.path) != null;
         ctx.note?.(src.file, loc, ref.path, present ? "pass" : "fail");
         if (!present) {
           out.push(finding({ file: src.file, loc, item: ref.path }));

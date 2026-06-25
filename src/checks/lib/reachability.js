@@ -38,7 +38,8 @@
 // unused-files and minimize-web-accessible-resources verdicts - their rules
 // under src/checks/rules/*.
 
-import { manifestFileRefs, resolveRef, resolveInDir } from "./manifest-refs.js";
+import { manifestFileRefs, resolveRef } from "./manifest-refs.js";
+import { scriptHostDirs, resolvePageRelative } from "./script-hosts.js";
 import {
   warResourceList,
   expandResourcePattern,
@@ -54,7 +55,6 @@ import { asArray, asObject, isExperiment, isDocFile } from "./util.js";
 import { experimentApiNamespaces } from "./experiments.js";
 import {
   basename,
-  dirname,
   extname,
   JS_EXTENSIONS,
   HTML_EXTENSIONS,
@@ -161,6 +161,10 @@ function compute(ctx) {
   // it loads look unreachable. The finding scanners still skip these themselves.
   const skipParse = REACHABILITY_SKIPS_NON_AUTHORED ? nonAuthored : new Set();
 
+  // Host-page directories per script, for resolving page-relative loader paths
+  // (computed once, shared with bundled-files via the per-ctx cache).
+  const hostDirs = scriptHostDirs(ctx);
+
   // Outgoing edges: each file -> the resolved package paths it references.
   const outEdges = new Map();
   const dynamicLoaderSites = [];
@@ -206,10 +210,10 @@ function compute(ctx) {
       dynamicLoaderSites.push({ file: src.file, kind: "dynamic-import" });
     }
     // File-loading API calls (schema-directed + bridge): getURL, executeScript/
-    // insertCSS, the register family, setIcon, tabs.create, ... Most paths are
-    // extension-root-relative. Script-relative loaders (base:"page" - the MV2
-    // injection trio and tabs.create / windows.create url) resolve against the
-    // calling script's OWN directory instead.
+    // insertCSS, the register family, setIcon, tabs.create, ... getURL and
+    // scripting.* are extension-root-relative (base:"root"); every other loader
+    // is page-relative (base:"page") - resolved against the calling script's
+    // HOST PAGE directory (".." clamped at root), per script-hosts.js.
     const loaded = scanLoaderRefs(
       src.code,
       src.lineOffset,
@@ -219,7 +223,7 @@ function compute(ctx) {
     for (const r of loaded.refs) {
       const target =
         r.base === "page"
-          ? resolveInDir(files, dirname(src.file), r.path)
+          ? resolvePageRelative(files, hostDirs, src.file, r.path)
           : resolveRef(files, null, r.path);
       addEdge(src.file, target);
     }

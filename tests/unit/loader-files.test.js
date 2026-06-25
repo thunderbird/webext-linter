@@ -128,10 +128,11 @@ test("bridge extracts tabs.create url and *.setPopup paths", () => {
 });
 
 // Each ref is tagged with the directory its path resolves against at runtime:
-// script-relative loaders (the MV2 tabs.* injection trio and tabs.create /
-// windows.create url) are "page"; root-relative loaders (getURL, scripting.*,
-// *.setPopup) are "root". The resolver (reachability / bundled-files) uses this
-// tag to pick the base, so the tag must come straight from the method name.
+// getURL and scripting.* are root-relative ("root"); EVERY other loader (the MV2
+// tabs.* injection trio, tabs.create / windows.create url, menus icons,
+// *.setPopup, ...) resolves against the calling document, so it is "page". The
+// resolver (reachability / bundled-files) uses this tag to pick the base, so the
+// tag must come straight from the method name.
 test("tags document-relative loaders base:page, root loaders base:root", () => {
   const code = `
     browser.tabs.executeScript({ file: "inject.js" });
@@ -140,17 +141,20 @@ test("tags document-relative loaders base:page, root loaders base:root", () => {
     browser.runtime.getURL("page.html");
     browser.scripting.executeScript({ files: ["mv3.js"] });
     browser.tabs.create({ url: "tab.html" });
+    browser.composeAction.setPopup({ popup: "pop.html" });
   `;
   const base = Object.fromEntries(
     scanLoaderRefs(code, 0, schema, 2).refs.map((r) => [r.path, r.base])
   );
+  // getURL and scripting.* are the only root-relative loaders.
+  assert.equal(base["page.html"], "root");
+  assert.equal(base["mv3.js"], "root");
+  // Everything else resolves against the calling document (host page).
   assert.equal(base["inject.js"], "page");
   assert.equal(base["style.css"], "page");
   assert.equal(base["old.css"], "page");
-  assert.equal(base["page.html"], "root");
-  assert.equal(base["mv3.js"], "root");
-  // tabs.create url resolves against the calling document, so it is page-relative
   assert.equal(base["tab.html"], "page");
+  assert.equal(base["pop.html"], "page");
 });
 
 // Version-specific bridge entries respect the run's manifest version: the

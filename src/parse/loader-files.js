@@ -65,24 +65,25 @@ const BRIDGE = new Map([
   ["messageDisplayAction.setPopup", { stringKeys: ["popup"] }],
 ]);
 
-// Methods whose file path Gecko resolves relative to the CALLING SCRIPT's own
-// location (its module/document URL), not the extension root - unlike a plain
-// root-relative loader. A ref from one of these carries base:"page" so the
-// resolver (reachability / bundled-files) resolves it against the calling
-// script's OWN directory. Everything else stays base:"root".
-//   - The MV2 tabs.* injection trio: the `file` is resolved against the calling
-//     script. The MV3 scripting.* replacements are root-relative in both
-//     browsers, so they are NOT here.
-//   - tabs.create / windows.create: a relative `url` is resolved against the
-//     calling script, so "../sibling.html" from a script in a subdirectory
-//     legitimately resolves within the package (don't flag it), while the same
-//     from a root-level script escapes the root (a real wrong path).
-const PAGE_RELATIVE_FILE_METHODS = new Set([
-  "tabs.executeScript",
-  "tabs.insertCSS",
-  "tabs.removeCSS",
-  "tabs.create",
-  "windows.create",
+// Root-relative loaders: their path resolves against the extension ROOT (".."
+// clamped at root), like a manifest path. Empirically confirmed for
+// runtime.getURL; documented for scripting.* (MDN: "files" are relative to the
+// extension's root directory). EVERY OTHER file loader resolves against the
+// CALLING DOCUMENT - the HTML page hosting the script, not the extension root and
+// not the script's own module URL - so a relative path there is page-relative
+// (base:"page"); the resolver walks the script's host-page directories.
+//   - menus.create {icons}, <action>.setIcon/setPopup, tabs.create/windows.create
+//     {url}, and the MV2 tabs.executeScript/insertCSS/removeCSS {file} (MDN: in
+//     Firefox a non-root-relative `file` resolves against the current page URL)
+//     are all page-relative.
+//   - A leading-"/" path is still root-relative for every loader (resolveInDir
+//     handles it), and a scheme URL is dropped upstream - both independent of
+//     this base.
+const ROOT_RELATIVE_FILE_METHODS = new Set([
+  "runtime.getURL",
+  "scripting.executeScript",
+  "scripting.insertCSS",
+  "scripting.removeCSS",
 ]);
 
 /**
@@ -97,8 +98,9 @@ const PAGE_RELATIVE_FILE_METHODS = new Set([
  * @returns {{refs: {path: string, line: number, column: number,
  *   base: "page"|"root"}[], hasDynamic: boolean, parseError: string|null}}
  *   Each ref's `base` is the directory its path resolves against at runtime:
- *   "page" for the page-relative trio (see PAGE_RELATIVE_FILE_METHODS), else
- *   "root" (extension-root-relative).
+ *   "root" (extension-root-relative) for getURL/scripting.* (see
+ *   ROOT_RELATIVE_FILE_METHODS); "page" (the calling document / host page) for
+ *   every other loader.
  */
 export function scanLoaderRefs(
   code,
@@ -151,7 +153,7 @@ export function scanLoaderRefs(
       const args = path.node.arguments;
       // Derive the resolution base from the method name, independent of which
       // extraction branch (schema-directed or bridge) handles the call.
-      currentBase = PAGE_RELATIVE_FILE_METHODS.has(dotted) ? "page" : "root";
+      currentBase = ROOT_RELATIVE_FILE_METHODS.has(dotted) ? "root" : "page";
       if (loaders?.has(dotted) && canWalk) {
         const params = schema.resolveApi(dotted.split(".")).def?.parameters;
         if (Array.isArray(params)) {
