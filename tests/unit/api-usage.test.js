@@ -60,6 +60,45 @@ test("records destructuring/aliasing of the API object as a limitation", () => {
   );
 });
 
+// A whole-object alias of the API object is followed, so calls through it resolve
+// to real usages (canonical root) and are NOT reported as a coverage gap. Covers
+// the direct, ||/??-chain, and the Thunderbird feature-detection ternary shapes.
+test("follows a whole-object API alias (direct, ||, ternary)", () => {
+  const direct = parseApiUsage(`const api = browser; api.messages.list();`);
+  assert.deepEqual(
+    direct.usages.map((u) => `${u.root}.${u.segments.join(".")}`),
+    ["browser.messages.list"]
+  );
+  assert.equal(direct.limitations.length, 0); // resolved, not a gap
+
+  const orChain = parseApiUsage(
+    `const api = messenger || browser || chrome; api.messages.update(id, {});`
+  );
+  assert.deepEqual(
+    orChain.usages.map((u) => `${u.root}.${u.segments.join(".")}`),
+    ["messenger.messages.update"]
+  );
+
+  // The exact shape spamshield uses: a nested typeof feature-detection ternary.
+  const ternary = parseApiUsage(
+    `const api = (typeof messenger !== "undefined" ? messenger : (typeof browser !== "undefined" ? browser : null));
+     api.messages.tags.list();`
+  );
+  assert.deepEqual(
+    ternary.usages.map((u) => `${u.root}.${u.segments.join(".")}`),
+    ["messenger.messages.tags.list"]
+  );
+  assert.equal(ternary.limitations.length, 0);
+});
+
+// A local whose initializer is NOT an API root (a plain call/value) is not an
+// alias, so calls through it are ignored - neither usage nor limitation.
+test("does not treat a non-API local as an alias", () => {
+  const res = parseApiUsage(`const api = makeThing(); api.messages.list();`);
+  assert.equal(res.usages.length, 0);
+  assert.equal(res.limitations.length, 0);
+});
+
 // A parameter named browser shadows the global API object, so calls on it are
 // not real API usage and must yield zero usages.
 test("ignores a shadowed local named browser", () => {

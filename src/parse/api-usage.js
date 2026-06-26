@@ -2,9 +2,13 @@
 // member-expression chains rooted at `browser`, `messenger`, or `chrome` (all
 // three are valid in Thunderbird submissions). For
 // `browser.messages.tags.list(...)` it yields segments
-// ["messages","tags","list"]. This is deliberately best-effort: dynamic/
-// computed access and destructured aliases can't always be resolved statically,
-// so we surface those as "limitations" rather than silently dropping them.
+// ["messages","tags","list"]. It also follows a whole-object alias of the API
+// object - the common Thunderbird feature-detection shapes `const api = messenger
+// || browser` and `const api = typeof messenger !== "undefined" ? messenger :
+// browser` - so `api.*` calls resolve too. This is deliberately best-effort:
+// dynamic/computed access and destructured aliases (const { messages } = browser)
+// can't always be resolved statically, so we surface those as "limitations"
+// rather than silently dropping them.
 //
 // Belongs here: usage extraction (segments, line/column, dynamic-tail and alias
 // limitations) and the shared API_ROOTS set of root identifiers.
@@ -68,16 +72,24 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
   traverse(ast, {
     Identifier(path) {
       const name = path.node.name;
-      if (!API_ROOTS.has(name)) {
-        return;
+      // The literal API roots, OR a local variable that whole-object-aliases one
+      // (const api = messenger || browser; const api = cond ? messenger : ...).
+      // The alias's canonical root is interchangeable for resolution.
+      let root = null;
+      if (API_ROOTS.has(name) && isApiRoot(path)) {
+        root = name;
+      } else if (!API_ROOTS.has(name) && isChainBase(path)) {
+        root = aliasedRoot(path);
       }
-      // Only treat it as a root when it is the base object of a member chain,
-      // not a property name, declaration id, or otherwise shadowed local
-      // binding.
-      if (!isApiRoot(path)) {
-        // Aliasing / destructuring of the API object - record as a coverage
-        // gap.
-        if (isAliasOrigin(path)) {
+
+      if (!root) {
+        // A direct alias/destructuring of the API object we could NOT resolve to
+        // usages (e.g. const { messages } = browser) stays a coverage gap.
+        if (
+          API_ROOTS.has(name) &&
+          isAliasOrigin(path) &&
+          !aliasIsResolved(path)
+        ) {
           limitations.push({
             ...loc(path.node),
             reason: `API object "${name}" is aliased/destructured; usage via the alias is not statically resolved`,
@@ -89,7 +101,7 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
       const { segments, dynamicTail, dynamicAt, optional } = climbChain(path);
       const guarded = optional || isGuarded(path);
       usages.push({
-        root: name,
+        root,
         segments,
         dynamicTail,
         optional,
@@ -99,7 +111,7 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
       if (dynamicTail && dynamicAt) {
         limitations.push({
           ...loc(dynamicAt),
-          reason: `computed/dynamic member access on "${name}.${segments.join(".")}" not fully resolved`,
+          reason: `computed/dynamic member access on "${root}.${segments.join(".")}" not fully resolved`,
         });
       }
     },
@@ -109,23 +121,94 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
 }
 
 /**
- * True when this identifier is the root object of a member expression (e.g.
- * browser.xxx), not a property name or shadowed binding.
+ * True when this identifier is the base object of a member chain (e.g. the `x` in
+ * `x.foo.bar`), not a property name. Says nothing about whether `x` is an API
+ * object - just the syntactic position.
+ * @param {BabelPath} path
+ * @returns {boolean}
+ */
+function isChainBase(path) {
+  if (path.key === "property" && path.parent.type === "MemberExpression") {
+    return false; // it's the `.x` part of something.x
+  }
+  return Boolean(
+    path.parentPath?.isMemberExpression() && path.parent.object === path.node
+  );
+}
+
+/**
+ * True when this identifier is the root object of a member expression on the
+ * global API object (browser/messenger/chrome), not a property name or a shadowed
+ * local binding.
  * @param {BabelPath} path
  * @returns {boolean}
  */
 function isApiRoot(path) {
-  if (path.key === "property" && path.parent.type === "MemberExpression") {
-    return false; // it's the `.browser` part of something.browser
+  // Don't count a shadowed local binding as the global API object.
+  return isChainBase(path) && !path.scope.hasBinding(path.node.name);
+}
+
+/**
+ * The canonical API root an initializer expression resolves to, or null. Handles
+ * the common Thunderbird feature-detection alias shapes:
+ *   const api = messenger                                  (direct)
+ *   const api = messenger || browser || chrome             (|| / ?? chain)
+ *   const api = typeof messenger !== 'undefined' ? messenger : browser  (ternary)
+ * @param {object} node  An expression node (a VariableDeclarator init).
+ * @returns {?string}
+ */
+function aliasRoot(node) {
+  if (!node) {
+    return null;
   }
-  if (
-    path.parentPath?.isMemberExpression() &&
-    path.parent.object === path.node
-  ) {
-    // Don't count a shadowed local binding as the global API object.
-    return !path.scope.hasBinding(path.node.name);
+  switch (node.type) {
+    case "Identifier":
+      return API_ROOTS.has(node.name) ? node.name : null;
+    case "ParenthesizedExpression":
+      return aliasRoot(node.expression);
+    case "LogicalExpression":
+      return node.operator === "||" || node.operator === "??"
+        ? (aliasRoot(node.left) ?? aliasRoot(node.right))
+        : null;
+    case "ConditionalExpression":
+      return aliasRoot(node.consequent) ?? aliasRoot(node.alternate);
+    default:
+      return null;
   }
-  return false;
+}
+
+/**
+ * For a non-root identifier sitting at a chain base (e.g. `api` in `api.foo`),
+ * resolve its binding to a whole-object API alias and return the canonical root
+ * it aliases, or null. Only a `const x = <init>` whose id is a plain identifier
+ * and whose init resolves via aliasRoot counts (one hop; destructuring does not).
+ * @param {BabelPath} path
+ * @returns {?string}
+ */
+function aliasedRoot(path) {
+  const binding = path.scope.getBinding(path.node.name);
+  const decl = binding?.path;
+  if (!decl || decl.type !== "VariableDeclarator") {
+    return null;
+  }
+  if (decl.node.id.type !== "Identifier") {
+    return null; // destructuring etc. - not a whole-object alias
+  }
+  return aliasRoot(decl.node.init);
+}
+
+/**
+ * True when an alias-origin identifier (the `browser` in `const x = browser`) is
+ * a whole-object alias we DO resolve (its declarator id is a plain identifier),
+ * so it need not be reported as a coverage-gap limitation.
+ * @param {BabelPath} path
+ * @returns {boolean}
+ */
+function aliasIsResolved(path) {
+  return (
+    path.parent.type === "VariableDeclarator" &&
+    path.parent.id.type === "Identifier"
+  );
 }
 
 /**
