@@ -1,5 +1,5 @@
 {
-  "_comment": "An undeclared vendored bootstrap.min.css is a third-party CSS library and must be flagged by missing-library, exactly like a bundled .min.js would be (the regression: classifyBundled used to skip non-JS files). The classifier recognizes it by the .min.css name, the 'bootstrap' stem, the '/*!' banner and the minified geometry. --checks-only isolates the finding so the golden tracks only the CSS detection.",
+  "_comment": "An undeclared vendored bootstrap.min.css is a third-party CSS library and must be flagged by missing-library, exactly like a bundled .min.js would be (the regression: classifyBundled used to skip non-JS files). The classifier recognizes it by the .min.css name, the 'bootstrap' stem and the minified geometry. --checks-only isolates the finding so the golden tracks only the CSS detection.",
   "options": { "--checks-only": "missing-library" },
   "expect": {
     "missing-library": ["vendor/bootstrap/bootstrap.min.css"]

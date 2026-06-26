@@ -10,7 +10,10 @@ import AdmZip from "adm-zip";
 
 import { classifySource } from "../../src/vendor/sources.js";
 import { VENDOR_TRUSTED_HOSTS } from "../../src/config.js";
-import { verifyVendor } from "../../src/vendor/verify.js";
+import {
+  verifyVendor,
+  auditIdentifiedLibraries,
+} from "../../src/vendor/verify.js";
 import unpinnedDependency from "../../src/checks/rules/unpinned-dependency.js";
 import unpinnedVendorSource from "../../src/checks/rules/unpinned-vendor-source.js";
 import vendorModified from "../../src/checks/rules/vendor-modified.js";
@@ -520,6 +523,130 @@ test("verifyVendor: the OSV audit records a vulnerable pinned package", async ()
       token: "lodash",
     },
   ]);
+});
+
+// auditIdentifiedLibraries OSV-audits the libraries the hash classifier recognized
+// (bundled.classified entries with a libraryId), so an UNDECLARED vulnerable bundle
+// is recorded just like a declared dep. The dispensary name is mapped to its npm
+// package (angularjs -> angular) and the vuln anchors at the bundled file with an
+// empty token (no declaration line). A classified entry without a libraryId is not
+// a library and is skipped.
+test("auditIdentifiedLibraries: an undeclared identified library is OSV-audited", async () => {
+  const addon = addonWith({ "vendor/lib.min.js": "LIBBYTES" }, store());
+  addon.bundled = {
+    classified: [
+      {
+        file: "vendor/lib.min.js",
+        library: true,
+        libraryId: { name: "angularjs", version: "1.0.2" },
+      },
+      { file: "app.js", library: false }, // not a library -> skipped
+    ],
+  };
+  const osv = {
+    vulns: [
+      {
+        id: "GHSA-aaaa-bbbb-cccc",
+        aliases: ["CVE-2024-9999"],
+        database_specific: { severity: "CRITICAL" },
+        affected: [
+          {
+            package: { ecosystem: "npm", name: "angular" },
+            ranges: [
+              {
+                type: "SEMVER",
+                events: [{ introduced: "0" }, { fixed: "1.8.0" }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  await auditIdentifiedLibraries(addon, net({ osv }));
+  assert.deepEqual(addon.vendor.vulnerabilities, [
+    {
+      name: "angular", // dispensary "angularjs" mapped to its npm package
+      version: "1.0.2",
+      ids: ["CVE-2024-9999"],
+      severity: "critical",
+      fixed: ["1.8.0"],
+      file: "vendor/lib.min.js", // anchors at the bundled file
+      token: "", // no declaration line for an undeclared library
+    },
+  ]);
+});
+
+// Each release is audited at most once: the same library bundled in two files, or
+// one already flagged by verifyVendor as a declared dep / VENDOR entry, is neither
+// re-queried (a counted postJson) nor double-reported.
+test("auditIdentifiedLibraries: dedupes by release across files and prior audits", async () => {
+  const addon = addonWith(
+    { "a/jquery.min.js": "A", "b/jquery.min.js": "B", "c/moment.min.js": "C" },
+    store({
+      // moment 2.0.0 was already recorded as a declared dependency.
+      vulnerabilities: [
+        {
+          name: "moment",
+          version: "2.0.0",
+          ids: ["CVE-2017-0001"],
+          severity: "high",
+          fixed: [],
+          file: "package.json",
+          token: "moment",
+        },
+      ],
+    })
+  );
+  addon.bundled = {
+    classified: [
+      {
+        file: "a/jquery.min.js",
+        libraryId: { name: "jquery", version: "1.7.2" },
+      },
+      {
+        file: "b/jquery.min.js",
+        libraryId: { name: "jquery", version: "1.7.2" },
+      },
+      {
+        file: "c/moment.min.js",
+        libraryId: { name: "moment", version: "2.0.0" },
+      },
+    ],
+  };
+  let queries = 0;
+  const osv = (body) => {
+    queries += 1;
+    return body.package.name === "jquery"
+      ? {
+          vulns: [
+            { id: "CVE-2020-11022", database_specific: { severity: "MEDIUM" } },
+          ],
+        }
+      : { vulns: [] };
+  };
+  await auditIdentifiedLibraries(addon, net({ osv }));
+  // jquery queried once (not twice), moment skipped (already recorded).
+  assert.equal(queries, 1);
+  assert.deepEqual(
+    addon.vendor.vulnerabilities.map((v) => `${v.name}@${v.version}`),
+    ["moment@2.0.0", "jquery@1.7.2"] // the prior moment entry + one jquery entry
+  );
+});
+
+test("auditIdentifiedLibraries: records nothing offline (no postJson)", async () => {
+  const addon = addonWith({ "vendor/lib.min.js": "X" }, store());
+  addon.bundled = {
+    classified: [
+      {
+        file: "vendor/lib.min.js",
+        library: true,
+        libraryId: { name: "jquery", version: "1.7.2" },
+      },
+    ],
+  };
+  await auditIdentifiedLibraries(addon, net({ throwOnPost: true }));
+  assert.deepEqual(addon.vendor.vulnerabilities, []);
 });
 
 // An npm-sourced VENDOR entry is audited the same way as a package.json dep, but

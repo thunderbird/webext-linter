@@ -69,9 +69,12 @@ export default {
     for (const { name, version, ids, severity, fixed, file, token } of vulns) {
       const text = fileText(file);
       // A quoted JSON token (a package.json dep name) or a plain substring (the
-      // VENDOR-file source URL) - whichever locates the declaration line.
-      const line =
-        manifestTokenLine(text, token) ?? lineContaining(text, token);
+      // VENDOR-file source URL) - whichever locates the declaration line. An empty
+      // token means there is no declaration line (a hash-identified library), so
+      // the finding anchors at the file with no line.
+      const line = token
+        ? (manifestTokenLine(text, token) ?? lineContaining(text, token))
+        : null;
       const loc = line ? { line } : undefined;
       ctx.note?.(
         file,

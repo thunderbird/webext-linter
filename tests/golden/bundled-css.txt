@@ -1,10 +1,10 @@
 ── Issues ──
 
-Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
+Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
-1) The following file(s) appear to be third-party libraries. Please link to their sources and ensure each bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice).
+1) The following bundled files were recognized as third-party libraries (named after each path) but are not declared in a VENDOR file. Please declare each and link its source so the bundled copy can be verified against the linked version - a VENDOR file at the add-on root is common practice.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
- - vendor/bootstrap/bootstrap.min.css
+ - vendor/bootstrap/bootstrap.min.css - bootstrap 5.3.0
 
 ── Standard manual review ──
 
@@ -75,4 +75,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 warning(s), 0 info, 10 manual review step(s)
+0 error(s), 0 warning(s), 1 info, 10 manual review step(s)

@@ -11,25 +11,38 @@
       <header class="check-header">
         <h1>
           Missing third-party library reference
-          <span class="badge error">error</span>
+          <span class="badge info">info</span>
         </h1>
         <div class="check-id">missing-library</div>
       </header>
 
       <h2>What it detects</h2>
       <p class="lead">
-        This check flags a bundled JavaScript or CSS file that looks like a
-        distributed third-party library but is not declared in a VENDOR file. It
-        recognises libraries by surface signals: a minifier banner comment, a
-        UMD/AMD module wrapper, a <code>.min.js</code> or <code>.min.css</code>
-        name, or a well-known library filename such as jQuery or Bootstrap.
+        This check reports a bundled JavaScript or CSS file whose
+        <strong>content hash</strong> matches a known third-party library release
+        but that is not declared in a VENDOR file. The hashes come from a
+        known-library database (Mozilla dispensary's
+        <code>hashes.txt</code>), fetched and cached like the schema. Because it is
+        a byte-exact match, the check names the exact library and version it found
+        — for example <code>bootstrap 5.3.0</code>.
       </p>
       <p>
-        The detection is heuristic and hash-free, so it cannot say which library
-        or which version a file is — only that the file appears to be a library
-        that should be linked to its upstream source. Minified or obfuscated code
-        that carries no library signals is a different situation, reported by the
-        minified-code and obfuscated-code checks, so this check leaves those to them.
+        It is the backup for a forgotten VENDOR declaration: declared and
+        experiment-trusted files are excluded before the lookup, so everything it
+        reports is genuinely undeclared. Since a match is a precise, byte-verified
+        release, the finding is advisory (<span class="badge info">info</span>),
+        not a blocker. A bundled file the database does not recognise is
+        <em>not</em> treated as a library here — if minified it is reported by
+        minified-code, if obfuscated by obfuscated-code, and otherwise it is
+        scanned as the developer's own source.
+      </p>
+      <p>
+        Because the match identifies an exact release, an identified library is
+        also audited for known vulnerabilities just like a declared dependency —
+        an undeclared but vulnerable bundle is reported by
+        <code>vendor-vulnerable</code> (and stays excluded from
+        <code>--scan-minified</code>, since it is real third-party code, not the
+        developer's).
       </p>
 
       <h2>Decision flow</h2>
@@ -38,11 +51,11 @@
 flowchart TD
   A["A JavaScript or CSS file<br/>in the add-on"] --> Z{"Declared in a VENDOR file,<br/>or too small to be a bundle?"}
   Z -- yes --> S([skip])
-  Z -- no --> L{"Library signals present?<br/>banner, UMD wrapper,<br/>.min name, or known stem"}
-  L -- no --> OK([no finding — obfuscated-code's<br/>concern if minified])
-  L -- yes --> ERR([ERROR: undeclared<br/>third-party library])
+  Z -- no --> L{"Raw content hash in the<br/>known-library database?"}
+  L -- no --> OK([no finding — minified-code /<br/>obfuscated-code, or scanned])
+  L -- yes --> ERR([INFO: undeclared library,<br/>named name@version])
 
-  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef err fill:#eaf1fb,stroke:#2c5aa0,color:#1b3a6b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   class ERR err;
@@ -53,9 +66,10 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told the named files appear to be third-party libraries and is
-        asked to link each to its source and ensure the bundled copy matches the
-        linked version, commonly via a VENDOR file at the add-on root.
+        The add-on is told which third-party library and version each file was
+        recognised as, and is asked to declare it and link its source — commonly
+        via a VENDOR file at the add-on root — so the bundled copy can be verified
+        against the linked release.
       </div>
 
       <p class="source-note">

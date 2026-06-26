@@ -44,6 +44,9 @@ schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
 | `--schema-channel <name>` | Schema channel (default `release`). One of `release`, `beta`, `esr`. |
 | `--schema-force-refresh` | Re-download the schema even if a cached copy exists. |
 | `--schema-zip <path>` | Use a local schema zip (or directory) instead of downloading. |
+| `--library-hashes <path>` | Use a local known-library `hashes.txt` instead of fetching it (offline runs). |
+| `--library-hashes-cache <dir>` | Where the fetched library hashes are cached (default `.library-hashes-cache`). |
+| `--library-hashes-refresh` | Re-download the library hashes even if a cached copy exists. |
 | `--checks-only <ids>` | Only run these checks (comma-separated). See the check list below. |
 | `--checks-skip <ids>` | Skip these checks (comma-separated). See the check list below. |
 | `--report-format <text\|json>` | Report output format (default `text`). |
@@ -52,6 +55,7 @@ schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
 | `--llm-list-models` | List the models your token can use, then exit. |
 | `--llm-review` | Shorthand for `--llm-enabled --full-summary` - run the AI add-on review in one flag. |
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
+| `--scan-minified` | Review minified/built code: treat a minified-by-geometry file (an unidentifiable webpack/tsc bundle) as authored and run every check on it. Hash-identified libraries, `obfuscated-code`, and VENDOR-declared/experiment files stay excluded (an identified library is real third-party code, so it keeps its `missing-library`/`vendor-vulnerable` treatment). Suppresses `minified-code` only. Off by default. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
 | `--diff-summary` | Add an AI assisted **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and `--llm-enabled`. |
@@ -151,7 +155,7 @@ escalates it straight to manual review (e.g. `vendor-unverified`,
 | `manifest-unknown-permission` | A declared permission value that is neither a known permission, a data-collection permission, nor a match pattern (error). |
 | `manifest-version-mismatch` | `manifest_version` disagrees with the schema set being reviewed (error). |
 | `minimize-host-permissions` | Broad (`<all_urls>` / `*` host) permissions requested as required (info). |
-| `missing-library` | A JS file (not in the VENDOR file) that looks like a bundled third-party library - by a `/*! … */` banner, UMD wrapper, `.min.js` name, or known library filename (warning). Heuristic, no hash DB: it can't say which library or verify the version. |
+| `missing-library` | A bundled JS or CSS file (not in the VENDOR file) whose content hash matches a known third-party library release, named as `name version` (info). Identified by a fetched known-library hash database (Mozilla dispensary's `hashes.txt`), so the match is byte-exact; a file the database doesn't recognize is left to `minified-code`/`obfuscated-code` or scanned as the developer's own code. An identified library is also audited for known vulnerabilities (`vendor-vulnerable`), so an undeclared vulnerable bundle is still caught. |
 | `missing-manifest-key` | A called API needs a manifest key (e.g. `action`) that is not declared (error). The manifest-key counterpart of `missing-permission`. |
 | `missing-permission` | A permission used by a called API but not declared (error). An API needing a manifest key is `missing-manifest-key`. |
 | `missing-vendor-file` | A VENDOR entry (file + source URL) naming a file not present in the submission (warning). |

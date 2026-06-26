@@ -23,6 +23,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..");
 const SCHEMA_FIXTURE = path.join(here, "schema-fixture");
 const EXPERIMENTS_FIXTURE = path.join(here, "experiments-fixture");
+const LIBRARY_HASHES_FIXTURE = path.join(here, "library-hashes-fixture.txt");
 const ADDONS_DIR = path.join(here, "addons");
 const GOLDEN_DIR = path.join(here, "golden");
 const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
@@ -155,6 +156,7 @@ async function main() {
         addon,
         schemaZip: SCHEMA_FIXTURE,
         experimentsZip: EXPERIMENTS_FIXTURE,
+        libraryHashes: LIBRARY_HASHES_FIXTURE,
         vendorNet: OFFLINE_NET,
       });
       problems = diff(expected, locationsByRule(review.findings));

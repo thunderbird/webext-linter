@@ -29,3 +29,16 @@ export function eolNormalize(buf) {
 export function normalizedSha256(buf) {
   return createHash("sha256").update(eolNormalize(buf), "latin1").digest("hex");
 }
+
+/**
+ * Raw SHA-256 (hex) of the exact bytes - NO EOL normalization. The known-library
+ * hash database (dispensary) hashes each release file's raw bytes, so a bundled
+ * copy is matched byte-for-byte; a CRLF/whitespace-altered copy will not match.
+ * @param {Buffer} buf
+ * @returns {string}
+ */
+export function rawSha256(buf) {
+  return createHash("sha256")
+    .update(Buffer.isBuffer(buf) ? buf : Buffer.from(buf ?? ""))
+    .digest("hex");
+}

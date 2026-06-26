@@ -32,8 +32,9 @@ const entries = (files) =>
 const missing = (files) =>
   missingVendorEntries(fakeAddon(files)).map((e) => [e.path, e.sourceUrl]);
 
-// A minifier banner makes a file library-like (so does a .min name / UMD wrapper);
-// plain content is the add-on's own code.
+// Stand-in content for a bundled third-party library file; OWN is the add-on's
+// own code. (These VENDOR-resolution tests key off declared paths, not the
+// classifier, so the content is just realistic.)
 const LIB = "/*! Lib v1 | (c) authors | MIT */\n(function () {})();\n";
 const OWN = "export function f() {}\n";
 

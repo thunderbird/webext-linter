@@ -36,6 +36,7 @@ import { classifySource } from "./sources.js";
 import { tarballHashes } from "./tarball.js";
 import { zipHashesUnder } from "./archive.js";
 import { isVendored } from "./resolve.js";
+import { npmNameForLibrary } from "../checks/lib/library-hashes.js";
 import { normalizedSha256 } from "../normalize/hash.js";
 import { getProvider } from "../llm/provider.js";
 import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
@@ -57,17 +58,20 @@ import {
  *   postJson: (url: string, body: object) => Promise<object>}} VendorNet
  */
 /**
- * @typedef {object} VendorVuln  One vulnerable pinned npm package (OSV audit) -
- * a package.json dependency or an npm-sourced VENDOR entry.
+ * @typedef {object} VendorVuln  One vulnerable npm package (OSV audit) - a
+ * package.json dependency, an npm-sourced VENDOR entry, or a hash-identified
+ * (undeclared) bundled library.
  * @property {string} name  npm package name.
- * @property {string} version  The bundled (pinned) version audited.
+ * @property {string} version  The bundled (pinned/identified) version audited.
  * @property {string[]} ids  Advisory ids (CVE preferred, else OSV/GHSA).
  * @property {string} severity  Highest reported severity, or "unknown".
  * @property {string[]} fixed  Versions the advisories were fixed in (may be
  *   empty).
- * @property {string} file  Where the finding anchors (package.json or the
- *   VENDOR file).
- * @property {string} token  The string locating the declaration line in `file`.
+ * @property {string} file  Where the finding anchors (package.json, the VENDOR
+ *   file, or the bundled library file itself).
+ * @property {string} token  The string locating the declaration line in `file`,
+ *   or "" when there is none (an identified library has no declaration line, so
+ *   the finding anchors at the file with no line).
  */
 /**
  * @typedef {object} MetaNode  A node in an unpkg "?meta" listing. unpkg returns
@@ -215,6 +219,49 @@ async function auditNpm(name, version, file, token, vendor, net) {
     file,
     token,
   });
+}
+
+/**
+ * OSV-audit the libraries identified by content hash (addon.bundled.classified
+ * entries carrying a libraryId) - the undeclared third-party libraries the hash
+ * classifier recognized. A declared/vendored copy is excluded before
+ * classification, so this catches exactly the bundles a developer shipped without
+ * a VENDOR declaration: the same auditNpm an npm dep gets, so an undeclared
+ * vulnerable jquery is flagged just like a declared one. The dispensary name is
+ * mapped to its npm package (npmNameForLibrary); the finding anchors at the
+ * bundled file with no line (an undeclared library has no declaration line, so
+ * the token is empty). Each release is audited at most once: a package already
+ * flagged as a declared dep / VENDOR entry, or the same library bundled in more
+ * than one file, is not re-queried or double-reported. Best-effort: runs after
+ * classifyBundled, shares the OSV transport, and skips silently offline. Requires
+ * addon.vendor (resolveVendor) for the shared vulnerabilities store.
+ * @param {Addon} addon  Must carry addon.vendor and addon.bundled.
+ * @param {VendorNet} [net]
+ * @returns {Promise<void>}
+ */
+export async function auditIdentifiedLibraries(addon, net = defaultNet) {
+  const vendor = addon?.vendor;
+  const classified = addon?.bundled?.classified;
+  if (!vendor || !classified) {
+    return;
+  }
+  // Skip a release already recorded by verifyVendor (a declared dep / VENDOR
+  // entry) and collapse the same library bundled in several files to one audit.
+  const seen = new Set(
+    vendor.vulnerabilities.map((v) => `${v.name}@${v.version}`)
+  );
+  for (const tag of classified) {
+    if (!tag.libraryId) {
+      continue;
+    }
+    const name = npmNameForLibrary(tag.libraryId.name);
+    const key = `${name}@${tag.libraryId.version}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    await auditNpm(name, tag.libraryId.version, tag.file, "", vendor, net);
+  }
 }
 
 /**

@@ -3,6 +3,7 @@ tmp_extract/
 logs/
 .schema-cache/
 .experiments-cache/
+.library-hashes-cache/
 *.tmp
 *.key
 run-nextpass.sh

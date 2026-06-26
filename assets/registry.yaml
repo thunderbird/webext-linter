@@ -316,13 +316,13 @@ deterministic-checks:
     The "{{item}}" permission may be unused. {{reason}} Confirm whether the add-on
     actually needs it, and if not, ask the developer to remove it.
 
-# Flags a bundled-looking third-party library - JS or CSS - (banner/UMD/.min.
-# name/known name) not declared in a VENDOR file.
+# Flags a bundled file whose content hash matches a known third-party library
+# release (named after each path) that is not declared in a VENDOR file.
 - title: Missing third-party library reference
-  severity: error
+  severity: info
   check: missing-library
   response: |-
-    The following file(s) appear to be third-party libraries. Please link to their sources and ensure each bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice).
+    The following bundled files were recognized as third-party libraries (named after each path) but are not declared in a VENDOR file. Please declare each and link its source so the bundled copy can be verified against the linked version - a VENDOR file at the add-on root is common practice.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
 # Flags shipped minified JS that is not a recognized library; asks for the
@@ -336,11 +336,11 @@ deterministic-checks:
 
 # Flags shipped obfuscated JS that is not a recognized library; asks for the
 # original sources.
-- title: Source Archive (obfuscated code) required
+- title: Obfuscated code is not permitted
   severity: error
   check: obfuscated-code
   response: |-
-    The following file(s) are obfuscated, which cannot be reviewed in this form and is not permitted. Ship the original, human-readable code directly - the add-on must not obfuscate its behavior. If a build step is involved, upload the original sources as a source code archive that includes the build instructions and build process needed to generate the final XPI, using the source code upload field available during submission or on the version page in the developer hub.
+    The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
     Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
 
 # Diff check (--diff-to): a version + gecko strict_max_version-only bump that the

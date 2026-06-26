@@ -62,24 +62,6 @@ function isAuthoredText(file, skip) {
 }
 
 /**
- * Prompt-only safety net: a file that LOOKS like a vendored third-party library
- * even when classify()/nonAuthoredJs did not catch it (a non-minified ESM lib with
- * no VENDOR declaration) - a top-level vendor/ directory, or a leading "/*!" license
- * banner (anchored at the start, so a developer's mid-file "/*!" does not trip it).
- * Used ONLY to trim the model input; deterministic findings are unaffected.
- * @param {string} file
- * @param {Map<string, Buffer>} files
- * @returns {boolean}
- */
-function looksVendoredForPrompt(file, files) {
-  if (/^vendor\//i.test(file)) {
-    return true;
-  }
-  const head = files.get(file)?.toString("utf8", 0, 64) ?? "";
-  return /^\s*\/\*!/.test(head);
-}
-
-/**
  * The utf8 text of a file in a files map, or "".
  * @param {string} file
  * @param {Map<string, Buffer>} files
@@ -294,8 +276,7 @@ export function buildAddonText(
     if (
       file === "manifest.json" ||
       unused.has(file) ||
-      !isAuthoredText(file, skip) ||
-      looksVendoredForPrompt(file, files)
+      !isAuthoredText(file, skip)
     ) {
       continue;
     }

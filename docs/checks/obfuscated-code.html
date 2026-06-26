@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Source Archive (obfuscated code) required</title>
+    <title>Obfuscated code is not permitted</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
         <h1>
-          Source Archive (obfuscated code) required
+          Obfuscated code is not permitted
           <span class="badge error">error</span>
         </h1>
         <div class="check-id">obfuscated-code</div>
@@ -55,11 +55,10 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told the named files are obfuscated and cannot be reviewed in
-        that form, and is asked to ship the original human-readable code (the add-on
-        must not obfuscate its behavior) or, if a build step is involved, to upload a
-        source archive with the build instructions needed to produce the final
-        package.
+        The add-on is told the named files are obfuscated and that obfuscated code is
+        not permitted — whether or not the add-on is hosted on addons.thunderbird.net
+        — as it violates the Add-on Policy and is subject to being blocked. It is
+        asked to ship the original, human-readable code directly.
       </div>
 
       <p class="source-note">

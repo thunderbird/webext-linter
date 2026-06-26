@@ -64,6 +64,14 @@ flowchart TD
         the build instructions needed to produce the final package.
       </div>
 
+      <p>
+        The geometry heuristic cannot tell a build-tool bundle (webpack, tsc) from
+        a minified library. Run with <code>--scan-minified</code> to review the
+        minified code directly instead: it treats these files as authored and runs
+        every check on them, suppressing this finding. Obfuscated code stays
+        rejected either way.
+      </p>
+
       <p class="source-note">
         Source of truth: <code>src/checks/rules/minified-code.js</code> and its
         entry in <code>assets/registry.yaml</code>.

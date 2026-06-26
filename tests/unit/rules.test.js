@@ -21,6 +21,8 @@ import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
 import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
+import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
+import { rawSha256 } from "../../src/normalize/hash.js";
 import apiCoverage from "../../src/checks/rules/api-coverage.js";
 import strictMaxBumpOnly from "../../src/checks/rules/strict-max-version-bump-only.js";
 import trademarkViolation from "../../src/checks/rules/trademark-violation.js";
@@ -49,7 +51,7 @@ import {
   loadRegistry,
   runOneCheck,
 } from "../../src/checks/registry.js";
-import { finding } from "../../src/report/finding.js";
+import { finding, SEVERITY } from "../../src/report/finding.js";
 import unknownApi from "../../src/checks/rules/unknown-api.js";
 import strictMaxVersionApi from "../../src/checks/rules/strict-max-version-api.js";
 import strictMinVersionApi from "../../src/checks/rules/strict-min-version-api.js";
@@ -71,13 +73,21 @@ const jsCtx = (code, manifest = {}) => ({
 // ctx whose addon.files is a path->content map (for the file-level bundled /
 // obfuscated checks, which read raw file bytes rather than parsed sources). The
 // vendored set is resolved deterministically, as the pipeline does once up front.
-const filesCtx = (files) => {
+const filesCtx = (files, { libs = [] } = {}) => {
   const addon = {
     files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
   };
   const manifest = parseVendorManifest(addon);
   addon.vendor = { set: new Set(manifest.map((e) => e.path)), manifest };
-  return { addon };
+  // `libs`: file keys whose raw hash is registered as a known library, so the
+  // hash-based classifier tags them `library` (and names them).
+  const libraryHashes = new Map(
+    libs.map((f) => [
+      rawSha256(addon.files.get(f)),
+      { name: "demolib", version: "1.0.0" },
+    ])
+  );
+  return { addon, options: { libraryHashes } };
 };
 
 // Run a check with a fake ctx.note collector and return the recorded activity.
@@ -145,17 +155,23 @@ test("sync-xhr / debugger / async-onmessage skip non-authored code", () => {
     `debugger;\n` +
     `browser.runtime.onMessage.addListener(async (m) => {});\n`;
   const code = body + "var a = 1;\n".repeat(200); // >1KB so it is classified
-  const ctxFor = (file) => ({
+  const ctxFor = (file, lib = false) => ({
     jsSources: [{ file, code, lineOffset: 0 }],
     addon: { files: new Map([[file, Buffer.from(code)]]), manifest: {} },
-    options: {},
+    options: lib
+      ? {
+          libraryHashes: new Map([
+            [rawSha256(Buffer.from(code)), { name: "lib", version: "1" }],
+          ]),
+        }
+      : {},
   });
-  // ".min.js" -> classified a library -> all three checks skip it.
-  const lib = ctxFor("vendor/lib.min.js");
+  // A hash-identified library -> non-authored -> all three checks skip it.
+  const lib = ctxFor("vendor/lib.min.js", true);
   assert.equal(syncXhr.run(lib).length, 0);
   assert.equal(debuggerStatement.run(lib).length, 0);
   assert.equal(asyncOnMessage.run(lib).length, 0);
-  // The same code under an authored name is still flagged by each.
+  // The same code, not a known library, is still flagged by each.
   const app = ctxFor("src/app.js");
   assert.equal(syncXhr.run(app).length, 1);
   assert.equal(debuggerStatement.run(app).length, 1);
@@ -203,66 +219,73 @@ test("code-sanity flags an empty block, not an empty function body", () => {
 // findings are noise); the same code under an authored filename is.
 test("code-sanity skips non-authored code, lints authored code", () => {
   const redecl = "var a = 1;\n".repeat(200); // ~2KB, trips no-redeclare, short lines
-  const ctxFor = (file) => ({
+  const ctxFor = (file, lib = false) => ({
     jsSources: [{ file, code: redecl, lineOffset: 0 }],
     addon: { files: new Map([[file, Buffer.from(redecl)]]), manifest: {} },
-    options: {},
+    options: lib
+      ? {
+          libraryHashes: new Map([
+            [rawSha256(Buffer.from(redecl)), { name: "lib", version: "1" }],
+          ]),
+        }
+      : {},
   });
-  // ".min.js" name -> classified as a library -> skipped entirely.
-  assert.equal(codeSanity.run(ctxFor("vendor/lib.min.js")).length, 0);
+  // A hash-identified library -> non-authored -> skipped entirely.
+  assert.equal(codeSanity.run(ctxFor("vendor/lib.min.js", true)).length, 0);
   // Authored source of the same code is linted.
   assert.ok(codeSanity.run(ctxFor("src/app.js")).length > 0);
 });
 
 // ---- missing-library / obfuscated-code (shared bundled.js classifier) ----
-// missing-library flags JS that looks like a distributed library (UMD, *.min.js,
-// known name), skipping the developer's readable code and VENDOR.md-declared
-// files. A "/*!" license banner is NOT a signal (a preserved comment is a weak,
-// fragile proxy), so a banner-bearing file with no other signal is not flagged.
-test("missing-library flags library-looking JS, not readable/banner/VENDORed files", () => {
-  // *.min.js name alone is enough.
+// missing-library flags a bundled file whose CONTENT HASH matches a known library
+// release (`libs`), skipping the developer's own code and VENDOR.md-declared
+// files. A file the hash DB does not recognize - even a UMD-wrapper or a .min name
+// - is no longer a library (that is the heuristic the hash lookup replaced).
+test("missing-library flags hash-identified libraries, not undeclared/readable/VENDORed", () => {
+  const MIN = "a;".repeat(600);
+  // Hash match -> flagged.
   assert.equal(
-    missingLibrary.run(filesCtx({ "vendor/x.min.js": "a;".repeat(600) }))
-      .length,
+    missingLibrary.run(
+      filesCtx({ "vendor/x.min.js": MIN }, { libs: ["vendor/x.min.js"] })
+    ).length,
     1
   );
-  // A UMD wrapper (typeof exports + typeof define).
+  // A UMD wrapper NOT in the hash DB -> no longer a library.
   const umd =
     "(function () { if (typeof exports === 'object' && typeof define === 'function') {} })();\n".repeat(
       40
     );
-  assert.equal(missingLibrary.run(filesCtx({ "lib/umd.js": umd })).length, 1);
-  // A "/*!" banner alone is NO LONGER a library signal -> not flagged.
-  const banner =
-    "/*! demolib v1.0.0 | (c) Demo */\n" +
-    "export const lib = { run() { return 1; } };\n".repeat(40); // >1 KB
-  assert.equal(
-    missingLibrary.run(filesCtx({ "lib/demo.js": banner })).length,
-    0
-  );
-  // Readable code, no library signal -> not flagged.
+  assert.equal(missingLibrary.run(filesCtx({ "lib/umd.js": umd })).length, 0);
+  // Readable code -> not flagged.
   const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
   assert.equal(missingLibrary.run(filesCtx({ "bg.js": readable })).length, 0);
-  // A real library (*.min.js) declared in VENDOR.md -> skipped.
+  // A known library declared in VENDOR.md -> excluded before classification.
   const vendor =
     "vendor/x.min.js:\n - Version: 1.0\n - URL: https://unpkg.com/x@1.0.0/dist/x.min.js\n";
   assert.equal(
     missingLibrary.run(
-      filesCtx({ "VENDOR.md": vendor, "vendor/x.min.js": "a;".repeat(600) })
+      filesCtx(
+        { "VENDOR.md": vendor, "vendor/x.min.js": MIN },
+        { libs: ["vendor/x.min.js"] }
+      )
     ).length,
     0
   );
 });
 
-// minified-code flags minified (but not obfuscated) NON-library code; a
-// library-looking file is deferred to missing-library, obfuscated code to
-// obfuscated-code, and readable code is left alone.
+// minified-code flags minified (but not obfuscated) NON-library code; a file the
+// hash DB recognizes as a library is deferred to missing-library, obfuscated code
+// to obfuscated-code, and readable code is left alone.
 test("minified-code flags minified non-library JS only", () => {
   // Minified line geometry: one long, dense line.
   const minified = "var a=1;b=2;c=3;d=4;".repeat(100) + "\n";
   assert.equal(minifiedCode.run(filesCtx({ "bundle.js": minified })).length, 1);
-  // A minified file with a library name is missing-library's job, not this one.
-  assert.equal(minifiedCode.run(filesCtx({ "x.min.js": minified })).length, 0);
+  // The same bytes recognized as a known library -> missing-library's job.
+  assert.equal(
+    minifiedCode.run(filesCtx({ "x.min.js": minified }, { libs: ["x.min.js"] }))
+      .length,
+    0
+  );
   // Readable code -> not flagged.
   const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
   assert.equal(minifiedCode.run(filesCtx({ "bg.js": readable })).length, 0);
@@ -287,6 +310,43 @@ test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () =
   const both = "const _0xa1b2=1;".repeat(100) + "\n";
   assert.equal(obfuscatedCode.run(filesCtx({ "b.js": both })).length, 1);
   assert.equal(minifiedCode.run(filesCtx({ "b.js": both })).length, 0);
+});
+
+// vendor-vulnerable surfaces a vulnerability the OSV audit recorded for a
+// hash-IDENTIFIED (undeclared) library too - it reads addon.vendor.vulnerabilities
+// regardless of source. Such an entry carries an empty token (no declaration
+// line), so the finding has no line and anchors at the bundled file - even if the
+// file body happens to contain its own path. The OSV band still drives severity.
+test("vendor-vulnerable surfaces an identified-library vulnerability, file-anchored", () => {
+  const file = "vendor/jquery.min.js";
+  const ctx = {
+    addon: {
+      files: new Map([
+        // The path appears in a sourcemap comment - an empty token must still
+        // yield no line (the guard must not fall back to a substring match).
+        [file, Buffer.from(`var a=1;\n//# sourceMappingURL=${file}.map\n`)],
+      ]),
+      vendor: {
+        vulnerabilities: [
+          {
+            name: "jquery",
+            version: "1.7.2",
+            ids: ["CVE-2020-11022"],
+            severity: "high",
+            fixed: ["3.5.0"],
+            file,
+            token: "", // no declaration line for an identified library
+          },
+        ],
+      },
+    },
+  };
+  const out = vendorVulnerable.run(ctx);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].file, file);
+  assert.equal(out[0].item, "jquery");
+  assert.ok(!out[0].loc); // no declaration line - anchored at the file
+  assert.equal(out[0].severity, SEVERITY.ERROR); // high band -> error
 });
 
 // ---- api-coverage (static-analysis self-report) ----
@@ -1364,7 +1424,7 @@ test("minimize-host-permissions notes broad (fail) and scoped (pass) hosts", () 
 });
 
 test("missing-library / obfuscated-code note a verdict per classified file", () => {
-  // A UMD wrapper marks lib.js a library (a "/*!" banner no longer does).
+  // A hash match marks lib.js a library (the UMD/.min heuristic no longer does).
   const lib =
     "(function () { if (typeof exports === 'object' && typeof define === 'function') {} })();\n".repeat(
       40
@@ -1372,14 +1432,14 @@ test("missing-library / obfuscated-code note a verdict per classified file", () 
   const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
   const libNotes = notesFrom(
     missingLibrary,
-    filesCtx({ "lib.js": lib, "app.js": readable })
+    filesCtx({ "lib.js": lib, "app.js": readable }, { libs: ["lib.js"] })
   );
   assert.equal(libNotes.find((n) => n.file === "lib.js").verdict, "fail");
   assert.equal(libNotes.find((n) => n.file === "app.js").verdict, "pass");
   // obfuscated-code defers libraries to missing-library, so it notes only app.js.
   const obfNotes = notesFrom(
     obfuscatedCode,
-    filesCtx({ "lib.js": lib, "app.js": readable })
+    filesCtx({ "lib.js": lib, "app.js": readable }, { libs: ["lib.js"] })
   );
   assert.deepEqual(
     obfNotes.map((n) => n.file),

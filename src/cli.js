@@ -39,6 +39,7 @@ import {
   VALID_CHANNELS,
   DEFAULT_CACHE,
   EXPERIMENTS_CACHE,
+  LIBRARY_HASHES_CACHE,
   MAX_LLM_REQUESTS_PER_RUN,
 } from "./config.js";
 import {
@@ -219,6 +220,18 @@ export function helpText() {
       "Re-download the schema even if a cached copy exists.",
     ],
     [
+      "--library-hashes <path>",
+      "Use a local known-library hashes.txt instead of fetching it (offline runs).",
+    ],
+    [
+      "--library-hashes-cache <dir>",
+      `Where the fetched library hashes are cached (default: ${LIBRARY_HASHES_CACHE}).`,
+    ],
+    [
+      "--library-hashes-refresh",
+      "Re-download the library hashes even if a cached copy exists.",
+    ],
+    [
       "--experiments-zip <path>",
       "Use a local allowed-experiments repo (zip or directory) instead of downloading.",
     ],
@@ -256,7 +269,7 @@ export function helpText() {
     ["--llm-list-models", "List the models your token can use, then exit."],
     [
       "--llm-review",
-      "Shorthand for --llm-enabled --full-summary: run the AI add-on review in one flag (needs a Claude API key).",
+      "Shorthand for --llm-enabled --full-summary: run an extended AI add-on review.",
     ],
   ];
 
@@ -266,16 +279,20 @@ export function helpText() {
       "Accept add-ons that use Experiment APIs (off by default).",
     ],
     [
+      "--scan-minified",
+      "Review minified/built code: treat a minified (unidentified) bundle as authored and run all checks on it. Hash-identified libraries, obfuscated code, and VENDOR-declared files stay excluded. Off by default.",
+    ],
+    [
       "--diff-to <xpi|folder>",
       "Previously published version, to diff against.",
     ],
     [
       "--diff-summary",
-      "Adds an AI Summary of the changes between the current and last version (needs --diff-to and a Claude API key).",
+      "Adds an AI Summary of the changes between the current and last version (needs --diff-to and an LLM configuration, see README.md).",
     ],
     [
       "--full-summary",
-      "Add an AI Summary of the full add-on, what the add-on does, with security notes and a permission review (needs a Claude API key).",
+      "Add an AI Summary of the full add-on, what the add-on does, with security notes and a permission review (needs an LLM configuration, see README.md).",
     ],
     [
       "--self-assessment-summary",
@@ -328,6 +345,9 @@ const OPTIONS = {
   "schema-zip": { type: "string" },
   "schema-cache": { type: "string" },
   "schema-force-refresh": { type: "boolean" },
+  "library-hashes": { type: "string" },
+  "library-hashes-cache": { type: "string" },
+  "library-hashes-refresh": { type: "boolean" },
   "experiments-zip": { type: "string" },
   "experiments-cache": { type: "string" },
   "experiments-force-refresh": { type: "boolean" },
@@ -335,6 +355,7 @@ const OPTIONS = {
   "checks-skip": { type: "string" },
   eslint: { type: "boolean" },
   "allow-experiments": { type: "boolean" },
+  "scan-minified": { type: "boolean" },
   "diff-to": { type: "string" },
   "diff-summary": { type: "boolean" },
   "full-summary": { type: "boolean" },
@@ -567,6 +588,9 @@ function pipelineOptsFromValues(values) {
     schemaZip: values["schema-zip"],
     schemaCache: values["schema-cache"] || DEFAULT_CACHE,
     schemaForceRefresh: values["schema-force-refresh"],
+    libraryHashes: values["library-hashes"],
+    libraryHashesCache: values["library-hashes-cache"] || LIBRARY_HASHES_CACHE,
+    libraryHashesForceRefresh: values["library-hashes-refresh"],
     experimentsZip: values["experiments-zip"],
     experimentsCache: values["experiments-cache"] || EXPERIMENTS_CACHE,
     experimentsForceRefresh: values["experiments-force-refresh"],
@@ -574,6 +598,7 @@ function pipelineOptsFromValues(values) {
     checksSkip: splitList(values["checks-skip"]),
     eslint: values.eslint,
     allowExperiments: values["allow-experiments"],
+    scanMinified: values["scan-minified"],
     diffTo: values["diff-to"],
     diffSummary: values["diff-summary"],
     fullSummary: values["full-summary"],

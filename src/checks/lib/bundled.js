@@ -1,21 +1,21 @@
-// Shared, hash-free heuristics for the missing-library, minified-code and obfuscated-code
-// checks. Without a library-hash database these cannot identify a specific
-// library or verify a version - they only classify each JS or CSS file by
-// surface signals (a vendored bootstrap.min.css is a library just as a bundled
-// jquery.min.js is). A file is examined once and tagged
-// { library, minified, obfuscated }.
+// Classifies each JS or CSS file once into { library, minified, obfuscated } for
+// the missing-library, minified-code and obfuscated-code checks. `library` is a
+// TRUE content-hash match against the known-library database (a file whose raw
+// sha256 is a known release is the library, identified by name@version - see
+// src/checks/lib/library-hashes.js). `minified` and `obfuscated` are byte/geometry
+// heuristics.
 //
-// The classification is byte-geometry sensitive (the minification heuristic
-// keys off line length), so it is resolved ONCE up front - before the normalizer
-// reformats files - by the pipeline into addon.bundled (classifyBundled), the
-// same "compute once, checks read it" pattern as addon.vendor. Were it computed
-// during the review, build/lint mode (which pretty-prints first) would see an
-// undeclared minified library as authored source and miss it.
+// The classification is byte-geometry sensitive (the minification heuristic keys
+// off line length) and the library hash is of the raw bytes, so it is resolved
+// ONCE up front - before the normalizer reformats files - by the pipeline into
+// addon.bundled (classifyBundled), the same "compute once, checks read it" pattern
+// as addon.vendor. Were it computed during the review, build/lint mode (which
+// pretty-prints first) would change the bytes and miss both.
 //
 // Belongs here: classifyBundled (the one-shot classification + non-authored skip
-// set) and the per-file surface-signal tagging it uses. classifyAddonJs /
-// nonAuthoredJs are thin readers of the memoized store. A planned hash-DB
-// replacement is tracked in assets/todo - do not edit assets/todo.
+// set) and the per-file tagging it uses. classifyAddonJs / nonAuthoredJs are thin
+// readers of the memoized store. The known-library hash DB itself is fetched and
+// parsed in src/checks/lib/library-hashes.js.
 //
 // Does NOT belong here: the rule verdicts and findings - those live in the
 // missing-library, minified-code and obfuscated-code rules under src/checks/rules/*. Resolving
@@ -25,20 +25,20 @@
 import { extname, JS_EXTENSIONS, CSS_EXTENSIONS } from "../../util/files.js";
 import { isVendored } from "../../vendor/resolve.js";
 import { parseJs, traverse } from "../../parse/ast.js";
+import { rawSha256 } from "../../normalize/hash.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../addon/load.js").Addon} Addon */
+/** @typedef {{name: string, version: string}} LibraryId */
 /** @typedef {{file: string, library: boolean, minified: boolean,
- *   obfuscated: boolean}} BundleTag */
+ *   obfuscated: boolean, libraryId?: LibraryId}} BundleTag  `library` is set by a
+ *   content-hash match against the known-library database; `libraryId` names the
+ *   matched release (for the missing-library finding). */
 /** @typedef {{classified: BundleTag[], nonAuthored: Set<string>}} Bundled */
 
-// Known third-party library filename stems (a strong "this is a library" hint).
-const LIB_NAME =
-  /(^|\/)(jquery|angular|react|react-dom|vue|lodash|underscore|backbone|moment|bootstrap|d3|zepto|axios|preact|three|chart|ical)[.\-]/i;
-
 /**
- * Classify the add-on's JS and CSS once: per-file surface-signal tags plus the
- * not-the-developer's-source skip set. Pure and addon-keyed, so the pipeline can
+ * Classify the add-on's JS and CSS once: per-file library/minified/obfuscated tags
+ * plus the not-the-developer's-source skip set. Pure and addon-keyed, so the pipeline can
  * run it before normalize. The result is stored on addon.bundled.
  *
  * `nonAuthored` is the VENDOR.md-declared third-party files plus any JS or CSS
@@ -51,16 +51,27 @@ const LIB_NAME =
  * default), since dropping their loader edges would wrongly orphan what they
  * load.
  *
- * TODO: replace this surface-signal heuristic with a hash-based allow/block
- * list - identify known libraries by content hash to skip, and flag known-bad
- * or vulnerable versions by hash - instead of guessing library/minified/
- * obfuscated. See the dispensary hashes.txt / libraries.json approach in
- * assets/todo.
+ * The `library` tag is a content-hash match (libraryHashes); the matched release
+ * is named on tag.libraryId, which missing-library surfaces and which
+ * auditIdentifiedLibraries (src/vendor/verify.js) OSV-audits so an undeclared
+ * vulnerable bundle is caught. TODO: extend the same hashing to recognize
+ * minified/obfuscated bundles.
  *
  * @param {Addon} addon
+ * @param {{scanMinified?: boolean, libraryHashes?: Map<string, LibraryId>}} [opts]
+ *   libraryHashes: the known-library `sha256 -> {name, version}` map - a file whose
+ *   raw hash is a key is tagged `library` (and identified). Empty map = nothing
+ *   recognized. scanMinified (--scan-minified): treat a minified-by-geometry file
+ *   (an unidentifiable webpack/tsc bundle) as authored so every source-level check
+ *   reviews it. A hash-identified library is real third-party code, so it - like the
+ *   obfuscated tag and VENDOR.md-declared / experiment-trusted files - stays
+ *   non-authored. Off by default.
  * @returns {Bundled}
  */
-export function classifyBundled(addon) {
+export function classifyBundled(
+  addon,
+  { scanMinified = false, libraryHashes = new Map() } = {}
+) {
   const classified = [];
   // Files of a recognised allowed Experiment (pristine or modified) are
   // upstream-derived, not the developer's - the byte-match IS their review, so
@@ -81,11 +92,17 @@ export function classifyBundled(addon) {
     if ((!JS_EXTENSIONS.has(ext) && !CSS_EXTENSIONS.has(ext)) || vend) {
       continue;
     }
-    const text = buf.toString("utf8");
-    if (text.length < 1024) {
-      continue; // too small to be a bundled library or a worrying blob.
+    if (buf.length < 1024) {
+      continue; // too small (by bytes, as hashed) to be a library or worrying blob.
     }
-    const tag = { file, ...classify(text, file) };
+    const text = buf.toString("utf8");
+    // The library tag is a true content-hash match against the known-library DB;
+    // a hit also names the matched release (libraryId) for missing-library.
+    const libraryId = libraryHashes.get(rawSha256(buf));
+    const tag = { file, library: Boolean(libraryId), ...classify(text, file) };
+    if (libraryId) {
+      tag.libraryId = libraryId;
+    }
     // classify()'s obfuscation signal is byte-based and so comment/string-blind -
     // `eval(` or `fromCharCode` in a comment trips it. For an authored-candidate
     // JS file (not already library/minified, which are non-authored regardless)
@@ -96,6 +113,17 @@ export function classifyBundled(addon) {
       if (astVerdict !== null) {
         tag.obfuscated = astVerdict;
       }
+    }
+    // --scan-minified: clear the minified tag so a merely-minified file (a
+    // webpack/tsc bundle we can't identify) is treated as authored - it leaves the
+    // non-authored set (scanned by every check) and minified-code stays silent. The
+    // library tag is NOT cleared: a hash match is a real, named third-party library
+    // (vendored-family), so it stays excluded and still drives missing-library /
+    // vendor-vulnerable, exactly like a VENDOR.md-declared copy. Done AFTER the
+    // obfuscation gate above, so a multi-MB bundle is still not AST-parsed here;
+    // the obfuscated tag is likewise untouched (it stays excluded).
+    if (scanMinified) {
+      tag.minified = false;
     }
     classified.push(tag);
     if (tag.library || tag.minified || tag.obfuscated) {
@@ -113,11 +141,14 @@ export function classifyBundled(addon) {
  * @returns {Bundled}
  */
 function getBundled(ctx) {
-  return (ctx.addon.bundled ??= classifyBundled(ctx.addon));
+  return (ctx.addon.bundled ??= classifyBundled(ctx.addon, {
+    scanMinified: ctx.options?.scanMinified,
+    libraryHashes: ctx.options?.libraryHashes,
+  }));
 }
 
 /**
- * Per-file surface-signal tags for the add-on's JS (see classifyBundled).
+ * Per-file library/minified/obfuscated tags for the add-on's JS (see classifyBundled).
  * @param {RunContext} ctx
  * @returns {BundleTag[]}
  */
@@ -135,31 +166,18 @@ export function nonAuthoredJs(ctx) {
 }
 
 /**
- * The content signal for one file: whether it looks like a distributed third-party
- * library, is minified, or is obfuscated. Pure (bytes + filename only), so the
- * VENDOR parser reuses it to tell a vendored library from the add-on's own code.
+ * The CONTENT signal for one file: whether it is minified (line geometry) or
+ * obfuscated (JS packer signatures). Library detection is NOT here - it is a true
+ * content-hash match against the known-library database, done in classifyBundled.
+ * Pure (bytes + filename only).
  * @param {string} text
  * @param {string} file
- * @returns {{library: boolean, minified: boolean, obfuscated: boolean}}
+ * @returns {{minified: boolean, obfuscated: boolean}}
  */
 export function classify(text, file) {
-  // The UMD-wrapper and obfuscation signals below are JS-only - a stylesheet has
-  // no module wrapper and is never "obfuscated" in the packer sense - so gate
-  // them. The name (.min.*, library stem) and geometry signals apply to JS and
-  // CSS alike (a vendored bootstrap.min.css trips them just as jquery does).
+  // Obfuscation is JS-only (a stylesheet is never "obfuscated" in the packer
+  // sense); minified geometry applies to JS and CSS alike.
   const isJs = JS_EXTENSIONS.has(extname(file));
-
-  // No "/*!" license-banner signal: a preserved comment is a weak, fragile proxy -
-  // it missed real banners not at byte 0 (`;/*!`, `@charset"…";\n/*!`) and tripped
-  // on a developer's own "/*!" - so a bundled library is recognized only by its
-  // distribution name, a known stem, a UMD wrapper, or minified geometry (plus the
-  // authoritative VENDOR.md declaration, isVendored in classifyBundled). A library
-  // the strong signals miss is scanned; the resulting finding prompts the developer
-  // to declare it.
-  const library =
-    /\.min\.(?:js|css)$/i.test(file) ||
-    LIB_NAME.test(file) ||
-    (isJs && /\btypeof exports\b/.test(text) && /\btypeof define\b/.test(text)); // UMD
 
   // Minified line geometry: at least one very long line, dense on average.
   const lines = text.split("\n");
@@ -175,7 +193,7 @@ export function classify(text, file) {
     (/\batob\s*\(/.test(text) || /String\.fromCharCode/.test(text));
   const obfuscated = hexNames >= 5 || packed;
 
-  return { library, minified, obfuscated };
+  return { minified, obfuscated };
 }
 
 // Identifiers that denote the global object, so window.eval / globalThis.Function

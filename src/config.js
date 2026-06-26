@@ -28,6 +28,18 @@ export const EXPERIMENTS_BRANCH = "main";
 export const EXPERIMENTS_CACHE = ".experiments-cache";
 
 /**
+ * The upstream known-library hash database: Mozilla dispensary's generated
+ * hashes.txt (one "<sha256> <name>.<version>.<file>" line per library release).
+ * Fetched and cached so the library classifier can identify a bundled library by
+ * the raw SHA-256 of its bytes. See src/checks/lib/library-hashes.js.
+ */
+export const LIBRARY_HASHES_URL =
+  "https://raw.githubusercontent.com/mozilla/dispensary/master/src/hashes.txt";
+
+/** Directory where the fetched library hashes are cached (--library-hashes-cache). */
+export const LIBRARY_HASHES_CACHE = ".library-hashes-cache";
+
+/**
  * Default model per LLM_API_TYPE when LLM_API_MODEL is not set.
  * DEFAULT_MODEL_CLAUDE is the claude (Anthropic) default. DEFAULT_MODEL_OPENAI
  * is the chatgpt (OpenAI) one (gpt-4.1 for its 1M-token context, since add-ons

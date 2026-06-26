@@ -12,11 +12,28 @@ import {
   detectObfuscationAst,
 } from "../../src/checks/lib/bundled.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
+import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
+import { rawSha256 } from "../../src/normalize/hash.js";
+
+// Build a known-library hash map from file keys, so the classifier tags those
+// files `library` (a true content-hash match, the mechanism that replaced the
+// name/UMD heuristic).
+const libHashes = (addon, ...keys) =>
+  new Map(
+    keys.map((k) => [
+      rawSha256(addon.files.get(k)),
+      { name: "demolib", version: "1.0.0" },
+    ])
+  );
 
 // One long, dense line (no newline): minified by geometry, not by name, so it
 // exercises the heuristic rather than the ".min.js" / library-name shortcut.
 const MINIFIED = `var data=[${"1,".repeat(700)}1];`;
+// javascript-obfuscator "_0x" identifiers in bulk -> obfuscated, not minified.
+const OBFUSCATED =
+  "const _0xa1b2=1;\nconst _0xc3d4=2;\nconst _0xe5f6=3;\n" +
+  "const _0x7890=4;\nconst _0xabcd=5;\n".repeat(40);
 // Readable, multi-line, still >= 1024 bytes so it is classified (not skipped):
 // short lines, low density -> NOT minified. This is what prettier would produce.
 const PRETTY = "const x = 1;\n".repeat(120);
@@ -35,6 +52,56 @@ test("classifyBundled flags an undeclared minified-by-geometry file", () => {
     [true, false, false]
   );
   assert.ok(nonAuthored.has("lib/blob.js"));
+});
+
+// --scan-minified treats ONLY a minified-by-geometry file (an unidentifiable
+// webpack/tsc bundle) as authored: it leaves the non-authored set and minified-code
+// goes silent. A hash-identified library is real third-party code (vendored-family),
+// so it stays excluded and still drives missing-library regardless of the flag.
+// Obfuscated and VENDOR-declared files likewise stay excluded.
+test("scanMinified scans a minified non-library, but keeps identified libraries excluded", () => {
+  const LIB_JS = `${MINIFIED}\n//jq`; // minified geometry + distinct bytes
+  const addon = addonWith({
+    "blob.js": MINIFIED, // minified by geometry, not a known library
+    "jquery.min.js": LIB_JS, // a known library (hash match below)
+    "packed.js": OBFUSCATED, // obfuscated
+    "vendor/dep.min.js": MINIFIED, // VENDOR.md-declared (authoritative)
+  });
+  // VENDOR.md declaration is authoritative, not a heuristic, so it must stay
+  // excluded even under --scan-minified.
+  addon.vendor = { set: new Set(["vendor/dep.min.js"]) };
+  const { classified, nonAuthored } = classifyBundled(addon, {
+    scanMinified: true,
+    libraryHashes: libHashes(addon, "jquery.min.js"),
+  });
+  const tag = (f) => classified.find((c) => c.file === f);
+  // The minified non-library is now authored (scanned), its minified tag cleared.
+  assert.equal(tag("blob.js").minified, false);
+  assert.ok(!nonAuthored.has("blob.js"));
+  // The identified library KEEPS its tag + identity and stays non-authored.
+  assert.equal(tag("jquery.min.js").library, true);
+  assert.deepEqual(tag("jquery.min.js").libraryId, {
+    name: "demolib",
+    version: "1.0.0",
+  });
+  assert.ok(nonAuthored.has("jquery.min.js"));
+  // Obfuscated and VENDOR-declared files stay non-authored regardless of the flag.
+  assert.equal(tag("packed.js").obfuscated, true);
+  assert.ok(nonAuthored.has("packed.js"));
+  assert.ok(nonAuthored.has("vendor/dep.min.js"));
+
+  // The bundled checks read the tags: minified-code goes silent, but the identified
+  // library still drives missing-library, and obfuscated-code still fires.
+  const ctx = { addon: { ...addon, bundled: { classified, nonAuthored } } };
+  assert.equal(minifiedCode.run(ctx).length, 0);
+  assert.deepEqual(
+    missingLibrary.run(ctx).map((f) => f.file),
+    ["jquery.min.js"]
+  );
+  assert.deepEqual(
+    obfuscatedCode.run(ctx).map((f) => f.file),
+    ["packed.js"]
+  );
 });
 
 // The obfuscation signal is read off the parsed AST, not raw bytes, so a comment
@@ -94,57 +161,60 @@ test("the classification is memoized: readers share one computation", () => {
   assert.strictEqual(classifyAddonJs(ctx), classifyAddonJs(ctx));
 });
 
-// A vendored CSS distribution: recognized by its name (.min.css + "bootstrap"
-// stem) and a "/*!" banner, exactly like a bundled JS library. >= 1024 bytes so
-// it is classified, not skipped.
+// A vendored CSS distribution: recognized as a library by a CONTENT-HASH match,
+// exactly like a bundled JS library (CSS releases are in the hash DB too). >= 1024
+// bytes so it is classified, not skipped.
 const LIB_CSS = `/*! Bootstrap v5 */\n${".navbar{display:flex}".repeat(80)}`;
-// Minified-by-geometry CSS under a plain name (no .min. / library / banner
-// signal): one long, dense line -> minified, but NOT a recognized library.
+// Minified-by-geometry CSS NOT in the hash DB: one long, dense line -> minified,
+// but NOT a recognized library.
 const MINIFIED_CSS = `.x{color:#fff}${".y{margin:0}".repeat(120)}`;
 
 test("classifyBundled tags an undeclared vendored CSS as a library", () => {
   const file = "vendor/bootstrap/bootstrap.min.css";
-  const { classified, nonAuthored } = classifyBundled(
-    addonWith({ [file]: LIB_CSS })
-  );
+  const addon = addonWith({ [file]: LIB_CSS });
+  const { classified, nonAuthored } = classifyBundled(addon, {
+    libraryHashes: libHashes(addon, file),
+  });
   const tag = classified.find((c) => c.file === file);
   assert.equal(tag.library, true);
+  assert.deepEqual(tag.libraryId, { name: "demolib", version: "1.0.0" }); // named
   assert.equal(tag.obfuscated, false); // obfuscation is a JS-only concept
   assert.ok(nonAuthored.has(file)); // joins the non-authored skip set
 });
 
 test("missing-library reports an undeclared vendored CSS file", () => {
   const file = "vendor/bootstrap/bootstrap.min.css";
-  const flagged = missingLibrary
-    .run({ addon: addonWith({ [file]: LIB_CSS }) })
-    .map((f) => f.file);
-  assert.deepEqual(flagged, [file]);
+  const addon = addonWith({ [file]: LIB_CSS });
+  addon.bundled = classifyBundled(addon, {
+    libraryHashes: libHashes(addon, file),
+  });
+  const findings = missingLibrary.run({ addon });
+  assert.deepEqual(
+    findings.map((f) => f.file),
+    [file]
+  );
+  assert.equal(findings[0].item, "demolib 1.0.0"); // names the library@version
 });
 
-// A "/*!" license banner is NOT a library signal (it was a weak, fragile proxy -
-// it both missed real banners and tripped on a developer's own "/*!"). A bundled
-// library is recognized by its .min name / known stem / UMD wrapper / minified
-// geometry / VENDOR.md declaration instead; a banner-bearing file with none of
-// those is the developer's own code (scanned, not skipped).
-test("a /*! banner alone does not classify a file as a library", () => {
-  const banner = (file, body) =>
-    classifyBundled(addonWith({ [file]: body })).classified.find(
-      (c) => c.file === file
-    )?.library;
-  // Neither a mid-file nor a leading "/*!" makes a plain-named file a library.
+// `library` is a true content-hash match - NOT a .min name, a known stem, a UMD
+// wrapper, or a "/*!" banner (the heuristics the hash lookup replaced). The same
+// bytes are a library only when their hash is in the known-library DB.
+test("library is a content-hash match, not a .min name or banner", () => {
+  const tagOf = (file, body, known = false) => {
+    const addon = addonWith({ [file]: body });
+    return classifyBundled(addon, {
+      libraryHashes: known ? libHashes(addon, file) : new Map(),
+    }).classified.find((c) => c.file === file)?.library;
+  };
+  const minCss = `/*! lib */\n${".x{a:1}".repeat(200)}`;
+  // A .min name or a banner whose hash is NOT in the DB -> not a library.
+  assert.equal(tagOf("vendor/x.min.css", minCss), false);
   assert.equal(
-    banner("css/reports.css", `.mainDiv{color:#fff}\n/*! note */\n`.repeat(60)),
+    tagOf("css/app.css", `/*! Bootstrap v5 */\n${".x{a:1}".repeat(200)}`),
     false
   );
-  assert.equal(
-    banner("css/app.css", `/*! Bootstrap v5 */\n${".x{a:1}".repeat(200)}`),
-    false
-  );
-  // The strong signals still classify: a .min name (banner or not).
-  assert.equal(
-    banner("vendor/x.min.css", `/*! lib */\n${".x{a:1}".repeat(200)}`),
-    true
-  );
+  // The same .min file, its hash now in the DB -> a library.
+  assert.equal(tagOf("vendor/x.min.css", minCss, true), true);
 });
 
 test("a minified-by-geometry CSS is minified but not a library or obfuscated", () => {

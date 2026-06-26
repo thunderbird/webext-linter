@@ -247,6 +247,14 @@ test("--self-assessment-summary forwards the config without enabling the checks"
   }
 });
 
+// --scan-minified flows through to the scanMinified pipeline opt (the classifier
+// reads it to treat a minified-by-geometry, non-library file as authored). Off
+// without the flag.
+test("--scan-minified maps to the scanMinified opt", () => {
+  assert.equal(pipelineOptsFromArgv(["--scan-minified"]).scanMinified, true);
+  assert.ok(!pipelineOptsFromArgv([]).scanMinified);
+});
+
 // --llm-review is a convenience alias expanded at parse time into --llm-enabled
 // and --full-summary, so both opts come on together and nothing downstream needs to
 // know about the alias. Without it, both stay off.

@@ -7,7 +7,7 @@
 // Real submissions write this file in many styles, so the parser scans sequentially.
 // It pairs a packaged file with its own source URL (a URL that points to a file; a
 // bare repository link is not a source), TRUSTING the declaration: any packaged file
-// paired with a source URL is vendored, whether or not the library heuristic
+// paired with a source URL is vendored, whether or not the library classifier
 // recognizes it (so a small readable module is not lost). A declaration flushes as
 // soon as a new token (or a second URL) follows a complete one, so an unindented list
 // with no blank lines still splits per declaration - in either order (file->source or
@@ -237,7 +237,7 @@ function splitBlocks(text) {
  * Scan the VENDOR file into one record per declaration: a packaged file (the path)
  * paired with its own source URL - a URL that points to a file (a bare repository
  * link is ignored). We trust the developer's declaration: ANY packaged file paired
- * with a source URL is vendored, whether or not the library heuristic recognizes it
+ * with a source URL is vendored, whether or not the library classifier recognizes it
  * (so a small readable module like `i18n.mjs` is not lost). A declaration whose only
  * file-like token is ABSENT yields a missing record (path null).
  *

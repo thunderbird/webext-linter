@@ -33,9 +33,13 @@ import { createLlmClient } from "./checks/llm-client.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
 import { headerLines } from "./report/format.js";
 import { resolveVendor } from "./vendor/resolve.js";
-import { verifyVendor } from "./vendor/verify.js";
+import { verifyVendor, auditIdentifiedLibraries } from "./vendor/verify.js";
 import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
 import { classifyBundled } from "./checks/lib/bundled.js";
+import {
+  resolveLibraryHashes,
+  parseLibraryHashes,
+} from "./checks/lib/library-hashes.js";
 import { getPermissionAnalysis } from "./checks/lib/permissions.js";
 import { collapseUnused } from "./checks/lib/unused-folders.js";
 import { isExperiment } from "./checks/lib/util.js";
@@ -78,6 +82,14 @@ import {
  * @property {boolean} [eslint]  Run the opt-in ESLint code-sanity check (off by
  *   default); when unset, the code-sanity check is skipped entirely.
  * @property {boolean} [allowExperiments]
+ * @property {boolean} [scanMinified]  Review minified/built code: treat a
+ *   minified-by-geometry file (an unidentifiable webpack/tsc bundle) as authored so
+ *   every source-level check scans it. Hash-identified libraries, obfuscated code,
+ *   and VENDOR-declared/experiment files stay excluded. Off by default.
+ * @property {string} [libraryHashes]  Local known-library hashes.txt to use
+ *   instead of fetching (offline/CI/tests; the golden harness injects a fixture).
+ * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
+ * @property {boolean} [libraryHashesForceRefresh]  Re-fetch the library hashes.
  * @property {string} [diffTo]  Path to the previous published version.
  * @property {boolean} [diffSummary]  Add an LLM "Summary of changes" section.
  * @property {boolean} [fullSummary]  Add an LLM "Summary of add-on" section.
@@ -185,7 +197,7 @@ export async function runPipeline(opts) {
   // Activity counting its checks before the loop, the total is known here: the
   // vendor step is skipped for a rejected Experiment, so it is one fewer then. A
   // no-op when progress is off (JSON, the golden harness).
-  const setupTotal = (invalidExperiment ? 3 : 4) + (opts.llmEnabled ? 1 : 0);
+  const setupTotal = (invalidExperiment ? 3 : 6) + (opts.llmEnabled ? 1 : 0);
   let setupDone = 0;
   /**
    * Emit the next numbered "Setup" feed line.
@@ -221,6 +233,11 @@ export async function runPipeline(opts) {
     }
   }
 
+  // The known-library hash DB the bundled classifier matches files against. Stays
+  // an empty Map for a rejected Experiment (the block below, which classifies, is
+  // skipped) so nothing is ever recognized.
+  let libraryHashes = new Map();
+
   if (!invalidExperiment) {
     setupStep("Verifying vendored libraries");
     // 1b. Resolve the vendored declarations ONCE, before the review, so the
@@ -254,10 +271,32 @@ export async function runPipeline(opts) {
       budget: llmBudget,
     });
 
-    // 1d. Classify the bundled (undeclared third-party) JS ONCE into
+    // 1d. Resolve + parse the known-library hash DB (fetch+cache, or the
+    // --library-hashes local override; the golden harness injects a fixture so
+    // offline runs are deterministic), so the classifier can identify a bundled
+    // library by the raw hash of its bytes.
+    setupStep("Fetching library hashes");
+    const { text: libraryHashesText } = await resolveLibraryHashes({
+      source: opts.libraryHashes,
+      cacheDir: opts.libraryHashesCache,
+      refresh: opts.libraryHashesForceRefresh,
+    });
+    libraryHashes = parseLibraryHashes(libraryHashesText);
+
+    // 1e. Classify the bundled (undeclared third-party) JS ONCE into
     // addon.bundled, read by the bundled checks (computed once, never
     // recomputed). Runs after verifyVendor so the vendored skip set is final.
-    addon.bundled = classifyBundled(addon);
+    addon.bundled = classifyBundled(addon, {
+      scanMinified: opts.scanMinified,
+      libraryHashes,
+    });
+
+    // 1f. OSV-audit the hash-identified (but undeclared) libraries, so an
+    // undeclared vulnerable bundle is caught like a declared dependency. Runs
+    // after classifyBundled (libraryIds exist only then) and reuses verifyVendor's
+    // OSV transport + the shared vulnerabilities store; best-effort, skips offline.
+    setupStep("Auditing bundled libraries");
+    await auditIdentifiedLibraries(addon, opts.vendorNet);
   }
 
   // 2. Schema review. reviewAddon also generates the advisory AI summaries at
@@ -269,7 +308,8 @@ export async function runPipeline(opts) {
     registry,
     invalidExperiment,
     llmBudget,
-    setupStep
+    setupStep,
+    libraryHashes
   );
   findings.push(...result.findings);
   Object.assign(meta, result.meta);
@@ -465,6 +505,10 @@ async function generateSelfAssessment(
  * @param {import("../llm/budget.js").LlmBudget} [budget]
  * @param {(label: string) => void} [setupStep]  Emits the next numbered "Setup"
  *   feed line; supplied by runPipeline, which owns the section's running count.
+ * @param {Map<string, {name: string, version: string}>} [libraryHashes]  The
+ *   known-library hash DB runPipeline resolved, carried onto ctx.options so the
+ *   lazy getBundled path matches the pre-step's classification (real runs use the
+ *   memoized addon.bundled, so this is only the no-pre-step fallback).
  * @returns {Promise<{findings: Finding[], meta: ReviewMeta,
  *   ctx: import("./checks/registry.js").RunContext}>}
  */
@@ -474,7 +518,8 @@ async function reviewAddon(
   registry,
   invalidExperiment,
   budget,
-  setupStep = () => {}
+  setupStep = () => {},
+  libraryHashes = new Map()
 ) {
   const {
     schemaChannel = DEFAULT_CHANNEL,
@@ -489,6 +534,7 @@ async function reviewAddon(
     llmApiUrl,
     llmApiType,
     allowExperiments,
+    scanMinified,
     diffTo,
     fullSummary,
     diffSummary,
@@ -521,7 +567,15 @@ async function reviewAddon(
   const ctx = buildRunContext({
     addon,
     schema,
-    options: { llmEnabled, llmApiKey, llmApiUrl, llmApiType, allowExperiments },
+    options: {
+      llmEnabled,
+      llmApiKey,
+      llmApiUrl,
+      llmApiType,
+      allowExperiments,
+      scanMinified,
+      libraryHashes,
+    },
     diffTo,
     llmModel: opts.llmModel,
     systemIntro: registry.prompt("system-intro"),

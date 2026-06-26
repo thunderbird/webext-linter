@@ -190,25 +190,26 @@ test("buildAddonText lists declared permissions split by kind", () => {
   );
 });
 
-// Prompt-only library net: a file that looks like a vendored library even when
-// classify() did not catch it (a leading "/*!" license banner, or a top-level
-// vendor/ dir) is trimmed from the model input - while a developer's MID-file
-// "/*!" (the C2 CSS case) is kept, since the anchor requires it at the start.
-test("buildAddonText drops a leading-/*! or vendor/ file, keeps a mid-file /*!", () => {
+// The model payload trims exactly the non-authored set (nonAuthoredJs) - the same
+// "vendored/bundled" set every other check uses, with no extra prompt-only filter.
+// A library the classifier does NOT catch (an undeclared, non-minified ESM lib) is
+// therefore sent to the model, not trimmed; only a classifier-recognized bundle is
+// dropped.
+test("buildAddonText trims only the non-authored set (undetected libs included)", () => {
   const ctx = {
     addon: addon({
       "manifest.json": MV1,
       "background.js": "console.log('bg');",
+      // Short readable ESM, not in the hash DB -> the classifier does not catch it.
       "purify.es.mjs": "/*! DOMPurify 3.2.6 | Cure53 */\nexport const x = 1;",
-      "vendor/sheet.js": "var XLSX = {};",
-      "styles.css": ".a{color:red} /*! mid-file */ .b{color:blue}",
+      // One long, dense line (>= 1024 bytes) -> minified by geometry, non-authored.
+      "jquery.min.js": `var $=${"1;".repeat(600)}`,
     }),
   };
   const text = buildAddonText(ctx, "NONCE");
   assert.ok(text.includes("console.log('bg')")); // authored: kept
-  assert.ok(!text.includes("DOMPurify 3.2.6")); // leading /*! banner: dropped
-  assert.ok(!text.includes("var XLSX")); // vendor/ dir: dropped
-  assert.ok(text.includes("color:blue")); // mid-file /*!: kept (authored CSS)
+  assert.ok(text.includes("DOMPurify 3.2.6")); // undetected lib: now sent to the model
+  assert.ok(!text.includes("var $=")); // minified-by-geometry blob: trimmed
 });
 
 // The self-assessment FINDINGS block labels each finding with its severity, so the

@@ -1,0 +1,2 @@
+# Offline known-library hash fixture for the golden harness (rawSha256 of fixture lib files).
+e30a0344d4fd16e828b503befd839d7f8e66b044efd79592a149569176a389f0 bootstrap.5.3.0.bootstrap.min.css

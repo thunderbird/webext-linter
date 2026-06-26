@@ -15,17 +15,20 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        A pinned third-party library whose bundled version has published security
-        advisories. This covers both a package.json dependency and an npm-sourced
-        VENDOR entry.
+        A third-party library whose bundled version has published security
+        advisories. This covers a package.json dependency, an npm-sourced VENDOR
+        entry, and — even when it was never declared — a library the linter
+        identified by content hash (so a developer who bundled a vulnerable
+        release without declaring it is still caught).
       </p>
       <p>
-        Before the review, every pinned npm package and version is audited once
-        against the OSV vulnerability database over the network. Each package
-        with known advisories is recorded with the advisory ids, the affected
-        version, the fixed versions, and a severity band. This check reads that
-        result and emits one finding per vulnerable package, anchored at its
-        declaration line. Its severity is <strong>auto</strong>: rather than a
+        Before the review, every pinned npm package and version — plus each
+        hash-identified library — is audited once against the OSV vulnerability
+        database over the network. Each package with known advisories is recorded
+        with the advisory ids, the affected version, the fixed versions, and a
+        severity band. This check reads that result and emits one finding per
+        vulnerable package, anchored at its declaration line (or, for an
+        identified library, at the bundled file). Its severity is <strong>auto</strong>: rather than a
         fixed level, each finding takes its severity from the advisory band —
         high or critical becomes an error, moderate or medium becomes a warning,
         and anything else (low or unknown) is informational.
@@ -35,7 +38,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A pinned npm package@version<br/>(package.json dep or npm VENDOR entry)"] --> B{"OSV audit found<br/>known advisories?"}
+  A["A pinned npm package@version<br/>(package.json dep, npm VENDOR entry,<br/>or hash-identified library)"] --> B{"OSV audit found<br/>known advisories?"}
   B -- no --> OK([no finding])
   B -- yes --> C{"Highest advisory band?"}
   C -- "high / critical" --> ERR([ERROR: vulnerable dependency])

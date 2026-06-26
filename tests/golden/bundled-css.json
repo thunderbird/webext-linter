@@ -14,9 +14,9 @@
     ]
   },
   "summary": {
-    "error": 1,
+    "error": 0,
     "warning": 0,
-    "info": 0,
+    "info": 1,
     "byRule": {
       "missing-library": 1
     }
@@ -24,12 +24,12 @@
   "findings": [
     {
       "ruleId": "missing-library",
-      "severity": "error",
+      "severity": "info",
       "file": "vendor/bootstrap/bootstrap.min.css",
       "loc": null,
-      "item": null,
+      "item": "bootstrap 5.3.0",
       "hint": null,
-      "message": "The following file(s) appear to be third-party libraries. Please link to their sources and ensure each bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
+      "message": "The following bundled files were recognized as third-party libraries (named after each path) but are not declared in a VENDOR file. Please declare each and link its source so the bundled copy can be verified against the linked version - a VENDOR file at the add-on root is common practice.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
     }
   ]
 }
