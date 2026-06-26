@@ -1206,12 +1206,15 @@ prompts:
     - remote/untrusted code: eval, the Function constructor, a code string passed to
       setTimeout/setInterval, a remote <script>, importScripts of a remote URL, or a
       manifest content_security_policy that adds 'unsafe-eval' or 'unsafe-inline';
-    - unsafe HTML: EVERY use of an HTML-string sink - innerHTML, outerHTML, srcdoc,
-      insertAdjacentHTML, document.write/writeln, jQuery .html() and the like. Flag each
-      one unconditionally, no matter where the content comes from or whether a sanitizer
+    - unsafe HTML: EVERY write to one of these four HTML-string sinks - innerHTML,
+      outerHTML, srcdoc, insertAdjacentHTML (these four ONLY). Flag each one
+      unconditionally, no matter where the content comes from or whether a sanitizer
       (DOMPurify, a sanitize*() helper, etc.) is applied - a sanitizer is NOT a pass. The
-      ONLY accepted HTML-insertion method, never flagged, is Element.setHTML() (the
-      Sanitizer API); an empty-string/null clear (el.innerHTML = "") is also exempt;
+      ONLY accepted method, never flagged, is Element.setHTML() (the Sanitizer API); an
+      empty-string/null clear (el.innerHTML = "") is also exempt. Do NOT report
+      document.write/writeln or jQuery .html() - this linter does not scan them. And these
+      are NOT HTML sinks at all - never flag them: textContent, innerText, a .value or
+      .checked assignment, createElement, appendChild, createTextNode, setAttribute;
     - secrets: leaked credentials, tokens, or keys;
     - obfuscation: authored code deliberately obfuscated to hide what it does - NOT the
       ordinary minification of a recognizable third-party library.
@@ -1230,9 +1233,11 @@ prompts:
     conservative: it flags a pattern for review even when a given instance is harmless,
     and that is intended, not a false positive.
 
-    "Likely false positives": list a FINDING only when you are confident it misfired in
-    that sense; give its file:line + rule id and a one-sentence reason. The following
-    are NOT false positives - never list them:
+    "Likely false positives": list a FINDING only when you are confident it MISFIRED in
+    that sense; give its file:line + rule id and a one-sentence reason. If your reason
+    instead concludes the finding is correct, accurate, justified, "the rule applies", or
+    "stands", it is NOT a false positive - do not list it under any caveat; write "none".
+    The following are NOT false positives - never list them:
     - a third-party library the add-on did not declare (no VENDOR file) and the linter
       did not auto-detect, so it was parsed as authored code and flagged: the add-on
       must declare its bundled libraries; the finding stands.
@@ -1275,7 +1280,12 @@ prompts:
     item counts as covered, and the findings shown may be wrong or incomplete - that is
     exactly what you are auditing. An innerHTML/friends write the linter did not report is
     a false negative even when it is sanitized or static - never give it a free pass;
-    only Element.setHTML() and an empty-string/null clear are exempt. Do NOT report: code
+    only Element.setHTML() and an empty-string/null clear are exempt. But before listing
+    ANY unsafe-html false negative, QUOTE the exact sink assignment from the source (e.g.
+    `el.innerHTML = value`) at the file:line you cite; if you cannot quote a real
+    innerHTML/outerHTML/srcdoc/insertAdjacentHTML write there, do NOT list it - never infer
+    a sink from a createElement, textContent, appendChild, or setAttribute call. Do NOT
+    report: code
     style (implicit globals, undeclared variables), defensive-coding or runtime-error
     nits ("element might be null", "could throw"), performance, a request for a new kind
     of check the linter does not perform,
@@ -1284,8 +1294,9 @@ prompts:
     ALREADY_ESCALATED item (or your Step 1 review found none).
 
     Under BOTH headings: if you qualify an item with "expected", "allowed", "intended",
-    "out of scope", "only if", "if ... ever", or "the warning stands / not actually a
-    problem", that caveat means it is not a finding - do not list it; write "none".
+    "out of scope", "only if", "if ... ever", "the warning stands / not actually a
+    problem", "correct / accurate", "the rule applies", or "not a misfire", that caveat
+    means it is not a finding - do not list it; write "none".
 
     Judge only what the sources show; do not assume code that is not present.
   vendor-parse: |-
