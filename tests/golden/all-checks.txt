@@ -45,7 +45,7 @@ Read more: https://webextension-api.thunderbird.net/.
 
 We kindly ask you to resolve the following issues with your next release:
 
-13) HTML is written via ".innerHTML". This is flagged regardless of whether the content is static or sanitized: the only sanctioned way to insert markup is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Use textContent for plain text, or a <template>/CSS to show or hide existing markup.
+13) Inserting markup via ".innerHTML" is not permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
  - background.js:29
 

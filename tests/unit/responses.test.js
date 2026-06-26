@@ -23,7 +23,7 @@ test("renderFindings fills {{item}} from the registry response by ruleId", () =>
     message: null,
   };
   renderFindings([f], registry);
-  assert.match(f.message, /written via "innerHTML"/); // {{item}} filled in the prose
+  assert.match(f.message, /via "innerHTML"/); // {{item}} filled in the prose
   assert.ok(!f.message.includes("{{item}}"));
   // The only line break is the one before "Read more:" - the prose itself is
   // one line (no 80-col wrapping survives into the message).

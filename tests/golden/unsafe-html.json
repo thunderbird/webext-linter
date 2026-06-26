@@ -103,7 +103,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "HTML is written via \".innerHTML\". This is flagged regardless of whether the content is static or sanitized: the only sanctioned way to insert markup is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Use textContent for plain text, or a <template>/CSS to show or hide existing markup.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Inserting markup via \".innerHTML\" is not permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
       "ruleId": "unsafe-html",
@@ -115,7 +115,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "HTML is written via \".innerHTML\". This is flagged regardless of whether the content is static or sanitized: the only sanctioned way to insert markup is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Use textContent for plain text, or a <template>/CSS to show or hide existing markup.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Inserting markup via \".innerHTML\" is not permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
       "ruleId": "unsafe-html",
@@ -127,7 +127,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "HTML is written via \".innerHTML\". This is flagged regardless of whether the content is static or sanitized: the only sanctioned way to insert markup is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Use textContent for plain text, or a <template>/CSS to show or hide existing markup.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Inserting markup via \".innerHTML\" is not permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     }
   ]
 }
