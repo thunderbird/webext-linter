@@ -103,7 +103,7 @@
       },
       "item": "browser.controlBogus",
       "hint": null,
-      "message": "The following WebExtension API is not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The following WebExtension APIs are not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "unknown-api",
@@ -115,7 +115,7 @@
       },
       "item": "browser.bogusApi",
       "hint": null,
-      "message": "The following WebExtension API is not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The following WebExtension APIs are not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }
