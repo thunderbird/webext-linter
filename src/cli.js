@@ -254,6 +254,10 @@ export function helpText() {
       "Enable the LLM checks - cloud (Claude/ChatGPT) or a local model (Ollama), configured via the LLM_API_* environment variables; see the README.",
     ],
     ["--llm-list-models", "List the models your token can use, then exit."],
+    [
+      "--llm-review",
+      "Shorthand for --llm-enabled --full-summary: run the AI add-on review in one flag (needs a Claude API key).",
+    ],
   ];
 
   const other = [
@@ -339,6 +343,7 @@ const OPTIONS = {
   "report-out": { type: "string" },
   "llm-enabled": { type: "boolean" },
   "llm-list-models": { type: "boolean" },
+  "llm-review": { type: "boolean" },
   verbose: { type: "boolean" },
   help: { type: "boolean" },
 };
@@ -386,6 +391,7 @@ export async function main(argv) {
     return 2;
   }
   const { values, positionals } = parsed;
+  expandAliasFlags(values);
 
   // Output routing by format. Everything the tool narrates (the what-is-going-on
   // feed) is standard output, alongside the report - only real tool errors go to
@@ -592,7 +598,22 @@ export function pipelineOptsFromArgv(argv) {
     options: OPTIONS,
     allowPositionals: true,
   });
+  expandAliasFlags(values);
   return pipelineOptsFromValues(values);
+}
+
+/**
+ * Expand convenience alias flags into the underlying flags so every existing
+ * flag-driven path fires unchanged. `--llm-review` is shorthand for
+ * "--llm-enabled --full-summary"; it is deliberately referenced nowhere else.
+ * @param {Record<string, string|boolean|string[]>} values  Parsed flag values
+ *   (mutated in place).
+ */
+function expandAliasFlags(values) {
+  if (values["llm-review"] === true) {
+    values["llm-enabled"] = true;
+    values["full-summary"] = true;
+  }
 }
 
 /**

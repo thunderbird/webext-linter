@@ -50,6 +50,7 @@ schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
 | `--report-out <file>` | Write the report to a file in addition to stdout. |
 | `--llm-enabled` | Enable the LLM checks. The key is read from the `LLM_API_KEY` environment variable (see [LLM configuration](#llm-configuration)). |
 | `--llm-list-models` | List the models your token can use, then exit. |
+| `--llm-review` | Shorthand for `--llm-enabled --full-summary` - run the AI add-on review in one flag. |
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--diff-to <xpi\|folder>` | Previously published version, to diff against. |

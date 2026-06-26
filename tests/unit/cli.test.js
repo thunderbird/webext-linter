@@ -247,6 +247,18 @@ test("--self-assessment-summary forwards the config without enabling the checks"
   }
 });
 
+// --llm-review is a convenience alias expanded at parse time into --llm-enabled
+// and --full-summary, so both opts come on together and nothing downstream needs to
+// know about the alias. Without it, both stay off.
+test("--llm-review enables both llmEnabled and fullSummary", () => {
+  const opts = pipelineOptsFromArgv(["--llm-review"]);
+  assert.equal(opts.llmEnabled, true);
+  assert.equal(opts.fullSummary, true);
+  const bare = pipelineOptsFromArgv([]);
+  assert.equal(bare.llmEnabled, false);
+  assert.ok(!bare.fullSummary);
+});
+
 // LLM_API_TYPE=ollama is keyless and local: a localhost default base URL and the
 // llama3.1 default model, resolved with NO fabricated key (llmApiKey undefined).
 test("LLM_API_TYPE=ollama resolves keyless local defaults", () => {
