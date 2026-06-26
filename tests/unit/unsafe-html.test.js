@@ -21,17 +21,26 @@ test("flags dynamic innerHTML / outerHTML / insertAdjacentHTML", () => {
   ]);
 });
 
-// Literal assignments, empty/null values, concatenations of only literals, and
-// fully-static ternaries produce no hits, and textContent is never a sink.
-test("does not flag static string content", () => {
-  assert.equal(scanUnsafeHtml(`el.innerHTML = "<b>ok</b>";`).hits.length, 0);
+// Static content is now flagged too - the only sanctioned insertion method is
+// Element.setHTML(), so a non-empty static string, a static concatenation, and a
+// fully-static ternary all produce a hit, just like dynamic content.
+test("flags static (non-empty) HTML content too", () => {
+  assert.deepEqual(sinks(`el.innerHTML = "<b>ok</b>";`), ["innerHTML"]);
+  assert.deepEqual(sinks(`el.innerHTML = "<a>" + "<b>";`), ["innerHTML"]);
+  assert.deepEqual(sinks(`el.innerHTML = cond ? "<b>A</b>" : "<i>B</i>";`), [
+    "innerHTML",
+  ]);
+});
+
+// The ONLY exempt writes are an empty-string / null clear (no content) and
+// insertAdjacentHTML with an empty argument; textContent is never a sink.
+test("exempts only an empty/null clear and textContent", () => {
   assert.equal(scanUnsafeHtml(`el.innerHTML = "";`).hits.length, 0);
-  assert.equal(scanUnsafeHtml(`el.innerHTML = "<a>" + "<b>";`).hits.length, 0);
+  assert.equal(scanUnsafeHtml("el.innerHTML = ``;").hits.length, 0);
   assert.equal(scanUnsafeHtml(`el.innerHTML = null;`).hits.length, 0);
   assert.equal(
-    scanUnsafeHtml(`el.innerHTML = cond ? "<b>A</b>" : "<i>B</i>";`).hits
-      .length,
-    0 // both ternary arms static
+    scanUnsafeHtml(`n.insertAdjacentHTML("beforeend", "");`).hits.length,
+    0 // empty insert - nothing written
   );
   assert.equal(
     scanUnsafeHtml(`el.textContent = userInput;`).hits.length,

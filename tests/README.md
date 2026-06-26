@@ -81,7 +81,7 @@ the actual `got [...]` list to copy from.)
 | `invalid-manifest` | `invalid-manifest` (a missing required key, a bad permission value) + `unrecognized-manifest-entries` (an unknown top-level key). |
 | `bundled-files` | `bundled-files`: a referenced file (`content_scripts`) isn't packaged. |
 | `remote-code` | `remote-script` (remote `<script src>` + remote `@import`) and `eval-usage`. |
-| `unsafe-html` | `unsafe-html`: a dynamic `innerHTML` is flagged, a static string is not. |
+| `unsafe-html` | `unsafe-html`: every `innerHTML` write is flagged (static and dynamic alike); only an empty/null clear is exempt. |
 | `experiment-disallowed` | An Experiment (`experiment_apis`) reviewed with experiments off (default): `experiment-not-allowed` on the `experiment_apis` line. |
 | `experiment-allowed-no-strict-max` | An Experiment with no `strict_max_version`, reviewed with `"options": { "--allow-experiments": true }`: `experiment-missing-strict-max-version` (and `experiment-not-allowed` stays silent). |
 | `strict-max-not-experiment` | `non-experiment-strict-max-version`: a non-Experiment that pins `strict_max_version` (warning). |

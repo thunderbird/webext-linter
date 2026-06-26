@@ -190,6 +190,52 @@ test("buildAddonText lists declared permissions split by kind", () => {
   );
 });
 
+// Prompt-only library net: a file that looks like a vendored library even when
+// classify() did not catch it (a leading "/*!" license banner, or a top-level
+// vendor/ dir) is trimmed from the model input - while a developer's MID-file
+// "/*!" (the C2 CSS case) is kept, since the anchor requires it at the start.
+test("buildAddonText drops a leading-/*! or vendor/ file, keeps a mid-file /*!", () => {
+  const ctx = {
+    addon: addon({
+      "manifest.json": MV1,
+      "background.js": "console.log('bg');",
+      "purify.es.mjs": "/*! DOMPurify 3.2.6 | Cure53 */\nexport const x = 1;",
+      "vendor/sheet.js": "var XLSX = {};",
+      "styles.css": ".a{color:red} /*! mid-file */ .b{color:blue}",
+    }),
+  };
+  const text = buildAddonText(ctx, "NONCE");
+  assert.ok(text.includes("console.log('bg')")); // authored: kept
+  assert.ok(!text.includes("DOMPurify 3.2.6")); // leading /*! banner: dropped
+  assert.ok(!text.includes("var XLSX")); // vendor/ dir: dropped
+  assert.ok(text.includes("color:blue")); // mid-file /*!: kept (authored CSS)
+});
+
+// The self-assessment FINDINGS block labels each finding with its severity, so the
+// audit prompt can tell an info/advisory finding from an error.
+test("buildSelfAssessment labels findings with severity", () => {
+  const ctx = { addon: addon({ "manifest.json": MV1, "bg.js": "x" }) };
+  const findings = [
+    {
+      file: "bg.js",
+      loc: { line: 3 },
+      ruleId: "unsafe-html",
+      severity: "warning",
+      message: "Dynamic content assigned.",
+    },
+    {
+      file: "manifest.json",
+      ruleId: "addon-icon-missing",
+      severity: "info",
+      message: "Adding an add-on icon improves user acceptance.",
+    },
+  ];
+  const out = buildSelfAssessment(ctx, loadRegistry(), findings);
+  assert.ok(out, "self-assessment built");
+  assert.match(out.user, /bg\.js:3 {2}\[warning: unsafe-html\]/);
+  assert.match(out.user, /\[info: addon-icon-missing\]/);
+});
+
 // buildAddonSummarizer returns { bytes, run }: run() sends the registry prompt +
 // the current add-on via ctx.llm.reviewAddon, and yields the structured
 // { summary, recheck }; bytes is the sent message's UTF-8 size.
@@ -308,7 +354,7 @@ test("buildSelfAssessment carries the sources, findings, and escalations", () =>
   assert.ok(!out.user.includes("console.log('dead');"));
   // The findings block lists the finding (first message line only) for the FP audit.
   assert.ok(out.user.includes("FINDINGS"));
-  assert.ok(out.user.includes("background.js:1  [unsafe-html]"));
+  assert.ok(out.user.includes("background.js:1  [error: unsafe-html]")); // severity defaults to error
   assert.ok(!out.user.includes("Read more: ...")); // only the first message line
   // Already-escalated items are listed so they are not re-reported as misses.
   assert.ok(out.user.includes("ALREADY_ESCALATED"));

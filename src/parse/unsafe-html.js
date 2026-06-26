@@ -1,8 +1,9 @@
-// Finds writes of dynamic (non-literal) content into HTML sinks - the DOM-XSS
-// pattern behind the "Modifying innerHTML, unsanitized HTML" review rule. Ports
-// the core of eslint-plugin-no-unsanitized: a value is safe only if it is a
-// static string (a string literal, a template with no interpolation, or a
-// concatenation of safe values); anything dynamic is flagged.
+// Finds writes to HTML-string sinks - the innerHTML-and-friends pattern. Policy:
+// the only sanctioned way to insert markup is the Sanitizer API
+// (Element.setHTML()), so EVERY write to a sink is flagged - regardless of where
+// the content comes from, whether it is a static literal, or whether it was run
+// through a sanitizer (a sanitizer is not a pass). The sole exception is an
+// empty-string or null clear (el.innerHTML = ""), which writes no content.
 //
 // Sinks: assignment to .innerHTML / .outerHTML / .srcdoc, and
 // .insertAdjacentHTML(pos, x).
@@ -49,7 +50,7 @@ export function scanUnsafeHtml(code, lineOffset = 0, parsed) {
     AssignmentExpression(path) {
       const { left, right } = path.node;
       const sink = memberPropName(left);
-      if (sink && PROPERTY_SINKS.has(sink) && !isStaticHtml(right)) {
+      if (sink && PROPERTY_SINKS.has(sink) && !isEmptyClear(right)) {
         hits.push({ sink, ...at(path.node) });
       }
     },
@@ -57,7 +58,7 @@ export function scanUnsafeHtml(code, lineOffset = 0, parsed) {
       const { callee, arguments: args } = path.node;
       if (
         memberPropName(callee) === "insertAdjacentHTML" &&
-        !isStaticHtml(args[1])
+        !isEmptyClear(args[1])
       ) {
         hits.push({ sink: "insertAdjacentHTML", ...at(path.node) });
       }
@@ -87,33 +88,28 @@ function memberPropName(node) {
 }
 
 /**
- * True if a value carries no dynamic content: a string/number/boolean/null
- * literal, a template literal with no interpolation, a "+" concatenation of
- * static parts, or a ternary whose branches are both static. Anything dynamic
- * (variable, call, interpolated template, etc.) is not static.
+ * True only when a write carries NO content, so it merely clears the sink and is
+ * not flagged: an empty string literal (""), an empty template literal (no
+ * interpolation and only-empty quasis), a null literal, or a missing argument.
+ * Any other value - including a non-empty static string - is content and IS
+ * flagged (the only sanctioned insertion method is Element.setHTML()).
  * @param {AstNode} node
  * @returns {boolean}
  */
-function isStaticHtml(node) {
+function isEmptyClear(node) {
   if (!node) {
-    return true; // no argument - nothing dynamic is written
+    return true; // no argument - nothing is written
   }
   switch (node.type) {
-    case "StringLiteral":
-    case "NumericLiteral":
-    case "BooleanLiteral":
     case "NullLiteral":
       return true;
+    case "StringLiteral":
+      return node.value === "";
     case "TemplateLiteral":
-      return node.expressions.length === 0;
-    case "BinaryExpression":
       return (
-        node.operator === "+" &&
-        isStaticHtml(node.left) &&
-        isStaticHtml(node.right)
+        node.expressions.length === 0 &&
+        node.quasis.every((q) => (q.value.cooked ?? q.value.raw) === "")
       );
-    case "ConditionalExpression":
-      return isStaticHtml(node.consequent) && isStaticHtml(node.alternate);
     default:
       return false;
   }

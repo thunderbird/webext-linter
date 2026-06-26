@@ -62,6 +62,24 @@ function isAuthoredText(file, skip) {
 }
 
 /**
+ * Prompt-only safety net: a file that LOOKS like a vendored third-party library
+ * even when classify()/nonAuthoredJs did not catch it (a non-minified ESM lib with
+ * no VENDOR declaration) - a top-level vendor/ directory, or a leading "/*!" license
+ * banner (anchored at the start, so a developer's mid-file "/*!" does not trip it).
+ * Used ONLY to trim the model input; deterministic findings are unaffected.
+ * @param {string} file
+ * @param {Map<string, Buffer>} files
+ * @returns {boolean}
+ */
+function looksVendoredForPrompt(file, files) {
+  if (/^vendor\//i.test(file)) {
+    return true;
+  }
+  const head = files.get(file)?.toString("utf8", 0, 64) ?? "";
+  return /^\s*\/\*!/.test(head);
+}
+
+/**
  * The utf8 text of a file in a files map, or "".
  * @param {string} file
  * @param {Map<string, Buffer>} files
@@ -276,7 +294,8 @@ export function buildAddonText(
     if (
       file === "manifest.json" ||
       unused.has(file) ||
-      !isAuthoredText(file, skip)
+      !isAuthoredText(file, skip) ||
+      looksVendoredForPrompt(file, files)
     ) {
       continue;
     }
@@ -354,17 +373,19 @@ export function buildAddonSummarizer(
 
 /**
  * One compact line per deterministic finding for the self-assessment FINDINGS
- * block: "file:line  [rule]  <first line of the message>".
+ * block: "file:line  [severity: rule]  <first line of the message>". The severity
+ * label lets the audit prompt tell an info/advisory finding from an error.
  * @param {{file?: ?string, loc?: {line?: number}, ruleId: string,
- *   message?: string}} f
+ *   severity?: string, message?: string}} f
  * @returns {string}
  */
 function findingLine(f) {
   const where = f.file
     ? `${f.file}${f.loc?.line != null ? `:${f.loc.line}` : ""}`
     : "(add-on)";
+  const sev = f.severity ?? "error";
   const msg = (f.message ?? "").split("\n")[0];
-  return `- ${where}  [${f.ruleId}]  ${msg}`;
+  return `- ${where}  [${sev}: ${f.ruleId}]  ${msg}`;
 }
 
 /**

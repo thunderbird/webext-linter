@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Modifying innerHTML, unsanitized HTML</title>
+    <title>Modifying innerHTML; use Element.setHTML()</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
         <h1>
-          Modifying innerHTML, unsanitized HTML
+          Modifying innerHTML; use Element.setHTML()
           <span class="badge warning">warning</span>
         </h1>
         <div class="check-id">unsafe-html</div>
@@ -18,18 +18,19 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        Dynamic content written into an HTML sink — <em>innerHTML</em>,
-        <em>outerHTML</em>, <em>srcdoc</em> or <em>insertAdjacentHTML</em>. If
-        that content can carry external or user-provided data and is not
-        sanitized, it is an injection risk.
+        Any write to an HTML sink — <em>innerHTML</em>, <em>outerHTML</em>,
+        <em>srcdoc</em> or <em>insertAdjacentHTML</em>. The only sanctioned way to
+        insert markup is the Sanitizer API (<em>Element.setHTML()</em>), so a sink
+        write is flagged regardless of where the content comes from or whether it
+        was run through a sanitizer — a sanitizer is not a pass.
       </p>
       <p>
-        This is a warning rather than an error: the construct is only dangerous
-        when the content is untrusted and unsanitized, which a static scan cannot
-        fully determine, so the check points the reviewer at each site instead of
-        deciding for them. Plain static-string content is not flagged. Bundled,
-        minified or otherwise non-authored files are skipped. Each remaining
-        dynamic-content sink hit becomes a finding naming the sink involved.
+        This is a warning rather than an error only because migrating to
+        <em>setHTML()</em> needs Thunderbird 148+, so the check points the reviewer
+        at each site. Every sink write is flagged; the sole exception is an
+        empty-string or null clear (<code>el.innerHTML = ""</code>), which writes
+        no content. Bundled, minified or otherwise non-authored files are skipped.
+        Each remaining sink hit becomes a finding naming the sink involved.
       </p>
 
       <h2>Decision flow</h2>
@@ -39,9 +40,9 @@ flowchart TD
   A["A JavaScript file in the add-on"] --> B{"Authored by the developer?<br/>not a bundled or minified library"}
   B -- no --> S([skip])
   B -- yes --> C["Scan for HTML sinks:<br/>innerHTML, outerHTML, srcdoc,<br/>insertAdjacentHTML"]
-  C --> D{"Is the content dynamic?<br/>not a plain static string"}
-  D -- no --> OK([no finding])
-  D -- yes --> WARN([WARNING: unsanitized<br/>HTML written to a sink])
+  C --> D{"An empty/null clear,<br/>or Element.setHTML()?"}
+  D -- yes --> OK([no finding])
+  D -- no --> WARN([WARNING: HTML written<br/>to a sink, use setHTML&#40;&#41;])
 
   classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -54,10 +55,11 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told that dynamic content is assigned via the named sink,
-        and that if it can contain external or user-provided data it should be
-        sanitized (with DOMPurify or the Sanitizer API) or built using
-        textContent and createElement, with a link to the guide.
+        The add-on is told that HTML is written via the named sink and that the
+        only sanctioned way to insert markup is the Sanitizer API
+        (<code>Element.setHTML()</code>, Thunderbird 148+) — sanitizing the content
+        is not a pass — with textContent for plain text or a template/CSS for
+        existing markup, and a link to the guide.
       </div>
 
       <p class="source-note">

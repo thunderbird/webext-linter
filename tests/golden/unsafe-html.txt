@@ -2,9 +2,10 @@
 
 Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
 
-1) Dynamic content is assigned via ".innerHTML". Avoid writing HTML this way: use textContent, a <template>, or CSS to show/hide existing markup. If external or user-provided HTML must be rendered, sanitize it with the Sanitizer API (Element.setHTML(), Thunderbird 148+).
+1) HTML is written via ".innerHTML". This is flagged regardless of whether the content is static or sanitized: the only sanctioned way to insert markup is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Use textContent for plain text, or a <template>/CSS to show or hide existing markup.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
  - bg.js:2
+ - bg.js:4
  - bg.js:6
 
 ── Extended manual review ──
@@ -87,4 +88,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 2 warning(s), 0 info, 11 manual review step(s)
+0 error(s), 3 warning(s), 0 info, 11 manual review step(s)

@@ -130,12 +130,13 @@ deterministic-checks:
   response: |-
     The add-on makes a synchronous XMLHttpRequest, which can lock up the user interface. Please use an asynchronous request instead.
 
-# Flags dynamic content written to innerHTML/outerHTML/srcdoc/insertAdjacentHTML.
-- title: Modifying innerHTML, unsanitized HTML
+# Flags every write to innerHTML/outerHTML/srcdoc/insertAdjacentHTML (only
+# Element.setHTML() is sanctioned); an empty-string/null clear is exempt.
+- title: Modifying innerHTML; use Element.setHTML()
   severity: warning
   check: unsafe-html
   response: |-
-    Dynamic content is assigned via "{{item}}". Avoid writing HTML this way: use textContent, a <template>, or CSS to show/hide existing markup. If external or user-provided HTML must be rendered, sanitize it with the Sanitizer API (Element.setHTML(), Thunderbird 148+).
+    HTML is written via "{{item}}". This is flagged regardless of whether the content is static or sanitized: the only sanctioned way to insert markup is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Use textContent for plain text, or a <template>/CSS to show or hide existing markup.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
 
 # Flags unconditional debugger statements left in shipped code.
@@ -1184,21 +1185,108 @@ prompts:
     You are auditing a DETERMINISTIC static-analysis linter for Thunderbird
     WebExtension add-ons - NOT reviewing the add-on for the developer. Below are the
     add-on’s authored sources (non-authored third-party bundles omitted), then a
-    "FINDINGS" section listing what the linter reported (file:line, the rule id, and
-    the message), and optionally an "ALREADY_ESCALATED" section of items the linter
-    already routed to manual/LLM review.
-    Produce concise prose under exactly these two headings:
-    "Likely false positives": for each listed FINDING you judge is WRONG (the
-    flagged code is actually fine in this context), give its file:line + rule id and
-    a one-sentence reason. Be conservative - list a finding ONLY when you are
-    confident it is a false positive; if a finding looks correct or you are unsure,
-    do not list it. Write "none" if there are no clear false positives.
-    "Possible false negatives": independently scan the sources for concrete security,
-    privacy, or correctness problems the linter did NOT report. Ignore anything
-    already in FINDINGS or ALREADY_ESCALATED. For each, give the file:line, a
-    one-sentence description, and what kind of check should catch it. Be specific and
-    conservative - do not invent issues or list stylistic nits. Write "none" if you
-    find nothing.
+    "FINDINGS" section listing what the linter reported (file:line, the severity and
+    rule id, and the message), and optionally an "ALREADY_ESCALATED" section of items
+    the linter already routed to manual/LLM review.
+
+    Work in two steps.
+
+    STEP 1 - Independent review. BEFORE consulting FINDINGS, review the add-on from its
+    sources ALONE, without trusting the linter. ALWAYS print, under the heading
+    "Independent review", one line per defect class below - the file:line(s) of every
+    concrete defect of that class you find, or "none". Be thorough; consider ONLY these
+    classes (not code style, robustness, or performance):
+    - exfiltration: data sent to a remote server the USER did not configure or consent
+      to (a hardcoded third-party endpoint) - NOT the add-on's own backend the user set
+      up (their own Nextcloud/Exchange/CalDAV/IMAP/etc. server). Include COVERT channels:
+      data smuggled out through an image/iframe/media src, a CSS url(), window.open, or a
+      page navigation, instead of a normal disclosed request;
+    - insecure transport: user data or remote code sent or fetched over an UNENCRYPTED
+      connection - http://, ws://, or ftp:// - instead of https:// / wss://;
+    - remote/untrusted code: eval, the Function constructor, a code string passed to
+      setTimeout/setInterval, a remote <script>, importScripts of a remote URL, or a
+      manifest content_security_policy that adds 'unsafe-eval' or 'unsafe-inline';
+    - unsafe HTML: EVERY use of an HTML-string sink - innerHTML, outerHTML, srcdoc,
+      insertAdjacentHTML, document.write/writeln, jQuery .html() and the like. Flag each
+      one unconditionally, no matter where the content comes from or whether a sanitizer
+      (DOMPurify, a sanitize*() helper, etc.) is applied - a sanitizer is NOT a pass. The
+      ONLY accepted HTML-insertion method, never flagged, is Element.setHTML() (the
+      Sanitizer API); an empty-string/null clear (el.innerHTML = "") is also exempt;
+    - secrets: leaked credentials, tokens, or keys;
+    - obfuscation: authored code deliberately obfuscated to hide what it does - NOT the
+      ordinary minification of a recognizable third-party library.
+    Do NOT review for privileged "core" symbols (Services/ChromeUtils/Components) or for
+    a vulnerable bundled dependency: those need the WebExtension-vs-experiment
+    reachability partition and a vulnerability database that you cannot reconstruct from
+    the sources - the linter's deterministic checks own them. Leave both to the linter.
+
+    STEP 2 - Reconcile your review against the linter's FINDINGS and produce prose
+    under exactly the two headings below.
+
+    A false positive is NOT "the code is actually fine"; it is a finding that MISFIRED
+    against its own rule - it is factually wrong about what it claims (the file really
+    is a bundled third-party library, the API really exists, the value really is a
+    static literal, the symbol really is not privileged). This linter is deliberately
+    conservative: it flags a pattern for review even when a given instance is harmless,
+    and that is intended, not a false positive.
+
+    "Likely false positives": list a FINDING only when you are confident it misfired in
+    that sense; give its file:line + rule id and a one-sentence reason. The following
+    are NOT false positives - never list them:
+    - a third-party library the add-on did not declare (no VENDOR file) and the linter
+      did not auto-detect, so it was parsed as authored code and flagged: the add-on
+      must declare its bundled libraries; the finding stands.
+    - "dead code", "legacy", "a fallback", or "never runs": reported code is reachable,
+      and the rule applies regardless of whether a branch executes.
+    - a core-symbol-in-webext or vendor-vulnerable finding: NEVER list either as a false
+      positive - the WebExtension/experiment partition and the vulnerability database are
+      authoritative and you cannot reconstruct them from the sources. A file in a debug/
+      folder, or one also loaded by an experiment, is NOT a misfire.
+    - a guarded or feature-detected reference (if (api), api?.x, typeof) to an API,
+      member, or manifest key that does not exist: non-existent APIs are flagged on
+      purpose, guarded or not.
+    - a "supported", "common", or "intentional" pattern a warning targets: the warning
+      is about a real hazard of that pattern.
+    - an unsafe-html finding (innerHTML, outerHTML, srcdoc, insertAdjacentHTML,
+      document.write, .html(), or any HTML-string sink): NEVER a false positive. Do not
+      excuse it because the content is sanitized (DOMPurify, a sanitize*() helper),
+      hand-escaped, "internal/trusted/numeric/template-controlled", or static - a
+      sanitizer is not a pass. The ONLY accepted, unflagged methods are Element.setHTML()
+      (the Sanitizer API) and an empty-string/null clear; every other HTML-string write
+      stands.
+    - an info or advisory observation (a missing icon, a coverage note, narrowing a
+      broad permission): correct as long as its factual basis holds; an advisory is not
+      an error - use the severity label to recognize these.
+    - an item already in ALREADY_ESCALATED or marked manual/unsure review: an
+      intentional hand-off, not a misfire.
+    - a declared known-vulnerable dependency you only suspect "may be patched", or an
+      undeclared bundled library you call "standard": the vulnerability and the
+      declaration requirement stand unless the actual file proves otherwise.
+    - a finding that correctly applies the linter's stated policy you find too strict:
+      judge against the policy as written.
+    Write "none" if there are no clear false positives.
+
+    "Possible false negatives": the valuable half. Go through EACH defect in your STEP 1
+    review and look for a matching item in the FINDINGS list (or ALREADY_ESCALATED) - at
+    the same file:line, or describing the same issue. The FINDINGS list is the COMPLETE
+    record of what the linter actually reported: if a Step 1 defect has NO matching item
+    there, the linter MISSED it - list it (file:line + one sentence). Do NOT assume the
+    linter "must have" caught an obvious defect; only an actual FINDINGS/ALREADY_ESCALATED
+    item counts as covered, and the findings shown may be wrong or incomplete - that is
+    exactly what you are auditing. An innerHTML/friends write the linter did not report is
+    a false negative even when it is sanitized or static - never give it a free pass;
+    only Element.setHTML() and an empty-string/null clear are exempt. Do NOT report: code
+    style (implicit globals, undeclared variables), defensive-coding or runtime-error
+    nits ("element might be null", "could throw"), performance, a request for a new kind
+    of check the linter does not perform,
+    speculation about hypothetical or future code, or anything the developer already
+    mitigates. Write "none" ONLY if every Step 1 defect has a matching FINDINGS or
+    ALREADY_ESCALATED item (or your Step 1 review found none).
+
+    Under BOTH headings: if you qualify an item with "expected", "allowed", "intended",
+    "out of scope", "only if", "if ... ever", or "the warning stands / not actually a
+    problem", that caveat means it is not a finding - do not list it; write "none".
+
     Judge only what the sources show; do not assume code that is not present.
   vendor-parse: |-
     The text below is an add-on’s VENDOR file: a developer’s free-form list of the
