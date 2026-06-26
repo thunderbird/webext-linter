@@ -33,6 +33,7 @@
       "unused-permission-manual",
       "unused-permission-manual-pre-d308076",
       "missing-library",
+      "minified-code",
       "obfuscated-code",
       "api-coverage",
       "unparsable-file",

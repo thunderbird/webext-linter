@@ -3,32 +3,32 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Source Archive (obfuscated code) required</title>
+    <title>Source Archive (minified code) required</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
         <h1>
-          Source Archive (obfuscated code) required
+          Source Archive (minified code) required
           <span class="badge error">error</span>
         </h1>
-        <div class="check-id">obfuscated-code</div>
+        <div class="check-id">minified-code</div>
       </header>
 
       <h2>What it detects</h2>
       <p class="lead">
-        This check flags the developer's own JavaScript when it ships obfuscated —
-        code deliberately written to hide its behavior — and so cannot be reviewed
-        as it stands. It detects javascript-obfuscator-style hex identifiers in bulk
-        and eval-or-Function-of-decoded-string packers.
+        This check flags the developer's own JavaScript when it ships minified —
+        mechanically stripped of whitespace and meaningful names — and so cannot be
+        reviewed as it stands. It detects minified line geometry: at least one very
+        long line, dense on average.
       </p>
       <p>
         A file that looks like a recognised third-party library is excluded here,
         because that is the missing-library check's concern, and a file that is
-        merely minified (not obfuscated) is the minified-code check's concern. The
-        detection has high precision but partial recall, so it cannot catch every
-        obfuscator.
+        obfuscated (deliberately hiding its behavior) is the obfuscated-code check's
+        concern. This check fires only on machine-generated, merely-minified code
+        that is not a known library.
       </p>
 
       <h2>Decision flow</h2>
@@ -39,9 +39,11 @@ flowchart TD
   Z -- yes --> S([skip])
   Z -- no --> L{"Recognized third-party library?"}
   L -- yes --> S2([skip — missing-library's concern])
-  L -- no --> B{"Obfuscated?<br/>bulk hex names, or a<br/>decoded-string packer"}
-  B -- no --> OK([no finding here — minified-code<br/>handles a merely-minified file])
-  B -- yes --> ERR([ERROR: obfuscated code])
+  L -- no --> O{"Obfuscated?"}
+  O -- yes --> S3([skip — obfuscated-code's concern])
+  O -- no --> B{"Minified?<br/>a very long, dense line"}
+  B -- no --> OK([no finding — readable])
+  B -- yes --> ERR([ERROR: minified code])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -50,20 +52,20 @@ flowchart TD
   class OK ok;
   class S skip;
   class S2 skip;
+  class S3 skip;
         </pre>
       </div>
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told the named files are obfuscated and cannot be reviewed in
-        that form, and is asked to ship the original human-readable code (the add-on
-        must not obfuscate its behavior) or, if a build step is involved, to upload a
-        source archive with the build instructions needed to produce the final
-        package.
+        The add-on is told the named files are minified or otherwise
+        machine-generated and cannot be reviewed in that form, and is asked either
+        to ship the original human-readable code or to upload a source archive with
+        the build instructions needed to produce the final package.
       </div>
 
       <p class="source-note">
-        Source of truth: <code>src/checks/rules/obfuscated-code.js</code> and its
+        Source of truth: <code>src/checks/rules/minified-code.js</code> and its
         entry in <code>assets/registry.yaml</code>.
       </p>
     </main>

@@ -325,13 +325,22 @@ deterministic-checks:
     The following file(s) appear to be third-party libraries. Please link to their sources and ensure each bundled copy is identical to the linked version (a VENDOR file at the add-on root is common practice).
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
-# Flags shipped minified or obfuscated JS that is not a recognized library;
-# asks for the original sources.
-- title: Source Archive (minified or obfuscated code) required
+# Flags shipped minified JS that is not a recognized library; asks for the
+# original sources.
+- title: Source Archive (minified code) required
+  severity: error
+  check: minified-code
+  response: |-
+    The following file(s) are minified or otherwise machine-generated code, which cannot be reviewed in this form. The simplest fix is to ship the original, human-readable code directly (the add-on does not need to be minified). Alternatively, upload the original sources as a source code archive that includes the build instructions and build process needed to generate the final XPI, using the source code upload field available during submission or on the version page in the developer hub.
+    Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
+
+# Flags shipped obfuscated JS that is not a recognized library; asks for the
+# original sources.
+- title: Source Archive (obfuscated code) required
   severity: error
   check: obfuscated-code
   response: |-
-    The following file(s) are minified, obfuscated or otherwise machine-generated code, which cannot be reviewed in this form. The simplest fix is to ship the original, human-readable code directly (the add-on does not need to be minified or obfuscated). Alternatively, upload the original sources as a source code archive that includes the build instructions and build process needed to generate the final XPI, using the source code upload field available during submission or on the version page in the developer hub.
+    The following file(s) are obfuscated, which cannot be reviewed in this form and is not permitted. Ship the original, human-readable code directly - the add-on must not obfuscate its behavior. If a build step is involved, upload the original sources as a source code archive that includes the build instructions and build process needed to generate the final XPI, using the source code upload field available during submission or on the version page in the developer hub.
     Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
 
 # Diff check (--diff-to): a version + gecko strict_max_version-only bump that the

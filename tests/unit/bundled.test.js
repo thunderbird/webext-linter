@@ -11,7 +11,7 @@ import {
   classifyAddonJs,
   detectObfuscationAst,
 } from "../../src/checks/lib/bundled.js";
-import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
+import minifiedCode from "../../src/checks/rules/minified-code.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 
 // One long, dense line (no newline): minified by geometry, not by name, so it
@@ -76,14 +76,14 @@ test("classification done before normalize survives reformatting (the fix)", () 
   // Normalize reformats the file in place (build/lint mode).
   addon.files.set("lib/blob.js", Buffer.from(PRETTY));
   // The check reads the pre-step store, so the minified file is still flagged.
-  const flagged = obfuscatedCode.run({ addon }).map((f) => f.file);
+  const flagged = minifiedCode.run({ addon }).map((f) => f.file);
   assert.deepEqual(flagged, ["lib/blob.js"]);
 });
 
 test("without the pre-step, classifying the reformatted bytes misses it", () => {
   // No addon.bundled: the reader recomputes over the already-pretty bytes, which
   // no longer look minified - the build/lint false negative the pre-step fixes.
-  const flagged = obfuscatedCode
+  const flagged = minifiedCode
     .run({ addon: addonWith({ "lib/blob.js": PRETTY }) })
     .map((f) => f.file);
   assert.deepEqual(flagged, []);

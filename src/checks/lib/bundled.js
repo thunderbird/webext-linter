@@ -1,4 +1,4 @@
-// Shared, hash-free heuristics for the missing-library and obfuscated-code
+// Shared, hash-free heuristics for the missing-library, minified-code and obfuscated-code
 // checks. Without a library-hash database these cannot identify a specific
 // library or verify a version - they only classify each JS or CSS file by
 // surface signals (a vendored bootstrap.min.css is a library just as a bundled
@@ -18,7 +18,7 @@
 // replacement is tracked in assets/todo - do not edit assets/todo.
 //
 // Does NOT belong here: the rule verdicts and findings - those live in the
-// missing-library and obfuscated-code rules under src/checks/rules/*. Resolving
+// missing-library, minified-code and obfuscated-code rules under src/checks/rules/*. Resolving
 // the vendored set it builds on (addon.vendor.set) - src/vendor/resolve.js.
 // Extension-set helpers - src/util/files.js.
 
@@ -44,9 +44,9 @@ const LIB_NAME =
  * `nonAuthored` is the VENDOR.md-declared third-party files plus any JS or CSS
  * tagged library / minified / obfuscated. The source-level finding scanners (the
  * eval checks, unsafe-html, remote-script, code-sanity) skip these to save time
- * and noise - minified or obfuscated code is forbidden anyway (obfuscated-code /
- * missing-library reject it and request the original sources, which are then
- * reviewed), and vendored files are declared third-party. Reachability skips
+ * and noise - minified or obfuscated code is forbidden anyway (minified-code,
+ * obfuscated-code and missing-library reject it and request the original sources,
+ * which are then reviewed), and vendored files are declared third-party. Reachability skips
  * them only when REACHABILITY_SKIPS_NON_AUTHORED is on (src/config.js, off by
  * default), since dropping their loader edges would wrongly orphan what they
  * load.

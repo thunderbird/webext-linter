@@ -19,6 +19,7 @@ import experimentManualReview from "../../src/checks/rules/experiment-manual-rev
 import nonExperimentMax from "../../src/checks/rules/non-experiment-strict-max-version.js";
 import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
+import minifiedCode from "../../src/checks/rules/minified-code.js";
 import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
 import apiCoverage from "../../src/checks/rules/api-coverage.js";
 import strictMaxBumpOnly from "../../src/checks/rules/strict-max-version-bump-only.js";
@@ -253,29 +254,39 @@ test("missing-library flags library-looking JS, not readable/banner/VENDORed fil
   );
 });
 
-// obfuscated-code flags minified or obfuscated NON-library code (the dev's own
-// blob); a library-looking file is deferred to missing-library instead.
-test("obfuscated-code flags minified/obfuscated non-library JS only", () => {
+// minified-code flags minified (but not obfuscated) NON-library code; a
+// library-looking file is deferred to missing-library, obfuscated code to
+// obfuscated-code, and readable code is left alone.
+test("minified-code flags minified non-library JS only", () => {
   // Minified line geometry: one long, dense line.
   const minified = "var a=1;b=2;c=3;d=4;".repeat(100) + "\n";
-  assert.equal(
-    obfuscatedCode.run(filesCtx({ "bundle.js": minified })).length,
-    1
-  );
-  // "_0x" obfuscator identifiers (short lines, so obfuscation - not minification
-  // - is what fires).
+  assert.equal(minifiedCode.run(filesCtx({ "bundle.js": minified })).length, 1);
+  // A minified file with a library name is missing-library's job, not this one.
+  assert.equal(minifiedCode.run(filesCtx({ "x.min.js": minified })).length, 0);
+  // Readable code -> not flagged.
+  const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
+  assert.equal(minifiedCode.run(filesCtx({ "bg.js": readable })).length, 0);
+});
+
+// obfuscated-code flags obfuscated NON-library code, and NOT a merely-minified
+// file (that is minified-code's job). A file that is BOTH minified and obfuscated
+// is reported here only (obfuscation is the stronger signal), so it never yields
+// two findings.
+test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () => {
+  // "_0x" obfuscator identifiers on short lines: obfuscated, not minified.
   const obf =
     "const _0xa1b2=1;\nconst _0xc3d4=2;\nconst _0xe5f6=3;\n" +
     "const _0x7890=4;\nconst _0xabcd=5;\n".repeat(40);
   assert.equal(obfuscatedCode.run(filesCtx({ "o.js": obf })).length, 1);
-  // A minified file with a library name is missing-library's job, not this one.
-  assert.equal(
-    obfuscatedCode.run(filesCtx({ "x.min.js": minified })).length,
-    0
-  );
-  // Readable code -> not flagged.
-  const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
-  assert.equal(obfuscatedCode.run(filesCtx({ "bg.js": readable })).length, 0);
+  assert.equal(minifiedCode.run(filesCtx({ "o.js": obf })).length, 0);
+  // A merely-minified file is NOT obfuscated-code's concern.
+  const minified = "var a=1;b=2;c=3;d=4;".repeat(100) + "\n";
+  assert.equal(obfuscatedCode.run(filesCtx({ "m.js": minified })).length, 0);
+  // Both minified geometry AND _0x names on one long line -> obfuscated-code
+  // only (precedence), minified-code stays silent (no double finding).
+  const both = "const _0xa1b2=1;".repeat(100) + "\n";
+  assert.equal(obfuscatedCode.run(filesCtx({ "b.js": both })).length, 1);
+  assert.equal(minifiedCode.run(filesCtx({ "b.js": both })).length, 0);
 });
 
 // ---- api-coverage (static-analysis self-report) ----

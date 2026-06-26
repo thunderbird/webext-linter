@@ -10,7 +10,8 @@
 //
 // Does NOT belong here: the library-signal heuristics and the VENDOR.md
 // declaration check (-> src/checks/lib/bundled.js, classifyAddonJs), the
-// minified/obfuscated-without-library-signals verdict (-> obfuscated-code.js),
+// minified-without-library verdict (-> minified-code.js) and the
+// obfuscated-without-library verdict (-> obfuscated-code.js),
 // authored wording (-> assets/registry.yaml), severity (-> that registry
 // entry, stamped by src/checks/registry.js), and report formatting (-> src/
 // report/format.js).
