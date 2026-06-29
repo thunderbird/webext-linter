@@ -32,13 +32,23 @@ export function analyzeCsp(manifest) {
   let unsafeInline = false;
   const hosts = new Set();
   for (const s of strings) {
-    if (/'unsafe-eval'/i.test(s)) {
+    // 'unsafe-eval'/'unsafe-inline' only enable dynamic code execution when they
+    // govern scripts - i.e. in script-src, or default-src as its fallback. The
+    // same keyword in style-src (or any other directive) is style/asset policy,
+    // not code execution, so scope the test (and the host scan) to that one
+    // directive. Without a script-governing directive scripts use the platform
+    // default (restrictive), so nothing is permitted.
+    const directive = scriptDirective(s);
+    if (!directive) {
+      continue;
+    }
+    if (/'unsafe-eval'/i.test(directive)) {
       unsafeEval = true;
     }
-    if (/'unsafe-inline'/i.test(s)) {
+    if (/'unsafe-inline'/i.test(directive)) {
       unsafeInline = true;
     }
-    for (const host of remoteScriptHosts(s)) {
+    for (const host of hostsFrom(directive)) {
       hosts.add(host);
     }
   }
@@ -46,23 +56,32 @@ export function analyzeCsp(manifest) {
 }
 
 /**
- * Remote hosts allowed by the script-src (or fallback default-src) directive.
+ * The directive that governs script execution: script-src (or script-src-elem),
+ * falling back to default-src when no script-src is present. Null when the policy
+ * has neither (scripts then fall to the platform default).
  * @param {string} csp
- * @returns {string[]}
+ * @returns {string|null}
  */
-function remoteScriptHosts(csp) {
+function scriptDirective(csp) {
   const directives = csp
     .split(";")
     .map((d) => d.trim())
     .filter(Boolean);
-  const scriptSrc =
+  return (
     directives.find((d) => /^script-src(-elem)?\b/i.test(d)) ||
-    directives.find((d) => /^default-src\b/i.test(d));
-  if (!scriptSrc) {
-    return [];
-  }
+    directives.find((d) => /^default-src\b/i.test(d)) ||
+    null
+  );
+}
+
+/**
+ * Remote hosts allowed by a single CSP directive (the script directive).
+ * @param {string} directive
+ * @returns {string[]}
+ */
+function hostsFrom(directive) {
   const hosts = [];
-  for (const token of scriptSrc.split(/\s+/).slice(1)) {
+  for (const token of directive.split(/\s+/).slice(1)) {
     if (token.startsWith("'")) {
       continue; // 'self' 'none' 'unsafe-*' nonce/sha
     }
