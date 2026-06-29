@@ -567,7 +567,7 @@ export async function main(argv) {
     ).length;
     if (!values["full-summary"] && unsureCount > 0) {
       const note =
-        "\n  (tip: re-run with --llm-enabled --full-summary to have the AI " +
+        "\n  (tip: re-run with --llm-review to have the AI " +
         `re-check the ${unsureCount} unsure item(s) above with full-add-on ` +
         "context, instead of leaving them for manual review.)\n";
       process.stdout.write(note);
