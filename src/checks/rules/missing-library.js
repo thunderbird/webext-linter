@@ -36,13 +36,17 @@ export default {
       const id = c.libraryId
         ? `${c.libraryId.name} ${c.libraryId.version}`
         : null;
+      // A CDN-identified library (c.cdn) is also `library`, but it has its own
+      // check (find-lib-on-cdn, which suggests the jsDelivr VENDOR entry); exclude
+      // it here so it is not reported twice. Only Mozilla hash-DB matches remain.
+      const mozillaLib = c.library && !c.cdn;
       ctx.note?.(
         c.file,
         null,
-        c.library ? (id ?? "bundled library") : "not a library",
-        c.library ? "fail" : "pass"
+        mozillaLib ? (id ?? "bundled library") : "not a library",
+        mozillaLib ? "fail" : "pass"
       );
-      if (c.library) {
+      if (mozillaLib) {
         findings.push(finding({ file: c.file, item: id ?? undefined }));
       }
     }

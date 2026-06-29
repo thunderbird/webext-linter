@@ -40,6 +40,18 @@ export const LIBRARY_HASHES_URL =
 export const LIBRARY_HASHES_CACHE = ".library-hashes-cache";
 
 /**
+ * jsDelivr's content-addressed reverse lookup: GET <CDN_LOOKUP_URL><sha256-hex>
+ * returns `{type, name, version, file}` for a file whose exact bytes are published
+ * on the CDN, or 404 when nothing matches. A second-tier library identifier (after
+ * the Mozilla hash DB above) for bundled files that DB does not list. See
+ * src/checks/lib/cdn-lookup.js.
+ */
+export const CDN_LOOKUP_URL = "https://data.jsdelivr.com/v1/lookup/hash/";
+
+/** Directory where CDN hash-lookup results are cached (--cdn-lookup-cache). */
+export const CDN_LOOKUP_CACHE = ".cdn-lookup-cache";
+
+/**
  * Default model per LLM_API_TYPE when LLM_API_MODEL is not set.
  * DEFAULT_MODEL_CLAUDE is the claude (Anthropic) default. DEFAULT_MODEL_OPENAI
  * is the chatgpt (OpenAI) one (gpt-4.1 for its 1M-token context, since add-ons

@@ -31,9 +31,15 @@ import { rawSha256 } from "../../normalize/hash.js";
 /** @typedef {import("../../addon/load.js").Addon} Addon */
 /** @typedef {{name: string, version: string}} LibraryId */
 /** @typedef {{file: string, library: boolean, minified: boolean,
- *   obfuscated: boolean, libraryId?: LibraryId}} BundleTag  `library` is set by a
+ *   obfuscated: boolean, minifiedGeometry: boolean, libraryId?: LibraryId,
+ *   cdn?: {url: string, type?: string}}} BundleTag  `library` is set by a
  *   content-hash match against the known-library database; `libraryId` names the
- *   matched release (for the missing-library finding). */
+ *   matched release (for the missing-library finding). `minifiedGeometry` is the raw
+ *   minified-by-geometry verdict, kept even when --scan-minified clears `minified`,
+ *   so the CDN identifier can still consider the bundle. `cdn` is set later
+ *   (src/checks/lib/cdn-lookup.js) when such a bundle is matched on the jsDelivr CDN:
+ *   that ALSO sets `library`/`libraryId` (vendored-family, like a hash match) and
+ *   holds the jsDelivr source URL (and its type) for the find-lib-on-cdn finding. */
 /** @typedef {{classified: BundleTag[], nonAuthored: Set<string>}} Bundled */
 
 /**
@@ -99,10 +105,17 @@ export function classifyBundled(
     // The library tag is a true content-hash match against the known-library DB;
     // a hit also names the matched release (libraryId) for missing-library.
     const libraryId = libraryHashes.get(rawSha256(buf));
-    const tag = { file, library: Boolean(libraryId), ...classify(text, file) };
+    const content = classify(text, file);
+    const tag = { file, library: Boolean(libraryId), ...content };
     if (libraryId) {
       tag.libraryId = libraryId;
     }
+    // Preserve the raw minified-by-geometry verdict where --scan-minified cannot
+    // reach it: that flag clears tag.minified (treat the bundle as authored), but
+    // the CDN identifier (a later pipeline step) must still recognise a known
+    // library here - a real third-party library is excluded regardless of the
+    // flag, exactly as the hash-DB library tag is kept below. See cdn-lookup.js.
+    tag.minifiedGeometry = Boolean(content.minified);
     // classify()'s obfuscation signal is byte-based and so comment/string-blind -
     // `eval(` or `fromCharCode` in a comment trips it. For an authored-candidate
     // JS file (not already library/minified, which are non-authored regardless)

@@ -40,6 +40,7 @@ import {
   DEFAULT_CACHE,
   EXPERIMENTS_CACHE,
   LIBRARY_HASHES_CACHE,
+  CDN_LOOKUP_CACHE,
   MAX_LLM_REQUESTS_PER_RUN,
 } from "./config.js";
 import {
@@ -245,6 +246,17 @@ export function helpText() {
     ],
   ];
 
+  const cdn = [
+    [
+      "--cdn-lookup <true|false>",
+      "Identify an unrecognized minified bundle by a jsDelivr content-hash lookup (default: true). Results are cached; an offline run simply finds no match.",
+    ],
+    [
+      "--cdn-lookup-cache <dir>",
+      `Where the CDN hash-lookup results are cached (default: ${CDN_LOOKUP_CACHE}).`,
+    ],
+  ];
+
   const checks = [
     [
       "--checks-only <ids>",
@@ -322,6 +334,9 @@ export function helpText() {
     "Schema selection (manifest_version is auto-detected, you pick the channel):",
     ...schema.map(([flag, desc]) => optionLine(flag, desc)),
     "",
+    "CDN library identification:",
+    ...cdn.map(([flag, desc]) => optionLine(flag, desc)),
+    "",
     "Check selection:",
     ...checks.map(([flag, desc]) => optionLine(flag, desc)),
     "",
@@ -348,6 +363,8 @@ const OPTIONS = {
   "library-hashes": { type: "string" },
   "library-hashes-cache": { type: "string" },
   "library-hashes-refresh": { type: "boolean" },
+  "cdn-lookup": { type: "string" },
+  "cdn-lookup-cache": { type: "string" },
   "experiments-zip": { type: "string" },
   "experiments-cache": { type: "string" },
   "experiments-force-refresh": { type: "boolean" },
@@ -591,6 +608,9 @@ function pipelineOptsFromValues(values) {
     libraryHashes: values["library-hashes"],
     libraryHashesCache: values["library-hashes-cache"] || LIBRARY_HASHES_CACHE,
     libraryHashesForceRefresh: values["library-hashes-refresh"],
+    // --cdn-lookup true|false (default true); only an explicit "false" disables.
+    cdnLookup: values["cdn-lookup"] !== "false",
+    cdnLookupCache: values["cdn-lookup-cache"] || CDN_LOOKUP_CACHE,
     experimentsZip: values["experiments-zip"],
     experimentsCache: values["experiments-cache"] || EXPERIMENTS_CACHE,
     experimentsForceRefresh: values["experiments-force-refresh"],

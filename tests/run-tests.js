@@ -158,6 +158,9 @@ async function main() {
         experimentsZip: EXPERIMENTS_FIXTURE,
         libraryHashes: LIBRARY_HASHES_FIXTURE,
         vendorNet: OFFLINE_NET,
+        // The CDN identifier is a networked step that cannot match offline; turn
+        // it off so golden runs are hermetic (no per-run cache file written).
+        cdnLookup: false,
       });
       problems = diff(expected, locationsByRule(review.findings));
       for (const [ext, fmt] of [

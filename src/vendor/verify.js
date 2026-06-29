@@ -254,6 +254,12 @@ export async function auditIdentifiedLibraries(addon, net = defaultNet) {
     if (!tag.libraryId) {
       continue;
     }
+    // A CDN match identified via a GitHub source has no npm identity (its name is
+    // "owner/repo"), so the npm OSV query would be meaningless - skip it. Hash-DB
+    // and npm-CDN matches are npm packages and audited normally.
+    if (tag.cdn && tag.cdn.type !== "npm") {
+      continue;
+    }
     const name = npmNameForLibrary(tag.libraryId.name);
     const key = `${name}@${tag.libraryId.version}`;
     if (seen.has(key)) {

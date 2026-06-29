@@ -39,6 +39,26 @@ test("renderFindings uses a static response wholesale", () => {
   assert.ok(!f.message.includes("\n"));
 });
 
+// find-lib-on-cdn names the ACTUAL identified library via {{item}} (no static
+// example): the prose consumes {{item}}, so the file + jsDelivr source URL (the
+// hint) surface on the per-finding location line - the real entry data, not a
+// fabricated app/fuse.min.js example.
+test("renderFindings fills the real library into find-lib-on-cdn (no example)", () => {
+  const f = {
+    ruleId: "find-lib-on-cdn",
+    item: "fuse.js 7.0.0",
+    hint: "https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js",
+    message: null,
+  };
+  renderFindings([f], registry);
+  assert.match(f.message, /"fuse\.js 7\.0\.0"/); // the real lib, not an example
+  assert.ok(!f.message.includes("{{item}}"));
+  assert.ok(!f.message.includes("app/fuse.min.js")); // no hardcoded example path
+  // {{item}} was consumed by the prose, so the subject is not re-listed on the
+  // locus line; the hint (source URL) still is.
+  assert.equal(f.listItem, false);
+});
+
 // An orchestrator system finding (ruleId "check-failed") renders from the
 // registry `messages` map, with the check id filled in.
 test("renderFindings renders a system message for check-failed", () => {

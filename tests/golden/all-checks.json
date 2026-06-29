@@ -34,6 +34,7 @@
       "unused-permission-manual",
       "unused-permission-manual-pre-d308076",
       "missing-library",
+      "find-lib-on-cdn",
       "minified-code",
       "obfuscated-code",
       "api-coverage",

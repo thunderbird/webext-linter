@@ -325,6 +325,15 @@ deterministic-checks:
     The following bundled files were recognized as third-party libraries (named after each path) but are not declared in a VENDOR file. Please declare each and link its source so the bundled copy can be verified against the linked version - a VENDOR file at the add-on root is common practice.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
+# Flags a bundled file the Mozilla hash DB did not recognize but whose exact bytes
+# were found on the jsDelivr CDN - a known third-party library, shipped undeclared.
+- title: Library identified on a CDN
+  severity: info
+  check: find-lib-on-cdn
+  response: |-
+    "{{item}}" is not in the Mozilla library hash database, but its exact contents were found on the jsDelivr CDN - so the file below is a known third-party library shipped undeclared. Add a VENDOR entry that pairs the file with the jsDelivr source URL shown next to it (use them as the entry's `file:` and `source:`), so the bundled copy is verified against that release.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
+
 # Flags shipped minified JS that is not a recognized library; asks for the
 # original sources.
 - title: Source Archive (minified code) required

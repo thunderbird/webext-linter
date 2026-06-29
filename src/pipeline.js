@@ -36,6 +36,7 @@ import { resolveVendor } from "./vendor/resolve.js";
 import { verifyVendor, auditIdentifiedLibraries } from "./vendor/verify.js";
 import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
 import { classifyBundled } from "./checks/lib/bundled.js";
+import { resolveCdnLibraries } from "./checks/lib/cdn-lookup.js";
 import {
   resolveLibraryHashes,
   parseLibraryHashes,
@@ -90,6 +91,10 @@ import {
  *   instead of fetching (offline/CI/tests; the golden harness injects a fixture).
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
  * @property {boolean} [libraryHashesForceRefresh]  Re-fetch the library hashes.
+ * @property {boolean} [cdnLookup]  Identify an unrecognized minified bundle by a
+ *   jsDelivr content-hash lookup (on by default; --cdn-lookup false disables). Set
+ *   false to skip the per-file CDN request (offline/privacy).
+ * @property {string} [cdnLookupCache]  Where to cache the CDN hash-lookup results.
  * @property {string} [diffTo]  Path to the previous published version.
  * @property {boolean} [diffSummary]  Add an LLM "Summary of changes" section.
  * @property {boolean} [fullSummary]  Add an LLM "Summary of add-on" section.
@@ -291,10 +296,24 @@ export async function runPipeline(opts) {
       libraryHashes,
     });
 
-    // 1f. OSV-audit the hash-identified (but undeclared) libraries, so an
-    // undeclared vulnerable bundle is caught like a declared dependency. Runs
-    // after classifyBundled (libraryIds exist only then) and reuses verifyVendor's
-    // OSV transport + the shared vulnerabilities store; best-effort, skips offline.
+    // 1e-bis. Second-tier library identification: for a minified bundle the
+    // Mozilla DB did not recognize, ask jsDelivr (by content hash) whether it is a
+    // published release, promoting a match into the vendored family (library +
+    // libraryId + cdn) for find-lib-on-cdn. Runs after classifyBundled and BEFORE
+    // the audit below, so a CDN match is OSV-audited like a hash-DB library.
+    // Best-effort: cached on disk, silently skipped offline.
+    setupStep("Identifying bundled libraries on a CDN");
+    await resolveCdnLibraries(addon, {
+      net: opts.vendorNet,
+      cacheDir: opts.cdnLookupCache,
+      enabled: opts.cdnLookup !== false,
+    });
+
+    // 1f. OSV-audit the identified (but undeclared) libraries - both Mozilla
+    // hash-DB and CDN matches - so an undeclared vulnerable bundle is caught like a
+    // declared dependency. Runs after the two identifiers (libraryIds exist only
+    // then) and reuses verifyVendor's OSV transport + the shared vulnerabilities
+    // store; best-effort, skips offline.
     setupStep("Auditing bundled libraries");
     await auditIdentifiedLibraries(addon, opts.vendorNet);
   }

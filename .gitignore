@@ -4,6 +4,7 @@ logs/
 .schema-cache/
 .experiments-cache/
 .library-hashes-cache/
+.cdn-lookup-cache/
 *.tmp
 *.key
 run-nextpass.sh
