@@ -92,3 +92,52 @@ test("a real remote http sink still flags cleartext after the loopback fix", () 
   assert.equal(hostlike.cleartext, true);
   assert.equal(hostlike.host, "127.example.com");
 });
+
+// A dynamically built <form> that is submitted is an overt transmission to its
+// action URL - the form.submit() exfiltration channel (createElement + action +
+// submit), which bypasses fetch/XHR. (infocodex pattern.)
+test("createElement('form') + action + submit() is an overt sink to the action", () => {
+  const hit = one(
+    'const f = document.createElement("form");' +
+      'f.method = "POST";' +
+      'f.action = "https://cloud.example.com/mail.php";' +
+      "f.submit();"
+  );
+  assert.equal(hit.type, "form-submit");
+  assert.equal(hit.channel, "overt");
+  assert.equal(hit.destClass, "remote");
+  assert.equal(hit.host, "cloud.example.com");
+});
+
+// The action set via setAttribute, a dynamic (configurable) destination, and
+// requestSubmit() are all covered; a dynamic action resolves to "dynamic" so
+// data-exfiltration still escalates it.
+test("form action via setAttribute / dynamic URL / requestSubmit are covered", () => {
+  const attr = one(
+    'const f = document.createElement("form");' +
+      'f.setAttribute("action", "http://pbx.local/x");' +
+      "f.submit();"
+  );
+  assert.equal(attr.type, "form-submit");
+  assert.equal(attr.cleartext, true);
+  assert.equal(attr.host, "pbx.local");
+
+  const dyn = one(
+    'const f = document.createElement("form");' +
+      "f.action = message.url;" +
+      "f.requestSubmit();"
+  );
+  assert.equal(dyn.type, "form-submit");
+  assert.equal(dyn.destClass, "dynamic");
+});
+
+// A form with no action set, and a .submit() on an untracked element, are not
+// flagged (conservative: only a tracked, action-bearing built form).
+test("form-submit without a tracked form or an action is not flagged", () => {
+  assert.equal(scanNetworkSinks("document.forms[0].submit();").hits.length, 0);
+  assert.equal(scanNetworkSinks("widget.submit();").hits.length, 0);
+  // Tracked form but no action -> local destination, not an outbound transmission.
+  const noAction = one('const f = document.createElement("form"); f.submit();');
+  assert.equal(noAction.type, "form-submit");
+  assert.equal(noAction.destClass, "local");
+});

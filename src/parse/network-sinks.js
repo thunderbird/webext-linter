@@ -15,8 +15,8 @@
 // disguised-*.js, cleartext-transmission.js, privacy-policy.js,
 // data-exfiltration.js, assets/registry.yaml), the once-per-run aggregation
 // (-> src/checks/lib/outbound-sinks.js), URL classification (-> src/scan/url.js)
-// and Babel access (-> src/parse/ast.js). Not yet covered: <form> action
-// submits, document.write, the anchor ping attribute.
+// and Babel access (-> src/parse/ast.js). Not yet covered: document.write, the
+// anchor ping attribute.
 
 import { parseJs, traverse, nodeLoc } from "./ast.js";
 import { classifyUrl, isLoopback } from "../scan/url.js";
@@ -115,6 +115,29 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
     });
   };
 
+  // Pass 1: identifiers bound to document.createElement("form"). A dynamically
+  // built form that is submitted is an overt transmission whose destination is
+  // the form's `action` (the fields go to the action URL) - the form.submit()
+  // exfiltration channel, which does not look like fetch/XHR.
+  const formVars = new Set();
+  traverse(ast, {
+    "VariableDeclarator|AssignmentExpression"(path) {
+      const id = path.isVariableDeclarator() ? path.node.id : path.node.left;
+      const init = path.isVariableDeclarator()
+        ? path.node.init
+        : path.node.right;
+      if (id?.type === "Identifier" && isCreateElementForm(init)) {
+        formVars.add(id.name);
+      }
+    },
+  });
+  // The `action` recorded per tracked form (name -> URL node), filled as the main
+  // pass sees `form.action = …` / `form.setAttribute("action", …)` before the
+  // `form.submit()` that reads it (create -> set action -> submit source order).
+  const formActions = new Map();
+  const isFormVar = (node) =>
+    node?.type === "Identifier" && formVars.has(node.name);
+
   traverse(ast, {
     CallExpression(path) {
       const { callee, arguments: args } = path.node;
@@ -138,6 +161,25 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
         push("navigation", "covert", args[0], [], path.node);
       } else if (prop === "setAttribute" && isUrlAttr(args[0])) {
         push("set-attribute", "covert", args[1], [], path.node);
+      } else if (
+        prop === "setAttribute" &&
+        isActionAttr(args[0]) &&
+        isFormVar(callee.object)
+      ) {
+        formActions.set(callee.object.name, args[1]); // record the form action
+      } else if (
+        (prop === "submit" || prop === "requestSubmit") &&
+        isFormVar(callee.object)
+      ) {
+        // form.submit() sends the form's fields to its action URL (a POST/GET
+        // that bypasses fetch/XHR). Destination = the recorded action.
+        push(
+          "form-submit",
+          "overt",
+          formActions.get(callee.object.name),
+          [],
+          path.node
+        );
       }
     },
     NewExpression(path) {
@@ -164,6 +206,8 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
         push(type, "covert", right, [], path.node);
       } else if (STYLE_URL_PROPS.has(prop)) {
         push("style-url", "covert", right, [], path.node);
+      } else if (prop === "action" && isFormVar(left.object)) {
+        formActions.set(left.object.name, right); // record the form action
       }
     },
   });
@@ -222,6 +266,32 @@ function isLocation(obj) {
  */
 function isUrlAttr(node) {
   return node?.type === "StringLiteral" && URL_PROPS.has(node.value);
+}
+
+/**
+ * True for a `setAttribute("action", …)` form-action attribute (first argument).
+ * @param {AstNode} node
+ * @returns {boolean}
+ */
+function isActionAttr(node) {
+  return (
+    node?.type === "StringLiteral" && node.value.toLowerCase() === "action"
+  );
+}
+
+/**
+ * True for `document.createElement("form")` (case-insensitive) - the start of a
+ * dynamically built form whose later `.submit()` transmits its fields.
+ * @param {AstNode} node
+ * @returns {boolean}
+ */
+function isCreateElementForm(node) {
+  return (
+    node?.type === "CallExpression" &&
+    memberPropName(node.callee) === "createElement" &&
+    node.arguments[0]?.type === "StringLiteral" &&
+    node.arguments[0].value.toLowerCase() === "form"
+  );
 }
 
 /**

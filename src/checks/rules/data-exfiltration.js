@@ -32,6 +32,7 @@ const METHOD = {
   xhr: "XMLHttpRequest",
   websocket: "WebSocket",
   eventsource: "EventSource",
+  "form-submit": "an HTML form submission",
 };
 
 export default {
