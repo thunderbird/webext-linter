@@ -10,6 +10,14 @@
 // `libraryId` (so the OSV audit covers it), plus a `cdn` marker holding the
 // canonical, trusted+pinned jsDelivr source URL for the find-lib-on-cdn finding.
 //
+// A hit is then put through the same popularity trust bar a declared
+// VENDOR/package.json source gets (isPopular). jsDelivr is uncurated, so a match
+// alone is not trust: a NOT-popular hit stays identified (still skipped by
+// minified-code and OSV-audited) but is recorded as a `not-popular` vendor result
+// (`addon.vendor.results`), so vendor-unverified escalates it to manual review and
+// find-lib-on-cdn stays silent for it. Only a popular hit keeps the "declare it"
+// finding. (Mozilla hash-DB matches are NOT gated - DB membership is the signal.)
+//
 // Best-effort, like auditIdentifiedLibraries: results (positive AND negative) are
 // cached on disk so a repeat review of the same bundle makes no request, and any
 // network error - or an injected net with no fetchJson (offline / the golden
@@ -26,7 +34,7 @@ import path from "node:path";
 
 import { debug } from "../../util/log.js";
 import { rawSha256 } from "../../normalize/hash.js";
-import { defaultNet } from "../../vendor/verify.js";
+import { defaultNet, isPopular } from "../../vendor/verify.js";
 import { CDN_LOOKUP_URL, CDN_LOOKUP_CACHE } from "../../config.js";
 
 /** @typedef {import("../../addon/load.js").Addon} Addon */
@@ -116,6 +124,29 @@ export async function resolveCdnLibraries(
     tag.cdn = { url: cdnUrl(hit), type: hit.type };
     nonAuthored.add(tag.file);
     debug(`CDN-identified ${tag.file} as ${hit.name}@${hit.version}`);
+
+    // Apply the same popularity trust bar a declared VENDOR/package.json source
+    // gets: jsDelivr is uncurated (unlike the Mozilla hash DB, whose membership IS
+    // the popularity signal), so an obscure or author-published package found here
+    // must not be silently accepted. Looked up fresh each run (popularity is
+    // time-varying, so it is not cached with the hash hit) and offline-safe (a
+    // lookup error returns false). A NOT-popular match stays identified - still
+    // excluded from minified-code and OSV-audited - but is recorded as a
+    // `not-popular` vendor result so the vendor-unverified check escalates it to
+    // manual review, exactly like a not-popular package.json dep. A popular match
+    // keeps the find-lib-on-cdn info finding ("declare it").
+    const src =
+      hit.type === "gh"
+        ? { kind: "github", repo: hit.name }
+        : { kind: "npm", pkg: hit.name };
+    tag.cdn.popular = await isPopular(src, net);
+    if (!tag.cdn.popular && addon.vendor?.results) {
+      addon.vendor.results.push({
+        path: tag.file,
+        source: tag.cdn.url,
+        outcome: "not-popular",
+      });
+    }
   }
 
   if (dirty) {

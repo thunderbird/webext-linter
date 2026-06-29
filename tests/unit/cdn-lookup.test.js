@@ -18,6 +18,7 @@ import {
 import findLibOnCdn from "../../src/checks/rules/find-lib-on-cdn.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
+import vendorUnverified from "../../src/checks/rules/vendor-unverified.js";
 
 // One long, dense line -> minified by geometry (same fixture style as bundled.test.js).
 const MINIFIED = `var data=[${"1,".repeat(700)}1];`;
@@ -26,13 +27,30 @@ const addonWith = (files) => ({
   files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
 });
 
-// A net that answers the lookup for known hashes; records the URLs it was asked.
-function netFor(map) {
+// A net that answers the jsDelivr hash lookup for known hashes AND the popularity
+// trust-bar lookups (npm last-month downloads / GitHub stars) resolveCdnLibraries
+// now makes for each hit. `downloads`/`stars` default well above the bars
+// (VENDOR_NPM_MIN_DOWNLOADS=1000 / VENDOR_GITHUB_MIN_STARS=100) so a hit is popular
+// unless a test overrides them. Records every URL it was asked.
+function netFor(map, { downloads = 5000, stars = 500 } = {}) {
   const calls = [];
   return {
     calls,
+    // Hash-lookup calls only (excludes the popularity endpoints), so a test can
+    // assert the jsDelivr lookup was cached while popularity is re-checked.
+    get lookupCalls() {
+      return calls.filter(
+        (u) => !u.includes("api.npmjs.org") && !u.includes("api.github.com")
+      );
+    },
     async fetchJson(url) {
       calls.push(url);
+      if (url.includes("api.npmjs.org/downloads/point/last-month/")) {
+        return { downloads };
+      }
+      if (url.includes("api.github.com/repos/")) {
+        return { stargazers_count: stars };
+      }
       const hash = url.split("/").pop();
       if (map.has(hash)) {
         return map.get(hash);
@@ -97,6 +115,94 @@ test("a hit promotes the bundle into the vendored family (library + libraryId + 
   );
   assert.equal(minifiedCode.run(ctx).length, 0);
   assert.equal(missingLibrary.run(ctx).length, 0);
+});
+
+test("a NOT-popular hit stays identified but is routed to manual review (vendor-unverified)", async () => {
+  const addon = classify(addonWith({ "app/obscure.min.js": MINIFIED }));
+  // resolveCdnLibraries records the not-popular result on the shared vendor store.
+  addon.vendor = { results: [] };
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(addon.files.get("app/obscure.min.js"));
+  const net = netFor(
+    new Map([
+      [
+        hash,
+        {
+          type: "npm",
+          name: "@me/obscure",
+          version: "1.0.0",
+          file: "/dist/obscure.min.js",
+        },
+      ],
+    ]),
+    { downloads: 50 } // below VENDOR_NPM_MIN_DOWNLOADS (1000)
+  );
+
+  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+
+  const tag = addon.bundled.classified.find(
+    (c) => c.file === "app/obscure.min.js"
+  );
+  // Still identified (library + cdn + nonAuthored) - only the trust outcome differs.
+  assert.equal(tag.library, true);
+  assert.equal(tag.cdn.popular, false);
+  assert.ok(addon.bundled.nonAuthored.has("app/obscure.min.js"));
+
+  // Recorded as a not-popular vendor result, source = the jsDelivr URL.
+  assert.deepEqual(addon.vendor.results, [
+    {
+      path: "app/obscure.min.js",
+      source:
+        "https://cdn.jsdelivr.net/npm/@me/obscure@1.0.0/dist/obscure.min.js",
+      outcome: "not-popular",
+    },
+  ]);
+
+  const ctx = { addon };
+  // find-lib-on-cdn stays silent (no "declare it" finding), minified-code stays
+  // silent (still identified), and vendor-unverified escalates it to manual review.
+  assert.equal(findLibOnCdn.run(ctx).length, 0);
+  assert.equal(minifiedCode.run(ctx).length, 0);
+  const { escalations } = vendorUnverified.run(ctx);
+  assert.equal(escalations.length, 1);
+  assert.match(escalations[0].item, /app\/obscure\.min\.js/);
+  assert.match(escalations[0].item, /not a confirmed widely-used library/);
+});
+
+test("a gh-type hit uses GitHub stars for the popularity bar; a popular hit adds no vendor result", async () => {
+  const addon = classify(addonWith({ "app/widget.min.js": MINIFIED }));
+  addon.vendor = { results: [] };
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(addon.files.get("app/widget.min.js"));
+  const net = netFor(
+    new Map([
+      [
+        hash,
+        {
+          type: "gh",
+          name: "owner/widget",
+          version: "v1.2.3",
+          file: "/widget.min.js",
+        },
+      ],
+    ]),
+    { stars: 500 } // above VENDOR_GITHUB_MIN_STARS (100)
+  );
+
+  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+
+  const tag = addon.bundled.classified.find(
+    (c) => c.file === "app/widget.min.js"
+  );
+  assert.equal(tag.cdn.type, "gh");
+  assert.equal(tag.cdn.popular, true);
+  // Popular -> the "declare it" finding fires and nothing is escalated.
+  assert.equal(findLibOnCdn.run({ addon }).length, 1);
+  assert.deepEqual(addon.vendor.results, []);
+  // The popularity lookup queried the GitHub stars API for the repo.
+  assert.ok(
+    net.calls.some((u) => u.includes("api.github.com/repos/owner/widget"))
+  );
 });
 
 test("--scan-minified still identifies a known library on the CDN", async () => {
@@ -252,19 +358,20 @@ test("results are cached on disk: a second run makes no request (hits + misses)"
     ])
   );
 
-  // First run populates the cache (one request for the hit).
+  // First run populates the cache (one hash lookup for the hit).
   await resolveCdnLibraries(hitAddon, { net, cacheDir });
-  const firstCalls = net.calls.length;
-  assert.ok(firstCalls >= 1);
+  const firstLookups = net.lookupCalls.length;
+  assert.ok(firstLookups >= 1);
 
-  // Second run over a freshly classified copy: same hashes -> served from cache,
-  // no new requests.
+  // Second run over a freshly classified copy: same hashes -> the jsDelivr HASH
+  // lookup is served from cache (no new lookup). Popularity is intentionally NOT
+  // cached (it is time-varying), so it is re-checked - that is fine.
   const again = classify(addonWith({ "a.js": MINIFIED }));
   await resolveCdnLibraries(again, { net, cacheDir });
   assert.equal(
-    net.calls.length,
-    firstCalls,
-    "no new lookups on the cached run"
+    net.lookupCalls.length,
+    firstLookups,
+    "no new jsDelivr hash lookups on the cached run"
   );
   assert.equal(
     again.bundled.classified.find((c) => c.file === "a.js").libraryId.name,

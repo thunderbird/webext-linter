@@ -737,10 +737,13 @@ function metaFiles(node, out = []) {
  * first-party trusted org (VENDOR_TRUSTED_GITHUB_ORGS, e.g. Thunderbird), which
  * is accepted by provenance regardless of stars and without a popularity lookup.
  * A lookup error counts as "not popular" (the case then goes to manual review).
+ * Shared by verifyVendor's per-source checks (VENDOR / package.json) and the CDN
+ * identifier (src/checks/lib/cdn-lookup.js), so all identification paths gate on
+ * the same bar. `src` need only carry {kind, pkg} (npm) or {kind, repo} (github).
  * @param {VendorSource} src @param {VendorNet} net
  * @returns {Promise<boolean>}
  */
-async function isPopular(src, net) {
+export async function isPopular(src, net) {
   try {
     if (src.kind === "npm") {
       const j = await net.fetchJson(

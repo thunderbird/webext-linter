@@ -32,14 +32,16 @@ import { rawSha256 } from "../../normalize/hash.js";
 /** @typedef {{name: string, version: string}} LibraryId */
 /** @typedef {{file: string, library: boolean, minified: boolean,
  *   obfuscated: boolean, minifiedGeometry: boolean, libraryId?: LibraryId,
- *   cdn?: {url: string, type?: string}}} BundleTag  `library` is set by a
+ *   cdn?: {url: string, type?: string, popular?: boolean}}} BundleTag  `library` is set by a
  *   content-hash match against the known-library database; `libraryId` names the
  *   matched release (for the missing-library finding). `minifiedGeometry` is the raw
  *   minified-by-geometry verdict, kept even when --scan-minified clears `minified`,
  *   so the CDN identifier can still consider the bundle. `cdn` is set later
  *   (src/checks/lib/cdn-lookup.js) when such a bundle is matched on the jsDelivr CDN:
  *   that ALSO sets `library`/`libraryId` (vendored-family, like a hash match) and
- *   holds the jsDelivr source URL (and its type) for the find-lib-on-cdn finding. */
+ *   holds the jsDelivr source URL (and its type) for the find-lib-on-cdn finding,
+ *   plus `popular` - whether the matched package cleared the popularity trust bar
+ *   (a not-popular CDN match is routed to manual review, see cdn-lookup.js). */
 /** @typedef {{classified: BundleTag[], nonAuthored: Set<string>}} Bundled */
 
 /**
