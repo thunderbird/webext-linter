@@ -48,3 +48,47 @@ test("a local path has no host and is not cleartext", () => {
   assert.equal(hit.host, null);
   assert.equal(hit.destClass, "local");
 });
+
+// Loopback traffic never leaves the machine, so a literal loopback sink is local:
+// not cleartext, no host (clears the cleartext-transmission + privacy-policy FPs).
+test("a loopback destination is treated as local, not a cleartext remote send", () => {
+  for (const url of [
+    "http://127.0.0.1:11434/api/generate",
+    "http://127.1/x", // 127.0.0.0/8 shorthand
+    "http://localhost:8080/x",
+    "http://sub.localhost/x",
+    "http://[::1]:9/x",
+    "http://0.0.0.0/x",
+  ]) {
+    const hit = one(`fetch(${JSON.stringify(url)});`);
+    assert.equal(hit.destClass, "local", url);
+    assert.equal(hit.cleartext, false, url);
+    assert.equal(hit.host, null, url);
+  }
+  const ws = one('new WebSocket("ws://127.0.0.1:1234/");');
+  assert.equal(ws.destClass, "local");
+  assert.equal(ws.cleartext, false);
+});
+
+// The concat-prefix loopback form ("http://127.0.0.1:" + port) resolves the host
+// from the static prefix and is likewise local.
+test("a concat-prefix loopback URL is local (no cleartext, no dataAppended)", () => {
+  const hit = one('fetch("http://127.0.0.1:" + port + "/x");');
+  assert.equal(hit.destClass, "local");
+  assert.equal(hit.cleartext, false);
+  assert.equal(hit.dataAppended, false);
+});
+
+// A real remote host is unaffected by the loopback exemption - including a
+// hostname that merely starts with "127." (only all-numeric 127.x is loopback).
+test("a real remote http sink still flags cleartext after the loopback fix", () => {
+  const hit = one('fetch("http://api.example.com/collect");');
+  assert.equal(hit.destClass, "remote");
+  assert.equal(hit.cleartext, true);
+  assert.equal(hit.host, "api.example.com");
+
+  const hostlike = one('fetch("http://127.example.com/collect");');
+  assert.equal(hostlike.destClass, "remote");
+  assert.equal(hostlike.cleartext, true);
+  assert.equal(hostlike.host, "127.example.com");
+});

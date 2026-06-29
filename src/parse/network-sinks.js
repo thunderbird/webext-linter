@@ -19,7 +19,7 @@
 // submits, document.write, the anchor ping attribute.
 
 import { parseJs, traverse, nodeLoc } from "./ast.js";
-import { classifyUrl } from "../scan/url.js";
+import { classifyUrl, isLoopback } from "../scan/url.js";
 import { API_ROOTS } from "./api-usage.js";
 
 /** @typedef {import("@babel/types").Node} AstNode */
@@ -255,22 +255,40 @@ function urlInfo(node) {
   }
   if (isStatic(node)) {
     const url = bareUrl(staticValue(node));
+    const host = urlHost(url);
+    const destClass = classifyUrl(url);
+    if (destClass === "remote" && isLoopback(host)) {
+      return LOCAL_DEST; // loopback never leaves the machine - not a transmission
+    }
     return {
-      destClass: classifyUrl(url),
+      destClass,
       cleartext: CLEARTEXT_RE.test(url),
-      host: urlHost(url),
+      host,
       dataAppended: false,
     };
   }
   const prefix = bareUrl(staticPrefix(node));
+  const host = urlHost(prefix);
   const destClass = prefix ? classifyUrl(prefix) : "dynamic";
+  if (destClass === "remote" && isLoopback(host)) {
+    return LOCAL_DEST; // concat-prefix loopback ("http://127.0.0.1:" + port) too
+  }
   return {
     destClass,
     cleartext: CLEARTEXT_RE.test(prefix),
-    host: urlHost(prefix),
+    host,
     dataAppended: destClass === "remote",
   };
 }
+
+// A local (non-network) destination: no cleartext/privacy/exfil concern. Shared
+// by the no-URL case and a resolved loopback destination.
+const LOCAL_DEST = {
+  destClass: "local",
+  cleartext: false,
+  host: null,
+  dataAppended: false,
+};
 
 /**
  * The host (authority) of an absolute scheme://host URL, or null when the value
