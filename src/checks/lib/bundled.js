@@ -31,18 +31,20 @@ import { rawSha256 } from "../../normalize/hash.js";
 /** @typedef {import("../../addon/load.js").Addon} Addon */
 /** @typedef {{name: string, version: string}} LibraryId */
 /** @typedef {{file: string, library: boolean, minified: boolean,
- *   obfuscated: boolean, minifiedGeometry: boolean, libraryId?: LibraryId,
+ *   obfuscated: boolean, minifiedGeometry: boolean, untrusted?: boolean, libraryId?: LibraryId,
  *   cdn?: {url: string, type?: string, popular?: boolean}}} BundleTag  `library` is set by a
  *   content-hash match against the known-library database; `libraryId` names the
  *   matched release (for the missing-library finding). `minifiedGeometry` is the raw
  *   minified-by-geometry verdict, kept even when --scan-minified clears `minified`,
  *   so the CDN identifier can still consider the bundle. `cdn` is set later
  *   (src/checks/lib/cdn-lookup.js) when such a bundle is matched on the jsDelivr CDN:
- *   that ALSO sets `library`/`libraryId` (vendored-family, like a hash match) and
- *   holds the jsDelivr source URL (and its type) for the find-lib-on-cdn finding,
- *   plus `popular` - whether the matched package cleared the popularity trust bar
- *   (a not-popular CDN match is routed to manual review, see cdn-lookup.js). */
-/** @typedef {{classified: BundleTag[], nonAuthored: Set<string>}} Bundled */
+ *   it holds the jsDelivr source URL (and its type) for the find-lib-on-cdn finding
+ *   plus `popular` - whether the matched package cleared the popularity trust bar.
+ *   A POPULAR match ALSO sets `library`/`libraryId` (vendored-family, like a hash
+ *   match); a NOT-popular one sets `untrusted` instead (identified but not exempt -
+ *   see markUntrusted), keeping `libraryId` for the OSV audit. */
+/** @typedef {{classified: BundleTag[], nonAuthored: Set<string>,
+ *   untrusted: Array<{file: string, source?: string, name?: string, unreadable: boolean}>}} Bundled */
 
 /**
  * Classify the add-on's JS and CSS once: per-file library/minified/obfuscated tags
@@ -145,7 +147,68 @@ export function classifyBundled(
       nonAuthored.add(file);
     }
   }
-  return { classified, nonAuthored };
+  // `untrusted` is filled later (cdn-lookup.js, vendor/verify.js) for an
+  // identified-but-not-popular library: known by content, but not confirmed
+  // widely used, so NOT in the trusted/exempt family - see markUntrusted.
+  return { classified, nonAuthored, untrusted: [] };
+}
+
+/**
+ * Record an identified-but-not-popular ("untrusted") library and route it out of
+ * the trusted/exempt family: a readable one is reviewed as authored code (removed
+ * from the non-authored skip set), an unreadable (minified/obfuscated) one stays
+ * skipped and is rejected by untrusted-minified-library. The untrusted-library /
+ * untrusted-minified-library checks read addon.bundled.untrusted. Idempotent and
+ * defensive (no-op without a bundled store, e.g. some unit harnesses).
+ * @param {Addon} addon
+ * @param {{file: string, source?: string, name?: string, unreadable: boolean}} entry
+ *   `name` is the display id (e.g. "lodash 4.17.21"); `source` the upstream URL.
+ */
+export function markUntrusted(addon, { file, source, name, unreadable }) {
+  const bundled = addon?.bundled;
+  if (!bundled) {
+    return;
+  }
+  bundled.untrusted.push({ file, source, name, unreadable });
+  if (unreadable) {
+    bundled.nonAuthored.add(file); // unreadable -> not scanned; the reject asks for source
+  } else {
+    bundled.nonAuthored.delete(file); // readable -> reviewed as authored code
+  }
+}
+
+/**
+ * Reconcile the `not-popular` VENDOR/package results (recorded by verifyVendor)
+ * into the untrusted family - identified but not a confirmed widely-used library,
+ * so reviewed as authored code (markUntrusted). Done as a pipeline step AFTER
+ * classifyBundled (which builds addon.bundled), since verifyVendor runs before it.
+ * The reconciled results leave vendor.results (they are no longer manual review).
+ * The CDN not-popular case is handled in cdn-lookup.js, which already runs after
+ * classifyBundled. No-op without a bundled store or vendor results.
+ * @param {Addon} addon
+ */
+export function applyNotPopularVendor(addon) {
+  const results = addon?.vendor?.results;
+  if (!results || !addon.bundled) {
+    return;
+  }
+  const remaining = [];
+  for (const result of results) {
+    if (result.outcome !== "not-popular") {
+      remaining.push(result);
+      continue;
+    }
+    const buf = addon.files?.get(result.path);
+    const content = buf
+      ? classify(buf.toString("utf8"), result.path)
+      : { minified: false, obfuscated: false };
+    markUntrusted(addon, {
+      file: result.path,
+      source: result.source,
+      unreadable: content.minified || content.obfuscated,
+    });
+  }
+  addon.vendor.results = remaining;
 }
 
 /**
@@ -178,6 +241,16 @@ export function classifyAddonJs(ctx) {
  */
 export function nonAuthoredJs(ctx) {
   return getBundled(ctx).nonAuthored;
+}
+
+/**
+ * Identified-but-not-popular libraries (see markUntrusted), read by the
+ * untrusted-library (info) and untrusted-minified-library (reject) checks.
+ * @param {RunContext} ctx
+ * @returns {Array<{file: string, source?: string, name?: string, unreadable: boolean}>}
+ */
+export function untrustedLibs(ctx) {
+  return getBundled(ctx).untrusted ?? [];
 }
 
 /**

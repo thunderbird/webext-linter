@@ -167,6 +167,9 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}) {
       net
     );
   }
+  // A `not-popular` outcome is reconciled into addon.bundled.untrusted later, by
+  // applyNotPopularVendor (src/checks/lib/bundled.js), because addon.bundled is
+  // built AFTER this step in the pipeline. It stays in vendor.results until then.
 }
 
 /**

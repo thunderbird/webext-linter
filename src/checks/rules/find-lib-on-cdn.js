@@ -7,9 +7,9 @@
 // add" report. Info severity, and silent when nothing matched (no `cdn` tags).
 //
 // Only POPULAR CDN matches are reported here. A CDN match that did not clear the
-// popularity trust bar (cdn-lookup.js sets `cdn.popular`) is recorded as a
-// `not-popular` vendor result and escalated to manual review by vendor-unverified
-// instead, so this check skips it to avoid double-reporting.
+// popularity trust bar (cdn-lookup.js sets `cdn.popular`) is tagged `untrusted`
+// (reviewed as authored code -> untrusted-library / untrusted-minified-library),
+// not a trusted "declare it" library, so this check skips it.
 //
 // Belongs here: selecting the cdn-tagged verdicts and emitting one finding (named
 // with its libraryId, hinting its jsDelivr source URL) per such file.
@@ -36,9 +36,9 @@ export default {
         continue;
       }
       // Only a POPULAR CDN match is the benign "declare it" case. A not-popular
-      // match did not clear the trust bar (cdn-lookup) and is escalated to manual
-      // review by vendor-unverified instead, so stay silent here to avoid a
-      // double-report.
+      // match did not clear the trust bar (cdn-lookup), so it is tagged untrusted
+      // and reviewed as authored code (untrusted-library / -minified-library) -
+      // stay silent here.
       if (!c.cdn.popular) {
         continue;
       }

@@ -322,7 +322,7 @@ deterministic-checks:
   severity: info
   check: missing-library
   response: |-
-    The following bundled files were recognized as third-party libraries (named after each path) but are not declared in a VENDOR file. Please declare each and link its source so the bundled copy can be verified against the linked version - a VENDOR file at the add-on root is common practice.
+    The following bundled files were recognized as third-party libraries (via Mozilla library hash database), but are not declared as such. Please declare each and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
 # Flags a bundled file the Mozilla hash DB did not recognize but whose exact bytes
@@ -331,7 +331,7 @@ deterministic-checks:
   severity: info
   check: find-lib-on-cdn
   response: |-
-    "{{item}}" is not in the Mozilla library hash database, but its exact contents were found on the jsDelivr CDN - so the file below is a known third-party library shipped undeclared. Add a VENDOR entry that pairs the file with the jsDelivr source URL shown next to it (use them as the entry's `file:` and `source:`), so the bundled copy is verified against that release.
+    The following bundled files were recognized as third-party libraries (via jsDelivr CDN hash lookup), but are not declared as such. Please declare each and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
 # Flags shipped minified JS that is not a recognized library; asks for the
@@ -340,7 +340,7 @@ deterministic-checks:
   severity: error
   check: minified-code
   response: |-
-    The following file(s) are minified or otherwise machine-generated code, which cannot be reviewed in this form. Each is either an undeclared third-party library that we did not recognize - recognition is done against the Mozilla library hash database - or genuinely minified first-party code. If a file is a third-party library, declare it in a VENDOR file and link its source so the (unmodified) bundled copy can be verified against the linked version (a VENDOR file at the add-on root is common practice). If it is your own minified code, the simplest fix is to ship the original, human-readable code directly (the add-on does not need to be minified). Alternatively, upload the original sources as a source code archive that includes the build instructions and build process needed to generate the final XPI, using the source code upload field available during submission or on the version page in the developer hub. Note that this route slows review down, as it requires manually verifying the build process and that it reproduces the shipped XPI.
+    The following file(s) are minified or otherwise machine-generated code, which cannot be reviewed in this form. Each is either an undeclared third-party library that we did not recognize, or genuinely minified first-party code. If a file is a third-party library, declare it as such and link its source so the (unmodified) bundled copy can be verified against the linked version (a VENDOR.md file at the add-on root is common practice). If it is your own minified code, the simplest fix is to ship the original, human-readable code directly (the add-on does not need to be minified). Alternatively, upload the original sources as a source code archive that includes the build instructions and build process needed to generate the final XPI, using the source code upload field available during submission or on the version page in the developer hub. Note that this route slows review down, as it requires manually verifying the build process and that it reproduces the shipped XPI.
     Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
     Read more #2: https://extensionworkshop.com/documentation/publish/source-code-submission/
 
@@ -352,6 +352,27 @@ deterministic-checks:
   response: |-
     The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
     Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
+
+# Flags a bundled file whose bytes match a pinned upstream release, but which is
+# not a confirmed widely-used library AND is minified/obfuscated - untrusted and
+# unreviewable, so a readable build is required.
+- title: Source Archive (unverified library) required
+  severity: error
+  check: untrusted-minified-library
+  response: |-
+    The following bundled file(s) match a known upstream release, but the package could not be confirmed to be a widely-used library, so it is not trusted as a reviewed dependency - and it is minified or otherwise machine-generated, so it cannot be reviewed in this form. Ship the original, human-readable code directly (it need not be minified), or upload the original sources as a source code archive (with the build instructions and process needed to reproduce the shipped XPI) using the source code upload field during submission or on the version page in the developer hub. Note that the source-archive route slows review down, as it requires manually verifying the build.
+    Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
+    Read more #2: https://extensionworkshop.com/documentation/publish/source-code-submission/
+
+# Notes a bundled file whose bytes match a pinned upstream release but which is
+# not a confirmed widely-used library, and IS readable - so it is reviewed as the
+# developer's own code rather than trusted as a vendored dependency.
+- title: Library reviewed as authored code
+  severity: info
+  check: untrusted-library
+  response: |-
+    The following bundled file(s) match a known upstream release, but the package could not be confirmed to be a widely-used library. They are therefore not trusted as reviewed dependencies and are reviewed as authored code - the standard checks apply to them, so a finding may be reported against library code here. Confirm that each is a legitimate, appropriate dependency.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
 # Diff check (--diff-to): a version + gecko strict_max_version-only bump that the
 # developer could make on ATN instead of resubmitting.
@@ -471,7 +492,8 @@ deterministic-checks:
   severity: info
   check: vendor-vuln-unknown
   response: |-
-    The add-on sourced a third-party file from a CDN, where its known-vulnerability status could not be determined automatically. To benefit from automated auditing against the OSV database, consider switching to an npm-hosted source and update your VENDOR file to point to a unpkg or jsDelivr package (pinned to an exact version).
+    The add-on sourced a third-party file from a CDN, where its known-vulnerability status could not be determined automatically. To benefit from automated auditing against the OSV database, consider switching to an npm-hosted source and update your vendor mechanism to point to an unpkg or jsDelivr package (pinned to an exact version).
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
 - title: Unpinned vendored source
   severity: error
@@ -491,11 +513,12 @@ deterministic-checks:
 - title: Vendored library needs manual verification
   check: vendor-unverified
   response: |-
-    The following bundled third-party file(s) could not be automatically verified against their upstream source. For each, make sure your VENDOR file gives the library’s exact upstream version and a source URL that pins that release on a trusted host (unpkg, jsDelivr, an npm-registry tarball, or a raw GitHub URL), and that the bundled copy is unmodified, so it can be verified automatically.
+    The following bundled third-party file(s) could not be automatically verified against their upstream source. For each, make sure your vendor mechanism gives the library’s exact upstream version and a source URL that pins that release on a trusted host (unpkg, jsDelivr, an npm-registry tarball, or a raw GitHub URL), and that the bundled copy is unmodified, so it can be verified automatically.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
   instructions: |-
     The following declared third-party (vendored) file(s) could not be verified
     automatically. Confirm by hand that each is an unmodified copy of a
-    widely-used library obtained from a trustworthy source.
+    library obtained from a trustworthy source.
 
 # Flags a VENDOR entry (file + source URL) whose file is absent from the package.
 - title: Missing vendored file

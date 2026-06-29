@@ -39,11 +39,11 @@ test("renderFindings uses a static response wholesale", () => {
   assert.ok(!f.message.includes("\n"));
 });
 
-// find-lib-on-cdn names the ACTUAL identified library via {{item}} (no static
-// example): the prose consumes {{item}}, so the file + jsDelivr source URL (the
-// hint) surface on the per-finding location line - the real entry data, not a
-// fabricated app/fuse.min.js example.
-test("renderFindings fills the real library into find-lib-on-cdn (no example)", () => {
+// find-lib-on-cdn uses the shared "recognized but undeclared" template (item-free,
+// like missing-library): no static example path, and because the prose does not
+// consume {{item}}, the real library name (item) and its jsDelivr source URL (the
+// hint) surface on the per-finding location line instead.
+test("renderFindings uses the generic find-lib-on-cdn template (real library listed)", () => {
   const f = {
     ruleId: "find-lib-on-cdn",
     item: "fuse.js 7.0.0",
@@ -51,12 +51,12 @@ test("renderFindings fills the real library into find-lib-on-cdn (no example)", 
     message: null,
   };
   renderFindings([f], registry);
-  assert.match(f.message, /"fuse\.js 7\.0\.0"/); // the real lib, not an example
+  assert.match(f.message, /recognized as third-party libraries/);
   assert.ok(!f.message.includes("{{item}}"));
   assert.ok(!f.message.includes("app/fuse.min.js")); // no hardcoded example path
-  // {{item}} was consumed by the prose, so the subject is not re-listed on the
-  // locus line; the hint (source URL) still is.
-  assert.equal(f.listItem, false);
+  // The template is item-free, so the identifier (and its hint URL) is surfaced on
+  // the finding's location line rather than in the prose.
+  assert.equal(f.listItem, true);
 });
 
 // An orchestrator system finding (ruleId "check-failed") renders from the

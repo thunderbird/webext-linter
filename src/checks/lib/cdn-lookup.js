@@ -35,6 +35,7 @@ import path from "node:path";
 import { debug } from "../../util/log.js";
 import { rawSha256 } from "../../normalize/hash.js";
 import { defaultNet, isPopular } from "../../vendor/verify.js";
+import { markUntrusted } from "./bundled.js";
 import { CDN_LOOKUP_URL, CDN_LOOKUP_CACHE } from "../../config.js";
 
 /** @typedef {import("../../addon/load.js").Addon} Addon */
@@ -118,11 +119,10 @@ export async function resolveCdnLibraries(
       continue;
     }
 
-    // Promote into the vendored family, mirroring a Mozilla hash match.
-    tag.library = true;
+    // Identified by content: keep the release id (for the OSV audit) and the
+    // jsDelivr source URL either way.
     tag.libraryId = { name: hit.name, version: hit.version };
     tag.cdn = { url: cdnUrl(hit), type: hit.type };
-    nonAuthored.add(tag.file);
     debug(`CDN-identified ${tag.file} as ${hit.name}@${hit.version}`);
 
     // Apply the same popularity trust bar a declared VENDOR/package.json source
@@ -130,21 +130,28 @@ export async function resolveCdnLibraries(
     // the popularity signal), so an obscure or author-published package found here
     // must not be silently accepted. Looked up fresh each run (popularity is
     // time-varying, so it is not cached with the hash hit) and offline-safe (a
-    // lookup error returns false). A NOT-popular match stays identified - still
-    // excluded from minified-code and OSV-audited - but is recorded as a
-    // `not-popular` vendor result so the vendor-unverified check escalates it to
-    // manual review, exactly like a not-popular package.json dep. A popular match
-    // keeps the find-lib-on-cdn info finding ("declare it").
+    // lookup error returns false).
     const src =
       hit.type === "gh"
         ? { kind: "github", repo: hit.name }
         : { kind: "npm", pkg: hit.name };
     tag.cdn.popular = await isPopular(src, net);
-    if (!tag.cdn.popular && addon.vendor?.results) {
-      addon.vendor.results.push({
-        path: tag.file,
+    if (tag.cdn.popular) {
+      // Popular -> trusted vendored family (like a Mozilla hash match): excluded
+      // from scanning, surfaced by find-lib-on-cdn ("declare it"), OSV-audited.
+      tag.library = true;
+      nonAuthored.add(tag.file);
+    } else {
+      // Not popular -> identified but UNtrusted: it does not earn the review
+      // exemption. CDN lookup only runs on minified-by-geometry bundles, so this
+      // is unreadable -> rejected by untrusted-minified-library (still OSV-audited
+      // via libraryId). markUntrusted keeps it in the non-authored skip set.
+      tag.untrusted = true;
+      markUntrusted(addon, {
+        file: tag.file,
         source: tag.cdn.url,
-        outcome: "not-popular",
+        name: `${hit.name} ${hit.version}`,
+        unreadable: tag.minifiedGeometry || tag.obfuscated,
       });
     }
   }

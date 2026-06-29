@@ -22,6 +22,7 @@ import missingVendorFile from "../../src/checks/rules/missing-vendor-file.js";
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 import vendorVulnUnknown from "../../src/checks/rules/vendor-vuln-unknown.js";
 import vendorUnparseable from "../../src/checks/rules/vendor-unparseable.js";
+import { applyNotPopularVendor } from "../../src/checks/lib/bundled.js";
 import { normalizedSha256 } from "../../src/normalize/hash.js";
 import { makeTgz } from "./tarball-fixture.js";
 
@@ -152,7 +153,13 @@ function addonWith(files, vendor) {
   const map = new Map(
     Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
   );
-  return { files: map, vendor };
+  // A bundled store so verifyVendor's post-pass can record not-popular files as
+  // untrusted (markUntrusted). The auditIdentifiedLibraries tests overwrite it.
+  return {
+    files: map,
+    vendor,
+    bundled: { classified: [], nonAuthored: new Set(), untrusted: [] },
+  };
 }
 
 // An injectable transport. `bytes` answers every fetchBytes (the VENDOR case);
@@ -339,8 +346,18 @@ test("verifyVendor: a real byte difference is modified, a niche lib not-popular"
     { "a.js": "BODY" },
     store({ set: new Set(["a.js"]), manifest: [pinnedEntry("a.js", url)] })
   );
+  // A readable not-popular VENDOR file was skipped as vendored - prove it leaves
+  // the non-authored set so the source-level checks scan it as authored code.
+  niche.bundled.nonAuthored.add("a.js");
   await verifyVendor(niche, net({ bytes: "BODY", downloads: 3 }));
-  assert.equal(niche.vendor.results[0].outcome, "not-popular");
+  applyNotPopularVendor(niche); // the pipeline's post-classifyBundled reconciliation
+  // not-popular is no longer a manual-review result; it is dropped from results and
+  // recorded as an untrusted (here readable) library, reviewed as authored code.
+  assert.deepEqual(niche.vendor.results, []);
+  assert.equal(niche.bundled.untrusted.length, 1);
+  assert.equal(niche.bundled.untrusted[0].file, "a.js");
+  assert.equal(niche.bundled.untrusted[0].unreadable, false);
+  assert.equal(niche.bundled.nonAuthored.has("a.js"), false); // scanned as authored
 });
 
 test("verifyVendor: an unfetchable source -> unfetchable", async () => {
@@ -392,7 +409,10 @@ test("verifyVendor: a github source from a non-trusted org is still star-gated",
     fetchJson: async () => ({ stargazers_count: 5 }), // below VENDOR_GITHUB_MIN_STARS
   };
   await verifyVendor(addon, net);
-  assert.equal(addon.vendor.results[0].outcome, "not-popular");
+  applyNotPopularVendor(addon);
+  // star-gated -> not-popular -> untrusted (authored code), dropped from results.
+  assert.deepEqual(addon.vendor.results, []);
+  assert.equal(addon.bundled.untrusted[0].file, "vendor/lib.js");
 });
 
 test("verifyVendor: a file that does not hash-match any published file is not claimed", async () => {
@@ -435,7 +455,10 @@ test("verifyVendor: a hash match for a niche package is not-popular", async () =
   );
   const listing = { files: [{ path: "/lib.js", integrity: sri }] };
   await verifyVendor(addon, net({ listing, downloads: 3, throwOnFetch: true }));
-  assert.equal(addon.vendor.results[0].outcome, "not-popular");
+  applyNotPopularVendor(addon);
+  // niche npm dep -> not-popular -> untrusted (authored code), dropped from results.
+  assert.deepEqual(addon.vendor.results, []);
+  assert.equal(addon.bundled.untrusted[0].file, "vendor/lib.js");
 });
 
 // unpkg's real "?meta" is a FLAT files array whose entries carry the MIME type in
@@ -1105,16 +1128,17 @@ test("vendor-unverified: every unverifiable result escalates; verified does not"
         results: [
           { path: "a.js", source: null, outcome: "no-url" },
           { path: "b.js", source: "http://evil/x.js", outcome: "untrusted" },
-          { path: "c.js", source: "u", outcome: "not-popular" },
           { path: "d.js", source: "u", outcome: "unfetchable" },
           { path: "e.js", source: "u", outcome: "verified" },
+          // not-popular is intentionally absent: it is no longer manual review here
+          // (it becomes an untrusted/authored library - see markUntrusted).
         ],
       }),
     },
   };
   const out = vendorUnverified.run(ctx);
   assert.deepEqual(out.findings, []);
-  assert.equal(out.escalations.length, 4);
+  assert.equal(out.escalations.length, 3);
   // Each escalation is located by the VENDOR file; the item lists the declared
   // file, the source URL (when there is one), and the URL-free reason.
   assert.ok(out.escalations.every((e) => e.file === "VENDOR"));

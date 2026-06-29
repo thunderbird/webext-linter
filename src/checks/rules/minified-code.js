@@ -28,8 +28,10 @@ export default {
   run(ctx) {
     const findings = [];
     for (const c of classifyAddonJs(ctx)) {
-      if (c.library || c.obfuscated) {
-        continue; // library -> missing-library; obfuscated -> obfuscated-code
+      if (c.library || c.obfuscated || c.untrusted) {
+        // library -> missing-library; obfuscated -> obfuscated-code; untrusted (a
+        // not-popular CDN match, always minified) -> untrusted-minified-library.
+        continue;
       }
       ctx.note?.(
         c.file,

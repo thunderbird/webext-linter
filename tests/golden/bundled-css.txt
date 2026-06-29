@@ -2,7 +2,7 @@
 
 Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
-1) The following bundled files were recognized as third-party libraries (named after each path) but are not declared in a VENDOR file. Please declare each and link its source so the bundled copy can be verified against the linked version - a VENDOR file at the add-on root is common practice.
+1) The following bundled files were recognized as third-party libraries (via Mozilla library hash database), but are not declared as such. Please declare each and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
  - vendor/bootstrap/bootstrap.min.css - bootstrap 5.3.0
 

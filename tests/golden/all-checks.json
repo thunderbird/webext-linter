@@ -37,6 +37,8 @@
       "find-lib-on-cdn",
       "minified-code",
       "obfuscated-code",
+      "untrusted-minified-library",
+      "untrusted-library",
       "api-coverage",
       "unparsable-file",
       "experiment-modified",

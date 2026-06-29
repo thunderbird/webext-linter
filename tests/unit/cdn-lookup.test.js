@@ -19,6 +19,8 @@ import findLibOnCdn from "../../src/checks/rules/find-lib-on-cdn.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
 import vendorUnverified from "../../src/checks/rules/vendor-unverified.js";
+import untrustedLibrary from "../../src/checks/rules/untrusted-library.js";
+import untrustedMinifiedLibrary from "../../src/checks/rules/untrusted-minified-library.js";
 
 // One long, dense line -> minified by geometry (same fixture style as bundled.test.js).
 const MINIFIED = `var data=[${"1,".repeat(700)}1];`;
@@ -117,9 +119,8 @@ test("a hit promotes the bundle into the vendored family (library + libraryId + 
   assert.equal(missingLibrary.run(ctx).length, 0);
 });
 
-test("a NOT-popular hit stays identified but is routed to manual review (vendor-unverified)", async () => {
+test("a NOT-popular hit is identified but untrusted (authored code), not the vendored family", async () => {
   const addon = classify(addonWith({ "app/obscure.min.js": MINIFIED }));
-  // resolveCdnLibraries records the not-popular result on the shared vendor store.
   addon.vendor = { results: [] };
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(addon.files.get("app/obscure.min.js"));
@@ -143,30 +144,37 @@ test("a NOT-popular hit stays identified but is routed to manual review (vendor-
   const tag = addon.bundled.classified.find(
     (c) => c.file === "app/obscure.min.js"
   );
-  // Still identified (library + cdn + nonAuthored) - only the trust outcome differs.
-  assert.equal(tag.library, true);
+  // Identified (libraryId + cdn kept for OSV / the source URL) but NOT promoted to
+  // the trusted vendored family: untrusted, not library.
+  assert.equal(tag.untrusted, true);
+  assert.equal(tag.library, false);
   assert.equal(tag.cdn.popular, false);
+  assert.deepEqual(tag.libraryId, { name: "@me/obscure", version: "1.0.0" });
+  // Minified -> unreadable -> stays in the non-authored skip set (the reject asks
+  // for a readable build), and is recorded on the untrusted list - not vendor.results.
   assert.ok(addon.bundled.nonAuthored.has("app/obscure.min.js"));
-
-  // Recorded as a not-popular vendor result, source = the jsDelivr URL.
-  assert.deepEqual(addon.vendor.results, [
+  assert.deepEqual(addon.bundled.untrusted, [
     {
-      path: "app/obscure.min.js",
+      file: "app/obscure.min.js",
       source:
         "https://cdn.jsdelivr.net/npm/@me/obscure@1.0.0/dist/obscure.min.js",
-      outcome: "not-popular",
+      name: "@me/obscure 1.0.0",
+      unreadable: true,
     },
   ]);
+  assert.deepEqual(addon.vendor.results, []);
 
   const ctx = { addon };
-  // find-lib-on-cdn stays silent (no "declare it" finding), minified-code stays
-  // silent (still identified), and vendor-unverified escalates it to manual review.
+  // find-lib-on-cdn + minified-code stay silent; untrusted-minified-library rejects
+  // it; untrusted-library (readable-only info) stays silent; vendor-unverified does
+  // not escalate it.
   assert.equal(findLibOnCdn.run(ctx).length, 0);
   assert.equal(minifiedCode.run(ctx).length, 0);
-  const { escalations } = vendorUnverified.run(ctx);
-  assert.equal(escalations.length, 1);
-  assert.match(escalations[0].item, /app\/obscure\.min\.js/);
-  assert.match(escalations[0].item, /not a confirmed widely-used library/);
+  assert.equal(untrustedLibrary.run(ctx).length, 0);
+  const rejects = untrustedMinifiedLibrary.run(ctx);
+  assert.equal(rejects.length, 1);
+  assert.match(rejects[0].item, /@me\/obscure 1\.0\.0/);
+  assert.equal(vendorUnverified.run(ctx).escalations.length, 0);
 });
 
 test("a gh-type hit uses GitHub stars for the popularity bar; a popular hit adds no vendor result", async () => {

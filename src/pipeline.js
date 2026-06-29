@@ -35,7 +35,10 @@ import { headerLines } from "./report/format.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import { verifyVendor, auditIdentifiedLibraries } from "./vendor/verify.js";
 import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
-import { classifyBundled } from "./checks/lib/bundled.js";
+import {
+  classifyBundled,
+  applyNotPopularVendor,
+} from "./checks/lib/bundled.js";
 import { resolveCdnLibraries } from "./checks/lib/cdn-lookup.js";
 import {
   resolveLibraryHashes,
@@ -295,6 +298,13 @@ export async function runPipeline(opts) {
       scanMinified: opts.scanMinified,
       libraryHashes,
     });
+
+    // 1e-half. Reconcile the not-popular VENDOR/package results from verifyVendor
+    // (which ran before addon.bundled existed) into the untrusted family: an
+    // identified-but-not-popular library is reviewed as authored code, not a
+    // trusted/exempt dependency. (The CDN not-popular case is handled in
+    // resolveCdnLibraries below, which already runs after classifyBundled.)
+    applyNotPopularVendor(addon);
 
     // 1e-bis. Second-tier library identification: for a minified bundle the
     // Mozilla DB did not recognize, ask jsDelivr (by content hash) whether it is a

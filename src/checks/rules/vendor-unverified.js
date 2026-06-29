@@ -1,6 +1,8 @@
 // Routes the third-party declarations that cannot be settled automatically to
-// manual review: a source on a host we may not fetch, a library we cannot
-// confirm is widely used, and a source we could not fetch. The verification
+// manual review: no source URL declared, a source on a host we may not fetch,
+// and a source we could not fetch. (A not-popular-but-verified library is no
+// longer here - it is treated as authored code; see markUntrusted /
+// untrusted-library.) The verification
 // pre-step (src/vendor/resolve.js + src/vendor/verify.js) recorded each of these
 // on addon.vendor. This check reads them and escalates one manual-review item per
 // case. Deterministic, no network - the deterministic->manual routing is wired in
@@ -32,7 +34,6 @@ const TRUSTED_HOSTS = VENDOR_TRUSTED_HOSTS.map((h) => `https://${h}`).join(
 const REASON = {
   "no-url": "no source URL declared",
   untrusted: `source not on a trusted host (use ${TRUSTED_HOSTS})`,
-  "not-popular": "not a confirmed widely-used library",
   unfetchable: "source could not be fetched",
 };
 
