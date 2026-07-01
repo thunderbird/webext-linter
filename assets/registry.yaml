@@ -574,6 +574,19 @@ deterministic-checks:
   response: |-
     A bundled dependency has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). Update {{item}} to {{fixed}} or later, re-bundle, and resubmit.
 
+# Each pinned npm devDependency is OSV-audited in SCS mode too (src/vendor/verify.js
+# verifyScsDependencies): the reviewer builds the add-on from source, so a
+# vulnerable build-time dependency runs on the reviewer's machine even though it is
+# never shipped. Mirrors vendor-vulnerable (same severity:auto band mapping) for the
+# dev set; scs:true - dev deps only exist in an SCS review.
+- title: Vulnerable build dependency
+  severity: auto
+  scs: true
+  check: vendor-vulnerable-dev
+  input: auto
+  response: |-
+    A build dependency (devDependency) has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update {{item}} to {{fixed}} or later and resubmit.
+
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the deterministic repo-name candidate, then an
 # LLM-proposed name, each re-proved by content hash); surfaced as info so the

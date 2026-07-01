@@ -399,3 +399,68 @@ test("SCS e2e: trademark-violation resolves a localized name via the XPI's _loca
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
   }
 });
+
+// A vulnerable devDependency is a real risk in SCS because the reviewer builds the
+// add-on from source. The dedicated vendor-vulnerable-dev check (scs:true) runs
+// only here - it OSV-audits the root package.json's devDependencies and surfaces
+// the hit, while the prod vendor-vulnerable check stays silent for a dev-only dep.
+test("SCS e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    ...SRC_FILES,
+    "package.json": JSON.stringify({
+      name: "scs-e2e",
+      version: "1.0.0",
+      devDependencies: { "build-tool": "1.0.0" },
+    }),
+  });
+  // Injected OSV transport: one HIGH advisory for the dev dep, fixed in 2.0.0.
+  const vendorNet = {
+    fetchBytes: async () => Buffer.from(""),
+    fetchJson: async () => ({}),
+    postJson: async (_url, body) =>
+      body?.package?.name === "build-tool"
+        ? {
+            vulns: [
+              {
+                id: "GHSA-dev0-0000-0000",
+                aliases: ["CVE-2021-0001"],
+                database_specific: { severity: "HIGH" },
+                affected: [
+                  {
+                    package: { ecosystem: "npm", name: "build-tool" },
+                    ranges: [
+                      {
+                        type: "SEMVER",
+                        events: [{ introduced: "0" }, { fixed: "2.0.0" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }
+        : { vulns: [] },
+  };
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scsRoot: src,
+      scsSource: "src",
+      schemaZip: SCHEMA_FIXTURE,
+      vendorNet,
+    });
+    assert.ok(
+      has(findings, "vendor-vulnerable-dev", (f) => /build-tool/.test(f.item)),
+      "expected vendor-vulnerable-dev on the vulnerable devDependency"
+    );
+    // The prod/shipped vulnerability check is a separate set - a dev-only dep must
+    // not trip it.
+    assert.ok(
+      !has(findings, "vendor-vulnerable"),
+      "vendor-vulnerable (prod set) must not fire for a dev-only dependency"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});

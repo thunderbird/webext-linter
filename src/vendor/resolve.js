@@ -45,6 +45,9 @@ import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
  * @property {{name: string, spec: string}[]} unsupportedDeps  package.json deps
  *   from an unsupported source (not npm, not GitHub); rejected by the
  *   unsupported-dependency check.
+ * @property {{name: string, version: string}[]} devPackages  Pinned npm
+ *   devDependencies. Never shipped, but OSV-audited in SCS mode because the
+ *   reviewer builds from source (verifyScsDependencies).
  * @property {VendorEntry[]} missing  VENDOR entries whose file is absent.
  * @property {{source: string, paths: string[]}[]} ambiguousSources  Source URLs
  *   paired with more than one bundled file (the developer must split them or use a
@@ -55,6 +58,10 @@ import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
  * @property {import("./verify.js").VendorVuln[]} vulnerabilities  Pinned npm
  *   packages (package.json deps + npm VENDOR entries) with known OSV advisories
  *   (filled by verifyVendor's audit; empty offline).
+ * @property {import("./verify.js").VendorVuln[]} devVulnerabilities  SCS mode
+ *   only: pinned npm devDependencies with known OSV advisories (filled by
+ *   verifyScsDependencies; empty in XPI mode / offline). Read by the
+ *   vendor-vulnerable-dev check.
  * @property {{path: string, source: ?string, repo: ?string}[]} unaudited
  *   GitHub-sourced VENDOR entries that could not be resolved to a verified npm
  *   identity for an OSV audit (filled by verifyVendor; empty offline). Read by
@@ -215,7 +222,7 @@ export async function resolveVendor({
     // Trusted + pinned entries are left for verifyVendor to fetch.
   }
 
-  const { packages, unpinned, githubDeps, unsupported } =
+  const { packages, unpinned, githubDeps, unsupported, devPackages } =
     resolvePackages(addon);
   // VENDOR entries (file + source URL) naming a file the package does not
   // contain. Drives the missing-vendor-file check. Deterministic - the LLM
@@ -235,11 +242,18 @@ export async function resolveVendor({
     // package.json deps from an unsupported source (not npm, not GitHub). Read by
     // the unsupported-dependency check, which rejects them.
     unsupportedDeps: unsupported,
+    // Pinned npm devDependencies. Never shipped, but OSV-audited in SCS mode
+    // because the reviewer builds from source (verifyScsDependencies).
+    devPackages,
     missing,
     ambiguousSources,
     vendorFile: vendorFile?.name ?? null,
     // Filled by verifyVendor's OSV audit (network). Empty for offline runs.
     vulnerabilities: [],
+    // SCS mode only: pinned npm devDependencies with known OSV advisories (filled
+    // by verifyScsDependencies; empty in XPI mode / offline). Read by the
+    // vendor-vulnerable-dev check.
+    devVulnerabilities: [],
     // Filled by verifyVendor when a github source cannot be resolved to a
     // verified npm identity (network). Empty for offline runs.
     unaudited: [],
@@ -256,31 +270,25 @@ export async function resolveVendor({
 }
 
 /**
- * Read package.json `dependencies` and classify each by its spec. Only two
- * sources are supported: a pinned npm package (an exact spec, or a range a lock
- * file pins) and a GitHub URL (audited by popularity, like a VENDOR.md github
- * source). The rest are surfaced, not dropped: a range with no lock is `unpinned`
- * (the dep is real but unverifiable), and any other non-registry spec
- * (file:/link:/workspace:/npm: alias/tarball/non-github git) is `unsupported`.
- * @param {Addon} addon
+ * Classify one package.json dependency map (`dependencies` or `devDependencies`)
+ * by each spec. Only two sources are supported: a pinned npm package (an exact
+ * spec, or a range a lock file pins) and a GitHub URL (audited by popularity, like
+ * a VENDOR.md github source). The rest are surfaced, not dropped: a range with no
+ * lock is `unpinned` (the dep is real but unverifiable), and any other non-registry
+ * spec (file:/link:/workspace:/npm: alias/tarball/non-github git) is `unsupported`.
+ * @param {Record<string, string>|undefined} deps  A dependency map, or undefined.
+ * @param {Addon} addon  Needed to pin a range against a lock file (lockedVersion
+ *   also reads the lock's devDependencies).
  * @returns {{packages: {name: string, version: string}[],
  *   unpinned: {name: string, spec: string}[],
  *   githubDeps: {name: string, spec: string, repo: string, ref: ?string}[],
  *   unsupported: {name: string, spec: string}[]}}
  */
-function resolvePackages(addon) {
+function classifyDeps(deps, addon) {
   const packages = [];
   const unpinned = [];
   const githubDeps = [];
   const unsupported = [];
-  let deps;
-  try {
-    deps = JSON.parse(
-      addon.files.get("package.json").toString("utf8")
-    ).dependencies;
-  } catch {
-    return { packages, unpinned, githubDeps, unsupported };
-  }
   for (const [name, rawSpec] of Object.entries(deps ?? {})) {
     const spec = String(rawSpec).trim();
     if (EXACT.test(spec)) {
@@ -305,6 +313,52 @@ function resolvePackages(addon) {
     }
   }
   return { packages, unpinned, githubDeps, unsupported };
+}
+
+/**
+ * Classify package.json `dependencies` (all buckets) and `devDependencies` (pinned
+ * npm only -> `devPackages`). Dev deps never ship, but the SCS reviewer builds the
+ * add-on from source, so a pinned npm dev dep is OSV-audited too
+ * (verifyScsDependencies). Only its pinned-npm bucket is kept: dev deps are not
+ * popularity-gated, and their pinning / source support are shipping concerns.
+ * A name in `dependencies` is a production dependency (npm ignores a same-named
+ * `devDependencies` entry), so it is classified once as prod and dropped from the
+ * dev set - the two vuln checks never double-report one package. Only
+ * `dependencies` + `devDependencies` are read: `optionalDependencies` may be absent
+ * at build, and `peerDependencies` are supplied by the host, not this build.
+ * @param {Addon} addon
+ * @returns {{packages: {name: string, version: string}[],
+ *   unpinned: {name: string, spec: string}[],
+ *   githubDeps: {name: string, spec: string, repo: string, ref: ?string}[],
+ *   unsupported: {name: string, spec: string}[],
+ *   devPackages: {name: string, version: string}[]}}
+ */
+function resolvePackages(addon) {
+  let pkg;
+  try {
+    pkg = JSON.parse(addon.files.get("package.json").toString("utf8"));
+  } catch {
+    return {
+      packages: [],
+      unpinned: [],
+      githubDeps: [],
+      unsupported: [],
+      devPackages: [],
+    };
+  }
+  // A dev dep also declared in `dependencies` is a production dependency (the
+  // dependencies copy wins, as in npm) - drop it from the dev set so it is audited
+  // and reported once, as prod. devPackages is dev-ONLY.
+  const prodNames = new Set(Object.keys(pkg.dependencies ?? {}));
+  const devOnly = Object.fromEntries(
+    Object.entries(pkg.devDependencies ?? {}).filter(
+      ([name]) => !prodNames.has(name)
+    )
+  );
+  return {
+    ...classifyDeps(pkg.dependencies, addon),
+    devPackages: classifyDeps(devOnly, addon).packages,
+  };
 }
 
 /**

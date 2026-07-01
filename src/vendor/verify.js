@@ -150,7 +150,8 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}) {
         vendor.vendorFile,
         entry.sourceUrl,
         vendor,
-        net
+        net,
+        vendor.vulnerabilities
       );
     } else if (src.kind === "github") {
       await auditGithub(entry, src, addon, vendor, net, llm);
@@ -164,7 +165,8 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}) {
       "package.json",
       pkg.name,
       vendor,
-      net
+      net,
+      vendor.vulnerabilities
     );
   }
   // A `not-popular` outcome is reconciled into addon.bundled.untrusted later, by
@@ -181,7 +183,11 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}) {
  * vendor.vulnerabilities, read by vendor-vulnerable) and (b) a non-popular verdict
  * (-> vendor.unpopularDeps, read by unpopular-source-dependency): a dependency
  * that is not a confirmed widely-used library is pulled in at build and cannot be
- * reviewed, so the developer must ship its readable source in --scs-source.
+ * reviewed, so the developer must ship its readable source in --scs-source. Each
+ * pinned devDependency additionally gets (c) an OSV audit (-> vendor.devVulnerabilities,
+ * read by vendor-vulnerable-dev) but no popularity gate: the reviewer builds from
+ * source, so a vulnerable build tool is a real risk, while a niche-but-legit one
+ * must not be rejected as unpopular.
  *
  * Popularity uses a direct npm-downloads lookup (npmDownloads), not isPopular, so
  * a FAILED lookup skips rather than false-rejecting a popular dependency; offline
@@ -202,7 +208,8 @@ export async function verifyScsDependencies(addon, net = defaultNet) {
       "package.json",
       pkg.name,
       vendor,
-      net
+      net,
+      vendor.vulnerabilities
     );
     const downloads = await npmDownloads(pkg.name, net);
     if (downloads !== null && downloads < VENDOR_NPM_MIN_DOWNLOADS) {
@@ -228,6 +235,21 @@ export async function verifyScsDependencies(addon, net = defaultNet) {
         token: dep.name,
       });
     }
+  }
+  // Dev dependencies never ship, but the reviewer builds the add-on from source,
+  // so a vulnerable build tool runs on the reviewer's machine. Audit each pinned
+  // npm dev dep for OSV only - no popularity gate (a niche-but-legit build tool is
+  // fine) - recording hits on devVulnerabilities for the vendor-vulnerable-dev check.
+  for (const pkg of vendor.devPackages ?? []) {
+    await auditNpm(
+      pkg.name,
+      pkg.version,
+      "package.json",
+      pkg.name,
+      vendor,
+      net,
+      vendor.devVulnerabilities
+    );
   }
 }
 
@@ -282,19 +304,24 @@ async function npmDownloads(name, net) {
 /**
  * Audit a pinned npm package@version against the OSV vulnerability database.
  * Best-effort: a package with known advisories is recorded on
- * `vendor.vulnerabilities` (one entry aggregating its advisories, anchored at
- * `file`/`token`) for the vendor-vulnerable check. Any network or parse error -
- * or an injected net without `postJson` (offline runs, the golden harness) -
- * records nothing. Drives both package.json deps and npm-sourced VENDOR entries.
+ * `into` (one entry aggregating its advisories, anchored at `file`/`token`). Any
+ * network or parse error - or an injected net without `postJson` (offline runs,
+ * the golden harness) - records nothing. Drives package.json deps and npm-sourced
+ * VENDOR entries -> vendor.vulnerabilities (read by vendor-vulnerable), and SCS
+ * devDependencies -> vendor.devVulnerabilities (read by vendor-vulnerable-dev); the
+ * caller passes the target `into` array.
  * @param {string} name  npm package name.
  * @param {string} version  The bundled (pinned) version.
  * @param {string} file  Where the finding anchors (package.json / the VENDOR
  *   file).
  * @param {string} token  The string locating the declaration line in `file`.
  * @param {VendorStore} vendor @param {VendorNet} net
+ * @param {VendorVuln[]} into  The array to record a hit on: vendor.vulnerabilities
+ *   for shipped/declared deps, or vendor.devVulnerabilities for SCS dev deps.
+ *   Explicit - never defaulted - so a hit is never silently mis-bucketed.
  * @returns {Promise<void>}
  */
-async function auditNpm(name, version, file, token, vendor, net) {
+async function auditNpm(name, version, file, token, vendor, net, into) {
   let vulns;
   try {
     const res = await net.postJson(VENDOR_OSV_API, {
@@ -320,7 +347,7 @@ async function auditNpm(name, version, file, token, vendor, net) {
     }
     severity = worseSeverity(severity, vulnSeverity(v));
   }
-  vendor.vulnerabilities.push({
+  into.push({
     name,
     version,
     ids: [...ids],
@@ -376,7 +403,15 @@ export async function auditIdentifiedLibraries(addon, net = defaultNet) {
       continue;
     }
     seen.add(key);
-    await auditNpm(name, tag.libraryId.version, tag.file, "", vendor, net);
+    await auditNpm(
+      name,
+      tag.libraryId.version,
+      tag.file,
+      "",
+      vendor,
+      net,
+      vendor.vulnerabilities
+    );
   }
 }
 
@@ -425,7 +460,8 @@ async function auditGithub(entry, src, addon, vendor, net, llm) {
       vendor.vendorFile,
       entry.sourceUrl,
       vendor,
-      net
+      net,
+      vendor.vulnerabilities
     );
     return;
   }
@@ -447,7 +483,8 @@ async function auditGithub(entry, src, addon, vendor, net, llm) {
         vendor.vendorFile,
         entry.sourceUrl,
         vendor,
-        net
+        net,
+        vendor.vulnerabilities
       );
       return;
     }

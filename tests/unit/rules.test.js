@@ -24,6 +24,7 @@ import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
 import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
+import vendorVulnerableDev from "../../src/checks/rules/vendor-vulnerable-dev.js";
 import { rawSha256 } from "../../src/normalize/hash.js";
 import apiCoverage from "../../src/checks/rules/api-coverage.js";
 import strictMaxBumpOnly from "../../src/checks/rules/strict-max-version-bump-only.js";
@@ -410,6 +411,50 @@ test("vendor-vulnerable surfaces an identified-library vulnerability, file-ancho
   assert.equal(out[0].item, "jquery");
   assert.ok(!out[0].loc); // no declaration line - anchored at the file
   assert.equal(out[0].severity, SEVERITY.ERROR); // high band -> error
+});
+
+// vendor-vulnerable-dev mirrors vendor-vulnerable for the SCS dev set: it reads
+// addon.vendor.devVulnerabilities (populated only in SCS mode) and maps each to a
+// finding, band-driven severity and all. A package.json dep anchors at its name.
+test("vendor-vulnerable-dev surfaces a dev-dependency vulnerability", () => {
+  const ctx = {
+    addon: {
+      files: new Map([
+        [
+          "package.json",
+          Buffer.from('{"devDependencies":{"esbuild":"0.19.0"}}'),
+        ],
+      ]),
+      vendor: {
+        devVulnerabilities: [
+          {
+            name: "esbuild",
+            version: "0.19.0",
+            ids: ["CVE-2021-0002"],
+            severity: "moderate",
+            fixed: ["0.19.1"],
+            file: "package.json",
+            token: "esbuild",
+          },
+        ],
+      },
+    },
+  };
+  const out = vendorVulnerableDev.run(withManifest(ctx));
+  assert.equal(out.length, 1);
+  assert.equal(out[0].item, "esbuild");
+  assert.equal(out[0].loc.line, 1); // anchored at the dep's declaration line
+  assert.equal(out[0].severity, SEVERITY.WARNING); // moderate band -> warning
+  assert.equal(out[0].data.fixed, "0.19.1");
+});
+
+// The prod set drives vendor-vulnerable, the dev set drives this check - so an
+// empty dev set yields nothing.
+test("vendor-vulnerable-dev yields nothing when devVulnerabilities is empty", () => {
+  const ctx = {
+    addon: { files: new Map(), vendor: { devVulnerabilities: [] } },
+  };
+  assert.deepEqual(vendorVulnerableDev.run(withManifest(ctx)), []);
 });
 
 // ---- api-coverage (static-analysis self-report) ----

@@ -221,6 +221,8 @@ const store = (over = {}) => ({
   unparsedVendor: false,
   vendorFile: null,
   vulnerabilities: [],
+  devPackages: [],
+  devVulnerabilities: [],
   unaudited: [],
   unpopularDeps: [],
   ...over,
@@ -353,6 +355,57 @@ test("verifyScsDependencies: a GitHub stars lookup failure records nothing", asy
     },
   };
   await verifyScsDependencies(addon, offline);
+  assert.deepEqual(addon.vendor.unpopularDeps, []);
+});
+
+// Dev dependencies never ship, but the SCS reviewer builds from source, so a
+// pinned npm dev dep is OSV-audited too - recorded on devVulnerabilities (a set
+// distinct from the prod/vendored `vulnerabilities`), and NOT popularity-gated (a
+// low-download build tool is fine, so nothing is recorded on unpopularDeps).
+test("verifyScsDependencies: a vulnerable dev dependency lands on devVulnerabilities, no popularity gate", async () => {
+  const addon = addonWith(
+    { "package.json": '{"devDependencies":{"build-tool":"1.0.0"}}' },
+    store({ devPackages: [{ name: "build-tool", version: "1.0.0" }] })
+  );
+  await verifyScsDependencies(
+    addon,
+    net({
+      downloads: 5, // low - but dev deps are not popularity-gated
+      osv: {
+        vulns: [
+          {
+            id: "GHSA-dev0-0000-0000",
+            aliases: ["CVE-2021-0001"],
+            database_specific: { severity: "HIGH" },
+            affected: [
+              {
+                package: { ecosystem: "npm", name: "build-tool" },
+                ranges: [
+                  {
+                    type: "SEMVER",
+                    events: [{ introduced: "0" }, { fixed: "2.0.0" }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    })
+  );
+  assert.deepEqual(addon.vendor.devVulnerabilities, [
+    {
+      name: "build-tool",
+      version: "1.0.0",
+      ids: ["CVE-2021-0001"],
+      severity: "high",
+      fixed: ["2.0.0"],
+      file: "package.json",
+      token: "build-tool",
+    },
+  ]);
+  // The prod/vendored set is untouched, and a low-download dev dep is not flagged.
+  assert.deepEqual(addon.vendor.vulnerabilities, []);
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 

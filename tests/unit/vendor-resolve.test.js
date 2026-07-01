@@ -262,3 +262,61 @@ test("resolveVendor classifies package.json deps by source", async () => {
     ["local", "aliased", "gitlab"]
   );
 });
+
+// devDependencies never ship, but the SCS reviewer builds from source, so their
+// pinned npm packages are OSV-audited too. Only the pinned-npm bucket lands in
+// devPackages: an exact spec, or a range a lock file pins. A range with no lock, a
+// github source, and an unsupported source are dropped - and never leak into the
+// prod buckets.
+test("resolveVendor collects pinned npm devDependencies in devPackages", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: { prod: "1.0.0" },
+      devDependencies: {
+        esbuild: "0.19.0", // npm, exact -> devPackages
+        webpack: "^5.0.0", // range, pinned by the lock -> devPackages
+        ranged: "^2.0.0", // range, no lock -> dropped
+        ghdev: "github:o/r#v1.0.0", // github -> dropped
+        localdev: "file:../x", // unsupported -> dropped
+      },
+    }),
+    "package-lock.json": JSON.stringify({
+      packages: { "node_modules/webpack": { version: "5.88.0" } },
+    }),
+  });
+  const v = await resolveVendor({ addon, enabled: false });
+  assert.deepEqual(v.devPackages, [
+    { name: "esbuild", version: "0.19.0" },
+    { name: "webpack", version: "5.88.0" },
+  ]);
+  // Prod deps are unaffected, and no dev dep leaks into the prod buckets.
+  assert.deepEqual(v.packages, [{ name: "prod", version: "1.0.0" }]);
+  assert.deepEqual(
+    v.githubDeps.map((g) => g.name),
+    []
+  );
+  assert.deepEqual(
+    v.unsupportedDeps.map((u) => u.name),
+    []
+  );
+});
+
+// A package listed in BOTH dependencies and devDependencies (legal npm - the
+// dependencies copy wins) is a production dependency: it is classified once as
+// prod and dropped from devPackages, so it is audited + reported once (not by both
+// vendor-vulnerable and vendor-vulnerable-dev at the same line).
+test("resolveVendor treats a dep in both dependencies and devDependencies as prod-only", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: { shared: "1.0.0", prodonly: "2.0.0" },
+      devDependencies: { shared: "1.0.0", devonly: "3.0.0" },
+    }),
+  });
+  const v = await resolveVendor({ addon, enabled: false });
+  assert.deepEqual(v.packages, [
+    { name: "shared", version: "1.0.0" },
+    { name: "prodonly", version: "2.0.0" },
+  ]);
+  // "shared" is NOT in devPackages - only the genuinely dev-only package is.
+  assert.deepEqual(v.devPackages, [{ name: "devonly", version: "3.0.0" }]);
+});
