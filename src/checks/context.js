@@ -23,12 +23,35 @@ import { llmEnabled } from "./lib/util.js";
 /** @typedef {import("./registry.js").RunContext} RunContext */
 
 /**
+ * The check-facing artifact: the routed add-on projected to its INTRINSIC,
+ * self-healing data - files plus the lazy file-derived caches (bundled, vendor,
+ * locales, evalScan, outboundSinks, permissionAnalysis). The manifest and the
+ * experiment classification are deliberately ABSENT: they are shipped-authoritative
+ * (what Thunderbird loads / how it treats the XPI's experiments) and are exposed as
+ * ctx.manifest / ctx.experiments instead. So a check has no `ctx.addon.manifest` to
+ * read one artifact's manifest against another's files, and no `ctx.addon.experiments`
+ * for an `input: xpi` check to read as undefined. Vendor STAYS - each artifact's own
+ * dependency audit is intrinsic to it (only the review target's is computed) and
+ * classifyBundled reads it through the addon it classifies.
+ * @param {import("../addon/load.js").Addon} addon  The routed add-on.
+ * @returns {object} A shallow copy without manifest/experiments.
+ */
+function reviewView(addon) {
+  const view = { ...addon };
+  delete view.manifest;
+  delete view.manifestError;
+  delete view.manifestLoc;
+  delete view.experiments;
+  return view;
+}
+
+/**
  * Assemble the shared RunContext for one review.
  * @param {object} params
  * @param {import("../addon/load.js").Addon} params.addon
  * @param {import("../schema/index.js").SchemaIndex} params.schema
  * @param {{llmEnabled?: boolean, llmApiKey?: string, llmApiUrl?: string,
- *   llmApiType?: string, allowExperiments?: boolean, scanMinified?: boolean,
+ *   llmApiType?: string, allowExperiments?: boolean,
  *   libraryHashes?: Map<string, {name: string, version: string}>}}
  *   params.options
  * @param {string} [params.diffTo]  Path of the previously published version,
@@ -45,12 +68,15 @@ import { llmEnabled } from "./lib/util.js";
  */
 export function buildRunContext({
   addon,
+  xpiAddon = addon,
   schema,
   options,
   diffTo,
   llmModel,
   systemIntro,
   invalidExperiment,
+  mode = "xpi",
+  scsExpSource,
   budget,
 }) {
   // Parse each source ONCE and hang the result on the source. Every read-only
@@ -64,7 +90,7 @@ export function buildRunContext({
   // content scanner via nonAuthoredJs, and keeping all those ASTs at once is what
   // exhausts the heap on a bundle-heavy add-on. Dropping src.parsed to null only
   // frees memory: a consumer that does reach such a file re-parses on demand
-  // (src.parsed ?? parseJs), one file at a time, so findings are unchanged.
+  // (src.parsed ?? parseJs), one file at a time, with no effect on the findings.
   // (api-usage still runs on every file via the live parse above, and
   // unparsable-file reads ctx.apiUsages, not src.parsed.) The skip set is the one
   // classifyBundled already computed (addon.bundled, set before review); absent it
@@ -88,13 +114,38 @@ export function buildRunContext({
 
   /** @type {RunContext} */
   const ctx = {
-    addon,
+    // The check-facing artifact is the routed add-on's INTRINSIC view (reviewView):
+    // files + self-healing derivations, with the manifest and experiments stripped
+    // so they can only be read through the shipped-authoritative ctx fields below.
+    addon: reviewView(addon),
     schema,
     jsSources,
     apiUsages,
     options,
     previous: diffTo ? loadAddon(diffTo) : null,
     invalidExperiment,
+    // "xpi" (default - reviewing a built add-on) or "scs" (a source-code
+    // submission: --scs-root/--scs-source). Gates checks via scsEligible.
+    mode,
+    // SCS mode: the Experiment implementation folder within scsSource (a path
+    // relative to the review-source root). buildReachability excludes it from the
+    // pure-WebExtension set, so the WebExtension code checks skip privileged
+    // Experiment code. Undefined in XPI mode.
+    scsExpSource,
+    // The authoritative manifest is the SHIPPED artifact's (the built XPI) - what
+    // Thunderbird actually loads. It is explicit shared context, like `schema`, so
+    // the manifest / permission / API checks read it - there is no ctx.addon.manifest
+    // (reviewView strips it), which in SCS would be the readable source's pre-build
+    // template. In XPI mode xpiAddon IS addon. See the RunContext typedef.
+    manifest: xpiAddon?.manifest ?? null,
+    manifestError: xpiAddon?.manifestError ?? null,
+    manifestLoc: xpiAddon?.manifestLoc ?? null,
+    manifestText: xpiAddon?.files?.get("manifest.json")?.toString("utf8") ?? "",
+    // The Experiment classification (verifyExperiments, computed from the shipped
+    // XPI and attached to the review addon by the pipeline). Shipped-authoritative
+    // and shared like the manifest, so the experiment checks read ctx.experiments,
+    // not ctx.addon.experiments (which reviewView strips). Null for non-Experiments.
+    experiments: addon?.experiments ?? null,
   };
 
   // When an Anthropic token is set, attach the LLM client so the llm-checks
@@ -114,4 +165,40 @@ export function buildRunContext({
     });
   }
   return ctx;
+}
+
+/**
+ * A sibling of a review context whose `addon` / `jsSources` are the SHIPPED
+ * artifact's (the built XPI), for the `input: xpi` structure checks (bundled-files,
+ * minimize-web-accessible-resources, ...) and the behavioral add-on summary, which
+ * describe what actually ships. The orchestrator (registry.js runChecks / pipeline)
+ * builds this once and routes it to those consumers; every other field is shared with
+ * the review context, and `apiUsages` (per-source, source-only) is dropped so the
+ * shipped view never carries the source's. It REQUIRES the built XPI as an argument,
+ * so there is no way to derive the shipped artifact from a check's context alone.
+ *
+ * When the built XPI IS the review target (an XPI review), there is one artifact and
+ * this returns ctx unchanged - so callers route unconditionally through it.
+ * @param {RunContext} ctx  The review context (ctx.addon = the review target).
+ * @param {import("../addon/load.js").Addon} xpiAddon  The built XPI.
+ * @returns {RunContext}
+ */
+export function buildShippedCtx(ctx, xpiAddon) {
+  // ctx.addon is a reviewView (a shallow copy), so it is never === xpiAddon even in
+  // XPI mode; the files Map, however, is copied by reference, so an identical files
+  // Map means the review target IS the built XPI (one artifact) - return ctx unchanged.
+  if (ctx.addon.files === xpiAddon.files) {
+    return ctx;
+  }
+  return {
+    ...ctx,
+    addon: reviewView(xpiAddon),
+    jsSources: collectJsSources(xpiAddon),
+    apiUsages: undefined,
+    // Marks the shipped view for reachability: the built XPI's manifest entry points
+    // resolve against its OWN files, so pureWebExtensionReachable takes the closure
+    // branch - not the SCS "all readable-source files" fallback, which exists only
+    // for the review source, whose pre-build layout the manifest's built paths miss.
+    isShippedView: true,
+  };
 }

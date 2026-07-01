@@ -51,6 +51,33 @@ test("unknown option errors cleanly (no -- separator hint)", () => {
   assert.doesNotMatch(r.stderr, /To specify a positional argument/);
 });
 
+// SCS mode needs both halves: --scs-root (the archive root) and --scs-source (the
+// add-on code root within it). One without the other is a usage error.
+test("--scs-root without --scs-source is a usage error (exit 2)", () => {
+  const r = run(["some.xpi", "--scs-root", "pkg"]);
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /--scs-root and --scs-source must be given together/);
+});
+
+// In SCS mode, Experiment code is told apart from WebExtension code only by
+// --scs-exp-source, so --allow-experiments without it is a usage error (else the
+// privileged Experiment code would be reviewed as WebExtension code).
+test("--allow-experiments in SCS mode requires --scs-exp-source (exit 2)", () => {
+  const r = run([
+    "some.xpi",
+    "--scs-root",
+    "pkg",
+    "--scs-source",
+    "src",
+    "--allow-experiments",
+  ]);
+  assert.equal(r.code, 2);
+  assert.match(
+    r.stderr,
+    /--scs-exp-source is required with --allow-experiments/
+  );
+});
+
 // No positional argument is a usage error: usage to stdout, exit 2.
 test("no add-on argument prints usage and exits 2", () => {
   const r = run([]);
@@ -225,19 +252,16 @@ test("LLM_API_MODEL sets llmModel only when --llm-enabled", () => {
   }
 });
 
-// --self-assessment-summary back-doors the LLM: it pulls the provider config
-// (LLM_API_KEY/TYPE) so its one closing call has a token, but it does NOT enable
-// the LLM checks (llmEnabled stays false).
-test("--self-assessment-summary forwards the config without enabling the checks", () => {
+// Without --llm-enabled, the provider config (LLM_API_KEY) is NOT forwarded.
+test("provider config is not forwarded unless --llm-enabled", () => {
   const saved = process.env.LLM_API_KEY;
   process.env.LLM_API_KEY = "sk-test-key";
   try {
-    const opts = pipelineOptsFromArgv(["--self-assessment-summary"]);
-    assert.equal(opts.selfAssessmentSummary, true);
-    assert.equal(opts.llmApiKey, "sk-test-key"); // config reaches the closing call
-    assert.equal(opts.llmEnabled, false); // but the LLM checks stay off
-    // Without the flag and without --llm-enabled, the key is NOT forwarded.
     assert.equal(pipelineOptsFromArgv([]).llmApiKey, undefined);
+    assert.equal(
+      pipelineOptsFromArgv(["--llm-enabled"]).llmApiKey,
+      "sk-test-key"
+    );
   } finally {
     if (saved === undefined) {
       delete process.env.LLM_API_KEY;
@@ -247,12 +271,14 @@ test("--self-assessment-summary forwards the config without enabling the checks"
   }
 });
 
-// --scan-minified flows through to the scanMinified pipeline opt (the classifier
-// reads it to treat a minified-by-geometry, non-library file as authored). Off
-// without the flag.
-test("--scan-minified maps to the scanMinified opt", () => {
-  assert.equal(pipelineOptsFromArgv(["--scan-minified"]).scanMinified, true);
-  assert.ok(!pipelineOptsFromArgv([]).scanMinified);
+// --scs-root / --scs-source flow through to the source-code-submission pipeline
+// opts (the pipeline derives SCS mode from both being set).
+test("--scs-root / --scs-source map to the scs pipeline opts", () => {
+  const o = pipelineOptsFromArgv(["--scs-root", "pkg", "--scs-source", "src"]);
+  assert.equal(o.scsRoot, "pkg");
+  assert.equal(o.scsSource, "src");
+  assert.ok(!pipelineOptsFromArgv([]).scsRoot);
+  assert.ok(!pipelineOptsFromArgv([]).scsSource);
 });
 
 // --llm-review is a convenience alias expanded at parse time into --llm-enabled
@@ -300,7 +326,7 @@ test("LLM_API_TYPE=ollama resolves keyless local defaults", () => {
   }
 });
 
-// A bare LLM_API_KEY in the environment no longer auto-enables the LLM: with
+// A bare LLM_API_KEY in the environment does not auto-enable the LLM: with
 // --full-summary but no opt-in flag, the run stays deterministic and skips the
 // add-on summary even though the env var is set.
 test("a bare LLM_API_KEY does not enable the LLM without an opt-in", () => {

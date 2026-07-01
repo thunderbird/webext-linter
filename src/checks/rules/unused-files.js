@@ -14,13 +14,14 @@
 // finding / candidate / clean against reachability, the per-site candidate set,
 // and the per-F aggregation in resolve. Does NOT belong here: the reachability
 // graph, dynamic-loader sites, and mention lookups -> src/checks/lib/
-// reachability.js. The declared-vendor set -> addon.vendor.set. The model
+// reachability.js. The non-authored (library / minified / bundled) classification
+// -> nonAuthoredJs in src/checks/lib/bundled.js. The model
 // transport (batched verdicts) -> src/checks/llm-client.js. The LLM-or-manual
 // orchestration -> src/checks/escalation.js. Authored wording ->
 // assets/registry.yaml. Severity -> that registry entry, stamped by runChecks.
 
 import { finding } from "../../report/finding.js";
-import { isVendored } from "../../vendor/resolve.js";
+import { classifyAddonJs, nonAuthoredJs } from "../lib/bundled.js";
 import { buildReachability } from "../lib/reachability.js";
 import { aggregateGroups } from "../lib/verdict-resolve.js";
 import {
@@ -57,16 +58,37 @@ export default {
    *   llm?: import("../escalation.js").LlmStep}}
    */
   run(ctx) {
+    // Registry `input: xpi`: ctx.addon is the built XPI. A file bundled but reached
+    // from no entry point is dead weight in what actually ships, so this runs over
+    // the XPI - over a source submission it would instead flag every unreferenced
+    // config / test / doc in the repo (all noise), while the XPI surfaces the build's
+    // own dead files. (The reachability graph is the same XPI's.)
     const { addon } = ctx;
     if (!addon?.files) {
       return { findings: [] };
     }
     const reach = buildReachability(ctx);
+    // Recognized third-party files are not the developer's authored code, so an
+    // unreached one is not the developer's unused file - exempt it. This reads the
+    // XPI's OWN classification (getBundled over ctx.addon), intrinsic to the artifact
+    // under review, so it needs no cross-artifact review-target metadata: the
+    // non-authored set (hash-identified libraries, obfuscated code, vendored files)
+    // PLUS every minified-by-geometry bundle. The minified add is explicit because the
+    // XPI is classified with scanMinified on in SCS (minified SOURCE is treated as
+    // authored there), which drops the plain `minified` tag from the non-authored set
+    // - but a minified bundle in the built XPI is still third-party, and
+    // minifiedGeometry records it regardless of scanMinified.
+    const skip = new Set(nonAuthoredJs(ctx));
+    for (const tag of classifyAddonJs(ctx)) {
+      if (tag.minifiedGeometry) {
+        skip.add(tag.file);
+      }
+    }
     // An Experiment loads its files by mechanisms static analysis can't trace, so
     // "not reachable" is unreliable there - we'd mostly flag working experiment code.
     // Report only unambiguous junk; a separate "review the whole Experiment" check
     // (out of scope) prompts the manual pass.
-    const experiment = isExperiment(addon.manifest);
+    const experiment = isExperiment(ctx.manifest);
     const findings = [];
     const candidates = [];
     /**
@@ -77,7 +99,7 @@ export default {
 
     for (const file of addon.files.keys()) {
       if (
-        isVendored(addon.vendor, file) ||
+        skip.has(file) ||
         isDocMetadataFile(file) ||
         ALLOW.some((re) => re.test(file))
       ) {

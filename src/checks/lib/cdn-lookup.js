@@ -85,7 +85,7 @@ export async function resolveCdnLibraries(
 
   for (const tag of classified) {
     // The files minified-code would flag: an unidentified minified bundle. Keyed
-    // on the raw geometry verdict, not tag.minified, so --scan-minified (which
+    // on the raw geometry verdict, not tag.minified, so scanMinified (which
     // clears tag.minified) does not suppress identifying a known library here.
     if (!tag.minifiedGeometry || tag.library || tag.obfuscated) {
       continue;

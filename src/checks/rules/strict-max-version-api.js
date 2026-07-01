@@ -26,9 +26,7 @@ export default {
    * @returns {import("../../report/finding.js").Finding[]}
    */
   run(ctx) {
-    const maxStr = ctx.addon?.manifest
-      ? strictMaxVersion(ctx.addon.manifest)
-      : undefined;
+    const maxStr = ctx.manifest ? strictMaxVersion(ctx.manifest) : undefined;
     const maxMajor = maxStr ? parseInt(maxStr, 10) : NaN;
     if (!Number.isInteger(maxMajor)) {
       ctx.note?.("manifest.json", null, "no strict_max_version", "skipped");

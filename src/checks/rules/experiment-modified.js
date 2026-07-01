@@ -6,7 +6,7 @@
 // experiments, and unsupported ones (those abort via experiment-not-allowed).
 //
 // Belongs here: turning the per-experiment classification
-// (ctx.addon.experiments, from src/experiments/verify.js) into one finding per
+// (ctx.experiments, from src/experiments/verify.js) into one finding per
 // `modified` experiment. Does NOT belong here: classifying the files
 // (src/experiments/verify.js), authored wording (assets/registry.yaml), or
 // severity (that registry entry).
@@ -21,12 +21,12 @@ export default {
    * @returns {import("../../report/finding.js").Finding[]}
    */
   run(ctx) {
-    const m = ctx.addon.manifest;
+    const m = ctx.manifest;
     if (!m || !isExperiment(m)) {
       ctx.note?.("manifest.json", null, "not an Experiment", "skipped");
       return [];
     }
-    const groups = ctx.addon.experiments?.groups;
+    const groups = ctx.experiments?.groups;
     if (!Array.isArray(groups)) {
       ctx.note?.(
         "manifest.json",

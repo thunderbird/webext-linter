@@ -10,7 +10,7 @@ import { finding } from "../../report/finding.js";
 
 export default {
   run(ctx) {
-    const m = ctx.addon.manifest;
+    const m = ctx.manifest;
     const major = ctx.schema?.manifestVersionMajor;
     if (!m || typeof m.manifest_version !== "number" || !major) {
       return [];

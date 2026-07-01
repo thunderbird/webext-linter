@@ -29,7 +29,7 @@ const REPORTABLE = new Set([
 export default {
   run(ctx) {
     const { addon, schema } = ctx;
-    if (addon.manifestError || !addon.manifest) {
+    if (ctx.manifestError || !ctx.manifest) {
       return [];
     }
     let validate;
@@ -41,7 +41,7 @@ export default {
       validate = new Ajv({ allErrors: true, strict: false }).compile(
         jsonSchema
       );
-      if (validate(addon.manifest)) {
+      if (validate(ctx.manifest)) {
         return [];
       }
     } catch {

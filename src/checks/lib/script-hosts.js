@@ -59,7 +59,7 @@ export function scriptHostDirs(ctx) {
  * clamped at the package root by resolveInDir) and return the first packaged
  * hit, else null - a genuine "not bundled" reference is still caught. With NO
  * known host page (e.g. the call sits in a script no declared page loads), fall
- * back to root-relative, so behavior never regresses below the old root rule.
+ * back to resolving the path root-relative.
  * @param {Map<string, Buffer>} files
  * @param {Map<string, Set<string>>} hostDirs  From scriptHostDirs.
  * @param {string} fromScript  The script file making the call.
@@ -86,7 +86,7 @@ export function resolvePageRelative(files, hostDirs, fromScript, raw) {
  */
 function compute(ctx) {
   const files = ctx.addon?.files ?? new Map();
-  const manifest = ctx.addon?.manifest || {};
+  const manifest = ctx.manifest || {};
   /** @type {Map<string, Set<string>>} */
   const map = new Map();
 

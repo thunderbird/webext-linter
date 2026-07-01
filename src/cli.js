@@ -165,9 +165,7 @@ function summarySection({ title, summary }) {
 /**
  * Resolve the LLM config for this run. `--llm-enabled` is the SOLE enabler
  * (`wants`) of the LLM CHECKS. The LLM_API_* env vars only configure the client
- * and never turn the checks on. `--self-assessment-summary` ALSO pulls the
- * provider config (its one closing model call needs it), but does NOT set `wants`
- * - so it back-doors the model without enabling the checks. The config is
+ * and never turn the checks on. The config is forwarded only when `wants`, and
  * validated later, hard-failing at the pipeline's Setup pre-flight if it is
  * unusable. LLM_API_TYPE picks the provider (claude | chatgpt | ollama, default
  * claude) and hence the default model (LLM_API_MODEL override) and default base
@@ -184,16 +182,12 @@ function resolveLlm(values) {
   const apiKey = process.env.LLM_API_KEY || undefined;
   const apiUrl = process.env.LLM_API_URL || defaultBaseUrlFor(apiType);
   const model = process.env.LLM_API_MODEL || defaultModelFor(apiType);
-  // The provider config is forwarded whenever the LLM will be called - the checks
-  // (`wants`) or the self-assessment's single closing call - but `wants` alone
-  // enables the LLM checks.
-  const needsConfig = wants || values["self-assessment-summary"] === true;
   return {
     wants,
-    apiKey: needsConfig ? apiKey : undefined,
-    apiUrl: needsConfig ? apiUrl : undefined,
-    apiType: needsConfig ? apiType : undefined,
-    model: needsConfig ? model : undefined,
+    apiKey: wants ? apiKey : undefined,
+    apiUrl: wants ? apiUrl : undefined,
+    apiType: wants ? apiType : undefined,
+    model: wants ? model : undefined,
   };
 }
 
@@ -291,8 +285,16 @@ export function helpText() {
       "Accept add-ons that use Experiment APIs (off by default).",
     ],
     [
-      "--scan-minified",
-      "Review minified/built code: treat a minified (unidentified) bundle as authored and run all checks on it. Hash-identified libraries, obfuscated code, and VENDOR-declared files stay excluded. Off by default.",
+      "--scs-root <folder|zip>",
+      "Source-code submission: the source archive root (holds package.json/lock). Requires --scs-source. Switches to SCS mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the behavioral LLM audit.",
+    ],
+    [
+      "--scs-source <relative-path>",
+      "Source-code submission: the add-on code root WITHIN --scs-root (e.g. src or addon). Required together with --scs-root.",
+    ],
+    [
+      "--scs-exp-source <relative-path>",
+      "Source-code submission: the Experiment implementation folder WITHIN --scs-source (e.g. experiments). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --scs-source; REQUIRED when --allow-experiments is used in SCS mode.",
     ],
     [
       "--diff-to <xpi|folder>",
@@ -305,10 +307,6 @@ export function helpText() {
     [
       "--full-summary",
       "Add an AI Summary of the full add-on, what the add-on does, with security notes and a permission review (needs an LLM configuration, see README.md).",
-    ],
-    [
-      "--self-assessment-summary",
-      "After the deterministic review, make ONE AI call that audits the findings for false positives and scans the sources for false negatives (a linter self-check). Tries the LLM whether or not --llm-enabled is set, and just logs if no key is configured.",
     ],
     [
       "--eslint",
@@ -372,11 +370,12 @@ const OPTIONS = {
   "checks-skip": { type: "string" },
   eslint: { type: "boolean" },
   "allow-experiments": { type: "boolean" },
-  "scan-minified": { type: "boolean" },
+  "scs-root": { type: "string" },
+  "scs-source": { type: "string" },
+  "scs-exp-source": { type: "string" },
   "diff-to": { type: "string" },
   "diff-summary": { type: "boolean" },
   "full-summary": { type: "boolean" },
-  "self-assessment-summary": { type: "boolean" },
   "report-format": { type: "string" },
   "report-out": { type: "string" },
   "llm-enabled": { type: "boolean" },
@@ -474,6 +473,40 @@ export async function main(argv) {
     return 2;
   }
 
+  // SCS mode needs both halves: the archive root (for package.json/lock) AND the
+  // add-on code root within it. One without the other is a usage error.
+  if (Boolean(values["scs-root"]) !== Boolean(values["scs-source"])) {
+    process.stderr.write(
+      "--scs-root and --scs-source must be given together (source-code submission mode).\n"
+    );
+    return 2;
+  }
+  // The Experiment folder is a path inside --scs-source, so it is meaningless on
+  // its own.
+  if (values["scs-exp-source"] && !values["scs-source"]) {
+    process.stderr.write(
+      "--scs-exp-source needs --scs-source (it is a folder within it).\n"
+    );
+    return 2;
+  }
+  // In SCS mode there is no manifest trace to separate Experiment code from
+  // WebExtension code (the readable source is reviewed whole), so allowing
+  // Experiments REQUIRES naming their folder via --scs-exp-source. Without it the
+  // privileged Experiment code would be reviewed as WebExtension code and flood the
+  // report with false positives.
+  if (
+    values["scs-source"] &&
+    values["allow-experiments"] &&
+    !values["scs-exp-source"]
+  ) {
+    process.stderr.write(
+      "--scs-exp-source is required with --allow-experiments in source-code " +
+        "submission mode (it locates the Experiment code so it is not reviewed " +
+        "as WebExtension code).\n"
+    );
+    return 2;
+  }
+
   const only = splitList(values["checks-only"]);
   const skip = splitList(values["checks-skip"]);
   // Parse the registry once and thread it into the pipeline, so the yaml is read
@@ -548,12 +581,6 @@ export async function main(argv) {
       process.stdout.write(note);
       summaryBlock += note;
     }
-    if (result.selfAssessment) {
-      summaryBlock += summarySection({
-        title: "Self-assessment (FP/FN audit)",
-        summary: result.selfAssessment,
-      });
-    }
     // The review tally closes the report, after the advisory summaries above.
     const reviewSummary = formatSummary(result) + "\n";
     process.stdout.write(reviewSummary);
@@ -618,11 +645,12 @@ function pipelineOptsFromValues(values) {
     checksSkip: splitList(values["checks-skip"]),
     eslint: values.eslint,
     allowExperiments: values["allow-experiments"],
-    scanMinified: values["scan-minified"],
+    scsRoot: values["scs-root"],
+    scsSource: values["scs-source"],
+    scsExpSource: values["scs-exp-source"],
     diffTo: values["diff-to"],
     diffSummary: values["diff-summary"],
     fullSummary: values["full-summary"],
-    selfAssessmentSummary: values["self-assessment-summary"],
     llmEnabled: llm.wants,
     llmApiKey: llm.apiKey,
     llmModel: llm.model,
@@ -648,8 +676,8 @@ export function pipelineOptsFromArgv(argv) {
 }
 
 /**
- * Expand convenience alias flags into the underlying flags so every existing
- * flag-driven path fires unchanged. `--llm-review` is shorthand for
+ * Expand convenience alias flags into the underlying flags, so the rest of the CLI
+ * only ever sees the underlying flags. `--llm-review` is shorthand for
  * "--llm-enabled --full-summary"; it is deliberately referenced nowhere else.
  * @param {Record<string, string|boolean|string[]>} values  Parsed flag values
  *   (mutated in place).

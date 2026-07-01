@@ -39,6 +39,11 @@ const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 
 export default {
   run(ctx) {
+    // Registry `input: xpi`: ctx.addon is the built XPI. File-completeness is a
+    // property of what actually ships - declared paths resolve against the XPI's OWN
+    // files. In a source submission the built layout legitimately renames/relocates
+    // entry scripts, so resolving these refs against the readable source would
+    // falsely report every built path as "not bundled".
     const { addon } = ctx;
     const out = [];
     // Manifest paths are root-relative: satisfied only when the path resolves
@@ -52,10 +57,9 @@ export default {
     // 1. Files referenced from the manifest. Anchor on the manifest.json line
     // that cites the path (located by its quoted form), so the finding points at
     // the actual reference, not just the file; null loc when it cannot be found.
-    if (addon.manifest) {
-      const manifestText =
-        addon.files.get("manifest.json")?.toString("utf8") ?? "";
-      for (const { path } of manifestFileRefs(addon.manifest)) {
+    if (ctx.manifest) {
+      const manifestText = ctx.manifestText;
+      for (const { path } of manifestFileRefs(ctx.manifest)) {
         if (typeof path !== "string") {
           continue;
         }
@@ -73,6 +77,11 @@ export default {
     // A base:"page" loader path (tabs.create {url}, executeScript {file}, menus
     // icons, ...) resolves against the calling script's HOST PAGE directory (".."
     // clamped at root); getURL/scripting.* (base:"root") are root-relative.
+    //
+    // Like the manifest refs above, loader refs are a property of the built XPI:
+    // its scripts, its load graph, and the files they must resolve to - all read
+    // from ctx.addon (the XPI, per `input: xpi`), so a source submission's pre-build
+    // loader paths are never matched against the readable source tree.
     //
     // Only LIVE scripts are checked: a script reached from no entry point never
     // runs, so its loader calls never fire - a reference it makes to an absent

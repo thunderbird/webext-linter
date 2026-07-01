@@ -3,6 +3,7 @@
 // reaches the API.
 
 import { test } from "node:test";
+import { withManifest } from "./manifest-ctx.js";
 import assert from "node:assert/strict";
 
 import {
@@ -10,7 +11,6 @@ import {
   buildAddonText,
   buildSummarizer,
   buildAddonSummarizer,
-  buildSelfAssessment,
 } from "../../src/checks/summaries.js";
 import { loadRegistry } from "../../src/checks/registry.js";
 import { parseVendorManifest } from "../../src/normalize/vendor.js";
@@ -28,7 +28,7 @@ function addon(files) {
 }
 /** A ctx with previous + current addons (no llm). */
 function ctxFrom(prev, cur) {
-  return { addon: addon(cur), previous: addon(prev) };
+  return withManifest({ addon: addon(cur), previous: addon(prev) });
 }
 
 const MV1 = JSON.stringify({ manifest_version: 3, name: "x", version: "1.0" });
@@ -119,8 +119,8 @@ test("buildSummarizer returns null without a baseline/llm/change", () => {
 
 // The summary is advisory: a failing LLM call yields null, never a throw.
 // run() propagates an LLM error; the pipeline (generateSummary) catches it,
-// reports it at the step, and keeps the review going - so the deferred itself
-// no longer swallows.
+// reports it at the step, and keeps the review going - so the error surfaces at
+// the step rather than being silently swallowed.
 test("buildSummarizer run() propagates an LLM error", async () => {
   const prev = { "manifest.json": MV1, "a.js": "OLD" };
   const cur = { "manifest.json": MV2, "a.js": "NEW" };
@@ -152,7 +152,9 @@ test("buildAddonText includes authored files, excludes vendored and unused", () 
       "vendor/lib.min.js": "/* third-party lib */",
     }),
   };
-  const text = buildAddonText(ctx, "NONCE", { unused: new Set(["orphan.js"]) });
+  const text = buildAddonText(withManifest(ctx), "NONCE", {
+    unused: new Set(["orphan.js"]),
+  });
   assert.ok(text.includes("[[[BEGIN MANIFEST NONCE]]]"));
   assert.ok(text.includes("[[[BEGIN PERMISSIONS NONCE]]]")); // permission anchor
   assert.ok(text.includes('[[[BEGIN FILE NONCE path="background.js"]]]'));
@@ -172,7 +174,7 @@ test("buildAddonText lists declared permissions split by kind", () => {
     permissions: ["messagesRead", "<all_urls>"],
     optional_permissions: ["downloads"],
   });
-  const ctx = { addon: addon({ "manifest.json": manifest }) };
+  const ctx = withManifest({ addon: addon({ "manifest.json": manifest }) });
   const text = buildAddonText(ctx, "NONCE");
   assert.match(text, /required permissions: messagesRead/);
   assert.match(text, /optional permissions: downloads/);
@@ -212,29 +214,33 @@ test("buildAddonText trims only the non-authored set (undetected libs included)"
   assert.ok(!text.includes("var $=")); // minified-by-geometry blob: trimmed
 });
 
-// The self-assessment FINDINGS block labels each finding with its severity, so the
-// audit prompt can tell an info/advisory finding from an error.
-test("buildSelfAssessment labels findings with severity", () => {
-  const ctx = { addon: addon({ "manifest.json": MV1, "bg.js": "x" }) };
-  const findings = [
-    {
-      file: "bg.js",
-      loc: { line: 3 },
-      ruleId: "unsafe-html",
-      severity: "warning",
-      message: "Dynamic content assigned.",
+// SCS mode: the behavioral add-on summary describes the built XPI (ctx.summaryAddon),
+// not the readable source review target (ctx.addon). The XPI is unclassified, so its
+// almost-entirely-minified files ARE quoted - the LLM audit needs the shipped code.
+test("buildAddonText summarizes the summaryAddon (built XPI), minified included", () => {
+  const ctx = {
+    addon: {
+      files: new Map([["from-source.js", Buffer.from("SOURCE_MARKER;")]]),
+      manifest: null,
     },
-    {
-      file: "manifest.json",
-      ruleId: "addon-icon-missing",
-      severity: "info",
-      message: "Adding an add-on icon improves user acceptance.",
-    },
-  ];
-  const out = buildSelfAssessment(ctx, loadRegistry(), findings);
-  assert.ok(out, "self-assessment built");
-  assert.match(out.user, /bg\.js:3 {2}\[warning: unsafe-html\]/);
-  assert.match(out.user, /\[info: addon-icon-missing\]/);
+    // In production ctx.manifest is the SHIPPED (XPI) manifest even when ctx.addon is
+    // the readable source; mirror that so buildAddonText renders the XPI's manifest.
+    manifest: { manifest_version: 3, name: "XPI-NAME", version: "9" },
+  };
+  const xpi = {
+    files: new Map([
+      [
+        "manifest.json",
+        Buffer.from('{"manifest_version":3,"name":"XPI-NAME","version":"9"}'),
+      ],
+      ["bundle.js", Buffer.from(`var $=${"1;".repeat(600)}`)], // minified by geometry
+    ]),
+    manifest: { manifest_version: 3, name: "XPI-NAME", version: "9" },
+  };
+  const text = buildAddonText(ctx, "NONCE", { summaryAddon: xpi });
+  assert.ok(text.includes("var $=")); // the minified XPI bundle IS quoted (empty skip)
+  assert.ok(text.includes("XPI-NAME")); // the XPI manifest, not the source's (null)
+  assert.ok(!text.includes("SOURCE_MARKER")); // the source review target is NOT summarized
 });
 
 // buildAddonSummarizer returns { bytes, run }: run() sends the registry prompt +
@@ -285,7 +291,7 @@ test("buildAddonSummarizer sends prompt+add-on and returns the structured review
 });
 
 // run() propagates an LLM error; the pipeline (generateAddonSummary) catches it
-// and reports it at the step, so the deferred no longer swallows it itself.
+// and reports it at the step, so the error surfaces rather than being swallowed.
 test("buildAddonSummarizer run() propagates an LLM error", async () => {
   const ctx = {
     addon: addon({ "manifest.json": MV1 }),
@@ -317,56 +323,4 @@ test("registry exposes the change-summary, add-on-summary and system-intro promp
     assert.ok(p.length > 0, name);
   }
   assert.ok(registry.prompt("system-intro").includes("report_verdicts"));
-});
-
-// buildSelfAssessment carries the authored sources (minus unused/vendored, like
-// the add-on summary), a FINDINGS block of the deterministic results to audit, and
-// the already-escalated items - under the self-assessment prompt.
-test("buildSelfAssessment carries the sources, findings, and escalations", () => {
-  const ctx = {
-    addon: addon({
-      "manifest.json": MV1,
-      "background.js": "el.innerHTML = data;",
-      "orphan.js": "console.log('dead');",
-    }),
-  };
-  const registry = loadRegistry();
-  const findings = [
-    {
-      file: "background.js",
-      loc: { line: 1 },
-      ruleId: "unsafe-html",
-      message: "Dynamic content is assigned via .innerHTML.\nRead more: ...",
-    },
-  ];
-  const manualItems = [
-    { file: "background.js", loc: { line: 1 }, ruleId: "data-exfiltration" },
-  ];
-  const out = buildSelfAssessment(
-    ctx,
-    registry,
-    findings,
-    manualItems,
-    new Set(["orphan.js"])
-  );
-  assert.ok(out.system.includes(registry.prompt("self-assessment")));
-  // Sources are present; the unused file is excluded.
-  assert.ok(out.user.includes("el.innerHTML = data;"));
-  assert.ok(!out.user.includes("console.log('dead');"));
-  // The findings block lists the finding (first message line only) for the FP audit.
-  assert.ok(out.user.includes("FINDINGS"));
-  assert.ok(out.user.includes("background.js:1  [error: unsafe-html]")); // severity defaults to error
-  assert.ok(!out.user.includes("Read more: ...")); // only the first message line
-  // Already-escalated items are listed so they are not re-reported as misses.
-  assert.ok(out.user.includes("ALREADY_ESCALATED"));
-  assert.ok(out.user.includes("data-exfiltration"));
-  assert.equal(
-    out.bytes,
-    Buffer.byteLength(out.system, "utf8") + Buffer.byteLength(out.user, "utf8")
-  );
-  // No prompt -> null (defensive).
-  assert.equal(
-    buildSelfAssessment(ctx, { prompt: () => null }, findings),
-    null
-  );
 });

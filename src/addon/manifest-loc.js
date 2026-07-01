@@ -1,9 +1,9 @@
 // Position-aware lookup of a manifest.json value's source line, by its JSON
 // path (e.g. ["host_permissions", 0]). The parsed manifest object has no source
-// positions, so checks used to substring-search the raw text - fragile when a
-// character is \uXXXX-escaped (e.g. "<all_urls>") and ambiguous when the same
-// value appears more than once. Parsing the raw text WITH positions resolves the
-// exact line for a specific occurrence instead.
+// positions, and a substring search of the raw text is fragile (a character may be
+// \uXXXX-escaped, e.g. "<all_urls>") and ambiguous (the same value can appear more
+// than once), so this parses the raw text WITH positions to resolve the exact line
+// for a specific occurrence.
 //
 // Belongs here: building the position index from the raw manifest text and
 // resolving a JSON path to its 1-based line. Does NOT belong here: deciding which

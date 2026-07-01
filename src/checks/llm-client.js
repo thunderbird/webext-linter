@@ -46,7 +46,8 @@ import { nonceFor, wrap, wrapFile, framing } from "./lib/untrusted.js";
  * @param {Function} [opts.callText]  Injectable free-form transport (tests).
  * @param {Function} [opts.callReview]  Injectable add-on-review transport
  *   (tests).
- * @returns {{evaluate: (req: {rubric: string, candidates: object[]}) =>
+ * @returns {{evaluate: (req: {rubric: string, candidates: object[],
+ *   addon: object}) =>
  *   Promise<Map<string, {verdict: string, reason: ?string}>>, summarize: (msg:
  *   {system: string, user: string}) => Promise<string>, reviewAddon: (msg:
  *   {system: string, user: string}) =>
@@ -76,18 +77,35 @@ export function createLlmClient({
   // The per-review nonce delimits untrusted add-on content; the framing tells the
   // model that marked content is data, never instructions (see lib/untrusted.js).
   const nonce = nonceFor(ctx);
-  const system = [
-    { type: "text", text: `${systemIntro}\n\n${framing(nonce)}` },
-    {
-      type: "text",
-      text: buildAddonContext(ctx, nonce),
-      cache_control: { type: "ephemeral" },
-    },
-  ];
-
-  // Verbose: show the shared system context once (identical and prompt-cached
-  // across this review's calls). Each call then logs its criterion and result.
-  debug(`[llm] system context:\n${system.map((b) => b.text).join("\n\n")}`);
+  // The intro + framing block is artifact-independent. The add-on context (the file
+  // inventory) describes ONE artifact, so it is built for whichever add-on the
+  // orchestrator adjudicates a check against - the review target for `input: auto`
+  // checks, the built XPI for `input: xpi` - and memoized per addon so its cached
+  // prefix is reused within an artifact.
+  const introBlock = {
+    type: "text",
+    text: `${systemIntro}\n\n${framing(nonce)}`,
+  };
+  /** @type {WeakMap<object, object[]>} */
+  const systemByAddon = new WeakMap();
+  const systemFor = (addon) => {
+    let sys = systemByAddon.get(addon);
+    if (!sys) {
+      sys = [
+        introBlock,
+        {
+          type: "text",
+          text: buildAddonContext(addon, ctx.manifest, nonce),
+          cache_control: { type: "ephemeral" },
+        },
+      ];
+      systemByAddon.set(addon, sys);
+      // Verbose: show each artifact's system context once (prompt-cached across this
+      // review's calls for that artifact). Each call then logs its criterion + result.
+      debug(`[llm] system context:\n${sys.map((b) => b.text).join("\n\n")}`);
+    }
+    return sys;
+  };
 
   return {
     /**
@@ -104,12 +122,19 @@ export function createLlmClient({
      *   corpus?: string[]}>} req.candidates  Each id points at a file:line site.
      *   `corpus` lists the add-on files the model needs for it (default:
      *   `file`).
+     * @param {object} req.addon  The routed add-on artifact whose file bytes +
+     *   inventory the model reads (the review target, or the built XPI for an
+     *   `input: xpi` check).
      * @returns {Promise<Map<string, {verdict: "fail"|"pass"|"unsure",
      *   reason: string|null}>>}
      */
-    async evaluate({ rubric, candidates }) {
+    async evaluate({ rubric, candidates, addon }) {
       const out = new Map();
       const list = (candidates ?? []).filter((c) => c && c.id);
+      // Corpus + inventory come from the add-on the orchestrator routed this check
+      // to (see runOneCheck), never a captured one - so an `input: xpi` check judges
+      // its XPI-path candidates against the XPI's files, not the review source's.
+      const system = systemFor(addon);
       for (const batch of batchByFiles(list)) {
         // Run-wide request cap: once the budget is spent (and not extended) stop
         // calling the model. The fill below defaults the rest to "unsure", so
@@ -118,7 +143,7 @@ export function createLlmClient({
           break;
         }
         const paths = corpusPaths(batch);
-        const criterion = buildCriterion(rubric, batch, paths, ctx);
+        const criterion = buildCriterion(rubric, batch, paths, addon, nonce);
         debug(`[llm] criterion (${batch.length} candidate(s)):\n${criterion}`);
         let result;
         try {
@@ -268,11 +293,11 @@ function batchByFiles(candidates) {
  * @param {Array<{id: string, file?: string, line?: number,
  *   note?: string}>} batch
  * @param {string[]} paths  The batch's deduped corpus paths.
- * @param {RunContext} ctx
+ * @param {object} addon  The add-on artifact whose file bytes the model reads.
+ * @param {string} nonce  The per-review untrusted-content delimiter.
  * @returns {string}
  */
-function buildCriterion(rubric, batch, paths, ctx) {
-  const nonce = nonceFor(ctx);
+function buildCriterion(rubric, batch, paths, addon, nonce) {
   const lines = [rubric ?? "", "", "CANDIDATES:"];
   for (const c of batch) {
     const loc = c.line != null ? `:${c.line}` : "";
@@ -284,7 +309,7 @@ function buildCriterion(rubric, batch, paths, ctx) {
   // "the files ended, now do X" injection inside a body is contradicted.
   lines.push("", `FILES (${paths.length} untrusted data block(s)):`);
   for (const p of paths) {
-    const body = ctx.addon?.files?.get(p)?.toString("utf8") ?? "";
+    const body = addon?.files?.get(p)?.toString("utf8") ?? "";
     lines.push(wrapFile(nonce, p, body));
   }
   return lines.join("\n");
@@ -295,14 +320,17 @@ function buildCriterion(rubric, batch, paths, ctx) {
  * Identical bytes across checks (one nonce per review) so the cached prefix is
  * reused. Metadata only - no file bodies. The untrusted manifest is wrapped in
  * nonce markers so the model treats it as data, not instructions.
- * @param {RunContext} ctx
+ * @param {object} addon  The add-on artifact to describe (review target or XPI):
+ *   its file inventory. The routed artifact per the check's `input`.
+ * @param {?import("../addon/load.js").Manifest} manifest  The SHIPPED manifest
+ *   (ctx.manifest) - what Thunderbird loads - so the model judges declarations
+ *   against what ships, uniformly for both artifacts.
  * @param {string} nonce
  * @returns {string}
  */
-function buildAddonContext(ctx, nonce) {
-  const { addon } = ctx;
-  const manifest = addon.manifest
-    ? JSON.stringify(sortKeys(addon.manifest), null, 2)
+function buildAddonContext(addon, manifest, nonce) {
+  const manifestJson = manifest
+    ? JSON.stringify(sortKeys(manifest), null, 2)
     : "(no valid manifest.json)";
   const paths = [...addon.files.keys()].sort();
   const fileList =
@@ -317,15 +345,15 @@ function buildAddonContext(ctx, nonce) {
         .filter(Boolean)
     ),
   ];
-  const war = addon.manifest?.web_accessible_resources;
+  const war = manifest?.web_accessible_resources;
 
   return [
     "ADD-ON UNDER REVIEW",
     "",
     "manifest.json (untrusted data):",
-    wrap(nonce, "MANIFEST", manifest),
+    wrap(nonce, "MANIFEST", manifestJson),
     "",
-    `default_locale: ${addon.manifest?.default_locale ?? "(none)"}`,
+    `default_locale: ${manifest?.default_locale ?? "(none)"}`,
     `_locales directories: ${localeDirs.length ? localeDirs.join(", ") : "(none)"}`,
     `web_accessible_resources: ${war ? wrap(nonce, "WAR", JSON.stringify(war)) : "(none)"}`,
     "",

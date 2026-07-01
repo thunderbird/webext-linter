@@ -213,7 +213,7 @@ test("a gh-type hit uses GitHub stars for the popularity bar; a popular hit adds
   );
 });
 
-test("--scan-minified still identifies a known library on the CDN", async () => {
+test("scanMinified still identifies a known library on the CDN", async () => {
   // scanMinified clears tag.minified (the bundle would be scanned as authored),
   // but a real library must still be recognised - keyed on minifiedGeometry.
   const addon = addonWith({ "app/fuse.min.js": MINIFIED });

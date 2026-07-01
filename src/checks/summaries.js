@@ -123,15 +123,21 @@ function deferredReview(ctx, { system, user }) {
  * bundles are named with byte sizes only), and the manifest's canonical diff.
  * Returns null when nothing changed or there is no baseline.
  * @param {RunContext} ctx
+ * @param {RunContext} [shippedCtx]  The shipped-artifact context (the built XPI);
+ *   defaults to ctx (an XPI review, where they are one).
  * @returns {?string}
  */
-export function buildDiffText(ctx) {
-  const cur = ctx.addon?.files;
+export function buildDiffText(ctx, shippedCtx = ctx) {
+  // The diff describes the SHIPPED add-on: in SCS mode the --diff-to baseline (an
+  // XPI) is compared against the built XPI, not the readable source whose pre-build
+  // layout would never match it. shippedCtx IS ctx in an XPI review, so the file set
+  // and the non-authored skip both come from the shipped artifact in both modes.
+  const cur = shippedCtx.addon?.files;
   const prev = ctx.previous?.files;
   if (!cur || !prev) {
     return null;
   }
-  const skip = nonAuthoredJs(ctx);
+  const skip = nonAuthoredJs(shippedCtx);
 
   const added = [];
   const removed = [];
@@ -154,7 +160,7 @@ export function buildDiffText(ctx) {
   }
   const manifestDiffers =
     canonicalJson(ctx.previous.manifest ?? null) !==
-    canonicalJson(ctx.addon.manifest ?? null);
+    canonicalJson(shippedCtx.manifest ?? null);
   if (!added.length && !removed.length && !changed.length && !manifestDiffers) {
     return null;
   }
@@ -173,7 +179,7 @@ export function buildDiffText(ctx) {
     fenced(
       out,
       "--- current manifest ---",
-      canonicalJson(ctx.addon.manifest ?? null)
+      canonicalJson(shippedCtx.manifest ?? null)
     );
     out.push("");
   }
@@ -251,25 +257,27 @@ function declaredPermissionsBlock(manifest, used = new Set()) {
 export function buildAddonText(
   ctx,
   nonce,
-  { unused = new Set(), used = new Set() } = {}
+  { unused = new Set(), used = new Set(), summaryAddon = ctx.addon } = {}
 ) {
-  const files = ctx.addon?.files;
+  const files = summaryAddon?.files;
   if (!files) {
     return null;
   }
-  const skip = nonAuthoredJs(ctx);
+  // The skip set comes from the SUMMARIZED add-on's classification. For the review
+  // target (the default) this is nonAuthoredJs(ctx), which classifies on demand -
+  // libraries and minified bundles excluded. For a DIFFERENT summaryAddon (SCS
+  // mode: the built XPI, unclassified) the skip is empty, so its minified files ARE
+  // quoted - the behavioral LLM audit needs the actual shipped code.
+  const skip =
+    summaryAddon === ctx.addon
+      ? nonAuthoredJs(ctx)
+      : (summaryAddon.bundled?.nonAuthored ?? new Set());
   // Every block is untrusted add-on content, wrapped in nonce markers so the model
   // treats it as data (file bodies stay verbatim - real newlines for line citation).
-  const out = [
-    wrap(nonce, "MANIFEST", canonicalJson(ctx.addon.manifest ?? null)),
-  ];
-  if (ctx.addon.manifest) {
+  const out = [wrap(nonce, "MANIFEST", canonicalJson(ctx.manifest ?? null))];
+  if (ctx.manifest) {
     out.push(
-      wrap(
-        nonce,
-        "PERMISSIONS",
-        declaredPermissionsBlock(ctx.addon.manifest, used)
-      )
+      wrap(nonce, "PERMISSIONS", declaredPermissionsBlock(ctx.manifest, used))
     );
   }
   for (const file of [...files.keys()].sort()) {
@@ -291,13 +299,14 @@ export function buildAddonText(
  * no baseline, no token, nothing changed, or no prompt.
  * @param {RunContext} ctx
  * @param {Registry} registry
+ * @param {RunContext} [shippedCtx]  The shipped-artifact context; defaults to ctx.
  * @returns {?DeferredSummary}
  */
-export function buildSummarizer(ctx, registry) {
+export function buildSummarizer(ctx, registry, shippedCtx = ctx) {
   if (!ctx?.previous || !ctx?.llm) {
     return null;
   }
-  const diff = buildDiffText(ctx);
+  const diff = buildDiffText(ctx, shippedCtx);
   const prompt = registry.prompt("change-summary");
   if (!diff || !prompt) {
     return null;
@@ -328,7 +337,11 @@ export function buildSummarizer(ctx, registry) {
 export function buildAddonSummarizer(
   ctx,
   registry,
-  { unused = new Set(), used = new Set() } = {}
+  // The behavioral add-on summary describes the built XPI - the actual shipped
+  // (minified) code users run, not the readable source review target. The pipeline
+  // passes the shipped artifact as summaryAddon; it defaults to ctx.addon (an XPI
+  // review, where the two are one).
+  { unused = new Set(), used = new Set(), summaryAddon = ctx.addon } = {}
 ) {
   if (!ctx?.llm) {
     return null;
@@ -338,7 +351,7 @@ export function buildAddonSummarizer(
     return null;
   }
   const nonce = nonceFor(ctx);
-  const text = buildAddonText(ctx, nonce, { unused, used });
+  const text = buildAddonText(ctx, nonce, { unused, used, summaryAddon });
   if (!text) {
     return null;
   }
@@ -350,87 +363,4 @@ export function buildAddonSummarizer(
     system: `${framing(nonce)}\n\n${prompt}${rubric ? `\n\n${rubric}` : ""}`,
     user: items ? `${text}\n\n${items}` : text,
   });
-}
-
-/**
- * One compact line per deterministic finding for the self-assessment FINDINGS
- * block: "file:line  [severity: rule]  <first line of the message>". The severity
- * label lets the audit prompt tell an info/advisory finding from an error.
- * @param {{file?: ?string, loc?: {line?: number}, ruleId: string,
- *   severity?: string, message?: string}} f
- * @returns {string}
- */
-function findingLine(f) {
-  const where = f.file
-    ? `${f.file}${f.loc?.line != null ? `:${f.loc.line}` : ""}`
-    : "(add-on)";
-  const sev = f.severity ?? "error";
-  const msg = (f.message ?? "").split("\n")[0];
-  return `- ${where}  [${sev}: ${f.ruleId}]  ${msg}`;
-}
-
-/**
- * One line per already-escalated manual/LLM item, so the self-assessment does not
- * re-report it as a missed issue. Reads whichever of title/ruleId/item is present.
- * @param {{file?: ?string, loc?: {line?: number}, ruleId?: string, title?:
- *   string, item?: ?string}} m
- * @returns {string}
- */
-function manualLine(m) {
-  const where = m.file
-    ? `${m.file}${m.loc?.line != null ? `:${m.loc.line}` : ""}`
-    : "(add-on)";
-  const label = m.title ?? m.ruleId ?? "manual review";
-  return `- ${where}  ${label}${m.item ? `  (${m.item})` : ""}`;
-}
-
-/**
- * Prepare the --self-assessment-summary payload: the authored add-on sources (as
- * the normal summary, minus non-authored bundles) plus a FINDINGS block of the
- * deterministic results to audit for false positives, plus the already-escalated
- * manual items as context (so the model does not re-report them as misses), under
- * the registry "self-assessment" prompt. Free-form prose (caller runs it through
- * llm.summarize), NOT a structured tool and NOT bound to ctx.llm - the caller owns
- * the client and catches errors. Returns null when there is no prompt or no files.
- * @param {RunContext} ctx
- * @param {Registry} registry
- * @param {Array<{file?: ?string, loc?: object, ruleId: string, message?: string}>}
- *   findings  Rendered findings (renderFindings filled `message`).
- * @param {Array<object>} [manualItems]  The run's manual/unsure escalations.
- * @param {Set<string>} [unused]  Files the review found unreachable, excluded from
- *   the sources exactly as the normal add-on summary does.
- * @returns {?{system: string, user: string, bytes: number}}
- */
-export function buildSelfAssessment(
-  ctx,
-  registry,
-  findings = [],
-  manualItems = [],
-  unused = new Set()
-) {
-  const prompt = registry.prompt("self-assessment");
-  if (!prompt) {
-    return null;
-  }
-  const nonce = nonceFor(ctx);
-  const text = buildAddonText(ctx, nonce, { unused });
-  if (!text) {
-    return null;
-  }
-  const findingsBody = findings.length
-    ? findings.map(findingLine).join("\n")
-    : "(no deterministic findings)";
-  const blocks = [text, wrap(nonce, "FINDINGS", findingsBody)];
-  if (manualItems.length) {
-    blocks.push(
-      wrap(nonce, "ALREADY_ESCALATED", manualItems.map(manualLine).join("\n"))
-    );
-  }
-  const system = `${framing(nonce)}\n\n${prompt}`;
-  const user = blocks.join("\n\n");
-  return {
-    system,
-    user,
-    bytes: Buffer.byteLength(system, "utf8") + Buffer.byteLength(user, "utf8"),
-  };
 }

@@ -81,6 +81,6 @@ function scan(ctx) {
       });
     }
   }
-  const csp = analyzeCsp(ctx.addon.manifest);
+  const csp = analyzeCsp(ctx.manifest);
   return { hits, unsafeEval: csp.unsafeEval, unsafeInline: csp.unsafeInline };
 }

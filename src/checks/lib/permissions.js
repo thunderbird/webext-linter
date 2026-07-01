@@ -35,8 +35,8 @@ import { buildReachability } from "./reachability.js";
 // they are justified by their mere presence and must not be flagged unused.
 const NO_API_GATE = new Set(["unlimitedStorage"]);
 
-// The Thunderbird version that fixes D308076: from here on, a tabs.query filtering
-// by url/title on the add-on's own pages no longer needs "tabs". The two
+// The Thunderbird version that fixes D308076: at or above it, a tabs.query
+// filtering by url/title on the add-on's own pages does not need "tabs". The two
 // version-gated unused-permission-manual producers split on this (one fires at or
 // above it, the other below / when unset), feeding their own recheck consumer.
 export const D308076_FIXED_IN = "154";
@@ -88,12 +88,12 @@ export function analyzePermissions(ctx) {
     requirements,
     manifestKeys: manifestKeyNotes,
   };
-  if (!addon.manifest) {
+  if (!ctx.manifest) {
     return { missingPermissions, missingManifestKeys, usedPermissions, notes };
   }
 
-  const declared = declaredPermissions(addon.manifest);
-  const manifestKeys = new Set(Object.keys(addon.manifest));
+  const declared = declaredPermissions(ctx.manifest);
+  const manifestKeys = new Set(Object.keys(ctx.manifest));
   const missingReported = new Set();
   // namespace -> { alts:Set<key>, example, file, loc } for "manifest:<key>".
   const manifestKeyReqs = new Map();
@@ -202,7 +202,7 @@ export function getPermissionAnalysis(ctx) {
  */
 export function enumerateUnusedPermissions(ctx) {
   const used = getPermissionAnalysis(ctx).usedPermissions;
-  const m = ctx.addon?.manifest ?? {};
+  const m = ctx.manifest ?? {};
   const seen = new Set();
   const escalations = [];
   for (const key of ["permissions", "optional_permissions"]) {
@@ -211,7 +211,7 @@ export function enumerateUnusedPermissions(ctx) {
         return;
       }
       seen.add(p);
-      const line = manifestPathLine(ctx.addon, key, i);
+      const line = manifestPathLine(ctx, key, i);
       const loc = line ? { line } : null;
       if (used.has(p) || NO_API_GATE.has(p)) {
         // A reachable call requires it, or it gates no callable API (always

@@ -5,6 +5,7 @@
 // (only handed-over items can be touched), the summary-prompt composition, and the
 // orchestrator divert itself.
 
+import { withManifest } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -43,7 +44,7 @@ test("resolveRecheck maps each verdict to a finding, a drop, or a manual item", 
       ],
     },
   };
-  const out = resolveRecheck(ctx, { id: "c" });
+  const out = resolveRecheck(withManifest(ctx), { id: "c" });
 
   assert.deepEqual(
     out.findings.map((f) => f.item),
@@ -82,7 +83,7 @@ test("resolveRecheck ignores verdicts for items it was not handed (the guard)", 
       ],
     },
   };
-  const out = resolveRecheck(ctx, { id: "c" });
+  const out = resolveRecheck(withManifest(ctx), { id: "c" });
   // "real" passed -> dropped; "ghost" and the other-check verdict are ignored.
   assert.deepEqual(out.findings, []);
   assert.deepEqual(out.escalations, []);
@@ -131,7 +132,7 @@ test("loc-bearing items with no item token key on file:line", () => {
     },
   };
   // The two same-file sinks resolve independently: 4 -> finding, 7 -> dropped.
-  const out = resolveRecheck(ctx, { id: "x" });
+  const out = resolveRecheck(withManifest(ctx), { id: "x" });
   assert.deepEqual(
     out.findings.map((f) => f.loc.line),
     [4]
@@ -248,7 +249,7 @@ const producerCtx = () => {
 test("runChecks diverts a producer's manual items to ctx.recheck when active", async () => {
   const registry = loadRegistry();
   const ctx = { ...producerCtx(), recheckActive: true };
-  const out = await runChecks(ctx, registry, {
+  const out = await runChecks(withManifest(ctx), registry, {
     only: ["unused-permission-manual"],
   });
   // Not in manual review - handed to the recheck consumer instead.
@@ -265,7 +266,7 @@ test("runChecks diverts a producer's manual items to ctx.recheck when active", a
 test("runChecks leaves a producer's manual items in manual review when inactive", async () => {
   const registry = loadRegistry();
   const ctx = { ...producerCtx(), recheckActive: false };
-  const out = await runChecks(ctx, registry, {
+  const out = await runChecks(withManifest(ctx), registry, {
     only: ["unused-permission-manual"],
   });
   assert.deepEqual(out.manualItems.map((m) => m.item).sort(), [
@@ -292,7 +293,7 @@ test("runChecks diverts the pre-D308076 producer to its own consumer", async () 
     },
     recheckActive: true,
   };
-  await runChecks(ctx, registry, {
+  await runChecks(withManifest(ctx), registry, {
     only: ["unused-permission-manual", "unused-permission-manual-pre-d308076"],
   });
   assert.deepEqual(

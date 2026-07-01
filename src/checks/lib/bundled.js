@@ -35,7 +35,7 @@ import { rawSha256 } from "../../normalize/hash.js";
  *   cdn?: {url: string, type?: string, popular?: boolean}}} BundleTag  `library` is set by a
  *   content-hash match against the known-library database; `libraryId` names the
  *   matched release (for the missing-library finding). `minifiedGeometry` is the raw
- *   minified-by-geometry verdict, kept even when --scan-minified clears `minified`,
+ *   minified-by-geometry verdict, kept even when scanMinified clears `minified`,
  *   so the CDN identifier can still consider the bundle. `cdn` is set later
  *   (src/checks/lib/cdn-lookup.js) when such a bundle is matched on the jsDelivr CDN:
  *   it holds the jsDelivr source URL (and its type) for the find-lib-on-cdn finding
@@ -71,7 +71,7 @@ import { rawSha256 } from "../../normalize/hash.js";
  * @param {{scanMinified?: boolean, libraryHashes?: Map<string, LibraryId>}} [opts]
  *   libraryHashes: the known-library `sha256 -> {name, version}` map - a file whose
  *   raw hash is a key is tagged `library` (and identified). Empty map = nothing
- *   recognized. scanMinified (--scan-minified): treat a minified-by-geometry file
+ *   recognized. scanMinified (on for source-code submissions): treat a minified-by-geometry file
  *   (an unidentifiable webpack/tsc bundle) as authored so every source-level check
  *   reviews it. A hash-identified library is real third-party code, so it - like the
  *   obfuscated tag and VENDOR.md-declared / experiment-trusted files - stays
@@ -114,11 +114,11 @@ export function classifyBundled(
     if (libraryId) {
       tag.libraryId = libraryId;
     }
-    // Preserve the raw minified-by-geometry verdict where --scan-minified cannot
-    // reach it: that flag clears tag.minified (treat the bundle as authored), but
+    // Preserve the raw minified-by-geometry verdict where scanMinified cannot
+    // reach it: that option clears tag.minified (treat the bundle as authored), but
     // the CDN identifier (a later pipeline step) must still recognise a known
     // library here - a real third-party library is excluded regardless of the
-    // flag, exactly as the hash-DB library tag is kept below. See cdn-lookup.js.
+    // option, exactly as the hash-DB library tag is kept below. See cdn-lookup.js.
     tag.minifiedGeometry = Boolean(content.minified);
     // classify()'s obfuscation signal is byte-based and so comment/string-blind -
     // `eval(` or `fromCharCode` in a comment trips it. For an authored-candidate
@@ -131,7 +131,7 @@ export function classifyBundled(
         tag.obfuscated = astVerdict;
       }
     }
-    // --scan-minified: clear the minified tag so a merely-minified file (a
+    // scanMinified: clear the minified tag so a merely-minified file (a
     // webpack/tsc bundle we can't identify) is treated as authored - it leaves the
     // non-authored set (scanned by every check) and minified-code stays silent. The
     // library tag is NOT cleared: a hash match is a real, named third-party library
@@ -220,7 +220,15 @@ export function applyNotPopularVendor(addon) {
  */
 function getBundled(ctx) {
   return (ctx.addon.bundled ??= classifyBundled(ctx.addon, {
-    scanMinified: ctx.options?.scanMinified,
+    // scanMinified is on in SCS mode (ctx.mode === "scs"). For the review target
+    // (the readable source) it means "scan every file as authored, even a minified-
+    // looking one". For the built XPI - which the orchestrator routes in as ctx.addon
+    // for the `input: xpi` structure checks, carrying the same mode - it keeps the
+    // built bundles' load graph in play (their loaders still count), which keeps
+    // unused-files conservative. The pipeline pre-classifies only the source review
+    // target, so this lazy fallback also runs for the XPI in SCS (besides a rejected
+    // Experiment or a direct unit ctx).
+    scanMinified: ctx.mode === "scs",
     libraryHashes: ctx.options?.libraryHashes,
   }));
 }

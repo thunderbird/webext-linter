@@ -1,5 +1,7 @@
-// Deterministic check: an add-on whose user-facing text is not English. The
-// pre-flight reads the _locales/<dir> set from ctx.addon.files:
+// Deterministic check: an add-on whose user-facing text is not English. Declared
+// `input: xpi`, so ctx.addon is the built XPI (a source submission's _locales may
+// be generated or live outside --scs-source). The pre-flight reads its _locales/
+// <dir> set:
 //   - uses _locales with an English directory (en, en-US, ...) -> pass.
 //   - uses _locales but has no English directory -> a finding.
 //   - no _locales at all -> language-detect the hardcoded user-facing text
@@ -40,7 +42,10 @@ export default {
    *   escalations: import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
-    const files = ctx.addon?.files;
+    // ctx.addon is the built XPI (`input: xpi`) - what users install: its _locales
+    // and its user-facing text, like its siblings default-locale-missing / -unused.
+    const { addon } = ctx;
+    const files = addon?.files;
     if (!files) {
       ctx.note?.("manifest.json", null, "no files", "skipped");
       return { findings: [], escalations: [] };
@@ -54,7 +59,7 @@ export default {
 
     // No _locales: the text is hardcoded, so detect its language directly.
     if (localeDirs.size === 0) {
-      return detectHardcodedLanguage(ctx);
+      return detectHardcodedLanguage(ctx, addon);
     }
 
     // Uses _locales: an English locale is required - resolved deterministically.
@@ -84,12 +89,13 @@ export default {
 /**
  * Language-detect the add-on's hardcoded user-facing text and map the result to
  * pass / finding / manual escalation.
- * @param {RunContext} ctx
+ * @param {RunContext} ctx  For ctx.note (and the escalation routing).
+ * @param {Addon} addon  The shipped add-on whose text is detected.
  * @returns {{findings: import("../../report/finding.js").Finding[],
  *   escalations: import("../escalation.js").Escalation[]}}
  */
-function detectHardcodedLanguage(ctx) {
-  const text = userFacingText(ctx.addon);
+function detectHardcodedLanguage(ctx, addon) {
+  const text = userFacingText(ctx.manifest, addon.files);
   /**
    * Record an advisory note against manifest.json.
    * @param {string} msg  The note text.
@@ -139,19 +145,20 @@ function detectHardcodedLanguage(ctx) {
  * The add-on's user-facing text: the manifest name and description plus the
  * visible text of every packaged HTML document, whitespace-collapsed. The
  * franc input - excludes JS (string literals are noise) and binary assets.
- * @param {Addon} addon
+ * @param {?import("../../addon/load.js").Manifest} manifest  The shipped
+ *   manifest (ctx.manifest).
+ * @param {Map<string, Buffer>} files  The reviewed artifact's files.
  * @returns {string}
  */
-function userFacingText(addon) {
+function userFacingText(manifest, files) {
   const parts = [];
-  const manifest = addon.manifest;
   if (typeof manifest?.name === "string") {
     parts.push(manifest.name);
   }
   if (typeof manifest?.description === "string") {
     parts.push(manifest.description);
   }
-  for (const [path, buf] of addon.files) {
+  for (const [path, buf] of files) {
     if (HTML_FILE.test(path)) {
       parts.push(visibleText(buf.toString("utf8")));
     }

@@ -46,6 +46,7 @@
       "experiment-manual-review",
       "non-experiment-strict-max-version",
       "unpinned-dependency",
+      "unsupported-dependency",
       "vendor-vulnerable",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",

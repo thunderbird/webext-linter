@@ -12,7 +12,7 @@ const REQUIRED_KEYS = ["manifest_version", "name", "version"];
 
 export default {
   run(ctx) {
-    const m = ctx.addon.manifest;
+    const m = ctx.manifest;
     if (!m) {
       return [];
     }

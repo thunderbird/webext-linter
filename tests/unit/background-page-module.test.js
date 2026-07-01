@@ -8,6 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import rule from "../../src/checks/rules/background-page-module.js";
+import { withManifest } from "./manifest-ctx.js";
 
 const addon = (files, manifest) => ({
   manifest,
@@ -18,7 +19,7 @@ const addon = (files, manifest) => ({
 // referenced files itself - exercising the fallback path).
 const run = (files, manifest) =>
   rule
-    .run({ addon: addon(files, manifest) })
+    .run(withManifest({ addon: addon(files, manifest) }))
     .map((f) => `${f.file}:${f.loc?.line}`);
 
 // background.html lines: 1 doctype, 2 head, 3 background.js (module, no type ->

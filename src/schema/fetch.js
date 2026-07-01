@@ -64,8 +64,8 @@ export async function resolveSchemaZip({
   }
 
   const url = codeloadUrl(branch);
-  // The on-screen narration is now the "Setup" feed entry (src/pipeline.js).
-  // The URL detail stays here for --verbose.
+  // The on-screen narration is the "Setup" feed entry (src/pipeline.js); this line
+  // logs only the URL detail, under --verbose.
   debug(`Downloading annotated schemas (${branch}) from ${url} ...`);
   const res = await fetch(url);
   if (!res.ok) {

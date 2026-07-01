@@ -367,17 +367,17 @@ export function manifestTokenLine(manifestText, token) {
 
 /**
  * Exact 1-based source line of a manifest value addressed by its JSON path
- * (e.g. manifestPathLine(addon, "host_permissions", 0)). Unlike
- * manifestTokenLine this is unambiguous for repeated values and immune to
- * \uXXXX escaping. Returns null when the add-on has no position index or the
- * path is absent. Prefer this over manifestTokenLine for array values; the
- * token search remains for unique top-level keys.
- * @param {?import("../../addon/load.js").Addon} addon
+ * (e.g. manifestPathLine(ctx, "host_permissions", 0)). Unlike manifestTokenLine
+ * this is unambiguous for repeated values and immune to \uXXXX escaping. Returns
+ * null when there is no position index or the path is absent. Prefer this over
+ * manifestTokenLine for array values; the token search remains for unique top-level
+ * keys. Reads ctx.manifestLoc - the SHIPPED manifest's index (see the RunContext).
+ * @param {?import("../registry.js").RunContext} ctx
  * @param {...(string|number)} path
  * @returns {number|null}
  */
-export function manifestPathLine(addon, ...path) {
-  return addon?.manifestLoc?.lineAt(path) ?? null;
+export function manifestPathLine(ctx, ...path) {
+  return ctx?.manifestLoc?.lineAt(path) ?? null;
 }
 
 /**

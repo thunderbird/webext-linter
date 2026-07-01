@@ -23,13 +23,13 @@ export default {
    * @returns {import("../../report/finding.js").Finding[]}
    */
   run(ctx) {
-    const m = ctx.addon.manifest;
+    const m = ctx.manifest;
     if (!m || !isExperiment(m)) {
       ctx.note?.("manifest.json", null, "not an Experiment", "skipped");
       return [];
     }
     const { schema } = ctx;
-    const text = ctx.addon.files.get("manifest.json")?.toString("utf8") ?? "";
+    const text = ctx.manifestText ?? "";
     const line = manifestTokenLine(text, "experiment_apis");
     const loc = line ? { line, column: 0 } : null;
 

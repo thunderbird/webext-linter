@@ -39,6 +39,12 @@ import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
  *   Classified VENDOR-file entries.
  * @property {{name: string, version: string}[]} packages  Pinned deps.
  * @property {{name: string, spec: string}[]} unpinned  Deps with no pin.
+ * @property {{name: string, spec: string, repo: string, ref: ?string}[]}
+ *   githubDeps  GitHub-sourced package.json deps (popularity-gated like a
+ *   VENDOR.md github source; audited by verifyScsDependencies in SCS mode).
+ * @property {{name: string, spec: string}[]} unsupportedDeps  package.json deps
+ *   from an unsupported source (not npm, not GitHub); rejected by the
+ *   unsupported-dependency check.
  * @property {VendorEntry[]} missing  VENDOR entries whose file is absent.
  * @property {{source: string, paths: string[]}[]} ambiguousSources  Source URLs
  *   paired with more than one bundled file (the developer must split them or use a
@@ -53,6 +59,10 @@ import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
  *   GitHub-sourced VENDOR entries that could not be resolved to a verified npm
  *   identity for an OSV audit (filled by verifyVendor; empty offline). Read by
  *   the vendor-vuln-unknown check to surface them as info.
+ * @property {{name: string, version: string, file: string, token: string}[]}
+ *   unpopularDeps  SCS mode: declared dependencies that are not a confirmed
+ *   widely-used library (filled by verifyScsDependencies; empty in XPI mode /
+ *   offline). Read by the unpopular-source-dependency check.
  */
 
 // An exact semver (no range operators) - a concrete pinned version.
@@ -205,7 +215,8 @@ export async function resolveVendor({
     // Trusted + pinned entries are left for verifyVendor to fetch.
   }
 
-  const { packages, unpinned } = resolvePackages(addon);
+  const { packages, unpinned, githubDeps, unsupported } =
+    resolvePackages(addon);
   // VENDOR entries (file + source URL) naming a file the package does not
   // contain. Drives the missing-vendor-file check. Deterministic - the LLM
   // fallback only adds files that resolve, so it never affects this set.
@@ -218,6 +229,12 @@ export async function resolveVendor({
     manifest,
     packages,
     unpinned,
+    // GitHub-sourced package.json deps (popularity-gated like a VENDOR.md github
+    // source). Audited by verifyScsDependencies in SCS mode.
+    githubDeps,
+    // package.json deps from an unsupported source (not npm, not GitHub). Read by
+    // the unsupported-dependency check, which rejects them.
+    unsupportedDeps: unsupported,
     missing,
     ambiguousSources,
     vendorFile: vendorFile?.name ?? null,
@@ -226,6 +243,10 @@ export async function resolveVendor({
     // Filled by verifyVendor when a github source cannot be resolved to a
     // verified npm identity (network). Empty for offline runs.
     unaudited: [],
+    // SCS mode only: declared dependencies that are not a confirmed widely-used
+    // library (filled by verifyScsDependencies; empty in XPI mode / offline).
+    // Read by the unpopular-source-dependency check.
+    unpopularDeps: [],
     // "Unparsed" only when we extracted nothing at all - neither a matched entry
     // nor a missing-file declaration. A parseable-but-missing VENDOR goes to the
     // missing-vendor-file check instead of a "could not be parsed" manual item.
@@ -235,30 +256,45 @@ export async function resolveVendor({
 }
 
 /**
- * Read package.json `dependencies` and split into pinned (an exact spec or a
- * lock entry) and unpinned (a range with no lock). Non-registry specs
- * (git/url/etc.) are skipped.
+ * Read package.json `dependencies` and classify each by its spec. Only two
+ * sources are supported: a pinned npm package (an exact spec, or a range a lock
+ * file pins) and a GitHub URL (audited by popularity, like a VENDOR.md github
+ * source). The rest are surfaced, not dropped: a range with no lock is `unpinned`
+ * (the dep is real but unverifiable), and any other non-registry spec
+ * (file:/link:/workspace:/npm: alias/tarball/non-github git) is `unsupported`.
  * @param {Addon} addon
  * @returns {{packages: {name: string, version: string}[],
- *   unpinned: {name: string, spec: string}[]}}
+ *   unpinned: {name: string, spec: string}[],
+ *   githubDeps: {name: string, spec: string, repo: string, ref: ?string}[],
+ *   unsupported: {name: string, spec: string}[]}}
  */
 function resolvePackages(addon) {
   const packages = [];
   const unpinned = [];
+  const githubDeps = [];
+  const unsupported = [];
   let deps;
   try {
     deps = JSON.parse(
       addon.files.get("package.json").toString("utf8")
     ).dependencies;
   } catch {
-    return { packages, unpinned };
+    return { packages, unpinned, githubDeps, unsupported };
   }
   for (const [name, rawSpec] of Object.entries(deps ?? {})) {
     const spec = String(rawSpec).trim();
     if (EXACT.test(spec)) {
       packages.push({ name, version: spec.replace(/^v/, "") });
     } else if (/[:/]/.test(spec)) {
-      continue; // git/url/file/workspace/alias - not verifiable via npm
+      // A non-registry spec. A GitHub source is allowed (popularity-gated); every
+      // other source (file:/link:/workspace:/npm: alias/tarball/non-github git) is
+      // not supported and is rejected rather than silently ignored.
+      const gh = parseGithubSpec(spec);
+      if (gh) {
+        githubDeps.push({ name, spec, repo: gh.repo, ref: gh.ref });
+      } else {
+        unsupported.push({ name, spec });
+      }
     } else {
       const version = lockedVersion(addon, name);
       if (version) {
@@ -268,7 +304,50 @@ function resolvePackages(addon) {
       }
     }
   }
-  return { packages, unpinned };
+  return { packages, unpinned, githubDeps, unsupported };
+}
+
+/**
+ * Parse a package.json dependency spec pointing at GitHub into {repo, ref}, or
+ * null when it is not a GitHub source. Covers npm's recognized GitHub forms: the
+ * bare "owner/repo" shorthand, "github:owner/repo", and git / git+http(s) /
+ * git+ssh / https URLs whose host is github.com. A trailing "#ref" (tag, commit,
+ * or "semver:RANGE") becomes the ref; repo is normalized to "owner/repo".
+ * @param {string} spec
+ * @returns {{repo: string, ref: ?string} | null}
+ */
+function parseGithubSpec(spec) {
+  const s = String(spec).trim();
+  const split = (rest) => {
+    const i = rest.indexOf("#");
+    const repo = (i === -1 ? rest : rest.slice(0, i))
+      .replace(/\.git$/i, "")
+      .split("/")
+      .slice(0, 2)
+      .join("/");
+    const ref = i === -1 ? null : rest.slice(i + 1).replace(/^semver:/i, "");
+    return { repo, ref: ref || null };
+  };
+  // Bare "owner/repo" shorthand (npm reads this as GitHub): one slash, no scheme.
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(s) && /^[\w.-]+\/[\w.-]+(?:#.*)?$/.test(s)) {
+    return split(s);
+  }
+  if (/^github:/i.test(s)) {
+    return split(s.slice("github:".length));
+  }
+  const url = s.match(
+    /^(?:git\+)?(?:https?|git|ssh):\/\/(?:[^@/]+@)?github\.com\/(.+)$/i
+  );
+  if (url) {
+    return split(url[1]);
+  }
+  // SCP-style git URL: [git+][user@]github.com:owner/repo[.git][#ref] - the form
+  // npm accepts for a GitHub source without a scheme (a ":" after the host, not "/").
+  const scp = s.match(/^(?:git\+)?(?:[^@/]+@)?github\.com:(.+)$/i);
+  if (scp) {
+    return split(scp[1]);
+  }
+  return null;
 }
 
 /**

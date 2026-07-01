@@ -20,20 +20,19 @@
 import { resolveSchemaZip } from "./schema/fetch.js";
 import { loadSchemaFiles } from "./schema/load.js";
 import { buildSchemaIndex } from "./schema/index.js";
-import { loadAddon } from "./addon/load.js";
+import { loadAddon, loadScsAddon } from "./addon/load.js";
 import { resolveReviewUrl } from "./addon/atn.js";
 import { runChecks, runOneCheck, loadRegistry } from "./checks/registry.js";
-import { buildRunContext } from "./checks/context.js";
-import {
-  buildSummarizer,
-  buildAddonSummarizer,
-  buildSelfAssessment,
-} from "./checks/summaries.js";
-import { createLlmClient } from "./checks/llm-client.js";
+import { buildRunContext, buildShippedCtx } from "./checks/context.js";
+import { buildSummarizer, buildAddonSummarizer } from "./checks/summaries.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
 import { headerLines } from "./report/format.js";
 import { resolveVendor } from "./vendor/resolve.js";
-import { verifyVendor, auditIdentifiedLibraries } from "./vendor/verify.js";
+import {
+  verifyVendor,
+  verifyScsDependencies,
+  auditIdentifiedLibraries,
+} from "./vendor/verify.js";
 import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
 import {
   classifyBundled,
@@ -86,10 +85,22 @@ import {
  * @property {boolean} [eslint]  Run the opt-in ESLint code-sanity check (off by
  *   default); when unset, the code-sanity check is skipped entirely.
  * @property {boolean} [allowExperiments]
- * @property {boolean} [scanMinified]  Review minified/built code: treat a
- *   minified-by-geometry file (an unidentifiable webpack/tsc bundle) as authored so
- *   every source-level check scans it. Hash-identified libraries, obfuscated code,
- *   and VENDOR-declared/experiment files stay excluded. Off by default.
+ * @property {string} [scsRoot]  Source-code-submission mode: path to the source
+ *   archive root (folder or zip) holding package.json/lock. Requires scsSource.
+ *   When both are set the review runs in SCS mode - the readable source (scsSource)
+ *   is reviewed and its declared dependencies are audited; the positional XPI is
+ *   the shipped artifact against which the manifest, experiments, file-completeness
+ *   (`input: xpi`) checks, the --diff-to comparison, and the behavioral LLM audit
+ *   all run (a separate shipped context the orchestrator routes them to - see
+ *   buildShippedCtx in src/checks/context.js).
+ * @property {string} [scsSource]  The add-on code root WITHIN scsRoot (e.g. "src"
+ *   or "addon"). Required together with scsRoot.
+ * @property {string} [scsExpSource]  SCS mode: the Experiment implementation
+ *   folder WITHIN scsSource (e.g. "experiments"). Its privileged, non-WebExtension
+ *   files are excluded from the WebExtension code checks (which review all of the
+ *   readable source, having no reachability tree there). Optional in general, but
+ *   REQUIRED when allowExperiments is set in SCS mode (the CLI enforces this) -
+ *   without it, Experiment code cannot be told apart from WebExtension code.
  * @property {string} [libraryHashes]  Local known-library hashes.txt to use
  *   instead of fetching (offline/CI/tests; the golden harness injects a fixture).
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
@@ -101,9 +112,6 @@ import {
  * @property {string} [diffTo]  Path to the previous published version.
  * @property {boolean} [diffSummary]  Add an LLM "Summary of changes" section.
  * @property {boolean} [fullSummary]  Add an LLM "Summary of add-on" section.
- * @property {boolean} [selfAssessmentSummary]  Add a final LLM FP/FN audit of the
- *   deterministic findings (tries the LLM regardless of --llm-enabled, logs on
- *   failure). Runs no LLM checks - only the one closing self-assessment call.
  * @property {boolean} [reviewUrl]  Look up the ATN reviewer review-page URL and
  *   put it on meta.reviewUrl - set for text reports, off for JSON/the harness.
  * @property {boolean} [llmEnabled]  The sole LLM on-switch (--llm-enabled).
@@ -134,7 +142,6 @@ import {
  * @property {Record<string, string>} [verdictIntros]
  * @property {GeneratedSummary} [summarize]
  * @property {GeneratedSummary} [summarizeAddon]
- * @property {GeneratedSummary} [selfAssessment]
  */
 
 /**
@@ -145,13 +152,36 @@ import {
  */
 export async function runPipeline(opts) {
   const { addonPath } = opts;
+  // SCS (source-code-submission) mode is on when BOTH --scs-* are set. It splits
+  // the review across TWO add-on artifacts with a fixed ROLE each, resolved here
+  // ONCE so nothing downstream re-branches on the mode:
+  //
+  //   xpiAddon - the built XPI (the positional addonPath). The SHIPPED artifact,
+  //     authoritative in BOTH modes for the manifest, the experiments, and the
+  //     behavioral LLM summary (what actually runs on a user's machine).
+  //   addon    - the deterministic review target (becomes ctx.addon): the readable
+  //     code the source-level checks scan. In XPI mode it simply IS xpiAddon; in
+  //     SCS mode it is the readable source at scsSource - a synthetic addon whose
+  //     files are the source but whose manifest is the XPI's (loadScsAddon), so the
+  //     checks stay mode-agnostic.
+  //
+  // So downstream: read `addon` for the code under review, `xpiAddon` for the
+  // shipped artifact - no further mode checks. The only other mode forks are the
+  // dependency resolution (--scs-root vs the XPI's VENDOR/package.json) and the
+  // check gate (ctx.mode -> scsEligible). `scanMinified` (classify every file as
+  // authored, incl. minified) is just the SCS path - the readable sources are the
+  // review target there, so even a minified-looking one is reviewed as authored.
+  const mode = opts.scsRoot && opts.scsSource ? "scs" : "xpi";
+  const scanMinified = mode === "scs";
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly).
   const registry = opts.registry ?? loadRegistry();
 
-  // 1. Load the add-on (.xpi archive or source folder). A caller may inject a
-  // pre-loaded add-on (the test harness does, to drop its expected.json file).
-  const addon = opts.addon ?? loadAddon(addonPath);
+  // 1. Load both artifacts (.xpi archive or unpacked folder). A caller may inject
+  // a pre-loaded XPI add-on (the test harness does, to drop its expected.json).
+  const xpiAddon = opts.addon ?? loadAddon(addonPath);
+  const addon =
+    mode === "scs" ? loadScsAddon(opts.scsRoot, opts.scsSource) : xpiAddon;
 
   // Classify every Experiment add-on against the upstream drafts
   // (github.com/thunderbird/webext-experiments), regardless of
@@ -171,9 +201,14 @@ export async function runPipeline(opts) {
   // recognised-but-modified one does NOT abort, so the full review runs and
   // experiment-modified flags it. With --allow-experiments the reviewer accepts
   // them, so the full review always runs.
+  // Experiments are reviewed from the XPI (its shipped-artifact role; xpiAddon ===
+  // addon in XPI mode). They are privileged, non-bundled, readable code, and the
+  // manifest's experiment paths resolve against the XPI's own files (no
+  // source-layout mismatch). The classification is stored on the review addon for
+  // the experiment checks to read.
   let invalidExperiment = false;
-  if (isExperiment(addon.manifest)) {
-    addon.experiments = await verifyExperiments(addon, opts);
+  if (isExperiment(xpiAddon.manifest)) {
+    addon.experiments = await verifyExperiments(xpiAddon, opts);
     invalidExperiment =
       !opts.allowExperiments &&
       addon.experiments.groups.some((g) => g.status === "unsupported");
@@ -205,7 +240,12 @@ export async function runPipeline(opts) {
   // Activity counting its checks before the loop, the total is known here: the
   // vendor step is skipped for a rejected Experiment, so it is one fewer then. A
   // no-op when progress is off (JSON, the golden harness).
-  const setupTotal = (invalidExperiment ? 3 : 6) + (opts.llmEnabled ? 1 : 0);
+  // Setup-feed step count for the [n/total] counter: a rejected Experiment runs
+  // a short path; SCS mode skips the XPI-only library steps (CDN, identified-lib
+  // audit) for a shorter one than a full XPI review.
+  const setupTotal =
+    (invalidExperiment ? 3 : mode === "scs" ? 4 : 6) +
+    (opts.llmEnabled ? 1 : 0);
   let setupDone = 0;
   /**
    * Emit the next numbered "Setup" feed line.
@@ -247,10 +287,19 @@ export async function runPipeline(opts) {
   let libraryHashes = new Map();
 
   if (!invalidExperiment) {
-    setupStep("Verifying vendored libraries");
-    // 1b. Resolve the vendored declarations ONCE, before the review, so the
-    // review's checks share one immutable set. Deterministic parse, plus an LLM
-    // fallback when a token is set (token-less stays deterministic).
+    // 1b. The known-library hash DB the classifier matches bytes against (fetch +
+    // cache, or the --library-hashes override; the golden harness injects a
+    // fixture so offline runs are deterministic). Both modes classify.
+    setupStep("Fetching library hashes");
+    const { text: libraryHashesText } = await resolveLibraryHashes({
+      source: opts.libraryHashes,
+      cacheDir: opts.libraryHashesCache,
+      refresh: opts.libraryHashesForceRefresh,
+    });
+    libraryHashes = parseLibraryHashes(libraryHashesText);
+
+    // 1c. Resolve the dependency manifest ONCE (package.json deps + any VENDOR
+    // declarations), so the review's checks share one immutable store.
     addon.vendor = await resolveVendor({
       addon,
       parsePrompt: registry.prompt("vendor-parse"),
@@ -262,70 +311,61 @@ export async function runPipeline(opts) {
       budget: llmBudget,
     });
 
-    // 1c. Verify the resolved declarations over the network ONCE - fetch,
-    // compare (EOL-tolerant), popularity, and the package.json<->file matching -
-    // recording each file's result into the same shared store. A declaration
-    // with nothing fetchable (or an injected offline transport, as the golden
-    // harness uses) makes no request, so offline runs stay deterministic. The LLM
-    // params drive the github->npm resolution fallback (a github source whose npm
-    // twin the deterministic match misses); the same run-wide budget is shared.
-    await verifyVendor(addon, opts.vendorNet, {
-      enabled: opts.llmEnabled,
-      resolvePrompt: registry.prompt("vendor-npm-resolve"),
-      token: opts.llmApiKey,
-      model: opts.llmModel,
-      url: opts.llmApiUrl,
-      type: opts.llmApiType,
-      budget: llmBudget,
-    });
+    if (mode === "scs") {
+      // SCS: the source archive's package.json is the only dependency manifest.
+      // Audit each declared dependency for popularity (non-popular -> reject) and
+      // OSV. No VENDOR.md / hash / CDN matching - the built libraries are not in
+      // the readable source and are mangled in the XPI. classifyBundled still runs
+      // (so obfuscated-code and the non-authored skip set work); scanMinified is
+      // on, so every readable source file is scanned as authored.
+      setupStep("Auditing source dependencies");
+      await verifyScsDependencies(addon, opts.vendorNet);
+      addon.bundled = classifyBundled(addon, { scanMinified, libraryHashes });
+    } else {
+      // XPI: the full vendored-library pipeline.
+      // 1d. Verify the resolved declarations over the network ONCE - fetch,
+      // compare (EOL-tolerant), popularity, and the package.json<->file matching.
+      // An offline transport (the golden harness) makes no request. The LLM params
+      // drive the github->npm resolution fallback; the run-wide budget is shared.
+      setupStep("Verifying vendored libraries");
+      await verifyVendor(addon, opts.vendorNet, {
+        enabled: opts.llmEnabled,
+        resolvePrompt: registry.prompt("vendor-npm-resolve"),
+        token: opts.llmApiKey,
+        model: opts.llmModel,
+        url: opts.llmApiUrl,
+        type: opts.llmApiType,
+        budget: llmBudget,
+      });
 
-    // 1d. Resolve + parse the known-library hash DB (fetch+cache, or the
-    // --library-hashes local override; the golden harness injects a fixture so
-    // offline runs are deterministic), so the classifier can identify a bundled
-    // library by the raw hash of its bytes.
-    setupStep("Fetching library hashes");
-    const { text: libraryHashesText } = await resolveLibraryHashes({
-      source: opts.libraryHashes,
-      cacheDir: opts.libraryHashesCache,
-      refresh: opts.libraryHashesForceRefresh,
-    });
-    libraryHashes = parseLibraryHashes(libraryHashesText);
+      // 1e. Classify the bundled (undeclared third-party) JS ONCE into
+      // addon.bundled. Runs after verifyVendor so the vendored skip set is final.
+      addon.bundled = classifyBundled(addon, { scanMinified, libraryHashes });
 
-    // 1e. Classify the bundled (undeclared third-party) JS ONCE into
-    // addon.bundled, read by the bundled checks (computed once, never
-    // recomputed). Runs after verifyVendor so the vendored skip set is final.
-    addon.bundled = classifyBundled(addon, {
-      scanMinified: opts.scanMinified,
-      libraryHashes,
-    });
+      // 1e-half. Reconcile the not-popular VENDOR/package results from verifyVendor
+      // (which ran before addon.bundled existed) into the untrusted family: an
+      // identified-but-not-popular library is reviewed as authored code, not a
+      // trusted/exempt dependency.
+      applyNotPopularVendor(addon);
 
-    // 1e-half. Reconcile the not-popular VENDOR/package results from verifyVendor
-    // (which ran before addon.bundled existed) into the untrusted family: an
-    // identified-but-not-popular library is reviewed as authored code, not a
-    // trusted/exempt dependency. (The CDN not-popular case is handled in
-    // resolveCdnLibraries below, which already runs after classifyBundled.)
-    applyNotPopularVendor(addon);
+      // 1e-bis. Second-tier identification: for a minified bundle the Mozilla DB
+      // did not recognize, ask jsDelivr (by content hash) whether it is a published
+      // release, promoting a match into the vendored family for find-lib-on-cdn.
+      // Best-effort: cached on disk, silently skipped offline.
+      setupStep("Identifying bundled libraries on a CDN");
+      await resolveCdnLibraries(addon, {
+        net: opts.vendorNet,
+        cacheDir: opts.cdnLookupCache,
+        enabled: opts.cdnLookup !== false,
+      });
 
-    // 1e-bis. Second-tier library identification: for a minified bundle the
-    // Mozilla DB did not recognize, ask jsDelivr (by content hash) whether it is a
-    // published release, promoting a match into the vendored family (library +
-    // libraryId + cdn) for find-lib-on-cdn. Runs after classifyBundled and BEFORE
-    // the audit below, so a CDN match is OSV-audited like a hash-DB library.
-    // Best-effort: cached on disk, silently skipped offline.
-    setupStep("Identifying bundled libraries on a CDN");
-    await resolveCdnLibraries(addon, {
-      net: opts.vendorNet,
-      cacheDir: opts.cdnLookupCache,
-      enabled: opts.cdnLookup !== false,
-    });
-
-    // 1f. OSV-audit the identified (but undeclared) libraries - both Mozilla
-    // hash-DB and CDN matches - so an undeclared vulnerable bundle is caught like a
-    // declared dependency. Runs after the two identifiers (libraryIds exist only
-    // then) and reuses verifyVendor's OSV transport + the shared vulnerabilities
-    // store; best-effort, skips offline.
-    setupStep("Auditing bundled libraries");
-    await auditIdentifiedLibraries(addon, opts.vendorNet);
+      // 1f. OSV-audit the identified (but undeclared) libraries - both Mozilla
+      // hash-DB and CDN matches - so an undeclared vulnerable bundle is caught like
+      // a declared dependency. Reuses verifyVendor's OSV transport + the shared
+      // vulnerabilities store; best-effort, skips offline.
+      setupStep("Auditing bundled libraries");
+      await auditIdentifiedLibraries(addon, opts.vendorNet);
+    }
   }
 
   // 2. Schema review. reviewAddon also generates the advisory AI summaries at
@@ -338,11 +378,13 @@ export async function runPipeline(opts) {
     invalidExperiment,
     llmBudget,
     setupStep,
-    libraryHashes
+    libraryHashes,
+    mode,
+    xpiAddon
   );
   findings.push(...result.findings);
   Object.assign(meta, result.meta);
-  const { summarize, summarizeAddon, selfAssessment } = result;
+  const { summarize, summarizeAddon } = result;
 
   // Surface the review header now - before the ATN review-page lookup below, a
   // network call that can stall the feed for seconds - so the reviewer sees what
@@ -363,7 +405,7 @@ export async function runPipeline(opts) {
   // Skipped for an outright Experiment reject (the URL only renders inside the
   // omitted Manual review section anyway).
   if (opts.reviewUrl && !invalidExperiment) {
-    meta.reviewUrl = await resolveReviewUrl({ manifest: addon.manifest });
+    meta.reviewUrl = await resolveReviewUrl({ manifest: xpiAddon.manifest });
   }
 
   // Fill each finding's display message from its registry response (with the
@@ -383,7 +425,6 @@ export async function runPipeline(opts) {
     // src/cli.js.
     summarize,
     summarizeAddon,
-    selfAssessment,
   };
 }
 
@@ -421,9 +462,9 @@ async function generateSummary(deferred, label, budget) {
  * Generate the --full-summary add-on review and store its recheck verdicts on the
  * context (the post-summary recheck consumers, which run next, read them). Mirrors
  * generateSummary but unpacks the review object: the prose goes to the returned
- * summary (printed after the report), the recheck verdicts onto ctx.addon.recheck.
+ * summary (printed after the report), the recheck verdicts onto ctx.recheckVerdicts.
  * They are set ONLY when the model actually returned a review, so a missing
- * `ctx.addon.recheck` is the clean signal that no analysis happened (LLM error
+ * `ctx.recheckVerdicts` is the clean signal that no analysis happened (LLM error
  * here, or never called) - the consumers then fall their handed-over items back to
  * manual review. Undefined when there is no summary to make.
  * @param {import("./checks/registry.js").RunContext} ctx
@@ -432,13 +473,25 @@ async function generateSummary(deferred, label, budget) {
  * @param {import("./llm/budget.js").LlmBudget} [budget]  Run-wide request cap.
  * @returns {Promise<GeneratedSummary|undefined>}
  */
-async function generateAddonSummary(ctx, registry, unused, budget) {
+async function generateAddonSummary(
+  ctx,
+  registry,
+  unused,
+  budget,
+  summaryAddon
+) {
   // Permissions a reachable API call provably requires (memoized, already
   // computed by the main-loop missing-permission checks). Passed to the prompt's
   // declared-permissions block as context; the producer (unused-permission-manual)
   // already excluded these, so the summary only re-judges the unprovable rest.
   const used = getPermissionAnalysis(ctx).usedPermissions;
-  const deferred = buildAddonSummarizer(ctx, registry, { unused, used });
+  // The behavioral summary describes the built XPI (summaryAddon); permissions come
+  // from the review target (uniform manifest). In an XPI review they are one addon.
+  const deferred = buildAddonSummarizer(ctx, registry, {
+    unused,
+    used,
+    summaryAddon,
+  });
   if (!deferred) {
     return undefined;
   }
@@ -455,72 +508,9 @@ async function generateAddonSummary(ctx, registry, unused, budget) {
     return { bytes: deferred.bytes, text: null, error: reason };
   }
   if (review) {
-    ctx.addon.recheck = review.recheck;
+    ctx.recheckVerdicts = review.recheck;
   }
   return { bytes: deferred.bytes, text: review?.summary ?? null };
-}
-
-/**
- * The --self-assessment-summary FP/FN audit: one free-form LLM call that gets the
- * authored sources plus the deterministic findings and reports likely false
- * positives + possible false negatives. Independent of the LLM-check gating - it
- * builds its OWN client and just TRIES the call, logging (never throwing) on a
- * missing token or any model error, so the review is unaffected. Returns a
- * GeneratedSummary, or undefined when there is nothing to send.
- * @param {RunContext} ctx
- * @param {Registry} registry
- * @param {PipelineOpts} opts
- * @param {Finding[]} findings  Rendered findings (message filled).
- * @param {object[]} manualItems
- * @param {Set<string>} unused  Unreachable files, excluded from the sources.
- * @param {import("../llm/budget.js").LlmBudget} [budget]
- * @returns {Promise<GeneratedSummary|undefined>}
- */
-async function generateSelfAssessment(
-  ctx,
-  registry,
-  opts,
-  findings,
-  manualItems,
-  unused,
-  budget
-) {
-  const payload = buildSelfAssessment(
-    ctx,
-    registry,
-    findings,
-    manualItems,
-    unused
-  );
-  if (!payload) {
-    return undefined;
-  }
-  if (budget && !(await budget.consume())) {
-    return undefined; // run-wide request cap reached
-  }
-  progress(
-    `  LLM: Generating self-assessment (${humanSize(payload.bytes)}) ...`
-  );
-  try {
-    const client = createLlmClient({
-      ctx,
-      token: opts.llmApiKey,
-      systemIntro: registry.prompt("system-intro"),
-      type: opts.llmApiType,
-      model: opts.llmModel,
-      url: opts.llmApiUrl,
-      budget,
-    });
-    const text = await client.summarize({
-      system: payload.system,
-      user: payload.user,
-    });
-    return { bytes: payload.bytes, text };
-  } catch (err) {
-    const reason = llmErrorText(err);
-    progress(red(`  LLM: self-assessment skipped - ${reason}`));
-    return { bytes: payload.bytes, text: null, error: reason };
-  }
 }
 
 /**
@@ -548,7 +538,9 @@ async function reviewAddon(
   invalidExperiment,
   budget,
   setupStep = () => {},
-  libraryHashes = new Map()
+  libraryHashes = new Map(),
+  mode = "xpi",
+  xpiAddon = addon
 ) {
   const {
     schemaChannel = DEFAULT_CHANNEL,
@@ -563,13 +555,16 @@ async function reviewAddon(
     llmApiUrl,
     llmApiType,
     allowExperiments,
-    scanMinified,
     diffTo,
     fullSummary,
     diffSummary,
   } = opts;
 
-  const branch = chooseBranch({ schemaZip, schemaChannel, addon });
+  const branch = chooseBranch({
+    schemaZip,
+    schemaChannel,
+    manifest: xpiAddon.manifest,
+  });
   setupStep(`Fetching review schemas (${branch})`);
   const { zipPath, source: schemaSource } = await resolveSchemaZip({
     schemaZip,
@@ -584,9 +579,13 @@ async function reviewAddon(
   // the developer owns the namespace, so we accept it wholesale rather than
   // tracing each sub-API. Note that experiment-overrides-api separately flags a
   // path that collides with a built-in.
-  if (!invalidExperiment && isExperiment(addon.manifest)) {
+  // Register from the XPI (xpiAddon === addon in XPI mode): in SCS the experiment
+  // schema/scripts live in the built XPI, so the manifest's experiment paths
+  // resolve there - the developer's calls into the namespace still resolve even
+  // though the reviewed source is scsSource.
+  if (!invalidExperiment && isExperiment(xpiAddon.manifest)) {
     schema.registerExperimentNamespaces(
-      experimentApiNamespaces(addon.manifest, addon.files)
+      experimentApiNamespaces(xpiAddon.manifest, xpiAddon.files)
     );
   }
 
@@ -595,6 +594,9 @@ async function reviewAddon(
   // baseline, LLM client) - the pipeline only resolves the schema.
   const ctx = buildRunContext({
     addon,
+    // The built XPI - authoritative for the manifest (ctx.manifest). xpiAddon === addon
+    // in XPI mode; in SCS it is the shipped artifact while addon is the readable source.
+    xpiAddon,
     schema,
     options: {
       llmEnabled,
@@ -602,15 +604,26 @@ async function reviewAddon(
       llmApiUrl,
       llmApiType,
       allowExperiments,
-      scanMinified,
       libraryHashes,
     },
     diffTo,
     llmModel: opts.llmModel,
     systemIntro: registry.prompt("system-intro"),
     invalidExperiment,
+    mode,
+    // SCS: the Experiment folder within scsSource, excluded from the WebExtension
+    // code checks (which review all readable source). Undefined in XPI mode.
+    scsExpSource: opts.scsExpSource,
     budget,
   });
+
+  // The orchestrator holds BOTH contexts: `ctx` (the review target) and shippedCtx
+  // (the built XPI - the manifest-coupled `input: xpi` checks resolve declared paths
+  // against it and the behavioral summary describes it). Each check is routed to one
+  // or the other by its `input`; a check cannot derive one from the other, so it only
+  // ever sees the artifact it was routed to. In an XPI review the two are one object
+  // (buildShippedCtx returns ctx unchanged when the XPI IS the review target).
+  const shippedCtx = buildShippedCtx(ctx, xpiAddon);
 
   // The registry.yaml file drives which checks run, by `phase`: runChecks runs
   // the default-phase checks in its loop now and returns the post-summary checks
@@ -629,21 +642,21 @@ async function reviewAddon(
   // `post-summary-recheck` hands its manual items to that recheck consumer to be
   // re-judged with whole-add-on context (runChecks diverts them; the summary
   // judges them; the consumer resolves them - see src/checks/lib/recheck.js).
-  // Without the summary this is false, so those items go straight to manual
-  // review exactly as before.
+  // Without the summary this is false, so those items go straight to manual review.
   ctx.recheckActive = !invalidExperiment && fullSummary && Boolean(ctx.llm);
   progress(""); // close the Setup section before runChecks prints "── Activity ──"
   const { findings, checks, manualItems, deferred, total } = await runChecks(
     ctx,
     registry,
-    { only: checksOnly, skip: baseSkip }
+    { only: checksOnly, skip: baseSkip },
+    shippedCtx
   );
 
   // Advisory AI summaries, generated at the tail of the activity feed (a
   // `LLM: Generating ...` line shows what is being waited on). The prose is
   // printed after the report by the caller (src/cli.js). The add-on summary runs
   // first to match that display order, and because it re-judges the recheck items
-  // handed to it (ctx.recheck) - storing the verdicts on ctx.addon.recheck for
+  // handed to it (ctx.recheck) - storing the verdicts on ctx.recheckVerdicts for
   // the post-summary recheck consumers below. It excludes files the review found
   // unreachable - that set is a product of reachability (unused-files), so it
   // exists only now, which is why the summary runs after the checks.
@@ -652,27 +665,36 @@ async function reviewAddon(
     const unused = new Set(
       findings.filter((f) => f.ruleId === "unused-files").map((f) => f.file)
     );
-    summarizeAddon = await generateAddonSummary(ctx, registry, unused, budget);
+    summarizeAddon = await generateAddonSummary(
+      ctx,
+      registry,
+      unused,
+      budget,
+      shippedCtx.addon
+    );
   }
   let summarize;
   if (!invalidExperiment && diffSummary) {
     summarize = await generateSummary(
-      buildSummarizer(ctx, registry),
+      buildSummarizer(ctx, registry, shippedCtx),
       "diff summary",
       budget
     );
   }
 
   // The post-summary checks (phase: post-summary, incl. the recheck consumers),
-  // run now that the add-on summary has populated ctx.addon.recheck, through the
+  // run now that the add-on summary has populated ctx.recheckVerdicts, through the
   // identical per-check path as the loop - runOneCheck stamps id/severity and
   // routes escalations to manual review. They honor --checks/--skip (already
   // applied by loadChecks). Numbering continues from the main loop so the feed
   // reads [1/total] .. [total/total]. This list is empty for an invalid Experiment.
   const ran = [...checks];
   for (const [j, check] of deferred.entries()) {
+    // Route like the main loop: each check runs over the artifact its `input`
+    // selects (all post-summary checks are `auto` today, but route for correctness).
+    const checkCtx = check.input === "xpi" ? shippedCtx : ctx;
     const out = await runOneCheck(
-      ctx,
+      checkCtx,
       check,
       `[${checks.length + j + 1}/${total}]`
     );
@@ -692,28 +714,6 @@ async function reviewAddon(
   collapseUnusedFolders(findings, allFiles);
   collapseUnusedFolders(manualItems, allFiles);
 
-  // The self-assessment audit (--self-assessment-summary): a single final LLM call
-  // that critiques the now-complete deterministic findings for false positives and
-  // hunts for false negatives. It needs the rendered finding messages, so render
-  // them here (idempotent - the caller renders again before printing). It tries the
-  // LLM regardless of --llm-enabled and only logs on failure.
-  let selfAssessment;
-  if (!invalidExperiment && opts.selfAssessmentSummary) {
-    renderFindings(findings, registry);
-    const unused = new Set(
-      findings.filter((f) => f.ruleId === "unused-files").map((f) => f.file)
-    );
-    selfAssessment = await generateSelfAssessment(
-      ctx,
-      registry,
-      opts,
-      findings,
-      manualItems,
-      unused,
-      budget
-    );
-  }
-
   return {
     findings,
     // The built run context is returned for any post-review use by the caller.
@@ -722,13 +722,12 @@ async function reviewAddon(
     // a token warrant it). The caller prints their prose after the report.
     summarize,
     summarizeAddon,
-    selfAssessment,
     meta: {
       schemaSource,
       schemaBranch: branch,
       schemaChannel: schemaZip ? null : schemaChannel,
       applicationVersion: schema.applicationVersion,
-      manifestVersion: addon.manifest?.manifest_version ?? null,
+      manifestVersion: xpiAddon.manifest?.manifest_version ?? null,
       checksRun: ran.map((c) => c.id),
       // One manual-review list, tagged by origin so the report can split it into
       // two sections: `extended` items are checks that escalated (the
@@ -803,7 +802,7 @@ function collapseUnusedFolders(entries, allFiles) {
  * @typedef {object} BranchParams
  * @property {string|undefined} schemaZip
  * @property {string} schemaChannel
- * @property {import("./addon/load.js").Addon} addon
+ * @property {import("./addon/load.js").Manifest} manifest  The shipped (XPI) manifest.
  */
 
 /**
@@ -814,11 +813,11 @@ function collapseUnusedFolders(entries, allFiles) {
  * @param {BranchParams} params
  * @returns {string|null}
  */
-function chooseBranch({ schemaZip, schemaChannel, addon }) {
+function chooseBranch({ schemaZip, schemaChannel, manifest }) {
   if (schemaZip) {
     return null;
   }
-  const mv = detectManifestVersion(addon.manifest);
+  const mv = detectManifestVersion(manifest);
   const branch = `${schemaChannel}-mv${mv.version}`;
   debug(
     `Detected manifest_version ${mv.detected ? mv.version : `? (defaulting to ${mv.version})`}` +

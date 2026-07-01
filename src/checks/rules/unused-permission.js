@@ -13,7 +13,7 @@
 //
 // It makes no decision of its own: the mapping is the shared resolveRecheck
 // (src/checks/lib/recheck.js), driven by ctx.recheck (the handed-over items) and
-// ctx.addon.recheck (the summary's verdicts). It runs in the post-summary phase
+// ctx.recheckVerdicts (the summary's verdicts). It runs in the post-summary phase
 // because it is named as unused-permission-manual's post-summary-recheck target
 // (the orchestrator infers the phase from that reference). With no summary nothing
 // is handed over, so it emits nothing and the producer's reminder stands.

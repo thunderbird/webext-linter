@@ -76,7 +76,13 @@ export async function runLlmCheck(ctx, check, step) {
     // waited on while the (often slow, many-candidate) model call runs. The
     // verdicts follow.
     narrateBatchHeader(check, candidates);
-    verdicts = await ctx.llm.evaluate({ rubric: check.prompt, candidates });
+    // ctx is the check's ROUTED context (runOneCheck), so ctx.addon is the artifact
+    // this check runs over - the model reads its files/inventory, not a captured one.
+    verdicts = await ctx.llm.evaluate({
+      rubric: check.prompt,
+      candidates,
+      addon: ctx.addon,
+    });
     narrateBatchVerdicts(candidates, verdicts);
   } else {
     verdicts = new Map(

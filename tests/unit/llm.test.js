@@ -13,24 +13,24 @@ function clientWith(files, callVerdicts) {
   for (const f of files) {
     map.set(f, Buffer.from(`// ${f}\n`));
   }
-  const ctx = {
-    addon: {
-      files: map,
-      manifest: { manifest_version: 3, name: "x", version: "1" },
-    },
+  const addon = {
+    files: map,
+    manifest: { manifest_version: 3, name: "x", version: "1" },
   };
-  return createLlmClient({
-    ctx,
+  const llm = createLlmClient({
+    ctx: { addon },
     token: "t",
     systemIntro: "intro",
     callVerdicts,
   });
+  // The addon the orchestrator would route this check to - passed to evaluate.
+  return { llm, addon };
 }
 
 // evaluate returns one verdict per candidate id; the orchestrator maps those ids
 // to outcomes, the client only relays verdicts keyed by id.
 test("evaluate returns a verdict per candidate id", async () => {
-  const llm = clientWith(["a.js", "b.js"], async () => ({
+  const { llm, addon } = clientWith(["a.js", "b.js"], async () => ({
     verdicts: [
       { id: "E1", verdict: "fail", reason: "r1" },
       { id: "E2", verdict: "pass", reason: null },
@@ -42,6 +42,7 @@ test("evaluate returns a verdict per candidate id", async () => {
       { id: "E1", file: "a.js" },
       { id: "E2", file: "b.js" },
     ],
+    addon,
   });
   assert.deepEqual(out.get("E1"), { verdict: "fail", reason: "r1" });
   assert.deepEqual(out.get("E2"), { verdict: "pass", reason: null });
@@ -77,7 +78,11 @@ test("createLlmClient forwards the url to the transports as baseURL", async () =
       return { summary: "", recheck: [] };
     },
   });
-  await llm.evaluate({ rubric: "R", candidates: [{ id: "E1", file: "a.js" }] });
+  await llm.evaluate({
+    rubric: "R",
+    candidates: [{ id: "E1", file: "a.js" }],
+    addon: ctx.addon,
+  });
   await llm.summarize("p");
   await llm.reviewAddon("p");
   assert.equal(seen.evaluate.baseURL, "https://proxy.example/v1");
@@ -88,7 +93,7 @@ test("createLlmClient forwards the url to the transports as baseURL", async () =
 // An id the model omits defaults to unsure; an id it invents (not in the batch)
 // is dropped. The model can never introduce a subject we did not ask about.
 test("evaluate defaults missing ids to unsure and drops unknown ids", async () => {
-  const llm = clientWith(["a.js"], async () => ({
+  const { llm, addon } = clientWith(["a.js"], async () => ({
     verdicts: [
       { id: "E1", verdict: "fail", reason: null },
       { id: "GHOST", verdict: "pass", reason: null },
@@ -100,6 +105,7 @@ test("evaluate defaults missing ids to unsure and drops unknown ids", async () =
       { id: "E1", file: "a.js" },
       { id: "E2", file: "a.js" },
     ],
+    addon,
   });
   assert.equal(out.get("E1").verdict, "fail");
   assert.equal(out.get("E2").verdict, "unsure"); // omitted -> unsure
@@ -114,12 +120,12 @@ test("evaluate splits candidates into file-bounded batches", async () => {
     (_, i) => `f${i}.js`
   );
   const calls = [];
-  const llm = clientWith(files, async ({ criterion }) => {
+  const { llm, addon } = clientWith(files, async ({ criterion }) => {
     calls.push(criterion);
     return { verdicts: [] };
   });
   const candidates = files.map((f, i) => ({ id: `E${i}`, file: f }));
-  const out = await llm.evaluate({ rubric: "R", candidates });
+  const out = await llm.evaluate({ rubric: "R", candidates, addon });
   assert.equal(calls.length, 2);
   assert.equal(out.size, candidates.length);
   for (const c of candidates) {
@@ -159,7 +165,11 @@ test("evaluate stops at the request budget; the rest are unsure", async () => {
     },
   });
   const candidates = files.map((f, i) => ({ id: `E${i}`, file: f }));
-  const out = await llm.evaluate({ rubric: "R", candidates });
+  const out = await llm.evaluate({
+    rubric: "R",
+    candidates,
+    addon: ctx.addon,
+  });
   assert.equal(calls, 1); // only the first batch ran; the budget stopped the rest
   assert.equal(out.size, candidates.length);
   for (const c of candidates) {
@@ -170,12 +180,13 @@ test("evaluate stops at the request budget; the rest are unsure", async () => {
 // A batch whose call errors never throws; its candidates fall back to unsure so
 // the orchestrator routes them to manual review.
 test("evaluate turns a batch error into unsure (never throws)", async () => {
-  const llm = clientWith(["a.js"], async () => {
+  const { llm, addon } = clientWith(["a.js"], async () => {
     throw new Error("boom");
   });
   const out = await llm.evaluate({
     rubric: "R",
     candidates: [{ id: "E1", file: "a.js" }],
+    addon,
   });
   assert.equal(out.get("E1").verdict, "unsure");
 });
@@ -188,13 +199,14 @@ test("client builds one cached system context, reused across batches", async () 
     (_, i) => `f${i}.js`
   );
   const systems = [];
-  const llm = clientWith(files, async ({ system }) => {
+  const { llm, addon } = clientWith(files, async ({ system }) => {
     systems.push(system);
     return { verdicts: [] };
   });
   await llm.evaluate({
     rubric: "R",
     candidates: files.map((f, i) => ({ id: `E${i}`, file: f })),
+    addon,
   });
   assert.equal(systems.length, 2);
   assert.equal(systems[0], systems[1]);

@@ -43,13 +43,19 @@ export default {
    *   llm?: import("../escalation.js").LlmStep}}
    */
   run(ctx) {
-    const entries = warResourceList(ctx.addon?.manifest || {});
+    // Registry `input: xpi`: ctx.addon is the built XPI. web_accessible_resources -
+    // the resources, the files they expand to, and the reachability graph of what
+    // loads them - is a property of what actually ships, so the exposure is judged
+    // against the XPI, not a source submission's pre-build layout (which would
+    // mislabel loaded resources).
+    const { addon } = ctx;
+    const entries = warResourceList(ctx.manifest || {});
     if (!entries.length) {
       return { findings: [] }; // nothing to minimize
     }
     const reach = buildReachability(ctx);
-    const files = ctx.addon.files;
-    const text = files?.get("manifest.json")?.toString("utf8");
+    const files = addon.files;
+    const text = ctx.manifestText;
     /** @param {string} item  The WAR entry's manifest line as a loc, or null. */
     const lineOf = (item) => {
       const line = manifestTokenLine(text, item);

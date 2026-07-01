@@ -12,7 +12,7 @@ import { asArray, isMatchPattern, manifestPathLine } from "../lib/util.js";
 
 export default {
   run(ctx) {
-    const m = ctx.addon.manifest;
+    const m = ctx.manifest;
     const { schema } = ctx;
     if (!m) {
       return [];
@@ -37,7 +37,7 @@ export default {
           `'${p}' (unknown permission)`,
           "fail"
         );
-        const line = manifestPathLine(ctx.addon, field, i);
+        const line = manifestPathLine(ctx, field, i);
         out.push(
           finding({
             file: "manifest.json",

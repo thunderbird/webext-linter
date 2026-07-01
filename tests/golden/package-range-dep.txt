@@ -2,8 +2,8 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) A bundled dependency is not pinned to an exact version: lodash, declared as "^4.17.21". A version range can resolve to different releases over time, so the bundled copy cannot be verified against a known upstream. Pin it to an exact version in package.json, or commit the lock file (package-lock.json, npm-shrinkwrap.json, yarn.lock, or pnpm-lock.yaml) that records the exact version used.
- - package.json:5
+1) The following dependencies are not pinned to an exact version. A version range can resolve to different releases over time, so the bundled copy cannot be verified against a known upstream. Pin each to an exact version in package.json, or commit the lock file (package-lock.json, npm-shrinkwrap.json, yarn.lock, or pnpm-lock.yaml) that records the exact version used.
+ - package.json:5 - lodash (^4.17.21)
 
 ── Standard manual review ──
 

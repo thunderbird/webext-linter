@@ -10,7 +10,7 @@
 //     add-on-summary prompt: one labeled section per recheck consumer that was
 //     handed items, carrying that consumer's `summary-prompt` rubric and the list
 //     of item keys to judge. The model returns a verdict per item in the review's
-//     `recheck` field (ctx.addon.recheck).
+//     `recheck` field (stored on ctx.recheckVerdicts).
 //
 //   resolveRecheck(ctx, check) - the shared run() of every recheck consumer (a
 //     normal post-summary check). It reads the items handed to THIS consumer and
@@ -26,7 +26,7 @@
 //
 // Belongs here: the prompt composition and the verdict->finding/manual mapping.
 // Does NOT belong here: diverting a producer's manual items (-> runChecks), the
-// summary transport and storing ctx.addon.recheck (-> src/checks/summaries.js),
+// summary transport and storing ctx.recheckVerdicts (-> src/checks/summaries.js),
 // or the recheck output schema (-> src/llm/schema.js).
 
 import { finding } from "../../report/finding.js";
@@ -140,7 +140,7 @@ export function resolveRecheck(ctx, check) {
   // The summary's verdicts for THIS consumer, indexed by item key. Only keys we
   // hand over are ever looked up below, so a verdict for anything else is inert.
   const verdicts = new Map();
-  for (const v of ctx.addon?.recheck ?? []) {
+  for (const v of ctx.recheckVerdicts ?? []) {
     if (v && v.check === check.id && typeof v.item === "string") {
       verdicts.set(v.item, v);
     }

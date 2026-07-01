@@ -20,7 +20,7 @@ import {
 
 export default {
   run(ctx) {
-    const m = ctx.addon.manifest;
+    const m = ctx.manifest;
     if (!m) {
       return [];
     }
@@ -37,7 +37,7 @@ export default {
         const broad = isBroadHost(p);
         ctx.note?.("manifest.json", null, p, broad ? "fail" : "pass");
         if (broad) {
-          const line = manifestPathLine(ctx.addon, key, i);
+          const line = manifestPathLine(ctx, key, i);
           out.push(
             finding({
               file: "manifest.json",

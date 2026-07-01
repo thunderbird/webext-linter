@@ -13,6 +13,7 @@ import { buildSchemaIndex } from "../../src/schema/index.js";
 import unusedFiles from "../../src/checks/rules/unused-files.js";
 import minimizeWar from "../../src/checks/rules/minimize-web-accessible-resources.js";
 import { loaderTrace } from "../../src/checks/lib/util.js";
+import { withManifest } from "./manifest-ctx.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixtureSchema = buildSchemaIndex(
@@ -25,7 +26,7 @@ function ctxFrom(files, manifest) {
     files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
     manifest,
   };
-  return { addon, jsSources: collectJsSources(addon) };
+  return withManifest({ addon, jsSources: collectJsSources(addon) });
 }
 
 // The graph follows manifest seeds, JS imports/getURL, and HTML/CSS references
@@ -134,6 +135,90 @@ test("pureWebExtensionReachable: webext tree + .html experiment params only", ()
   // Experiment implementation files and dead code are excluded.
   assert.ok(!pure.has("exp/impl.js"));
   assert.ok(!pure.has("dead.js"));
+});
+
+// SCS mode: there is no usable reachability tree over the readable source - the
+// manifest's BUILT entry points (from the XPI) don't exist in the source layout,
+// so the closure would be empty and every WebExtension code check would review
+// nothing. Instead the whole source is WebExtension code, minus an Experiment
+// subtree named by --scs-exp-source (privileged, non-WebExtension code).
+test("SCS mode: pureWebExtensionReachable is all source, minus --scs-exp-source", () => {
+  // A built entry the readable source layout does not contain (the SCS mismatch).
+  const manifest = {
+    manifest_version: 3,
+    background: { scripts: ["background.js"] },
+  };
+  const files = {
+    "manifest.json": JSON.stringify(manifest),
+    "helper.js": `browser.runtime.id;`, // a non-entry source file
+    "experiments/exp.js": `ChromeUtils.import("x");`, // privileged experiment code
+  };
+
+  // XPI mode (default): the built entry resolves to nothing in this tree, so a
+  // non-entry source file is NOT reviewed - this is exactly the under-review the
+  // SCS branch fixes.
+  const xpi = buildReachability(ctxFrom(files, manifest));
+  assert.ok(!xpi.pureWebExtensionReachable.has("helper.js"));
+
+  // SCS mode, no exp folder: every source file is WebExtension code (incl. the
+  // experiment subtree - the deferred false-positive case).
+  const scs = buildReachability({ ...ctxFrom(files, manifest), mode: "scs" });
+  assert.ok(scs.pureWebExtensionReachable.has("helper.js"));
+  assert.ok(scs.pureWebExtensionReachable.has("experiments/exp.js"));
+
+  // SCS mode + --scs-exp-source: the Experiment subtree drops out; the rest stays.
+  const scsExp = buildReachability({
+    ...ctxFrom(files, manifest),
+    mode: "scs",
+    scsExpSource: "experiments",
+  });
+  assert.ok(scsExp.pureWebExtensionReachable.has("helper.js"));
+  assert.ok(!scsExp.pureWebExtensionReachable.has("experiments/exp.js"));
+
+  // The SHIPPED view (isShippedView) is not the review source: it uses the closure
+  // branch like an XPI review (its entry points resolve against its own files), so
+  // the all-source SCS fallback does NOT apply - a non-entry file is not swept in.
+  const shipped = buildReachability({
+    ...ctxFrom(files, manifest),
+    mode: "scs",
+    isShippedView: true,
+  });
+  assert.ok(!shipped.pureWebExtensionReachable.has("helper.js"));
+});
+
+// SCS: the reachable / webReachable / isLive views (what minimize-WAR and
+// bundled-files read) describe whatever ctx.addon is. Those checks are `input: xpi`,
+// so the orchestrator routes them to a context whose addon is the built XPI
+// (buildShippedCtx); over it a resource the XPI's own content script loads is
+// web-reachable even when the source's pre-build layout would not show it.
+test("SCS: reachability over the built XPI describes the XPI", () => {
+  const xpiManifest = {
+    manifest_version: 3,
+    content_scripts: [{ matches: ["*://*/*"], js: ["content.js"] }],
+    web_accessible_resources: [
+      { resources: ["injected.js"], matches: ["*://*/*"] },
+    ],
+  };
+  const mk = (obj) =>
+    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
+  // The built XPI: its content script (the manifest entry) loads injected.js.
+  const xpi = {
+    files: mk({
+      "manifest.json": JSON.stringify(xpiManifest),
+      "content.js": `browser.runtime.getURL("injected.js");`,
+      "injected.js": ``,
+    }),
+    manifest: xpiManifest,
+  };
+  const reach = buildReachability(
+    withManifest({
+      addon: xpi,
+      jsSources: collectJsSources(xpi),
+      mode: "scs",
+    })
+  );
+  assert.ok(reach.webReachable.has("injected.js"));
+  assert.ok(reach.isLive("content.js"));
 });
 
 // A non-literal getURL sets hasDynamicLoaders; the basename safety net finds a

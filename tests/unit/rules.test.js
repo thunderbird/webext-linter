@@ -1,5 +1,6 @@
 // Unit tests for the new deterministic rule modules and the yaml-driven loader.
 
+import { withManifest } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -57,6 +58,7 @@ import strictMaxVersionApi from "../../src/checks/rules/strict-max-version-api.j
 import strictMinVersionApi from "../../src/checks/rules/strict-min-version-api.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex, SchemaIndex } from "../../src/schema/index.js";
+import { collectJsSources } from "../../src/addon/sources.js";
 import { parseVendorManifest } from "../../src/normalize/vendor.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -94,7 +96,7 @@ const filesCtx = (files, { libs = [] } = {}) => {
 function notesFrom(check, ctx) {
   const notes = [];
   ctx.note = (file, loc, item, verdict) => notes.push({ file, item, verdict });
-  check.run(ctx);
+  check.run(withManifest(ctx));
   return notes;
 }
 
@@ -102,16 +104,25 @@ function notesFrom(check, ctx) {
 // Only the explicit async=false third arg to open() is a synchronous XHR;
 // async=true and an omitted third arg (defaults to async) must not flag.
 test("sync-xhr flags open(..., false), not async/omitted", () => {
-  assert.equal(syncXhr.run(jsCtx(`x.open("GET", "/u", false);`)).length, 1);
-  assert.equal(syncXhr.run(jsCtx(`x.open("GET", "/u", true);`)).length, 0);
-  assert.equal(syncXhr.run(jsCtx(`x.open("GET", "/u");`)).length, 0);
+  assert.equal(
+    syncXhr.run(withManifest(jsCtx(`x.open("GET", "/u", false);`))).length,
+    1
+  );
+  assert.equal(
+    syncXhr.run(withManifest(jsCtx(`x.open("GET", "/u", true);`))).length,
+    0
+  );
+  assert.equal(
+    syncXhr.run(withManifest(jsCtx(`x.open("GET", "/u");`))).length,
+    0
+  );
 });
 
 // ---- debugger ----
 // A debugger that always runs (top level, in a function body, or inside a loop)
 // is flagged, but one guarded by any if/else branch is treated as intentional.
 test("debugger-statement flags unconditional debugger, allows if-guarded", () => {
-  const n = (code) => debuggerStatement.run(jsCtx(code)).length;
+  const n = (code) => debuggerStatement.run(withManifest(jsCtx(code))).length;
   // Unconditional (always executes) -> flagged.
   assert.equal(n(`debugger;`), 1);
   assert.equal(n(`function f() { doStuff(); debugger; }`), 1);
@@ -128,19 +139,22 @@ test("debugger-statement flags unconditional debugger, allows if-guarded", () =>
 test("async-onmessage flags an async runtime.onMessage listener only", () => {
   assert.equal(
     asyncOnMessage.run(
-      jsCtx(`browser.runtime.onMessage.addListener(async (m) => {});`)
+      withManifest(
+        jsCtx(`browser.runtime.onMessage.addListener(async (m) => {});`)
+      )
     ).length,
     1
   );
   assert.equal(
     asyncOnMessage.run(
-      jsCtx(`messenger.runtime.onMessage.addListener((m) => {});`)
+      withManifest(jsCtx(`messenger.runtime.onMessage.addListener((m) => {});`))
     ).length,
     0
   );
   assert.equal(
-    asyncOnMessage.run(jsCtx(`el.addEventListener("click", async () => {});`))
-      .length,
+    asyncOnMessage.run(
+      withManifest(jsCtx(`el.addEventListener("click", async () => {});`))
+    ).length,
     0
   );
 });
@@ -168,14 +182,14 @@ test("sync-xhr / debugger / async-onmessage skip non-authored code", () => {
   });
   // A hash-identified library -> non-authored -> all three checks skip it.
   const lib = ctxFor("vendor/lib.min.js", true);
-  assert.equal(syncXhr.run(lib).length, 0);
-  assert.equal(debuggerStatement.run(lib).length, 0);
-  assert.equal(asyncOnMessage.run(lib).length, 0);
+  assert.equal(syncXhr.run(withManifest(lib)).length, 0);
+  assert.equal(debuggerStatement.run(withManifest(lib)).length, 0);
+  assert.equal(asyncOnMessage.run(withManifest(lib)).length, 0);
   // The same code, not a known library, is still flagged by each.
   const app = ctxFor("src/app.js");
-  assert.equal(syncXhr.run(app).length, 1);
-  assert.equal(debuggerStatement.run(app).length, 1);
-  assert.equal(asyncOnMessage.run(app).length, 1);
+  assert.equal(syncXhr.run(withManifest(app)).length, 1);
+  assert.equal(debuggerStatement.run(withManifest(app)).length, 1);
+  assert.equal(asyncOnMessage.run(withManifest(app)).length, 1);
 });
 
 // ---- minimize host permissions ----
@@ -183,9 +197,11 @@ test("sync-xhr / debugger / async-onmessage skip non-authored code", () => {
 // specific scoped origin like https://example.com/* is left alone.
 test("minimize-host-permissions flags broad required host patterns only", () => {
   const out = minimizeHostPermissions.run(
-    jsCtx("", {
-      host_permissions: ["<all_urls>", "*://*/*", "https://example.com/*"],
-    })
+    withManifest(
+      jsCtx("", {
+        host_permissions: ["<all_urls>", "*://*/*", "https://example.com/*"],
+      })
+    )
   );
   assert.equal(out.length, 2); // all_urls + *://*/* ; example.com is scoped
 });
@@ -195,11 +211,13 @@ test("minimize-host-permissions flags broad required host patterns only", () => 
 // flagged. no-undef is off too, so browser/messenger globals are never flagged.
 test("code-sanity does not flag prefer-const or globals", () => {
   const neverReassigned = `let x = 1;\nconsole.log(x);`;
-  assert.equal(codeSanity.run(jsCtx(neverReassigned)).length, 0);
+  assert.equal(codeSanity.run(withManifest(jsCtx(neverReassigned))).length, 0);
 
   // browser/messenger are not flagged as undefined (no-undef is disabled).
   const clean = codeSanity.run(
-    jsCtx(`const y = browser.runtime.id;\nmessenger.tabs.query({});`)
+    withManifest(
+      jsCtx(`const y = browser.runtime.id;\nmessenger.tabs.query({});`)
+    )
   );
   assert.equal(clean.length, 0);
 });
@@ -209,10 +227,15 @@ test("code-sanity does not flag prefer-const or globals", () => {
 // rule runs whenever code-sanity runs - the --eslint gate is applied upstream at
 // check selection (pipeline.js), not in the rule.
 test("code-sanity flags an empty block, not an empty function body", () => {
-  const out = codeSanity.run(jsCtx(`try { risky(); } catch (e) {}`));
+  const out = codeSanity.run(
+    withManifest(jsCtx(`try { risky(); } catch (e) {}`))
+  );
   assert.equal(out.length, 1);
   assert.match(out[0].item, /no-empty/);
-  assert.equal(codeSanity.run(jsCtx(`const f = () => {};`)).length, 0);
+  assert.equal(
+    codeSanity.run(withManifest(jsCtx(`const f = () => {};`))).length,
+    0
+  );
 });
 
 // Third-party / minified / obfuscated / VENDOR.md code is not linted (its
@@ -231,42 +254,55 @@ test("code-sanity skips non-authored code, lints authored code", () => {
       : {},
   });
   // A hash-identified library -> non-authored -> skipped entirely.
-  assert.equal(codeSanity.run(ctxFor("vendor/lib.min.js", true)).length, 0);
+  assert.equal(
+    codeSanity.run(withManifest(ctxFor("vendor/lib.min.js", true))).length,
+    0
+  );
   // Authored source of the same code is linted.
-  assert.ok(codeSanity.run(ctxFor("src/app.js")).length > 0);
+  assert.ok(codeSanity.run(withManifest(ctxFor("src/app.js"))).length > 0);
 });
 
 // ---- missing-library / obfuscated-code (shared bundled.js classifier) ----
 // missing-library flags a bundled file whose CONTENT HASH matches a known library
 // release (`libs`), skipping the developer's own code and VENDOR.md-declared
 // files. A file the hash DB does not recognize - even a UMD-wrapper or a .min name
-// - is no longer a library (that is the heuristic the hash lookup replaced).
+// - is not a library (only a content-hash match is the library signal).
 test("missing-library flags hash-identified libraries, not undeclared/readable/VENDORed", () => {
   const MIN = "a;".repeat(600);
   // Hash match -> flagged.
   assert.equal(
     missingLibrary.run(
-      filesCtx({ "vendor/x.min.js": MIN }, { libs: ["vendor/x.min.js"] })
+      withManifest(
+        filesCtx({ "vendor/x.min.js": MIN }, { libs: ["vendor/x.min.js"] })
+      )
     ).length,
     1
   );
-  // A UMD wrapper NOT in the hash DB -> no longer a library.
+  // A UMD wrapper NOT in the hash DB -> not a library.
   const umd =
     "(function () { if (typeof exports === 'object' && typeof define === 'function') {} })();\n".repeat(
       40
     );
-  assert.equal(missingLibrary.run(filesCtx({ "lib/umd.js": umd })).length, 0);
+  assert.equal(
+    missingLibrary.run(withManifest(filesCtx({ "lib/umd.js": umd }))).length,
+    0
+  );
   // Readable code -> not flagged.
   const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
-  assert.equal(missingLibrary.run(filesCtx({ "bg.js": readable })).length, 0);
+  assert.equal(
+    missingLibrary.run(withManifest(filesCtx({ "bg.js": readable }))).length,
+    0
+  );
   // A known library declared in VENDOR.md -> excluded before classification.
   const vendor =
     "vendor/x.min.js:\n - Version: 1.0\n - URL: https://unpkg.com/x@1.0.0/dist/x.min.js\n";
   assert.equal(
     missingLibrary.run(
-      filesCtx(
-        { "VENDOR.md": vendor, "vendor/x.min.js": MIN },
-        { libs: ["vendor/x.min.js"] }
+      withManifest(
+        filesCtx(
+          { "VENDOR.md": vendor, "vendor/x.min.js": MIN },
+          { libs: ["vendor/x.min.js"] }
+        )
       )
     ).length,
     0
@@ -279,16 +315,23 @@ test("missing-library flags hash-identified libraries, not undeclared/readable/V
 test("minified-code flags minified non-library JS only", () => {
   // Minified line geometry: one long, dense line.
   const minified = "var a=1;b=2;c=3;d=4;".repeat(100) + "\n";
-  assert.equal(minifiedCode.run(filesCtx({ "bundle.js": minified })).length, 1);
+  assert.equal(
+    minifiedCode.run(withManifest(filesCtx({ "bundle.js": minified }))).length,
+    1
+  );
   // The same bytes recognized as a known library -> missing-library's job.
   assert.equal(
-    minifiedCode.run(filesCtx({ "x.min.js": minified }, { libs: ["x.min.js"] }))
-      .length,
+    minifiedCode.run(
+      withManifest(filesCtx({ "x.min.js": minified }, { libs: ["x.min.js"] }))
+    ).length,
     0
   );
   // Readable code -> not flagged.
   const readable = "function f(a) {\n  return a + 1;\n}\n".repeat(40);
-  assert.equal(minifiedCode.run(filesCtx({ "bg.js": readable })).length, 0);
+  assert.equal(
+    minifiedCode.run(withManifest(filesCtx({ "bg.js": readable }))).length,
+    0
+  );
 });
 
 // obfuscated-code flags obfuscated NON-library code, and NOT a merely-minified
@@ -300,16 +343,31 @@ test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () =
   const obf =
     "const _0xa1b2=1;\nconst _0xc3d4=2;\nconst _0xe5f6=3;\n" +
     "const _0x7890=4;\nconst _0xabcd=5;\n".repeat(40);
-  assert.equal(obfuscatedCode.run(filesCtx({ "o.js": obf })).length, 1);
-  assert.equal(minifiedCode.run(filesCtx({ "o.js": obf })).length, 0);
+  assert.equal(
+    obfuscatedCode.run(withManifest(filesCtx({ "o.js": obf }))).length,
+    1
+  );
+  assert.equal(
+    minifiedCode.run(withManifest(filesCtx({ "o.js": obf }))).length,
+    0
+  );
   // A merely-minified file is NOT obfuscated-code's concern.
   const minified = "var a=1;b=2;c=3;d=4;".repeat(100) + "\n";
-  assert.equal(obfuscatedCode.run(filesCtx({ "m.js": minified })).length, 0);
+  assert.equal(
+    obfuscatedCode.run(withManifest(filesCtx({ "m.js": minified }))).length,
+    0
+  );
   // Both minified geometry AND _0x names on one long line -> obfuscated-code
   // only (precedence), minified-code stays silent (no double finding).
   const both = "const _0xa1b2=1;".repeat(100) + "\n";
-  assert.equal(obfuscatedCode.run(filesCtx({ "b.js": both })).length, 1);
-  assert.equal(minifiedCode.run(filesCtx({ "b.js": both })).length, 0);
+  assert.equal(
+    obfuscatedCode.run(withManifest(filesCtx({ "b.js": both }))).length,
+    1
+  );
+  assert.equal(
+    minifiedCode.run(withManifest(filesCtx({ "b.js": both }))).length,
+    0
+  );
 });
 
 // vendor-vulnerable surfaces a vulnerability the OSV audit recorded for a
@@ -341,7 +399,7 @@ test("vendor-vulnerable surfaces an identified-library vulnerability, file-ancho
       },
     },
   };
-  const out = vendorVulnerable.run(ctx);
+  const out = vendorVulnerable.run(withManifest(ctx));
   assert.equal(out.length, 1);
   assert.equal(out[0].file, file);
   assert.equal(out[0].item, "jquery");
@@ -366,13 +424,15 @@ test("api-coverage flags dynamic limits; unparsable-file flags parse failures", 
     { file: "ok.js", limitations: [] },
   ];
   // dyn.js must be in the pure WebExtension tree for api-coverage to report it.
-  const cov = apiCoverage.run({
-    apiUsages,
-    addon: {
-      manifest: { background: { scripts: ["dyn.js"] } },
-      files: new Map([["dyn.js", Buffer.from("")]]),
-    },
-  });
+  const cov = apiCoverage.run(
+    withManifest({
+      apiUsages,
+      addon: {
+        manifest: { background: { scripts: ["dyn.js"] } },
+        files: new Map([["dyn.js", Buffer.from("")]]),
+      },
+    })
+  );
   assert.equal(cov.length, 1);
   const dyn = cov[0];
   assert.equal(dyn.file, "dyn.js");
@@ -380,7 +440,7 @@ test("api-coverage flags dynamic limits; unparsable-file flags parse failures", 
   assert.equal(dyn.item, "dynamic browser[x] access"); // reason passed through
   assert.equal(dyn.loc.line, 7); // carries the source location
 
-  const unparsable = unparsableFile.run({ apiUsages });
+  const unparsable = unparsableFile.run(withManifest({ apiUsages }));
   assert.equal(unparsable.length, 1);
   assert.equal(unparsable[0].file, "broken.js");
   // The "could not be parsed" wording lives in the registry; the check emits the
@@ -410,7 +470,8 @@ test("strict-max-version-bump-only fires only on a pure version+strict_max bump"
   });
   const bg = "console.log(1);\n";
   const prev = ver(manifest("115.0"), { "bg.js": bg });
-  const run = (addon, previous) => strictMaxBumpOnly.run({ addon, previous });
+  const run = (addon, previous) =>
+    strictMaxBumpOnly.run(withManifest({ addon, previous }));
 
   // Only version + strict_max_version changed -> fires.
   assert.equal(
@@ -462,6 +523,118 @@ test("strict-max-version-bump-only is registered as a diff check", async () => {
   const checks = await loadChecks(loadRegistry());
   const c = checks.find((x) => x.id === "strict-max-version-bump-only");
   assert.equal(c?.diff, true);
+});
+
+// The SCS mode gate (scsEligible, mirrors the diff gate): the XPI bundled/vendor
+// checks are scs:false (skipped for a source-code submission), the source
+// dependency audit is scs:true (XPI-only-skipped), and a code check is untagged
+// (runs in both, the orchestrator just switches the review SOURCE).
+test("checks carry the scs mode tag (false=XPI-only, true=SCS-only, undefined=both)", async () => {
+  const checks = await loadChecks(loadRegistry());
+  const scs = (id) => checks.find((x) => x.id === id)?.scs;
+  assert.equal(scs("minified-code"), false); // XPI-only (bundled dependency tree)
+  assert.equal(scs("untrusted-minified-library"), false);
+  // unused-files runs in BOTH modes: it describes the shipped XPI (dead files the
+  // build ships), like bundled-files / minimize-WAR - all registered `input: xpi`.
+  assert.equal(scs("unused-files"), undefined);
+  assert.equal(scs("unused-files-recheck"), undefined);
+  assert.equal(scs("unpopular-source-dependency"), true); // SCS-only dep audit
+  assert.equal(scs("eval-call"), undefined); // a code check: both modes
+  assert.equal(scs("unknown-api"), undefined);
+});
+
+// The shipped-vs-review-target artifact is chosen in ONE place - runChecks routes
+// each check to its artifact's context on the registry `input` (auto = the review
+// target, xpi = the built XPI). A check reads only ctx.addon and the orchestrator
+// hands it the correct one; no ctx field or helper exposes the other artifact, so
+// the guarantee is structural (not a source scan). These tests pin the dangerous
+// set and prove the routing reaches even the LLM adjudication.
+
+// Every check declares a valid input, and the (rare, dangerous) input:xpi set is
+// pinned to exactly the structure checks. A new or flipped check trips this test
+// rather than silently reading the wrong artifact.
+test("every check declares a valid input; the input:xpi set is exactly the pinned structure checks", async () => {
+  const checks = await loadChecks(loadRegistry());
+  for (const c of checks) {
+    assert.ok(
+      c.input === "auto" || c.input === "xpi",
+      `check "${c.id}" has an invalid input ${JSON.stringify(c.input)}`
+    );
+  }
+  const xpi = checks
+    .filter((c) => c.input === "xpi")
+    .map((c) => c.id)
+    .sort();
+  // The ONLY checks that read the built XPI instead of the review target: the file /
+  // _locales / reachability-structure checks. Extending this set is deliberate -
+  // update the check AND this pin together.
+  assert.deepEqual(xpi, [
+    "background-module",
+    "background-page-module",
+    "bundled-files",
+    "default-locale-missing",
+    "default-locale-unused",
+    "minimize-web-accessible-resources",
+    "missing-english-localization",
+    "strict-max-version-bump-only",
+    "trademark-violation",
+    "unrecognized-manifest-key",
+    "unused-files",
+  ]);
+});
+
+// The routing reaches the LLM adjudication too - the seam that finding B slipped
+// through. An `input: xpi` LLM check builds candidates over the XPI, and runOneCheck
+// -> runLlmCheck must hand the model the XPI's files (via the routed ctx.addon), not
+// a captured review source. unused-files emits a candidate for an ambiguous file (a
+// live dynamic loader names it), so this exercises the real corpus path with a stub
+// llm that records the addon it was given.
+test("an input:xpi LLM check adjudicates over its routed (XPI) addon", async () => {
+  const mk = (obj) =>
+    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
+  const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
+  // bg.js is live and dynamically imports a runtime-built path that names helper.js,
+  // so helper.js is ambiguous and unused-files emits an LLM candidate for it.
+  const xpi = {
+    files: mk({
+      "manifest.json": JSON.stringify(manifest),
+      "bg.js": `const p = "./helper.js";\nimport(p);`,
+      "helper.js": `console.log(1);`,
+    }),
+    manifest,
+  };
+  const [check] = await loadChecks(loadRegistry(), { only: ["unused-files"] });
+  let seenAddon;
+  // The orchestrator routes an `input: xpi` check to a ctx whose addon is the XPI.
+  const ctx = {
+    addon: xpi,
+    jsSources: collectJsSources(xpi),
+    schema,
+    mode: "scs",
+    options: {},
+    llm: {
+      evaluate: async (req) => {
+        seenAddon = req.addon;
+        return new Map(
+          req.candidates.map((c) => [c.id, { verdict: "unsure" }])
+        );
+      },
+    },
+  };
+  await runOneCheck(withManifest(ctx), check, "[1/1]");
+  assert.equal(seenAddon, xpi); // the model read the XPI's files, not a source addon
+});
+
+// scs-recheck: the per-site (file:line) recheck producers are marked so runChecks
+// routes their unsure sites to manual review in SCS (their source line numbers
+// cannot bridge to the XPI behavioral summary); other recheck producers are not.
+test("the per-site recheck producers carry scsRecheck=false", async () => {
+  const checks = await loadChecks(loadRegistry());
+  const scsRecheck = (id) => checks.find((x) => x.id === id)?.scsRecheck;
+  assert.equal(scsRecheck("data-exfiltration"), false);
+  assert.equal(scsRecheck("disguised-transmission"), false);
+  // A non-line-anchored recheck (re-judged fine against the XPI summary) is not.
+  assert.equal(scsRecheck("unused-permission"), undefined);
 });
 
 // ---- manual-checks diff gate (the "Forked add-on" reminder) ----
@@ -531,7 +704,7 @@ test("unused-permission-manual lists the unprovable declared named permissions",
     // still escalated for the reviewer (the host match pattern is skipped).
     apiUsages: [],
   };
-  const out = unusedPermissionManual.run(ctx);
+  const out = unusedPermissionManual.run(withManifest(ctx));
   assert.equal(out.findings.length, 0);
   assert.deepEqual(out.escalations.map((e) => e.item).sort(), [
     "storage",
@@ -569,7 +742,7 @@ test("unused-permission-manual drops permissions proved used by static analysis"
       },
     ],
   };
-  const out = unusedPermissionManual.run(ctx);
+  const out = unusedPermissionManual.run(withManifest(ctx));
   assert.deepEqual(
     out.escalations.map((e) => e.item),
     ["messagesUpdate"] // messagesRead is gated out (provably used)
@@ -601,7 +774,7 @@ test("unused-permission-manual exempts unlimitedStorage (gates no API)", () => {
     },
     apiUsages: [],
   };
-  const out = unusedPermissionManual.run(ctx);
+  const out = unusedPermissionManual.run(withManifest(ctx));
   // tabs is still escalated; unlimitedStorage is exempt.
   assert.deepEqual(
     out.escalations.map((e) => e.item),
@@ -673,7 +846,7 @@ test("unused-permission maps the summary's recheck verdicts to findings + escala
       ],
     },
   };
-  const out = unusedPermission.run(ctx, check);
+  const out = unusedPermission.run(withManifest(ctx), check);
   assert.equal(out.findings.length, 1);
   assert.equal(out.findings[0].item, "tabs"); // fail -> finding
   assert.equal(out.findings[0].data.reason, "no tab property read");
@@ -686,10 +859,13 @@ test("unused-permission maps the summary's recheck verdicts to findings + escala
 });
 
 test("unused-permission is a no-op with nothing handed over", () => {
-  assert.deepEqual(unusedPermission.run({}, { id: "unused-permission" }), {
-    findings: [],
-    escalations: [],
-  });
+  assert.deepEqual(
+    unusedPermission.run(withManifest({}), { id: "unused-permission" }),
+    {
+      findings: [],
+      escalations: [],
+    }
+  );
 });
 
 // ---- deprecated-api ----
@@ -714,7 +890,7 @@ test("deprecated-api hint is the schema deprecation message, not a doc link", ()
       },
     ],
   };
-  const out = deprecatedApi.run(ctx);
+  const out = deprecatedApi.run(withManifest(ctx));
   const old = out.find((f) => f.item === "messages.oldOne");
   assert.equal(old.hint, "Use list() instead."); // schema message, not a URL
   // messages.future is "too new", not deprecated -> deprecated-api ignores it.
@@ -761,7 +937,7 @@ test("unknown-api flags version_added:false as unsupported", () => {
       },
     ],
   };
-  const out = unknownApi.run(ctx);
+  const out = unknownApi.run(withManifest(ctx));
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "browser.t.gone");
 });
@@ -786,20 +962,22 @@ const maxCtx = (max, usages) => ({
 
 test("strict-max-version-api flags an API added after strict_max_version", () => {
   const out = strictMaxVersionApi.run(
-    maxCtx("140.*", [
-      {
-        root: "messenger",
-        segments: ["messages", "future"],
-        line: 12,
-        column: 4,
-      }, // va 200
-      {
-        root: "messenger",
-        segments: ["messages", "list"],
-        line: 13,
-        column: 4,
-      }, // va 66
-    ])
+    withManifest(
+      maxCtx("140.*", [
+        {
+          root: "messenger",
+          segments: ["messages", "future"],
+          line: 12,
+          column: 4,
+        }, // va 200
+        {
+          root: "messenger",
+          segments: ["messages", "list"],
+          line: 13,
+          column: 4,
+        }, // va 66
+      ])
+    )
   );
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "messenger.messages.future()");
@@ -811,28 +989,32 @@ test("strict-max-version-api flags an API added after strict_max_version", () =>
 
 test("strict-max-version-api passes when strict_max_version covers the API", () => {
   const out = strictMaxVersionApi.run(
-    maxCtx("250.*", [
-      {
-        root: "messenger",
-        segments: ["messages", "future"],
-        line: 1,
-        column: 0,
-      }, // 200 <= 250
-    ])
+    withManifest(
+      maxCtx("250.*", [
+        {
+          root: "messenger",
+          segments: ["messages", "future"],
+          line: 1,
+          column: 0,
+        }, // 200 <= 250
+      ])
+    )
   );
   assert.equal(out.length, 0);
 });
 
 test("strict-max-version-api is skipped without strict_max_version", () => {
   const out = strictMaxVersionApi.run(
-    maxCtx(null, [
-      {
-        root: "messenger",
-        segments: ["messages", "future"],
-        line: 1,
-        column: 0,
-      },
-    ])
+    withManifest(
+      maxCtx(null, [
+        {
+          root: "messenger",
+          segments: ["messages", "future"],
+          line: 1,
+          column: 0,
+        },
+      ])
+    )
   );
   assert.equal(out.length, 0);
 });
@@ -857,20 +1039,22 @@ const minCtx = (min, usages) => ({
 
 test("strict-min-version-api flags APIs added after strict_min_version", () => {
   const out = strictMinVersionApi.run(
-    minCtx("60.0", [
-      {
-        root: "messenger",
-        segments: ["messages", "future"],
-        line: 12,
-        column: 4,
-      }, // va 200
-      {
-        root: "messenger",
-        segments: ["messages", "list"],
-        line: 13,
-        column: 4,
-      }, // va 66
-    ])
+    withManifest(
+      minCtx("60.0", [
+        {
+          root: "messenger",
+          segments: ["messages", "future"],
+          line: 12,
+          column: 4,
+        }, // va 200
+        {
+          root: "messenger",
+          segments: ["messages", "list"],
+          line: 13,
+          column: 4,
+        }, // va 66
+      ])
+    )
   );
   assert.equal(out.findings.length, 2); // 200 and 66 both > 60, both unguarded
   assert.equal(out.llm, undefined); // nothing guarded -> no LLM candidates
@@ -883,23 +1067,32 @@ test("strict-min-version-api flags APIs added after strict_min_version", () => {
 
 test("strict-min-version-api passes when strict_min_version >= version_added", () => {
   const out = strictMinVersionApi.run(
-    minCtx("128.0", [
-      { root: "messenger", segments: ["messages", "list"], line: 1, column: 0 }, // 66 <= 128
-    ])
+    withManifest(
+      minCtx("128.0", [
+        {
+          root: "messenger",
+          segments: ["messages", "list"],
+          line: 1,
+          column: 0,
+        }, // 66 <= 128
+      ])
+    )
   );
   assert.equal(out.findings.length, 0);
 });
 
 test("strict-min-version-api is skipped without strict_min_version", () => {
   const out = strictMinVersionApi.run(
-    minCtx(null, [
-      {
-        root: "messenger",
-        segments: ["messages", "future"],
-        line: 1,
-        column: 0,
-      },
-    ])
+    withManifest(
+      minCtx(null, [
+        {
+          root: "messenger",
+          segments: ["messages", "future"],
+          line: 1,
+          column: 0,
+        },
+      ])
+    )
   );
   assert.equal(out.findings.length, 0);
 });
@@ -918,24 +1111,26 @@ test("strict-min-version-api compares minor/patch components", () => {
     },
   });
   const run = (min) =>
-    strictMinVersionApi.run({
-      schema: local,
-      addon: {
-        files: new Map([["bg.js", Buffer.from("")]]),
-        manifest: {
-          background: { scripts: ["bg.js"] },
-          browser_specific_settings: { gecko: { strict_min_version: min } },
+    strictMinVersionApi.run(
+      withManifest({
+        schema: local,
+        addon: {
+          files: new Map([["bg.js", Buffer.from("")]]),
+          manifest: {
+            background: { scripts: ["bg.js"] },
+            browser_specific_settings: { gecko: { strict_min_version: min } },
+          },
         },
-      },
-      apiUsages: [
-        {
-          file: "bg.js",
-          usages: [
-            { root: "browser", segments: ["t", "f"], line: 1, column: 0 },
-          ],
-        },
-      ],
-    });
+        apiUsages: [
+          {
+            file: "bg.js",
+            usages: [
+              { root: "browser", segments: ["t", "f"], line: 1, column: 0 },
+            ],
+          },
+        ],
+      })
+    );
   assert.equal(run("140.4.0").findings.length, 1); // 140.4.1 > 140.4.0 -> flag
   assert.equal(run("140.4.1").findings.length, 0); // equal -> not flagged
   assert.equal(run("140.5.0").findings.length, 0); // 140.4.1 < 140.5.0 -> not flagged
@@ -946,15 +1141,17 @@ test("strict-min-version-api compares minor/patch components", () => {
 // becomes one LLM candidate, judged from the call's file. resolve maps the verdict.
 test("strict-min-version-api defers a guarded too-new API to the LLM", () => {
   const out = strictMinVersionApi.run(
-    minCtx("60.0", [
-      {
-        root: "messenger",
-        segments: ["messages", "future"],
-        line: 5,
-        column: 2,
-        guarded: true,
-      }, // va 200, guarded
-    ])
+    withManifest(
+      minCtx("60.0", [
+        {
+          root: "messenger",
+          segments: ["messages", "future"],
+          line: 5,
+          column: 2,
+          guarded: true,
+        }, // va 200, guarded
+      ])
+    )
   );
   assert.equal(out.findings.length, 0); // not a deterministic finding
   assert.equal(out.llm.candidates.length, 1);
@@ -978,21 +1175,23 @@ test("strict-min-version-api defers a guarded too-new API to the LLM", () => {
 // the unguarded site wins and there is no LLM candidate for it.
 test("strict-min-version-api: an unguarded site wins over a guarded one", () => {
   const out = strictMinVersionApi.run(
-    minCtx("60.0", [
-      {
-        root: "messenger",
-        segments: ["messages", "future"],
-        line: 5,
-        column: 2,
-        guarded: true,
-      },
-      {
-        root: "messenger",
-        segments: ["messages", "future"],
-        line: 9,
-        column: 0,
-      }, // unguarded
-    ])
+    withManifest(
+      minCtx("60.0", [
+        {
+          root: "messenger",
+          segments: ["messages", "future"],
+          line: 5,
+          column: 2,
+          guarded: true,
+        },
+        {
+          root: "messenger",
+          segments: ["messages", "future"],
+          line: 9,
+          column: 0,
+        }, // unguarded
+      ])
+    )
   );
   assert.equal(out.llm, undefined); // no candidate - it is a hard finding
   assert.equal(out.findings.length, 1);
@@ -1012,18 +1211,20 @@ test("strict-min-version-api ignores a guarded non-existent API (unknown-api own
       guarded: true,
     },
   ];
-  const out = strictMinVersionApi.run(minCtx("60.0", usages));
+  const out = strictMinVersionApi.run(withManifest(minCtx("60.0", usages)));
   assert.equal(out.findings.length, 0);
   assert.equal(out.llm, undefined); // never a candidate
 
-  const flagged = unknownApi.run({
-    schema,
-    addon: {
-      manifest: { background: { scripts: ["bg.js"] } },
-      files: new Map([["bg.js", Buffer.from("")]]),
-    },
-    apiUsages: [{ file: "bg.js", usages }],
-  });
+  const flagged = unknownApi.run(
+    withManifest({
+      schema,
+      addon: {
+        manifest: { background: { scripts: ["bg.js"] } },
+        files: new Map([["bg.js", Buffer.from("")]]),
+      },
+      apiUsages: [{ file: "bg.js", usages }],
+    })
+  );
   assert.equal(flagged.length, 1);
   assert.match(flagged[0].item, /^messenger\.fake/); // unknown at the namespace
 });
@@ -1047,10 +1248,10 @@ test("missing-permission ignores usages in dead (unreachable) files", () => {
     apiUsages: [{ file, usages: GET_USAGE }],
   });
   // Live: the call sits in the background script -> messagesRead flagged missing.
-  const live = missingPermission.run(ctx("bg.js"));
+  const live = missingPermission.run(withManifest(ctx("bg.js")));
   assert.ok(live.some((f) => f.item === "messagesRead"));
   // Dead: dead.js is never referenced by the manifest -> no missing finding.
-  assert.equal(missingPermission.run(ctx("dead.js")).length, 0);
+  assert.equal(missingPermission.run(withManifest(ctx("dead.js"))).length, 0);
 });
 
 // usedPermissions records the permissions a REACHABLE call provably requires; a
@@ -1071,10 +1272,14 @@ test("usedPermissions tracks reachable requirements, not dead-file ones", () => 
     apiUsages: [{ file, usages: GET_USAGE }],
   });
   assert.ok(
-    getPermissionAnalysis(ctx("bg.js")).usedPermissions.has("messagesRead")
+    getPermissionAnalysis(withManifest(ctx("bg.js"))).usedPermissions.has(
+      "messagesRead"
+    )
   );
   assert.ok(
-    !getPermissionAnalysis(ctx("dead.js")).usedPermissions.has("messagesRead")
+    !getPermissionAnalysis(withManifest(ctx("dead.js"))).usedPermissions.has(
+      "messagesRead"
+    )
   );
 });
 
@@ -1097,7 +1302,7 @@ test("unused-permission-manual omits permissions a reachable call requires", () 
     },
     apiUsages: [{ file: "bg.js", usages: GET_USAGE }],
   };
-  const out = unusedPermissionManual.run(ctx);
+  const out = unusedPermissionManual.run(withManifest(ctx));
   // messagesRead is proven used -> not escalated; tabs has no proven need -> kept.
   assert.deepEqual(
     out.escalations.map((e) => e.item),
@@ -1137,7 +1342,7 @@ test("post-D308076 producer fires only for strict_min_version >= 154", () => {
   for (const min of ["154", "154.0", "200"]) {
     assert.deepEqual(
       unusedPermissionManual
-        .run(permProducerCtx(min))
+        .run(withManifest(permProducerCtx(min)))
         .escalations.map((e) => e.item),
       ["tabs"],
       `min=${min}`
@@ -1145,7 +1350,8 @@ test("post-D308076 producer fires only for strict_min_version >= 154", () => {
   }
   for (const min of ["153.9", "128", undefined, "abc", "≤59"]) {
     assert.deepEqual(
-      unusedPermissionManual.run(permProducerCtx(min)).escalations,
+      unusedPermissionManual.run(withManifest(permProducerCtx(min)))
+        .escalations,
       [],
       `min=${String(min)}`
     );
@@ -1156,7 +1362,7 @@ test("pre-D308076 producer fires for below-154 / absent / unparsable", () => {
   for (const min of ["153.9", "128", undefined, "abc", "≤59"]) {
     assert.deepEqual(
       unusedPermissionManualPre
-        .run(permProducerCtx(min))
+        .run(withManifest(permProducerCtx(min)))
         .escalations.map((e) => e.item),
       ["tabs"],
       `min=${String(min)}`
@@ -1164,7 +1370,8 @@ test("pre-D308076 producer fires for below-154 / absent / unparsable", () => {
   }
   for (const min of ["154", "154.0", "200"]) {
     assert.deepEqual(
-      unusedPermissionManualPre.run(permProducerCtx(min)).escalations,
+      unusedPermissionManualPre.run(withManifest(permProducerCtx(min)))
+        .escalations,
       [],
       `min=${min}`
     );
@@ -1185,7 +1392,7 @@ test("trademark-violation flags forbidden brands in the (resolved) name", () => 
     },
   });
   const flags = (name, files) =>
-    trademarkViolation.run(ctx(name, files)).length;
+    trademarkViolation.run(withManifest(ctx(name, files))).length;
   assert.equal(flags("Firefox Helper"), 1);
   assert.equal(flags("My Mozilla Thing"), 1);
   assert.equal(flags("MZLA Tools"), 1);
@@ -1203,17 +1410,18 @@ test("trademark-violation flags forbidden brands in the (resolved) name", () => 
 // The finding cites the manifest line of the `name` property and the offending
 // (resolved) name, not a bare "manifest.json".
 test("trademark-violation anchors the finding on the name line with the name", () => {
-  const withManifest = (name, files) => ({
-    addon: {
-      manifest: { manifest_version: 3, name, version: "1" },
-      files: new Map(
-        Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
-      ),
-    },
-  });
+  const ctxOf = (name, files) =>
+    withManifest({
+      addon: {
+        manifest: { manifest_version: 3, name, version: "1" },
+        files: new Map(
+          Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
+        ),
+      },
+    });
   // A literal name: the line of the `name` property, and the name as the item.
   const literal = trademarkViolation.run(
-    withManifest("Firefox Helper", {
+    ctxOf("Firefox Helper", {
       "manifest.json":
         '{\n  "manifest_version": 3,\n  "name": "Firefox Helper"\n}\n',
     })
@@ -1225,7 +1433,7 @@ test("trademark-violation anchors the finding on the name line with the name", (
   // A __MSG__ name: still anchored on the manifest `name` line, but the item is the
   // resolved locale string (the actual offending name).
   const localized = trademarkViolation.run(
-    withManifest("__MSG_extName__", {
+    ctxOf("__MSG_extName__", {
       "manifest.json": '{\n  "name": "__MSG_extName__"\n}\n',
       "_locales/en/messages.json": JSON.stringify({
         extName: { message: "Firefox Sync" },
@@ -1244,17 +1452,19 @@ test("trademark-violation anchors the finding on the name line with the name", (
 // covered by the core-symbol-webext golden fixture, which builds real reachability.)
 test("core-symbol-in-webext flags global core symbols, not locals/imports/properties", () => {
   // bg.js must be in the pure WebExtension tree to be checked, so declare it as the
-  // background script and include it in the packaged files (the check now gates on
+  // background script and include it in the packaged files (the check gates on
   // pureWebExtensionReachable, not "every authored file").
   const run = (code) =>
-    coreSymbolInWebext.run({
-      jsSources: [{ file: "bg.js", code, lineOffset: 0 }],
-      addon: {
-        manifest: { manifest_version: 3, background: { scripts: ["bg.js"] } },
-        files: new Map([["bg.js", Buffer.from(code)]]),
-      },
-      options: {},
-    });
+    coreSymbolInWebext.run(
+      withManifest({
+        jsSources: [{ file: "bg.js", code, lineOffset: 0 }],
+        addon: {
+          manifest: { manifest_version: 3, background: { scripts: ["bg.js"] } },
+          files: new Map([["bg.js", Buffer.from(code)]]),
+        },
+        options: {},
+      })
+    );
   // A bare global core reference is flagged (the root, not the property). The symbol
   // rides on `item`; the resolver surfaces it on the collapsed locus line (golden).
   assert.deepEqual(
@@ -1279,10 +1489,12 @@ test("core-symbol-in-webext flags global core symbols, not locals/imports/proper
 // any Experiment when experiments are NOT allowed all stay silent.
 test("experiment-missing-strict-max-version flags an allowed Experiment lacking a max", () => {
   const run = (manifest) =>
-    experimentMissingMax.run({
-      addon: { manifest },
-      options: { allowExperiments: true },
-    });
+    experimentMissingMax.run(
+      withManifest({
+        addon: { manifest },
+        options: { allowExperiments: true },
+      })
+    );
   assert.equal(run({ experiment_apis: { a: {} } }).length, 1); // experiment, no max
   assert.equal(
     run({
@@ -1292,15 +1504,17 @@ test("experiment-missing-strict-max-version flags an allowed Experiment lacking 
     0 // experiment WITH a max -> ok
   );
   assert.equal(run({ name: "x" }).length, 0); // not an experiment -> silent
-  // The check no longer gates on allowExperiments: whether it runs at all is the
+  // The check does not gate on allowExperiments: whether it runs at all is the
   // orchestrator's job (phase: default runs only for a VALID experiment - allowed
   // via the flag or a pristine upstream copy). Reached directly without the flag,
   // it still flags an experiment lacking a max.
   assert.equal(
-    experimentMissingMax.run({
-      addon: { manifest: { experiment_apis: { a: {} } } },
-      options: {},
-    }).length,
+    experimentMissingMax.run(
+      withManifest({
+        addon: { manifest: { experiment_apis: { a: {} } } },
+        options: {},
+      })
+    ).length,
     1
   );
 });
@@ -1308,7 +1522,8 @@ test("experiment-missing-strict-max-version flags an allowed Experiment lacking 
 // Every Experiment submission escalates one whole-add-on manual review (a
 // locus-less reminder, no findings); a non-Experiment escalates nothing.
 test("experiment-manual-review escalates one reminder for an Experiment only", () => {
-  const run = (manifest) => experimentManualReview.run({ addon: { manifest } });
+  const run = (manifest) =>
+    experimentManualReview.run(withManifest({ addon: { manifest } }));
   const exp = run({ experiment_apis: { a: {} } });
   assert.deepEqual(exp.findings, []);
   assert.equal(exp.escalations.length, 1);
@@ -1320,28 +1535,31 @@ test("experiment-manual-review escalates one reminder for an Experiment only", (
 // the legacy applications.gecko key counts too, and an Experiment or a missing
 // max stays silent.
 test("non-experiment-strict-max-version flags only a non-Experiment that pins a max", () => {
-  const run = (manifest) => nonExperimentMax.run({ addon: { manifest } });
+  const run = (manifest) =>
+    nonExperimentMax.run(withManifest({ addon: { manifest } }));
   const out = run({
     browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
   });
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "128.0"); // value surfaced for the {{item}} response
   // The finding anchors on the strict_max_version line of the manifest text.
-  const located = nonExperimentMax.run({
-    addon: {
-      manifest: {
-        browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
+  const located = nonExperimentMax.run(
+    withManifest({
+      addon: {
+        manifest: {
+          browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
+        },
+        files: new Map([
+          [
+            "manifest.json",
+            Buffer.from(
+              '{\n  "browser_specific_settings": { "gecko": { "strict_max_version": "128.0" } }\n}\n'
+            ),
+          ],
+        ]),
       },
-      files: new Map([
-        [
-          "manifest.json",
-          Buffer.from(
-            '{\n  "browser_specific_settings": { "gecko": { "strict_max_version": "128.0" } }\n}\n'
-          ),
-        ],
-      ]),
-    },
-  });
+    })
+  );
   assert.equal(located[0].loc.line, 2);
   // Legacy applications.gecko key is also honored.
   assert.equal(
@@ -1376,17 +1594,22 @@ test("experiment-not-allowed errors on the experiment_apis line unless allowed",
     options: { allowExperiments },
   });
   const out = experimentNotAllowed.run(
-    ctx({ experiment_apis: { x: {} } }, false)
+    withManifest(ctx({ experiment_apis: { x: {} } }, false))
   );
   assert.equal(out.length, 1);
   assert.equal(out[0].loc.line, 2); // attached to the experiment_apis line
   // --allow-experiments silences it.
   assert.equal(
-    experimentNotAllowed.run(ctx({ experiment_apis: { x: {} } }, true)).length,
+    experimentNotAllowed.run(
+      withManifest(ctx({ experiment_apis: { x: {} } }, true))
+    ).length,
     0
   );
   // Not an Experiment -> silent regardless.
-  assert.equal(experimentNotAllowed.run(ctx({ name: "x" }, false)).length, 0);
+  assert.equal(
+    experimentNotAllowed.run(withManifest(ctx({ name: "x" }, false))).length,
+    0
+  );
 });
 
 // ---- activity feed (ctx.note) ----
@@ -1424,7 +1647,7 @@ test("minimize-host-permissions notes broad (fail) and scoped (pass) hosts", () 
 });
 
 test("missing-library / obfuscated-code note a verdict per classified file", () => {
-  // A hash match marks lib.js a library (the UMD/.min heuristic no longer does).
+  // A hash match marks lib.js a library (a UMD/.min shape alone does not).
   const lib =
     "(function () { if (typeof exports === 'object' && typeof define === 'function') {} })();\n".repeat(
       40
@@ -1570,14 +1793,16 @@ test("missing-english-localization: franc over hardcoded text", () => {
     "<body><h1>Weather report</h1><p>This extension shows the current weather " +
     "forecast and sends notifications to your inbox.</p></body>";
   const run = (files, manifest) =>
-    missingEnglish.run({
-      addon: {
-        manifest,
-        files: new Map(
-          Object.entries(files).map(([k, val]) => [k, Buffer.from(val)])
-        ),
-      },
-    });
+    missingEnglish.run(
+      withManifest({
+        addon: {
+          manifest,
+          files: new Map(
+            Object.entries(files).map(([k, val]) => [k, Buffer.from(val)])
+          ),
+        },
+      })
+    );
 
   const german = run({ "popup.html": de }, { name: "Wetter" });
   assert.equal(german.findings.length, 1);
@@ -1689,11 +1914,40 @@ test("loadChecks accepts severity: auto", async () => {
   const tmp = path.join(os.tmpdir(), `auto-registry-${process.pid}.yaml`);
   fs.writeFileSync(
     tmp,
-    "deterministic-checks:\n- title: Ok\n  severity: auto\n  check: sync-xhr.js\n"
+    "deterministic-checks:\n- title: Ok\n  severity: auto\n  check: sync-xhr.js\n  input: auto\n"
   );
   try {
     const checks = await loadChecks(loadRegistry(tmp));
     assert.equal(checks[0].severity, "auto");
+  } finally {
+    fs.rmSync(tmp);
+  }
+});
+
+// loadChecks requires a valid `input` on every check (auto | xpi) - it drives
+// runOneCheck's artifact routing, so a missing/invalid value is a loud config error
+// (no default to silently fall through to).
+test("loadChecks rejects a check with no valid input", async () => {
+  const tmp = path.join(os.tmpdir(), `bad-input-registry-${process.pid}.yaml`);
+  // Valid severity so the input check (which runs after severity) is what fires.
+  fs.writeFileSync(
+    tmp,
+    "deterministic-checks:\n- title: NoInput\n  severity: error\n  check: sync-xhr.js\n"
+  );
+  try {
+    await assert.rejects(
+      () => loadChecks(loadRegistry(tmp)),
+      /missing a valid `input`/
+    );
+    // An out-of-set value is rejected too.
+    fs.writeFileSync(
+      tmp,
+      "deterministic-checks:\n- title: BadInput\n  severity: error\n  check: sync-xhr.js\n  input: source\n"
+    );
+    await assert.rejects(
+      () => loadChecks(loadRegistry(tmp)),
+      /missing a valid `input`/
+    );
   } finally {
     fs.rmSync(tmp);
   }
@@ -1768,8 +2022,9 @@ test("severity:auto fails safe to error when the check sets none/invalid", async
 // error; a normal fetch to a remote host escalates for an options-page consent
 // check. Local destinations and data-free covert loads are ignored.
 test("disguised-* hard-flag the STRONG covert case (a user-data API in the URL)", () => {
-  const res = (code) => disguisedResource.run(jsCtx(code)).length;
-  const sty = (code) => disguisedStylesheet.run(jsCtx(code)).length;
+  const res = (code) => disguisedResource.run(withManifest(jsCtx(code))).length;
+  const sty = (code) =>
+    disguisedStylesheet.run(withManifest(jsCtx(code))).length;
   // A user-data API call inside the covert URL -> provably user data -> hard error.
   assert.equal(
     res('img.src = "https://x/?d=" + messenger.messages.list();'),
@@ -1790,7 +2045,7 @@ test("disguised-* hard-flag the STRONG covert case (a user-data API in the URL)"
 
 test("disguised-transmission takes the WEAK covert case as an LLM candidate", () => {
   const cands = (code) => {
-    const out = disguisedTransmission.run(jsCtx(code));
+    const out = disguisedTransmission.run(withManifest(jsCtx(code)));
     return out.llm ? out.llm.candidates.length : 0;
   };
   assert.equal(cands('img.src = "https://x/?d=" + body;'), 1); // appended-only
@@ -1809,7 +2064,7 @@ test("disguised-transmission takes the WEAK covert case as an LLM candidate", ()
 
 test("data-exfiltration makes a candidate per overt remote transmission only", () => {
   const candidates = (code) => {
-    const out = dataExfiltration.run(jsCtx(code));
+    const out = dataExfiltration.run(withManifest(jsCtx(code)));
     return out.llm ? out.llm.candidates.length : 0;
   };
   assert.equal(candidates('fetch("https://api.example.com/", { body });'), 1);
@@ -1822,7 +2077,7 @@ test("data-exfiltration makes a candidate per overt remote transmission only", (
 // while `item` stays absent so the recheck key stays the unique file:line.
 test("data-exfiltration labels each locus with the transmission method", () => {
   const out = dataExfiltration.run(
-    jsCtx('fetch("https://api.example.com/", { body });')
+    withManifest(jsCtx('fetch("https://api.example.com/", { body });'))
   );
   const { findings } = out.llm.resolve(new Map([["X1", { verdict: "fail" }]]));
   assert.equal(findings.length, 1);
@@ -1851,7 +2106,8 @@ test("scanNetworkSinks classifies channel, destination, appended data", () => {
 // with or without a payload; encrypted (https/wss) and local destinations are
 // fine, and covert channels are disguised-transmission's job.
 test("cleartext-transmission flags overt http/ws/ftp remote sends only", () => {
-  const n = (code) => cleartextTransmission.run(jsCtx(code)).length;
+  const n = (code) =>
+    cleartextTransmission.run(withManifest(jsCtx(code))).length;
   assert.equal(n('fetch("http://api.example.com/x");'), 1); // GET, no payload
   assert.equal(n('new WebSocket("ws://x.example.com/feed");'), 1);
   assert.equal(n('fetch("ftp://files.example.com/x");'), 1);
@@ -1860,7 +2116,7 @@ test("cleartext-transmission flags overt http/ws/ftp remote sends only", () => {
   assert.equal(n('fetch("/local.json");'), 0); // local
   assert.equal(n('img.src = "http://x/?d=" + body;'), 0); // covert, not overt
   const hit = cleartextTransmission.run(
-    jsCtx('fetch("http://api.example.com/x");')
+    withManifest(jsCtx('fetch("http://api.example.com/x");'))
   )[0];
   assert.equal(hit.item, "api.example.com");
 });
@@ -1870,7 +2126,8 @@ test("cleartext-transmission flags overt http/ws/ftp remote sends only", () => {
 // transmission (the hosts list as the "where"); covert and local destinations
 // do not trigger it.
 test("privacy-policy escalates one entry per distinct remote host", () => {
-  const esc = (code) => privacyPolicy.run(jsCtx(code)).escalations;
+  const esc = (code) =>
+    privacyPolicy.run(withManifest(jsCtx(code))).escalations;
   const single = esc('fetch("https://api.example.com/x");');
   assert.equal(single.length, 1);
   assert.equal(single[0].item, "api.example.com");
@@ -1889,7 +2146,7 @@ test("privacy-policy escalates one entry per distinct remote host", () => {
 // Keyed purely on the declared permission (required or optional); no JS scan.
 test("native-messaging escalates on the declared permission", () => {
   const esc = (manifest) =>
-    nativeMessaging.run({ addon: { manifest } }).escalations;
+    nativeMessaging.run(withManifest({ addon: { manifest } })).escalations;
   const declared = esc({ permissions: ["nativeMessaging"] });
   assert.equal(declared.length, 1);
   // A single whole-add-on reminder: no item to list (instructions name it).
@@ -1897,7 +2154,10 @@ test("native-messaging escalates on the declared permission", () => {
   assert.equal(esc({ optional_permissions: ["nativeMessaging"] }).length, 1);
   assert.equal(esc({ permissions: ["storage"] }).length, 0);
   assert.equal(esc({}).length, 0);
-  assert.equal(nativeMessaging.run({ addon: {} }).escalations.length, 0);
+  assert.equal(
+    nativeMessaging.run(withManifest({ addon: {} })).escalations.length,
+    0
+  );
 });
 
 // ---- default-locale-missing / default-locale-unused ----
@@ -1914,22 +2174,30 @@ test("default-locale checks flag the two load-breaking directions", () => {
   });
   const locales = { "_locales/en/messages.json": "{}" };
   // missing: _locales present, no default_locale.
-  assert.equal(defaultLocaleMissing.run(ctx(locales, {})).length, 1);
   assert.equal(
-    defaultLocaleMissing.run(ctx(locales, { default_locale: "en" })).length,
-    0
-  );
-  assert.equal(defaultLocaleMissing.run(ctx({}, {})).length, 0);
-  // unused: default_locale set, no _locales.
-  assert.equal(
-    defaultLocaleUnused.run(ctx({}, { default_locale: "en" })).length,
+    defaultLocaleMissing.run(withManifest(ctx(locales, {}))).length,
     1
   );
   assert.equal(
-    defaultLocaleUnused.run(ctx(locales, { default_locale: "en" })).length,
+    defaultLocaleMissing.run(
+      withManifest(ctx(locales, { default_locale: "en" }))
+    ).length,
     0
   );
-  assert.equal(defaultLocaleUnused.run(ctx({}, {})).length, 0);
+  assert.equal(defaultLocaleMissing.run(withManifest(ctx({}, {}))).length, 0);
+  // unused: default_locale set, no _locales.
+  assert.equal(
+    defaultLocaleUnused.run(withManifest(ctx({}, { default_locale: "en" })))
+      .length,
+    1
+  );
+  assert.equal(
+    defaultLocaleUnused.run(
+      withManifest(ctx(locales, { default_locale: "en" }))
+    ).length,
+    0
+  );
+  assert.equal(defaultLocaleUnused.run(withManifest(ctx({}, {}))).length, 0);
 });
 
 // ---- addon-icon-missing ----
@@ -1938,23 +2206,42 @@ test("default-locale checks flag the two load-breaking directions", () => {
 // and dictionaries are exempt; an unparsed manifest is skipped.
 test("addon-icon-missing flags an extension with no defined add-on icon", () => {
   const ctx = (manifest) => ({ addon: { manifest } });
-  const out = addonIconMissing.run(ctx({ manifest_version: 3, name: "x" }));
+  const out = addonIconMissing.run(
+    withManifest(ctx({ manifest_version: 3, name: "x" }))
+  );
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "manifest.json");
   assert.equal(out[0].loc, null);
   assert.equal(
-    addonIconMissing.run(ctx({ icons: { 16: "icon-16.png" } })).length,
+    addonIconMissing.run(withManifest(ctx({ icons: { 16: "icon-16.png" } })))
+      .length,
     0
   );
-  assert.equal(addonIconMissing.run(ctx({ icons: {} })).length, 1);
-  assert.equal(addonIconMissing.run(ctx({ icons: { 16: "  " } })).length, 1);
-  assert.equal(addonIconMissing.run(ctx({ icons: "icon.png" })).length, 1);
-  assert.equal(addonIconMissing.run(ctx({ theme: { colors: {} } })).length, 0);
   assert.equal(
-    addonIconMissing.run(ctx({ dictionaries: { en: "x.dic" } })).length,
+    addonIconMissing.run(withManifest(ctx({ icons: {} }))).length,
+    1
+  );
+  assert.equal(
+    addonIconMissing.run(withManifest(ctx({ icons: { 16: "  " } }))).length,
+    1
+  );
+  assert.equal(
+    addonIconMissing.run(withManifest(ctx({ icons: "icon.png" }))).length,
+    1
+  );
+  assert.equal(
+    addonIconMissing.run(withManifest(ctx({ theme: { colors: {} } }))).length,
     0
   );
-  assert.equal(addonIconMissing.run({ addon: { manifest: null } }).length, 0);
+  assert.equal(
+    addonIconMissing.run(withManifest(ctx({ dictionaries: { en: "x.dic" } })))
+      .length,
+    0
+  );
+  assert.equal(
+    addonIconMissing.run(withManifest({ addon: { manifest: null } })).length,
+    0
+  );
 });
 
 // ---- unrecognized-manifest-key ----
@@ -1962,15 +2249,17 @@ test("addon-icon-missing flags an extension with no defined add-on icon", () => 
 // entry is experiment-owned config the add-on reads - accepted, not flagged.
 test("unrecognized-manifest-key accepts experiment-owned keys", () => {
   const run = (manifest) =>
-    unrecognizedManifestKey.run({
-      addon: {
-        manifest,
-        files: new Map([
-          ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
-        ]),
-      },
-      schema: { validManifestKeys: new Set(["name", "experiment_apis"]) },
-    });
+    unrecognizedManifestKey.run(
+      withManifest({
+        addon: {
+          manifest,
+          files: new Map([
+            ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+          ]),
+        },
+        schema: { validManifestKeys: new Set(["name", "experiment_apis"]) },
+      })
+    );
   const out = run({
     name: "x",
     experiment_apis: { calendar_provider: {} },
@@ -1982,12 +2271,54 @@ test("unrecognized-manifest-key accepts experiment-owned keys", () => {
   assert.ok(items.includes("bogusKey")); // still flagged
 });
 
+// The other experiment-owned exemption: a key an experiment's bundled SCHEMA declares
+// (a `manifest` namespace $extend of WebExtensionManifest). The schema PATH resolves
+// against ctx.addon.files - the built XPI for this `input: xpi` check, where the built
+// path exists. Regression guard for the SCS false positive: as `input: auto` the check
+// ran over the readable source, the built schema path was absent there, the exemption
+// silently returned nothing, and a legitimate experiment key (e.g. calendar_item_action)
+// was flagged. Routing it to the XPI (registry `input: xpi`) restores the pairing.
+test("unrecognized-manifest-key accepts a key declared by an experiment's bundled schema", () => {
+  const manifest = {
+    name: "x",
+    experiment_apis: { calendar: { schema: "experiments/cal/schema.json" } },
+    calendar_item_action: { title: "Do" }, // declared by the schema below
+    bogusKey: 1, // genuinely unknown
+  };
+  const schema = [
+    {
+      namespace: "manifest",
+      types: [
+        {
+          $extend: "WebExtensionManifest",
+          properties: { calendar_item_action: { type: "object" } },
+        },
+      ],
+    },
+  ];
+  const out = unrecognizedManifestKey.run(
+    withManifest({
+      addon: {
+        manifest,
+        files: new Map([
+          ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+          ["experiments/cal/schema.json", Buffer.from(JSON.stringify(schema))],
+        ]),
+      },
+      schema: { validManifestKeys: new Set(["name", "experiment_apis"]) },
+    })
+  );
+  const items = out.map((f) => f.item);
+  assert.ok(!items.includes("calendar_item_action")); // schema-declared -> accepted
+  assert.ok(items.includes("bogusKey")); // still flagged
+});
+
 // ---- background-module ----
 // A background script using static import/export needs the background declared
 // "type": "module"; module syntax in a non-background file is ignored.
 test("background-module flags module syntax without type: module", () => {
   const n = (code, background) =>
-    backgroundModule.run(jsCtx(code, { background })).length;
+    backgroundModule.run(withManifest(jsCtx(code, { background }))).length;
   assert.equal(n('import x from "./y.js";', { scripts: ["f.js"] }), 1);
   assert.equal(n("export const a = 1;", { scripts: ["f.js"] }), 1);
   assert.equal(

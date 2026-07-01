@@ -2,6 +2,7 @@
 // and its use by a migrated check. Covers the two failure modes of the old
 // substring search: \uXXXX escaping and a value that appears more than once.
 
+import { withManifest } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -48,7 +49,7 @@ test("minimize-host-permissions anchors <all_urls> on its host_permissions line"
     files: new Map([["manifest.json", Buffer.from(TEXT)]]),
     manifestLoc: buildManifestLoc(TEXT),
   };
-  const out = minimizeHostPermissions.run({ addon });
+  const out = minimizeHostPermissions.run(withManifest({ addon }));
   const f = out.find((x) => x.item === "<all_urls>");
   assert.ok(f, "expected an <all_urls> finding");
   assert.equal(f.loc?.line, 6);

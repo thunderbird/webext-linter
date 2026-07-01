@@ -33,16 +33,22 @@ export default {
    * @returns {import("../../report/finding.js").Finding[]}
    */
   run(ctx) {
-    const name = ctx.addon?.manifest?.name;
+    // Registry `input: xpi`: ctx.addon is the built XPI. The displayed name - and a
+    // __MSG_ placeholder's _locales resolution - are properties of what actually
+    // ships (a source submission's _locales may be generated or live outside
+    // --scs-source), so the name, its anchor line, and the _locales all come from
+    // the XPI's own files.
+    const { addon } = ctx;
+    const name = ctx.manifest?.name;
     if (typeof name !== "string") {
       ctx.note?.("manifest.json", null, "no add-on name", "skipped");
       return [];
     }
     // Anchor every note/finding on the manifest's `name` property line.
-    const text = ctx.addon?.files?.get("manifest.json")?.toString("utf8");
+    const text = ctx.manifestText;
     const line = manifestTokenLine(text, "name");
     const loc = line ? { line } : null;
-    const candidates = resolveNames(name, ctx.addon);
+    const candidates = resolveNames(name, addon);
     if (!candidates.length) {
       ctx.note?.("manifest.json", loc, `${name} not resolvable`, "skipped");
       return [];

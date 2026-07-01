@@ -10,7 +10,7 @@ import { finding } from "../../report/finding.js";
 
 export default {
   run(ctx) {
-    if (ctx.addon.manifestError || ctx.addon.manifest) {
+    if (ctx.manifestError || ctx.manifest) {
       return [];
     }
     ctx.note?.("manifest.json", null, "no manifest.json", "fail");

@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildRunContext } from "../../src/checks/context.js";
+import { buildRunContext, buildShippedCtx } from "../../src/checks/context.js";
 
 const addonWith = (files, nonAuthored = []) => ({
   files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
@@ -50,4 +50,35 @@ test("buildRunContext frees every AST for a rejected Experiment", () => {
     invalidExperiment: true,
   });
   assert.equal(ctx.jsSources[0].parsed, null);
+});
+
+// buildShippedCtx swaps the artifact-specific fields to the built XPI's, shares the
+// run-state, drops the source's apiUsages, and marks itself the shipped view. When
+// the XPI IS the review target (an XPI review) it is a no-op - the same ctx object -
+// so callers route unconditionally through it.
+test("buildShippedCtx swaps the artifact fields and is a no-op in an XPI review", () => {
+  const source = addonWith({ "src/app.js": "export const x = 1;" });
+  const xpi = addonWith({ "app.js": "export const x = 1;" });
+  const ctx = buildRunContext({
+    addon: source,
+    schema: { s: 1 },
+    options: {},
+    mode: "scs",
+  });
+
+  const shipped = buildShippedCtx(ctx, xpi);
+  // ctx.addon is a reviewView (a shallow copy without manifest/experiments), so the
+  // shipped view's addon carries the XPI's files Map by reference, not the XPI object.
+  assert.equal(shipped.addon.files, xpi.files);
+  assert.notEqual(shipped.jsSources, ctx.jsSources); // recomputed for the XPI
+  assert.equal(shipped.jsSources[0].file, "app.js");
+  assert.equal(shipped.apiUsages, undefined); // per-source, source-only: dropped
+  assert.equal(shipped.schema, ctx.schema); // shared run-state
+  assert.equal(shipped.isShippedView, true); // gates reachability's SCS fallback
+
+  // XPI review: the built XPI IS the review target -> the same ctx object, no copy,
+  // and NOT marked a shipped view (there is only one artifact).
+  const same = buildShippedCtx(ctx, ctx.addon);
+  assert.equal(same, ctx);
+  assert.equal(same.isShippedView, undefined);
 });

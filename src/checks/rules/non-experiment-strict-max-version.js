@@ -26,7 +26,7 @@ export default {
    * @returns {import("../../report/finding.js").Finding[]}
    */
   run(ctx) {
-    const m = ctx.addon.manifest;
+    const m = ctx.manifest;
     if (!m) {
       ctx.note?.("manifest.json", null, "manifest did not parse", "skipped");
       return [];
@@ -46,7 +46,7 @@ export default {
       `strict_max_version ${max} on a non-Experiment`,
       "fail"
     );
-    const text = ctx.addon.files?.get("manifest.json")?.toString("utf8");
+    const text = ctx.manifestText;
     const line = manifestTokenLine(text, "strict_max_version");
     return [
       finding({

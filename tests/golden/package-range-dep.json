@@ -46,6 +46,7 @@
       "experiment-manual-review",
       "non-experiment-strict-max-version",
       "unpinned-dependency",
+      "unsupported-dependency",
       "vendor-vulnerable",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
@@ -104,9 +105,9 @@
       "loc": {
         "line": 5
       },
-      "item": "lodash",
+      "item": "lodash (^4.17.21)",
       "hint": null,
-      "message": "A bundled dependency is not pinned to an exact version: lodash, declared as \"^4.17.21\". A version range can resolve to different releases over time, so the bundled copy cannot be verified against a known upstream. Pin it to an exact version in package.json, or commit the lock file (package-lock.json, npm-shrinkwrap.json, yarn.lock, or pnpm-lock.yaml) that records the exact version used."
+      "message": "The following dependencies are not pinned to an exact version. A version range can resolve to different releases over time, so the bundled copy cannot be verified against a known upstream. Pin each to an exact version in package.json, or commit the lock file (package-lock.json, npm-shrinkwrap.json, yarn.lock, or pnpm-lock.yaml) that records the exact version used."
     }
   ]
 }

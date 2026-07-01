@@ -25,7 +25,7 @@ export default {
    * @returns {import("../../report/finding.js").Finding[]}
    */
   run(ctx) {
-    const m = ctx.addon.manifest;
+    const m = ctx.manifest;
     if (!m) {
       ctx.note?.("manifest.json", null, "manifest did not parse", "skipped");
       return [];

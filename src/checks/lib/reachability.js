@@ -128,11 +128,48 @@ export function buildReachability(ctx) {
 }
 
 /**
+ * SCS mode: the WebExtension code set is every readable-source file EXCEPT the
+ * Experiment subtree named by --scs-exp-source (a path relative to the review
+ * source root - i.e. relative to scsSource, which loadScsAddon already stripped
+ * from addon.files keys). Files equal to `<exp>` or under `<exp>/` are excluded;
+ * an empty/absent value excludes nothing (so experiment code is reviewed too, the
+ * deferred false-positive case).
+ * @param {Map<string, Buffer>} files
+ * @param {?string} scsExpSource
+ * @returns {Set<string>}
+ */
+function scsWebExtensionFiles(files, scsExpSource) {
+  const exp = String(scsExpSource ?? "")
+    .replace(/^[./]+/, "")
+    .replace(/\/+$/, "");
+  const all = [...files.keys()];
+  if (!exp) {
+    return new Set(all);
+  }
+  return new Set(all.filter((f) => f !== exp && !f.startsWith(`${exp}/`)));
+}
+
+/**
  * @param {RunContext} ctx
  * @returns {Reachability}
  */
 function compute(ctx) {
-  const { addon } = ctx;
+  // Reachability describes whatever artifact the orchestrator routed into ctx.addon:
+  // the built XPI for the structure checks (registry `input: xpi` - bundled-files,
+  // unused-files, minimize-web-accessible-resources), the review target for the
+  // WebExtension-code checks (`input: auto` - the API/permission validators). Every
+  // `addon`/`files`/`jsSources` below is that one artifact's, so the graph is always
+  // internally consistent.
+  //
+  // pureWebExtensionReachable's SCS "all readable-source files" branch exists only
+  // for the review source, whose pre-build layout the manifest's built entry-point
+  // paths miss (so the closure would be empty). It is gated on the review-target ctx
+  // (NOT ctx.isShippedView), so on a shipped view it falls to the closure branch -
+  // the XPI's manifest entry points resolve against its own files, giving a
+  // meaningful WebExtension scope there too. (It is still read only by `input: auto`
+  // checks over the review target - see the consumer split the reachability tests
+  // pin - so the shipped-view value is unused; the gate keeps it correct regardless.)
+  const addon = ctx.addon;
   const files = addon?.files;
   // A context with no files (degenerate / unit harness) has nothing reachable;
   // return an inert graph so every consumer (incl. the API checks) is a no-op.
@@ -148,7 +185,7 @@ function compute(ctx) {
       closureFrom: () => new Set(),
     };
   }
-  const manifest = addon.manifest || {};
+  const manifest = ctx.manifest || {};
 
   // Non-authored (vendored / library / minified) JS. We still parse it for
   // outgoing edges (so what it statically loads stays reachable), but its own
@@ -298,7 +335,7 @@ function compute(ctx) {
   // an experiment loads stays outside it. Deterministic, no classification, no LLM.
   const htmlInjectedSeeds = new Set();
   if (!ctx.invalidExperiment && isExperiment(manifest)) {
-    const namespaces = experimentApiNamespaces(manifest, ctx.addon?.files);
+    const namespaces = experimentApiNamespaces(manifest, files);
     for (const src of ctx.jsSources || []) {
       for (const r of scanExperimentInjectedRefs(
         src.code,
@@ -317,10 +354,20 @@ function compute(ctx) {
   // The pure WebExtension dependency tree every check validates against: the closure
   // (standard WebExtension edges only) from the manifest entry points PLUS the `.html`
   // Experiment-API parameters. It never traces into experiment implementation code.
-  const pureWebExtensionReachable = bfs(
-    new Set([...generalSeeds, ...htmlInjectedSeeds]),
-    outEdges
-  );
+  //
+  // The SCS REVIEW SOURCE has no usable tree: the manifest's entry points name BUILT
+  // paths that don't exist in the readable source layout, so the closure would be
+  // empty and every WebExtension code check would review nothing. There we instead
+  // review EVERY source file - except an Experiment subtree named by --scs-exp-source
+  // (ctx.scsExpSource), whose privileged (Services/ChromeUtils) code is not
+  // WebExtension code and would false-positive these checks. The shipped view is
+  // excluded (ctx.isShippedView): the built XPI's entry points DO resolve, so it uses
+  // the closure branch, like an XPI review. (That closure already excludes experiment
+  // implementation code.)
+  const pureWebExtensionReachable =
+    ctx.mode === "scs" && !ctx.isShippedView
+      ? scsWebExtensionFiles(files, ctx.scsExpSource)
+      : bfs(new Set([...generalSeeds, ...htmlInjectedSeeds]), outEdges);
 
   const webReachable = bfs(webSeeds, outEdges);
   /** @param {string} file @returns {boolean} Reached from any entry point. */

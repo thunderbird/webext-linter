@@ -7,7 +7,7 @@
 // is not an Experiment.
 //
 // Belongs here: turning the per-experiment classification
-// (ctx.addon.experiments, computed by src/experiments/verify.js) into one
+// (ctx.experiments, computed by src/experiments/verify.js) into one
 // finding per unsupported experiment, and refining the reason to "shadows a
 // built-in" when its declared path resolves to a real API
 // (ctx.schema.resolveApi). Does NOT belong here: detecting Experiment status
@@ -25,7 +25,7 @@ export default {
    * @returns {import("../../report/finding.js").Finding[]}
    */
   run(ctx) {
-    const m = ctx.addon.manifest;
+    const m = ctx.manifest;
     if (!m) {
       ctx.note?.("manifest.json", null, "manifest did not parse", "skipped");
       return [];
@@ -44,8 +44,8 @@ export default {
       return [];
     }
 
-    const text = ctx.addon.files.get("manifest.json")?.toString("utf8") ?? "";
-    const groups = ctx.addon.experiments?.groups;
+    const text = ctx.manifestText ?? "";
+    const groups = ctx.experiments?.groups;
     if (!Array.isArray(groups) || groups.length === 0) {
       // Defensive: the pipeline populates groups before short-circuiting here.
       const line = manifestTokenLine(text, "experiment_apis");

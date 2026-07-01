@@ -28,18 +28,24 @@ export default {
    * @returns {import("../../report/finding.js").Finding[]}
    */
   run(ctx) {
-    const page = ctx.addon.manifest?.background?.page;
+    // Registry `input: xpi`: ctx.addon is the built XPI. Module-ness is a runtime-
+    // loading property of what ships (Thunderbird loads the XPI's page and its
+    // scripts), and the build can transform it. So the page, its <script src>
+    // targets, and their bytes all come from the XPI, not a source submission's
+    // readable source.
+    const { addon } = ctx;
+    const page = ctx.manifest?.background?.page;
     if (typeof page !== "string") {
       return [];
     }
     const pageFile = normalizeRef(page);
-    const buf = ctx.addon.files.get(pageFile);
+    const buf = addon.files.get(pageFile);
     if (!buf) {
       return []; // a declared-but-absent page is bundled-files' concern
     }
 
     // The page's external scripts are .js files already parsed once into
-    // ctx.jsSources. Reuse that, falling back to parsing the bytes ourselves.
+    // jsSources. Reuse that, falling back to parsing the bytes ourselves.
     const sources = new Map((ctx.jsSources ?? []).map((s) => [s.file, s]));
     const out = [];
     eachElement(buf.toString("utf8"), (el) => {
@@ -53,11 +59,11 @@ export default {
       if (el.attr("type")?.trim().toLowerCase() === "module") {
         return; // correctly declared a module
       }
-      const target = resolveRef(ctx.addon.files, pageFile, src);
+      const target = resolveRef(addon.files, pageFile, src);
       if (!target) {
         return; // remote or unresolved src - not our concern
       }
-      const ast = parsedAst(sources, target, ctx.addon.files);
+      const ast = parsedAst(sources, target, addon.files);
       if (!ast || !usesModuleSyntax(ast)) {
         return; // a classic script - fine without type="module"
       }

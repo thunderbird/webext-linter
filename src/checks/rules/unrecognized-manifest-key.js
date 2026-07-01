@@ -18,22 +18,22 @@ import { experimentManifestKeys } from "../lib/experiments.js";
 export default {
   run(ctx) {
     const { addon, schema } = ctx;
-    if (addon.manifestError || !addon.manifest) {
+    if (ctx.manifestError || !ctx.manifest) {
       return []; // a missing/unparsable manifest is the manifest-* checks' job
     }
     if (schema.validManifestKeys.size === 0) {
       return [];
     }
-    const text = addon.files?.get("manifest.json")?.toString("utf8");
+    const text = ctx.manifestText;
     // Experiment-owned keys are not unknown: a key that NAMES an experiment_apis
     // entry, or one an experiment's bundled schema DECLARES via a `manifest`
     // $extend block (e.g. calendar_item_action). Both are the developer's own.
     const expKeys = new Set(
-      Object.keys(asObject(addon.manifest.experiment_apis))
+      Object.keys(asObject(ctx.manifest.experiment_apis))
     );
-    const expManifestKeys = experimentManifestKeys(addon.manifest, addon.files);
+    const expManifestKeys = experimentManifestKeys(ctx.manifest, addon.files);
     const out = [];
-    for (const key of Object.keys(addon.manifest)) {
+    for (const key of Object.keys(ctx.manifest)) {
       const known =
         schema.validManifestKeys.has(key) ||
         expKeys.has(key) ||

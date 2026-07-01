@@ -31,20 +31,23 @@ export default {
    */
   run(ctx) {
     const prev = ctx.previous;
+    // Registry `input: xpi`: ctx.addon is the built XPI. The diff (versions, files)
+    // compares the XPI against the --diff-to baseline (also an XPI); a source
+    // submission's pre-build layout would never match the baseline byte-for-byte.
     const cur = ctx.addon;
     // The orchestrator runs this check only with a --diff-to baseline (it is a
     // diff check), so one is normally present. Bail out silently only if a
     // manifest did not parse on either side.
-    if (!prev?.manifest || !cur?.manifest) {
+    if (!prev?.manifest || !ctx.manifest) {
       return [];
     }
     // To fire, strict_max_version must actually have changed and the rest of the
     // manifest (everything but version + strict_max_version) be unchanged.
     if (
       !sameFilesExceptManifest(prev.files, cur.files) ||
-      strictMaxVersion(prev.manifest) === strictMaxVersion(cur.manifest) ||
+      strictMaxVersion(prev.manifest) === strictMaxVersion(ctx.manifest) ||
       canonicalJson(withoutBump(prev.manifest)) !==
-        canonicalJson(withoutBump(cur.manifest))
+        canonicalJson(withoutBump(ctx.manifest))
     ) {
       ctx.note?.(
         "manifest.json",
@@ -60,7 +63,7 @@ export default {
       "only version + strict_max_version changed",
       "fail"
     );
-    const text = cur.files?.get("manifest.json")?.toString("utf8");
+    const text = ctx.manifestText;
     const line = manifestTokenLine(text, "strict_max_version");
     return [finding({ file: "manifest.json", loc: line ? { line } : null })];
   },

@@ -2,6 +2,7 @@
 // content-hash verifier, the schema experiment-namespace registration, and the
 // experiment-overrides-api check.
 
+import { withManifest } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -338,7 +339,7 @@ test("experiment-overrides-api flags a path that grafts onto a built-in", () => 
       ]),
     },
   };
-  const out = experimentOverridesApi.run(ctx);
+  const out = experimentOverridesApi.run(withManifest(ctx));
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "messages.evil");
   assert.deepEqual(out[0].loc, { line: 2, column: 0 });
@@ -371,7 +372,7 @@ test("experiment-not-allowed reports shadowing vs unsupported per unsupported gr
       files: new Map([["manifest.json", Buffer.from("{}\n")]]),
     },
   };
-  const out = experimentNotAllowed.run(ctx);
+  const out = experimentNotAllowed.run(withManifest(ctx));
   assert.equal(out.length, 2); // only the two unsupported groups (not the modified one)
   const weather = out.find((f) => f.loc.line === 5);
   assert.match(weather.hint, /not a published Thunderbird API draft/);
@@ -398,7 +399,7 @@ test("experiment-modified flags only modified groups", () => {
       files: new Map(),
     },
   };
-  const out = experimentModified.run(ctx);
+  const out = experimentModified.run(withManifest(ctx));
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "calendar");
   assert.deepEqual(out[0].loc, { line: 8, column: 0 });

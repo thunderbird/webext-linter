@@ -222,3 +222,43 @@ test("resolveVendor records a folder declaration", async () => {
   assert.deepEqual([...set], []); // a folder is a prefix, not an exact path
   assert.deepEqual(ambiguousSources, []);
 });
+
+// package.json dependencies are classified by spec into the only two supported
+// sources - a pinned npm package and a GitHub URL - plus the two rejected cases:
+// an unpinned range, and an unsupported source (file:/alias/non-github git).
+test("resolveVendor classifies package.json deps by source", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: {
+        pinned: "1.2.3", // npm, exact
+        ranged: "^2.0.0", // unpinned (no lock)
+        ghshort: "github:o/r#v1.0.0", // github
+        ghbare: "owner/repo", // github bare shorthand
+        ghurl: "git+https://github.com/a/b.git", // github url
+        ghscp: "git@github.com:scp/repo.git#v3", // github SCP-style git URL
+        local: "file:../x", // unsupported
+        aliased: "npm:other@1.0.0", // unsupported (npm alias)
+        gitlab: "git+https://gitlab.com/o/r.git", // unsupported (non-github git)
+      },
+    }),
+  });
+  const v = await resolveVendor({ addon, enabled: false });
+  assert.deepEqual(v.packages, [{ name: "pinned", version: "1.2.3" }]);
+  assert.deepEqual(
+    v.unpinned.map((u) => u.name),
+    ["ranged"]
+  );
+  assert.deepEqual(
+    v.githubDeps.map((g) => `${g.name}:${g.repo}`),
+    ["ghshort:o/r", "ghbare:owner/repo", "ghurl:a/b", "ghscp:scp/repo"]
+  );
+  assert.equal(
+    v.githubDeps.find((g) => g.name === "ghshort").ref,
+    "v1.0.0" // the #ref is captured
+  );
+  assert.equal(v.githubDeps.find((g) => g.name === "ghscp").ref, "v3");
+  assert.deepEqual(
+    v.unsupportedDeps.map((u) => u.name),
+    ["local", "aliased", "gitlab"]
+  );
+});

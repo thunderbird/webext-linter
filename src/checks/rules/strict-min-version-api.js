@@ -40,9 +40,7 @@ export default {
    * @returns {{findings: object[], llm?: import("../escalation.js").LlmStep}}
    */
   run(ctx) {
-    const minStr = ctx.addon?.manifest
-      ? strictMinVersion(ctx.addon.manifest)
-      : undefined;
+    const minStr = ctx.manifest ? strictMinVersion(ctx.manifest) : undefined;
     const min = parseVersion(minStr);
     if (!min) {
       ctx.note?.(

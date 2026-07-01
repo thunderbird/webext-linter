@@ -109,15 +109,29 @@ export function loadAddon(source) {
   }
   const stat = fs.statSync(resolved);
   const files = stat.isDirectory() ? readDir(resolved) : readZip(resolved);
-  const addon = {
+  return assembleAddon(files, {
     source: resolved,
     kind: stat.isDirectory() ? "dir" : "zip",
+  });
+}
+
+/**
+ * Build an Addon record from an in-memory file map: parse its manifest.json
+ * (BOM-tolerant, JSON5) and stamp the source/kind. Shared by loadAddon and the
+ * source-code-submission loader.
+ * @param {Map<string, Buffer>} files
+ * @param {{source: string, kind: "dir"|"zip"}} meta
+ * @returns {Addon}
+ */
+function assembleAddon(files, { source, kind }) {
+  const addon = {
+    source,
+    kind,
     files,
     manifest: null,
     manifestError: null,
     manifestLoc: null,
   };
-
   const manifestBuf = files.get("manifest.json");
   if (manifestBuf) {
     let text = manifestBuf.toString("utf8");
@@ -132,6 +146,65 @@ export function loadAddon(source) {
     }
   }
   return addon;
+}
+
+// The dependency-manifest files the source-code-submission audit reads; the lock
+// names mirror src/vendor/locks.js.
+const SCS_MANIFEST_FILES = [
+  "package.json",
+  "package-lock.json",
+  "npm-shrinkwrap.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+];
+
+/**
+ * Load a source-code submission. The readable add-on code lives at `scsSource`
+ * within the `scsRoot` archive (folder or zip); package.json/lock live at the
+ * archive root. Returns a review Addon whose `files` are the scsSource subtree
+ * (the prefix stripped, so `<scsSource>/manifest.json` becomes `manifest.json`)
+ * PLUS the archive-root package.json + lock (so the dependency audit, which reads
+ * addon.files, sees them).
+ *
+ * The source addon is PURE source - its own files and its own manifest.json. The
+ * authoritative manifest is the built XPI's, exposed separately as ctx.manifest (the
+ * orchestrator resolves it - see src/checks/context.js); nothing reviews the source
+ * manifest, so it is left untouched here.
+ * @param {string} scsRoot  Path to the source archive root (folder or zip).
+ * @param {string} scsSource  Relative add-on code root within it (e.g. "src").
+ * @returns {Addon}
+ */
+export function loadScsAddon(scsRoot, scsSource) {
+  const archive = loadAddon(scsRoot);
+  const rel = String(scsSource)
+    .replace(/^[./]+/, "")
+    .replace(/\/+$/, "");
+  const prefix = rel ? `${rel}/` : "";
+  const files = new Map();
+  for (const [p, buf] of archive.files) {
+    if (!prefix) {
+      files.set(p, buf);
+    } else if (p.startsWith(prefix)) {
+      files.set(p.slice(prefix.length), buf);
+    }
+  }
+  if (files.size === 0) {
+    throw new Error(
+      `--scs-source "${scsSource}" matched no files under ${scsRoot}`
+    );
+  }
+  // Bring the archive-root dependency manifest into the review files (overriding
+  // any same-named file inside scsSource - the root is authoritative).
+  for (const name of SCS_MANIFEST_FILES) {
+    const buf = archive.files.get(name);
+    if (buf) {
+      files.set(name, buf);
+    }
+  }
+  return assembleAddon(files, {
+    source: rel ? `${archive.source}:${rel}` : archive.source,
+    kind: archive.kind,
+  });
 }
 
 /**

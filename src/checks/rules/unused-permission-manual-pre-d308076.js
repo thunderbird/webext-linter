@@ -29,7 +29,7 @@ export default {
    *   {item: string, file: string, loc: ?object}[]}}
    */
   run(ctx) {
-    if (strictMinAtLeast(ctx.addon?.manifest, D308076_FIXED_IN)) {
+    if (strictMinAtLeast(ctx.manifest, D308076_FIXED_IN)) {
       return { findings: [], escalations: [] };
     }
     return enumerateUnusedPermissions(ctx);

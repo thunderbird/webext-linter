@@ -3,6 +3,7 @@
 // NAMES an experiment_apis entry, or one the entry's schema DECLARES via a
 // `manifest` $extend block.
 
+import { withManifest } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -35,7 +36,9 @@ const ctxOf = (manifest, extra = {}) => ({
 const items = (out) => out.map((f) => f.item).sort();
 
 test("flags a genuinely unknown top-level key", () => {
-  const out = rule.run(ctxOf({ manifest_version: 3, bogus_key: 1 }));
+  const out = rule.run(
+    withManifest(ctxOf({ manifest_version: 3, bogus_key: 1 }))
+  );
   assert.deepEqual(items(out), ["bogus_key"]);
 });
 
@@ -61,18 +64,22 @@ test("exempts a key declared by an experiment schema's manifest block", () => {
     },
     { namespace: "calendarItemAction" },
   ]);
-  const out = rule.run(ctxOf(manifest, { "exp/cal.json": schemaJson }));
+  const out = rule.run(
+    withManifest(ctxOf(manifest, { "exp/cal.json": schemaJson }))
+  );
   assert.deepEqual(items(out), ["bogus_key"]);
 });
 
 // The pre-existing exemption: a key that NAMES an experiment_apis entry.
 test("exempts a key that names an experiment_apis entry", () => {
   const out = rule.run(
-    ctxOf({
-      manifest_version: 3,
-      calendar_provider: {},
-      experiment_apis: { calendar_provider: {} },
-    })
+    withManifest(
+      ctxOf({
+        manifest_version: 3,
+        calendar_provider: {},
+        experiment_apis: { calendar_provider: {} },
+      })
+    )
   );
   assert.deepEqual(items(out), []);
 });

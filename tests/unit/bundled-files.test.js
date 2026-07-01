@@ -2,6 +2,7 @@
 // schema-directed / bridge "referenced file not bundled" detection.
 
 import { test } from "node:test";
+import { withManifest } from "./manifest-ctx.js";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,7 +25,7 @@ function ctxWith(manifest, files = {}) {
   for (const [k, v] of Object.entries(files)) {
     map.set(k, Buffer.from(v));
   }
-  return { addon: { files: map, manifest }, jsSources: [] };
+  return withManifest({ addon: { files: map, manifest }, jsSources: [] });
 }
 
 // Build a ctx whose single JS source carries `code`, with the fixture schema so

@@ -88,7 +88,7 @@ export default {
  * @returns {string|null}
  */
 function optionsPagePath(ctx) {
-  const manifest = ctx.addon?.manifest ?? {};
+  const manifest = ctx.manifest ?? {};
   const ref = manifest.options_ui?.page ?? manifest.options_page;
   if (!ref) {
     return null;

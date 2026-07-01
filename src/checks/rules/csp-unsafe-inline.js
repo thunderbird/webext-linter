@@ -16,7 +16,7 @@ export default {
       return [];
     }
     ctx.note?.("manifest.json", null, "CSP 'unsafe-inline'", "fail");
-    const text = ctx.addon.files?.get("manifest.json")?.toString("utf8");
+    const text = ctx.manifestText;
     const line = manifestTokenLine(text, "content_security_policy");
     return [finding({ file: "manifest.json", loc: line ? { line } : null })];
   },

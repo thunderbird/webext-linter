@@ -13,6 +13,7 @@ import { callVerdicts, callText } from "../../src/llm/anthropic.js";
 import { createLlmClient } from "../../src/checks/llm-client.js";
 import { loadRegistry } from "../../src/checks/registry.js";
 import { MAX_RESPONSE_TOKENS } from "../../src/config.js";
+import { withManifest } from "./manifest-ctx.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
@@ -121,7 +122,7 @@ test("callText sends a free-form request and returns the text", async () => {
 
 // A deterministic add-on so the assembled context is byte-stable. __nonce pins the
 // per-review nonce (normally random) so the wrapped-data markers are golden-stable.
-const ctx = {
+const ctx = withManifest({
   __nonce: "0123456789abcdef",
   addon: {
     manifest: {
@@ -139,7 +140,7 @@ const ctx = {
       ["_locales/en/messages.json", Buffer.from("{}")],
     ]),
   },
-};
+});
 
 // C - prompt golden. Locks the exact text sent to the model (reviewer intro +
 // rendered add-on context + criterion) so an edit to the system-intro prompt,
@@ -164,6 +165,7 @@ test("createLlmClient assembles the documented prompt", async () => {
     candidates: [
       { id: "E1", file: "background.js", line: 1, note: "an example site" },
     ],
+    addon: ctx.addon,
   });
 
   const rendered =

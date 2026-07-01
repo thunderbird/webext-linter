@@ -12,6 +12,7 @@ import { classifySource } from "../../src/vendor/sources.js";
 import { VENDOR_TRUSTED_HOSTS } from "../../src/config.js";
 import {
   verifyVendor,
+  verifyScsDependencies,
   auditIdentifiedLibraries,
 } from "../../src/vendor/verify.js";
 import unpinnedDependency from "../../src/checks/rules/unpinned-dependency.js";
@@ -70,8 +71,8 @@ test("classifySource reads the ref from a refs/tags raw.githubusercontent URL", 
 
 test("classifySource rejects untrusted hosts, non-https, and mutable refs", () => {
   assert.equal(classifySource("https://evil.example.com/x.js").trusted, false);
-  // cdnjs is no longer an accepted source (a cdnjs lib is always on npm/github);
-  // such a URL is now untrusted and routes to manual review.
+  // cdnjs is not an accepted source (a cdnjs lib is always on npm/github); such a
+  // URL is untrusted and routes to manual review.
   assert.equal(
     classifySource(
       "https://cdnjs.cloudflare.com/ajax/libs/jsdiff/7.0.0/diff.js"
@@ -172,6 +173,7 @@ function net({
   files,
   listing,
   downloads = 99999,
+  stars = 99999,
   throwOnFetch,
   osv,
   throwOnPost,
@@ -193,6 +195,9 @@ function net({
       if (url.includes("?meta")) {
         return listing ?? { type: "directory", files: [] };
       }
+      if (url.includes("api.github.com/repos/")) {
+        return { stargazers_count: stars };
+      }
       return { downloads };
     },
     postJson: async (_url, body) => {
@@ -210,11 +215,14 @@ const store = (over = {}) => ({
   manifest: [],
   packages: [],
   unpinned: [],
+  githubDeps: [],
+  unsupportedDeps: [],
   missing: [],
   unparsedVendor: false,
   vendorFile: null,
   vulnerabilities: [],
   unaudited: [],
+  unpopularDeps: [],
   ...over,
 });
 
@@ -223,6 +231,129 @@ const pinnedEntry = (path, sourceUrl) => ({
   sourceUrl,
   trusted: true,
   pinned: true,
+});
+
+// ---- verifyScsDependencies (SCS mode dependency audit) ----
+
+test("verifyScsDependencies: a non-popular declared dep is recorded as unreviewable", async () => {
+  const addon = addonWith(
+    { "package.json": '{"dependencies":{"niche":"1.0.0"}}' },
+    store({ packages: [{ name: "niche", version: "1.0.0" }] })
+  );
+  await verifyScsDependencies(
+    addon,
+    net({ downloads: 30, osv: { vulns: [] } })
+  );
+  assert.deepEqual(addon.vendor.unpopularDeps, [
+    { name: "niche", version: "1.0.0", file: "package.json", token: "niche" },
+  ]);
+});
+
+test("verifyScsDependencies: a POPULAR declared dep is allowed (not recorded)", async () => {
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({ packages: [{ name: "react", version: "18.0.0" }] })
+  );
+  await verifyScsDependencies(addon, net({ downloads: 5000 }));
+  assert.deepEqual(addon.vendor.unpopularDeps, []);
+});
+
+test("verifyScsDependencies: offline (every lookup throws) records nothing", async () => {
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({ packages: [{ name: "niche", version: "1.0.0" }] })
+  );
+  const offline = {
+    fetchBytes: async () => {
+      throw new Error("offline");
+    },
+    fetchJson: async () => {
+      throw new Error("offline");
+    },
+    postJson: async () => {
+      throw new Error("offline");
+    },
+  };
+  await verifyScsDependencies(addon, offline);
+  assert.deepEqual(addon.vendor.unpopularDeps, []);
+});
+
+// GitHub-sourced deps are gated by stars (the same bar as a VENDOR.md github
+// source), needing no bundled file - so it works for an SCS submission.
+test("verifyScsDependencies: a low-star GitHub dep is recorded as unreviewable", async () => {
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({
+      githubDeps: [
+        { name: "widget", spec: "u/widget", repo: "u/widget", ref: null },
+      ],
+    })
+  );
+  await verifyScsDependencies(addon, net({ stars: 5 }));
+  assert.deepEqual(addon.vendor.unpopularDeps, [
+    {
+      name: "widget",
+      version: "u/widget",
+      file: "package.json",
+      token: "widget",
+    },
+  ]);
+});
+
+test("verifyScsDependencies: a popular (high-star) GitHub dep is allowed", async () => {
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({
+      githubDeps: [
+        { name: "widget", spec: "u/widget", repo: "u/widget", ref: null },
+      ],
+    })
+  );
+  await verifyScsDependencies(addon, net({ stars: 5000 }));
+  assert.deepEqual(addon.vendor.unpopularDeps, []);
+});
+
+test("verifyScsDependencies: a trusted-org (thunderbird) GitHub dep is a free pass", async () => {
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({
+      githubDeps: [
+        {
+          name: "helper",
+          spec: "thunderbird/helper",
+          repo: "thunderbird/helper",
+          ref: null,
+        },
+      ],
+    })
+  );
+  // stars:0 would fail the bar, but the trusted org never triggers the lookup.
+  await verifyScsDependencies(addon, net({ stars: 0 }));
+  assert.deepEqual(addon.vendor.unpopularDeps, []);
+});
+
+test("verifyScsDependencies: a GitHub stars lookup failure records nothing", async () => {
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({
+      githubDeps: [
+        { name: "widget", spec: "u/widget", repo: "u/widget", ref: null },
+      ],
+    })
+  );
+  const offline = {
+    fetchBytes: async () => {
+      throw new Error("offline");
+    },
+    fetchJson: async () => {
+      throw new Error("offline");
+    },
+    postJson: async () => {
+      throw new Error("offline");
+    },
+  };
+  await verifyScsDependencies(addon, offline);
+  assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
 test("verifyVendor: VENDOR entry that matches a popular pinned source -> verified", async () => {
@@ -351,7 +482,7 @@ test("verifyVendor: a real byte difference is modified, a niche lib not-popular"
   niche.bundled.nonAuthored.add("a.js");
   await verifyVendor(niche, net({ bytes: "BODY", downloads: 3 }));
   applyNotPopularVendor(niche); // the pipeline's post-classifyBundled reconciliation
-  // not-popular is no longer a manual-review result; it is dropped from results and
+  // not-popular is not a manual-review result; it is dropped from results and
   // recorded as an untrusted (here readable) library, reviewed as authored code.
   assert.deepEqual(niche.vendor.results, []);
   assert.equal(niche.bundled.untrusted.length, 1);
@@ -1078,8 +1209,8 @@ test("unpinned-dependency: one finding per unpinned dep, anchored in package.jso
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "package.json");
   assert.equal(out[0].loc.line, 3);
-  assert.equal(out[0].item, "lodash");
-  assert.deepEqual(out[0].data, { spec: "^4.17.21" });
+  // Collapsed response: name + spec render together on the location line.
+  assert.equal(out[0].item, "lodash (^4.17.21)");
 });
 
 test("unpinned-vendor-source: anchored on the VENDOR line, URL as the hint", () => {
@@ -1130,7 +1261,7 @@ test("vendor-unverified: every unverifiable result escalates; verified does not"
           { path: "b.js", source: "http://evil/x.js", outcome: "untrusted" },
           { path: "d.js", source: "u", outcome: "unfetchable" },
           { path: "e.js", source: "u", outcome: "verified" },
-          // not-popular is intentionally absent: it is no longer manual review here
+          // not-popular is intentionally absent: it is not manual review here
           // (it becomes an untrusted/authored library - see markUntrusted).
         ],
       }),
@@ -1173,7 +1304,7 @@ test("missing-vendor-file: one warning per missing entry, listing the path", () 
   assert.equal(out[0].item, "VENDORS.md");
 });
 
-// An unparsable VENDOR file is no longer a manual escalation here - it is the
+// An unparsable VENDOR file is not a manual escalation here - it is the
 // vendor-unparseable check's error finding.
 test("vendor-unverified: an unparsable VENDOR file is not escalated here", () => {
   const ctx = {

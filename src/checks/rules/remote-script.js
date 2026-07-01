@@ -78,7 +78,7 @@ export default {
       }
     }
 
-    for (const host of analyzeCsp(addon.manifest).remoteHosts) {
+    for (const host of analyzeCsp(ctx.manifest).remoteHosts) {
       findings.push(finding({ file: "manifest.json", item: host }));
       ctx.note?.("manifest.json", null, `CSP script-src ${host}`, "fail");
     }

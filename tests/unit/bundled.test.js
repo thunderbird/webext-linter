@@ -17,8 +17,8 @@ import missingLibrary from "../../src/checks/rules/missing-library.js";
 import { rawSha256 } from "../../src/normalize/hash.js";
 
 // Build a known-library hash map from file keys, so the classifier tags those
-// files `library` (a true content-hash match, the mechanism that replaced the
-// name/UMD heuristic).
+// files `library` (a true content-hash match - the library signal, as opposed to a
+// name/UMD-shape guess).
 const libHashes = (addon, ...keys) =>
   new Map(
     keys.map((k) => [
@@ -54,7 +54,7 @@ test("classifyBundled flags an undeclared minified-by-geometry file", () => {
   assert.ok(nonAuthored.has("lib/blob.js"));
 });
 
-// --scan-minified treats ONLY a minified-by-geometry file (an unidentifiable
+// scanMinified treats ONLY a minified-by-geometry file (an unidentifiable
 // webpack/tsc bundle) as authored: it leaves the non-authored set and minified-code
 // goes silent. A hash-identified library is real third-party code (vendored-family),
 // so it stays excluded and still drives missing-library regardless of the flag.
@@ -68,7 +68,7 @@ test("scanMinified scans a minified non-library, but keeps identified libraries 
     "vendor/dep.min.js": MINIFIED, // VENDOR.md-declared (authoritative)
   });
   // VENDOR.md declaration is authoritative, not a heuristic, so it must stay
-  // excluded even under --scan-minified.
+  // excluded even under scanMinified.
   addon.vendor = { set: new Set(["vendor/dep.min.js"]) };
   const { classified, nonAuthored } = classifyBundled(addon, {
     scanMinified: true,
@@ -149,7 +149,7 @@ test("classification done before normalize survives reformatting (the fix)", () 
 
 test("without the pre-step, classifying the reformatted bytes misses it", () => {
   // No addon.bundled: the reader recomputes over the already-pretty bytes, which
-  // no longer look minified - the build/lint false negative the pre-step fixes.
+  // do not look minified - the build/lint false negative the pre-step fixes.
   const flagged = minifiedCode
     .run({ addon: addonWith({ "lib/blob.js": PRETTY }) })
     .map((f) => f.file);
@@ -197,8 +197,8 @@ test("missing-library reports an undeclared vendored CSS file", () => {
 });
 
 // `library` is a true content-hash match - NOT a .min name, a known stem, a UMD
-// wrapper, or a "/*!" banner (the heuristics the hash lookup replaced). The same
-// bytes are a library only when their hash is in the known-library DB.
+// wrapper, or a "/*!" banner (none of which are a library signal on their own). The
+// same bytes are a library only when their hash is in the known-library DB.
 test("library is a content-hash match, not a .min name or banner", () => {
   const tagOf = (file, body, known = false) => {
     const addon = addonWith({ [file]: body });

@@ -34,13 +34,10 @@ export default {
         `${name} ("${spec}") is not pinned`,
         "fail"
       );
+      // Collapsed response (no {{item}}): the subject renders on the location line
+      // as `name (spec)`, matching the other dependency rejects.
       findings.push(
-        finding({
-          file: "package.json",
-          loc,
-          item: name,
-          data: { spec },
-        })
+        finding({ file: "package.json", loc, item: `${name} (${spec})` })
       );
     }
     return findings;

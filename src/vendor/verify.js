@@ -173,6 +173,113 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}) {
 }
 
 /**
+ * SCS (source-code-submission) dependency audit: the network half for SCS mode,
+ * the analogue of verifyVendor for XPI mode. The source archive's package.json
+ * is the only dependency manifest (no VENDOR.md, no hash/CDN matching - the built
+ * libraries are not present in the readable source and are mangled in the XPI).
+ * For each pinned dependency it records (a) OSV advisories (auditNpm ->
+ * vendor.vulnerabilities, read by vendor-vulnerable) and (b) a non-popular verdict
+ * (-> vendor.unpopularDeps, read by unpopular-source-dependency): a dependency
+ * that is not a confirmed widely-used library is pulled in at build and cannot be
+ * reviewed, so the developer must ship its readable source in --scs-source.
+ *
+ * Popularity uses a direct npm-downloads lookup (npmDownloads), not isPopular, so
+ * a FAILED lookup skips rather than false-rejecting a popular dependency; offline
+ * runs (the listing/downloads throw) therefore record nothing.
+ * @param {Addon} addon  Must already carry `addon.vendor` from resolveVendor.
+ * @param {VendorNet} [net]
+ * @returns {Promise<void>}
+ */
+export async function verifyScsDependencies(addon, net = defaultNet) {
+  const vendor = addon?.vendor;
+  if (!vendor) {
+    return;
+  }
+  for (const pkg of vendor.packages) {
+    await auditNpm(
+      pkg.name,
+      pkg.version,
+      "package.json",
+      pkg.name,
+      vendor,
+      net
+    );
+    const downloads = await npmDownloads(pkg.name, net);
+    if (downloads !== null && downloads < VENDOR_NPM_MIN_DOWNLOADS) {
+      vendor.unpopularDeps.push({
+        name: pkg.name,
+        version: pkg.version,
+        file: "package.json",
+        token: pkg.name,
+      });
+    }
+  }
+  // GitHub-sourced deps clear the bar by stars (or a trusted-org free pass) - the
+  // same popularity check a VENDOR.md github source gets. No content/OSV audit
+  // here: the build pulls the code from GitHub at build time, so it is not present
+  // to hash. A failed lookup records nothing (like npmDownloads above).
+  for (const dep of vendor.githubDeps ?? []) {
+    const popular = await githubPopular(dep.repo, net);
+    if (popular === false) {
+      vendor.unpopularDeps.push({
+        name: dep.name,
+        version: dep.spec,
+        file: "package.json",
+        token: dep.name,
+      });
+    }
+  }
+}
+
+/**
+ * Whether a GitHub repo clears the popularity bar (stargazers >=
+ * VENDOR_GITHUB_MIN_STARS), with a trusted-org (VENDOR_TRUSTED_GITHUB_ORGS) free
+ * pass. Returns null when the stars lookup fails - kept distinguishable from a
+ * real below-bar reading (like npmDownloads) so an offline / flaky run records
+ * nothing rather than false-rejecting a popular repo.
+ * @param {string} repo  "owner/repo".
+ * @param {VendorNet} net
+ * @returns {Promise<boolean | null>}
+ */
+async function githubPopular(repo, net) {
+  const owner = String(repo ?? "")
+    .split("/")[0]
+    .toLowerCase();
+  if (VENDOR_TRUSTED_GITHUB_ORGS.includes(owner)) {
+    return true; // first-party org (e.g. Thunderbird) - trusted by provenance
+  }
+  try {
+    const j = await net.fetchJson(`https://api.github.com/repos/${repo}`);
+    const n = Number(j?.stargazers_count);
+    return Number.isFinite(n) ? n >= VENDOR_GITHUB_MIN_STARS : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Last-month npm download count for a package, or null when the lookup fails.
+ * Unlike isPopular (which collapses any error to "not popular"), this keeps a
+ * failed lookup distinguishable so the unpopular-source-dependency REJECT only
+ * ever fires on a positive below-threshold reading, never on a flaky network call
+ * (or an offline run). The npm download API serves scoped packages too.
+ * @param {string} name  npm package name.
+ * @param {VendorNet} net
+ * @returns {Promise<number | null>}
+ */
+async function npmDownloads(name, net) {
+  try {
+    const j = await net.fetchJson(
+      `https://api.npmjs.org/downloads/point/last-month/${name}`
+    );
+    const n = Number(j?.downloads);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Audit a pinned npm package@version against the OSV vulnerability database.
  * Best-effort: a package with known advisories is recorded on
  * `vendor.vulnerabilities` (one entry aggregating its advisories, anchored at

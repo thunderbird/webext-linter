@@ -1,5 +1,6 @@
 // Unit tests for the remote-code scanners and check.
 
+import { withManifest } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -120,7 +121,7 @@ test("remote-script flags a remote @import inside an inline <style>", () => {
     },
     { manifest_version: 3, name: "x", version: "1" }
   );
-  const items = remoteScript.run(ctx).findings.map((f) => f.item);
+  const items = remoteScript.run(withManifest(ctx)).findings.map((f) => f.item);
   assert.ok(items.some((i) => i.includes("cdn/f.css")));
 });
 
@@ -185,7 +186,7 @@ test("getEvalScan scopes hits to non-WebExtension files", () => {
       background: { scripts: ["bg.js"] },
     }
   );
-  const hits = getEvalScan(ctx).hits;
+  const hits = getEvalScan(withManifest(ctx)).hits;
   // Every hit is from the non-WebExtension file; the WebExtension file is exempt.
   assert.ok(hits.length > 0);
   assert.ok(
@@ -368,15 +369,15 @@ test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval",
       },
     }
   );
-  assert.equal(cspUnsafeEval.run(bad).length, 1);
-  assert.equal(cspUnsafeInline.run(bad).length, 1);
+  assert.equal(cspUnsafeEval.run(withManifest(bad)).length, 1);
+  assert.equal(cspUnsafeInline.run(withManifest(bad)).length, 1);
 
   const ok = fakeCtx(
     {},
     { content_security_policy: "script-src 'self' 'wasm-unsafe-eval'" }
   );
-  assert.equal(cspUnsafeEval.run(ok).length, 0);
-  assert.equal(cspUnsafeInline.run(ok).length, 0);
+  assert.equal(cspUnsafeEval.run(withManifest(ok)).length, 0);
+  assert.equal(cspUnsafeInline.run(withManifest(ok)).length, 0);
 
   // Both findings anchor on the content_security_policy line of the manifest
   // text (fakeCtx does not put manifest.json in files, so build the ctx here).
@@ -400,17 +401,19 @@ test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval",
     jsSources: [],
     options: {},
   };
-  assert.equal(cspUnsafeEval.run(located)[0].loc.line, 3);
-  assert.equal(cspUnsafeInline.run(located)[0].loc.line, 3);
+  assert.equal(cspUnsafeEval.run(withManifest(located))[0].loc.line, 3);
+  assert.equal(cspUnsafeInline.run(withManifest(located))[0].loc.line, 3);
 });
 
 // A remote host allowed in the CSP script-src directive is flagged with a
 // "remote script source" message, since it permits loading off-package code.
 test("remote-script flags a remote CSP script-src host", () => {
   const { findings } = remoteScript.run(
-    fakeCtx(
-      {},
-      { content_security_policy: "script-src 'self' https://cdn.example.com" }
+    withManifest(
+      fakeCtx(
+        {},
+        { content_security_policy: "script-src 'self' https://cdn.example.com" }
+      )
     )
   );
   assert.equal(findings.length, 1);
@@ -424,10 +427,10 @@ test("remote-script + eval checks: no findings for a clean bundled add-on", () =
     { "bg.js": "browser.runtime.onInstalled.addListener(() => {});\n" },
     { manifest_version: 3, name: "x", version: "1" }
   );
-  assert.equal(remoteScript.run(ctx).findings.length, 0);
-  assert.ok(!remoteScript.run(ctx).llm); // no undecidable sites -> no LLM step
-  assert.equal(evalCall.run(ctx).length, 0);
-  const re = remoteEval.run(ctx);
+  assert.equal(remoteScript.run(withManifest(ctx)).findings.length, 0);
+  assert.ok(!remoteScript.run(withManifest(ctx)).llm); // no undecidable sites -> no LLM step
+  assert.equal(evalCall.run(withManifest(ctx)).length, 0);
+  const re = remoteEval.run(withManifest(ctx));
   assert.equal(re.findings.length, 0);
   assert.ok(!re.llm);
 });
@@ -447,9 +450,9 @@ test("eval checks note each dynamic-code site and the CSP, with verdicts", () =>
   );
   const notes = [];
   ctx.note = (file, loc, item, verdict) => notes.push({ file, item, verdict });
-  evalCall.run(ctx);
-  remoteEval.run(ctx);
-  cspUnsafeEval.run(ctx);
+  evalCall.run(withManifest(ctx));
+  remoteEval.run(withManifest(ctx));
+  cspUnsafeEval.run(withManifest(ctx));
   assert.ok(notes.some((n) => n.item === "eval()" && n.verdict === "fail"));
   assert.ok(notes.some((n) => /fetch/.test(n.item) && n.verdict === "unsure"));
   assert.ok(
@@ -468,7 +471,7 @@ test("remote-script notes remote (fail), local code (pass) and ambiguous (unsure
   );
   const notes = [];
   ctx.note = (file, loc, item, verdict) => notes.push({ item, verdict });
-  remoteScript.run(ctx);
+  remoteScript.run(withManifest(ctx));
   assert.ok(notes.some((n) => /cdn/.test(n.item) && n.verdict === "fail"));
   assert.ok(
     notes.some((n) => /local\.js/.test(n.item) && n.verdict === "pass")

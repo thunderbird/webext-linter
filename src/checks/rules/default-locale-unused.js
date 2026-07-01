@@ -23,7 +23,11 @@ export default {
    * @returns {import("../../report/finding.js").Finding[]}
    */
   run(ctx) {
-    const manifest = ctx.addon.manifest;
+    // Registry `input: xpi`: ctx.addon is the built XPI. default_locale <-> _locales
+    // is a property of what actually ships (a source submission's _locales may be
+    // generated or live outside --scs-source), so both the manifest and the _locales
+    // scan read the XPI.
+    const manifest = ctx.manifest;
     if (!manifest) {
       ctx.note?.("manifest.json", null, "manifest did not parse", "skipped");
       return [];
@@ -36,7 +40,7 @@ export default {
       ctx.note?.("manifest.json", null, "_locales directory present", "pass");
       return [];
     }
-    const text = ctx.addon.files?.get("manifest.json")?.toString("utf8") ?? "";
+    const text = ctx.manifestText;
     const line = manifestTokenLine(text, "default_locale");
     const loc = line ? { line, column: 0 } : null;
     ctx.note?.("manifest.json", loc, "default_locale without _locales", "fail");

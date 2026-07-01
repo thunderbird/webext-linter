@@ -55,11 +55,13 @@ schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
 | `--llm-list-models` | List the models your token can use, then exit. |
 | `--llm-review` | Shorthand for `--llm-enabled --full-summary` - run the AI add-on review in one flag. |
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
-| `--scan-minified` | Review minified/built code: treat a minified-by-geometry file (an unidentifiable webpack/tsc bundle) as authored and run every check on it. Hash-identified libraries, `obfuscated-code`, and VENDOR-declared/experiment files stay excluded (an identified library is real third-party code, so it keeps its `missing-library`/`vendor-vulnerable` treatment). Suppresses `minified-code` only. Off by default. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
 | `--diff-summary` | Add an AI assisted **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and `--llm-enabled`. |
 | `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes and a permission review (which declared permissions appear unused) - from its (almost) full current source (vendored and unused files excluded). The same pass also **re-checks the unsure items** other checks escalated, judging them with full-add-on context, so confident cases resolve instead of landing in manual review (see [LLM checks](#llm-checks)). Advisory, not a finding. Needs `--llm-enabled`. |
+| `--scs-root <folder\|zip>` | **Source-code submission (SCS) mode.** The source archive root (holds `package.json`/lock). Requires `--scs-source`. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the behavioral LLM audit. |
+| `--scs-source <relative-path>` | SCS mode: the add-on code root WITHIN `--scs-root` (e.g. `src` or `addon`). Required together with `--scs-root`. |
+| `--scs-exp-source <relative-path>` | SCS mode: the Experiment implementation folder WITHIN `--scs-source` (e.g. `experiments`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--scs-source`; required when `--allow-experiments` is used in SCS mode. |
 | `--verbose` | Verbose logging. |
 
 **Exit codes:** `0` no errors · `1` one or more error-severity findings · `2`
@@ -101,6 +103,34 @@ key. Pull a tool-capable model first (the structured checks require tool calling
 e.g. `ollama pull llama3.1`. When the LLM is enabled, a Setup-step pre-flight
 shows the chosen type and model and **fails hard** if Ollama is unreachable or the
 model is not pulled. Point `LLM_API_URL` at a remote host to use a non-local Ollama.
+
+
+### Source-code submission (SCS) mode
+
+Some add-ons are submitted as **both** a built XPI (minified, what users install)
+and a **readable source archive**. Reviewing the minified XPI directly is noisy, so
+SCS mode reviews the readable source instead while still treating the XPI as the
+authoritative shipped artifact:
+
+```
+node verify.js built.xpi --scs-root ./source-archive --scs-source src
+```
+
+- `--scs-root` is the source archive (folder or zip) that holds `package.json` /
+  the lock file; `--scs-source` is the add-on code root within it (e.g. `src`).
+  Both are required together.
+- The **readable source** is reviewed for code defects (the API/permission/eval/
+  exfiltration checks run over every source file).
+- The **declared dependencies** (`--scs-root`'s `package.json`) are audited: each
+  must be a pinned npm package or a GitHub URL, and is gated on popularity
+  (npm downloads / GitHub stars) and known vulnerabilities. Anything unpinned or
+  from another source is rejected.
+- The **built XPI** (the positional path) is the shipped artifact: it supplies the
+  manifest, the experiments, the file-completeness checks (bundled / web-accessible
+  / unused / locales), the `--diff-to` baseline, and the behavioral LLM audit.
+- `--scs-exp-source` names an Experiment implementation folder within `--scs-source`
+  so its privileged, non-WebExtension code is excluded from the WebExtension checks
+  (required when `--allow-experiments` is used in SCS mode).
 
 
 ## Review checks
