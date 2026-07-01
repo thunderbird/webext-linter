@@ -29,7 +29,7 @@
 
 import { finding } from "../../report/finding.js";
 import { asArray, isMatchPattern, manifestPathLine } from "./util.js";
-import { buildReachability } from "./reachability.js";
+import { resolveApiUsages } from "./api-resolution.js";
 
 // Permissions that gate no callable API, so static analysis can never prove use;
 // they are justified by their mere presence and must not be flagged unused.
@@ -100,46 +100,39 @@ export function analyzePermissions(ctx) {
 
   // Only usages in the pure WebExtension tree count: dead code and privileged
   // Experiment/core code (which uses no manifest permissions) are outside it, so they
-  // bear on neither used nor missing permissions.
-  const reach = buildReachability(ctx);
-  for (const src of ctx.apiUsages) {
-    if (!reach.pureWebExtensionReachable.has(src.file)) {
+  // bear on neither used nor missing permissions (resolveApiUsages applies the filter).
+  for (const { file, usage, res } of resolveApiUsages(ctx)) {
+    if (!GATED_KINDS.has(res.kind)) {
       continue;
     }
-    for (const usage of src.usages) {
-      const res = schema.resolveApi(usage.segments);
-      if (!GATED_KINDS.has(res.kind)) {
+    const member = res.member ?? "(namespace)";
+    const loc = { line: usage.line, column: usage.column };
+    for (const perm of schema.requiredPermissions(res)) {
+      if (perm.startsWith(MANIFEST_PREFIX)) {
+        const rec = manifestKeyReqs.get(res.namespace) || {
+          alts: new Set(),
+          example: `${res.namespace}.${member}`,
+          file,
+          loc,
+        };
+        rec.alts.add(perm.slice(MANIFEST_PREFIX.length));
+        manifestKeyReqs.set(res.namespace, rec);
         continue;
       }
-      const member = res.member ?? "(namespace)";
-      const loc = { line: usage.line, column: usage.column };
-      for (const perm of schema.requiredPermissions(res)) {
-        if (perm.startsWith(MANIFEST_PREFIX)) {
-          const rec = manifestKeyReqs.get(res.namespace) || {
-            alts: new Set(),
-            example: `${res.namespace}.${member}`,
-            file: src.file,
-            loc,
-          };
-          rec.alts.add(perm.slice(MANIFEST_PREFIX.length));
-          manifestKeyReqs.set(res.namespace, rec);
-          continue;
-        }
-        // A reachable call requires this permission, so the add-on provably
-        // uses it (whether or not it is declared - the manual checklist below
-        // intersects this with the declared set).
-        usedPermissions.add(perm);
-        const declaredHere = declared.named.has(perm);
-        requirements.push({
-          file: src.file,
-          loc,
-          item: `${res.namespace}.${member} needs '${perm}'`,
-          verdict: declaredHere ? "pass" : "fail",
-        });
-        if (!declaredHere && !missingReported.has(perm)) {
-          missingReported.add(perm);
-          missingPermissions.push(finding({ file: src.file, loc, item: perm }));
-        }
+      // A reachable call requires this permission, so the add-on provably
+      // uses it (whether or not it is declared - the manual checklist below
+      // intersects this with the declared set).
+      usedPermissions.add(perm);
+      const declaredHere = declared.named.has(perm);
+      requirements.push({
+        file,
+        loc,
+        item: `${res.namespace}.${member} needs '${perm}'`,
+        verdict: declaredHere ? "pass" : "fail",
+      });
+      if (!declaredHere && !missingReported.has(perm)) {
+        missingReported.add(perm);
+        missingPermissions.push(finding({ file, loc, item: perm }));
       }
     }
   }

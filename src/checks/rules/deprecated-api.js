@@ -1,74 +1,62 @@
-// Warns about deprecated APIs. Each ctx.apiUsages member is resolved and a
-// deprecated function/event/property is reported once.
+// Warns about deprecated APIs. Reads the shared resolution and reports a
+// deprecated function/event/property once.
 //
 // Belongs here: deciding that a resolved function/event/property is deprecated,
 // and dedup of repeated hits. A deprecated finding carries the schema's own
 // deprecation message as its hint (the actionable migration note), not a link
-// to the deprecated item. Does NOT belong here: extracting browser.* usage -
-// that is src/parse/api-usage.js, consumed via ctx.apiUsages. Reading schema
-// annotations (resolveApi, deprecation) - src/schema/index.js. Flagging an API
-// added after the supported version range - the
-// strict-min/strict-max-version-api checks; an API absent or marked unsupported
-// (version_added: false) - unknown-api. Authored wording ->
-// assets/registry.yaml. Severity -> that registry entry, stamped by runChecks
-// (src/checks/registry.js). Report formatting -> src/report/format.js.
+// to the deprecated item. Does NOT belong here: resolving usage against the
+// schema over the WebExtension tree (-> src/checks/lib/api-resolution.js),
+// extracting browser.* usage (-> src/parse/api-usage.js), reading schema
+// annotations (deprecation -> src/schema/index.js). Flagging an API added after
+// the supported version range - the strict-min/strict-max-version-api checks; an
+// API absent or marked unsupported (version_added: false) - unknown-api. Authored
+// wording -> assets/registry.yaml. Severity -> that registry entry, stamped by
+// runChecks (src/checks/registry.js). Report formatting -> src/report/format.js.
 
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
-import { buildReachability } from "../lib/reachability.js";
+import { resolveApiUsages } from "../lib/api-resolution.js";
 
 export default {
   run(ctx) {
     const findings = [];
-    const { schema } = ctx;
     const seen = new Set(); // report each deprecated api once
-    // Only validate the pure WebExtension tree (experiment/core and dead code are out).
-    const webext = buildReachability(ctx).pureWebExtensionReachable;
 
-    for (const src of ctx.apiUsages) {
-      if (!webext.has(src.file)) {
+    for (const { file, usage, res } of resolveApiUsages(ctx)) {
+      if (
+        res.kind !== "function" &&
+        res.kind !== "event" &&
+        res.kind !== "property"
+      ) {
         continue;
       }
-      for (const usage of src.usages) {
-        if (usage.segments.length === 0) {
-          continue;
-        }
-        const res = schema.resolveApi(usage.segments);
-        if (
-          res.kind !== "function" &&
-          res.kind !== "event" &&
-          res.kind !== "property"
-        ) {
-          continue;
-        }
-        const full = `${res.namespace}.${res.member}`;
-        const loc = { line: usage.line, column: usage.column };
+      const full = `${res.namespace}.${res.member}`;
+      const loc = { line: usage.line, column: usage.column };
 
-        const dep =
-          SchemaIndex.deprecation(res.def) ||
-          SchemaIndex.deprecation(res.namespaceDef);
+      const dep =
+        SchemaIndex.deprecation(res.def) ||
+        SchemaIndex.deprecation(res.namespaceDef);
 
-        // Narrate every resolved API site (the unit this check examines), with
-        // its verdict - so the feed shows what was vetted, not only the hits.
-        ctx.note?.(
-          src.file,
-          loc,
-          dep ? `${full} (deprecated)` : full,
-          dep ? "fail" : "pass"
+      // Narrate every resolved API site (the unit this check examines), with
+      // its verdict - so the feed shows what was vetted, not only the hits.
+      ctx.note?.(
+        file,
+        loc,
+        dep ? `${full} (deprecated)` : full,
+        dep ? "fail" : "pass"
+      );
+
+      if (dep && add(seen, full)) {
+        findings.push(
+          finding({
+            file,
+            loc,
+            // The schema's deprecation message (a migration note) when it has
+            // one. A bare `deprecated: true` carries no text, so no hint.
+            hint: typeof dep === "string" ? dep : null,
+            item: full,
+          })
         );
-
-        if (dep && add(seen, full)) {
-          findings.push(
-            finding({
-              file: src.file,
-              loc,
-              // The schema's deprecation message (a migration note) when it has
-              // one. A bare `deprecated: true` carries no text, so no hint.
-              hint: typeof dep === "string" ? dep : null,
-              item: full,
-            })
-          );
-        }
       }
     }
     return findings;

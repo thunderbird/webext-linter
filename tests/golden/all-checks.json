@@ -45,6 +45,7 @@
       "experiment-missing-strict-max-version",
       "experiment-overrides-api",
       "experiment-manual-review",
+      "experiment-unknown-api",
       "non-experiment-strict-max-version",
       "unpinned-dependency",
       "unsupported-dependency",

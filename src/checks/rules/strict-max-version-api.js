@@ -10,15 +10,16 @@
 // ceiling below the schema to violate).
 //
 // Belongs here: the version_added vs strict_max_version comparison and per-api
-// dedup. Does NOT belong here: extracting browser.* usage
+// dedup. Does NOT belong here: resolving usage against the schema over the
+// WebExtension tree (-> src/checks/lib/api-resolution.js), extracting browser.* usage
 // (src/parse/api-usage.js via ctx.apiUsages), reading schema annotations
-// (SchemaIndex.versionAdded / resolveApi), the wording (assets/registry.yaml) or
-// severity (its registry entry, stamped by runChecks).
+// (SchemaIndex.versionAdded), the wording (assets/registry.yaml) or severity (its
+// registry entry, stamped by runChecks).
 
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
 import { strictMaxVersion } from "../lib/util.js";
-import { buildReachability } from "../lib/reachability.js";
+import { resolveApiUsages } from "../lib/api-resolution.js";
 
 export default {
   /**
@@ -33,53 +34,41 @@ export default {
       return [];
     }
 
-    const { schema } = ctx;
     const findings = [];
     const seen = new Set(); // report each api once, at its first call site
-    // Only validate the pure WebExtension tree (experiment/core and dead code are out).
-    const webext = buildReachability(ctx).pureWebExtensionReachable;
 
-    for (const src of ctx.apiUsages) {
-      if (!webext.has(src.file)) {
+    for (const { file, usage, res } of resolveApiUsages(ctx)) {
+      if (res.kind !== "function" && res.kind !== "event") {
         continue;
       }
-      for (const usage of src.usages) {
-        if (usage.segments.length === 0) {
-          continue;
-        }
-        const res = schema.resolveApi(usage.segments);
-        if (res.kind !== "function" && res.kind !== "event") {
-          continue;
-        }
-        const va =
-          SchemaIndex.versionAdded(res.def) ||
-          SchemaIndex.versionAdded(res.namespaceDef);
-        // "≤59" -> NaN -> skipped: such entries predate WebExtension support
-        // (Thunderbird 60+), so the API is always available.
-        const vaMajor = va ? parseInt(va, 10) : null;
-        if (!vaMajor || vaMajor <= maxMajor) {
-          continue;
-        }
-        const key = `${res.namespace}.${res.member}`;
-        if (seen.has(key)) {
-          continue;
-        }
-        seen.add(key);
-        const display =
-          `${usage.root ?? "browser"}.${usage.segments.join(".")}` +
-          (res.kind === "function" ? "()" : "");
-        const loc = { line: usage.line, column: usage.column };
-        ctx.note?.(src.file, loc, `${display} (added in TB ${va})`, "fail");
-        findings.push(
-          finding({
-            file: src.file,
-            loc,
-            item: display,
-            hint: `added in Thunderbird ${va}`,
-            data: { max: String(maxStr) },
-          })
-        );
+      const va =
+        SchemaIndex.versionAdded(res.def) ||
+        SchemaIndex.versionAdded(res.namespaceDef);
+      // "≤59" -> NaN -> skipped: such entries predate WebExtension support
+      // (Thunderbird 60+), so the API is always available.
+      const vaMajor = va ? parseInt(va, 10) : null;
+      if (!vaMajor || vaMajor <= maxMajor) {
+        continue;
       }
+      const key = `${res.namespace}.${res.member}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      const display =
+        `${usage.root ?? "browser"}.${usage.segments.join(".")}` +
+        (res.kind === "function" ? "()" : "");
+      const loc = { line: usage.line, column: usage.column };
+      ctx.note?.(file, loc, `${display} (added in TB ${va})`, "fail");
+      findings.push(
+        finding({
+          file,
+          loc,
+          item: display,
+          hint: `added in Thunderbird ${va}`,
+          data: { max: String(maxStr) },
+        })
+      );
     }
     return findings;
   },

@@ -17,6 +17,7 @@ import deprecatedApi from "../../src/checks/rules/deprecated-api.js";
 import missingPermission from "../../src/checks/rules/missing-permission.js";
 import experimentMissingMax from "../../src/checks/rules/experiment-missing-strict-max-version.js";
 import experimentManualReview from "../../src/checks/rules/experiment-manual-review.js";
+import experimentUnknownApi from "../../src/checks/rules/experiment-unknown-api.js";
 import nonExperimentMax from "../../src/checks/rules/non-experiment-strict-max-version.js";
 import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
@@ -54,6 +55,10 @@ import {
 } from "../../src/checks/registry.js";
 import { finding, SEVERITY } from "../../src/report/finding.js";
 import unknownApi from "../../src/checks/rules/unknown-api.js";
+import {
+  resolveApiUsages,
+  unknownApis,
+} from "../../src/checks/lib/api-resolution.js";
 import strictMaxVersionApi from "../../src/checks/rules/strict-max-version-api.js";
 import strictMinVersionApi from "../../src/checks/rules/strict-min-version-api.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
@@ -942,6 +947,57 @@ test("unknown-api flags version_added:false as unsupported", () => {
   assert.equal(out[0].item, "browser.t.gone");
 });
 
+// ---- api-resolution: the shared usage resolution ----
+// resolveApiUsages resolves each reachable, non-bare browser.* usage once;
+// unknownApis is the subset the schema does not recognize (what unknown-api flags).
+test("resolveApiUsages resolves reachable usages once; unknownApis is the unrecognized subset", () => {
+  const local = buildSchemaIndex({
+    files: {
+      t: [
+        {
+          namespace: "t",
+          functions: [{ name: "ok", annotations: [{ version_added: "60" }] }],
+        },
+      ],
+    },
+  });
+  const ctx = withManifest({
+    schema: local,
+    addon: {
+      manifest: { background: { scripts: ["bg.js"] } },
+      files: new Map([
+        ["bg.js", Buffer.from("")],
+        ["orphan.js", Buffer.from("")], // present but reached from no entry point
+      ]),
+    },
+    apiUsages: [
+      {
+        file: "bg.js",
+        usages: [
+          { root: "browser", segments: ["mystery"], line: 1, column: 0 }, // unknown ns
+          { root: "browser", segments: ["t", "ok"], line: 2, column: 0 }, // known
+          { root: "browser", segments: [], line: 3, column: 0 }, // bare browser - dropped
+        ],
+      },
+      {
+        // An unreachable file: its usages are outside the pure-WebExtension tree, so
+        // they must not appear in the resolution at all.
+        file: "orphan.js",
+        usages: [{ root: "browser", segments: ["ghost"], line: 1, column: 0 }],
+      },
+    ],
+  });
+  const resolved = resolveApiUsages(ctx);
+  assert.equal(resolved.length, 2); // bg.js's 2 non-bare usages; bare + unreachable dropped
+  assert.ok(
+    !resolved.some((u) => u.file === "orphan.js"),
+    "an unreachable file's usages are excluded"
+  );
+  const unknown = unknownApis(ctx);
+  assert.equal(unknown.length, 1); // only browser.mystery (ghost is unreachable)
+  assert.equal(unknown[0].usage.segments[0], "mystery");
+});
+
 // ---- strict-max-version-api ----
 // version_added beyond the declared strict_max_version: no supported install has
 // the API. Major-granularity compare (strict_max is conventionally "N.*").
@@ -1529,6 +1585,55 @@ test("experiment-manual-review escalates one reminder for an Experiment only", (
   assert.equal(exp.escalations.length, 1);
   assert.deepEqual(exp.escalations[0], {}); // whole-add-on, no locus
   assert.deepEqual(run({ name: "x" }).escalations, []); // not an experiment
+});
+
+// experiment-unknown-api escalates a single reminder ONLY when the add-on is an
+// Experiment AND calls an API the schema does not recognize (a likely schema-namespace
+// typo); a non-Experiment or a clean Experiment escalates nothing.
+test("experiment-unknown-api escalates only for an Experiment with unrecognized API usage", () => {
+  const local = buildSchemaIndex({
+    files: {
+      t: [
+        {
+          namespace: "t",
+          functions: [{ name: "ok", annotations: [{ version_added: "60" }] }],
+        },
+      ],
+    },
+  });
+  const ctxFor = (manifest, seg) =>
+    withManifest({
+      schema: local,
+      addon: {
+        manifest: { ...manifest, background: { scripts: ["bg.js"] } },
+        files: new Map([["bg.js", Buffer.from("")]]),
+      },
+      apiUsages: [
+        {
+          file: "bg.js",
+          usages: [{ root: "browser", segments: seg, line: 1, column: 0 }],
+        },
+      ],
+    });
+  // Experiment + an unknown API -> one locus-less reminder.
+  const hit = experimentUnknownApi.run(
+    ctxFor({ experiment_apis: { a: {} } }, ["mystery", "call"])
+  );
+  assert.deepEqual(hit.findings, []);
+  assert.equal(hit.escalations.length, 1);
+  assert.deepEqual(hit.escalations[0], {});
+  // Non-Experiment + an unknown API -> nothing (unknown-api owns it).
+  assert.deepEqual(
+    experimentUnknownApi.run(ctxFor({}, ["mystery", "call"])).escalations,
+    []
+  );
+  // Experiment with only recognized APIs -> nothing.
+  assert.deepEqual(
+    experimentUnknownApi.run(
+      ctxFor({ experiment_apis: { a: {} } }, ["t", "ok"])
+    ).escalations,
+    []
+  );
 });
 
 // A non-Experiment that pins strict_max_version warns and surfaces the value;

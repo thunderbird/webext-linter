@@ -23,15 +23,16 @@
 // cannot make an API exist on a version capped below it).
 //
 // Belongs here: the version_added vs strict_min comparison, the guard partition, and
-// per-api dedup. Does NOT belong here: extracting browser.* usage and its guard
-// signal (src/parse/api-usage.js via ctx.apiUsages), reading schema annotations
-// (SchemaIndex), the verdict mapping (lib/verdict-resolve.js), or the wording /
-// severity (assets/registry.yaml).
+// per-api dedup. Does NOT belong here: resolving usage against the schema over the
+// WebExtension tree (-> src/checks/lib/api-resolution.js), extracting browser.* usage
+// and its guard signal (src/parse/api-usage.js via ctx.apiUsages), reading schema
+// annotations (SchemaIndex), the verdict mapping (lib/verdict-resolve.js), or the
+// wording / severity (assets/registry.yaml).
 
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
 import { strictMinVersion, parseVersion, cmpVersion } from "../lib/util.js";
-import { buildReachability } from "../lib/reachability.js";
+import { resolveApiUsages } from "../lib/api-resolution.js";
 import { perCandidateResolve } from "../lib/verdict-resolve.js";
 
 export default {
@@ -52,52 +53,39 @@ export default {
       return { findings: [] };
     }
 
-    const { schema } = ctx;
-    // Only validate the pure WebExtension tree (experiment/core and dead code are out).
-    const webext = buildReachability(ctx).pureWebExtensionReachable;
     // One entry per api (namespace.member), at its first site. An unconditional
     // (unguarded) site wins over a guarded one, so an api used unguarded anywhere
     // is a hard finding rather than an LLM candidate.
     const byApi = new Map();
-    for (const src of ctx.apiUsages) {
-      if (!webext.has(src.file)) {
+    for (const { file, usage, res } of resolveApiUsages(ctx)) {
+      if (res.kind !== "function" && res.kind !== "event") {
         continue;
       }
-      for (const usage of src.usages) {
-        if (usage.segments.length === 0) {
-          continue;
-        }
-        const res = schema.resolveApi(usage.segments);
-        if (res.kind !== "function" && res.kind !== "event") {
-          continue;
-        }
-        const va =
-          SchemaIndex.versionAdded(res.def) ||
-          SchemaIndex.versionAdded(res.namespaceDef);
-        // A null version means skip: boolean false (handled by unknown-api),
-        // true/absent (supported), and "≤N" (pre-WebExtension, always
-        // available).
-        const added = parseVersion(va);
-        if (!added || cmpVersion(added, min) <= 0) {
-          continue;
-        }
-        const key = `${res.namespace}.${res.member}`;
-        const existing = byApi.get(key);
-        // Keep the first hard site; only an unguarded site may replace a guarded
-        // one (so the api is reported as the hard error it is).
-        if (existing && (!existing.guarded || usage.guarded)) {
-          continue;
-        }
-        byApi.set(key, {
-          display:
-            `${usage.root ?? "browser"}.${usage.segments.join(".")}` +
-            (res.kind === "function" ? "()" : ""),
-          va,
-          file: src.file,
-          loc: { line: usage.line, column: usage.column },
-          guarded: usage.guarded,
-        });
+      const va =
+        SchemaIndex.versionAdded(res.def) ||
+        SchemaIndex.versionAdded(res.namespaceDef);
+      // A null version means skip: boolean false (handled by unknown-api),
+      // true/absent (supported), and "≤N" (pre-WebExtension, always available).
+      const added = parseVersion(va);
+      if (!added || cmpVersion(added, min) <= 0) {
+        continue;
       }
+      const key = `${res.namespace}.${res.member}`;
+      const existing = byApi.get(key);
+      // Keep the first hard site; only an unguarded site may replace a guarded
+      // one (so the api is reported as the hard error it is).
+      if (existing && (!existing.guarded || usage.guarded)) {
+        continue;
+      }
+      byApi.set(key, {
+        display:
+          `${usage.root ?? "browser"}.${usage.segments.join(".")}` +
+          (res.kind === "function" ? "()" : ""),
+        va,
+        file,
+        loc: { line: usage.line, column: usage.column },
+        guarded: usage.guarded,
+      });
     }
 
     const findings = [];

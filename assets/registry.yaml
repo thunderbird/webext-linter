@@ -509,6 +509,27 @@ deterministic-checks:
     surface should be kept to a minimum and must not affect Thunderbird's
     usability, stability, performance, or security.
 
+# Escalates a manual review when an Experiment calls a WebExtension API the schema
+# does not recognize - usually a typo in the add-on's OWN experiment schema, which
+# reads like a false-positive unsupported-API finding. Emits no findings (no
+# severity); unknown-api already lists the specific APIs.
+- title: Experiment with unrecognized API usage
+  check: experiment-unknown-api
+  input: auto
+  instructions: |-
+    This Experiment calls WebExtension APIs the schema does not recognize (see the
+    "Unknown or unsupported WebExtension API" findings). For an experiment's OWN API,
+    this is usually a typo in that experiment's schema, NOT a genuine unsupported-API
+    rejection: the schema's `namespace` is the sole authority for the API name, so if
+    it does not match the API the code calls (regardless of the manifest's
+    experiment_apis key or parent.paths), the API is effectively undefined. Verify the
+    experiment schemas before treating these as unsupported APIs.
+  response: |-
+    This Experiment calls WebExtension APIs that are not defined by any schema. If
+    these are your own Experiment APIs, verify that each experiment's schema declares
+    the matching `namespace` - the schema namespace is authoritative, so a typo there
+    leaves the API undefined even when the manifest declares it.
+
 # Flags a non-Experiment that pins strict_max_version (only blocks newer
 # Thunderbird; the APIs are forward-compatible).
 - title: Unnecessary strict_max_version
