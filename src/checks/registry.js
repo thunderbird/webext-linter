@@ -154,10 +154,10 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   context (never the review target). buildReachability reads it so the SCS
  *   "all readable-source files" pureWebExtensionReachable fallback applies only to
  *   the review source, not the built XPI (whose entry points resolve).
- * @property {string} [scsExpSource]  SCS mode: the Experiment implementation folder
- *   within scsSource (relative to the review-source root). buildReachability
- *   excludes it from pureWebExtensionReachable so the WebExtension code checks skip
- *   privileged Experiment code.
+ * @property {string} [scsExpSource]  SCS mode: the Experiment folder as a source-
+ *   relative path (runPipeline re-bases it from the scsRoot-relative --scs-exp-source
+ *   flag). buildReachability excludes it from pureWebExtensionReachable so the
+ *   WebExtension code checks skip privileged Experiment code.
  * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
  *   --allow-experiments is off: the review short-circuits to the reject check
  *   only, with no LLM (see runChecks and buildRunContext).

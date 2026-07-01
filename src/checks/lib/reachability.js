@@ -129,9 +129,10 @@ export function buildReachability(ctx) {
 
 /**
  * SCS mode: the WebExtension code set is every readable-source file EXCEPT the
- * Experiment subtree named by --scs-exp-source (a path relative to the review
- * source root - i.e. relative to scsSource, which loadScsAddon already stripped
- * from addon.files keys). Files equal to `<exp>` or under `<exp>/` are excluded;
+ * Experiment subtree named by ctx.scsExpSource - a source-relative path (runPipeline
+ * re-bases the scsRoot-relative --scs-exp-source flag to it via scsExpSourceRelative,
+ * matching the addon.files keys loadScsAddon already stripped of the scsSource
+ * prefix). Files equal to `<exp>` or under `<exp>/` are excluded;
  * an empty/absent value excludes nothing (so experiment code is reviewed too, the
  * deferred false-positive case).
  * @param {Map<string, Buffer>} files

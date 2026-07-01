@@ -129,9 +129,13 @@ test("SCS e2e: --scs-exp-source excludes the Experiment subtree from the code ch
       "without --scs-exp-source the experiment file is (falsely) flagged"
     );
 
-    // With the flag, the experiment subtree is excluded - no false positive - while
+    // With the flag - relative to --scs-root, like --scs-source (so "src/experiments",
+    // NOT "experiments") - the experiment subtree is excluded, no false positive, while
     // the real defect in main.js is still caught.
-    const withExp = await runPipeline({ ...base, scsExpSource: "experiments" });
+    const withExp = await runPipeline({
+      ...base,
+      scsExpSource: "src/experiments",
+    });
     assert.ok(
       !has(
         withExp.findings,
@@ -143,6 +147,20 @@ test("SCS e2e: --scs-exp-source excludes the Experiment subtree from the code ch
     assert.ok(
       has(withExp.findings, "unknown-api", (f) => f.file === "main.js"),
       "the WebExtension code is still reviewed with --scs-exp-source"
+    );
+
+    // Both source flags also accept an absolute path (same --scs-root base).
+    const withAbs = await runPipeline({
+      ...base,
+      scsExpSource: path.join(src, "src", "experiments"),
+    });
+    assert.ok(
+      !has(
+        withAbs.findings,
+        "core-symbol-in-webext",
+        (f) => f.file === "experiments/exp.js"
+      ),
+      "an absolute --scs-exp-source is accepted and excludes the subtree"
     );
   } finally {
     fs.rmSync(xpi, { recursive: true, force: true });

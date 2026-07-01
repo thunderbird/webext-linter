@@ -60,8 +60,8 @@ schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
 | `--diff-summary` | Add an AI assisted **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and `--llm-enabled`. |
 | `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes and a permission review (which declared permissions appear unused) - from its (almost) full current source (vendored and unused files excluded). The same pass also **re-checks the unsure items** other checks escalated, judging them with full-add-on context, so confident cases resolve instead of landing in manual review (see [LLM checks](#llm-checks)). Advisory, not a finding. Needs `--llm-enabled`. |
 | `--scs-root <folder\|zip>` | **Source-code submission (SCS) mode.** The source archive root (holds `package.json`/lock). Requires `--scs-source`. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the behavioral LLM audit. |
-| `--scs-source <relative-path>` | SCS mode: the add-on code root WITHIN `--scs-root` (e.g. `src` or `addon`). Required together with `--scs-root`. |
-| `--scs-exp-source <relative-path>` | SCS mode: the Experiment implementation folder WITHIN `--scs-source` (e.g. `experiments`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--scs-source`; required when `--allow-experiments` is used in SCS mode. |
+| `--scs-source <path>` | SCS mode: the add-on code root, relative to `--scs-root` or an absolute path (e.g. `src` or `addon`). Required together with `--scs-root`. |
+| `--scs-exp-source <path>` | SCS mode: the Experiment implementation folder, relative to `--scs-root` or an absolute path, and within `--scs-source` (e.g. `addon/experiment-api`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--scs-source`; required when `--allow-experiments` is used in SCS mode. |
 | `--verbose` | Verbose logging. |
 
 **Exit codes:** `0` no errors · `1` one or more error-severity findings · `2`
@@ -117,8 +117,8 @@ node verify.js built.xpi --scs-root ./source-archive --scs-source src
 ```
 
 - `--scs-root` is the source archive (folder or zip) that holds `package.json` /
-  the lock file; `--scs-source` is the add-on code root within it (e.g. `src`).
-  Both are required together.
+  the lock file; `--scs-source` is the add-on code root, relative to `--scs-root`
+  or an absolute path (e.g. `src`). Both are required together.
 - The **readable source** is reviewed for code defects (the API/permission/eval/
   exfiltration checks run over every source file).
 - The **declared dependencies** (`--scs-root`'s `package.json`) are audited: each
@@ -128,8 +128,9 @@ node verify.js built.xpi --scs-root ./source-archive --scs-source src
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest, the experiments, the file-completeness checks (bundled / web-accessible
   / unused / locales), the `--diff-to` baseline, and the behavioral LLM audit.
-- `--scs-exp-source` names an Experiment implementation folder within `--scs-source`
-  so its privileged, non-WebExtension code is excluded from the WebExtension checks
+- `--scs-exp-source` names an Experiment implementation folder - relative to
+  `--scs-root` (or absolute), and within `--scs-source` (e.g. `addon/experiment-api`)
+  - so its privileged, non-WebExtension code is excluded from the WebExtension checks
   (required when `--allow-experiments` is used in SCS mode).
 
 

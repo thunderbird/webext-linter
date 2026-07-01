@@ -6,7 +6,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { loadAddon, loadScsAddon } from "../../src/addon/load.js";
+import {
+  loadAddon,
+  loadScsAddon,
+  scsRootRelative,
+  scsExpSourceRelative,
+} from "../../src/addon/load.js";
 
 // Loading a directory keeps a real .js file but drops a symlink pointing at it,
 // preventing duplicate or out-of-tree content from entering addon.files.
@@ -60,5 +65,54 @@ test("loadScsAddon partitions scsSource, keeps root package.json + the source's 
   );
   assert.equal(addon.files.get("manifest.json").toString(), srcManifest);
 
+  // --scs-source accepts an absolute path too: it resolves to the same subtree.
+  const abs = loadScsAddon(root, path.join(root, "src"));
+  assert.deepEqual(
+    [...abs.files.keys()].sort(),
+    [...addon.files.keys()].sort()
+  );
+
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+// Both SCS source flags resolve relative to --scs-root, or accept an absolute path
+// (made relative to the root). An absolute path outside the root is rejected.
+test("scsRootRelative resolves relative + absolute paths, rejects escapes", () => {
+  const root = "/tmp/wrr-root";
+  assert.equal(scsRootRelative("addon", root), "addon");
+  assert.equal(scsRootRelative("./addon/", root), "addon"); // normalized
+  assert.equal(scsRootRelative(`${root}/addon`, root), "addon"); // absolute -> relative
+  assert.equal(scsRootRelative(root, root), ""); // the root itself
+  assert.throws(
+    () => scsRootRelative("/elsewhere/x", root),
+    /outside --scs-root/
+  );
+});
+
+// --scs-exp-source shares the --scs-root base and is re-based to a source-relative
+// path (the --scs-source prefix stripped) for scsWebExtensionFiles. It must be within
+// --scs-source; the OLD source-relative form (no scsSource prefix) is now an error.
+test("scsExpSourceRelative re-bases the scsRoot-relative exp path onto the source", () => {
+  const root = "/tmp/wrr-root";
+  assert.equal(
+    scsExpSourceRelative("addon/experiment-api", "addon", root),
+    "experiment-api"
+  );
+  assert.equal(
+    scsExpSourceRelative("addon/experiment-api/x", "addon", root),
+    "experiment-api/x"
+  );
+  assert.equal(
+    scsExpSourceRelative(`${root}/addon/experiment-api`, "addon", root),
+    "experiment-api"
+  ); // absolute exp path
+  assert.equal(scsExpSourceRelative(undefined, "addon", root), ""); // unset
+  assert.throws(
+    () => scsExpSourceRelative("experiment-api", "addon", root),
+    /within --scs-source/
+  ); // the old source-relative form
+  assert.throws(
+    () => scsExpSourceRelative("other/exp", "addon", root),
+    /within --scs-source/
+  );
 });

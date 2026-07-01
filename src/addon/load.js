@@ -159,6 +159,59 @@ const SCS_MANIFEST_FILES = [
 ];
 
 /**
+ * Resolve an SCS source-path flag (--scs-source / --scs-exp-source) to a posix path
+ * relative to scsRoot. The value is either already relative to scsRoot, or an
+ * absolute filesystem path (made relative to scsRoot). Throws when an absolute path
+ * resolves OUTSIDE scsRoot - which also rejects an absolute path against a zip
+ * scsRoot, since it can never sit under the archive file.
+ * @param {string} value  The raw flag value.
+ * @param {string} scsRoot  The --scs-root path.
+ * @param {string} [flag]  The flag name to name in the error (e.g. "--scs-source").
+ * @returns {string} A posix path relative to scsRoot ("" for the root itself).
+ */
+export function scsRootRelative(value, scsRoot, flag = "SCS path") {
+  let v = String(value ?? "");
+  if (path.isAbsolute(v)) {
+    v = path.relative(path.resolve(scsRoot), path.resolve(v));
+    if (v.startsWith("..") || path.isAbsolute(v)) {
+      throw new Error(`${flag} "${value}" is outside --scs-root (${scsRoot})`);
+    }
+  }
+  return v
+    .replace(/\\/g, "/")
+    .replace(/^[./]+/, "")
+    .replace(/\/+$/, "");
+}
+
+/**
+ * The Experiment folder as a path relative to the review SOURCE (scsSource), from
+ * the --scs-exp-source flag which - like --scs-source - is relative to scsRoot (or
+ * absolute). Both flags share the scsRoot base; this strips the scsSource prefix so
+ * scsWebExtensionFiles can match it against the (already source-stripped) file keys.
+ * @param {string|undefined} scsExpSource  The --scs-exp-source flag ("" when unset).
+ * @param {string} scsSource  The --scs-source flag.
+ * @param {string} scsRoot  The --scs-root flag.
+ * @returns {string} A posix path relative to scsSource ("" when unset). Throws when
+ *   the Experiment folder is not within scsSource.
+ */
+export function scsExpSourceRelative(scsExpSource, scsSource, scsRoot) {
+  if (!scsExpSource) {
+    return "";
+  }
+  const exp = scsRootRelative(scsExpSource, scsRoot, "--scs-exp-source");
+  const src = scsRootRelative(scsSource, scsRoot, "--scs-source");
+  if (!src) {
+    return exp; // the review source IS the archive root
+  }
+  if (exp === src || !exp.startsWith(`${src}/`)) {
+    throw new Error(
+      `--scs-exp-source (${scsExpSource}) must be a folder within --scs-source (${scsSource})`
+    );
+  }
+  return exp.slice(src.length + 1);
+}
+
+/**
  * Load a source-code submission. The readable add-on code lives at `scsSource`
  * within the `scsRoot` archive (folder or zip); package.json/lock live at the
  * archive root. Returns a review Addon whose `files` are the scsSource subtree
@@ -171,14 +224,13 @@ const SCS_MANIFEST_FILES = [
  * orchestrator resolves it - see src/checks/context.js); nothing reviews the source
  * manifest, so it is left untouched here.
  * @param {string} scsRoot  Path to the source archive root (folder or zip).
- * @param {string} scsSource  Relative add-on code root within it (e.g. "src").
+ * @param {string} scsSource  The add-on code root, relative to scsRoot or an
+ *   absolute path (e.g. "src", "addon", or "/abs/path/to/root/addon").
  * @returns {Addon}
  */
 export function loadScsAddon(scsRoot, scsSource) {
   const archive = loadAddon(scsRoot);
-  const rel = String(scsSource)
-    .replace(/^[./]+/, "")
-    .replace(/\/+$/, "");
+  const rel = scsRootRelative(scsSource, scsRoot, "--scs-source");
   const prefix = rel ? `${rel}/` : "";
   const files = new Map();
   for (const [p, buf] of archive.files) {

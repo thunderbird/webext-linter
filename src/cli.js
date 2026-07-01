@@ -289,12 +289,12 @@ export function helpText() {
       "Source-code submission: the source archive root (holds package.json/lock). Requires --scs-source. Switches to SCS mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the behavioral LLM audit.",
     ],
     [
-      "--scs-source <relative-path>",
-      "Source-code submission: the add-on code root WITHIN --scs-root (e.g. src or addon). Required together with --scs-root.",
+      "--scs-source <path>",
+      "Source-code submission: the add-on code root, relative to --scs-root or an absolute path (e.g. src or addon). Required together with --scs-root.",
     ],
     [
-      "--scs-exp-source <relative-path>",
-      "Source-code submission: the Experiment implementation folder WITHIN --scs-source (e.g. experiments). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --scs-source; REQUIRED when --allow-experiments is used in SCS mode.",
+      "--scs-exp-source <path>",
+      "Source-code submission: the Experiment implementation folder, relative to --scs-root or an absolute path, and within --scs-source (e.g. addon/experiment-api). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --scs-source; REQUIRED when --allow-experiments is used in SCS mode.",
     ],
     [
       "--diff-to <xpi|folder>",
@@ -485,7 +485,7 @@ export async function main(argv) {
   // its own.
   if (values["scs-exp-source"] && !values["scs-source"]) {
     process.stderr.write(
-      "--scs-exp-source needs --scs-source (it is a folder within it).\n"
+      "--scs-exp-source needs --scs-source (the Experiment folder must be within it).\n"
     );
     return 2;
   }

@@ -127,10 +127,10 @@ export function buildRunContext({
     // "xpi" (default - reviewing a built add-on) or "scs" (a source-code
     // submission: --scs-root/--scs-source). Gates checks via scsEligible.
     mode,
-    // SCS mode: the Experiment implementation folder within scsSource (a path
-    // relative to the review-source root). buildReachability excludes it from the
-    // pure-WebExtension set, so the WebExtension code checks skip privileged
-    // Experiment code. Undefined in XPI mode.
+    // SCS mode: the Experiment folder as a source-relative path (runPipeline re-based
+    // it from the scsRoot-relative --scs-exp-source flag). buildReachability excludes
+    // it from the pure-WebExtension set, so the WebExtension code checks skip
+    // privileged Experiment code. Undefined in XPI mode.
     scsExpSource,
     // The authoritative manifest is the SHIPPED artifact's (the built XPI) - what
     // Thunderbird actually loads. It is explicit shared context, like `schema`, so

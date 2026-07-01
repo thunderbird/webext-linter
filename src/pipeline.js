@@ -20,7 +20,7 @@
 import { resolveSchemaZip } from "./schema/fetch.js";
 import { loadSchemaFiles } from "./schema/load.js";
 import { buildSchemaIndex } from "./schema/index.js";
-import { loadAddon, loadScsAddon } from "./addon/load.js";
+import { loadAddon, loadScsAddon, scsExpSourceRelative } from "./addon/load.js";
 import { resolveReviewUrl } from "./addon/atn.js";
 import { runChecks, runOneCheck, loadRegistry } from "./checks/registry.js";
 import { buildRunContext, buildShippedCtx } from "./checks/context.js";
@@ -49,7 +49,7 @@ import { isExperiment } from "./checks/lib/util.js";
 import { experimentApiNamespaces } from "./checks/lib/experiments.js";
 import { verifyExperiments } from "./experiments/verify.js";
 import { createLlmBudget } from "./llm/budget.js";
-import { debug, progress, llmErrorText } from "./util/log.js";
+import { debug, progress, warn, llmErrorText } from "./util/log.js";
 import { red } from "./util/color.js";
 import { humanSize } from "./util/text.js";
 import {
@@ -93,10 +93,11 @@ import {
  *   (`input: xpi`) checks, the --diff-to comparison, and the behavioral LLM audit
  *   all run (a separate shipped context the orchestrator routes them to - see
  *   buildShippedCtx in src/checks/context.js).
- * @property {string} [scsSource]  The add-on code root WITHIN scsRoot (e.g. "src"
- *   or "addon"). Required together with scsRoot.
- * @property {string} [scsExpSource]  SCS mode: the Experiment implementation
- *   folder WITHIN scsSource (e.g. "experiments"). Its privileged, non-WebExtension
+ * @property {string} [scsSource]  The add-on code root, relative to scsRoot or an
+ *   absolute path (e.g. "src" or "addon"). Required together with scsRoot.
+ * @property {string} [scsExpSource]  SCS mode: the Experiment implementation folder,
+ *   relative to scsRoot (or absolute) and within scsSource (e.g. "addon/experiment-api");
+ *   runPipeline re-bases it to a source-relative ctx.scsExpSource. Its privileged, non-WebExtension
  *   files are excluded from the WebExtension code checks (which review all of the
  *   readable source, having no reachability tree there). Optional in general, but
  *   REQUIRED when allowExperiments is set in SCS mode (the CLI enforces this) -
@@ -182,6 +183,28 @@ export async function runPipeline(opts) {
   const xpiAddon = opts.addon ?? loadAddon(addonPath);
   const addon =
     mode === "scs" ? loadScsAddon(opts.scsRoot, opts.scsSource) : xpiAddon;
+
+  // --scs-exp-source (like --scs-source) is relative to --scs-root, or absolute.
+  // Re-base it into the review-source keyspace (strip the --scs-source prefix) so
+  // the WebExtension-code checks can exclude the Experiment subtree; ctx.scsExpSource
+  // is that source-relative value. Warn when it matches nothing - a mis-typed path
+  // would otherwise silently exclude nothing and flood the report with false
+  // positives on the privileged Experiment code.
+  const scsExpSource =
+    mode === "scs"
+      ? scsExpSourceRelative(opts.scsExpSource, opts.scsSource, opts.scsRoot)
+      : undefined;
+  if (
+    scsExpSource &&
+    ![...addon.files.keys()].some(
+      (f) => f === scsExpSource || f.startsWith(`${scsExpSource}/`)
+    )
+  ) {
+    warn(
+      `--scs-exp-source "${opts.scsExpSource}" matched no files under --scs-source; ` +
+        "nothing will be excluded from the WebExtension code checks."
+    );
+  }
 
   // Classify every Experiment add-on against the upstream drafts
   // (github.com/thunderbird/webext-experiments), regardless of
@@ -380,7 +403,8 @@ export async function runPipeline(opts) {
     setupStep,
     libraryHashes,
     mode,
-    xpiAddon
+    xpiAddon,
+    scsExpSource
   );
   findings.push(...result.findings);
   Object.assign(meta, result.meta);
@@ -540,7 +564,8 @@ async function reviewAddon(
   setupStep = () => {},
   libraryHashes = new Map(),
   mode = "xpi",
-  xpiAddon = addon
+  xpiAddon = addon,
+  scsExpSource
 ) {
   const {
     schemaChannel = DEFAULT_CHANNEL,
@@ -611,9 +636,10 @@ async function reviewAddon(
     systemIntro: registry.prompt("system-intro"),
     invalidExperiment,
     mode,
-    // SCS: the Experiment folder within scsSource, excluded from the WebExtension
-    // code checks (which review all readable source). Undefined in XPI mode.
-    scsExpSource: opts.scsExpSource,
+    // SCS: the Experiment folder as a source-relative path (runPipeline re-based it
+    // from the scsRoot-relative --scs-exp-source flag), excluded from the WebExtension
+    // code checks. Undefined in XPI mode.
+    scsExpSource,
     budget,
   });
 
