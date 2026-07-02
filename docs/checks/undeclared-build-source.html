@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Build process review</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Build process review <span class="badge error">error</span></h1>
+        <div class="check-id">undeclared-build-source</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        In a source-code submission the reviewer builds the add-on from the
+        readable source, but the dependency audit only reads the root manifest
+        and lock file. A build script or config could ignore the manifest and
+        pull code or resources from an undeclared source, leaving the declared
+        dependencies a clean decoy.
+      </p>
+      <p>
+        A deterministic pre-flight gathers the whole build corpus — every file
+        outside the add-on source and the installed dependencies, such as build
+        and CI scripts, bundler configs, Makefiles, install hooks, and build
+        documentation — together with the manifest and lock file as the
+        authoritative list of declared dependencies. When there is nothing to
+        review the check is skipped; otherwise the corpus is judged as one whole
+        build candidate by the model. Registry overrides, disallowed package
+        managers, and unpinned dependencies are owned by other checks and are
+        explicitly excluded here.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The build corpus of a<br/>source-code submission"] --> B{"Any build files to review?"}
+  B -- no --> S([skip — nothing to review])
+  B -- yes --> C["One whole-build candidate<br/>(anchored at the manifest)"]
+  C --> L{"Model verdict: does the build fetch or<br/>execute code or resources from a source<br/>NOT among the declared dependencies?"}
+  L -- "fail, with a substantiated reason" --> ERR([ERROR: build process review])
+  L -- "pass" --> M([escalate to extended<br/>manual review])
+  L -- "unsure / offline" --> M
+  L -- "fail, no reason given" --> M
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR err;
+  class S skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        On a substantiated failure the add-on is told, with the model's
+        explanation, that every part of the build must come only from the
+        dependencies declared in the manifest and lock file. Otherwise the build
+        is escalated to extended manual review, where a reviewer reproduces the
+        build by hand — using the build steps the model recovered — and confirms
+        it pulls only from the declared dependencies.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/undeclared-build-source.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

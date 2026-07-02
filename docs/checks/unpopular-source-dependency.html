@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unreviewable build dependency</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Unreviewable build dependency <span class="badge error">error</span></h1>
+        <div class="check-id">unpopular-source-dependency</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A declared dependency that could not be confirmed to be a widely-used
+        library. This check runs only for a source-code submission, where the
+        dependency code is pulled in at build time: it is absent from the
+        readable source and mangled in the built add-on, so a dependency that is
+        not trusted by ubiquity cannot be reviewed at all.
+      </p>
+      <p>
+        Before the review begins, a network pre-step looks up the popularity of
+        each package.json dependency: monthly downloads for an npm package, or
+        stargazers for a GitHub source. A dependency below the trust bar is
+        recorded, and this check turns each one into a finding anchored at its
+        declaration line. The lookup is deliberate: a failed or offline lookup
+        records nothing, so the reject only ever fires on a confirmed reading
+        below the bar. A dependency that clears the bar is trusted by ubiquity
+        and never reaches here.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A package.json dependency"] --> G{"Source-code submission?"}
+  G -- no --> S([skip])
+  G -- yes --> B{"Popularity lookup succeeded?"}
+  B -- "no (offline or failed)" --> S
+  B -- yes --> C{"Above the widely-used bar<br/>(npm downloads or GitHub stars)?"}
+  C -- yes --> OK([no finding])
+  C -- no --> ERR([ERROR: unreviewable build dependency])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told a declared dependency could not be confirmed to be
+        widely-used, and that it needs to be packaged with the add-on so it can
+        be reviewed.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/unpopular-source-dependency.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

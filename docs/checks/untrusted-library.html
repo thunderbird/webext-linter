@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Library reviewed as authored code</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Library reviewed as authored code
+          <span class="badge info">info</span>
+        </h1>
+        <div class="check-id">untrusted-library</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A bundled file whose bytes match a pinned upstream release — recognised
+        via the Mozilla hash database, the jsDelivr CDN, or a declared VENDOR
+        source — but whose package could not be confirmed to be a widely-used
+        library. It is therefore not trusted as a reviewed dependency.
+      </p>
+      <p>
+        Because it does not earn the trusted-library review exemption, and
+        because it is readable, it is put back into the ordinary review: the
+        standard source-level checks scan it exactly like the developer's own
+        code, so a finding may be raised against library code. This notice
+        explains why a file that looks like a library is being reviewed, and
+        asks the developer to confirm each one is a legitimate dependency.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A bundled file identified<br/>as a pinned upstream release"] --> P{"Did it clear the<br/>popularity trust bar?"}
+  P -- yes --> S([skip — trusted library,<br/>exempt from review])
+  P -- no --> R{"Is the file readable<br/>(not minified or obfuscated)?"}
+  R -- no --> OK([no finding here —<br/>handled by untrusted-minified-library])
+  R -- yes --> INFO([INFO: reviewed as authored code,<br/>standard checks apply])
+
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class INFO info;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told each named file matches a known upstream release but
+        could not be confirmed to be a widely-used library, so it is not trusted
+        as a reviewed dependency and is reviewed as authored code — the standard
+        checks apply, so a finding may be reported against library code — and is
+        asked to confirm each is a legitimate, appropriate dependency.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/untrusted-library.js</code>,
+        <code>src/checks/lib/bundled.js</code>, and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

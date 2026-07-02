@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vulnerable build dependency</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Vulnerable build dependency <span class="badge auto">auto</span></h1>
+        <div class="check-id">vendor-vulnerable-dev</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A pinned npm build dependency whose version has published security
+        advisories. Build dependencies are never shipped with the add-on, but
+        this check runs only for a source-code submission, where the reviewer
+        builds the add-on from source — so a vulnerable build tool runs on the
+        reviewer's own machine.
+      </p>
+      <p>
+        Before the review, every pinned npm development dependency is audited
+        once against the OSV vulnerability database over the network. Each
+        package with known advisories is recorded with the advisory ids, the
+        affected version, the fixed versions, and a severity band. This check
+        reads that result and emits one finding per vulnerable build dependency,
+        anchored at its declaration line. Its severity is <strong>auto</strong>:
+        rather than a fixed level, each finding takes its severity from the
+        advisory band — high or critical becomes an error, moderate or medium
+        becomes a warning, and anything else (low or unknown) is informational.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A pinned npm build dependency"] --> G{"Source-code submission?"}
+  G -- no --> S([skip])
+  G -- yes --> B{"OSV audit found<br/>known advisories?"}
+  B -- no --> OK([no finding])
+  B -- yes --> C{"Highest advisory band?"}
+  C -- "high / critical" --> ERR([ERROR: vulnerable build dependency])
+  C -- "moderate / medium" --> WARN([WARNING: vulnerable build dependency])
+  C -- "low / unknown" --> INFO([INFO: vulnerable build dependency])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class WARN warn;
+  class INFO info;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told a build dependency has known security
+        vulnerabilities, with the affected version, the advisory ids, and the
+        severity, and that although it is not shipped, reviewers build the
+        add-on from source so it runs on the reviewer's machine during the
+        build. It is asked to update the dependency to a fixed release and
+        resubmit.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/vendor-vulnerable-dev.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

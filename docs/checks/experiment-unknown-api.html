@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Experiment with unrecognized API usage</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Experiment with unrecognized API usage
+          <span class="badge manual">manual</span>
+        </h1>
+        <div class="check-id">experiment-unknown-api</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        An Experiment add-on that calls a WebExtension API the schema does not
+        recognize — a reachable call to an unknown namespace, an unknown member
+        of a known namespace, or a member the schema marks unsupported. On an
+        Experiment this usually means a typo in the add-on's own experiment
+        schema rather than a genuine unsupported-API rejection.
+      </p>
+      <p>
+        The experiment schema's declared namespace is the sole authority for the
+        API name, so if it does not match the API the code calls, that API is
+        effectively undefined even when the manifest declares it. This check
+        fires only when the submission is an Experiment and at least one such
+        unrecognized usage exists, and escalates the whole add-on to manual
+        review as a single reminder — the companion unknown-api finding already
+        lists the specific APIs, so this one adds no locus and re-lists nothing.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A submission"] --> E{"Did the manifest parse and<br/>is it an Experiment?"}
+  E -- no --> S([skip])
+  E -- yes --> U{"Any reachable API usage the<br/>schema does not recognize?<br/>(unknown namespace, unknown<br/>member, or unsupported)"}
+  U -- no --> S
+  U -- yes --> M([escalate to manual review:<br/>verify the experiment schemas])
+
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class M manual;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told this Experiment calls WebExtension APIs that no
+        schema defines, and — if these are their own Experiment APIs — is asked
+        to verify that each experiment's schema declares the matching namespace,
+        since the schema namespace is authoritative and a typo there leaves the
+        API undefined even when the manifest declares it.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/experiment-unknown-api.js</code>,
+        <code>src/checks/lib/api-resolution.js</code>, and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

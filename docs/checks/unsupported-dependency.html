@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unsupported dependency source</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Unsupported dependency source <span class="badge error">error</span></h1>
+        <div class="check-id">unsupported-dependency</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A dependency declared in package.json from a source the review cannot
+        identify or verify. Only two sources can be vetted: a pinned npm package
+        (an exact version, or a range a committed lock file pins) and a GitHub
+        URL, which is gated by popularity. Everything else is rejected.
+      </p>
+      <p>
+        Before the review begins, the vendor resolver reads the package.json
+        dependencies once and classifies each by its source. A local file
+        reference, a link or workspace reference, an npm alias, a tarball URL, or
+        a git source that is not GitHub cannot be resolved to a known upstream,
+        so it is set aside as unsupported. This check reads that set and turns
+        each entry into a finding, anchored at its declaration line.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A package.json dependency"] --> B{"Source is a pinned npm package<br/>or a GitHub URL?"}
+  B -- yes --> OK([no finding])
+  B -- "no (a file, link, or workspace ref,<br/>an npm alias, a tarball, or a<br/>non-GitHub git source)" --> ERR([ERROR: unsupported dependency source])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told a bundled dependency is declared from a source the
+        review cannot identify or verify, that only pinned npm packages and
+        GitHub sources are supported, and that it should re-declare the
+        dependency as a pinned npm package or a GitHub source, or bundle the
+        library with the add-on as authored code so it can be reviewed directly.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/unsupported-dependency.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

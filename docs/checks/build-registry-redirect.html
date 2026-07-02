@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Build registry override</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Build registry override <span class="badge error">error</span></h1>
+        <div class="check-id">build-registry-redirect</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission whose build configuration points the package
+        install at a registry other than the default public one. A legitimate
+        build never needs to set a registry, because the package manager already
+        defaults to the public registry, so any registry setting is rejected
+        outright.
+      </p>
+      <p>
+        This check applies only to source-code submissions, where the reviewer
+        builds the add-on from the readable source. It scans every build-config
+        dotfile that names a registry, at the root or in a subfolder, because a
+        build may run from a nested directory. A custom registry can pull the
+        same declared package names from an undeclared source, leaving the
+        declared dependencies and the lock file a clean decoy. The value is not
+        inspected — the mere presence of a registry setting is the rejection.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A build-config dotfile<br/>in the build corpus"] --> B{"Is it a registry-config<br/>dotfile (root or nested)?"}
+  B -- no --> S([skip — not a<br/>registry-config file])
+  B -- yes --> C{"A line sets a package<br/>registry (default or per-scope)?"}
+  C -- no --> OK([no finding — comments,<br/>auth, or other keys])
+  C -- yes --> ERR([ERROR: build registry override])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that its build configuration sets a package registry,
+        which is not allowed, and that the setting must be removed so the build
+        resolves every dependency from the default public npm registry. It is
+        warned that a custom registry pulls the declared package names from an
+        undeclared source, making the declared dependencies and the lock file a
+        decoy.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/build-registry-redirect.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

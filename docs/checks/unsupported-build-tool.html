@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unsupported build tool</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Unsupported build tool <span class="badge error">error</span></h1>
+        <div class="check-id">unsupported-build-tool</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission whose build uses a package manager other than
+        the two that are supported. Only npm and pnpm are accepted, because they
+        share the same configuration format and keep the reviewable build
+        surface small; other managers bring a much larger surface of runtime and
+        plugin behaviour.
+      </p>
+      <p>
+        This check applies only to source-code submissions and works purely from
+        the committed evidence, with no model or network. A disallowed manager is
+        identified by its fingerprint at any depth in the build corpus — a lock
+        file left behind by that tool, or the package.json field that names the
+        manager explicitly. Because the tool policy is a single verdict, at most
+        one finding is emitted. Pinning and the open-ended undeclared-source
+        review are handled by separate checks.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The build corpus of a<br/>source-code submission"] --> B{"A yarn or bun lock file<br/>at any depth?"}
+  B -- yes --> ERR([ERROR: unsupported build tool])
+  B -- no --> C{"A package.json names a<br/>manager other than npm/pnpm?"}
+  C -- yes --> ERR
+  C -- no --> OK([no finding — npm/pnpm<br/>or no evidence])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told it is built with an unsupported package manager and
+        that only npm and pnpm are supported. It is asked to provide an npm or
+        pnpm build — committing the matching lock file — so the dependency
+        install can be reviewed against the declared dependencies.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/unsupported-build-tool.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>
