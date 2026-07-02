@@ -66,7 +66,7 @@ test("callVerdicts forces the structured result tool", async () => {
   assert.deepEqual(req.messages, [{ role: "user", content: "the rubric" }]);
   // And the structured result is coerced on the way out.
   assert.deepEqual(result.verdicts, [
-    { id: "E1", verdict: "pass", reason: null },
+    { id: "E1", verdict: "pass", reason: null, additionalInformation: "" },
   ]);
 });
 

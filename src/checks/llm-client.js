@@ -48,7 +48,8 @@ import { nonceFor, wrap, wrapFile, framing } from "./lib/untrusted.js";
  *   (tests).
  * @returns {{evaluate: (req: {rubric: string, candidates: object[],
  *   addon: object}) =>
- *   Promise<Map<string, {verdict: string, reason: ?string}>>, summarize: (msg:
+ *   Promise<Map<string, {verdict: string, reason: ?string,
+ *   additionalInformation?: string}>>, summarize: (msg:
  *   {system: string, user: string}) => Promise<string>, reviewAddon: (msg:
  *   {system: string, user: string}) =>
  *     Promise<import("../llm/schema.js").AddonReview>}}
@@ -126,7 +127,7 @@ export function createLlmClient({
      *   inventory the model reads (the review target, or the built XPI for an
      *   `input: xpi` check).
      * @returns {Promise<Map<string, {verdict: "fail"|"pass"|"unsure",
-     *   reason: string|null}>>}
+     *   reason: string|null, additionalInformation: string}>>}
      */
     async evaluate({ rubric, candidates, addon }) {
       const out = new Map();
@@ -160,20 +161,32 @@ export function createLlmClient({
           // token. The review itself never aborts on an LLM error.
           progress(red(`      ↳ LLM review failed - ${llmErrorText(err)}`));
           for (const c of batch) {
-            out.set(c.id, { verdict: "unsure", reason: null });
+            out.set(c.id, {
+              verdict: "unsure",
+              reason: null,
+              additionalInformation: "",
+            });
           }
           continue;
         }
         const ids = new Set(batch.map((c) => c.id));
         for (const v of result.verdicts) {
           if (ids.has(v.id)) {
-            out.set(v.id, { verdict: v.verdict, reason: v.reason });
+            out.set(v.id, {
+              verdict: v.verdict,
+              reason: v.reason,
+              additionalInformation: v.additionalInformation ?? "",
+            });
           }
         }
       }
       for (const c of list) {
         if (!out.has(c.id)) {
-          out.set(c.id, { verdict: "unsure", reason: null });
+          out.set(c.id, {
+            verdict: "unsure",
+            reason: null,
+            additionalInformation: "",
+          });
         }
       }
       return out;

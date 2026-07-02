@@ -44,8 +44,16 @@ test("evaluate returns a verdict per candidate id", async () => {
     ],
     addon,
   });
-  assert.deepEqual(out.get("E1"), { verdict: "fail", reason: "r1" });
-  assert.deepEqual(out.get("E2"), { verdict: "pass", reason: null });
+  assert.deepEqual(out.get("E1"), {
+    verdict: "fail",
+    reason: "r1",
+    additionalInformation: "",
+  });
+  assert.deepEqual(out.get("E2"), {
+    verdict: "pass",
+    reason: null,
+    additionalInformation: "",
+  });
 });
 
 // LLM_API_URL threads to every transport as `baseURL` (the SDK base-URL override).

@@ -9,25 +9,44 @@ import { DEFAULT_MODEL_CLAUDE } from "../../src/config.js";
 // Well-formed input passes through unchanged; empty/null input yields no
 // verdicts (so the orchestrator defaults every candidate to "unsure", deferring
 // to a human rather than a silent pass). Messy input is coerced: an unknown
-// verdict to "unsure", entries without a string id dropped, a bad reason to null.
+// verdict to "unsure", entries without a string id dropped, a bad reason to null,
+// and the optional additionalInformation to "" unless it is a string.
 test("coerceResult normalizes the tool_use input", () => {
   assert.deepEqual(
-    coerceResult({ verdicts: [{ id: "E1", verdict: "fail", reason: "r" }] }),
-    { verdicts: [{ id: "E1", verdict: "fail", reason: "r" }] }
+    coerceResult({
+      verdicts: [
+        {
+          id: "E1",
+          verdict: "fail",
+          reason: "r",
+          additionalInformation: "info",
+        },
+      ],
+    }),
+    {
+      verdicts: [
+        {
+          id: "E1",
+          verdict: "fail",
+          reason: "r",
+          additionalInformation: "info",
+        },
+      ],
+    }
   );
   assert.deepEqual(coerceResult({}), { verdicts: [] });
   assert.deepEqual(coerceResult(null), { verdicts: [] });
 
   const messy = coerceResult({
     verdicts: [
-      { id: "E1", verdict: "yes", reason: 5 }, // unknown verdict, bad reason
+      { id: "E1", verdict: "yes", reason: 5, additionalInformation: 9 }, // unknown verdict, bad reason/info
       { verdict: "pass" }, // no id -> dropped
       { id: "E2", verdict: "pass" },
     ],
   });
   assert.deepEqual(messy.verdicts, [
-    { id: "E1", verdict: "unsure", reason: null },
-    { id: "E2", verdict: "pass", reason: null },
+    { id: "E1", verdict: "unsure", reason: null, additionalInformation: "" },
+    { id: "E2", verdict: "pass", reason: null, additionalInformation: "" },
   ]);
 });
 
@@ -48,7 +67,9 @@ test("coerceResult survives hostile shapes", () => {
       { id: "ok", verdict: "fail", reason: {} }, // bad reason -> null
     ],
   });
-  assert.deepEqual(r.verdicts, [{ id: "ok", verdict: "fail", reason: null }]);
+  assert.deepEqual(r.verdicts, [
+    { id: "ok", verdict: "fail", reason: null, additionalInformation: "" },
+  ]);
 });
 
 // Well-formed --full-summary review input passes through; the summary defaults

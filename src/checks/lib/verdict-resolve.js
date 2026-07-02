@@ -16,7 +16,8 @@
 
 import { finding } from "../../report/finding.js";
 
-/** @typedef {Map<string, {verdict: string, reason: ?string}>} VerdictMap */
+/** @typedef {Map<string, {verdict: string, reason: ?string,
+ *   additionalInformation?: string}>} VerdictMap */
 
 /**
  * One candidate, one outcome.

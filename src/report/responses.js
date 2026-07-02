@@ -50,18 +50,27 @@ function fill(template, item, data) {
   if (template == null) {
     return null;
   }
-  let out = template;
-  if (out.includes(PLACEHOLDER)) {
-    if (item == null) {
-      return null;
-    }
-    out = out.replaceAll(PLACEHOLDER, item);
+  // A {{item}} template with no item can't be filled - signal the caller to fall back.
+  if (template.includes(PLACEHOLDER) && item == null) {
+    return null;
   }
+  // Substitute every {{name}} in ONE pass from a fixed lookup: a slot value that
+  // itself contains "{{other}}" is emitted literally, never re-scanned - so two
+  // model-controlled slots (e.g. undeclared-build-source's explanation +
+  // buildInstructions) can't bleed into each other, and a "$&"-style value can't
+  // trigger a replacement pattern. Unknown {{names}} are left untouched.
+  const values = new Map();
   if (data) {
     for (const [name, value] of Object.entries(data)) {
-      out = out.replaceAll(`{{${name}}}`, String(value));
+      values.set(name, String(value));
     }
   }
+  if (item != null) {
+    values.set("item", item);
+  }
+  const out = template.replace(/\{\{(\w+)\}\}/g, (match, name) =>
+    values.has(name) ? values.get(name) : match
+  );
   return collapse(out);
 }
 

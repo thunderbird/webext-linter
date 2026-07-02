@@ -61,11 +61,13 @@ const VALID_CHECK_SEVERITIES = new Set([...CONCRETE_SEVERITIES, AUTO_SEVERITY]);
 
 // The `input` a check entry declares - which add-on artifact is ctx.addon when the
 // check runs. "auto" = the REVIEW TARGET (the built XPI in an XPI review, the
-// readable --scs-source in an SCS review); "xpi" = ALWAYS the built XPI (the
-// shipped artifact), for the structure checks that describe what ships. Required
-// on every check: runChecks routes each check to its artifact's context, so the
-// check reads one artifact and has no way to reach the other (see buildShippedCtx).
-const VALID_CHECK_INPUTS = new Set(["auto", "xpi"]);
+// readable --scs-source in an SCS review); "xpi" = ALWAYS the built XPI (the shipped
+// artifact), for the structure checks that describe what ships; "build" = the SCS
+// build files (the archive minus the review source minus node_modules), for the
+// build review. Required on every check: runChecks routes each check to its
+// artifact's context, so the check reads one artifact and has no way to reach
+// another (see buildShippedCtx / buildScsBuildCtx).
+const VALID_CHECK_INPUTS = new Set(["auto", "xpi", "build"]);
 
 /**
  * Whether `s` is a concrete finding severity (error/warning/info) - i.e. a value
@@ -86,11 +88,12 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {string} id
  * @property {string} title
  * @property {Severity} severity  Impact stamped onto the check's findings.
- * @property {"auto"|"xpi"} input  Which add-on artifact is ctx.addon when the check
- *   runs. "auto" = the review target (the built XPI in an XPI review, the readable
- *   --scs-source in an SCS review); "xpi" = always the built XPI (the shipped
- *   artifact), for the structure checks that describe what ships. Required -
- *   runChecks routes each check to its artifact's context (see buildShippedCtx).
+ * @property {"auto"|"xpi"|"build"} input  Which add-on artifact is ctx.addon when the
+ *   check runs. "auto" = the review target (the built XPI in an XPI review, the
+ *   readable --scs-source in an SCS review); "xpi" = always the built XPI (the shipped
+ *   artifact), for the structure checks that describe what ships; "build" = the SCS
+ *   build files, for the build review. Required - runChecks routes each check to its
+ *   artifact's context (see buildShippedCtx / buildScsBuildCtx).
  * @property {"deterministic"|"llm"} kind  Which registry section it came from.
  * @property {boolean} [diff]  Diff-mode gate: true = run only with a --diff-to
  *   baseline, false = run only WITHOUT one (new submissions), omitted = always.
@@ -414,8 +417,8 @@ export async function loadChecks(registry, { only, skip } = {}) {
       throw new Error(
         `rules/${id}.js is missing a valid \`input\` (got ${JSON.stringify(input)}; ` +
           `expected one of: ${[...VALID_CHECK_INPUTS].join(", ")}). ` +
-          "Every check must declare which add-on artifact it reads " +
-          "(auto = the review target, xpi = the built XPI)."
+          "Every check must declare which add-on artifact it reads (auto = the " +
+          "review target, xpi = the built XPI, build = the SCS build files)."
       );
     }
     checks.push({
@@ -545,13 +548,21 @@ function scsEligible(entry, inScsMode) {
  * @param {RunContext} [shippedCtx]  The SHIPPED-artifact context (built by the
  *   pipeline via buildShippedCtx); each `input: xpi` check is routed to it. IS ctx
  *   in an XPI review; omitted = every check runs over ctx.
+ * @param {RunContext} [buildCtx]  The SCS BUILD-files context (buildScsBuildCtx);
+ *   each `input: build` check is routed to it. SCS mode only; omitted otherwise.
  * @returns {Promise<{findings: object[], checks: object[], deferred: object[],
  *   total: number, manualItems: {ruleId: string, item: ?string,
  *   kind: string}[]}>}  `checks` ran in this loop; `deferred` are the
  *   post-summary checks for the caller to run next (continuing the [i/total]
  *   numbering); `total` is the whole-review check count.
  */
-export async function runChecks(ctx, registry, opts = {}, shippedCtx) {
+export async function runChecks(
+  ctx,
+  registry,
+  opts = {},
+  shippedCtx,
+  buildCtx
+) {
   // Two gates pick which checks run. The `diff` gate (a registry field) keys off
   // the mode: `diff: true` (e.g. strict-max-version-bump-only) needs a --diff-to
   // baseline (ctx.previous), `diff: false` is new-submission only (the same gate
@@ -605,6 +616,9 @@ export async function runChecks(ctx, registry, opts = {}, shippedCtx) {
   if (shippedCtx && shippedCtx !== ctx) {
     shippedCtx.note = ctx.note;
   }
+  if (buildCtx && buildCtx !== ctx) {
+    buildCtx.note = ctx.note;
+  }
   // Heading for the live activity feed, matching the report's section style. A
   // no-op when progress is off (JSON, the golden harness), so goldens are
   // unaffected.
@@ -612,10 +626,15 @@ export async function runChecks(ctx, registry, opts = {}, shippedCtx) {
   progress("");
   for (const [i, check] of checks.entries()) {
     // Route the check to its declared input artifact - the ONE place the choice is
-    // made. `input: xpi` runs over the shipped context (the built XPI); everything
-    // else over the review target. The check reads only its ctx.addon and has no way
-    // to reach the other artifact.
-    const checkCtx = check.input === "xpi" ? (shippedCtx ?? ctx) : ctx;
+    // made. `input: xpi` runs over the shipped context (the built XPI), `input: build`
+    // over the SCS build files, everything else over the review target. The check
+    // reads only its ctx.addon and has no way to reach another artifact.
+    const checkCtx =
+      check.input === "xpi"
+        ? (shippedCtx ?? ctx)
+        : check.input === "build"
+          ? (buildCtx ?? ctx)
+          : ctx;
     const out = await runOneCheck(checkCtx, check, `[${i + 1}/${total}]`);
     findings.push(...out.findings);
     // A check with `post-summary-recheck: R` hands its manual items to the

@@ -53,7 +53,7 @@ test("callVerdicts forces the report_verdicts function and coerces the result", 
   ]);
   assert.equal(req.model, "m");
   assert.deepEqual(result.verdicts, [
-    { id: "E1", verdict: "pass", reason: null },
+    { id: "E1", verdict: "pass", reason: null, additionalInformation: "" },
   ]);
 });
 

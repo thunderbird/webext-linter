@@ -53,9 +53,10 @@ import { wrapText } from "../util/text.js";
  * @typedef {object} LlmStep  What an LLM check returns under `run().llm`.
  * @property {Array<{id: string, file?: string, line?: number, note?: string,
  *   corpus?: string[]}>} candidates  The sites to judge; the check owns the ids.
- * @property {(verdicts: Map<string, {verdict: string, reason: ?string}>) =>
- *   {findings: object[], manual?: {item: ?string}[]}} resolve  Maps the per-id
- *   verdicts to findings + manual notes via the check's own id->data table.
+ * @property {(verdicts: Map<string, {verdict: string, reason: ?string,
+ *   additionalInformation?: string}>) => {findings: object[],
+ *   manual?: {item: ?string}[]}} resolve  Maps the per-id verdicts to findings +
+ *   manual notes via the check's own id->data table.
  */
 
 /**
@@ -78,6 +79,8 @@ export async function runLlmCheck(ctx, check, step) {
     narrateBatchHeader(check, candidates);
     // ctx is the check's ROUTED context (runOneCheck), so ctx.addon is the artifact
     // this check runs over - the model reads its files/inventory, not a captured one.
+    // Every check reads its routed ctx.addon (input: auto | xpi | build); there is no
+    // per-step artifact override.
     verdicts = await ctx.llm.evaluate({
       rubric: check.prompt,
       candidates,
@@ -86,7 +89,10 @@ export async function runLlmCheck(ctx, check, step) {
     narrateBatchVerdicts(candidates, verdicts);
   } else {
     verdicts = new Map(
-      candidates.map((c) => [c.id, { verdict: "unsure", reason: null }])
+      candidates.map((c) => [
+        c.id,
+        { verdict: "unsure", reason: null, additionalInformation: "" },
+      ])
     );
   }
   const { findings = [], manual = [] } = step.resolve(verdicts) || {};
@@ -155,7 +161,8 @@ function narrateBatchHeader(check, candidates) {
  * verdict. The internal id is never shown - the reviewer sees the file:line site
  * it points at.
  * @param {LlmStep["candidates"]} candidates
- * @param {Map<string, {verdict: string, reason: ?string}>} verdicts
+ * @param {Map<string, {verdict: string, reason: ?string,
+ *   additionalInformation?: string}>} verdicts
  */
 function narrateBatchVerdicts(candidates, verdicts) {
   for (const c of candidates) {

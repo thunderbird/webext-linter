@@ -8,7 +8,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildRunContext, buildShippedCtx } from "../../src/checks/context.js";
+import {
+  buildRunContext,
+  buildShippedCtx,
+  buildScsBuildCtx,
+} from "../../src/checks/context.js";
 
 const addonWith = (files, nonAuthored = []) => ({
   files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
@@ -81,4 +85,33 @@ test("buildShippedCtx swaps the artifact fields and is a no-op in an XPI review"
   const same = buildShippedCtx(ctx, ctx.addon);
   assert.equal(same, ctx);
   assert.equal(same.isShippedView, undefined);
+});
+
+// buildScsBuildCtx routes the SCS build corpus onto ctx.addon (the input: build seam),
+// shares run-state, and empties the source-only jsSources/apiUsages. The corpus is
+// projected through reviewView like every other ctx.addon, so a build check can never
+// read ctx.addon.manifest against another artifact's files.
+test("buildScsBuildCtx puts the build corpus on ctx.addon and strips manifest/sources", () => {
+  const source = addonWith({ "src/app.js": "export const x = 1;" });
+  const ctx = buildRunContext({
+    addon: source,
+    schema: { s: 1 },
+    options: {},
+    mode: "scs",
+  });
+  const buildFiles = new Map([["build.sh", Buffer.from("echo hi")]]);
+  // A full-addon shape (manifest present) must NOT leak through: reviewView strips it.
+  const buildAddon = { files: buildFiles, manifest: { name: "leak" } };
+
+  const build = buildScsBuildCtx(ctx, buildAddon);
+  assert.equal(build.addon.files, buildFiles); // the build corpus is the artifact
+  assert.equal(build.addon.manifest, undefined); // reviewView stripped it (no leak)
+  assert.deepEqual(build.jsSources, []); // source-only, emptied
+  assert.equal(build.apiUsages, undefined);
+  assert.equal(build.schema, ctx.schema); // shared run-state
+  assert.equal(build.manifest, ctx.manifest); // shipped manifest stays for framing
+
+  // The invalid-Experiment fallback shape {files:new Map()} is a valid, readable ctx.
+  const empty = buildScsBuildCtx(ctx, { files: new Map() });
+  assert.equal(empty.addon.files.size, 0);
 });

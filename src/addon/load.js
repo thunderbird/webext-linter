@@ -148,8 +148,9 @@ function assembleAddon(files, { source, kind }) {
   return addon;
 }
 
-// The dependency-manifest files the source-code-submission audit reads; the lock
-// names mirror src/vendor/locks.js.
+// The dependency-manifest files loadScsAddon brings from the archive root into the
+// review files (the root is the authoritative manifest); the lock names mirror
+// src/vendor/locks.js.
 const SCS_MANIFEST_FILES = [
   "package.json",
   "package-lock.json",
@@ -257,6 +258,74 @@ export function loadScsAddon(scsRoot, scsSource) {
     source: rel ? `${archive.source}:${rel}` : archive.source,
     kind: archive.kind,
   });
+}
+
+/**
+ * Load the BUILD files of a source-code submission: EVERY file in the scsRoot archive
+ * EXCEPT the review source (scsSource), the Experiment source (scsExpSource),
+ * node_modules (at any depth), and dotfiles/dotfolders (at any depth, except .npmrc).
+ * This is the tooling that BUILDS the add-on - build scripts, bundler configs, Makefiles,
+ * package.json/lock, READMEs - which the add-on review (loadScsAddon) deliberately
+ * drops. Keys keep their real archive-relative paths (nothing is prefix-stripped).
+ * buildScsBuildCtx wraps these as the SCS-only undeclared-build-source check's
+ * ctx.addon (via `input: build`), so its files never enter the review addon that the
+ * other checks scan.
+ *
+ * A pure EXCLUDE rule (no allow-list to maintain): whatever remains after removing the
+ * add-on source, the Experiment source, node_modules, and dot-prefixed paths is the
+ * build corpus, shown to the model wholesale. node_modules are the INSTALLED declared
+ * dependencies (reviewed via the dependency audit, not the build). Dotfiles/folders
+ * (.git, .github, .idea, .yarnrc, ...) are dropped as VCS/editor/CI noise - EXCEPT
+ * .npmrc, the npm/pnpm registry config the build-tooling checks read.
+ *
+ * When scsSource IS the archive root, every file is review source, so there are no
+ * build files (empty corpus -> the check skips).
+ * @param {string} scsRoot  Path to the source archive root (folder or zip).
+ * @param {string} scsSource  The --scs-source flag (the review source subtree).
+ * @param {string} [scsExpSource]  The --scs-exp-source flag; excluded too (it sits
+ *   inside scsSource, so this is defensive).
+ * @returns {{files: Map<string, Buffer>}}
+ */
+export function loadScsBuildFiles(scsRoot, scsSource, scsExpSource) {
+  const archive = loadAddon(scsRoot);
+  const files = new Map();
+  const src = scsRootRelative(scsSource, scsRoot, "--scs-source");
+  if (!src) {
+    // The review source IS the archive root: every file is add-on source, so there
+    // are no build files outside it.
+    return { files };
+  }
+  const prefixes = [src];
+  if (scsExpSource) {
+    const exp = scsRootRelative(scsExpSource, scsRoot, "--scs-exp-source");
+    if (exp) {
+      prefixes.push(exp);
+    }
+  }
+  for (const [p, buf] of archive.files) {
+    // Installed dependencies are not build tooling (and are huge) - skip any file
+    // under a node_modules/ directory at any depth.
+    if (/(^|\/)node_modules\//.test(p)) {
+      continue;
+    }
+    // Dot-prefixed paths at any depth are VCS/editor/CI noise (.git, .github, .idea,
+    // .yarnrc, ...) - EXCEPT a plain .npmrc, the npm/pnpm registry config the
+    // build-registry-redirect check reads (kept unless itself buried in a dotfolder).
+    const segments = p.split("/");
+    const dotSegments = segments.filter((s) => s.startsWith("."));
+    if (
+      dotSegments.length > 0 &&
+      !(dotSegments.length === 1 && segments[segments.length - 1] === ".npmrc")
+    ) {
+      continue;
+    }
+    // The review source + Experiment subtree are reviewed as the add-on, not the build.
+    if (prefixes.some((pre) => p === pre || p.startsWith(`${pre}/`))) {
+      continue;
+    }
+    files.set(p, buf);
+  }
+  return { files };
 }
 
 /**

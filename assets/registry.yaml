@@ -587,6 +587,35 @@ deterministic-checks:
   response: |-
     A build dependency (devDependency) has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update {{item}} to {{fixed}} or later and resubmit.
 
+# Deterministic (SCS only): the build must use npm or pnpm - the two package managers
+# that share the .npmrc config format, keeping the reviewable surface small. A committed
+# yarn/bun fingerprint anywhere in the build corpus (a lockfile, or the package.json
+# "packageManager" field) is a hard reject; the offending tool is surfaced as {{item}}
+# and the finding anchors at the fingerprint file. Pinning is a separate check
+# (unpinned-dependency); the open-ended build review is undeclared-build-source.
+- title: Unsupported build tool
+  severity: error
+  scs: true
+  check: unsupported-build-tool
+  input: build
+  response: |-
+    This add-on is built with {{item}}; only npm and pnpm are supported. Please provide an npm or pnpm build (commit a package-lock.json or pnpm-lock.yaml) so the dependency install can be reviewed against the declared dependencies.
+
+# Deterministic (SCS only): a committed .npmrc that SETS a package registry (registry=
+# or @scope:registry=, case-insensitive) is rejected outright - a legitimate build never
+# needs to set the registry (npm defaults to the public one), and any setting can only
+# point the install at another source, pulling the SAME declared package names from an
+# UNDECLARED source and leaving package.json/lock a clean decoy. The value is not parsed;
+# the raw value is surfaced as {{item}}. Every .npmrc in the build corpus is scanned (a
+# build can run from a subfolder), and .npmrc is the one dotfile kept there.
+- title: Build registry override
+  severity: error
+  scs: true
+  check: build-registry-redirect
+  input: build
+  response: |-
+    The .npmrc sets a package registry ({{item}}), which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
+
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the deterministic repo-name candidate, then an
 # LLM-proposed name, each re-proved by content hash); surfaced as info so the
@@ -1125,6 +1154,75 @@ llm-checks:
     documented options-page setting) and is never sent without consent.
   response: |-
     The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
+
+# LLM check (SCS only): in a source-code submission the reviewer BUILDS the add-on
+# from source, but the dependency audit reads only the root package.json/lock. A
+# build script or config could ignore package.json and pull code/resources from an
+# UNDECLARED source (a raw URL, curl|sh, a git clone of an unpinned repo, a CDN, a
+# postinstall hook), leaving package.json a clean decoy. ALL the build files (build/CI
+# scripts, bundler configs, Makefile, .npmrc, README/BUILD docs, the package.json
+# scripts/hooks) are judged TOGETHER as ONE whole-build candidate, with package.json +
+# the lock as the declared-dependency reference. `input: build` routes ctx.addon to
+# those build files (archive minus the review source minus node_modules), so the check
+# reads them like any other check reads its artifact. The structured verdict is
+# {verdict, reason = the build explanation, additionalInformation = the build steps}.
+# fail -> an error finding (response = explanation). pass / unsure / offline -> an
+# extended manual-review item (response = explanation + the build steps).
+# Neutral title + response: the entry drives BOTH a fail finding (an error) and the
+# pass/offline extended-review advisory, so both must read for either - the verdict
+# severity + the model's {{explanation}} carry the fail/pass specifics (no fail-only
+# imperative in the response).
+- title: Build process review
+  severity: error
+  scs: true
+  check: undeclared-build-source
+  input: build
+  prompt: |-
+    You are shown ALL the BUILD files of a source-code submission - everything outside
+    the add-on source and the installed dependencies: the build scripts, bundler configs
+    (webpack/vite/rollup/esbuild), Makefiles, and the package.json build "scripts" /
+    install hooks - TOGETHER with package.json and its lock file, the AUTHORITATIVE list
+    of declared dependencies ("dependencies", "devDependencies", "optionalDependencies",
+    "peerDependencies" resolved from npm or the lock file). There is one candidate id,
+    BUILD.
+
+    The reviewer builds the add-on from this readable source, so every piece of code and
+    every resource that ends up in the build MUST come from a declared dependency. Judge
+    the build AS A WHOLE - a URL or repo defined in one file may be used by a script or
+    hook in another.
+
+    verdict fail: some part of the build fetches or executes code or a resource from a
+    source that is NOT among the declared dependencies - a raw http(s) URL, curl / wget
+    / Invoke-WebRequest / a download-and-run of a remote blob, a `git clone` of a repo
+    not pinned in the lock file, a <script>/CDN tag, a postinstall/preinstall/prepare
+    hook that fetches remote code, or a script that downloads and runs a build tool.
+    Installing the declared dependencies (an npm install/ci that resolves the lock
+    file, importing a declared package) is NOT a fail.
+    verdict pass: every source the build pulls from is a declared dependency, or the
+    build fetches/executes nothing external at all (pure local bundling, copying, or
+    compilation of the submitted source).
+    verdict unsure: you genuinely cannot tell.
+
+    Separate deterministic checks already own three build-policy violations - do NOT
+    report them here: a package registry set in an .npmrc (`registry=` /
+    `@scope:registry=`), a package manager other than npm or pnpm (a yarn/bun lockfile),
+    and an unpinned dependency version. Focus on code or resources fetched or executed
+    from OUTSIDE the declared dependencies.
+
+    In `reason`, explain in a sentence or two how the add-on is built and whether it
+    pulls from any external or undeclared source (shown to the developer). In
+    `additionalInformation`, state how to build the XPI as one short self-contained note
+    ("Build the XPI with: ..." or "The source documents no build steps."), taking the
+    steps from the scanned files (a README/BUILD/CONTRIBUTING, or the package.json
+    scripts) and CALLING OUT any dedicated Thunderbird build instructions. Judge only
+    whether sources are declared - not code quality.
+  instructions: |-
+    Reproduce the build from the source by hand and confirm it pulls ONLY from the
+    dependencies declared in package.json/lock - no remote code or resources from a raw
+    URL, curl/wget, a git clone of an unpinned repo, a CDN, or a postinstall hook.
+    {{buildInstructions}}
+  response: |-
+    {{explanation}} Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 
 # LLM check: the WEAK disguised-transmission residue - a covert channel (resource
 # URL, stylesheet url(), window.open, or page navigation) built with a runtime

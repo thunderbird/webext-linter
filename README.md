@@ -125,6 +125,12 @@ node verify.js built.xpi --scs-root ./source-archive --scs-source src
   must be a pinned npm package or a GitHub URL, and is gated on popularity
   (npm downloads / GitHub stars) and known vulnerabilities. Anything unpinned or
   from another source is rejected.
+- The **build tooling** (everything in `--scs-root` outside `--scs-source` - build
+  scripts, configs, `.npmrc`) is reviewed: the build must use **npm or pnpm** (a
+  `yarn.lock` / `bun` build is rejected) and must not point the package registry
+  elsewhere (an `.npmrc` `registry=` is rejected), and the LLM judges whether it pulls
+  code or resources from a source not among the declared dependencies (a raw URL,
+  `curl|sh`, an unpinned `git clone`, a CDN, a postinstall hook).
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest, the experiments, the file-completeness checks (bundled / web-accessible
   / unused / locales), the `--diff-to` baseline, and the behavioral LLM audit.

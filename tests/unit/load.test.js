@@ -9,6 +9,7 @@ import path from "node:path";
 import {
   loadAddon,
   loadScsAddon,
+  loadScsBuildFiles,
   scsRootRelative,
   scsExpSourceRelative,
 } from "../../src/addon/load.js";
@@ -72,6 +73,73 @@ test("loadScsAddon partitions scsSource, keeps root package.json + the source's 
     [...addon.files.keys()].sort()
   );
 
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+// loadScsBuildFiles is the COMPLEMENT of loadScsAddon: the archive minus the review
+// source (scsSource), the Experiment source (scsExpSource), node_modules, and
+// dotfiles/dotfolders - the build scripts / config the review otherwise drops. Keys
+// keep their real archive paths (unstripped); the root package.json/lock stay, and a
+// plain .npmrc is kept (the one dotfile exception the build-tooling checks read).
+test("loadScsBuildFiles returns the build files outside scsSource + scsExpSource", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scsb-"));
+  fs.mkdirSync(path.join(root, "src", "experiment"), { recursive: true });
+  fs.mkdirSync(path.join(root, "scripts"));
+  // A NESTED node_modules (installed declared deps) - excluded at any depth.
+  fs.mkdirSync(path.join(root, "sub", "node_modules", "dep"), {
+    recursive: true,
+  });
+  // Dotfolders (.github CI) are excluded; a plain .npmrc is KEPT; a .npmrc buried in a
+  // dotfolder is still excluded.
+  fs.mkdirSync(path.join(root, ".github", "workflows"), { recursive: true });
+  fs.writeFileSync(path.join(root, "package.json"), "{}");
+  fs.writeFileSync(path.join(root, "package-lock.json"), "{}");
+  fs.writeFileSync(path.join(root, "webpack.config.js"), "module.exports={}");
+  fs.writeFileSync(path.join(root, "scripts", "build.sh"), "echo build");
+  fs.writeFileSync(path.join(root, ".npmrc"), "registry=https://evil");
+  fs.writeFileSync(path.join(root, ".github", ".npmrc"), "registry=https://x");
+  fs.writeFileSync(
+    path.join(root, ".github", "workflows", "ci.yml"),
+    "on: push"
+  );
+  fs.writeFileSync(path.join(root, "src", "background.js"), "1;\n");
+  fs.writeFileSync(path.join(root, "src", "experiment", "exp.js"), "1;\n");
+  fs.writeFileSync(
+    path.join(root, "sub", "node_modules", "dep", "webpack.config.js"),
+    ""
+  );
+
+  const { files } = loadScsBuildFiles(root, "src", "src/experiment");
+  assert.deepEqual([...files.keys()].sort(), [
+    ".npmrc",
+    "package-lock.json",
+    "package.json",
+    "scripts/build.sh",
+    "webpack.config.js",
+  ]);
+  // The review source (src/*), the Experiment source, node_modules at any depth, and
+  // dotfiles/dotfolders are excluded; a plain .npmrc is kept; kept keys are unstripped.
+  assert.ok(files.has(".npmrc"));
+  assert.ok(!files.has("background.js") && !files.has("src/background.js"));
+  assert.ok(!files.has("src/experiment/exp.js"));
+  assert.ok(!files.has("sub/node_modules/dep/webpack.config.js"));
+  assert.ok(!files.has(".github/.npmrc")); // a .npmrc buried in a dotfolder is dropped
+  assert.ok(!files.has(".github/workflows/ci.yml"));
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+// When scsSource IS the archive root, every file is review source, so there are no
+// build files (empty corpus -> the check skips).
+test("loadScsBuildFiles with scsSource at the archive root returns no build files", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scsb0-"));
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    '{"scripts":{"build":"x"}}'
+  );
+  fs.writeFileSync(path.join(root, "background.js"), "1;\n");
+  const { files } = loadScsBuildFiles(root, ".", "");
+  assert.equal(files.size, 0);
   fs.rmSync(root, { recursive: true, force: true });
 });
 

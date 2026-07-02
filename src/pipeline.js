@@ -20,10 +20,20 @@
 import { resolveSchemaZip } from "./schema/fetch.js";
 import { loadSchemaFiles } from "./schema/load.js";
 import { buildSchemaIndex } from "./schema/index.js";
-import { loadAddon, loadScsAddon, scsExpSourceRelative } from "./addon/load.js";
+import {
+  loadAddon,
+  loadScsAddon,
+  loadScsBuildFiles,
+  scsExpSourceRelative,
+  scsRootRelative,
+} from "./addon/load.js";
 import { resolveReviewUrl } from "./addon/atn.js";
 import { runChecks, runOneCheck, loadRegistry } from "./checks/registry.js";
-import { buildRunContext, buildShippedCtx } from "./checks/context.js";
+import {
+  buildRunContext,
+  buildShippedCtx,
+  buildScsBuildCtx,
+} from "./checks/context.js";
 import { buildSummarizer, buildAddonSummarizer } from "./checks/summaries.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
 import { headerLines } from "./report/format.js";
@@ -173,6 +183,19 @@ export async function runPipeline(opts) {
   // authored, incl. minified) is just the SCS path - the readable sources are the
   // review target there, so even a minified-looking one is reviewed as authored.
   const mode = opts.scsRoot && opts.scsSource ? "scs" : "xpi";
+  // --scs-source must be a SUBFOLDER of --scs-root, not the root itself: if they are
+  // the same path (scsRootRelative resolves ".", an absolute root, or a literal match
+  // all to ""), there is no source/build separation - the readable source would be the
+  // whole submission and there would be no build files to review.
+  if (
+    mode === "scs" &&
+    !scsRootRelative(opts.scsSource, opts.scsRoot, "--scs-source")
+  ) {
+    throw new Error(
+      "--scs-source must be a subfolder of --scs-root, not --scs-root itself " +
+        `("${opts.scsSource}" resolves to the archive root).`
+    );
+  }
   const scanMinified = mode === "scs";
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly).
@@ -344,6 +367,14 @@ export async function runPipeline(opts) {
       setupStep("Auditing source dependencies");
       await verifyScsDependencies(addon, opts.vendorNet);
       addon.bundled = classifyBundled(addon, { scanMinified, libraryHashes });
+      // The BUILD files (archive minus the review source + Experiment source) - the
+      // build scripts/config the review otherwise drops. buildScsBuildCtx wraps these
+      // as the `input: build` check's ctx.addon; they never merge into the review addon.
+      addon.buildFiles = loadScsBuildFiles(
+        opts.scsRoot,
+        opts.scsSource,
+        opts.scsExpSource
+      );
     } else {
       // XPI: the full vendored-library pipeline.
       // 1d. Verify the resolved declarations over the network ONCE - fetch,
@@ -650,6 +681,17 @@ async function reviewAddon(
   // ever sees the artifact it was routed to. In an XPI review the two are one object
   // (buildShippedCtx returns ctx unchanged when the XPI IS the review target).
   const shippedCtx = buildShippedCtx(ctx, xpiAddon);
+  // SCS: a sibling context whose addon is the build files (the archive minus the
+  // review source minus node_modules), so the `input: build` check
+  // (undeclared-build-source) reads them off ctx.addon via the same one-place
+  // `input` routing - no separate ctx field. Always a build context in SCS mode - an
+  // empty one when an invalid Experiment's reject-only profile skipped loading the
+  // files - so an `input: build` check reads a build artifact (never the review
+  // source) and cleanly skips on empty. Undefined in XPI mode, where no such check runs.
+  const buildCtx =
+    mode === "scs"
+      ? buildScsBuildCtx(ctx, addon.buildFiles ?? { files: new Map() })
+      : undefined;
 
   // The registry.yaml file drives which checks run, by `phase`: runChecks runs
   // the default-phase checks in its loop now and returns the post-summary checks
@@ -675,7 +717,8 @@ async function reviewAddon(
     ctx,
     registry,
     { only: checksOnly, skip: baseSkip },
-    shippedCtx
+    shippedCtx,
+    buildCtx
   );
 
   // Advisory AI summaries, generated at the tail of the activity feed (a
@@ -718,7 +761,12 @@ async function reviewAddon(
   for (const [j, check] of deferred.entries()) {
     // Route like the main loop: each check runs over the artifact its `input`
     // selects (all post-summary checks are `auto` today, but route for correctness).
-    const checkCtx = check.input === "xpi" ? shippedCtx : ctx;
+    const checkCtx =
+      check.input === "xpi"
+        ? shippedCtx
+        : check.input === "build"
+          ? (buildCtx ?? ctx)
+          : ctx;
     const out = await runOneCheck(
       checkCtx,
       check,

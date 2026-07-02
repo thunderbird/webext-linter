@@ -202,3 +202,27 @@ export function buildShippedCtx(ctx, xpiAddon) {
     isShippedView: true,
   };
 }
+
+/**
+ * A sibling review context whose `addon` is the SCS BUILD files - the tooling that
+ * builds the add-on (scripts, configs, package.json/lock: everything in --scs-root
+ * outside the review source, with node_modules and dotfiles excluded, from
+ * loadScsBuildFiles). The
+ * `input: build` check (undeclared-build-source) is routed here, so it reads the
+ * build corpus off ctx.addon like any other check reads its artifact - keeping
+ * artifact selection the single `input` seam, no separate ctx field. SCS mode only.
+ * The build corpus is projected through reviewView (like every other ctx.addon), so a
+ * build check can never read ctx.addon.manifest/experiments against another artifact's
+ * files; the shipped manifest stays on ctx.manifest for the shared LLM framing.
+ * @param {RunContext} ctx  The review context.
+ * @param {{files: Map<string, Buffer>}} buildAddon  The build-file corpus.
+ * @returns {RunContext}
+ */
+export function buildScsBuildCtx(ctx, buildAddon) {
+  return {
+    ...ctx,
+    addon: reviewView(buildAddon),
+    jsSources: [],
+    apiUsages: undefined,
+  };
+}

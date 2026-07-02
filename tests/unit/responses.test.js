@@ -59,6 +59,52 @@ test("renderFindings uses the generic find-lib-on-cdn template (real library lis
   assert.equal(f.listItem, true);
 });
 
+// Slots are filled in ONE pass from a fixed snapshot, so a model-supplied value that
+// itself contains another slot's "{{placeholder}}" is emitted literally, never
+// replaced by that slot's value. undeclared-build-source is the first check with two
+// model-controlled slots (explanation + buildInstructions) in one item, which exposes
+// this: a stray {{buildInstructions}} inside the explanation must NOT splice in the
+// real build steps.
+test("renderManualItems does not cross-splice one model slot's value into another", () => {
+  const items = renderManualItems(
+    [
+      {
+        ruleId: "undeclared-build-source",
+        item: null,
+        kind: "escalation",
+        data: {
+          explanation: "the reason mentions {{buildInstructions}} verbatim",
+          buildInstructions: "npm ci && npm run build",
+        },
+      },
+    ],
+    registry
+  );
+  assert.match(
+    items[0].response,
+    /mentions \{\{buildInstructions\}\} verbatim/
+  );
+  assert.doesNotMatch(items[0].response, /mentions npm ci/);
+
+  // A slot value containing "$&"/"$1" (String.replace special patterns) renders
+  // literally - fill() uses a function replacer, not a string replacement.
+  const dollar = renderManualItems(
+    [
+      {
+        ruleId: "undeclared-build-source",
+        item: null,
+        kind: "escalation",
+        data: {
+          explanation: "cost is $& and $1 and $$",
+          buildInstructions: "",
+        },
+      },
+    ],
+    registry
+  );
+  assert.match(dollar[0].response, /cost is \$& and \$1 and \$\$/);
+});
+
 // An orchestrator system finding (ruleId "check-failed") renders from the
 // registry `messages` map, with the check id filled in.
 test("renderFindings renders a system message for check-failed", () => {
