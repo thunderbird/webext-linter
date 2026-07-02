@@ -39,6 +39,7 @@ import dataExfiltration from "../../src/checks/rules/data-exfiltration.js";
 import undeclaredBuildSource from "../../src/checks/rules/undeclared-build-source.js";
 import unsupportedBuildTool from "../../src/checks/rules/unsupported-build-tool.js";
 import buildRegistryRedirect from "../../src/checks/rules/build-registry-redirect.js";
+import committedNodeModules from "../../src/checks/rules/committed-node-modules.js";
 import cleartextTransmission from "../../src/checks/rules/cleartext-transmission.js";
 import privacyPolicy from "../../src/checks/rules/privacy-policy.js";
 import nativeMessaging from "../../src/checks/rules/native-messaging.js";
@@ -595,6 +596,7 @@ test("checks carry the scs mode tag (false=XPI-only, true=SCS-only, undefined=bo
   assert.equal(scs("undeclared-build-source"), true); // SCS-only build review
   assert.equal(scs("unsupported-build-tool"), true); // SCS-only build policy
   assert.equal(scs("build-registry-redirect"), true); // SCS-only build policy
+  assert.equal(scs("committed-node-modules"), true); // SCS-only build policy
   assert.equal(scs("eval-call"), undefined); // a code check: both modes
   assert.equal(scs("unknown-api"), undefined);
 });
@@ -646,6 +648,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     .sort();
   assert.deepEqual(build, [
     "build-registry-redirect",
+    "committed-node-modules",
     "undeclared-build-source",
     "unsupported-build-tool",
   ]);
@@ -1066,6 +1069,25 @@ test("build-registry-redirect scans nested .npmrc and rejects any registry key",
   assert.equal(at(".npmrc", "registry=https://registry.npmjs.org/").length, 1);
   assert.equal(at(".npmrc", "@a:registry=https://x/").length, 1);
   assert.equal(at(".npmrc", "REGISTRY=https://evil/").length, 1);
+});
+
+// ---- committed-node-modules (SCS deterministic: no committed node_modules) ----
+
+// Each node_modules directory the loader recorded (never read) becomes an error finding
+// anchored at that directory; none recorded -> no finding.
+test("committed-node-modules flags each recorded node_modules directory", () => {
+  const run = (nodeModules) =>
+    committedNodeModules.run({ addon: { nodeModules } });
+  const out = run(["node_modules", "packages/a/node_modules"]);
+  assert.equal(out.length, 2);
+  assert.deepEqual(
+    out.map((f) => f.item),
+    ["node_modules", "packages/a/node_modules"]
+  );
+  assert.equal(out[0].file, "node_modules");
+  // None recorded, or no addon -> no finding.
+  assert.deepEqual(run([]), []);
+  assert.deepEqual(committedNodeModules.run({}), []);
 });
 
 // ---- manual-checks diff gate (the "Forked add-on" reminder) ----

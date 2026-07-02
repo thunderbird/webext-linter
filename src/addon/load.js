@@ -91,6 +91,9 @@ import { buildManifestLoc } from "./manifest-loc.js";
  * @property {"zip"|"dir"} kind
  * @property {Map<string, Buffer>} files  Add-on-relative path (posix "/")
  *   -> contents.
+ * @property {string[]} nodeModules  Posix paths of node_modules directories
+ *   skipped at load (their contents are never read); empty when none. In SCS
+ *   mode the committed-node-modules check rejects each.
  * @property {?Manifest} manifest  Parsed; null if missing/invalid.
  * @property {string|null} manifestError     Parse error message, if any.
  * @property {?import("./manifest-loc.js").ManifestLoc} manifestLoc  Resolves a
@@ -108,11 +111,18 @@ export function loadAddon(source) {
     throw new Error(`Add-on not found: ${resolved}`);
   }
   const stat = fs.statSync(resolved);
-  const files = stat.isDirectory() ? readDir(resolved) : readZip(resolved);
-  return assembleAddon(files, {
+  const { files, nodeModules } = stat.isDirectory()
+    ? readDir(resolved)
+    : readZip(resolved);
+  const addon = assembleAddon(files, {
     source: resolved,
     kind: stat.isDirectory() ? "dir" : "zip",
   });
+  // Installed-dependency directories are skipped at load (never read) and only their
+  // paths are recorded - a committed node_modules is a hard fail (committed-node-modules
+  // in SCS mode), never reviewable input.
+  addon.nodeModules = nodeModules;
+  return addon;
 }
 
 /**
@@ -262,21 +272,21 @@ export function loadScsAddon(scsRoot, scsSource) {
 
 /**
  * Load the BUILD files of a source-code submission: EVERY file in the scsRoot archive
- * EXCEPT the review source (scsSource), the Experiment source (scsExpSource),
- * node_modules (at any depth), and dotfiles/dotfolders (at any depth, except .npmrc).
- * This is the tooling that BUILDS the add-on - build scripts, bundler configs, Makefiles,
- * package.json/lock, READMEs - which the add-on review (loadScsAddon) deliberately
- * drops. Keys keep their real archive-relative paths (nothing is prefix-stripped).
- * buildScsBuildCtx wraps these as the SCS-only undeclared-build-source check's
- * ctx.addon (via `input: build`), so its files never enter the review addon that the
- * other checks scan.
+ * EXCEPT the review source (scsSource), the Experiment source (scsExpSource), and
+ * dotfiles/dotfolders (at any depth, except .npmrc). node_modules never appears here -
+ * loadAddon skips it at load (its contents are never read); its directories are passed
+ * through as `nodeModules` for the committed-node-modules check. This is the tooling
+ * that BUILDS the add-on - build scripts, bundler configs, Makefiles, package.json/lock,
+ * READMEs - which the add-on review (loadScsAddon) deliberately drops. Keys keep their
+ * real archive-relative paths (nothing is prefix-stripped). buildScsBuildCtx wraps these
+ * as the SCS-only `input: build` checks' ctx.addon, so its files never enter the review
+ * addon that the other checks scan.
  *
  * A pure EXCLUDE rule (no allow-list to maintain): whatever remains after removing the
- * add-on source, the Experiment source, node_modules, and dot-prefixed paths is the
- * build corpus, shown to the model wholesale. node_modules are the INSTALLED declared
- * dependencies (reviewed via the dependency audit, not the build). Dotfiles/folders
- * (.git, .github, .idea, .yarnrc, ...) are dropped as VCS/editor/CI noise - EXCEPT
- * .npmrc, the npm/pnpm registry config the build-tooling checks read.
+ * add-on source, the Experiment source, and dot-prefixed paths is the build corpus,
+ * shown to the model wholesale. Dotfiles/folders (.git, .github, .idea, .yarnrc, ...)
+ * are dropped as VCS/editor/CI noise - EXCEPT .npmrc, the npm/pnpm registry config the
+ * build-tooling checks read.
  *
  * When scsSource IS the archive root, every file is review source, so there are no
  * build files (empty corpus -> the check skips).
@@ -284,7 +294,7 @@ export function loadScsAddon(scsRoot, scsSource) {
  * @param {string} scsSource  The --scs-source flag (the review source subtree).
  * @param {string} [scsExpSource]  The --scs-exp-source flag; excluded too (it sits
  *   inside scsSource, so this is defensive).
- * @returns {{files: Map<string, Buffer>}}
+ * @returns {{files: Map<string, Buffer>, nodeModules: string[]}}
  */
 export function loadScsBuildFiles(scsRoot, scsSource, scsExpSource) {
   const archive = loadAddon(scsRoot);
@@ -293,7 +303,7 @@ export function loadScsBuildFiles(scsRoot, scsSource, scsExpSource) {
   if (!src) {
     // The review source IS the archive root: every file is add-on source, so there
     // are no build files outside it.
-    return { files };
+    return { files, nodeModules: archive.nodeModules };
   }
   const prefixes = [src];
   if (scsExpSource) {
@@ -303,11 +313,8 @@ export function loadScsBuildFiles(scsRoot, scsSource, scsExpSource) {
     }
   }
   for (const [p, buf] of archive.files) {
-    // Installed dependencies are not build tooling (and are huge) - skip any file
-    // under a node_modules/ directory at any depth.
-    if (/(^|\/)node_modules\//.test(p)) {
-      continue;
-    }
+    // node_modules never reaches here - loadAddon skips it at load (never read) and
+    // reports it as archive.nodeModules for the committed-node-modules check.
     // Dot-prefixed paths at any depth are VCS/editor/CI noise (.git, .github, .idea,
     // .yarnrc, ...) - EXCEPT a plain .npmrc, the npm/pnpm registry config the
     // build-registry-redirect check reads (kept unless itself buried in a dotfolder).
@@ -325,16 +332,17 @@ export function loadScsBuildFiles(scsRoot, scsSource, scsExpSource) {
     }
     files.set(p, buf);
   }
-  return { files };
+  return { files, nodeModules: archive.nodeModules };
 }
 
 /**
  * @param {string} zipPath  Path to the .xpi/.zip archive.
- * @returns {Map<string, Buffer>}
+ * @returns {{files: Map<string, Buffer>, nodeModules: string[]}}
  */
 function readZip(zipPath) {
   const zip = new AdmZip(zipPath);
   const files = new Map();
+  const nodeModules = new Set();
   for (const entry of zip.getEntries()) {
     if (entry.isDirectory) {
       continue;
@@ -346,27 +354,49 @@ function readZip(zipPath) {
       warn(`Skipping unsafe archive entry: ${entry.entryName}`);
       continue;
     }
+    // Never decompress an installed-dependency tree: record the outer node_modules
+    // directory and skip BEFORE getData(), so its contents never enter memory.
+    const segs = name.split("/");
+    const nm = segs.indexOf("node_modules");
+    if (nm !== -1 && nm < segs.length - 1) {
+      nodeModules.add(segs.slice(0, nm + 1).join("/"));
+      continue;
+    }
     files.set(name, entry.getData());
   }
-  return files;
+  return { files, nodeModules: [...nodeModules] };
 }
 
 /**
  * @param {string} dir  Root directory of the unpacked add-on.
- * @returns {Map<string, Buffer>}
+ * @returns {{files: Map<string, Buffer>, nodeModules: string[]}}
  */
 function readDir(dir) {
   const files = new Map();
+  const nodeModules = [];
   /** @param {string} current  Directory to recurse into. */
   const walk = (current) => {
     for (const e of fs.readdirSync(current, { withFileTypes: true })) {
       const full = path.join(current, e.name);
       if (e.isSymbolicLink()) {
-        // Skip symlinks rather than follow them: a real .xpi has none, and
-        // following could pull in host files or loop. Warn so it is not silent.
-        warn(`Skipping symlink (not packaged): ${path.relative(dir, full)}`);
+        // A symlink named node_modules is a committed dependency tree too: record it
+        // by name (its target is never followed or read) so committed-node-modules
+        // still fires. Other symlinks are skipped rather than followed: a real .xpi
+        // has none, and following could pull in host files or loop. Warn on those so
+        // the skip is not silent.
+        if (e.name === "node_modules") {
+          nodeModules.push(normalize(path.relative(dir, full)));
+        } else {
+          warn(`Skipping symlink (not packaged): ${path.relative(dir, full)}`);
+        }
       } else if (e.isDirectory()) {
-        walk(full);
+        // Never read an installed-dependency tree: record it and do NOT recurse, so
+        // its (huge) contents never enter memory.
+        if (e.name === "node_modules") {
+          nodeModules.push(normalize(path.relative(dir, full)));
+        } else {
+          walk(full);
+        }
       } else if (e.isFile()) {
         const rel = path.relative(dir, full);
         files.set(normalize(rel), fs.readFileSync(full));
@@ -374,7 +404,7 @@ function readDir(dir) {
     }
   };
   walk(dir);
-  return files;
+  return { files, nodeModules };
 }
 
 /**

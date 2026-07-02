@@ -19,9 +19,10 @@
 //
 // The check declares `input: build`, so the orchestrator routes ctx.addon to the
 // build files (buildScsBuildCtx: every file outside the review source, the Experiment
-// source, node_modules, and dotfiles - see loadScsBuildFiles) - read like any other
-// check reads its artifact, and fed to the model through the normal evaluate path
-// (framing + wrapFile injection defense, identical to the llm-summary).
+// source, and dotfiles - see loadScsBuildFiles; node_modules is skipped earlier, at
+// load, so it never reaches the corpus) - read like any other check reads its artifact,
+// and fed to the model through the normal evaluate path (framing + wrapFile injection
+// defense, identical to the llm-summary).
 //
 // The WHOLE build corpus is judged: which files count as build files is a pure exclude
 // rule in loadScsBuildFiles, so there is nothing to select here - the check sends every
@@ -43,8 +44,9 @@ export default {
    */
   run(ctx) {
     // input: build - the orchestrator routed ctx.addon to the build files
-    // (loadScsBuildFiles already excluded the review source, the Experiment source,
-    // node_modules, and dotfiles). No files left -> nothing to review.
+    // (loadScsBuildFiles excluded the review source, the Experiment source, and
+    // dotfiles; node_modules was skipped earlier, at load). No files left -> nothing
+    // to review.
     const build = ctx.addon;
     if (!build?.files?.size) {
       return { findings: [] };

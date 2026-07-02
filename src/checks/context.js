@@ -215,7 +215,8 @@ export function buildShippedCtx(ctx, xpiAddon) {
  * build check can never read ctx.addon.manifest/experiments against another artifact's
  * files; the shipped manifest stays on ctx.manifest for the shared LLM framing.
  * @param {RunContext} ctx  The review context.
- * @param {{files: Map<string, Buffer>}} buildAddon  The build-file corpus.
+ * @param {{files: Map<string, Buffer>, nodeModules?: string[]}} buildAddon  The
+ *   build-file corpus (nodeModules rides along for the committed-node-modules check).
  * @returns {RunContext}
  */
 export function buildScsBuildCtx(ctx, buildAddon) {

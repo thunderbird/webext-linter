@@ -32,6 +32,31 @@ test("directory load skips symlinks but keeps real files", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// A symlink named node_modules is still a committed dependency tree: it is recorded
+// (so committed-node-modules fires) but never followed - its target is not read.
+test("directory load records a symlinked node_modules without following it", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-nmsym-"));
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  // Point node_modules at an out-of-tree target: it must be recorded, never followed.
+  fs.symlinkSync(
+    path.join(os.tmpdir(), "wrr-nm-target"),
+    path.join(dir, "node_modules"),
+    "dir"
+  );
+
+  const addon = loadAddon(dir);
+  assert.deepEqual(addon.nodeModules, ["node_modules"]);
+  assert.ok(
+    ![...addon.files.keys()].some((k) => k.startsWith("node_modules")),
+    "symlink target not read"
+  );
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // A source-code submission: the add-on code is at <root>/src, package.json/lock at
 // the root. loadScsAddon partitions the src subtree (prefix stripped) and brings the
 // root package.json along (for the dependency audit). The source corpus stays PURE -
@@ -85,10 +110,12 @@ test("loadScsBuildFiles returns the build files outside scsSource + scsExpSource
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scsb-"));
   fs.mkdirSync(path.join(root, "src", "experiment"), { recursive: true });
   fs.mkdirSync(path.join(root, "scripts"));
-  // A NESTED node_modules (installed declared deps) - excluded at any depth.
+  // node_modules is skipped at LOAD (never read) and reported: a nested one (any depth)
+  // and one INSIDE the review source are both recorded, neither read.
   fs.mkdirSync(path.join(root, "sub", "node_modules", "dep"), {
     recursive: true,
   });
+  fs.mkdirSync(path.join(root, "src", "node_modules"), { recursive: true });
   // Dotfolders (.github CI) are excluded; a plain .npmrc is KEPT; a .npmrc buried in a
   // dotfolder is still excluded.
   fs.mkdirSync(path.join(root, ".github", "workflows"), { recursive: true });
@@ -108,8 +135,13 @@ test("loadScsBuildFiles returns the build files outside scsSource + scsExpSource
     path.join(root, "sub", "node_modules", "dep", "webpack.config.js"),
     ""
   );
+  fs.writeFileSync(path.join(root, "src", "node_modules", "pkg.js"), "1;\n");
 
-  const { files } = loadScsBuildFiles(root, "src", "src/experiment");
+  const { files, nodeModules } = loadScsBuildFiles(
+    root,
+    "src",
+    "src/experiment"
+  );
   assert.deepEqual([...files.keys()].sort(), [
     ".npmrc",
     "package-lock.json",
@@ -125,6 +157,13 @@ test("loadScsBuildFiles returns the build files outside scsSource + scsExpSource
   assert.ok(!files.has("sub/node_modules/dep/webpack.config.js"));
   assert.ok(!files.has(".github/.npmrc")); // a .npmrc buried in a dotfolder is dropped
   assert.ok(!files.has(".github/workflows/ci.yml"));
+  // node_modules is never read (no node_modules file in the corpus) but IS reported for
+  // the committed-node-modules check - anywhere, including inside the review source.
+  assert.deepEqual(nodeModules.sort(), [
+    "src/node_modules",
+    "sub/node_modules",
+  ]);
+  assert.ok(![...files.keys()].some((k) => k.includes("node_modules")));
 
   fs.rmSync(root, { recursive: true, force: true });
 });

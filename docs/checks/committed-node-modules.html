@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Committed node_modules folder</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Committed node_modules folder
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">committed-node-modules</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission that ships a committed node_modules folder.
+        Installed dependencies are build output — the reviewer installs them from
+        the declared package.json and lock file at build time — so a node_modules
+        folder anywhere in the source root is useless bloat and, worse, a decoy: the
+        committed bytes can differ from the declared dependencies, smuggling in code
+        from an undeclared source.
+      </p>
+      <p>
+        node_modules is never read. When the submission is loaded, a node_modules
+        directory is skipped and never opened; only its path is recorded, so a huge
+        committed tree costs nothing and its contents can never influence the review.
+        This holds anywhere in the source root, including inside the add-on source
+        folder. Each recorded node_modules directory becomes one error finding.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The submitted source archive"] --> B{"A node_modules directory<br/>anywhere in the source root?"}
+  B -- no --> OK([no finding])
+  B -- yes --> ERR([ERROR: committed node_modules folder])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that a committed node_modules folder is not allowed and
+        must be removed before resubmitting: the declared dependencies are installed
+        from package.json and the lock file during the build, so node_modules must
+        never be part of the submission.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/committed-node-modules.js</code> (fed by the
+        node_modules skip in <code>src/addon/load.js</code>) and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

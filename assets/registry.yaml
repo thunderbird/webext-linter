@@ -616,6 +616,19 @@ deterministic-checks:
   response: |-
     The .npmrc sets a package registry ({{item}}), which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
 
+# Deterministic (SCS only): a node_modules folder anywhere in --scs-root is a hard
+# reject. Installed dependencies are build output - the reviewer installs them from the
+# declared package.json/lock - so a committed node_modules is useless bloat and a decoy
+# (its bytes can differ from the declared deps). node_modules is never read: the loader
+# skips it at load and records only the directory paths, surfaced here as {{item}}.
+- title: Committed node_modules folder
+  severity: error
+  scs: true
+  check: committed-node-modules
+  input: build
+  response: |-
+    A committed node_modules folder ({{item}}) is not allowed. Remove it and resubmit; the declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission.
+
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the deterministic repo-name candidate, then an
 # LLM-proposed name, each re-proved by content hash); surfaced as info so the

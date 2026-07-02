@@ -565,6 +565,33 @@ test("SCS e2e: a clean npm build fires neither build-policy check", async () => 
     });
     assert.ok(!has(findings, "unsupported-build-tool"));
     assert.ok(!has(findings, "build-registry-redirect"));
+    assert.ok(!has(findings, "committed-node-modules"));
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
+// A committed node_modules folder in --scs-root is a hard fail; its contents are never
+// read (loadAddon skips it, recording only the directory).
+test("SCS e2e: a committed node_modules folder is rejected", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    ...SRC_FILES,
+    "node_modules/left-pad/index.js": "module.exports = 1;\n",
+  });
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scsRoot: src,
+      scsSource: "src",
+      schemaZip: SCHEMA_FIXTURE,
+    });
+    assert.ok(
+      has(findings, "committed-node-modules", (f) =>
+        /node_modules/.test(f.message)
+      ),
+      "a committed node_modules folder is flagged"
+    );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
   }
