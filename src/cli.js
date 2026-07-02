@@ -279,22 +279,25 @@ export function helpText() {
     ],
   ];
 
+  const scs = [
+    [
+      "--scs-root <folder|zip>",
+      "The source archive root (holds package.json/lock). Requires --scs-source. Switches to SCS mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the behavioral LLM audit.",
+    ],
+    [
+      "--scs-source <path>",
+      "The add-on code root, relative to --scs-root or an absolute path (e.g. src or addon). Required together with --scs-root.",
+    ],
+    [
+      "--scs-exp-source <path>",
+      "The Experiment implementation folder, relative to --scs-root or an absolute path, and within --scs-source (e.g. addon/experiment-api). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --scs-source; REQUIRED when --allow-experiments is used in SCS mode.",
+    ],
+  ];
+
   const other = [
     [
       "--allow-experiments",
       "Accept add-ons that use Experiment APIs (off by default).",
-    ],
-    [
-      "--scs-root <folder|zip>",
-      "Source-code submission: the source archive root (holds package.json/lock). Requires --scs-source. Switches to SCS mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the behavioral LLM audit.",
-    ],
-    [
-      "--scs-source <path>",
-      "Source-code submission: the add-on code root, relative to --scs-root or an absolute path (e.g. src or addon). Required together with --scs-root.",
-    ],
-    [
-      "--scs-exp-source <path>",
-      "Source-code submission: the Experiment implementation folder, relative to --scs-root or an absolute path, and within --scs-source (e.g. addon/experiment-api). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --scs-source; REQUIRED when --allow-experiments is used in SCS mode.",
     ],
     [
       "--diff-to <xpi|folder>",
@@ -343,6 +346,9 @@ export function helpText() {
     "",
     "LLM checks:",
     ...llmFlags.map(([flag, desc]) => optionLine(flag, desc)),
+    "",
+    "Source-code submission (SCS):",
+    ...scs.map(([flag, desc]) => optionLine(flag, desc)),
     "",
     "Other:",
     ...other.map(([flag, desc]) => optionLine(flag, desc)),

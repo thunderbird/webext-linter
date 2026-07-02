@@ -38,30 +38,64 @@ The schema review **always** reads `manifest_version` and uses the matching
 schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
 `manifest_version` (or has a missing/invalid manifest) is treated as MV2.
 
+The options, grouped as in `--help`:
+
+**Schema selection** (`manifest_version` is auto-detected; you pick the channel):
+
 | Option | Description |
 | --- | --- |
-| `--schema-cache <dir>` | Where downloaded schema zips are cached (default `.schema-cache`). |
 | `--schema-channel <name>` | Schema channel (default `release`). One of `release`, `beta`, `esr`. |
+| `--schema-cache <dir>` | Where downloaded schema zips are cached (default `.schema-cache`). |
 | `--schema-force-refresh` | Re-download the schema even if a cached copy exists. |
 | `--schema-zip <path>` | Use a local schema zip (or directory) instead of downloading. |
+
+**CDN library identification:**
+
+| Option | Description |
+| --- | --- |
 | `--library-hashes <path>` | Use a local known-library `hashes.txt` instead of fetching it (offline runs). |
 | `--library-hashes-cache <dir>` | Where the fetched library hashes are cached (default `.library-hashes-cache`). |
 | `--library-hashes-refresh` | Re-download the library hashes even if a cached copy exists. |
+
+**Check selection:**
+
+| Option | Description |
+| --- | --- |
 | `--checks-only <ids>` | Only run these checks (comma-separated). See the check list below. |
 | `--checks-skip <ids>` | Skip these checks (comma-separated). See the check list below. |
+
+**Report output:**
+
+| Option | Description |
+| --- | --- |
 | `--report-format <text\|json>` | Report output format (default `text`). |
 | `--report-out <file>` | Write the report to a file in addition to stdout. |
+
+**LLM checks:**
+
+| Option | Description |
+| --- | --- |
 | `--llm-enabled` | Enable the LLM checks. The key is read from the `LLM_API_KEY` environment variable (see [LLM configuration](#llm-configuration)). |
 | `--llm-list-models` | List the models your token can use, then exit. |
 | `--llm-review` | Shorthand for `--llm-enabled --full-summary` - run the AI add-on review in one flag. |
+
+**Source-code submission (SCS):**
+
+| Option | Description |
+| --- | --- |
+| `--scs-root <folder\|zip>` | The source archive root (holds `package.json`/lock). Requires `--scs-source`, and switches to SCS mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the behavioral LLM audit. See [Source-code submission (SCS) mode](#source-code-submission-scs-mode) below. |
+| `--scs-source <path>` | The add-on code root, relative to `--scs-root` or an absolute path (e.g. `src` or `addon`). Required together with `--scs-root`. |
+| `--scs-exp-source <path>` | The Experiment implementation folder, relative to `--scs-root` or an absolute path, and within `--scs-source` (e.g. `addon/experiment-api`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--scs-source`; required when `--allow-experiments` is used in SCS mode. |
+
+**Other:**
+
+| Option | Description |
+| --- | --- |
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
-| `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
 | `--diff-summary` | Add an AI assisted **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and `--llm-enabled`. |
 | `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes and a permission review (which declared permissions appear unused) - from its (almost) full current source (vendored and unused files excluded). The same pass also **re-checks the unsure items** other checks escalated, judging them with full-add-on context, so confident cases resolve instead of landing in manual review (see [LLM checks](#llm-checks)). Advisory, not a finding. Needs `--llm-enabled`. |
-| `--scs-root <folder\|zip>` | **Source-code submission (SCS) mode.** The source archive root (holds `package.json`/lock). Requires `--scs-source`. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the behavioral LLM audit. |
-| `--scs-source <path>` | SCS mode: the add-on code root, relative to `--scs-root` or an absolute path (e.g. `src` or `addon`). Required together with `--scs-root`. |
-| `--scs-exp-source <path>` | SCS mode: the Experiment implementation folder, relative to `--scs-root` or an absolute path, and within `--scs-source` (e.g. `addon/experiment-api`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--scs-source`; required when `--allow-experiments` is used in SCS mode. |
+| `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--verbose` | Verbose logging. |
 
 **Exit codes:** `0` no errors · `1` one or more error-severity findings · `2`
