@@ -52,6 +52,7 @@ import unusedPermission from "../../src/checks/rules/unused-permission.js";
 import unusedPermissionManual from "../../src/checks/rules/unused-permission-manual.js";
 import unusedPermissionManualPre from "../../src/checks/rules/unused-permission-manual-pre-d308076.js";
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
+import { parseApiUsage } from "../../src/parse/api-usage.js";
 import { getPermissionAnalysis } from "../../src/checks/lib/permissions.js";
 import {
   loadChecks,
@@ -1207,6 +1208,48 @@ test("unused-permission-manual drops permissions proved used by static analysis"
   );
 });
 
+// FUNCTION-level permissions are credited too, not just namespace-level ones: a
+// messages.archive call proves messagesMove and messages.delete proves messagesDelete,
+// so neither is flagged unused. This is the credit path the shim/wrapper fix relies on
+// (the parser resolving a captured-namespace call to these segments is covered in
+// api-usage.test.js; here it is driven from the already-resolved segments).
+test("unused-permission-manual credits function-level permissions (archive/delete)", () => {
+  const manifest = {
+    manifest_version: 3,
+    permissions: ["messagesRead", "messagesMove", "messagesDelete"],
+    background: { scripts: ["bg.js"] },
+    browser_specific_settings: { gecko: { strict_min_version: "154" } },
+  };
+  const ctx = withManifest({
+    schema,
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+        ["bg.js", Buffer.from("")],
+      ]),
+    },
+    apiUsages: [
+      {
+        file: "bg.js",
+        usages: [
+          { segments: ["messages", "archive"], line: 1, column: 0 },
+          { segments: ["messages", "delete"], line: 2, column: 0 },
+        ],
+      },
+    ],
+  });
+  const out = unusedPermissionManual.run(ctx);
+  // archive -> messagesMove, delete -> messagesDelete, both -> messagesRead: none left.
+  assert.deepEqual(
+    out.escalations.map((e) => e.item),
+    []
+  );
+  const analysis = getPermissionAnalysis(ctx);
+  assert.ok(analysis.usedPermissions.has("messagesMove"));
+  assert.ok(analysis.usedPermissions.has("messagesDelete"));
+});
+
 // A permission that gates no callable API (unlimitedStorage) can never be proved
 // used by static analysis, but it is justified by its mere presence - so it is
 // exempt: dropped here (noted pass), never escalated as unused.
@@ -1393,6 +1436,78 @@ test("unknown-api flags version_added:false as unsupported", () => {
   const out = unknownApi.run(withManifest(ctx));
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "browser.t.gone");
+});
+
+// A FEATURE-DETECTED (guarded) reference to an unknown MEMBER or an unsupported API is
+// skipped (the fallback runs where it's missing). A guarded unknown NAMESPACE is exempt
+// (still flagged - a whole missing namespace is likely a hallucination), and any
+// UNGUARDED unavailable API is flagged. So the skip is scoped to guarded member/unsupported.
+test("unknown-api skips guarded members/unsupported but flags guarded namespaces", () => {
+  const local = buildSchemaIndex({
+    files: {
+      t: [
+        {
+          namespace: "t",
+          functions: [
+            { name: "gone", annotations: [{ version_added: false }] },
+            { name: "ok", annotations: [{ version_added: "60" }] },
+          ],
+        },
+      ],
+    },
+  });
+  const g = (segments, line, guarded) => ({
+    root: "browser",
+    segments,
+    line,
+    column: 0,
+    guarded,
+  });
+  const ctx = withManifest({
+    schema: local,
+    addon: {
+      manifest: { background: { scripts: ["bg.js"] } },
+      files: new Map([["bg.js", Buffer.from("")]]),
+    },
+    apiUsages: [
+      {
+        file: "bg.js",
+        usages: [
+          g(["t", "gone"], 1, true), // unsupported, guarded -> skipped
+          g(["t", "nope"], 2, true), // unknown member, guarded -> skipped
+          g(["nope", "x"], 3, true), // unknown NAMESPACE, guarded -> FLAGGED
+          g(["t", "gone"], 4, false), // unsupported, UNGUARDED -> flagged
+        ],
+      },
+    ],
+  });
+  const out = unknownApi.run(ctx);
+  // Only the guarded namespace (line 3 -> browser.nope) and the unguarded unsupported
+  // (line 4 -> browser.t.gone) are findings; the guarded member/unsupported are skipped.
+  assert.deepEqual(out.map((f) => `${f.loc.line}:${f.item}`).sort(), [
+    "3:browser.nope",
+    "4:browser.t.gone",
+  ]);
+});
+
+// End-to-end (the thinbox folders shape): a namespace captured into a local, then a
+// call to a non-existent member feature-detected with an if-guard. Parses to a guarded
+// usage of an unknown member, which unknown-api skips - no finding. RED before the
+// alias-aware guard fix (m.nope() would be guarded:false -> flagged).
+test("unknown-api: alias-guarded call to an unknown member is skipped end-to-end", () => {
+  const src = `const m = browser.messages; if (m.nope) m.nope();`;
+  const { usages } = parseApiUsage(src);
+  const out = unknownApi.run(
+    withManifest({
+      schema, // messages is a known namespace; messages.nope is an unknown member
+      addon: {
+        manifest: { background: { scripts: ["bg.js"] } },
+        files: new Map([["bg.js", Buffer.from(src)]]),
+      },
+      apiUsages: [{ file: "bg.js", usages }],
+    })
+  );
+  assert.deepEqual(out, []);
 });
 
 // ---- api-resolution: the shared usage resolution ----
@@ -1675,6 +1790,31 @@ test("strict-min-version-api defers a guarded too-new API to the LLM", () => {
   assert.equal(unsure.manual.length, 1);
 });
 
+// End-to-end: alias-guarded source parses to a GUARDED usage (via api-usage's alias-aware
+// guard detection), which strict-min-version-api routes to the LLM, not a hard finding.
+// RED before the fix: `m.future()` would parse guarded:false -> a deterministic finding.
+// An if-guard (no typeof) is used so it exercises the alias path, not the typeof shortcut.
+test("strict-min-version-api: alias-guarded source becomes a candidate, not a finding", () => {
+  const src = `const m = browser.messages; if (m.future) m.future();`;
+  const { usages } = parseApiUsage(src);
+  const out = strictMinVersionApi.run(
+    withManifest({
+      schema,
+      addon: {
+        files: new Map([["bg.js", Buffer.from(src)]]),
+        manifest: {
+          background: { scripts: ["bg.js"] },
+          browser_specific_settings: { gecko: { strict_min_version: "60.0" } },
+        },
+      },
+      apiUsages: [{ file: "bg.js", usages }],
+    })
+  );
+  assert.equal(out.findings.length, 0); // guarded -> not a hard finding
+  assert.equal(out.llm.candidates.length, 1); // deferred to the LLM
+  assert.match(out.llm.candidates[0].note, /messages\.future/);
+});
+
 // An API used UNGUARDED anywhere is a hard error, even if another site is guarded:
 // the unguarded site wins and there is no LLM candidate for it.
 test("strict-min-version-api: an unguarded site wins over a guarded one", () => {
@@ -1702,10 +1842,11 @@ test("strict-min-version-api: an unguarded site wins over a guarded one", () => 
   assert.deepEqual(out.findings[0].loc, { line: 9, column: 0 });
 });
 
-// Scope guard: feature detection does NOT launder a non-existent API. A guarded
-// call to an API absent from the schema is ignored here (it never becomes a
-// candidate) and stays unknown-api's concern, which still flags it.
-test("strict-min-version-api ignores a guarded non-existent API (unknown-api owns it)", () => {
+// strict-min-version-api ignores a non-existent API entirely (never a candidate).
+// unknown-api owns it, and per policy still flags a guarded unknown NAMESPACE (a whole
+// missing namespace is likely a hallucination) - only a guarded unknown MEMBER /
+// unsupported API is skipped there (covered by the guarded-skip test above).
+test("a guarded non-existent namespace: strict-min ignores it, unknown-api still flags it", () => {
   const usages = [
     {
       root: "messenger",
@@ -1729,8 +1870,8 @@ test("strict-min-version-api ignores a guarded non-existent API (unknown-api own
       apiUsages: [{ file: "bg.js", usages }],
     })
   );
-  assert.equal(flagged.length, 1);
-  assert.match(flagged[0].item, /^messenger\.fake/); // unknown at the namespace
+  assert.equal(flagged.length, 1); // guarded unknown NAMESPACE is still flagged
+  assert.match(flagged[0].item, /^messenger\.fake/);
 });
 
 // ---- permission analysis: dead files are ignored ----
@@ -1756,6 +1897,28 @@ test("missing-permission ignores usages in dead (unreachable) files", () => {
   assert.ok(live.some((f) => f.item === "messagesRead"));
   // Dead: dead.js is never referenced by the manifest -> no missing finding.
   assert.equal(missingPermission.run(withManifest(ctx("dead.js"))).length, 0);
+});
+
+// The broadened alias resolution surfaces a permission reached ONLY via a captured
+// namespace (previously invisible - a false negative). Parsing an aliased
+// `m.archive([1])` with no declared permissions must now flag messagesMove (function
+// level) + messagesRead (namespace level) as missing.
+test("missing-permission fires for a permission reached only via a namespace alias", () => {
+  const src = `const m = browser.messages; m.archive([1]);`;
+  const { usages } = parseApiUsage(src);
+  const out = missingPermission.run(
+    withManifest({
+      schema,
+      addon: {
+        manifest: { permissions: [], background: { scripts: ["bg.js"] } },
+        files: new Map([["bg.js", Buffer.from(src)]]),
+      },
+      apiUsages: [{ file: "bg.js", usages }],
+    })
+  );
+  const items = out.map((f) => f.item);
+  assert.ok(items.includes("messagesMove"));
+  assert.ok(items.includes("messagesRead"));
 });
 
 // usedPermissions records the permissions a REACHABLE call provably requires; a

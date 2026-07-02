@@ -91,6 +91,97 @@ test("follows a whole-object API alias (direct, ||, ternary)", () => {
   assert.equal(ternary.limitations.length, 0);
 });
 
+// A namespace captured into a local (const m = browser.messages) is followed, so
+// method calls through it resolve to their full path (m.archive -> messages.archive).
+// Feature-detection shims do this; without it the function-level permission
+// (messagesMove) is never credited. The capture site also yields the bare namespace.
+test("follows a namespace captured into a local", () => {
+  const res = parseApiUsage(`const m = browser.messages; m.archive([1]);`);
+  assert.deepEqual(
+    res.usages.map((u) => `${u.root}.${u.segments.join(".")}`),
+    ["browser.messages", "browser.messages.archive"]
+  );
+  assert.equal(res.limitations.length, 0);
+});
+
+// The thinbox shim shape: a root captured through a guarded ternary, then each
+// namespace captured through `_root && _root.ns || null`. The name-preserving inner
+// calls resolve to messages.archive / messages.delete, and no aliased/unresolved
+// limitation is emitted for the namespace local.
+test("follows a guarded multi-hop namespace capture (shim shape)", () => {
+  const res = parseApiUsage(`
+        var _br = (typeof browser !== "undefined") ? browser : null;
+        var _brMsgs = _br && _br.messages || null;
+        _brMsgs.archive(ids);
+        _brMsgs["delete"](ids, true);
+    `);
+  const found = res.usages.map((u) => `${u.root}.${u.segments.join(".")}`);
+  assert.ok(found.includes("browser.messages.archive"));
+  assert.ok(found.includes("browser.messages.delete"));
+  assert.ok(!res.limitations.some((l) => /aliased/.test(l.reason)));
+});
+
+// A literal bracket capture (browser["messages"]) resolves like a dotted one; a
+// multi-hop capture (root alias -> namespace alias) resolves the full path too.
+test("resolves literal-computed and multi-hop namespace captures", () => {
+  const lit = parseApiUsage(`const m = browser["messages"]; m.list();`);
+  assert.ok(lit.usages.some((u) => u.segments.join(".") === "messages.list"));
+
+  const hop = parseApiUsage(
+    `const a = messenger; const b = a.messages; b.update(1, {});`
+  );
+  assert.deepEqual(
+    hop.usages.map((u) => `${u.root}.${u.segments.join(".")}`),
+    ["messenger.messages", "messenger.messages.update"]
+  );
+});
+
+// A shadowed root defeats a namespace capture too: inside function f(browser) the
+// captured local resolves to nothing (the parameter is not the global API object).
+test("rejects a namespace capture off a shadowed root", () => {
+  const res = parseApiUsage(
+    `function f(browser) { const m = browser.messages; m.archive(); }`
+  );
+  assert.equal(res.usages.length, 0);
+});
+
+// A computed/dynamic property in the CAPTURE initializer (const m = browser[key])
+// is not name-preserving, so the local resolves to nothing - no phantom segment.
+test("does not resolve a dynamically-captured namespace", () => {
+  const res = parseApiUsage(`const m = browser[key]; m.archive();`);
+  assert.ok(
+    !res.usages.some((u) => u.segments.includes("archive")),
+    "no phantom archive usage"
+  );
+});
+
+// Mutually-referential captures terminate (the cycle guard) instead of recursing
+// forever, and credit nothing.
+test("terminates on a cyclic capture chain", () => {
+  const res = parseApiUsage(
+    `let a = b.messages; let b = a.accounts; a.list();`
+  );
+  assert.equal(res.usages.length, 0);
+});
+
+// `A && B` is B when A is truthy; the presence guard (A) is never the alias value.
+// `const m = browser && makeThing()` must NOT credit the LHS root (resolving the RHS
+// only, which does not resolve here) - so no phantom browser.* usage.
+test("&& resolves the value (RHS), not the presence guard (LHS)", () => {
+  assert.equal(
+    parseApiUsage(`const m = browser && makeThing(); m.archive();`).usages
+      .length,
+    0
+  );
+  // The shim form `_root && _root.ns` still resolves (the namespace is the RHS).
+  assert.deepEqual(
+    parseApiUsage(`var _b = browser; var m = _b && _b.messages; m.archive();`)
+      .usages.map((u) => `${u.root}.${u.segments.join(".")}`)
+      .filter((s) => s.endsWith(".archive")),
+    ["browser.messages.archive"]
+  );
+});
+
 // A local whose initializer is NOT an API root (a plain call/value) is not an
 // alias, so calls through it are ignored - neither usage nor limitation.
 test("does not treat a non-API local as an alias", () => {
@@ -148,6 +239,63 @@ test("flags access inside a local feature-detection guard", () => {
   const [plain] = parseApiUsage(`messenger.foo.bar();`).usages;
   assert.equal(plain.optional, false);
   assert.equal(plain.guarded, false);
+});
+
+// A guard referencing an API namespace through an ALIAS (const m = browser.messages;
+// if (m.future) m.future()) is recognized like a literal-root guard - the call is marked
+// guarded. Uses if/&& forms (no typeof), so the signal comes specifically from aliasTarget
+// resolving the alias in refsGuardSignal, not the typeof shortcut. This is the shape that
+// regressed strict-min-version-api on shim/wrapper add-ons.
+test("recognizes an alias in a feature-detection guard", () => {
+  const guardedFuture = (code) =>
+    parseApiUsage(code)
+      .usages.filter((u) => u.segments.join(".") === "messages.future")
+      .every((u) => u.guarded);
+  assert.equal(
+    guardedFuture(`const m = browser.messages; if (m.future) m.future();`),
+    true
+  );
+  assert.equal(
+    guardedFuture(`const m = browser.messages; m.future && m.future();`),
+    true
+  );
+});
+
+// The thinbox shim shape: a namespace captured through `_root && _root.ns || null`, then
+// a call feature-detected via `typeof _ns.member === "function"` in a ternary. The
+// consequent call is guarded because the ternary test mentions the `_brF` alias.
+test("recognizes an aliased namespace in a typeof-ternary guard (thinbox shape)", () => {
+  const res = parseApiUsage(`
+        var _br = (typeof browser !== "undefined") ? browser : null;
+        var _brF = _br && _br.folders || null;
+        var f = (typeof _brF.getFolder === "function")
+          ? _brF.getFolder(id)
+          : legacy(id);
+    `);
+  const calls = res.usages.filter(
+    (u) => u.segments.join(".") === "folders.getFolder"
+  );
+  assert.ok(calls.length >= 1);
+  assert.ok(calls.every((u) => u.guarded));
+});
+
+// No over-broadening: a guard test referencing a NON-API local (a plain boolean flag) is
+// not a feature-detection signal, so the call stays unguarded.
+test("a non-API flag in a guard is not a signal", () => {
+  const [fut] = parseApiUsage(
+    `const ready = computeReady(); if (ready) browser.messages.future();`
+  ).usages.filter((u) => u.segments.join(".") === "messages.future");
+  assert.equal(fut.guarded, false);
+});
+
+// A property NAME in a guard test is not a value reference: `flag.something` must not
+// resolve `something` as an alias even when a variable `something` aliases an API. Only
+// value-position identifiers count as a feature-detection signal.
+test("a property name coincidentally aliasing an API is not a guard signal", () => {
+  const [fut] = parseApiUsage(
+    `const something = browser; if (flag.something) browser.messages.future();`
+  ).usages.filter((u) => u.segments.join(".") === "messages.future");
+  assert.equal(fut.guarded, false);
 });
 
 // The guard must be LOCAL: it does not leak across a function definition, so a

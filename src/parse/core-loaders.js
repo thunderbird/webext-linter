@@ -10,13 +10,11 @@
 import { classifyUrl } from "../scan/url.js";
 import { parseJs, traverse, nodeLoc } from "./ast.js";
 import { basename } from "../util/files.js";
+import { API_ROOTS } from "./api-usage.js";
 
 // A URL scheme (resource:, chrome:, moz-extension:, ...). A scheme-bearing parameter
 // is matched by name; a relative path is resolved root-relative.
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
-
-// The interchangeable WebExtension API roots an add-on may call an Experiment by.
-const API_ROOTS = new Set(["browser", "messenger", "chrome"]);
 
 /**
  * The dotted identifier names of a member-expression callee, root-first

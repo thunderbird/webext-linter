@@ -105,6 +105,23 @@ test("required permissions merge namespace + function level", () => {
   assert.deepEqual(perms, ["accountsRead", "messagesMove", "messagesRead"]);
 });
 
+// A function whose ONLY extra permission is function-level (archive -> messagesMove,
+// delete -> messagesDelete) still yields it, unioned with the namespace's
+// messagesRead. This is the path the unused-permission alias fix depends on.
+test("required permissions include a function-level-only permission", () => {
+  const archive = schema.resolveApi(["messages", "archive"]);
+  assert.equal(archive.kind, "function");
+  assert.deepEqual(schema.requiredPermissions(archive).sort(), [
+    "messagesMove",
+    "messagesRead",
+  ]);
+  const del = schema.resolveApi(["messages", "delete"]);
+  assert.deepEqual(schema.requiredPermissions(del).sort(), [
+    "messagesDelete",
+    "messagesRead",
+  ]);
+});
+
 // Accessing a property (storage.local) resolves to a property kind and still
 // inherits the namespace permission, so reads are not treated as unguarded.
 test("namespace-level permission applies to property access (storage.local)", () => {

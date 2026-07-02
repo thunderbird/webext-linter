@@ -42,6 +42,16 @@
         "async": true,
         "permissions": ["accountsRead", "messagesMove"]
       },
+      {
+        "name": "archive",
+        "async": true,
+        "permissions": ["messagesMove"]
+      },
+      {
+        "name": "delete",
+        "async": true,
+        "permissions": ["messagesDelete"]
+      },
       { "name": "oldOne", "async": true, "deprecated": "Use list() instead." },
       {
         "name": "future",
@@ -80,6 +90,7 @@
               "messagesRead",
               "accountsRead",
               "messagesMove",
+              "messagesDelete",
               "messagesTagsList",
               "compose"
             ]

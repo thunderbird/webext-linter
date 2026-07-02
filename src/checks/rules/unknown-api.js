@@ -1,11 +1,18 @@
 // Flags usage of WebExtension APIs not in Thunderbird's annotated schema:
 // unknown namespaces, unknown members of a known namespace, and members that
 // exist but are explicitly marked `unsupported`. Reads the shared, reachability-
-// filtered resolution (lib/api-resolution.js) and emits a verdict per usage.
+// filtered resolution (lib/api-resolution.js) and emits a verdict per usage. A
+// FEATURE-DETECTED (guarded) reference to an unknown MEMBER or an unsupported API is
+// skipped, not a finding: the add-on's fallback runs where the API is missing, so
+// nothing breaks (usage.guarded from api-usage.js, which is alias-aware - a
+// `typeof _api.foo` probe through a captured namespace counts too). An unknown
+// NAMESPACE stays a finding even when guarded - a whole missing namespace is far more
+// likely a hallucination/typo than a compat probe.
 //
 // Belongs here: deciding which resolveApi outcomes (unknown-namespace,
-// unknown-member, unsupported def) count as a finding, and picking the item
-// string (root.first-segment for an unknown namespace, full path otherwise).
+// unknown-member, unsupported def) count as a finding (a guarded member/unsupported
+// does not; a guarded unknown namespace still does), and picking the item string
+// (root.first-segment for an unknown namespace, else the full path).
 // Does NOT belong here: resolving usage against the schema over the WebExtension
 // tree - that is the shared src/checks/lib/api-resolution.js (resolveApiUsages).
 // Extracting browser.* usage from source - src/parse/api-usage.js. Walking the
@@ -24,47 +31,46 @@ export default {
       const full = `${usage.root}.${usage.segments.join(".")}`;
       const loc = { line: usage.line, column: usage.column };
 
+      // Classify: what (if anything) makes this API unavailable, and the finding it
+      // would produce. reason === null means the API is available (a pass).
+      let reason = null;
+      let args = null;
       if (res.kind === "unknown-namespace") {
-        ctx.note?.(file, loc, `${full} (unknown namespace)`, "fail");
-        findings.push(
-          finding({
-            file,
-            loc,
-            item: `${usage.root}.${usage.segments[0]}`,
-          })
-        );
-        continue;
-      }
-
-      if (res.kind === "unknown-member") {
-        ctx.note?.(file, loc, `${full} (unknown member)`, "fail");
-        findings.push(
-          finding({
-            file,
-            loc,
-            item: full,
-          })
-        );
-        continue;
-      }
-
-      if (
+        reason = "unknown namespace";
+        args = { file, loc, item: `${usage.root}.${usage.segments[0]}` };
+      } else if (res.kind === "unknown-member") {
+        reason = "unknown member";
+        args = { file, loc, item: full };
+      } else if (
         SchemaIndex.isUnsupported(res.def) ||
         SchemaIndex.isUnsupported(res.namespaceDef)
       ) {
-        ctx.note?.(file, loc, `${full} (unsupported)`, "fail");
-        findings.push(
-          finding({
-            file,
-            loc,
-            hint: SchemaIndex.docUrl(res.def),
-            item: full,
-          })
+        reason = "unsupported";
+        args = { file, loc, item: full, hint: SchemaIndex.docUrl(res.def) };
+      }
+
+      if (!reason) {
+        ctx.note?.(file, loc, full, "pass");
+        continue;
+      }
+
+      // A feature-detected (guarded) reference to an unknown MEMBER or an unsupported
+      // API is safe - the fallback runs where the API is missing - so it is skipped,
+      // not a finding. An unknown NAMESPACE is exempt: a whole missing namespace behind
+      // a guard is far more likely a hallucination/typo than a compat probe, so it is
+      // still flagged even when guarded.
+      if (usage.guarded && res.kind !== "unknown-namespace") {
+        ctx.note?.(
+          file,
+          loc,
+          `${full} (${reason}, feature-detected)`,
+          "skipped"
         );
         continue;
       }
 
-      ctx.note?.(file, loc, full, "pass");
+      ctx.note?.(file, loc, `${full} (${reason})`, "fail");
+      findings.push(finding(args));
     }
     return findings;
   },

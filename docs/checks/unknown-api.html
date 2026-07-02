@@ -34,6 +34,16 @@
         treated as known: the developer owns that API, so the whole namespace and
         everything under it is accepted rather than tracing each sub-API.
       </p>
+      <p>
+        A reference that is <strong>feature-detected</strong> — guarded by a
+        <em>typeof</em>/existence check or optional chaining, including through a
+        captured namespace alias — is skipped rather than flagged when it is an
+        <em>unknown member</em> or an <em>unsupported</em> API: the add-on's
+        fallback runs where the API is missing, so nothing breaks. An
+        <em>unknown namespace</em> is still flagged even when guarded — a whole
+        missing namespace is far more likely a typo or hallucination than a
+        compatibility probe.
+      </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
@@ -44,11 +54,11 @@ flowchart TD
   B -- yes --> C["Resolve the call against<br/>Thunderbird's schema"]
   C --> D{"Namespace unknown?"}
   D -- yes --> ERR([ERROR: unknown or<br/>unsupported API])
-  D -- no --> E{"Member unknown?"}
-  E -- yes --> ERR
-  E -- no --> F{"Marked 'unsupported'<br/>in the schema?"}
-  F -- yes --> ERR
-  F -- no --> OK([no finding])
+  D -- no --> E{"Member unknown, or<br/>marked 'unsupported'?"}
+  E -- no --> OK([no finding])
+  E -- yes --> G{"Feature-detected<br/>(guarded)?"}
+  G -- no --> ERR
+  G -- yes --> SK([skipped — the<br/>fallback runs])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -56,13 +66,16 @@ flowchart TD
   class ERR err;
   class OK ok;
   class S skip;
+  class SK skip;
         </pre>
       </div>
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told the named API is not supported in the targeted
-        Thunderbird version, with a link to the WebExtension API documentation.
+        For an unguarded unknown/unsupported API (or a guarded unknown namespace),
+        the add-on is told the named API is not supported in the targeted
+        Thunderbird version, with a link to the WebExtension API documentation. A
+        guarded unknown member or unsupported API is skipped, not reported.
       </div>
 
       <p class="source-note">

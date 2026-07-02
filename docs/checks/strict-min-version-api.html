@@ -25,8 +25,8 @@
       </p>
       <p>
         Only real, schema-resolved APIs are considered — a misspelled or
-        non-existent name is left to the unknown-API check, so feature detection
-        cannot launder it. The same too-new API can be used safely if it is
+        non-existent name is left to the unknown-API check. The same too-new API
+        can be used safely if it is
         guarded so it runs only where it exists (optional chaining, a typeof or
         existence test, or a runtime version gate). A call that carries such a
         guard signal is the ambiguous case: only there does the linter ask the

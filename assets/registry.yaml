@@ -917,7 +917,7 @@ llm-checks:
 # typeof/existence check, a getBrowserInfo version gate) becomes one candidate the
 # LLM judges from the call's file: pass (safely guarded) -> drop, fail (runs
 # unconditionally) -> finding, unsure -> manual. Only real, schema-resolved APIs
-# reach here; a non-existent API is unknown-api's concern, never guarded away.
+# reach here; a non-existent API is unknown-api's concern.
 - title: API newer than strict_min_version
   severity: error
   check: strict-min-version-api
