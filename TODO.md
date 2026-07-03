@@ -106,6 +106,15 @@ not capture, so a property bound to several permissions still resolves to a
 permission *set*, not a single one. Single-permission gates (the vast majority)
 become exact.
 
+Concrete instance today: `cookies` is gated only by *setting* `cookieStoreId` on
+`tabs.create` / `windows.create` / `spaces.create`/`update` (an object-literal property
+set on an API argument, per above) - never by reading it. It is the one argument-gated
+member of `LLM_RECHECK_PERMISSIONS` (`src/checks/lib/permissions.js`), currently routed to
+the LLM only because the name-only resolver cannot see the argument value; once this
+tracing lands `cookies` becomes deterministic and should leave that set (which then holds
+only property-read / gesture cases). `PERMISSION-GROUNDING-GAPS.md` inventories every
+property/argument gate on the recheck permissions this tracing would cover.
+
 # Unused-files pre-flight backstop (anchored templates + content type)
 
 The deterministic loader pre-flight removes only the false dynamic loaders (an
