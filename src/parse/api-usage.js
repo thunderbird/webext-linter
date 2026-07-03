@@ -2,10 +2,10 @@
 // member-expression chains rooted at `browser`, `messenger`, or `chrome` (all
 // three are valid in Thunderbird submissions). For
 // `browser.messages.tags.list(...)` it yields segments
-// ["messages","tags","list"]. It also follows a whole-object alias of the API
-// object - the common Thunderbird feature-detection shapes `const api = messenger
-// || browser` and `const api = typeof messenger !== "undefined" ? messenger :
-// browser` - so `api.*` calls resolve too. This is deliberately best-effort:
+// ["messages","tags","list"]. It also follows aliases of the API object and of
+// static API namespaces - the common Thunderbird feature-detection shapes
+// `const api = messenger || browser` and `const mail = browser.messages` - so
+// `api.*` and `mail.*` calls resolve too. This is deliberately best-effort:
 // dynamic/computed access and destructured aliases (const { messages } = browser)
 // can't always be resolved statically, so we surface those as "limitations"
 // rather than silently dropping them.
@@ -72,14 +72,16 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
   traverse(ast, {
     Identifier(path) {
       const name = path.node.name;
-      // The literal API roots, OR a local variable that whole-object-aliases one
-      // (const api = messenger || browser; const api = cond ? messenger : ...).
-      // The alias's canonical root is interchangeable for resolution.
       let root = null;
+      let prefixSegments = [];
+      let aliasOptional = false;
       if (API_ROOTS.has(name) && isApiRoot(path)) {
         root = name;
       } else if (!API_ROOTS.has(name) && isChainBase(path)) {
-        root = aliasedRoot(path);
+        const target = aliasedTarget(path);
+        root = target?.root ?? null;
+        prefixSegments = target?.segments ?? [];
+        aliasOptional = Boolean(target?.optional);
       }
 
       if (!root) {
@@ -99,19 +101,21 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
       }
 
       const { segments, dynamicTail, dynamicAt, optional } = climbChain(path);
+      const allSegments = [...prefixSegments, ...segments];
+      const isOptional = aliasOptional || optional;
       const guarded = optional || isGuarded(path);
       usages.push({
         root,
-        segments,
+        segments: allSegments,
         dynamicTail,
-        optional,
-        guarded,
+        optional: isOptional,
+        guarded: isOptional || guarded,
         ...loc(path.node),
       });
       if (dynamicTail && dynamicAt) {
         limitations.push({
           ...loc(dynamicAt),
-          reason: `computed/dynamic member access on "${root}.${segments.join(".")}" not fully resolved`,
+          reason: `computed/dynamic member access on "${root}.${allSegments.join(".")}" not fully resolved`,
         });
       }
     },
@@ -149,29 +153,50 @@ function isApiRoot(path) {
 }
 
 /**
- * The canonical API root an initializer expression resolves to, or null. Handles
- * the common Thunderbird feature-detection alias shapes:
+ * The static API target an initializer expression resolves to, or null. Handles
+ * whole-object aliases and namespace aliases:
  *   const api = messenger                                  (direct)
  *   const api = messenger || browser || chrome             (|| / ?? chain)
  *   const api = typeof messenger !== 'undefined' ? messenger : browser  (ternary)
+ *   const mail = browser.messages                          (namespace)
  * @param {object} node  An expression node (a VariableDeclarator init).
- * @returns {?string}
+ * @returns {?{root:string, segments:string[], optional:boolean}}
  */
-function aliasRoot(node) {
+function aliasTarget(node, scope) {
   if (!node) {
     return null;
   }
   switch (node.type) {
     case "Identifier":
-      return API_ROOTS.has(node.name) ? node.name : null;
+      return API_ROOTS.has(node.name) && !scope?.hasBinding(node.name)
+        ? { root: node.name, segments: [], optional: false }
+        : null;
     case "ParenthesizedExpression":
-      return aliasRoot(node.expression);
+      return aliasTarget(node.expression, scope);
+    case "MemberExpression":
+    case "OptionalMemberExpression": {
+      const base = aliasTarget(node.object, scope);
+      if (!base) {
+        return null;
+      }
+      const segment = memberSegment(node);
+      if (!segment) {
+        return null;
+      }
+      return {
+        root: base.root,
+        segments: [...base.segments, segment],
+        optional: base.optional || Boolean(node.optional),
+      };
+    }
     case "LogicalExpression":
       return node.operator === "||" || node.operator === "??"
-        ? (aliasRoot(node.left) ?? aliasRoot(node.right))
+        ? (aliasTarget(node.left, scope) ?? aliasTarget(node.right, scope))
         : null;
     case "ConditionalExpression":
-      return aliasRoot(node.consequent) ?? aliasRoot(node.alternate);
+      return (
+        aliasTarget(node.consequent, scope) ?? aliasTarget(node.alternate, scope)
+      );
     default:
       return null;
   }
@@ -179,13 +204,13 @@ function aliasRoot(node) {
 
 /**
  * For a non-root identifier sitting at a chain base (e.g. `api` in `api.foo`),
- * resolve its binding to a whole-object API alias and return the canonical root
- * it aliases, or null. Only a `const x = <init>` whose id is a plain identifier
- * and whose init resolves via aliasRoot counts (one hop; destructuring does not).
+ * resolve its binding to a static API alias and return its target, or null. Only
+ * a `const x = <init>` whose id is a plain identifier and whose init resolves
+ * via aliasTarget counts (one hop; destructuring does not).
  * @param {BabelPath} path
- * @returns {?string}
+ * @returns {?{root:string, segments:string[], optional:boolean}}
  */
-function aliasedRoot(path) {
+function aliasedTarget(path) {
   const binding = path.scope.getBinding(path.node.name);
   const decl = binding?.path;
   if (!decl || decl.type !== "VariableDeclarator") {
@@ -194,7 +219,7 @@ function aliasedRoot(path) {
   if (decl.node.id.type !== "Identifier") {
     return null; // destructuring etc. - not a whole-object alias
   }
-  return aliasRoot(decl.node.init);
+  return aliasTarget(decl.node.init, decl.scope);
 }
 
 /**
@@ -235,6 +260,18 @@ function isMemberish(path) {
   return Boolean(
     path && (path.isMemberExpression() || path.isOptionalMemberExpression())
   );
+}
+
+/**
+ * Return a static property segment for a member node, or null for dynamic access.
+ * @param {object} member
+ * @returns {?string}
+ */
+function memberSegment(member) {
+  if (member.computed) {
+    return member.property.type === "StringLiteral" ? member.property.value : null;
+  }
+  return member.property.type === "Identifier" ? member.property.name : null;
 }
 
 /**

@@ -91,6 +91,34 @@ test("follows a whole-object API alias (direct, ||, ternary)", () => {
   assert.equal(ternary.limitations.length, 0);
 });
 
+// A namespace object alias is followed too, so calls through it still resolve to
+// the API member whose version/permission annotations need to be checked.
+test("follows a namespace API alias", () => {
+  const direct = parseApiUsage(`
+    const mailboxApi = browser.messengerUtilities;
+    mailboxApi.parseMailboxString("Jane <jane@example.invalid>");
+  `);
+  assert.ok(
+    direct.usages.some(
+      (u) =>
+        `${u.root}.${u.segments.join(".")}` ===
+        "browser.messengerUtilities.parseMailboxString"
+    )
+  );
+  assert.equal(direct.limitations.length, 0);
+
+  const optional = parseApiUsage(`
+    const storageArea = browser.storage?.local;
+    storageArea.get("x");
+  `);
+  const usage = optional.usages.find(
+    (u) => `${u.root}.${u.segments.join(".")}` === "browser.storage.local.get"
+  );
+  assert.ok(usage);
+  assert.equal(usage.optional, true);
+  assert.equal(usage.guarded, true);
+});
+
 // A local whose initializer is NOT an API root (a plain call/value) is not an
 // alias, so calls through it are ignored - neither usage nor limitation.
 test("does not treat a non-API local as an alias", () => {
@@ -103,6 +131,17 @@ test("does not treat a non-API local as an alias", () => {
 // not real API usage and must yield zero usages.
 test("ignores a shadowed local named browser", () => {
   const res = parseApiUsage(`function f(browser) { browser.notAnApi(); }`);
+  assert.equal(res.usages.length, 0);
+});
+
+// Namespace aliases must obey the same shadowing rule as direct API roots.
+test("does not follow namespace aliases from a shadowed API root name", () => {
+  const res = parseApiUsage(`
+    function f(browser) {
+      const mailboxApi = browser.messengerUtilities;
+      mailboxApi.parseMailboxString("Jane");
+    }
+  `);
   assert.equal(res.usages.length, 0);
 });
 
