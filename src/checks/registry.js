@@ -651,9 +651,18 @@ export async function runChecks(
       out.manualItems.length &&
       !scsHoldsBack
     ) {
+      // A producer can opt an item out of the recheck (recheckEligible: false); those
+      // stay manual-only even under --full-summary. The unused-permission gate uses
+      // this so only property/gesture-gated permissions reach the LLM.
       const bucket = (ctx.recheck ??= new Map());
       const held = bucket.get(check.postSummaryRecheck) ?? [];
-      held.push(...out.manualItems);
+      for (const m of out.manualItems) {
+        if (m.recheckEligible === false) {
+          manualItems.push(m);
+        } else {
+          held.push(m);
+        }
+      }
       bucket.set(check.postSummaryRecheck, held);
     } else {
       manualItems.push(...out.manualItems);

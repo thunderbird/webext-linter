@@ -26,7 +26,7 @@ export default {
   /**
    * @param {RunContext} ctx
    * @returns {{findings: [], escalations:
-   *   {item: string, file: string, loc: ?object}[]}}
+   *   {item: string, file: string, loc: ?object, recheckEligible: boolean}[]}}
    */
   run(ctx) {
     if (strictMinAtLeast(ctx.manifest, D308076_FIXED_IN)) {

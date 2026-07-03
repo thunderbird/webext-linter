@@ -43,6 +43,7 @@ test("runLlmCheck with no token defaults every candidate to unsure", async () =>
       loc: null,
       kind: "escalation",
       data: null,
+      recheckEligible: true,
     },
   ]);
 });
@@ -101,6 +102,8 @@ test("manualEscalations maps each escalation to a manual ref", () => {
       loc: { line: 3 },
       kind: "escalation",
       data: { reason: "why" },
+      // Neither escalation opts out, so both default to recheck-eligible.
+      recheckEligible: true,
     },
     {
       ruleId: "unused-files",
@@ -110,6 +113,7 @@ test("manualEscalations maps each escalation to a manual ref", () => {
       loc: null,
       kind: "escalation",
       data: null,
+      recheckEligible: true,
     },
   ]);
 });

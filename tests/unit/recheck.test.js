@@ -14,6 +14,7 @@ import {
   buildRecheckSections,
 } from "../../src/checks/lib/recheck.js";
 import { runChecks, loadRegistry } from "../../src/checks/registry.js";
+import { LLM_RECHECK_PERMISSIONS } from "../../src/checks/lib/permissions.js";
 
 // A handed-over manual item, as the producer's escalation became (manualRef).
 const handed = (item, line) => ({
@@ -223,8 +224,10 @@ test("buildRecheckSections skips a consumer with no summary-prompt", () => {
 
 // ---- the runChecks divert ----
 // A producer (post-summary-recheck: unused-permission) declares its manual items.
-// When ctx.recheckActive, runChecks hands them to ctx.recheck instead of manual
-// review; otherwise they stay in manual review and ctx.recheck is never created.
+// When ctx.recheckActive, runChecks hands the recheck-ELIGIBLE ones to ctx.recheck
+// (the unused-permission gate marks only property/gesture-gated permissions eligible;
+// the rest stay manual-only even when active); when inactive, all stay in manual
+// review and ctx.recheck is never created.
 const producerCtx = () => {
   const manifest = {
     manifest_version: 3,
@@ -246,20 +249,21 @@ const producerCtx = () => {
   };
 };
 
-test("runChecks diverts a producer's manual items to ctx.recheck when active", async () => {
+test("runChecks diverts only recheck-eligible permissions; the rest stay manual", async () => {
   const registry = loadRegistry();
   const ctx = { ...producerCtx(), recheckActive: true };
   const out = await runChecks(withManifest(ctx), registry, {
     only: ["unused-permission-manual"],
   });
-  // Not in manual review - handed to the recheck consumer instead.
-  assert.deepEqual(out.manualItems, []);
+  // "tabs" is property/gesture-gated -> handed to the recheck consumer; "storage" is
+  // function-gated -> stays in manual review even though recheck is active.
   assert.deepEqual(
-    ctx.recheck
-      .get("unused-permission")
-      .map((m) => m.item)
-      .sort(),
-    ["storage", "tabs"]
+    out.manualItems.map((m) => m.item),
+    ["storage"]
+  );
+  assert.deepEqual(
+    ctx.recheck.get("unused-permission").map((m) => m.item),
+    ["tabs"]
   );
 });
 
@@ -280,7 +284,7 @@ test("runChecks leaves a producer's manual items in manual review when inactive"
 // and diverts to its own consumer (whose summary-prompt keeps "tabs" justified
 // when filtered by url/title). The post-fix producer no-ops, so its consumer
 // bucket is never created - exactly one prompt reaches the summary.
-test("runChecks diverts the pre-D308076 producer to its own consumer", async () => {
+test("runChecks diverts the pre-D308076 producer to its own consumer (eligible only)", async () => {
   const registry = loadRegistry();
   const manifest = { manifest_version: 3, permissions: ["tabs", "storage"] };
   const ctx = {
@@ -293,16 +297,38 @@ test("runChecks diverts the pre-D308076 producer to its own consumer", async () 
     },
     recheckActive: true,
   };
-  await runChecks(withManifest(ctx), registry, {
+  const out = await runChecks(withManifest(ctx), registry, {
     only: ["unused-permission-manual", "unused-permission-manual-pre-d308076"],
   });
+  // The gate applies on both version paths: only "tabs" reaches the pre-D308076
+  // consumer; "storage" (function-gated) stays manual.
   assert.deepEqual(
-    ctx.recheck
-      .get("unused-permission-pre-d308076")
-      .map((m) => m.item)
-      .sort(),
-    ["storage", "tabs"]
+    ctx.recheck.get("unused-permission-pre-d308076").map((m) => m.item),
+    ["tabs"]
+  );
+  assert.deepEqual(
+    out.manualItems.map((m) => m.item),
+    ["storage"]
   );
   // The post-fix producer no-opped (no >=154 minimum), so its bucket is empty.
   assert.equal(ctx.recheck.get("unused-permission"), undefined);
+});
+
+// The gate and the rubric are a coupled pair: only LLM_RECHECK_PERMISSIONS reach the
+// recheck, so each member must be named in the consumer's summary-prompt or the model
+// judges it with no schema and no grounding - the guessing the gate exists to remove.
+// This enforces the "keep the two in sync" contract the set's comment states, and
+// guards the documented follow-up (adding a permission to the set without grounding it).
+test("every LLM_RECHECK_PERMISSIONS member is grounded in both unused-permission rubrics", () => {
+  const registry = loadRegistry();
+  for (const id of ["unused-permission", "unused-permission-pre-d308076"]) {
+    const prompt = registry.checkEntry(id)?.["summary-prompt"] ?? "";
+    for (const perm of LLM_RECHECK_PERMISSIONS) {
+      assert.match(
+        prompt,
+        new RegExp(`\\b${perm}\\b`),
+        `${id} summary-prompt must ground "${perm}" (a LLM_RECHECK_PERMISSIONS member)`
+      );
+    }
+  }
 });

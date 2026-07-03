@@ -246,7 +246,7 @@ deterministic-checks:
     of future use: a permission the current code never exercises is unused even if
     a comment hints it may be used later.
     A permission is justified in two ways. It is justified if the add-on calls an
-    API that requires it (for example "downloads" for downloads.download). It is
+    API that requires it. It is
     also justified if the add-on reads a property of returned data that the
     permission gates (for example "accountsRead" gates a message header's folder
     property, so reading that folder justifies it). It is unused only when neither
@@ -302,7 +302,7 @@ deterministic-checks:
     of future use: a permission the current code never exercises is unused even if
     a comment hints it may be used later.
     A permission is justified in two ways. It is justified if the add-on calls an
-    API that requires it (for example "downloads" for downloads.download). It is
+    API that requires it. It is
     also justified if the add-on reads a property of returned data that the
     permission gates (for example "accountsRead" gates a message header's folder
     property, so reading that folder justifies it). It is unused only when neither

@@ -34,9 +34,12 @@
         recheck consumer, whose rubric keeps the <code>tabs</code> permission
         justified whenever the code filters a tab query by url or title anywhere —
         because before the fix that needs <code>tabs</code> even on the add-on's own
-        pages. When the whole-add-on summary pass is enabled, the escalated
-        permissions are handed to that consumer; otherwise they stand as a single
-        manual-review reminder.
+        pages. When the whole-add-on summary pass is enabled, only the property- and
+        gesture-gated <code>tabs</code>, <code>activeTab</code>, and
+        <code>accountsRead</code> — the permissions the model can judge without the
+        API schema — are handed to that consumer; every other unused permission is
+        function-gated and stays a manual-review reminder. Without the summary pass,
+        all of them do.
       </p>
 
       <h2>Decision flow</h2>
@@ -50,7 +53,9 @@ flowchart TD
   H -- yes --> OK([no finding — host check's concern])
   H -- no --> U{"Provably required by a reachable<br/>API call, or gates no callable API?"}
   U -- yes --> OK2([no finding — justified])
-  U -- no --> ESC([escalate to manual review<br/>or hand to pre-D308076 consumer])
+  U -- no --> G{"Property- or gesture-gated?<br/>(tabs, activeTab, accountsRead)"}
+  G -- yes --> ESC(["handed to the pre-D308076 recheck<br/>consumer under the summary pass,<br/>else a manual-review reminder"])
+  G -- no --> MAN(["manual-review reminder only<br/>— never sent to the model"])
 
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
@@ -59,6 +64,7 @@ flowchart TD
   class OK2 ok;
   class S skip;
   class ESC manual;
+  class MAN manual;
         </pre>
       </div>
 

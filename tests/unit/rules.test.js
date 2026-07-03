@@ -1167,6 +1167,33 @@ test("unused-permission-manual lists the unprovable declared named permissions",
   assert.ok(out.escalations.every((e) => e.file === "manifest.json"));
 });
 
+// Each escalation is tagged with recheckEligible: only property/gesture-gated
+// permissions (tabs/activeTab/accountsRead - the ones the recheck rubric grounds) are
+// worth an LLM recheck; purely function-gated ones (storage/downloads) are manual-only,
+// so the --full-summary divert never hands them to the model (the guessing this gate
+// removes). All four escalate here because nothing is provably used.
+test("unused-permission-manual tags only property/gesture-gated permissions recheck-eligible", () => {
+  const manifest = {
+    permissions: ["tabs", "accountsRead", "storage", "downloads"],
+    browser_specific_settings: { gecko: { strict_min_version: "154" } },
+  };
+  const ctx = {
+    schema,
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+      ]),
+    },
+    apiUsages: [],
+  };
+  const out = unusedPermissionManual.run(withManifest(ctx));
+  assert.deepEqual(
+    Object.fromEntries(out.escalations.map((e) => [e.item, e.recheckEligible])),
+    { tabs: true, accountsRead: true, storage: false, downloads: false }
+  );
+});
+
 // The deterministic analysis is authoritative: a permission a reachable API call
 // provably requires (here messagesRead, via messages.get) is dropped here, so it
 // never reaches the reviewer or the recheck consumer. Only the unprovable rest

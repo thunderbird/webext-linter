@@ -31,9 +31,13 @@
         per add-on. The split exists because the same tab query that filters by url
         or title on an add-on's own pages needs the <code>tabs</code> permission
         before the fix but not after. When the whole-add-on summary pass is
-        enabled, the escalated permissions are handed to the
+        enabled, only the permissions the model can judge without the API schema —
+        the property- and gesture-gated <code>tabs</code>, <code>activeTab</code>,
+        and <code>accountsRead</code> — are handed to the
         <code>unused-permission</code> recheck consumer to be re-judged with full
-        context; otherwise they stand as a single manual-review reminder.
+        context; every other unused permission is function-gated, where static
+        analysis is authoritative, so it stays a manual-review reminder. Without the
+        summary pass, all of them do.
       </p>
 
       <h2>Decision flow</h2>
@@ -47,7 +51,9 @@ flowchart TD
   H -- yes --> OK([no finding — host check's concern])
   H -- no --> U{"Provably required by a reachable<br/>API call, or gates no callable API?"}
   U -- yes --> OK2([no finding — justified])
-  U -- no --> ESC([escalate to manual review<br/>or hand to recheck consumer])
+  U -- no --> G{"Property- or gesture-gated?<br/>(tabs, activeTab, accountsRead)"}
+  G -- yes --> ESC(["handed to the unused-permission recheck<br/>consumer under the summary pass,<br/>else a manual-review reminder"])
+  G -- no --> MAN(["manual-review reminder only<br/>— never sent to the model"])
 
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
@@ -56,6 +62,7 @@ flowchart TD
   class OK2 ok;
   class S skip;
   class ESC manual;
+  class MAN manual;
         </pre>
       </div>
 

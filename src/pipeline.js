@@ -708,8 +708,9 @@ async function reviewAddon(
     : [...(checksSkip ?? []), "code-sanity"];
   // When the full add-on summary will run, a check that declares a
   // `post-summary-recheck` hands its manual items to that recheck consumer to be
-  // re-judged with whole-add-on context (runChecks diverts them; the summary
-  // judges them; the consumer resolves them - see src/checks/lib/recheck.js).
+  // re-judged with whole-add-on context (runChecks diverts them - except any a
+  // producer marked manual-only; the summary judges them; the consumer resolves
+  // them - see src/checks/lib/recheck.js).
   // Without the summary this is false, so those items go straight to manual review.
   ctx.recheckActive = !invalidExperiment && fullSummary && Boolean(ctx.llm);
   progress(""); // close the Setup section before runChecks prints "── Activity ──"

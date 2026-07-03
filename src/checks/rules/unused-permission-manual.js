@@ -1,9 +1,11 @@
 // Producer of the declared permissions that warrant a closer look, for add-ons
 // whose strict_min_version is at least Thunderbird 154 (the POST-D308076 path).
 // It enumerates every named permission a reachable API call does not provably
-// require and schedules each as a manual-review escalation; when --full-summary
-// is on, the orchestrator hands those to the `unused-permission` consumer to be
-// re-judged with whole-add-on context (see src/checks/lib/recheck.js).
+// require and schedules each as a manual-review escalation. When --full-summary is
+// on, the orchestrator hands the property/gesture-gated ones (LLM_RECHECK_PERMISSIONS,
+// the only permissions the model can judge without the schema) to the
+// `unused-permission` consumer to be re-judged with whole-add-on context; the rest
+// stay manual (see src/checks/lib/permissions.js and src/checks/lib/recheck.js).
 //
 // The version gate is the only difference from its sibling
 // unused-permission-manual-pre-d308076: that one produces for add-ons below 154
@@ -29,7 +31,7 @@ export default {
   /**
    * @param {RunContext} ctx
    * @returns {{findings: [], escalations:
-   *   {item: string, file: string, loc: ?object}[]}}
+   *   {item: string, file: string, loc: ?object, recheckEligible: boolean}[]}}
    */
   run(ctx) {
     if (!strictMinAtLeast(ctx.manifest, D308076_FIXED_IN)) {
