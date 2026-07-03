@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Source Code Submission review flow</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Source Code Submission review <span class="badge info">flow</span></h1>
+        <div class="check-id">verify.js &lt;xpi&gt; --scs-root &lt;src&gt; --scs-source &lt;dir&gt;</div>
+      </header>
+
+      <h2>What it reviews</h2>
+      <p class="lead">
+        Some add-ons are submitted as <strong>both</strong> a built XPI (minified,
+        what users install) and a readable source archive. Reviewing the minified
+        XPI directly is noisy, so SCS mode reviews the readable source for code
+        defects while still treating the built XPI as the authoritative shipped
+        artifact.
+      </p>
+      <p>
+        SCS mode is on when both <code>--scs-root</code> (the source archive
+        holding <code>package.json</code> / the lock file) and
+        <code>--scs-source</code> (the add-on code root within it) are set. The
+        review then splits across four inputs with a fixed role each, and each
+        check is routed to exactly the artifact its <code>input</code> selects. The
+        purple nodes are the optional LLM side-steps (only with
+        <code>--llm-enabled</code>); Experiment handling and the summaries work as
+        in the <a href="../index.html#review-standard">Standard</a> flow.
+      </p>
+
+      <h2>Review flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Submission: a built XPI +<br/>a readable source archive<br/>(--scs-root / --scs-source)"] --> B["Load both artifacts — built XPI = shipped<br/>artifact, readable source = review target"]
+  B --> LP["LLM pre-flight (only --llm-enabled): validate config +<br/>model reachable — HARD-FAIL exit 2; resolve vendored<br/>declarations (LLM parses package.json when enabled)"]
+  LP --> X{"Shipped XPI declares experiment_apis?"}
+  X -- no --> SPLIT
+  X -- yes --> XE["Experiments reviewed from the XPI; --scs-exp-source<br/>excludes that privileged subtree from the WebExtension<br/>code checks (required with --allow-experiments). An<br/>unsupported one with experiments off → reject, exit 1"]
+  XE --> SPLIT
+  SPLIT["Route each check to the artifact its input selects"] --> SRC
+  SPLIT --> DEP
+  SPLIT --> BLD
+  SPLIT --> XPI
+  SRC["Readable source (--scs-source) — the review target:<br/>API / permission / eval / exfiltration checks over every<br/>file (scanned as authored); the LLM checks escalate<br/>their ambiguous residue to the model when enabled"]
+  DEP["Declared dependencies (source package.json):<br/>each a pinned npm package or GitHub URL; gated on<br/>popularity + known vulnerabilities (no LLM)"]
+  BLD["Build files (archive minus source, no node_modules)<br/>— input: build: npm/pnpm only, no committed node_modules,<br/>no registry redirect; the LLM judges whether the build<br/>pulls code from an undeclared source"]
+  XPI["Built XPI (shipped) — input: xpi: manifest, experiments,<br/>file-completeness (bundled / web-accessible / unused /<br/>locales), --diff-to baseline, behavioral LLM audit"]
+  SRC --> SUM
+  DEP --> SUM
+  BLD --> SUM
+  XPI --> SUM{"--full-summary or --diff-summary?"}
+  SUM -- yes --> SG["AI add-on / change summary of the XPI (LLM);<br/>re-judges escalated 'unsure' items, then the<br/>post-summary recheck consumers resolve them"]
+  SUM -- no --> RPT
+  SG --> RPT["Render findings + the manual-review to-do list"]
+  RPT --> OUT([Report — exit 0 clean /<br/>1 error findings / 2 tool failure])
+
+  classDef step fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
+  classDef llm fill:#efe9fb,stroke:#6b46c1,color:#3f2d73;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class B,SPLIT,DEP,XPI,RPT step;
+  class LP,SRC,BLD,SG llm;
+  class OUT ok;
+        </pre>
+      </div>
+
+      <h2>Where the LLM is used</h2>
+      <p>
+        The purple steps are optional and gated on <code>--llm-enabled</code>,
+        sharing the same run-wide request cap as a Standard review. In SCS mode the
+        LLM is consulted at:
+      </p>
+      <ul>
+        <li>
+          <strong>Pre-flight</strong> — validate the provider and model, hard-fail
+          (exit 2) if unusable.
+        </li>
+        <li>
+          <strong>Vendor resolution</strong> — parse ambiguous
+          <code>package.json</code> declarations from the source archive.
+        </li>
+        <li>
+          <strong>The source LLM checks</strong> — <code>data-exfiltration</code>,
+          <code>remote-script</code>, <code>remote-eval</code>,
+          <code>unused-files</code>, <code>minimize-web-accessible-resources</code>,
+          <code>missing-english-localization</code> — escalate their ambiguous
+          residue over the readable source.
+        </li>
+        <li>
+          <strong>The build-process review</strong> —
+          <code>undeclared-build-source</code> (<code>input: build</code>) has the
+          model judge whether the build pulls code or resources from a source that
+          is not among the declared dependencies (a raw URL,
+          <code>curl | sh</code>, an unpinned <code>git clone</code>, a CDN, a
+          postinstall hook).
+        </li>
+        <li>
+          <strong>The summaries + recheck</strong> — the behavioral
+          <code>--full-summary</code> / <code>--diff-summary</code> describe the
+          built XPI, and the full-summary pass re-judges the escalated
+          <em>unsure</em> items with whole-add-on context.
+        </li>
+      </ul>
+
+      <div class="outcome">
+        <strong>One review, four inputs with fixed roles</strong>
+        The readable source is the deterministic review target; the source
+        <code>package.json</code> supplies the audited dependencies; the build
+        files are reviewed on their own; and the built XPI is authoritative for the
+        manifest, the experiments, the file-completeness checks, the diff baseline
+        and the behavioral summary. A check derives one from the other only through
+        its declared <code>input</code>, so the source-level checks never touch the
+        shipped bytes and the manifest-coupled checks never touch the source. The
+        <a href="../index.html#review-standard">Standard</a> flow is the same
+        machinery with those roles collapsed onto a single add-on.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/pipeline.js</code> (the <code>mode === "scs"</code>
+        branches, <code>buildShippedCtx</code> / <code>buildScsBuildCtx</code>) and
+        the SCS options in the README.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

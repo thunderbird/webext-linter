@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Standard review flow</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Standard review <span class="badge info">flow</span></h1>
+        <div class="check-id">verify.js &lt;xpi|folder&gt;</div>
+      </header>
+
+      <h2>What it reviews</h2>
+      <p class="lead">
+        The default mode: one submitted artifact — a built XPI archive or an
+        unpacked add-on folder — reviewed directly against the matching
+        Thunderbird schema and the ATN review policies. The same artifact is both
+        the code under review and the shipped package.
+      </p>
+      <p>
+        The pipeline loads the add-on, picks the schema branch from its
+        <code>manifest_version</code> and the chosen channel, classifies any
+        bundled Experiment, resolves and verifies its vendored libraries, then
+        runs the deterministic, LLM, and manual checks over it. The purple nodes
+        below are the optional LLM side-steps — they only run with
+        <code>--llm-enabled</code>; without it, each escalates to manual review
+        instead. The tool is read-only: it never modifies or repacks the
+        submission.
+      </p>
+
+      <h2>Review flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Submission: an XPI archive<br/>or an unpacked add-on folder"] --> B["Load the add-on, read manifest.json,<br/>detect manifest_version"]
+  B --> C{"Declares experiment_apis?"}
+  C -- no --> LP
+  C -- yes --> XC["Classify each bundled Experiment against<br/>the upstream published drafts"]
+  XC --> XD{"--allow-experiments off AND a bundled<br/>Experiment is unsupported (not a known draft)?"}
+  XD -- "yes — reject outright" --> RJ([Run ONLY experiment-not-allowed — skip<br/>vendor setup, the LLM, the summaries and<br/>the manual list. Exit 1.])
+  XD -- "no — recognised, modified or accepted" --> XR["Register the Experiment API namespaces into the<br/>schema (experiment-modified, -manual-review,<br/>-overrides-api, -missing-strict-max-version run as checks)"]
+  XR --> LP
+  LP["Setup · LLM pre-flight (only --llm-enabled): validate<br/>config + model reachable — HARD-FAIL, exit 2"] --> LH
+  LH["Setup · fetch the known-library hash DB"] --> VR
+  VR["Setup · resolve vendored declarations<br/>(LLM parses package.json / VENDOR when enabled)"] --> VV
+  VV["Setup · verify vendored libraries over the network<br/>(LLM github→npm fallback when enabled); classify<br/>bundled code, CDN-identify, vulnerability-audit"] --> P
+  P["Fetch schemas, parse sources, build the run context"] --> DET
+  P --> LC
+  DET["Deterministic checks — each case decided in code"] --> SM
+  LC["LLM checks — deterministic pre-flight always;<br/>ambiguous residue → model verdict fail / pass /<br/>unsure, else the manual-review queue"] --> SM
+  SM{"--full-summary or --diff-summary?<br/>(--llm-review = --llm-enabled --full-summary)"}
+  SM -- yes --> SG["AI add-on / change summary (LLM); re-judges<br/>the escalated 'unsure' items with whole-add-on context"]
+  SG --> RC["Post-summary recheck consumers resolve<br/>the re-judged items"]
+  SM -- no --> RPT
+  RC --> RPT["Render findings + the Standard<br/>manual-review to-do list"]
+  RPT --> OUT([Report — exit 0 clean /<br/>1 error findings / 2 tool failure])
+
+  classDef step fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
+  classDef llm fill:#efe9fb,stroke:#6b46c1,color:#3f2d73;
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class B,XC,XR,LH,P,DET,RC,RPT step;
+  class LP,VR,VV,LC,SG llm;
+  class RJ err;
+  class OUT ok;
+        </pre>
+      </div>
+
+      <h2>Where the LLM is used</h2>
+      <p>
+        Every purple step above is optional and gated on <code>--llm-enabled</code>
+        with an <code>LLM_API_KEY</code>. All of them draw on one run-wide request
+        cap (<code>MAX_LLM_REQUESTS_PER_RUN</code>): when it is hit the CLI prompts
+        to run more, and otherwise the remaining LLM work escalates to manual
+        review.
+      </p>
+      <ul>
+        <li>
+          <strong>Pre-flight</strong> — when the LLM is enabled, a Setup step
+          validates the provider config and that the model is reachable, and
+          <em>hard-fails</em> the whole run (exit 2) if not.
+        </li>
+        <li>
+          <strong>Vendor resolution</strong> — the model parses ambiguous
+          <code>package.json</code> / VENDOR declarations, and resolves a GitHub
+          source to its npm package when the deterministic match is inconclusive.
+        </li>
+        <li>
+          <strong>The LLM checks</strong> — <code>remote-script</code>,
+          <code>remote-eval</code>, <code>data-exfiltration</code>,
+          <code>unused-files</code>, <code>minimize-web-accessible-resources</code>
+          and <code>missing-english-localization</code>. Each always runs its
+          deterministic pre-flight; only the genuinely-ambiguous residue is sent to
+          the model, which returns <em>fail</em> / <em>pass</em> / <em>unsure</em>.
+        </li>
+        <li>
+          <strong>The summaries</strong> — <code>--full-summary</code> (an add-on
+          summary + permission review) and <code>--diff-summary</code> (what
+          changed since <code>--diff-to</code>). <code>--llm-review</code> is the
+          shorthand for <code>--llm-enabled --full-summary</code>.
+        </li>
+        <li>
+          <strong>The post-summary recheck</strong> — the full-summary pass
+          re-judges every <em>unsure</em> item other checks escalated, with
+          whole-add-on context, so confident cases resolve instead of landing in
+          manual review.
+        </li>
+      </ul>
+
+      <h2>Experiment handling</h2>
+      <p>
+        Every add-on that declares <code>experiment_apis</code> is classified
+        against the upstream published drafts first, and that classification —
+        not the <code>--allow-experiments</code> flag — decides the path:
+      </p>
+      <ul>
+        <li>
+          <strong>Unsupported + experiments off</strong> → rejected outright: the
+          review short-circuits to the single <code>experiment-not-allowed</code>
+          finding, with no vendor setup, no LLM, no summaries and no manual list.
+        </li>
+        <li>
+          <strong>Recognised, or modified, or accepted with
+          <code>--allow-experiments</code></strong> → the full review runs. The
+          Experiment's API namespaces are registered into the schema so the
+          developer's calls into them resolve, and the Experiment checks
+          (<code>experiment-modified</code>, <code>experiment-manual-review</code>,
+          <code>experiment-overrides-api</code>,
+          <code>experiment-missing-strict-max-version</code>) run as part of the
+          normal check loop.
+        </li>
+      </ul>
+
+      <div class="outcome">
+        <strong>The two artifacts collapse into one</strong>
+        In a standard review the code under review and the shipped artifact are
+        the same object, so every check — including the manifest-coupled
+        file-completeness checks and the behavioral LLM audit — reads that one
+        add-on. The
+        <a href="../index.html#review-scs">Source Code Submission</a> flow is the
+        variant where those two roles split across a readable source archive and a
+        separately-built XPI.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/pipeline.js</code> (<code>runPipeline</code> /
+        <code>reviewAddon</code>) and the check declarations in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

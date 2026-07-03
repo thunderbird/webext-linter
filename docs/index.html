@@ -127,12 +127,29 @@
         { id: "missing-english-atn-localization", group: "Manual review", title: "Missing English ATN localization", severity: "manual" },
         { id: "forked-add-on", group: "Manual review", title: "Forked add-on", severity: "manual" },      ];
 
+      // The "Review" category: the two whole-review flows, above the per-check
+      // list. Each is a standalone page under docs/review/ (not a check, so no
+      // severity badge). `file` is relative to docs/, overriding the default
+      // checks/<id>.html path used for checks below.
+      const REVIEW_PAGES = [
+        { id: "review-standard", group: "Review", title: "Standard", file: "review/standard.html" },
+        { id: "review-scs", group: "Review", title: "Source Code Submission", file: "review/scs.html" },
+      ];
+
+      // The full left-nav list: the review flows first, then every check. Each
+      // check's page lives at checks/<id>.html unless it carries an explicit file.
+      const NAV = [
+        ...REVIEW_PAGES,
+        ...CHECKS.map((c) => ({ ...c, file: c.file ?? "checks/" + c.id + ".html" })),
+      ];
+
       const root = document.getElementById("toc-root");
       const frame = document.getElementById("content");
       const links = new Map();
+      const files = new Map();
       let lastGroup = null;
 
-      for (const c of CHECKS) {
+      for (const c of NAV) {
         if (c.group !== lastGroup) {
           lastGroup = c.group;
           const h = document.createElement("div");
@@ -150,15 +167,18 @@
         a.href = "#" + c.id;
         a.innerHTML =
           '<span class="label">' + c.title + "</span>" +
-          '<span class="badge ' + c.severity + '">' + c.severity + "</span>";
+          (c.severity
+            ? '<span class="badge ' + c.severity + '">' + c.severity + "</span>"
+            : "");
         li.appendChild(a);
         ul.appendChild(li);
         links.set(c.id, a);
+        files.set(c.id, c.file);
       }
 
       function select(id) {
-        const target = links.has(id) ? id : CHECKS[0].id;
-        frame.src = "checks/" + target + ".html";
+        const target = links.has(id) ? id : NAV[0].id;
+        frame.src = files.get(target);
         for (const [key, a] of links) {
           a.classList.toggle("active", key === target);
         }
