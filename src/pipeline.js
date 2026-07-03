@@ -117,7 +117,7 @@ import {
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
  * @property {boolean} [libraryHashesForceRefresh]  Re-fetch the library hashes.
  * @property {boolean} [cdnLookup]  Identify an unrecognized minified bundle by a
- *   jsDelivr content-hash lookup (on by default; --cdn-lookup false disables). Set
+ *   jsDelivr content-hash lookup (on by default; --lib-cdn-lookup false disables). Set
  *   false to skip the per-file CDN request (offline/privacy).
  * @property {string} [cdnLookupCache]  Where to cache the CDN hash-lookup results.
  * @property {string} [diffTo]  Path to the previous published version.
@@ -334,7 +334,7 @@ export async function runPipeline(opts) {
 
   if (!invalidExperiment) {
     // 1b. The known-library hash DB the classifier matches bytes against (fetch +
-    // cache, or the --library-hashes override; the golden harness injects a
+    // cache, or the --lib-mozilla-hash-db override; the golden harness injects a
     // fixture so offline runs are deterministic). Both modes classify.
     setupStep("Fetching library hashes");
     const { text: libraryHashesText } = await resolveLibraryHashes({

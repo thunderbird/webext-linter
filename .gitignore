@@ -3,8 +3,8 @@ tmp_extract/
 logs/
 .schema-cache/
 .experiments-cache/
-.library-hashes-cache/
-.cdn-lookup-cache/
+.lib-mozilla-hash-db-cache/
+.lib-cdn-lookup-cache/
 *.tmp
 *.key
 run-nextpass.sh

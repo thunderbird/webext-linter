@@ -3,7 +3,7 @@
 // (src/checks/lib/bundled.js) identifies a bundled third-party library by the raw
 // SHA-256 of its bytes against this map - a true content lookup, not a name/UMD
 // guess. Either:
-//   - reads the user-supplied --library-hashes path as-is (offline/tests), or
+//   - reads the user-supplied --lib-mozilla-hash-db path as-is (offline/tests), or
 //   - downloads the upstream hashes.txt into the cache dir (reused next run).
 //
 // Belongs here: the fetch/cache IO and the line parser. Does NOT belong here: the
@@ -28,11 +28,11 @@ import { LIBRARY_HASHES_URL, LIBRARY_HASHES_CACHE } from "../../config.js";
  * Resolve the library-hashes source to text, downloading + caching if needed -
  * the same override/cache/fetch shape as resolveSchemaZip / resolveExperimentsZip.
  * Cache-first: a previously downloaded copy is reused without a request, so only a
- * first-ever run with no network (and no --library-hashes override) reaches the
+ * first-ever run with no network (and no --lib-mozilla-hash-db override) reaches the
  * fetch. Throws on a download failure rather than degrading to an empty DB: a
  * partial library DB would silently change the review (a known library would go
  * unrecognized and be scanned as authored), so - like the schema and experiments
- * sources - an unavailable DB is a hard, fixable error (supply --library-hashes
+ * sources - an unavailable DB is a hard, fixable error (supply --lib-mozilla-hash-db
  * for an offline copy), never a quietly different verdict.
  * @param {ResolveLibraryHashesOpts} opts
  * @returns {Promise<{text: string, source: string}>}
@@ -46,7 +46,7 @@ export async function resolveLibraryHashes({
   if (source) {
     const resolved = path.resolve(source);
     if (!fs.existsSync(resolved)) {
-      throw new Error(`--library-hashes not found: ${resolved}`);
+      throw new Error(`--lib-mozilla-hash-db not found: ${resolved}`);
     }
     return {
       text: fs.readFileSync(resolved, "utf8"),

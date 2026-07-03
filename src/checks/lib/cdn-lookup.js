@@ -66,7 +66,7 @@ export function cdnUrl({ type, name, version, file }) {
  *   the real fetch. The golden harness injects an offline net (fetchJson throws),
  *   like verifyVendor / auditIdentifiedLibraries, so its runs make no request.
  * @param {string} [opts.cacheDir]    Where hash->result is cached.
- * @param {boolean} [opts.enabled]    Off disables the lookup entirely (--cdn-lookup false).
+ * @param {boolean} [opts.enabled]    Off disables the lookup entirely (--lib-cdn-lookup false).
  * @returns {Promise<void>}
  */
 export async function resolveCdnLibraries(

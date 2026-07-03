@@ -65,7 +65,7 @@ test("resolveLibraryHashes reads a local override without touching the network",
 test("resolveLibraryHashes throws a clear error for a missing override", async () => {
   await assert.rejects(
     resolveLibraryHashes({ source: "/no/such/hashes.txt" }),
-    /--library-hashes not found/
+    /--lib-mozilla-hash-db not found/
   );
 });
 

@@ -49,13 +49,23 @@ The options, grouped as in `--help`:
 | `--schema-force-refresh` | Re-download the schema even if a cached copy exists. |
 | `--schema-zip <path>` | Use a local schema zip (or directory) instead of downloading. |
 
-**CDN library identification:**
+**Library identification:**
 
 | Option | Description |
 | --- | --- |
-| `--library-hashes <path>` | Use a local known-library `hashes.txt` instead of fetching it (offline runs). |
-| `--library-hashes-cache <dir>` | Where the fetched library hashes are cached (default `.library-hashes-cache`). |
-| `--library-hashes-refresh` | Re-download the library hashes even if a cached copy exists. |
+| `--lib-mozilla-hash-db <path>` | Use a local copy of Mozilla's known-library hash database — the addons-linter "dispensary" `hashes.txt`, used by `missing-library` to identify a bundled third-party library by its exact content hash — instead of fetching it (offline runs). |
+| `--lib-mozilla-hash-db-cache <dir>` | Where the fetched hash database is cached (default `.lib-mozilla-hash-db-cache`). |
+| `--lib-mozilla-hash-db-refresh` | Re-download the hash database even if a cached copy exists. |
+| `--lib-cdn-lookup <true\|false>` | Identify an unrecognized minified bundle by a jsDelivr content-hash lookup (default `true`). Results are cached; an offline run simply finds no match. |
+| `--lib-cdn-lookup-cache <dir>` | Where the CDN hash-lookup results are cached (default `.lib-cdn-lookup-cache`). |
+
+**Thunderbird Draft APIs:**
+
+| Option | Description |
+| --- | --- |
+| `--experiments-zip <path>` | Use a local copy of the Thunderbird Draft-API repo (the allowed-experiments list; zip or directory) instead of downloading. Feeds the Experiment checks (e.g. `experiment-modified`, which compares a bundled Experiment against the upstream published draft). |
+| `--experiments-cache <dir>` | Where the fetched allowed-experiments zip is cached (default `.experiments-cache`). |
+| `--experiments-force-refresh` | Re-download the allowed-experiments list even if a cached copy exists. |
 
 **Check selection:**
 

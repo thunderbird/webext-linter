@@ -214,21 +214,35 @@ export function helpText() {
       "--schema-force-refresh",
       "Re-download the schema even if a cached copy exists.",
     ],
+  ];
+
+  const libraryId = [
     [
-      "--library-hashes <path>",
-      "Use a local known-library hashes.txt instead of fetching it (offline runs).",
+      "--lib-mozilla-hash-db <path>",
+      "Use a local copy of Mozilla's known-library hash database (the addons-linter 'dispensary' hashes.txt, used to identify a bundled library by exact content hash) instead of fetching it (offline runs).",
     ],
     [
-      "--library-hashes-cache <dir>",
+      "--lib-mozilla-hash-db-cache <dir>",
       `Where the fetched library hashes are cached (default: ${LIBRARY_HASHES_CACHE}).`,
     ],
     [
-      "--library-hashes-refresh",
+      "--lib-mozilla-hash-db-refresh",
       "Re-download the library hashes even if a cached copy exists.",
     ],
     [
+      "--lib-cdn-lookup <true|false>",
+      "Identify an unrecognized minified bundle by a jsDelivr content-hash lookup (default: true). Results are cached; an offline run simply finds no match.",
+    ],
+    [
+      "--lib-cdn-lookup-cache <dir>",
+      `Where the CDN hash-lookup results are cached (default: ${CDN_LOOKUP_CACHE}).`,
+    ],
+  ];
+
+  const draftApis = [
+    [
       "--experiments-zip <path>",
-      "Use a local allowed-experiments repo (zip or directory) instead of downloading.",
+      "Use a local copy of the Thunderbird Draft-API repo (the allowed-experiments list; zip or directory) instead of downloading.",
     ],
     [
       "--experiments-cache <dir>",
@@ -237,17 +251,6 @@ export function helpText() {
     [
       "--experiments-force-refresh",
       "Re-download the allowed-experiments list even if a cached copy exists.",
-    ],
-  ];
-
-  const cdn = [
-    [
-      "--cdn-lookup <true|false>",
-      "Identify an unrecognized minified bundle by a jsDelivr content-hash lookup (default: true). Results are cached; an offline run simply finds no match.",
-    ],
-    [
-      "--cdn-lookup-cache <dir>",
-      `Where the CDN hash-lookup results are cached (default: ${CDN_LOOKUP_CACHE}).`,
     ],
   ];
 
@@ -276,6 +279,22 @@ export function helpText() {
     [
       "--llm-review",
       "Shorthand for --llm-enabled --full-summary: run an extended AI add-on review.",
+    ],
+  ];
+
+  const llmEnv = [
+    ["LLM_API_TYPE", "Provider: claude (default), chatgpt, or ollama (local)."],
+    [
+      "LLM_API_KEY",
+      "Provider API key. Required for claude/chatgpt, unused by ollama.",
+    ],
+    [
+      "LLM_API_MODEL",
+      "Model for the LLM checks (default: the provider's default).",
+    ],
+    [
+      "LLM_API_URL",
+      "Override the provider's API base URL (proxy, or a remote Ollama host).",
     ],
   ];
 
@@ -335,8 +354,11 @@ export function helpText() {
     "Schema selection (manifest_version is auto-detected, you pick the channel):",
     ...schema.map(([flag, desc]) => optionLine(flag, desc)),
     "",
-    "CDN library identification:",
-    ...cdn.map(([flag, desc]) => optionLine(flag, desc)),
+    "Library identification:",
+    ...libraryId.map(([flag, desc]) => optionLine(flag, desc)),
+    "",
+    "Thunderbird Draft APIs:",
+    ...draftApis.map(([flag, desc]) => optionLine(flag, desc)),
     "",
     "Check selection:",
     ...checks.map(([flag, desc]) => optionLine(flag, desc)),
@@ -346,6 +368,9 @@ export function helpText() {
     "",
     "LLM checks:",
     ...llmFlags.map(([flag, desc]) => optionLine(flag, desc)),
+    "",
+    "Environment (LLM checks):",
+    ...llmEnv.map(([flag, desc]) => optionLine(flag, desc)),
     "",
     "Source-code submission (SCS):",
     ...scs.map(([flag, desc]) => optionLine(flag, desc)),
@@ -364,11 +389,11 @@ const OPTIONS = {
   "schema-zip": { type: "string" },
   "schema-cache": { type: "string" },
   "schema-force-refresh": { type: "boolean" },
-  "library-hashes": { type: "string" },
-  "library-hashes-cache": { type: "string" },
-  "library-hashes-refresh": { type: "boolean" },
-  "cdn-lookup": { type: "string" },
-  "cdn-lookup-cache": { type: "string" },
+  "lib-mozilla-hash-db": { type: "string" },
+  "lib-mozilla-hash-db-cache": { type: "string" },
+  "lib-mozilla-hash-db-refresh": { type: "boolean" },
+  "lib-cdn-lookup": { type: "string" },
+  "lib-cdn-lookup-cache": { type: "string" },
   "experiments-zip": { type: "string" },
   "experiments-cache": { type: "string" },
   "experiments-force-refresh": { type: "boolean" },
@@ -638,12 +663,13 @@ function pipelineOptsFromValues(values) {
     schemaZip: values["schema-zip"],
     schemaCache: values["schema-cache"] || DEFAULT_CACHE,
     schemaForceRefresh: values["schema-force-refresh"],
-    libraryHashes: values["library-hashes"],
-    libraryHashesCache: values["library-hashes-cache"] || LIBRARY_HASHES_CACHE,
-    libraryHashesForceRefresh: values["library-hashes-refresh"],
-    // --cdn-lookup true|false (default true); only an explicit "false" disables.
-    cdnLookup: values["cdn-lookup"] !== "false",
-    cdnLookupCache: values["cdn-lookup-cache"] || CDN_LOOKUP_CACHE,
+    libraryHashes: values["lib-mozilla-hash-db"],
+    libraryHashesCache:
+      values["lib-mozilla-hash-db-cache"] || LIBRARY_HASHES_CACHE,
+    libraryHashesForceRefresh: values["lib-mozilla-hash-db-refresh"],
+    // --lib-cdn-lookup true|false (default true); only an explicit "false" disables.
+    cdnLookup: values["lib-cdn-lookup"] !== "false",
+    cdnLookupCache: values["lib-cdn-lookup-cache"] || CDN_LOOKUP_CACHE,
     experimentsZip: values["experiments-zip"],
     experimentsCache: values["experiments-cache"] || EXPERIMENTS_CACHE,
     experimentsForceRefresh: values["experiments-force-refresh"],

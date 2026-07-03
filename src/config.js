@@ -36,8 +36,14 @@ export const EXPERIMENTS_CACHE = ".experiments-cache";
 export const LIBRARY_HASHES_URL =
   "https://raw.githubusercontent.com/mozilla/dispensary/master/src/hashes.txt";
 
-/** Directory where the fetched library hashes are cached (--library-hashes-cache). */
-export const LIBRARY_HASHES_CACHE = ".library-hashes-cache";
+/**
+ * Directory where the fetched library hashes are cached
+ * (--lib-mozilla-hash-db-cache). The internal names (LIBRARY_HASHES_*,
+ * library-hashes.js) keep the accurate "Mozilla dispensary hashes.txt"
+ * description; the user-facing --lib-* flag/dir is the discoverable label,
+ * mapped to the internal opts once, in cli.js.
+ */
+export const LIBRARY_HASHES_CACHE = ".lib-mozilla-hash-db-cache";
 
 /**
  * jsDelivr's content-addressed reverse lookup: GET <CDN_LOOKUP_URL><sha256-hex>
@@ -48,8 +54,8 @@ export const LIBRARY_HASHES_CACHE = ".library-hashes-cache";
  */
 export const CDN_LOOKUP_URL = "https://data.jsdelivr.com/v1/lookup/hash/";
 
-/** Directory where CDN hash-lookup results are cached (--cdn-lookup-cache). */
-export const CDN_LOOKUP_CACHE = ".cdn-lookup-cache";
+/** Directory where CDN hash-lookup results are cached (--lib-cdn-lookup-cache). */
+export const CDN_LOOKUP_CACHE = ".lib-cdn-lookup-cache";
 
 /**
  * Default model per LLM_API_TYPE when LLM_API_MODEL is not set.
