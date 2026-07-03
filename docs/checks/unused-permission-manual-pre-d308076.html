@@ -34,9 +34,10 @@
         recheck consumer, whose rubric keeps the <code>tabs</code> permission
         justified whenever the code filters a tab query by url or title anywhere —
         because before the fix that needs <code>tabs</code> even on the add-on's own
-        pages. When the whole-add-on summary pass is enabled, only the property- and
-        gesture-gated <code>tabs</code>, <code>activeTab</code>, and
-        <code>accountsRead</code> — the permissions the model can judge without the
+        pages. When the whole-add-on summary pass is enabled, only the property-,
+        argument-, and gesture-gated <code>tabs</code>, <code>activeTab</code>,
+        <code>accountsRead</code>, <code>cookies</code>, <code>management</code>, and
+        <code>messagesRead</code> — the permissions the model can judge without the
         API schema — are handed to that consumer; every other unused permission is
         function-gated and stays a manual-review reminder. Without the summary pass,
         all of them do.
@@ -53,7 +54,7 @@ flowchart TD
   H -- yes --> OK([no finding — host check's concern])
   H -- no --> U{"Provably required by a reachable<br/>API call, or gates no callable API?"}
   U -- yes --> OK2([no finding — justified])
-  U -- no --> G{"Property- or gesture-gated?<br/>(tabs, activeTab, accountsRead)"}
+  U -- no --> G{"Property-, argument-, or gesture-gated?<br/>(tabs, activeTab, accountsRead,<br/>cookies, management, messagesRead)"}
   G -- yes --> ESC(["handed to the pre-D308076 recheck<br/>consumer under the summary pass,<br/>else a manual-review reminder"])
   G -- no --> MAN(["manual-review reminder only<br/>— never sent to the model"])
 

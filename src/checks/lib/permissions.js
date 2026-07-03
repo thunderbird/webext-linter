@@ -35,19 +35,26 @@ import { resolveApiUsages } from "./api-resolution.js";
 // they are justified by their mere presence and must not be flagged unused.
 const NO_API_GATE = new Set(["unlimitedStorage"]);
 
-// Permissions whose use static analysis can't confirm because it is gated by a
-// returned property (tabs: url/title/favIconUrl; accountsRead: a message header's
-// folder) or a user gesture (activeTab), not a function call - the one place the LLM
-// adds value over the schema. ONLY these unproven permissions are handed to the
-// unused-permission recheck; every other declared-but-unproven permission is purely
-// function-gated, so if no call needs it it is unused and goes straight to manual
-// review. Their grounding lives in the unused-permission `summary-prompt` in
-// assets/registry.yaml - keep the two in sync (a member with no rubric grounding just
-// reintroduces guessing); a test enforces that every member is named in both rubrics.
+// Permissions whose use static analysis can't confirm: gated by a returned
+// property (tabs: url/title/favIconUrl; accountsRead: a message header's folder;
+// management: a space's extensionId; messagesRead: a composed message's
+// relatedMessageId or a menus selection), by a permission-gated call argument the
+// schema resolver does not inspect (cookies: setting cookieStoreId on a
+// tabs/windows/spaces.create call to open a container tab), or by a user gesture
+// (activeTab) - the one place the LLM adds value over the schema. ONLY these
+// unproven permissions are handed to the unused-permission recheck; every other
+// declared-but-unproven permission is purely function-gated, so if no call needs
+// it it is unused and goes straight to manual review. Their grounding lives in the
+// unused-permission `summary-prompt` in assets/registry.yaml - keep the two in
+// sync (a member with no rubric grounding just reintroduces guessing); a test
+// enforces that every member is named in both rubrics.
 export const LLM_RECHECK_PERMISSIONS = new Set([
   "tabs",
   "activeTab",
   "accountsRead",
+  "cookies",
+  "management",
+  "messagesRead",
 ]);
 
 // The Thunderbird version that fixes D308076: at or above it, a tabs.query
@@ -228,8 +235,8 @@ export function enumerateUnusedPermissions(ctx) {
         return;
       }
       ctx.note?.("manifest.json", loc, p, "unsure");
-      // Only property/gesture-gated permissions are worth an LLM recheck; the rest
-      // stay manual-only (the divert reads recheckEligible). See LLM_RECHECK_PERMISSIONS.
+      // Only the permissions the LLM can judge (LLM_RECHECK_PERMISSIONS) are worth an
+      // LLM recheck; the rest stay manual-only (the divert reads recheckEligible).
       escalations.push({
         item: p,
         file: "manifest.json",

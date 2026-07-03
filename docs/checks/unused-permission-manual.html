@@ -32,8 +32,10 @@
         or title on an add-on's own pages needs the <code>tabs</code> permission
         before the fix but not after. When the whole-add-on summary pass is
         enabled, only the permissions the model can judge without the API schema —
-        the property- and gesture-gated <code>tabs</code>, <code>activeTab</code>,
-        and <code>accountsRead</code> — are handed to the
+        the property-, argument-, and gesture-gated <code>tabs</code>,
+        <code>activeTab</code>,
+        <code>accountsRead</code>, <code>cookies</code>, <code>management</code>, and
+        <code>messagesRead</code> — are handed to the
         <code>unused-permission</code> recheck consumer to be re-judged with full
         context; every other unused permission is function-gated, where static
         analysis is authoritative, so it stays a manual-review reminder. Without the
@@ -51,7 +53,7 @@ flowchart TD
   H -- yes --> OK([no finding — host check's concern])
   H -- no --> U{"Provably required by a reachable<br/>API call, or gates no callable API?"}
   U -- yes --> OK2([no finding — justified])
-  U -- no --> G{"Property- or gesture-gated?<br/>(tabs, activeTab, accountsRead)"}
+  U -- no --> G{"Property-, argument-, or gesture-gated?<br/>(tabs, activeTab, accountsRead,<br/>cookies, management, messagesRead)"}
   G -- yes --> ESC(["handed to the unused-permission recheck<br/>consumer under the summary pass,<br/>else a manual-review reminder"])
   G -- no --> MAN(["manual-review reminder only<br/>— never sent to the model"])
 

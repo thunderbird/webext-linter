@@ -2,8 +2,8 @@
 // whose strict_min_version is at least Thunderbird 154 (the POST-D308076 path).
 // It enumerates every named permission a reachable API call does not provably
 // require and schedules each as a manual-review escalation. When --full-summary is
-// on, the orchestrator hands the property/gesture-gated ones (LLM_RECHECK_PERMISSIONS,
-// the only permissions the model can judge without the schema) to the
+// on, the orchestrator hands the ones the model can judge without the schema
+// (LLM_RECHECK_PERMISSIONS) to the
 // `unused-permission` consumer to be re-judged with whole-add-on context; the rest
 // stay manual (see src/checks/lib/permissions.js and src/checks/lib/recheck.js).
 //

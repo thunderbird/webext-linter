@@ -1168,13 +1168,21 @@ test("unused-permission-manual lists the unprovable declared named permissions",
 });
 
 // Each escalation is tagged with recheckEligible: only property/gesture-gated
-// permissions (tabs/activeTab/accountsRead - the ones the recheck rubric grounds) are
-// worth an LLM recheck; purely function-gated ones (storage/downloads) are manual-only,
-// so the --full-summary divert never hands them to the model (the guessing this gate
-// removes). All four escalate here because nothing is provably used.
+// permissions (the LLM_RECHECK_PERMISSIONS set) are worth an LLM recheck; purely
+// function-gated ones (storage/downloads) are manual-only, so the --full-summary
+// divert never hands them to the model (the guessing this gate removes). All
+// escalate here because nothing is provably used.
 test("unused-permission-manual tags only property/gesture-gated permissions recheck-eligible", () => {
   const manifest = {
-    permissions: ["tabs", "accountsRead", "storage", "downloads"],
+    permissions: [
+      "tabs",
+      "accountsRead",
+      "cookies",
+      "management",
+      "messagesRead",
+      "storage",
+      "downloads",
+    ],
     browser_specific_settings: { gecko: { strict_min_version: "154" } },
   };
   const ctx = {
@@ -1190,7 +1198,15 @@ test("unused-permission-manual tags only property/gesture-gated permissions rech
   const out = unusedPermissionManual.run(withManifest(ctx));
   assert.deepEqual(
     Object.fromEntries(out.escalations.map((e) => [e.item, e.recheckEligible])),
-    { tabs: true, accountsRead: true, storage: false, downloads: false }
+    {
+      tabs: true,
+      accountsRead: true,
+      cookies: true,
+      management: true,
+      messagesRead: true,
+      storage: false,
+      downloads: false,
+    }
   );
 });
 
