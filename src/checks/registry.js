@@ -111,9 +111,6 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   producer whose source-anchored items cannot bridge to the XPI behavioral
  *   summary in SCS mode: runChecks then routes its unsure sites straight to manual
  *   review there instead of the summary.
- * @property {string} [summaryPrompt]  (recheck consumer) The rubric appended to
- *   the full-summary prompt to re-judge the items handed to this check. Its
- *   presence also classifies the check as post-summary (see loadChecks).
  * @property {Function} run
  */
 
@@ -332,6 +329,78 @@ export class Registry {
     const t = p && typeof p === "object" ? p[name] : null;
     return typeof t === "string" ? t : null;
   }
+
+  /**
+   * The shared framing for the unused-permission recheck rubric (top-level
+   * `permission-prompt-framing` map): { preamble, closing }, each "" if absent.
+   * @returns {{preamble: string, closing: string}}
+   */
+  permissionPromptFraming() {
+    const f = this.doc["permission-prompt-framing"];
+    const s = (v) => (typeof v === "string" ? v : "");
+    return { preamble: s(f?.preamble), closing: s(f?.closing) };
+  }
+
+  /**
+   * The per-permission-group recheck prompts (top-level `permission-prompts` list),
+   * with the comma-separated `permissions` parsed to an array and the optional
+   * inclusive Thunderbird version bounds surfaced.
+   * @returns {{permissions: string[], prompt: string, minStrictVersion: ?string,
+   *   maxStrictVersion: ?string}[]}
+   */
+  permissionPrompts() {
+    return (this.doc["permission-prompts"] || [])
+      .filter((e) => e && typeof e.prompt === "string")
+      .map((e) => ({
+        permissions: String(e.permissions ?? "")
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean),
+        prompt: e.prompt,
+        // Coerce to string so an unquoted numeric bound (min_strict_version: 154)
+        // still parses - a bare YAML number would otherwise slip past parseVersion
+        // and silently void the bound (see versionInBounds).
+        minStrictVersion:
+          e.min_strict_version != null ? String(e.min_strict_version) : null,
+        maxStrictVersion:
+          e.max_strict_version != null ? String(e.max_strict_version) : null,
+      }));
+  }
+
+  /**
+   * The permissions the unused-permission recheck can judge: the union of every
+   * `permission-prompts` entry's permissions. A permission absent here has no rubric
+   * grounding, so it is not worth an LLM recheck and stays manual. The registry
+   * prompts are the single source of truth (there is no separate hardcoded set).
+   * This is version-INDEPENDENT (a permission counts if ANY entry lists it); the
+   * assembler then narrows to the entries whose version bounds fit the add-on, so a
+   * permission recheckable here can still fall to manual when its only prompt is out
+   * of range (see assemblePermissionPrompt's `grounded` set in lib/recheck.js).
+   * @returns {Set<string>}
+   */
+  recheckablePermissions() {
+    return (this._recheckable ??= new Set(
+      this.permissionPrompts().flatMap((e) => e.permissions)
+    ));
+  }
+
+  /**
+   * Whether a manual item may be handed to the recheck consumer `consumerId` (asked
+   * by the runChecks divert). A `permission-recheck` consumer takes only permissions
+   * it has a prompt for; every other consumer takes all its items. Keeps permission
+   * knowledge in the registry, not the orchestrator. This is the permissive,
+   * version-independent gate: a handed permission may still fall to manual at assembly
+   * if no version-matching prompt grounds it (see recheckablePermissions).
+   * @param {string} consumerId
+   * @param {{item: ?string}} item
+   * @returns {boolean}
+   */
+  rechecks(consumerId, item) {
+    if (!this.checkEntry(consumerId)?.["permission-recheck"]) {
+      return true;
+    }
+    return this.recheckablePermissions().has(item.item);
+  }
 }
 
 /**
@@ -356,9 +425,10 @@ export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
 export async function loadChecks(registry, { only, skip } = {}) {
   const onlySet = only?.length ? new Set(only) : null;
   const skipSet = skip?.length ? new Set(skip) : null;
-  // A `post-summary-recheck: X` producer must name a real check X that carries a
-  // `summary-prompt` (that prompt is what re-judges the handed-over items; a
-  // dangling target would divert them into ctx.recheck to be silently dropped).
+  // A `post-summary-recheck: X` producer must name a real check X that carries the
+  // rubric that re-judges the handed-over items: a static `summary-prompt`, or
+  // `permission-recheck` (assembled per review from the permission-prompts). A
+  // dangling target would divert items into ctx.recheck to be silently dropped.
   // Validated over the whole registry - config integrity is independent of
   // --only/--skip.
   for (const e of registry.checkEntries()) {
@@ -372,10 +442,13 @@ export async function loadChecks(registry, { only, skip } = {}) {
         `post-summary-recheck target "${target}" (from "${e.title}") is not a check`
       );
     }
-    const prompt = consumer["summary-prompt"];
-    if (typeof prompt !== "string" || !prompt) {
+    const hasPrompt =
+      (typeof consumer["summary-prompt"] === "string" &&
+        consumer["summary-prompt"]) ||
+      consumer["permission-recheck"];
+    if (!hasPrompt) {
       throw new Error(
-        `post-summary-recheck target "${target}" (from "${e.title}") has no summary-prompt`
+        `post-summary-recheck target "${target}" (from "${e.title}") has no summary-prompt or permission-recheck`
       );
     }
   }
@@ -429,10 +502,14 @@ export async function loadChecks(registry, { only, skip } = {}) {
       kind: entry.kind,
       diff: typeof entry.diff === "boolean" ? entry.diff : undefined,
       scs: typeof entry.scs === "boolean" ? entry.scs : undefined,
-      // A `summary-prompt` marks a recheck consumer: it is re-judged by the add-on
-      // summary, so it must run AFTER it (an explicit `phase` still wins).
+      // A `summary-prompt` or `permission-recheck` marks a recheck consumer: it is
+      // re-judged by the add-on summary, so it must run AFTER it (an explicit `phase`
+      // still wins).
       phase:
-        entry.phase ?? (entry["summary-prompt"] ? "post-summary" : undefined),
+        entry.phase ??
+        (entry["summary-prompt"] || entry["permission-recheck"]
+          ? "post-summary"
+          : undefined),
       prompt: entry.prompt,
       instructions: entry.instructions,
       postSummaryRecheck:
@@ -445,10 +522,6 @@ export async function loadChecks(registry, { only, skip } = {}) {
       scsRecheck:
         typeof entry["scs-recheck"] === "boolean"
           ? entry["scs-recheck"]
-          : undefined,
-      summaryPrompt:
-        typeof entry["summary-prompt"] === "string"
-          ? entry["summary-prompt"]
           : undefined,
       run,
     });
@@ -651,16 +724,16 @@ export async function runChecks(
       out.manualItems.length &&
       !scsHoldsBack
     ) {
-      // A producer can opt an item out of the recheck (recheckEligible: false); those
-      // stay manual-only even under --full-summary. The unused-permission gate uses
-      // this so only the permissions it marks recheck-eligible reach the LLM.
+      // The registry decides per item whether this consumer can re-judge it: a
+      // permission-recheck consumer takes only the permissions it has a rubric prompt
+      // for (registry.rechecks); the rest stay manual. Other rechecks take every item.
       const bucket = (ctx.recheck ??= new Map());
       const held = bucket.get(check.postSummaryRecheck) ?? [];
       for (const m of out.manualItems) {
-        if (m.recheckEligible === false) {
-          manualItems.push(m);
-        } else {
+        if (registry.rechecks(check.postSummaryRecheck, m)) {
           held.push(m);
+        } else {
+          manualItems.push(m);
         }
       }
       bucket.set(check.postSummaryRecheck, held);

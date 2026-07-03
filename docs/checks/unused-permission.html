@@ -15,11 +15,11 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        This is the post-summary recheck consumer for the post-D308076 path
-        (minimum Thunderbird version at least 154). It does not enumerate anything
-        itself: the <code>unused-permission-manual</code> producer hands it every
-        declared permission a reachable API call could not be shown to require, and
-        the whole-add-on summary pass re-judges each one with full context.
+        This is the post-summary recheck consumer for declared permissions. It does
+        not enumerate anything itself: the <code>unused-permission-manual</code>
+        producer hands it every declared permission a reachable API call could not be
+        shown to require and that the registry has a recheck prompt for, and the
+        whole-add-on summary pass re-judges each one with full context.
       </p>
       <p>
         For each handed-over permission it maps the summary's verdict: a justified
@@ -28,9 +28,11 @@
         when the summary was skipped or failed — routes the permission back to
         manual review. The model's per-permission reason rides along into the
         developer-facing wording. With no summary nothing is handed over, so this
-        check emits nothing and the producer's reminder stands instead. The
-        pre-D308076 sibling consumer applies the same mechanics with a more relaxed
-        rubric for the <code>tabs</code> permission.
+        check emits nothing and the producer's reminder stands instead. The rubric it
+        judges against is assembled per review from the registry's
+        <code>permission-prompts</code>, carrying only the sections for the
+        permissions in play and the <code>tabs</code> wording that matches the
+        add-on's <code>strict_min_version</code> (the D308076 fix).
       </p>
 
       <h2>Decision flow</h2>

@@ -197,12 +197,6 @@ deterministic-checks:
 # a manual-review case; same-bodied cases auto-group into the one reminder here.
 # When --full-summary runs, it hands them to its Unused permission recheck consumer
 # (post-summary-recheck) instead, to be re-judged against the whole add-on.
-#
-# There are two version-gated producers sharing one enumeration: this one fires
-# only for strict_min_version >= Thunderbird 154 (the D308076 fix), the sibling
-# below fires for older / unspecified minimums. They differ only in which consumer
-# they feed, because the same tabs.query({url}/{title}) on the add-on's own pages
-# needs "tabs" before the fix but not after. Exactly one fires per add-on.
 - title: Possibly unused permissions
   check: unused-permission-manual
   input: auto
@@ -213,144 +207,18 @@ deterministic-checks:
     Review whether the following declared permissions are used, and ask the
     developer to remove any that are not needed.
 
-# The pre-D308076 sibling: same enumeration, fires for add-ons whose
-# strict_min_version is below 154 or absent/unparsable, and feeds the more relaxed
-# Unused permission (pre-D308076) consumer.
-- title: Possibly unused permissions
-  check: unused-permission-manual-pre-d308076
-  input: auto
-  post-summary-recheck: unused-permission-pre-d308076
-  response: |-
-    One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
-  instructions: |-
-    Review whether the following declared permissions are used, and ask the
-    developer to remove any that are not needed.
-
-# The recheck consumer for the permissions handed over above. Its summary-prompt is
-# appended to the --full-summary pass to re-judge each with whole-add-on context;
-# the model's verdict maps to justified (drop), unused (this warning), or unsure
-# (manual review). It runs in the post-summary phase, inferred from being named as
-# the post-summary-recheck target above. The {{reason}} slot carries the model's
-# developer-facing why. This is the POST-D308076 consumer (strict_min_version >=
-# 154); the pre-D308076 consumer with a relaxed tabs rubric follows below.
+# The recheck consumer for the permissions handed over above. `permission-recheck`
+# makes the --full-summary pass assemble a rubric from the permission-prompt-framing
+# and permission-prompts sections, including only the sections for the permissions
+# actually handed over and the tabs variant matching the add-on's strict_min_version.
+# The model's verdict maps to justified (drop), unused (this warning), or unsure
+# (manual review); it runs in the post-summary phase, inferred from being named as
+# the post-summary-recheck target above. The {{reason}} slot carries the model's why.
 - title: Unused permission
   severity: warning
   check: unused-permission
   input: auto
-  summary-prompt: |-
-    Each listed item is a permission this add-on declares in its manifest that
-    static analysis could not confirm is used. Judge each only from what the
-    current code actually does: verdict pass = justified (the add-on needs it),
-    fail = unused, unsure = you genuinely cannot tell whether the current code uses
-    it. Ignore comments, TODOs, documentation, and any stated or implied intention
-    of future use: a permission the current code never exercises is unused even if
-    a comment hints it may be used later.
-    A permission is justified in two ways. It is justified if the add-on calls an
-    API that requires it. It is also justified if the add-on uses it in a way
-    static analysis cannot see - reading a property of returned data that the
-    permission gates, or passing a permission-gated argument to a call. Besides
-    "tabs" and "activeTab" (covered next), here is what typically justifies each:
-    "accountsRead" - reading a message header's folder; "management" - reading the
-    extensionId of a space; "messagesRead" - reading a composed message's
-    relatedMessageId (the original message of a reply, forward, draft or template),
-    the message copies passed to compose.onAfterSend or onAfterSave, or the
-    selectedMessages a menus context click reports; "cookies" - opening a tab or
-    window in a specific container by passing cookieStoreId to tabs.create,
-    windows.create or spaces.create (reading cookieStoreId needs no permission).
-    Judge each from whether the current code actually does that; a permission is
-    unused only when it does none of these and calls no API that requires it.
-    Be careful with "tabs" and "activeTab", a common source of error. Calling tabs
-    methods such as tabs.query, tabs.create, tabs.update, tabs.remove,
-    tabs.sendMessage, and the tabs events does not by itself require any permission.
-    Reading the privileged tab properties url, title, and favIconUrl (or filtering a
-    tabs.query by them) requires "tabs" (any tab), or a host permission that matches
-    the tab's url (matching tabs only), or "activeTab" (the active tab after a user
-    action). But the add-on always has access to its own pages, so reading or
-    filtering by the url, title, or favIconUrl of its OWN extension pages
-    (moz-extension:// pages it ships or opens) requires no permission. If "tabs"
-    would be justified only by such an own-page read or filter, it is unused; when
-    you mark "tabs" fail for that reason, say in your reason that since Thunderbird
-    154 "tabs" is no longer needed to read or filter the add-on's own pages.
-    Injecting script or CSS with tabs.executeScript or tabs.insertCSS requires a
-    host permission that matches the tab's url, or "activeTab", and is never granted
-    by "tabs". In Thunderbird, injecting into or scripting a message display tab or a
-    compose tab never requires "tabs": message display scripts are registered with
-    messageDisplayScripts.register (which requires "messagesModify") and compose
-    scripts with composeScripts.register (which requires "compose"), and
-    tabs.executeScript or tabs.insertCSS aimed at the message pane or a compose
-    window does not require "tabs".
-    Treat "activeTab" as justified when an injection or property read is confined to
-    the active tab after a user gesture such as a toolbar or menu click, a keyboard
-    shortcut, or a button on a bundled page. A broad host permission such as
-    "<all_urls>" usually makes "tabs" redundant for property reads.
-    A permission gated only by an API call the current code never makes is fail
-    (unused), not unsure. Reserve unsure for genuine ambiguity about current use,
-    such as a permission-gated property that might be read.
-  response: |-
-    The "{{item}}" permission appears to be unused. {{reason}} An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If it is in fact used, please specify which part of your add-on stops working if it is removed.
-  instructions: |-
-    The "{{item}}" permission may be unused. {{reason}} Confirm whether the add-on
-    actually needs it, and if not, ask the developer to remove it.
-
-# The pre-D308076 recheck consumer (strict_min_version below 154, or absent). Same
-# mechanics and wording as Unused permission above; only the tabs paragraph of the
-# summary-prompt differs: before the D308076 fix, filtering tabs.query by url or
-# title needs "tabs" even for the add-on's own pages, so "tabs" stays justified
-# whenever the code makes such a call anywhere.
-- title: Unused permission
-  severity: warning
-  check: unused-permission-pre-d308076
-  input: auto
-  summary-prompt: |-
-    Each listed item is a permission this add-on declares in its manifest that
-    static analysis could not confirm is used. Judge each only from what the
-    current code actually does: verdict pass = justified (the add-on needs it),
-    fail = unused, unsure = you genuinely cannot tell whether the current code uses
-    it. Ignore comments, TODOs, documentation, and any stated or implied intention
-    of future use: a permission the current code never exercises is unused even if
-    a comment hints it may be used later.
-    A permission is justified in two ways. It is justified if the add-on calls an
-    API that requires it. It is also justified if the add-on uses it in a way
-    static analysis cannot see - reading a property of returned data that the
-    permission gates, or passing a permission-gated argument to a call. Besides
-    "tabs" and "activeTab" (covered next), here is what typically justifies each:
-    "accountsRead" - reading a message header's folder; "management" - reading the
-    extensionId of a space; "messagesRead" - reading a composed message's
-    relatedMessageId (the original message of a reply, forward, draft or template),
-    the message copies passed to compose.onAfterSend or onAfterSave, or the
-    selectedMessages a menus context click reports; "cookies" - opening a tab or
-    window in a specific container by passing cookieStoreId to tabs.create,
-    windows.create or spaces.create (reading cookieStoreId needs no permission).
-    Judge each from whether the current code actually does that; a permission is
-    unused only when it does none of these and calls no API that requires it.
-    Be careful with "tabs" and "activeTab", a common source of error. Calling tabs
-    methods such as tabs.query, tabs.create, tabs.update, tabs.remove,
-    tabs.sendMessage, and the tabs events does not by itself require any permission.
-    Reading the privileged tab properties url, title, and favIconUrl (or filtering a
-    tabs.query by them) requires "tabs" (any tab), or a host permission that matches
-    the tab's url (matching tabs only), or "activeTab" (the active tab after a user
-    action). This add-on still supports Thunderbird versions before 154, where a
-    bug (fixed in 154, see D308076) means filtering a tabs.query by url or title
-    needs "tabs" even for the add-on's OWN extension pages (moz-extension:// pages
-    it ships or opens). So treat "tabs" as justified (verdict pass) whenever the
-    current code calls tabs.query with a url or title filter anywhere; return
-    verdict fail for "tabs" only when the code makes no such tabs.query({url}) or
-    tabs.query({title}) call.
-    Injecting script or CSS with tabs.executeScript or tabs.insertCSS requires a
-    host permission that matches the tab's url, or "activeTab", and is never granted
-    by "tabs". In Thunderbird, injecting into or scripting a message display tab or a
-    compose tab never requires "tabs": message display scripts are registered with
-    messageDisplayScripts.register (which requires "messagesModify") and compose
-    scripts with composeScripts.register (which requires "compose"), and
-    tabs.executeScript or tabs.insertCSS aimed at the message pane or a compose
-    window does not require "tabs".
-    Treat "activeTab" as justified when an injection or property read is confined to
-    the active tab after a user gesture such as a toolbar or menu click, a keyboard
-    shortcut, or a button on a bundled page. A broad host permission such as
-    "<all_urls>" usually makes "tabs" redundant for property reads.
-    A permission gated only by an API call the current code never makes is fail
-    (unused), not unsure. Reserve unsure for genuine ambiguity about current use,
-    such as a permission-gated property that might be read.
+  permission-recheck: true
   response: |-
     The "{{item}}" permission appears to be unused. {{reason}} An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If it is in fact used, please specify which part of your add-on stops working if it is removed.
   instructions: |-
@@ -921,6 +789,116 @@ deterministic-checks:
   response: |-
     Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
     An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
+
+# Grounding for the unused-permission recheck consumer (permission-recheck: true).
+# The --full-summary pass assembles its rubric as: framing.preamble + the prompt of
+# every permission-prompts entry whose `permissions` intersects the permissions
+# actually handed over (deduped, in order) + framing.closing. So the model is only
+# ever sent grounding for the permissions in play - not the whole catalogue. Each
+# entry may carry min_strict_version / max_strict_version (an INCLUSIVE bound on the
+# add-on's strict_min_version, compared at the bound's own precision - so "153" covers
+# the whole 153.* series; adjacent major bounds partition with no gap; an unset version
+# is treated as oldest): the two "tabs, activeTab" entries pivot on the 153/154 boundary
+# (post = min 154, pre = max 153) to pick the D308076 variant - before Thunderbird 154,
+# filtering tabs.query by url/title needs "tabs" even for the add-on's own pages; at/after
+# 154 it does not. Every name in a
+# `permissions`
+# list must appear in that entry's `prompt` (a test enforces this - an ungrounded
+# permission just reintroduces guessing).
+permission-prompt-framing:
+  preamble: |-
+    Each listed item is a permission this add-on declares in its manifest that
+    static analysis could not confirm is used. Judge each only from what the
+    current code actually does: verdict pass = justified (the add-on needs it),
+    fail = unused, unsure = you genuinely cannot tell whether the current code uses
+    it. Ignore comments, TODOs, documentation, and any stated or implied intention
+    of future use: a permission the current code never exercises is unused even if
+    a comment hints it may be used later.
+    A permission is justified in two ways. It is justified if the add-on calls an
+    API that requires it. It is also justified if the add-on uses it in a way
+    static analysis cannot see - reading a property of returned data that the
+    permission gates, or passing a permission-gated argument to a call. Here is what
+    typically justifies each permission listed below:
+  closing: |-
+    Judge each from whether the current code actually does that; a permission is
+    unused only when it does none of these and calls no API that requires it. A
+    permission gated only by an API call the current code never makes is fail
+    (unused), not unsure. Reserve unsure for genuine ambiguity about current use,
+    such as a permission-gated property that might be read.
+
+permission-prompts:
+  - permissions: accountsRead
+    prompt: |-
+      "accountsRead" is justified by reading a message header's folder.
+  - permissions: management
+    prompt: |-
+      "management" is justified by reading the extensionId of a space.
+  - permissions: messagesRead
+    prompt: |-
+      "messagesRead" is justified by reading a composed message's relatedMessageId
+      (the original message of a reply, forward, draft or template), the message
+      copies passed to compose.onAfterSend or onAfterSave, or the selectedMessages
+      a menus context click reports.
+  - permissions: cookies
+    prompt: |-
+      "cookies" is justified by opening a tab or window in a specific container by
+      passing cookieStoreId to tabs.create, windows.create or spaces.create
+      (reading cookieStoreId needs no permission).
+  - permissions: tabs, activeTab
+    min_strict_version: "154"
+    prompt: |-
+      Be careful with "tabs" and "activeTab", a common source of error. Calling tabs
+      methods such as tabs.query, tabs.create, tabs.update, tabs.remove,
+      tabs.sendMessage, and the tabs events does not by itself require any permission.
+      Reading the privileged tab properties url, title, and favIconUrl (or filtering a
+      tabs.query by them) requires "tabs" (any tab), or a host permission that matches
+      the tab's url (matching tabs only), or "activeTab" (the active tab after a user
+      action). But the add-on always has access to its own pages, so reading or
+      filtering by the url, title, or favIconUrl of its OWN extension pages
+      (moz-extension:// pages it ships or opens) requires no permission. If "tabs"
+      would be justified only by such an own-page read or filter, it is unused; when
+      you mark "tabs" fail for that reason, say in your reason that since Thunderbird
+      154 "tabs" is no longer needed to read or filter the add-on's own pages.
+      Injecting script or CSS with tabs.executeScript or tabs.insertCSS requires a
+      host permission that matches the tab's url, or "activeTab", and is never granted
+      by "tabs". In Thunderbird, injecting into or scripting a message display tab or a
+      compose tab never requires "tabs": message display scripts are registered with
+      messageDisplayScripts.register (which requires "messagesModify") and compose
+      scripts with composeScripts.register (which requires "compose"), and
+      tabs.executeScript or tabs.insertCSS aimed at the message pane or a compose
+      window does not require "tabs".
+      Treat "activeTab" as justified when an injection or property read is confined to
+      the active tab after a user gesture such as a toolbar or menu click, a keyboard
+      shortcut, or a button on a bundled page. A broad host permission such as
+      "<all_urls>" usually makes "tabs" redundant for property reads.
+  - permissions: tabs, activeTab
+    max_strict_version: "153"
+    prompt: |-
+      Be careful with "tabs" and "activeTab", a common source of error. Calling tabs
+      methods such as tabs.query, tabs.create, tabs.update, tabs.remove,
+      tabs.sendMessage, and the tabs events does not by itself require any permission.
+      Reading the privileged tab properties url, title, and favIconUrl (or filtering a
+      tabs.query by them) requires "tabs" (any tab), or a host permission that matches
+      the tab's url (matching tabs only), or "activeTab" (the active tab after a user
+      action). This add-on still supports Thunderbird versions before 154, where a
+      bug (fixed in 154, see D308076) means filtering a tabs.query by url or title
+      needs "tabs" even for the add-on's OWN extension pages (moz-extension:// pages
+      it ships or opens). So treat "tabs" as justified (verdict pass) whenever the
+      current code calls tabs.query with a url or title filter anywhere; return
+      verdict fail for "tabs" only when the code makes no such tabs.query({url}) or
+      tabs.query({title}) call.
+      Injecting script or CSS with tabs.executeScript or tabs.insertCSS requires a
+      host permission that matches the tab's url, or "activeTab", and is never granted
+      by "tabs". In Thunderbird, injecting into or scripting a message display tab or a
+      compose tab never requires "tabs": message display scripts are registered with
+      messageDisplayScripts.register (which requires "messagesModify") and compose
+      scripts with composeScripts.register (which requires "compose"), and
+      tabs.executeScript or tabs.insertCSS aimed at the message pane or a compose
+      window does not require "tabs".
+      Treat "activeTab" as justified when an injection or property read is confined to
+      the active tab after a user gesture such as a toolbar or menu click, a keyboard
+      shortcut, or a button on a bundled page. A broad host permission such as
+      "<all_urls>" usually makes "tabs" redundant for property reads.
 
 # An llm-check carries a `prompt` (the rubric sent to the LLM for an ambiguous
 # case) and an `instructions` (the message printed when the case is routed to

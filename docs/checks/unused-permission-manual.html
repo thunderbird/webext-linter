@@ -25,44 +25,34 @@
         minimize-host-permissions check.
       </p>
       <p>
-        It runs only for add-ons whose minimum Thunderbird version is at least 154,
-        the release that carries the D308076 fix. The otherwise identical sibling
-        producer covers older or unspecified minimums; exactly one of the two fires
-        per add-on. The split exists because the same tab query that filters by url
-        or title on an add-on's own pages needs the <code>tabs</code> permission
-        before the fix but not after. When the whole-add-on summary pass is
-        enabled, only the permissions the model can judge without the API schema —
-        the property-, argument-, and gesture-gated <code>tabs</code>,
-        <code>activeTab</code>,
-        <code>accountsRead</code>, <code>cookies</code>, <code>management</code>, and
-        <code>messagesRead</code> — are handed to the
-        <code>unused-permission</code> recheck consumer to be re-judged with full
-        context; every other unused permission is function-gated, where static
-        analysis is authoritative, so it stays a manual-review reminder. Without the
-        summary pass, all of them do.
+        When the whole-add-on summary pass is enabled, the escalated permissions the
+        registry has a recheck prompt for are handed to the
+        <code>unused-permission</code> consumer to be re-judged with full context;
+        every other unused permission (function-gated, where static analysis is
+        authoritative) stays a manual-review reminder. Without the summary pass, all
+        of them stand as the reminder. This one producer serves every add-on: the
+        version-specific <code>tabs</code> wording (the D308076 fix in Thunderbird
+        154) is selected later, when the recheck rubric is assembled, from the
+        add-on's <code>strict_min_version</code>.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The add-on manifest"] --> V{"strict_min_version<br/>&gt;= Thunderbird 154?"}
-  V -- no --> S([skip — sibling pre-D308076<br/>producer handles it])
-  V -- yes --> P["Each declared named permission<br/>(required + optional)"]
+  A["The add-on manifest"] --> P["Each declared named permission<br/>(required + optional)"]
   P --> H{"Is it a host match pattern?"}
   H -- yes --> OK([no finding — host check's concern])
   H -- no --> U{"Provably required by a reachable<br/>API call, or gates no callable API?"}
   U -- yes --> OK2([no finding — justified])
-  U -- no --> G{"Property-, argument-, or gesture-gated?<br/>(tabs, activeTab, accountsRead,<br/>cookies, management, messagesRead)"}
+  U -- no --> G{"Does the registry have a recheck<br/>prompt for this permission?"}
   G -- yes --> ESC(["handed to the unused-permission recheck<br/>consumer under the summary pass,<br/>else a manual-review reminder"])
   G -- no --> MAN(["manual-review reminder only<br/>— never sent to the model"])
 
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
-  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
   class OK ok;
   class OK2 ok;
-  class S skip;
   class ESC manual;
   class MAN manual;
         </pre>

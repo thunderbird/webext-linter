@@ -301,21 +301,6 @@ export function cmpVersion(a, b) {
 }
 
 /**
- * Whether the add-on's declared strict_min_version is at least `version`. Only a
- * parsable strict_min_version that compares >= counts; an absent or unparsable
- * value (or one this linter skips, like "≤59") returns false - the relaxed,
- * pre-D308076 default.
- * @param {Manifest} manifest
- * @param {string} version  The threshold, e.g. "154".
- * @returns {boolean}
- */
-export function strictMinAtLeast(manifest, version) {
-  const min = parseVersion(strictMinVersion(manifest));
-  const threshold = parseVersion(version);
-  return Boolean(min) && Boolean(threshold) && cmpVersion(min, threshold) >= 0;
-}
-
-/**
  * The value if it is an array, else [] (defensive manifest-shape guard).
  * @param {unknown} v
  * @returns {unknown[]}

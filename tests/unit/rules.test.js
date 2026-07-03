@@ -50,7 +50,6 @@ import unrecognizedManifestKey from "../../src/checks/rules/unrecognized-manifes
 import backgroundModule from "../../src/checks/rules/background-module.js";
 import unusedPermission from "../../src/checks/rules/unused-permission.js";
 import unusedPermissionManual from "../../src/checks/rules/unused-permission-manual.js";
-import unusedPermissionManualPre from "../../src/checks/rules/unused-permission-manual-pre-d308076.js";
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
 import { parseApiUsage } from "../../src/parse/api-usage.js";
 import { getPermissionAnalysis } from "../../src/checks/lib/permissions.js";
@@ -1167,49 +1166,6 @@ test("unused-permission-manual lists the unprovable declared named permissions",
   assert.ok(out.escalations.every((e) => e.file === "manifest.json"));
 });
 
-// Each escalation is tagged with recheckEligible: only property/gesture-gated
-// permissions (the LLM_RECHECK_PERMISSIONS set) are worth an LLM recheck; purely
-// function-gated ones (storage/downloads) are manual-only, so the --full-summary
-// divert never hands them to the model (the guessing this gate removes). All
-// escalate here because nothing is provably used.
-test("unused-permission-manual tags only property/gesture-gated permissions recheck-eligible", () => {
-  const manifest = {
-    permissions: [
-      "tabs",
-      "accountsRead",
-      "cookies",
-      "management",
-      "messagesRead",
-      "storage",
-      "downloads",
-    ],
-    browser_specific_settings: { gecko: { strict_min_version: "154" } },
-  };
-  const ctx = {
-    schema,
-    addon: {
-      manifest,
-      files: new Map([
-        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
-      ]),
-    },
-    apiUsages: [],
-  };
-  const out = unusedPermissionManual.run(withManifest(ctx));
-  assert.deepEqual(
-    Object.fromEntries(out.escalations.map((e) => [e.item, e.recheckEligible])),
-    {
-      tabs: true,
-      accountsRead: true,
-      cookies: true,
-      management: true,
-      messagesRead: true,
-      storage: false,
-      downloads: false,
-    }
-  );
-});
-
 // The deterministic analysis is authoritative: a permission a reachable API call
 // provably requires (here messagesRead, via messages.get) is dropped here, so it
 // never reaches the reviewer or the recheck consumer. Only the unprovable rest
@@ -2020,11 +1976,10 @@ test("unused-permission-manual omits permissions a reachable call requires", () 
   );
 });
 
-// ---- the two version-gated producers (D308076) ----
-// unused-permission-manual and unused-permission-manual-pre-d308076 share one
-// enumeration; the strict_min_version gate decides which fires. >= 154 -> the
-// post-fix producer; below 154 or absent/unparsable -> the pre-D308076 producer.
-// Exactly one enumerates per add-on, so exactly one consumer prompt is appended.
+// ---- unused-permission-manual is version-agnostic (D308076) ----
+// The single producer enumerates unused permissions regardless of strict_min_version.
+// The version-specific tabs wording (D308076) moved to the registry's version-bounded
+// tabs permission-prompts, selected at recheck-assembly time (see recheck.test.js).
 const permProducerCtx = (strictMin) => {
   const manifest = {
     permissions: ["tabs"],
@@ -2048,42 +2003,14 @@ const permProducerCtx = (strictMin) => {
   };
 };
 
-test("post-D308076 producer fires only for strict_min_version >= 154", () => {
-  for (const min of ["154", "154.0", "200"]) {
+test("unused-permission-manual enumerates regardless of strict_min_version", () => {
+  for (const min of ["154", "200", "153.9", "128", undefined, "abc", "≤59"]) {
     assert.deepEqual(
       unusedPermissionManual
         .run(withManifest(permProducerCtx(min)))
         .escalations.map((e) => e.item),
       ["tabs"],
-      `min=${min}`
-    );
-  }
-  for (const min of ["153.9", "128", undefined, "abc", "≤59"]) {
-    assert.deepEqual(
-      unusedPermissionManual.run(withManifest(permProducerCtx(min)))
-        .escalations,
-      [],
       `min=${String(min)}`
-    );
-  }
-});
-
-test("pre-D308076 producer fires for below-154 / absent / unparsable", () => {
-  for (const min of ["153.9", "128", undefined, "abc", "≤59"]) {
-    assert.deepEqual(
-      unusedPermissionManualPre
-        .run(withManifest(permProducerCtx(min)))
-        .escalations.map((e) => e.item),
-      ["tabs"],
-      `min=${String(min)}`
-    );
-  }
-  for (const min of ["154", "154.0", "200"]) {
-    assert.deepEqual(
-      unusedPermissionManualPre.run(withManifest(permProducerCtx(min)))
-        .escalations,
-      [],
-      `min=${min}`
     );
   }
 });

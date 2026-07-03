@@ -35,34 +35,6 @@ import { resolveApiUsages } from "./api-resolution.js";
 // they are justified by their mere presence and must not be flagged unused.
 const NO_API_GATE = new Set(["unlimitedStorage"]);
 
-// Permissions whose use static analysis can't confirm: gated by a returned
-// property (tabs: url/title/favIconUrl; accountsRead: a message header's folder;
-// management: a space's extensionId; messagesRead: a composed message's
-// relatedMessageId or a menus selection), by a permission-gated call argument the
-// schema resolver does not inspect (cookies: setting cookieStoreId on a
-// tabs/windows/spaces.create call to open a container tab), or by a user gesture
-// (activeTab) - the one place the LLM adds value over the schema. ONLY these
-// unproven permissions are handed to the unused-permission recheck; every other
-// declared-but-unproven permission is purely function-gated, so if no call needs
-// it it is unused and goes straight to manual review. Their grounding lives in the
-// unused-permission `summary-prompt` in assets/registry.yaml - keep the two in
-// sync (a member with no rubric grounding just reintroduces guessing); a test
-// enforces that every member is named in both rubrics.
-export const LLM_RECHECK_PERMISSIONS = new Set([
-  "tabs",
-  "activeTab",
-  "accountsRead",
-  "cookies",
-  "management",
-  "messagesRead",
-]);
-
-// The Thunderbird version that fixes D308076: at or above it, a tabs.query
-// filtering by url/title on the add-on's own pages does not need "tabs". The two
-// version-gated unused-permission-manual producers split on this (one fires at or
-// above it, the other below / when unset), feeding their own recheck consumer.
-export const D308076_FIXED_IN = "154";
-
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../addon/load.js").Manifest} Manifest */
 
@@ -209,11 +181,10 @@ export function getPermissionAnalysis(ctx) {
  * line, as manual-review escalations. A permission a reachable call provably
  * requires (usedPermissions) or that gates no callable API (NO_API_GATE) is
  * justified and dropped. Host match patterns are minimize-host-permissions'
- * concern and are skipped. Shared by the unused-permission-manual producers,
- * which differ only in the strict_min_version gate around this call.
+ * concern and are skipped. Backs the unused-permission-manual producer.
  * @param {RunContext} ctx
  * @returns {{findings: [], escalations:
- *   {item: string, file: string, loc: ?object, recheckEligible: boolean}[]}}
+ *   {item: string, file: string, loc: ?object}[]}}
  */
 export function enumerateUnusedPermissions(ctx) {
   const used = getPermissionAnalysis(ctx).usedPermissions;
@@ -234,15 +205,11 @@ export function enumerateUnusedPermissions(ctx) {
         ctx.note?.("manifest.json", loc, p, "pass");
         return;
       }
+      // Every unused permission escalates the same way. Whether it can be re-judged
+      // by the LLM (the registry has a rubric prompt for it) or stays manual-only is
+      // decided later, at the divert, by registry.rechecks - the check does not know.
       ctx.note?.("manifest.json", loc, p, "unsure");
-      // Only the permissions the LLM can judge (LLM_RECHECK_PERMISSIONS) are worth an
-      // LLM recheck; the rest stay manual-only (the divert reads recheckEligible).
-      escalations.push({
-        item: p,
-        file: "manifest.json",
-        loc,
-        recheckEligible: LLM_RECHECK_PERMISSIONS.has(p),
-      });
+      escalations.push({ item: p, file: "manifest.json", loc });
     });
   }
   return { findings: [], escalations };

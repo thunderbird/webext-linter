@@ -13,8 +13,11 @@ import {
   resolveRecheck,
   buildRecheckSections,
 } from "../../src/checks/lib/recheck.js";
-import { runChecks, loadRegistry } from "../../src/checks/registry.js";
-import { LLM_RECHECK_PERMISSIONS } from "../../src/checks/lib/permissions.js";
+import {
+  runChecks,
+  loadRegistry,
+  Registry,
+} from "../../src/checks/registry.js";
 
 // A handed-over manual item, as the producer's escalation became (manualRef).
 const handed = (item, line) => ({
@@ -223,18 +226,15 @@ test("buildRecheckSections skips a consumer with no summary-prompt", () => {
 });
 
 // ---- the runChecks divert ----
-// A producer (post-summary-recheck: unused-permission) declares its manual items.
-// When ctx.recheckActive, runChecks hands the recheck-ELIGIBLE ones to ctx.recheck
-// (the unused-permission gate marks only property/gesture-gated permissions eligible;
-// the rest stay manual-only even when active); when inactive, all stay in manual
-// review and ctx.recheck is never created.
+// The unused-permission producer declares one manual item per unused permission.
+// When ctx.recheckActive, runChecks asks registry.rechecks(consumer, item) per item:
+// a permission the registry has a rubric prompt for goes to ctx.recheck (the LLM
+// re-judges it); one it has no prompt for (function-gated) stays manual. When
+// inactive, all stay in manual review and ctx.recheck is never created.
 const producerCtx = () => {
   const manifest = {
     manifest_version: 3,
     permissions: ["tabs", "storage"],
-    // >= 154 so the post-D308076 producer (unused-permission-manual) enumerates;
-    // its pre-D308076 sibling no-ops here.
-    browser_specific_settings: { gecko: { strict_min_version: "154" } },
   };
   return {
     addon: {
@@ -249,14 +249,14 @@ const producerCtx = () => {
   };
 };
 
-test("runChecks diverts only recheck-eligible permissions; the rest stay manual", async () => {
+test("runChecks hands only permissions with a rubric prompt to the recheck; the rest stay manual", async () => {
   const registry = loadRegistry();
   const ctx = { ...producerCtx(), recheckActive: true };
   const out = await runChecks(withManifest(ctx), registry, {
     only: ["unused-permission-manual"],
   });
-  // "tabs" is property/gesture-gated -> handed to the recheck consumer; "storage" is
-  // function-gated -> stays in manual review even though recheck is active.
+  // "tabs" has a permission-prompt -> handed to the recheck consumer; "storage" has
+  // none -> stays in manual review even though recheck is active.
   assert.deepEqual(
     out.manualItems.map((m) => m.item),
     ["storage"]
@@ -280,55 +280,197 @@ test("runChecks leaves a producer's manual items in manual review when inactive"
   assert.equal(ctx.recheck, undefined); // nothing was diverted
 });
 
-// The pre-D308076 producer fires when strict_min_version is below 154 / absent,
-// and diverts to its own consumer (whose summary-prompt keeps "tabs" justified
-// when filtered by url/title). The post-fix producer no-ops, so its consumer
-// bucket is never created - exactly one prompt reaches the summary.
-test("runChecks diverts the pre-D308076 producer to its own consumer (eligible only)", async () => {
+// registry.rechecks is the divert's per-item gate: a permission-recheck consumer takes
+// only permissions it has a prompt for; any other consumer takes every item.
+test("registry.rechecks gates permission items by whether a prompt exists", () => {
   const registry = loadRegistry();
-  const manifest = { manifest_version: 3, permissions: ["tabs", "storage"] };
-  const ctx = {
-    addon: {
-      manifest,
-      files: new Map([
-        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
-      ]),
-      permissionAnalysis: { usedPermissions: new Set() },
-    },
-    recheckActive: true,
-  };
-  const out = await runChecks(withManifest(ctx), registry, {
-    only: ["unused-permission-manual", "unused-permission-manual-pre-d308076"],
-  });
-  // The gate applies on both version paths: only "tabs" reaches the pre-D308076
-  // consumer; "storage" (function-gated) stays manual.
-  assert.deepEqual(
-    ctx.recheck.get("unused-permission-pre-d308076").map((m) => m.item),
-    ["tabs"]
+  assert.equal(registry.rechecks("unused-permission", { item: "tabs" }), true);
+  assert.equal(
+    registry.rechecks("unused-permission", { item: "storage" }),
+    false
   );
-  assert.deepEqual(
-    out.manualItems.map((m) => m.item),
-    ["storage"]
+  // A consumer without `permission-recheck` (here the producer entry) takes all items.
+  assert.equal(
+    registry.rechecks("unused-permission-manual", { item: "x" }),
+    true
   );
-  // The post-fix producer no-opped (no >=154 minimum), so its bucket is empty.
-  assert.equal(ctx.recheck.get("unused-permission"), undefined);
 });
 
-// The gate and the rubric are a coupled pair: only LLM_RECHECK_PERMISSIONS reach the
-// recheck, so each member must be named in the consumer's summary-prompt or the model
-// judges it with no schema and no grounding - the guessing the gate exists to remove.
-// This enforces the "keep the two in sync" contract the set's comment states, and
-// guards the documented follow-up (adding a permission to the set without grounding it).
-test("every LLM_RECHECK_PERMISSIONS member is grounded in both unused-permission rubrics", () => {
-  const registry = loadRegistry();
-  for (const id of ["unused-permission", "unused-permission-pre-d308076"]) {
-    const prompt = registry.checkEntry(id)?.["summary-prompt"] ?? "";
-    for (const perm of LLM_RECHECK_PERMISSIONS) {
+// The registry is the single source of truth for which permissions the recheck can
+// judge: every permission-prompts entry must name each of its `permissions` in its own
+// `prompt`, or the model judges that permission with no grounding - the guessing this
+// grounding exists to remove.
+test("every permission-prompts entry grounds each of its permissions", () => {
+  const entries = loadRegistry().permissionPrompts();
+  assert.ok(entries.length > 0, "expected permission-prompts entries");
+  for (const e of entries) {
+    for (const perm of e.permissions) {
       assert.match(
-        prompt,
+        e.prompt,
         new RegExp(`\\b${perm}\\b`),
-        `${id} summary-prompt must ground "${perm}" (a LLM_RECHECK_PERMISSIONS member)`
+        `permission-prompts entry "${e.permissions.join(", ")}" must ground "${perm}"`
       );
     }
   }
+});
+
+// A version bound written unquoted in YAML parses as a number; the loader must coerce
+// it to a string so parseVersion accepts it (a bare number would void the bound and
+// make both tabs variants match every version).
+test("permissionPrompts coerces a numeric version bound to a string", () => {
+  const reg = new Registry({
+    "permission-prompts": [
+      { permissions: "tabs", prompt: "tabs", min_strict_version: 154 },
+    ],
+  });
+  assert.strictEqual(reg.permissionPrompts()[0].minStrictVersion, "154");
+});
+
+// ---- permission-recheck assembly (buildRecheckSections) ----
+// A permission-recheck consumer assembles its rubric per review from the framing +
+// the permission-prompts for exactly the permissions handed over, and picks the tabs
+// variant by the add-on's strict_min_version (D308076).
+const permRubric = (perms, strictMin) => {
+  const manifest = strictMin
+    ? {
+        browser_specific_settings: { gecko: { strict_min_version: strictMin } },
+      }
+    : {};
+  const ctx = {
+    manifest,
+    recheck: new Map([
+      [
+        "unused-permission",
+        perms.map((p) => ({ item: p, file: "manifest.json" })),
+      ],
+    ]),
+  };
+  return buildRecheckSections(ctx, loadRegistry(), "NONCE").rubric;
+};
+
+test("assembly includes only the sections for the permissions handed over", () => {
+  const rubric = permRubric(["cookies"], "154");
+  assert.match(rubric, /\bcookies\b/);
+  assert.doesNotMatch(rubric, /\baccountsRead\b/);
+  assert.doesNotMatch(rubric, /Be careful with "tabs"/); // no tabs section pulled in
+});
+
+test("assembly selects the tabs variant by strict_min_version", () => {
+  for (const min of ["154", "154.0", "200"]) {
+    const post = permRubric(["tabs"], min);
+    assert.match(post, /no longer needed to read or filter/, `min=${min}`); // fixed
+    assert.doesNotMatch(post, /bug \(fixed in 154/, `min=${min}`);
+  }
+  // Everything below 154 - including 153.x point releases, unset and unparsable -
+  // gets the pre-D308076 wording (the [154, ) / ( , 154) variants must partition
+  // the version line with no gap: a 153.9 add-on must not fall through to no rubric).
+  for (const min of ["153.9", "153.5", "153", "128", undefined, "abc"]) {
+    const pre = permRubric(["tabs"], min);
+    assert.match(pre, /bug \(fixed in 154/, `min=${String(min)}`);
+    assert.doesNotMatch(
+      pre,
+      /no longer needed to read or filter/,
+      `min=${min}`
+    );
+  }
+});
+
+// The version-bounded tabs variants must tile the version line: for EVERY
+// strict_min_version, the tabs recheck gets exactly one grounding - never none (a
+// gap sends tabs to the LLM ungrounded) and never both.
+test("the tabs variants partition every strict_min_version (no gap, no overlap)", () => {
+  const wordings = (min) => {
+    const r = permRubric(["tabs"], min);
+    return [
+      /no longer needed to read or filter/.test(r), // post
+      /bug \(fixed in 154/.test(r), // pre
+    ].filter(Boolean).length;
+  };
+  for (const min of [
+    "154",
+    "153.99",
+    "153.9",
+    "153.1",
+    "153",
+    "128",
+    "60",
+    "200",
+    "115.2.1",
+    undefined,
+    "abc",
+  ]) {
+    assert.equal(
+      wordings(min),
+      1,
+      `exactly one tabs variant for min=${String(min)}`
+    );
+  }
+});
+
+test("assembly yields no rubric for a permission with no prompt (it falls to manual)", () => {
+  assert.equal(permRubric(["storage"], "154"), "");
+});
+
+// A recheck permission whose ONLY prompt is version-bounded is not grounded for an
+// out-of-range add-on. It must be dropped from the items sent to the model (and fall
+// to manual via resolveRecheck), never judged with no grounding: the items block must
+// list only the permissions the assembled rubric actually grounds.
+test("assembly drops a handed permission no version-matching prompt grounds", () => {
+  const reg = new Registry({
+    "deterministic-checks": [
+      { title: "U", check: "unused-permission", "permission-recheck": true },
+    ],
+    "permission-prompt-framing": { preamble: "PRE.", closing: "CLOSE." },
+    "permission-prompts": [
+      {
+        permissions: "tabs",
+        prompt: "tabs pre wording",
+        max_strict_version: "153",
+      },
+      {
+        permissions: "future",
+        prompt: "FUTURE wording",
+        min_strict_version: "154",
+      },
+    ],
+  });
+  const ctx = {
+    manifest: {
+      browser_specific_settings: { gecko: { strict_min_version: "128" } },
+    },
+    recheck: new Map([
+      [
+        "unused-permission",
+        [
+          { item: "future", file: "manifest.json" },
+          { item: "tabs", file: "manifest.json" },
+        ],
+      ],
+    ]),
+  };
+  const { rubric, items } = buildRecheckSections(ctx, reg, "N");
+  assert.match(items, /- tabs/); // grounded (pre variant) -> judged
+  assert.doesNotMatch(items, /- future/); // ungrounded here -> dropped, falls to manual
+  assert.doesNotMatch(rubric, /FUTURE/);
+  // ...and the dropped permission is not lost: the model never saw it (not in items),
+  // so it has no verdict and resolveRecheck routes it to manual review.
+  const resolved = resolveRecheck(ctx, { id: "unused-permission" });
+  assert.ok(
+    resolved.escalations.some((e) => e.item === "future"),
+    "the dropped permission must fall to manual review"
+  );
+});
+
+// The framing (permission-prompt-framing) carries the verdict scheme and the
+// judge-only-from-current-code rules that apply to EVERY rechecked permission - the
+// per-permission prompts define only what justifies each one. It must always be
+// present and wired into the assembled rubric: without it the model would be handed a
+// bare "X is justified by Y" with no pass/fail/unsure definition and would guess. No
+// per-permission test covers this, so a dropped framing would otherwise pass silently.
+test("the assembled rubric always carries the framing verdict scheme", () => {
+  const rubric = permRubric(["cookies"], "154"); // framing wraps any single permission
+  assert.match(rubric, /verdict pass = justified/);
+  assert.match(rubric, /fail = unused/);
+  assert.match(rubric, /unsure = you genuinely cannot tell/);
+  assert.match(rubric, /Ignore comments, TODOs/); // the judge-current-code-only rule
 });

@@ -8,9 +8,12 @@
 //
 //   buildRecheckSections(ctx, registry) - what summaries.js appends to the
 //     add-on-summary prompt: one labeled section per recheck consumer that was
-//     handed items, carrying that consumer's `summary-prompt` rubric and the list
-//     of item keys to judge. The model returns a verdict per item in the review's
-//     `recheck` field (stored on ctx.recheckVerdicts).
+//     handed items, carrying that consumer's rubric and the list of item keys to
+//     judge. Most consumers carry a static `summary-prompt`; a `permission-recheck`
+//     consumer instead assembles its rubric per review from the permission-prompt-
+//     framing + permission-prompts sections, including only the sections for the
+//     permissions actually handed over. The model returns a verdict per item in the
+//     review's `recheck` field (stored on ctx.recheckVerdicts).
 //
 //   resolveRecheck(ctx, check) - the shared run() of every recheck consumer (a
 //     normal post-summary check). It reads the items handed to THIS consumer and
@@ -31,6 +34,7 @@
 
 import { finding } from "../../report/finding.js";
 import { wrap } from "./untrusted.js";
+import { parseVersion, cmpVersion, strictMinVersion } from "./util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../registry.js").LoadedCheck} LoadedCheck */
@@ -82,12 +86,6 @@ export function buildRecheckSections(ctx, registry, nonce) {
       continue;
     }
     const entry = registry.checkEntry(id);
-    const prompt = entry?.["summary-prompt"];
-    if (!prompt) {
-      // A recheck target with no rubric: leave its items unjudged - the consumer
-      // (resolveRecheck) falls them back to manual review, so none are lost.
-      continue;
-    }
     const keys = [];
     const seen = new Set();
     for (const ref of items) {
@@ -98,6 +96,25 @@ export function buildRecheckSections(ctx, registry, nonce) {
       }
     }
     if (!keys.length) {
+      continue;
+    }
+    // A permission-recheck consumer assembles its rubric from the registry's
+    // permission-prompts for just the permissions being rechecked (keys); every
+    // other consumer carries a static summary-prompt. Either may be "" (no rubric),
+    // in which case the items stay unjudged and resolveRecheck falls them to manual.
+    let prompt;
+    let itemKeys = keys;
+    if (entry?.["permission-recheck"]) {
+      const assembled = assemblePermissionPrompt(registry, ctx.manifest, keys);
+      prompt = assembled.prompt;
+      // Only ask the model about permissions the rubric actually grounds. A handed
+      // permission whose sole prompt is version-filtered out is not grounded here, so
+      // it must fall to manual (resolveRecheck's no-verdict path), never be judged blind.
+      itemKeys = keys.filter((k) => assembled.grounded.has(k));
+    } else {
+      prompt = entry?.["summary-prompt"];
+    }
+    if (!prompt || !itemKeys.length) {
       continue;
     }
     const label = entry.title || id;
@@ -114,12 +131,77 @@ export function buildRecheckSections(ctx, registry, nonce) {
       wrap(
         nonce,
         "RECHECK-ITEMS",
-        keys.map((k) => `- ${k}`).join("\n"),
+        itemKeys.map((k) => `- ${k}`).join("\n"),
         `id=${JSON.stringify(id)}`
       )
     );
   }
   return { rubric: rubrics.join("\n\n"), items: itemBlocks.join("\n\n") };
+}
+
+/**
+ * Assemble the unused-permission recheck rubric for the permissions being rechecked:
+ * the shared framing wraps only the permission-prompts entries that cover one of the
+ * requested `permissions` and whose version bounds fit the add-on's strict_min_version
+ * (so the tabs variant matches D308076), deduped in registry order. Returns the rubric
+ * AND the set of permissions it actually grounds: a requested permission whose only
+ * entry is version-filtered out is not in `grounded`, so the caller must drop it from
+ * the items sent to the model - it falls to manual via resolveRecheck rather than being
+ * judged with no grounding. `prompt` is "" when no entry matches at all.
+ * @param {import("../registry.js").Registry} registry
+ * @param {?object} manifest  The add-on manifest (for the strict_min_version bounds).
+ * @param {string[]} permissions  The permissions handed to this recheck.
+ * @returns {{prompt: string, grounded: Set<string>}}
+ */
+function assemblePermissionPrompt(registry, manifest, permissions) {
+  const want = new Set(permissions);
+  const entries = registry
+    .permissionPrompts()
+    .filter(
+      (e) =>
+        e.permissions.some((p) => want.has(p)) &&
+        versionInBounds(manifest, e.minStrictVersion, e.maxStrictVersion)
+    );
+  const grounded = new Set(entries.flatMap((e) => e.permissions));
+  if (!entries.length) {
+    return { prompt: "", grounded };
+  }
+  const { preamble, closing } = registry.permissionPromptFraming();
+  const prompt = [preamble, ...entries.map((e) => e.prompt), closing]
+    .filter(Boolean)
+    .join("\n");
+  return { prompt, grounded };
+}
+
+/**
+ * Whether the add-on's strict_min_version falls within an INCLUSIVE [min, max]
+ * Thunderbird version range (each bound optional), compared at the BOUND's own
+ * precision - so a bound of "153" denotes the whole 153.* series: 153, 153.0 and
+ * 153.9 all satisfy min "153" AND max "153". Adjacent major bounds therefore
+ * partition the version line with no gap (the tabs variants pivot on min 154 / max
+ * 153, meeting at the D308076 major boundary). An absent or unparsable
+ * strict_min_version counts as oldest: it fails any min but satisfies any max.
+ * @param {?object} manifest
+ * @param {?string} min  Inclusive lower bound, or null.
+ * @param {?string} max  Inclusive upper bound, or null.
+ * @returns {boolean}
+ */
+function versionInBounds(manifest, min, max) {
+  const v = parseVersion(strictMinVersion(manifest));
+  const minV = min ? parseVersion(min) : null;
+  const maxV = max ? parseVersion(max) : null;
+  // Truncate v to each bound's component count before comparing, so "153" covers
+  // every 153.* point release rather than only the exact "153". The min/max guards
+  // are deliberately asymmetric for an unparsable/absent v (which counts as oldest):
+  // min FAILS on a null v - the `!(v && ...)` makes a null v fall through to false;
+  // max SATISFIES on a null v - the leading `v &&` short-circuits it to pass.
+  if (minV && !(v && cmpVersion(v.slice(0, minV.length), minV) >= 0)) {
+    return false;
+  }
+  if (maxV && v && cmpVersion(v.slice(0, maxV.length), maxV) > 0) {
+    return false;
+  }
+  return true;
 }
 
 /**

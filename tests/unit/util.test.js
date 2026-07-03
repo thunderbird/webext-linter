@@ -7,7 +7,6 @@ import {
   llmEnabled,
   parseVersion,
   cmpVersion,
-  strictMinAtLeast,
 } from "../../src/checks/lib/util.js";
 import { llmErrorText } from "../../src/util/log.js";
 
@@ -62,28 +61,4 @@ test("cmpVersion compares component-wise", () => {
   assert.equal(cmpVersion([153, 9], [154]), -1);
   assert.equal(cmpVersion([200], [154]), 1);
   assert.equal(cmpVersion([140, 4, 1], [140, 4]), 1);
-});
-
-// True only when a parsable strict_min_version compares >= the threshold; absent
-// or unparsable is false (the relaxed / pre-D308076 default). Reads both the
-// browser_specific_settings and legacy applications keys (via strictMinVersion).
-test("strictMinAtLeast gates on a parsable, high-enough strict_min_version", () => {
-  const bss = (v) => ({
-    browser_specific_settings: { gecko: { strict_min_version: v } },
-  });
-  assert.equal(strictMinAtLeast(bss("154"), "154"), true);
-  assert.equal(strictMinAtLeast(bss("200"), "154"), true);
-  assert.equal(strictMinAtLeast(bss("153.9"), "154"), false);
-  assert.equal(strictMinAtLeast(bss("128"), "154"), false);
-  assert.equal(strictMinAtLeast(bss("abc"), "154"), false);
-  assert.equal(strictMinAtLeast({}, "154"), false);
-  assert.equal(strictMinAtLeast(undefined, "154"), false);
-  // The legacy applications key is honored too.
-  assert.equal(
-    strictMinAtLeast(
-      { applications: { gecko: { strict_min_version: "154" } } },
-      "154"
-    ),
-    true
-  );
 });

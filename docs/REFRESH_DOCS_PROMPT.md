@@ -43,7 +43,8 @@ that no longer exist.
    check's `title`, `severity` (`error` / `warning` / `info`), `check` (the
    kebab-case id), `response` (developer-facing message), and often a leading
    comment block describing intent. Some entries have no `severity` (manual /
-   producer checks) or special fields (`phase`, `diff`, `summary-prompt`).
+   producer checks) or special fields (`phase`, `diff`, `summary-prompt`,
+   `permission-recheck`).
 2. `src/checks/rules/<id>.js` — the implementation of each check. The header
    comment block describes the decision logic in prose; the `run()` body is the
    ground truth for the branches. Shared logic lives in `src/checks/lib/`

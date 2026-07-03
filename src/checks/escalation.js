@@ -33,8 +33,6 @@ import { wrapText } from "../util/text.js";
  * @property {string} [file]  Locus, listed under the manual entry (like a
  *   finding) so the reviewer sees where; the report groups by message.
  * @property {{line?: number, column?: number}} [loc]
- * @property {boolean} [recheckEligible]  Set false to keep this item manual-only
- *   even under --full-summary; omitted means eligible (the divert default is true).
  */
 
 /**
@@ -49,8 +47,6 @@ import { wrapText } from "../util/text.js";
  * @property {"escalation"|"llm-error"} kind  Picks the registry message used.
  * @property {Record<string, string|number>|null} data  Extra `{{slot}}` values
  *   for the instructions template (null when the case carries none).
- * @property {boolean} recheckEligible  Whether a post-summary recheck may pull this
- *   item; false keeps it manual-only even under --full-summary. Default true.
  */
 
 /**
@@ -109,9 +105,8 @@ export async function runLlmCheck(ctx, check, step) {
 /**
  * @param {LoadedCheck} check
  * @param {{item?: ?string, hint?: ?string, file?: ?string, loc?: object,
- *   data?: object, recheckEligible?: boolean}} c  The manual case: its `{{item}}`
- *   token, an optional per-locus `hint`, an optional locus (file/loc), data, and
- *   whether it may be handed to a post-summary recheck (default true).
+ *   data?: object}} c  The manual case: its `{{item}}` token, an optional per-locus
+ *   `hint`, an optional locus (file/loc), and data.
  * @param {"escalation"|"llm-error"} kind
  * @returns {ManualRef}
  */
@@ -124,9 +119,6 @@ function manualRef(check, c, kind) {
     loc: c.loc ?? null,
     kind,
     data: c.data ?? null,
-    // A post-summary recheck can pull this item unless a producer opts it out
-    // (only the unused-permission gate does, for non-property-gated permissions).
-    recheckEligible: c.recheckEligible !== false,
   };
 }
 
