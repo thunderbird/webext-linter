@@ -3,6 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Shown inside the index.html content iframe: links must drive the whole
+         window (the docs shell + its hash nav), not navigate within the iframe. -->
+    <base target="_top" />
     <title>Source Code Submission review flow</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
