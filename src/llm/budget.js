@@ -6,7 +6,7 @@
 // manual review, the same path a token-less run takes. One budget per run,
 // shared across those sites (created in src/pipeline.js runPipeline).
 
-import { progress } from "../util/log.js";
+import { progress, FEED } from "../util/log.js";
 
 /**
  * @typedef {object} LlmBudget
@@ -38,8 +38,9 @@ export function createLlmBudget({ step, confirmMore }) {
         if (!more) {
           stopped = true;
           progress(
-            `  LLM request cap reached (${used}); ` +
-              "remaining checks escalate to manual review."
+            `LLM request cap reached (${used}); ` +
+              "remaining checks escalate to manual review.",
+            FEED.STEP
           );
           return false;
         }

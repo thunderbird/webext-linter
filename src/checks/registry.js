@@ -40,7 +40,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import YAML from "yaml";
 
 import { finding, SEVERITY } from "../report/finding.js";
-import { progress, debug } from "../util/log.js";
+import { progress, debug, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
 import { runLlmCheck, manualEscalations } from "./escalation.js";
 
@@ -546,8 +546,9 @@ const TAG_WIDTH = Math.max(
 const VERDICT_COLOR = { fail: red, pass: green, unsure: blue };
 
 /**
- * Format one investigation note for the feed: a padded `[verdict]` tag then the
- * site (`file:line` when a line is known, else `file`) and the optional item.
+ * Format one investigation note for the feed (unindented - the printer applies
+ * the DETAIL indent): a padded `[verdict]` tag then the site (`file:line` when a
+ * line is known, else `file`) and the optional item.
  * @param {string} file
  * @param {?{line?: number}} loc
  * @param {?string} item
@@ -563,7 +564,7 @@ export function formatNote(file, loc, item, verdict) {
     );
   }
   const at = loc?.line != null ? `${file}:${loc.line}` : file;
-  const line = `      • ${`[${verdict}]`.padEnd(TAG_WIDTH)} ${at}${item ? ` - ${item}` : ""}`;
+  const line = `• ${`[${verdict}]`.padEnd(TAG_WIDTH)} ${at}${item ? ` - ${item}` : ""}`;
   return (VERDICT_COLOR[verdict] ?? ((s) => s))(line);
 }
 
@@ -677,7 +678,7 @@ export async function runChecks(
   // [i/N] line above.
   ctx.note = (file, loc, item, verdict) => {
     try {
-      progress(formatNote(file, loc, item, verdict));
+      progress(formatNote(file, loc, item, verdict), FEED.DETAIL);
     } catch (err) {
       // A cosmetic feed note must never drop a check's findings - formatNote's
       // throw still guards the contract for its unit test and direct callers.
@@ -762,7 +763,7 @@ export async function runChecks(
  * @returns {Promise<{findings: object[], manualItems: object[]}>}
  */
 export async function runOneCheck(ctx, check, label) {
-  progress(`  ${label} ${check.id}`);
+  progress(`${label} ${check.id}`, FEED.STEP);
   const findings = [];
   const manualItems = [];
   try {

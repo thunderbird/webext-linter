@@ -17,7 +17,6 @@ import path from "node:path";
 import AdmZip from "adm-zip";
 import JSON5 from "json5";
 
-import { warn } from "../util/log.js";
 import { buildManifestLoc } from "./manifest-loc.js";
 
 /**
@@ -94,6 +93,10 @@ import { buildManifestLoc } from "./manifest-loc.js";
  * @property {string[]} nodeModules  Posix paths of node_modules directories
  *   skipped at load (their contents are never read); empty when none. In SCS
  *   mode the committed-node-modules check rejects each.
+ * @property {string[]} skipped  Ready-to-narrate notices for entries skipped at
+ *   load (a non-node_modules symlink, an unsafe archive path); empty when none.
+ *   The loader collects them; the pipeline narrates them under "Reading add-on",
+ *   so a pre-banner sizing load prints nothing before the Setup banner.
  * @property {?Manifest} manifest  Parsed; null if missing/invalid.
  * @property {string|null} manifestError     Parse error message, if any.
  * @property {?import("./manifest-loc.js").ManifestLoc} manifestLoc  Resolves a
@@ -111,7 +114,7 @@ export function loadAddon(source) {
     throw new Error(`Add-on not found: ${resolved}`);
   }
   const stat = fs.statSync(resolved);
-  const { files, nodeModules } = stat.isDirectory()
+  const { files, nodeModules, skipped } = stat.isDirectory()
     ? readDir(resolved)
     : readZip(resolved);
   const addon = assembleAddon(files, {
@@ -122,6 +125,10 @@ export function loadAddon(source) {
   // paths are recorded - a committed node_modules is a hard fail (committed-node-modules
   // in SCS mode), never reviewable input.
   addon.nodeModules = nodeModules;
+  // Skipped-entry notices (symlinks, unsafe archive paths): the loader stays silent and
+  // hands them back for the pipeline to narrate under the "Reading add-on" step, so a
+  // pre-banner sizing load never prints before the Setup banner.
+  addon.skipped = skipped;
   return addon;
 }
 
@@ -234,13 +241,14 @@ export function scsExpSourceRelative(scsExpSource, scsSource, scsRoot) {
  * authoritative manifest is the built XPI's, exposed separately as ctx.manifest (the
  * orchestrator resolves it - see src/checks/context.js); nothing reviews the source
  * manifest, so it is left untouched here.
- * @param {string} scsRoot  Path to the source archive root (folder or zip).
+ * @param {Addon} archive  The scsRoot archive, loaded ONCE by the caller (loadAddon)
+ *   and shared with loadScsBuildFiles - so the source tree is not read twice.
  * @param {string} scsSource  The add-on code root, relative to scsRoot or an
  *   absolute path (e.g. "src", "addon", or "/abs/path/to/root/addon").
+ * @param {string} scsRoot  Path to the source archive root (for the path math).
  * @returns {Addon}
  */
-export function loadScsAddon(scsRoot, scsSource) {
-  const archive = loadAddon(scsRoot);
+export function loadScsAddon(archive, scsSource, scsRoot) {
   const rel = scsRootRelative(scsSource, scsRoot, "--scs-source");
   const prefix = rel ? `${rel}/` : "";
   const files = new Map();
@@ -290,20 +298,21 @@ export function loadScsAddon(scsRoot, scsSource) {
  *
  * When scsSource IS the archive root, every file is review source, so there are no
  * build files (empty corpus -> the check skips).
- * @param {string} scsRoot  Path to the source archive root (folder or zip).
+ * @param {Addon} archive  The scsRoot archive, loaded ONCE by the caller and shared
+ *   with loadScsAddon (the tree is not read twice).
  * @param {string} scsSource  The --scs-source flag (the review source subtree).
+ * @param {string} scsRoot  Path to the source archive root (for the path math).
  * @param {string} [scsExpSource]  The --scs-exp-source flag; excluded too (it sits
  *   inside scsSource, so this is defensive).
  * @returns {{files: Map<string, Buffer>, nodeModules: string[]}}
  */
-export function loadScsBuildFiles(scsRoot, scsSource, scsExpSource) {
-  const archive = loadAddon(scsRoot);
+export function loadScsBuildFiles(archive, scsSource, scsRoot, scsExpSource) {
   const files = new Map();
   const src = scsRootRelative(scsSource, scsRoot, "--scs-source");
   if (!src) {
     // The review source IS the archive root: every file is add-on source, so there
     // are no build files outside it.
-    return { files, nodeModules: archive.nodeModules };
+    return { files, nodeModules: [...archive.nodeModules] };
   }
   const prefixes = [src];
   if (scsExpSource) {
@@ -332,17 +341,22 @@ export function loadScsBuildFiles(scsRoot, scsSource, scsExpSource) {
     }
     files.set(p, buf);
   }
-  return { files, nodeModules: archive.nodeModules };
+  // Copy nodeModules so the build corpus owns its list - the caller shares one archive
+  // object with loadScsAddon, and the aliased array must not leak mutations back to it
+  // (matching the fresh-Map discipline `files` already follows).
+  return { files, nodeModules: [...archive.nodeModules] };
 }
 
 /**
  * @param {string} zipPath  Path to the .xpi/.zip archive.
- * @returns {{files: Map<string, Buffer>, nodeModules: string[]}}
+ * @returns {{files: Map<string, Buffer>, nodeModules: string[],
+ *   skipped: string[]}}
  */
 function readZip(zipPath) {
   const zip = new AdmZip(zipPath);
   const files = new Map();
   const nodeModules = new Set();
+  const skipped = [];
   for (const entry of zip.getEntries()) {
     if (entry.isDirectory) {
       continue;
@@ -351,7 +365,7 @@ function readZip(zipPath) {
     // Reject path-traversal / absolute entry names from a (possibly malicious)
     // archive so they can never reach a filesystem write or the output package.
     if (!isSafeAddonPath(name)) {
-      warn(`Skipping unsafe archive entry: ${entry.entryName}`);
+      skipped.push(`Skipping unsafe archive entry: ${entry.entryName}`);
       continue;
     }
     // Never decompress an installed-dependency tree: record the outer node_modules
@@ -364,16 +378,18 @@ function readZip(zipPath) {
     }
     files.set(name, entry.getData());
   }
-  return { files, nodeModules: [...nodeModules] };
+  return { files, nodeModules: [...nodeModules], skipped };
 }
 
 /**
  * @param {string} dir  Root directory of the unpacked add-on.
- * @returns {{files: Map<string, Buffer>, nodeModules: string[]}}
+ * @returns {{files: Map<string, Buffer>, nodeModules: string[],
+ *   skipped: string[]}}
  */
 function readDir(dir) {
   const files = new Map();
   const nodeModules = [];
+  const skipped = [];
   /** @param {string} current  Directory to recurse into. */
   const walk = (current) => {
     for (const e of fs.readdirSync(current, { withFileTypes: true })) {
@@ -382,12 +398,14 @@ function readDir(dir) {
         // A symlink named node_modules is a committed dependency tree too: record it
         // by name (its target is never followed or read) so committed-node-modules
         // still fires. Other symlinks are skipped rather than followed: a real .xpi
-        // has none, and following could pull in host files or loop. Warn on those so
-        // the skip is not silent.
+        // has none, and following could pull in host files or loop. Collect the skip
+        // as a notice (the caller narrates it) so it is not silent.
         if (e.name === "node_modules") {
           nodeModules.push(normalize(path.relative(dir, full)));
         } else {
-          warn(`Skipping symlink (not packaged): ${path.relative(dir, full)}`);
+          skipped.push(
+            `Skipping symlink (not packaged): ${path.relative(dir, full)}`
+          );
         }
       } else if (e.isDirectory()) {
         // Never read an installed-dependency tree: record it and do NOT recurse, so
@@ -404,7 +422,7 @@ function readDir(dir) {
     }
   };
   walk(dir);
-  return { files, nodeModules };
+  return { files, nodeModules, skipped };
 }
 
 /**

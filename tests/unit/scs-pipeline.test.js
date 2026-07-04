@@ -5,7 +5,7 @@
 // entry scripts are named differently than the source's - which is the case that
 // stresses the shipped/review-target split.
 
-import { test } from "node:test";
+import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -68,6 +68,36 @@ test("SCS: runPipeline throws when --scs-source resolves to --scs-root", async (
       () => runPipeline({ addonPath: xpi, scsRoot: src, scsSource }),
       /--scs-source must be a subfolder of --scs-root/
     );
+  }
+});
+
+// Regression: the --scs-root tree is read ONCE and the archive is shared by the review
+// loader (loadScsAddon) and the build-corpus loader (loadScsBuildFiles), so it is not
+// walked (nor its symlinks warned) twice. Before the dedupe each loader called
+// loadAddon(scsRoot), reading the root twice.
+test("SCS: the --scs-root archive is read once, not twice", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir(SRC_FILES);
+  const realReaddir = fs.readdirSync;
+  let rootReads = 0;
+  mock.method(fs, "readdirSync", (p, ...rest) => {
+    if (path.resolve(p) === path.resolve(src)) {
+      rootReads += 1;
+    }
+    return realReaddir(p, ...rest);
+  });
+  try {
+    await runPipeline({
+      addonPath: xpi,
+      scsRoot: src,
+      scsSource: "src",
+      schemaZip: SCHEMA_FIXTURE,
+    });
+    assert.equal(rootReads, 1, "--scs-root walked once, not twice");
+  } finally {
+    mock.restoreAll();
+    fs.rmSync(xpi, { recursive: true, force: true });
+    fs.rmSync(src, { recursive: true, force: true });
   }
 });
 

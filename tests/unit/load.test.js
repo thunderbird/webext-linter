@@ -28,6 +28,8 @@ test("directory load skips symlinks but keeps real files", () => {
   const addon = loadAddon(dir);
   assert.ok(addon.files.has("real.js"), "real file is loaded");
   assert.ok(!addon.files.has("link.js"), "symlink is skipped");
+  // The skip is collected as a notice (not printed) for the pipeline to narrate.
+  assert.deepEqual(addon.skipped, ["Skipping symlink (not packaged): link.js"]);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -49,6 +51,8 @@ test("directory load records a symlinked node_modules without following it", () 
 
   const addon = loadAddon(dir);
   assert.deepEqual(addon.nodeModules, ["node_modules"]);
+  // A node_modules symlink is a recorded dependency tree, not a skipped-entry notice.
+  assert.deepEqual(addon.skipped, []);
   assert.ok(
     ![...addon.files.keys()].some((k) => k.startsWith("node_modules")),
     "symlink target not read"
@@ -78,7 +82,10 @@ test("loadScsAddon partitions scsSource, keeps root package.json + the source's 
     "browser.runtime.id;\n"
   );
 
-  const addon = loadScsAddon(root, "src");
+  // The pipeline reads the --scs-root archive ONCE and shares it with both the review
+  // loader and the build-corpus loader, so the tree is never walked twice.
+  const archive = loadAddon(root);
+  const addon = loadScsAddon(archive, "src", root);
 
   assert.ok(addon.files.has("background.js"), "src file, prefix stripped");
   assert.ok(!addon.files.has("src/background.js"), "prefix not retained");
@@ -92,7 +99,7 @@ test("loadScsAddon partitions scsSource, keeps root package.json + the source's 
   assert.equal(addon.files.get("manifest.json").toString(), srcManifest);
 
   // --scs-source accepts an absolute path too: it resolves to the same subtree.
-  const abs = loadScsAddon(root, path.join(root, "src"));
+  const abs = loadScsAddon(archive, path.join(root, "src"), root);
   assert.deepEqual(
     [...abs.files.keys()].sort(),
     [...addon.files.keys()].sort()
@@ -138,8 +145,9 @@ test("loadScsBuildFiles returns the build files outside scsSource + scsExpSource
   fs.writeFileSync(path.join(root, "src", "node_modules", "pkg.js"), "1;\n");
 
   const { files, nodeModules } = loadScsBuildFiles(
-    root,
+    loadAddon(root),
     "src",
+    root,
     "src/experiment"
   );
   assert.deepEqual([...files.keys()].sort(), [
@@ -177,7 +185,7 @@ test("loadScsBuildFiles with scsSource at the archive root returns no build file
     '{"scripts":{"build":"x"}}'
   );
   fs.writeFileSync(path.join(root, "background.js"), "1;\n");
-  const { files } = loadScsBuildFiles(root, ".", "");
+  const { files } = loadScsBuildFiles(loadAddon(root), ".", root, "");
   assert.equal(files.size, 0);
   fs.rmSync(root, { recursive: true, force: true });
 });

@@ -18,7 +18,7 @@
 // (src/checks/registry.js). Turning a ManualRef into user text is
 // src/report/responses.js via the registry.
 
-import { progress } from "../util/log.js";
+import { progress, feedIndent, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
 import { wrapText } from "../util/text.js";
 
@@ -137,9 +137,11 @@ export function manualEscalations(check, escalations) {
   };
 }
 
-// The live activity feed (stderr, TTY only, off for piped/JSON/test runs).
-const HEAD = "      ↳ ";
-const SECTION = "        ";
+// The live activity feed. HEAD prefixes the review header; DETAIL_HANG hangs the
+// verdict bullets' wrapped continuation lines under the bullet text. Both derive
+// from the feed's DETAIL indent (feedIndent) so the feed has one indentation source.
+const HEAD = `${feedIndent(FEED.DETAIL)}↳ `;
+const DETAIL_HANG = `${feedIndent(FEED.DETAIL)}  `;
 // Pass green, fail red, unsure blue - a no-op unless the CLI enabled color.
 const VERDICT_COLOR = { pass: green, fail: red, unsure: blue };
 
@@ -172,9 +174,13 @@ function narrateBatchVerdicts(candidates, verdicts) {
     const why = v.reason ? ` - ${v.reason}` : "";
     const tint = VERDICT_COLOR[v.verdict] ?? ((s) => s);
     // A bullet per candidate so the verdicts read as a separated list. wrapText
-    // hangs continuation lines past the marker.
-    wrapText(`• ${where} ${v.verdict.toUpperCase()}${why}`, SECTION).forEach(
-      (line) => progress(tint(line))
-    );
+    // hangs continuation lines past the marker, so the DETAIL indent is baked into
+    // each line and printed at SECTION - unlike a plain DETAIL line, where emit adds
+    // the indent OUTSIDE the color. Here it lands inside tint(), which is harmless:
+    // leading spaces are colorless and --report-out strips color before capture.
+    wrapText(
+      `• ${where} ${v.verdict.toUpperCase()}${why}`,
+      DETAIL_HANG
+    ).forEach((line) => progress(tint(line)));
   }
 }

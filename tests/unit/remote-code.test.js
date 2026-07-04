@@ -482,18 +482,19 @@ test("remote-script notes remote (fail), local code (pass) and ambiguous (unsure
 // The feed line: a padded [verdict] tag aligning the file column, then
 // file:line - item (file alone when no line is known).
 test("formatNote renders a padded verdict tag and the site", () => {
+  // The note is unindented - runChecks prints it at the feed's DETAIL level.
   assert.equal(
     formatNote("bg.js", { line: 4 }, "fetch x", "fail"),
-    "      • [fail]    bg.js:4 - fetch x"
+    "• [fail]    bg.js:4 - fetch x"
   );
   assert.equal(
     formatNote("manifest.json", null, "CSP 'unsafe-eval'", "unsure"),
-    "      • [unsure]  manifest.json - CSP 'unsafe-eval'"
+    "• [unsure]  manifest.json - CSP 'unsafe-eval'"
   );
   // The widest tag, [skipped], sets the column; the others pad to align to it.
   assert.equal(
     formatNote("manifest.json", null, "not an Experiment", "skipped"),
-    "      • [skipped] manifest.json - not an Experiment"
+    "• [skipped] manifest.json - not an Experiment"
   );
   // The verdict is an enforced contract: an unknown one is a programmer error.
   assert.throws(() => formatNote("f.js", null, "x", "nope"), /verdict/);

@@ -21,7 +21,7 @@
 
 import { getProvider, defaultModelFor } from "../llm/provider.js";
 import { MAX_FILES_PER_BATCH } from "../config.js";
-import { debug, progress, llmErrorText } from "../util/log.js";
+import { debug, progress, FEED, llmErrorText } from "../util/log.js";
 import { red } from "../util/color.js";
 import { sortKeys } from "../util/json.js";
 import { nonceFor, wrap, wrapFile, framing } from "./lib/untrusted.js";
@@ -159,7 +159,10 @@ export function createLlmClient({
           // Report the failed batch at this step (visible without --verbose).
           // Its candidates fall back to "unsure" -> manual review, as without a
           // token. The review itself never aborts on an LLM error.
-          progress(red(`      ↳ LLM review failed - ${llmErrorText(err)}`));
+          progress(
+            red(`↳ LLM review failed - ${llmErrorText(err)}`),
+            FEED.DETAIL
+          );
           for (const c of batch) {
             out.set(c.id, {
               verdict: "unsure",

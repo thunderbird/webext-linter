@@ -73,26 +73,64 @@ export function getCapture() {
 }
 
 /**
- * Narrate to stdout when `show`, and record the line whenever capture is on.
- * Quiet mode (JSON) emits and records nothing.
+ * The feed's indentation levels, applied by emit() so callers narrate at a
+ * semantic level and never hand-code spaces. SECTION headings sit at column 0
+ * (── Setup ──, blank separators); STEP is one feed step ([i/total], the
+ * per-check line, an LLM-generating line); DETAIL is a line nested under its
+ * step (an investigation note, a skipped-file notice, an LLM verdict). The
+ * 6-space DETAIL width matches the `• [verdict]` findings the checks emit.
+ *
+ * @readonly
+ * @enum {number}
+ */
+export const FEED = { SECTION: 0, STEP: 1, DETAIL: 2 };
+
+// Indentation for each FEED level, indexed by its value. Owned here so the feed's
+// shape lives in one place; callers pass a level, emit() maps it to spaces.
+const PREFIX = ["", "  ", "      "];
+
+/**
+ * The indent string for a feed level, for a caller that must build the prefix
+ * into a wrapText() call so wrapped continuation lines hang-align (the LLM
+ * verdict list, the escalation header). A plain line passes the level to
+ * progress()/warn() instead of prefixing by hand.
+ *
+ * @param {number} level  A FEED value.
+ * @returns {string}
+ */
+export function feedIndent(level) {
+  return PREFIX[level] ?? "";
+}
+
+/**
+ * Narrate to stdout when `show`, indented for its feed level, and record the
+ * line whenever capture is on (independent of `show`). Quiet mode (JSON) emits
+ * and records nothing. The level's indent is prepended to the first argument so
+ * it sits OUTSIDE any color the caller wrapped the text in (spaces are colorless).
  *
  * @param {unknown[]} args
  * @param {boolean} show
+ * @param {number} [level]  A FEED value; defaults to SECTION (column 0).
  */
-function emit(args, show) {
+function emit(args, show, level = FEED.SECTION) {
   if (quiet) {
     return;
   }
+  const prefix = PREFIX[level] ?? "";
+  const out =
+    prefix && args.length ? [prefix + String(args[0]), ...args.slice(1)] : args;
   if (show) {
-    console.log(...args);
+    console.log(...out);
   }
   if (captured) {
-    captured.push(args.map(String).join(" "));
+    captured.push(out.map(String).join(" "));
   }
 }
 
 /**
- * Narrate an informational line to the feed (stdout).
+ * Narrate an informational line to the feed (stdout) - always shown (unless
+ * quiet), at SECTION (column 0). Used for the run banner, which is not part of
+ * the progress-gated feed.
  *
  * @param {...unknown} args
  */
@@ -114,23 +152,27 @@ export function debug(...args) {
 }
 
 /**
- * Narrate a warning line to the feed (stdout).
+ * Narrate a warning notice to the feed - a line nested under its step (DETAIL),
+ * shown when progress is enabled (a text run) and recorded for capture. These
+ * are feed narration, not errors; real tool errors go to stderr, written by the
+ * CLI.
  *
  * @param {...unknown} args
  */
 export function warn(...args) {
-  emit(args, true);
+  emit(args, progressOn, FEED.DETAIL);
 }
 
 /**
  * Narrate a live progress line to the feed (stdout, only when progress is
- * enabled). Recorded for capture regardless, so a --report-out file gets the
- * activity feed.
+ * enabled), at its indentation level. Recorded for capture regardless, so a
+ * --report-out file gets the activity feed.
  *
- * @param {...unknown} args
+ * @param {string} text  One formatted feed line.
+ * @param {number} [level]  A FEED value; defaults to SECTION (column 0).
  */
-export function progress(...args) {
-  emit(args, progressOn);
+export function progress(text, level = FEED.SECTION) {
+  emit([text], progressOn, level);
 }
 
 /**

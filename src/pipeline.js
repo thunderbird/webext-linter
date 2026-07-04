@@ -67,7 +67,7 @@ import { isExperiment } from "./checks/lib/util.js";
 import { experimentApiNamespaces } from "./checks/lib/experiments.js";
 import { verifyExperiments } from "./experiments/verify.js";
 import { createLlmBudget } from "./llm/budget.js";
-import { debug, progress, warn, llmErrorText } from "./util/log.js";
+import { debug, progress, warn, FEED, llmErrorText } from "./util/log.js";
 import { red } from "./util/color.js";
 import { humanSize } from "./util/text.js";
 import {
@@ -209,11 +209,62 @@ export async function runPipeline(opts) {
   // such as the test harness invokes the pipeline directly).
   const registry = opts.registry ?? loadRegistry();
 
-  // 1. Load both artifacts (.xpi archive or unpacked folder). A caller may inject
-  // a pre-loaded XPI add-on (the test harness does, to drop its expected.json).
+  // 1. Load the .xpi archive (a fast in-memory unzip). Read before the "Setup" banner
+  // because it sizes the feed - it gives the mode and whether the add-on is an
+  // Experiment. Everything slow below (the source directory read, the network
+  // experiment fetch, vendor verification, schema fetch, AST parse) is narrated as a
+  // Setup step, so nothing slow runs un-narrated. A caller may inject a pre-loaded XPI
+  // add-on (the test harness does, to drop its expected.json).
   const xpiAddon = opts.addon ?? loadAddon(addonPath);
-  const addon =
-    mode === "scs" ? loadScsAddon(opts.scsRoot, opts.scsSource) : xpiAddon;
+  const isExp = isExperiment(xpiAddon.manifest);
+
+  // The "Setup" feed: one numbered [i/total] line per slow pre-review step, matching
+  // the Activity check loop, so the otherwise-silent pre-review pause shows what is
+  // running (a no-op when progress is off - JSON, the golden harness). The total is
+  // sized from what the fast .xpi read already gives us: mode (SCS skips the XPI-only
+  // CDN + identified-library-audit steps, so is shorter), --llm-enabled, and whether
+  // it is an Experiment (which adds a classification step). Exact for every path EXCEPT
+  // a REJECTED Experiment (an experiment add-on run WITHOUT --allow-experiments whose
+  // bundled draft is unrecognised): it skips the whole vendor block, so its counter
+  // stops MID-count (e.g. [4/8]) rather than completing. Sizing the total for that short
+  // path would need `invalidExperiment`, known only AFTER the narrated experiment fetch
+  // - i.e. a second classification pass before the banner, which we deliberately avoid;
+  // the accepted path (the reviewer's --allow-experiments flow) is exact.
+  const setupTotal =
+    (mode === "scs" ? 5 : 7) + (opts.llmEnabled ? 1 : 0) + (isExp ? 1 : 0);
+  let setupDone = 0;
+  /**
+   * Emit the next numbered "Setup" feed line.
+   * @param {string} label  Names the step shown after the [done/total] counter.
+   */
+  const setupStep = (label) =>
+    progress(`[${++setupDone}/${setupTotal}] ${label}`, FEED.STEP);
+  progress("── Setup ──");
+  progress("");
+
+  // 1a. Read the add-on the review scans. In SCS mode this reads the whole --scs-root
+  // archive ONCE (the slow directory walk) and shares it with the build-corpus loader
+  // (loadScsBuildFiles) below, so the tree is never read twice; the review addon is
+  // the source subtree carrying the XPI's manifest. In XPI mode it IS the .xpi above.
+  setupStep("Reading add-on");
+  let scsArchive;
+  let addon;
+  if (mode === "scs") {
+    scsArchive = loadAddon(opts.scsRoot);
+    addon = loadScsAddon(scsArchive, opts.scsSource, opts.scsRoot);
+  } else {
+    addon = xpiAddon;
+  }
+  // Narrate anything the loader skipped (a non-node_modules symlink, an unsafe archive
+  // path) as a notice under this step. The loaders collect these instead of printing, so
+  // the pre-banner .xpi sizing read (loadAddon above) stays silent - nothing leaks before
+  // the Setup banner.
+  for (const notice of [
+    ...(xpiAddon.skipped ?? []),
+    ...(scsArchive?.skipped ?? []),
+  ]) {
+    warn(notice);
+  }
 
   // --scs-exp-source (like --scs-source) is relative to --scs-root, or absolute.
   // Re-base it into the review-source keyspace (strip the --scs-source prefix) so
@@ -261,7 +312,11 @@ export async function runPipeline(opts) {
   // source-layout mismatch). The classification is stored on the review addon for
   // the experiment checks to read.
   let invalidExperiment = false;
-  if (isExperiment(xpiAddon.manifest)) {
+  if (isExp) {
+    // The upstream-drafts allow-list fetch (network) - narrated, since it is one of
+    // the slow pre-review steps; it stays silent+offline for a bare experiment_apis
+    // declaration that bundles nothing.
+    setupStep("Verifying bundled experiments");
     addon.experiments = await verifyExperiments(xpiAddon, opts);
     invalidExperiment =
       !opts.allowExperiments &&
@@ -286,31 +341,6 @@ export async function runPipeline(opts) {
     step: MAX_LLM_REQUESTS_PER_RUN,
     confirmMore: opts.confirmMore,
   });
-
-  // The "Setup" feed section: a numbered line per slow pre-review step, in the
-  // same [i/total] style as the Activity check loop, so the otherwise-silent
-  // pause after the banner (vendor network verification, schema fetch, AST
-  // parse) shows what is running. The add-on is already loaded above - like
-  // Activity counting its checks before the loop, the total is known here: the
-  // vendor step is skipped for a rejected Experiment, so it is one fewer then. A
-  // no-op when progress is off (JSON, the golden harness).
-  // Setup-feed step count for the [n/total] counter: a rejected Experiment runs
-  // a short path; SCS mode skips the XPI-only library steps (CDN, identified-lib
-  // audit) for a shorter one than a full XPI review.
-  const setupTotal =
-    (invalidExperiment ? 3 : mode === "scs" ? 4 : 6) +
-    (opts.llmEnabled ? 1 : 0);
-  let setupDone = 0;
-  /**
-   * Emit the next numbered "Setup" feed line.
-   *
-   * @param {string} label  Names the step shown after the [done/total] counter.
-   */
-  const setupStep = (label) =>
-    progress(`  [${++setupDone}/${setupTotal}] ${label}`);
-  progress("── Setup ──");
-  progress("");
-  setupStep("Reading add-on");
 
   // The LLM pre-flight: shown in the Setup feed with the chosen type + model,
   // and a HARD FAIL on a bad config. Runs whenever --llm-enabled, regardless of
@@ -389,8 +419,9 @@ export async function runPipeline(opts) {
       // build scripts/config the review otherwise drops. buildScsBuildCtx wraps these
       // as the `input: build` check's ctx.addon; they never merge into the review addon.
       addon.buildFiles = loadScsBuildFiles(
-        opts.scsRoot,
+        scsArchive,
         opts.scsSource,
+        opts.scsRoot,
         opts.scsExpSource
       );
     } else {
@@ -524,14 +555,17 @@ async function generateSummary(deferred, label, budget) {
   if (budget && !(await budget.consume())) {
     return undefined; // run-wide request cap reached
   }
-  progress(`  LLM: Generating ${label} (${humanSize(deferred.bytes)}) ...`);
+  progress(
+    `LLM: Generating ${label} (${humanSize(deferred.bytes)}) ...`,
+    FEED.STEP
+  );
   try {
     return { bytes: deferred.bytes, text: await deferred.run() };
   } catch (err) {
     // An advisory summary must never abort the review. Report the failure at
     // this step (visible without --verbose) and carry the reason to the report.
     const reason = llmErrorText(err);
-    progress(red(`  LLM: ${label} failed - ${reason}`));
+    progress(red(`LLM: ${label} failed - ${reason}`), FEED.STEP);
     return { bytes: deferred.bytes, text: null, error: reason };
   }
 }
@@ -576,13 +610,16 @@ async function generateAddonSummary(
   if (budget && !(await budget.consume())) {
     return undefined; // run-wide request cap reached
   }
-  progress(`  LLM: Generating full summary (${humanSize(deferred.bytes)}) ...`);
+  progress(
+    `LLM: Generating full summary (${humanSize(deferred.bytes)}) ...`,
+    FEED.STEP
+  );
   let review;
   try {
     review = await deferred.run();
   } catch (err) {
     const reason = llmErrorText(err);
-    progress(red(`  LLM: full summary failed - ${reason}`));
+    progress(red(`LLM: full summary failed - ${reason}`), FEED.STEP);
     return { bytes: deferred.bytes, text: null, error: reason };
   }
   if (review) {
