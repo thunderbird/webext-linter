@@ -42,7 +42,13 @@
           { "$ref": "PermissionNoPrompt" },
           {
             "type": "string",
-            "enum": ["clipboardWrite", "nativeMessaging", "notifications"]
+            "enum": [
+              "clipboardRead",
+              "clipboardWrite",
+              "geolocation",
+              "nativeMessaging",
+              "notifications"
+            ]
           }
         ]
       },

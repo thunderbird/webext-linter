@@ -18,9 +18,9 @@
 //
 // Belongs here: the SchemaIndex query API the rest of the app consults -
 // resolveApi/resolveRef, requiredPermissions, validPermissions,
-// validManifestKeys, manifestVersionMajor, fileLoaderMethods, and the static
-// annotation helpers (versionAdded, deprecation, isUnsupported, docUrl). It
-// consumes the parsed files and calls merge.js to build its registries.
+// permissionWebApis, validManifestKeys, manifestVersionMajor, fileLoaderMethods,
+// and the static annotation helpers (versionAdded, deprecation, isUnsupported,
+// docUrl). It consumes the parsed files and calls merge.js to build its registries.
 //
 // Does NOT belong here: the merge algorithm itself (src/schema/merge.js),
 // fetching or reading files (src/schema/fetch.js and src/schema/load.js), ajv
@@ -201,6 +201,7 @@ export class SchemaIndex {
     this.dataCollectionPermissions = this._collectEnumStrings(
       DATA_COLLECTION_TYPES
     );
+    this.permissionWebApis = this._collectPermissionWebApis();
     this.validManifestKeys = this._collectManifestKeys();
     this.manifestVersionMajor = this._detectManifestVersion();
     this.fileLoaderMethods = this._collectFileLoaderMethods();
@@ -269,6 +270,50 @@ export class SchemaIndex {
       }
     };
     for (const name of typeNames) {
+      visit(this.globalTypes.get(`manifest.${name}`));
+    }
+    return out;
+  }
+
+  /**
+   * Collect the Web/DOM-API grounding for permissions the schema annotates but
+   * cannot gate through a browser.* member: a permission enum value may carry a
+   * `web_api` annotation naming the navigator.* calls that consume it
+   * (e.g. clipboardRead -> navigator.clipboard.read/readText). Used by the
+   * unused-permission grounding to prove such a permission is in use. Empty when
+   * the schema carries no such annotation.
+   * @returns {Map<string, {receiver: string, methods: string[]}[]>}  Permission
+   *   name -> its Web/DOM-API signatures.
+   */
+  _collectPermissionWebApis() {
+    const out = new Map();
+    const seen = new Set();
+    /** @param {SchemaNode} type  Schema type node to visit. */
+    const visit = (type) => {
+      if (!type || typeof type !== "object") {
+        return;
+      }
+      for (const value of Array.isArray(type.enum) ? type.enum : []) {
+        if (typeof value !== "string" || out.has(value)) {
+          continue;
+        }
+        const annotations = type.enums?.[value]?.annotations ?? [];
+        const webApi = annotations
+          .map((a) => a?.additional_properties?.web_api)
+          .find(Array.isArray);
+        if (webApi) {
+          out.set(value, webApi);
+        }
+      }
+      for (const choice of type.choices || []) {
+        visit(choice);
+      }
+      if (type.$ref && !seen.has(type.$ref)) {
+        seen.add(type.$ref);
+        visit(this.resolveRef(type.$ref));
+      }
+    };
+    for (const name of PERMISSION_TYPES) {
       visit(this.globalTypes.get(`manifest.${name}`));
     }
     return out;

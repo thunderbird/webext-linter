@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Web API Permission",
+  "version": "1.0",
+  "permissions": ["clipboardRead", "clipboardWrite", "geolocation", "notifications"],
+  "background": { "scripts": ["bg.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

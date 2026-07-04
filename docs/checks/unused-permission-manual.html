@@ -18,10 +18,13 @@
       <h2>What it detects</h2>
       <p class="lead">
         This check is a producer: it enumerates every declared named permission
-        that a reachable API call does not provably require, and escalates each
-        one for human review. A permission a reachable call provably needs is
-        dropped. Host match patterns are out of scope here — they belong to the
-        minimize-host-permissions check.
+        that a reachable call does not provably require, and escalates each one for
+        human review. A permission a reachable call provably needs is dropped —
+        whether a WebExtension API call requires it, or (for permissions the
+        schema gates on a Web/DOM API instead of a <code>browser.*</code> member,
+        like clipboard and geolocation) a matching <code>navigator.*</code> call
+        proves it used. Host match patterns are out of scope here — they belong to
+        the minimize-host-permissions check.
       </p>
       <p>
         When the whole-add-on summary pass is enabled, the escalated permissions the

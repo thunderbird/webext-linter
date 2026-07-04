@@ -7,11 +7,14 @@ import { fileURLToPath } from "node:url";
 
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex, SchemaIndex } from "../../src/schema/index.js";
+import {
+  loadSchemaAnnotations,
+  applySchemaAnnotations,
+} from "../../src/schema/annotate.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const schema = buildSchemaIndex(
-  loadSchemaFiles(path.join(here, "..", "schema-fixture"))
-);
+const FIXTURE = path.join(here, "..", "schema-fixture");
+const schema = buildSchemaIndex(loadSchemaFiles(FIXTURE));
 
 // The fixture's application/manifest version strings are exposed and the major
 // components are parsed to numbers (128 and 3) for comparison.
@@ -38,6 +41,33 @@ test("permission union merges $extend additions across files", () => {
     assert.ok(schema.validPermissions.has(p), `expected permission ${p}`);
   }
   assert.ok(!schema.validPermissions.has("bogusPermission"));
+});
+
+// The pristine fixture carries no `web_api` data - it comes only from the local
+// schema annotations, merged in at setup. After merging, a permission enum value's
+// `web_api` annotation is exposed keyed by permission name; permissions without the
+// annotation (or not in this fixture's enum) are absent.
+test("permissionWebApis exposes the merged web_api annotation", () => {
+  assert.equal(schema.permissionWebApis.size, 0);
+
+  const loaded = loadSchemaFiles(FIXTURE);
+  applySchemaAnnotations(loaded.files, loadSchemaAnnotations());
+  const annotated = buildSchemaIndex(loaded);
+
+  assert.deepEqual(annotated.permissionWebApis.get("clipboardRead"), [
+    { receiver: "navigator.clipboard", methods: ["read", "readText"] },
+  ]);
+  assert.deepEqual(annotated.permissionWebApis.get("clipboardWrite"), [
+    { receiver: "navigator.clipboard", methods: ["write", "writeText"] },
+  ]);
+  assert.deepEqual(annotated.permissionWebApis.get("geolocation"), [
+    {
+      receiver: "navigator.geolocation",
+      methods: ["getCurrentPosition", "watchPosition", "clearWatch"],
+    },
+  ]);
+  assert.ok(!annotated.permissionWebApis.has("notifications"));
+  assert.ok(!annotated.permissionWebApis.has("storage"));
 });
 
 // Top-level manifest keys merge the $extend addition compose_action with base

@@ -19,17 +19,21 @@
 //
 // Belongs here: analyzePermissions (memoized via getPermissionAnalysis), the
 // missing diff the rules consume, returning structured findings
-// (file/loc/item/data) only.
+// (file/loc/item/data) only, plus the Web/DOM-API grounding that proves the
+// permissions the browser.* schema cannot gate (clipboard/geolocation) used.
 //
 // Does NOT belong here: the rules' wiring and any severity or text - that lives
 // in the missing-permission / missing-manifest-key rules under
 // src/checks/rules/* and in assets/registry.yaml (resolved by
 // src/report/responses.js). The API-needs-which-permission schema knowledge -
-// src/schema/index.js. Match-pattern helpers - lib/util.js.
+// src/schema/index.js (incl. the permissionWebApis annotation). The navigator.*
+// call match itself - src/parse/web-api-calls.js. Match-pattern helpers - lib/util.js.
 
 import { finding } from "../../report/finding.js";
 import { asArray, isMatchPattern, manifestPathLine } from "./util.js";
 import { resolveApiUsages } from "./api-resolution.js";
+import { buildReachability } from "./reachability.js";
+import { scanWebApiCalls } from "../../parse/web-api-calls.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../addon/load.js").Manifest} Manifest */
@@ -50,7 +54,9 @@ const GATED_KINDS = new Set(["function", "event", "property", "namespace"]);
  * @property {import("../../report/finding.js").Finding[]} missingManifestKeys
  *   An API (item) needing a manifest key (data.keys) that is not declared.
  * @property {Set<string>} usedPermissions  Named permissions a reachable API
- *   call provably requires (so the add-on is definitely using them). The
+ *   call provably requires (so the add-on is definitely using them), plus the
+ *   Web/DOM-API permissions grounded from navigator.* calls (see
+ *   groundWebApiPermissions) that the browser.* schema cannot gate. The
  *   unused-permission-manual check drops these from its by-hand checklist. Only
  *   ever proves a permission USED - a permission absent here may still be needed
  *   via a gated property a static scan cannot see (see the file header).
@@ -127,6 +133,15 @@ export function analyzePermissions(ctx) {
     }
   }
 
+  // Ground the permissions the schema cannot gate through a browser.* member -
+  // the Web/DOM-API permissions (clipboardRead/clipboardWrite/geolocation),
+  // consumed via navigator.* calls the schema names in its `web_api` annotation.
+  // These feed only the USED set (so the unused-permission check stops flagging a
+  // genuinely-used one); they never enter missingPermissions above.
+  for (const perm of groundWebApiPermissions(ctx, declared.named)) {
+    usedPermissions.add(perm);
+  }
+
   // Manifest-key requirements: at least one of the named keys must be declared.
   // The schema lists both MV2/MV3 spellings, but only the one valid for the
   // target manifest version counts.
@@ -169,6 +184,48 @@ export function analyzePermissions(ctx) {
  */
 export function getPermissionAnalysis(ctx) {
   return (ctx.addon.permissionAnalysis ??= analyzePermissions(ctx));
+}
+
+/**
+ * The Web/DOM-API permissions a reachable WebExtension call proves in use - the
+ * ones the browser.* schema cannot gate (clipboardRead/clipboardWrite/geolocation),
+ * consumed via navigator.* calls the schema names in its `web_api` annotation. The
+ * schema supplies the receiver+methods per permission; this scans the same pure
+ * WebExtension tree resolveApiUsages uses for browser.* grounding. Called once,
+ * from analyzePermissions (itself memoized), so it needs no memo of its own.
+ *
+ * Only DECLARED permissions are grounded: the result feeds the unused check (which
+ * only concerns declared permissions) and never missingPermissions, so grounding an
+ * undeclared one would be inert - and skipping them lets the common add-on that
+ * declares no Web/DOM permission early-out before scanning any file.
+ * @param {RunContext} ctx
+ * @param {Set<string>} declaredNamed  The declared named permissions.
+ * @returns {Set<string>}  Grounded permission names.
+ */
+function groundWebApiPermissions(ctx, declaredNamed) {
+  const signatures = [];
+  for (const [permission, apis] of ctx.schema.permissionWebApis) {
+    if (!declaredNamed.has(permission)) {
+      continue;
+    }
+    for (const { receiver, methods } of apis) {
+      signatures.push({ permission, receiver, methods });
+    }
+  }
+  const grounded = new Set();
+  if (!signatures.length) {
+    return grounded;
+  }
+  const webext = buildReachability(ctx).pureWebExtensionReachable;
+  for (const src of ctx.jsSources ?? []) {
+    if (!webext.has(src.file)) {
+      continue;
+    }
+    for (const perm of scanWebApiCalls(src.code, signatures, src.parsed)) {
+      grounded.add(perm);
+    }
+  }
+  return grounded;
 }
 
 /**

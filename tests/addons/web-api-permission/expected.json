@@ -1,0 +1,4 @@
+{
+  "_comment": "clipboardRead/clipboardWrite/geolocation are consumed via navigator.* calls - Web/DOM APIs the browser.* schema cannot gate - and are grounded from the merged web_api schema annotation, so none is flagged declared-but-unused. notifications is declared but unused (a manual escalation, not a finding). No per-rule findings fire.",
+  "expect": {}
+}

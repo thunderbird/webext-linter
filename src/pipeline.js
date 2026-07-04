@@ -21,6 +21,10 @@ import { resolveSchemaZip } from "./schema/fetch.js";
 import { loadSchemaFiles } from "./schema/load.js";
 import { buildSchemaIndex } from "./schema/index.js";
 import {
+  loadSchemaAnnotations,
+  applySchemaAnnotations,
+} from "./schema/annotate.js";
+import {
   loadAddon,
   loadScsAddon,
   loadScsBuildFiles,
@@ -628,7 +632,13 @@ async function reviewAddon(
     cacheDir: schemaCache,
     refresh: schemaForceRefresh,
   });
-  const schema = buildSchemaIndex(loadSchemaFiles(zipPath));
+  // Merge the bundled local schema annotations (e.g. the `web_api` permission
+  // grounding the browser.* schema cannot express) onto the loaded files before
+  // indexing - in memory, so the cached zips stay pristine. Overwrites any
+  // same-named entry the published schema may already carry.
+  const schemaFiles = loadSchemaFiles(zipPath);
+  applySchemaAnnotations(schemaFiles.files, loadSchemaAnnotations());
+  const schema = buildSchemaIndex(schemaFiles);
   // A valid Experiment's declared APIs are part of its platform: register their
   // base namespaces so the developer's calls into them (e.g. browser.calendar.*,
   // including bare browser.calendar) resolve instead of tripping unknown-api -
