@@ -1,17 +1,11 @@
 # Table of Contents
 
-- [Defects, false-positive and false-negative (WIP)](#wip)
 - [Detect correct schema reference](#detect-correct-schema-reference)
 - [Improve schema files to remove special hardcoded cases](#improve-schema-files-to-remove-special-hardcoded-cases)
 - [Full type check via typescript engine](#full-type-check-via-typescript-engine)
 - [Potential permission tracing via typescript engine](#potential-permission-tracing-via-typescript-engine)
 - [Unused-files pre-flight backstop (anchored templates + content type)](#unused-files-pre-flight-backstop-anchored-templates--content-type)
 - [Single-parse extraction pass (drop the double-parse)](#single-parse-extraction-pass-drop-the-double-parse)
-
-
-# WIP
-
-- (check build types)
 
 
 # Detect correct schema reference
