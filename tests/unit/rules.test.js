@@ -1250,9 +1250,10 @@ test("unused-permission-manual credits function-level permissions (archive/delet
 });
 
 // A permission that gates no callable API (unlimitedStorage) can never be proved
-// used by static analysis, but it is justified by its mere presence - so it is
-// exempt: dropped here (noted pass), never escalated as unused.
-test("unused-permission-manual exempts unlimitedStorage (gates no API)", () => {
+// used by static analysis. It is no longer hand-exempt: it escalates like any other
+// not-provably-used permission, to be re-judged by the LLM recheck (the registry
+// grounds it on whether the add-on persists data) or reviewed by hand.
+test("unused-permission-manual escalates unlimitedStorage (gates no API)", () => {
   const manifest = {
     permissions: ["unlimitedStorage", "tabs"],
     browser_specific_settings: { gecko: { strict_min_version: "154" } },
@@ -1270,16 +1271,16 @@ test("unused-permission-manual exempts unlimitedStorage (gates no API)", () => {
     apiUsages: [],
   };
   const out = unusedPermissionManual.run(withManifest(ctx));
-  // tabs is still escalated; unlimitedStorage is exempt.
+  // Both escalate now; nothing is hand-exempt.
   assert.deepEqual(
     out.escalations.map((e) => e.item),
-    ["tabs"]
+    ["unlimitedStorage", "tabs"]
   );
   assert.deepEqual(
     notes.find((n) => n.item === "unlimitedStorage"),
     {
       item: "unlimitedStorage",
-      verdict: "pass",
+      verdict: "unsure",
     }
   );
 });

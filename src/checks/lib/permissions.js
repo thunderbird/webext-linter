@@ -31,10 +31,6 @@ import { finding } from "../../report/finding.js";
 import { asArray, isMatchPattern, manifestPathLine } from "./util.js";
 import { resolveApiUsages } from "./api-resolution.js";
 
-// Permissions that gate no callable API, so static analysis can never prove use;
-// they are justified by their mere presence and must not be flagged unused.
-const NO_API_GATE = new Set(["unlimitedStorage"]);
-
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../addon/load.js").Manifest} Manifest */
 
@@ -179,9 +175,11 @@ export function getPermissionAnalysis(ctx) {
  * Enumerate the declared named permissions that warrant a closer look: every one
  * a reachable API call does NOT provably require, anchored to its manifest.json
  * line, as manual-review escalations. A permission a reachable call provably
- * requires (usedPermissions) or that gates no callable API (NO_API_GATE) is
- * justified and dropped. Host match patterns are minimize-host-permissions'
- * concern and are skipped. Backs the unused-permission-manual producer.
+ * requires (usedPermissions) is justified and dropped; every other declared
+ * permission escalates, to be re-judged by the LLM recheck when the registry has a
+ * prompt for it (see registry.rechecks) or reviewed by hand otherwise. Host match
+ * patterns are minimize-host-permissions' concern and are skipped. Backs the
+ * unused-permission-manual producer.
  * @param {RunContext} ctx
  * @returns {{findings: [], escalations:
  *   {item: string, file: string, loc: ?object}[]}}
@@ -199,9 +197,9 @@ export function enumerateUnusedPermissions(ctx) {
       seen.add(p);
       const line = manifestPathLine(ctx, key, i);
       const loc = line ? { line } : null;
-      if (used.has(p) || NO_API_GATE.has(p)) {
-        // A reachable call requires it, or it gates no callable API (always
-        // justified) - either way not a manual case.
+      if (used.has(p)) {
+        // A reachable call provably requires it, so it is justified - not a manual
+        // case. Every other declared permission escalates below.
         ctx.note?.("manifest.json", loc, p, "pass");
         return;
       }

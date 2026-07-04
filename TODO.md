@@ -115,6 +115,13 @@ value; once this tracing lands `cookies` becomes deterministic and its prompt ca
 dropped (leaving only property-read / gesture cases). `PERMISSION-GROUNDING-GAPS.md`
 inventories every property/argument gate on the recheck permissions this tracing covers.
 
+A permission that gates neither an API nor a property - `unlimitedStorage`, which only
+raises the storage quota - falls outside this tracing (there is no gate to look up). It is
+justified by the add-on actually persisting data at runtime, which the type checker cannot
+weigh, so it stays LLM-judged. Its former hand-coded `NO_API_GATE` exemption in
+`src/checks/lib/permissions.js` has been removed in favour of a `permission-prompts` entry
+- the same LLM interim as the property-gated permissions.
+
 # Unused-files pre-flight backstop (anchored templates + content type)
 
 The deterministic loader pre-flight removes only the false dynamic loaders (an

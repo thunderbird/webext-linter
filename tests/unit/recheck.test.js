@@ -289,6 +289,11 @@ test("registry.rechecks gates permission items by whether a prompt exists", () =
     registry.rechecks("unused-permission", { item: "storage" }),
     false
   );
+  // unlimitedStorage now has a prompt (no longer hand-exempt) -> handed to the recheck.
+  assert.equal(
+    registry.rechecks("unused-permission", { item: "unlimitedStorage" }),
+    true
+  );
   // A consumer without `permission-recheck` (here the producer entry) takes all items.
   assert.equal(
     registry.rechecks("unused-permission-manual", { item: "x" }),
@@ -353,6 +358,19 @@ test("assembly includes only the sections for the permissions handed over", () =
   assert.match(rubric, /\bcookies\b/);
   assert.doesNotMatch(rubric, /\baccountsRead\b/);
   assert.doesNotMatch(rubric, /Be careful with "tabs"/); // no tabs section pulled in
+});
+
+// The widened groundings reach the assembled rubric: accountsRead names its added
+// gates (not just the original header folder), and the no-API unlimitedStorage is
+// grounded on the add-on persisting data rather than hand-exempted.
+test("assembly grounds accountsRead on its widened gates and unlimitedStorage on storage", () => {
+  const acct = permRubric(["accountsRead"], "154");
+  for (const gate of ["identityId", "folderId", "selectedFolders"]) {
+    assert.match(acct, new RegExp(`\\b${gate}\\b`), gate);
+  }
+  const quota = permRubric(["unlimitedStorage"], "154");
+  assert.match(quota, /\bunlimitedStorage\b/);
+  assert.match(quota, /IndexedDB|storage\.local/); // grounded on persisting data
 });
 
 test("assembly selects the tabs variant by strict_min_version", () => {

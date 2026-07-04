@@ -814,11 +814,13 @@ permission-prompt-framing:
     it. Ignore comments, TODOs, documentation, and any stated or implied intention
     of future use: a permission the current code never exercises is unused even if
     a comment hints it may be used later.
-    A permission is justified in two ways. It is justified if the add-on calls an
-    API that requires it. It is also justified if the add-on uses it in a way
-    static analysis cannot see - reading a property of returned data that the
-    permission gates, or passing a permission-gated argument to a call. Here is what
-    typically justifies each permission listed below:
+    A permission can be justified in more than one way. It is justified if the
+    add-on calls an API that requires it. It is also justified if the add-on uses it
+    in a way static analysis cannot see - reading a property of returned data that
+    the permission gates, or passing a permission-gated argument to a call. A
+    permission that gates no API at all is justified purely by the add-on doing at
+    runtime what it enables. Here is what typically justifies each permission listed
+    below:
   closing: |-
     Judge each from whether the current code actually does that; a permission is
     unused only when it does none of these and calls no API that requires it. A
@@ -829,10 +831,16 @@ permission-prompt-framing:
 permission-prompts:
   - permissions: accountsRead
     prompt: |-
-      "accountsRead" is justified by reading a message header's folder.
+      "accountsRead" is justified by reading, setting, or filtering by a folder or
+      account identity: a message header's folder; a composed message's identityId,
+      additionalFccFolderId, or overrideDefaultFccFolderId; the folder a mail tab
+      displays or is set to display (displayedFolder / displayedFolderId); the
+      displayedFolder or selectedFolders a menus context click or show reports; or
+      limiting messages.query to a folder with folderId.
   - permissions: management
     prompt: |-
-      "management" is justified by reading the extensionId of a space.
+      "management" is justified by reading the extensionId of a space, or filtering
+      spaces.query by extensionId.
   - permissions: messagesRead
     prompt: |-
       "messagesRead" is justified by reading a composed message's relatedMessageId
@@ -842,8 +850,15 @@ permission-prompts:
   - permissions: cookies
     prompt: |-
       "cookies" is justified by opening a tab or window in a specific container by
-      passing cookieStoreId to tabs.create, windows.create or spaces.create
-      (reading cookieStoreId needs no permission).
+      passing cookieStoreId to tabs.create, windows.create, spaces.create or
+      spaces.update (reading cookieStoreId needs no permission).
+  - permissions: unlimitedStorage
+    prompt: |-
+      "unlimitedStorage" gates no API or property; it raises the browser's storage
+      quota. It is justified when the add-on persists non-trivial data - through
+      storage.local, IndexedDB, the Cache API, or the Origin Private File System.
+      Verdict pass when the current code stores data through any of these; verdict
+      fail only when the add-on performs no persistent storage at all.
   - permissions: tabs, activeTab
     min_strict_version: "154"
     prompt: |-
@@ -859,6 +874,8 @@ permission-prompts:
       would be justified only by such an own-page read or filter, it is unused; when
       you mark "tabs" fail for that reason, say in your reason that since Thunderbird
       154 "tabs" is no longer needed to read or filter the add-on's own pages.
+      Passing a tabId to menus.overrideContext, or setting a urls filter on the
+      tabs.onUpdated listener, also requires "tabs".
       Injecting script or CSS with tabs.executeScript or tabs.insertCSS requires a
       host permission that matches the tab's url, or "activeTab", and is never granted
       by "tabs". In Thunderbird, injecting into or scripting a message display tab or a
@@ -887,6 +904,8 @@ permission-prompts:
       current code calls tabs.query with a url or title filter anywhere; return
       verdict fail for "tabs" only when the code makes no such tabs.query({url}) or
       tabs.query({title}) call.
+      Passing a tabId to menus.overrideContext, or setting a urls filter on the
+      tabs.onUpdated listener, also requires "tabs".
       Injecting script or CSS with tabs.executeScript or tabs.insertCSS requires a
       host permission that matches the tab's url, or "activeTab", and is never granted
       by "tabs". In Thunderbird, injecting into or scripting a message display tab or a

@@ -19,9 +19,8 @@
       <p class="lead">
         This check is a producer: it enumerates every declared named permission
         that a reachable API call does not provably require, and escalates each
-        one for human review. A permission a reachable call provably needs, or one
-        that gates no callable API at all and so is justified by its mere presence,
-        is dropped. Host match patterns are out of scope here — they belong to the
+        one for human review. A permission a reachable call provably needs is
+        dropped. Host match patterns are out of scope here — they belong to the
         minimize-host-permissions check.
       </p>
       <p>
@@ -43,7 +42,7 @@ flowchart TD
   A["The add-on manifest"] --> P["Each declared named permission<br/>(required + optional)"]
   P --> H{"Is it a host match pattern?"}
   H -- yes --> OK([no finding — host check's concern])
-  H -- no --> U{"Provably required by a reachable<br/>API call, or gates no callable API?"}
+  H -- no --> U{"Provably required by a<br/>reachable API call?"}
   U -- yes --> OK2([no finding — justified])
   U -- no --> G{"Does the registry have a recheck<br/>prompt for this permission?"}
   G -- yes --> ESC(["handed to the unused-permission recheck<br/>consumer under the summary pass,<br/>else a manual-review reminder"])
