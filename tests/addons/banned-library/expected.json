@@ -1,0 +1,6 @@
+{
+  "_comment": "package.json pins jquery to 2.2.4, which Mozilla add-on policy bans (< 3.0.0, per assets/library-blocks.yaml). The banned-library check flags it as an error, and the OSV audit is skipped for it (banned -> no request). Decided offline, no fetch.",
+  "expect": {
+    "banned-library": ["package.json:5"]
+  }
+}

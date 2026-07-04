@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Banned library</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Banned library <span class="badge auto">auto</span></h1>
+        <div class="check-id">banned-library</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A bundled third-party library pinned to a version that Mozilla's add-on
+        policy disallows (banned) or discourages (unadvised) — for example jQuery
+        before 3.0, or AngularJS before 1.5.9 (a Content-Security-Policy bypass).
+        This is a <strong>policy</strong> check, distinct from
+        <a href="vendor-vulnerable.html">Vulnerable dependency</a>: it fires on a
+        version Mozilla bans even when no published CVE advisory exists, and it
+        covers a package.json dependency, an npm-sourced VENDOR entry, and a
+        library the linter identified by content hash.
+      </p>
+      <p>
+        The policy is a small curated list —
+        <code>assets/library-blocks.yaml</code> (overridable with
+        <code>--lib-mozilla-block-db</code>) — because Mozilla publishes no
+        machine-readable block database; it is kept in sync by hand from the
+        addons-linter documentation. Before the review, every pinned or identified
+        <em>shipped</em> library is matched against this policy, once, in the same
+        network pre-step as the OSV audit. A hit is recorded with its version and
+        the policy reason; a <strong>banned</strong> hit also skips the OSV query
+        for that library (it is rejected regardless). This check reads that result
+        and emits one finding per hit, anchored at the declaration line (or, for an
+        identified library, at the bundled file). Its severity is
+        <strong>auto</strong>: <strong>banned</strong> is an error,
+        <strong>unadvised</strong> a warning. Build-only devDependencies are never
+        shipped, so they are not policy-blocked here.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A pinned/identified shipped library<br/>(package.json dep, npm VENDOR entry,<br/>or hash-identified bundle)"] --> B{"Version matched in<br/>the policy blocklist?"}
+  B -- no --> OK([no finding])
+  B -- "below banned_below" --> ERR([ERROR: banned library<br/>OSV query skipped])
+  B -- "below unadvised_below" --> WARN([WARNING: unadvised library])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class WARN warn;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told a bundled library version is disallowed (or discouraged)
+        by Mozilla's add-on policy, with the version and the reason, and is asked to
+        update to a permitted version and re-bundle.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/banned-library.js</code>,
+        <code>src/checks/lib/library-blocks.js</code>, the curated
+        <code>assets/library-blocks.yaml</code>, and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

@@ -458,6 +458,19 @@ deterministic-checks:
   response: |-
     A bundled dependency has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). Update {{item}} to {{fixed}} or later, re-bundle, and resubmit.
 
+# A bundled library version Mozilla's add-on policy disallows (banned) or discourages
+# (unadvised), matched against the curated assets/library-blocks.yaml BEFORE the OSV
+# audit (src/vendor/verify.js) - a banned version also skips the OSV request. Distinct
+# from vendor-vulnerable (published CVE advisories); this is Mozilla policy, which can
+# ban a version with no formal advisory.
+# severity:auto - banned -> error, unadvised -> warning (set by the banned-library check).
+- title: Banned library
+  severity: auto
+  check: banned-library
+  input: auto
+  response: |-
+    A bundled library version is {{status}} by Mozilla's add-on policy: {{item}} ({{version}}) — {{reason}} Update to a permitted version and re-bundle.
+
 # Each pinned npm devDependency is OSV-audited in SCS mode too (src/vendor/verify.js
 # verifyScsDependencies): the reviewer builds the add-on from source, so a
 # vulnerable build-time dependency runs on the reviewer's machine even though it is

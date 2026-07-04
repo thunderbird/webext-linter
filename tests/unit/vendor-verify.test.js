@@ -15,6 +15,7 @@ import {
   verifyScsDependencies,
   auditIdentifiedLibraries,
 } from "../../src/vendor/verify.js";
+import { parseLibraryBlocks } from "../../src/checks/lib/library-blocks.js";
 import unpinnedDependency from "../../src/checks/rules/unpinned-dependency.js";
 import unpinnedVendorSource from "../../src/checks/rules/unpinned-vendor-source.js";
 import vendorModified from "../../src/checks/rules/vendor-modified.js";
@@ -225,6 +226,7 @@ const store = (over = {}) => ({
   devVulnerabilities: [],
   unaudited: [],
   unpopularDeps: [],
+  blocked: [],
   ...over,
 });
 
@@ -854,6 +856,116 @@ test("auditIdentifiedLibraries: records nothing offline (no postJson)", async ()
   };
   await auditIdentifiedLibraries(addon, net({ throwOnPost: true }));
   assert.deepEqual(addon.vendor.vulnerabilities, []);
+});
+
+// ---- the Mozilla policy blocklist short-circuit (auditNpm consults the `blocks` policy) ----
+
+const JQUERY_BLOCK = parseLibraryBlocks(
+  `- name: jquery\n  banned_below: "3.0.0"\n  reason: "old jquery"`
+);
+// A net whose OSV POST bumps a counter, so a test can prove OSV was / was not queried.
+const countingNet = (counter) =>
+  net({
+    downloads: 99999,
+    osv: () => {
+      counter.n++;
+      return { vulns: [] };
+    },
+  });
+
+// A banned identified library is recorded on vendor.blocked and SKIPS the OSV query
+// (auditNpm returns before postJson), so a disallowed library costs no OSV request.
+// The policy is passed to the audit (a parameter, like the hash DB) - not on the store.
+test("blocklist: a banned identified library is recorded and skips the OSV query", async () => {
+  const addon = addonWith({ "vendor/jquery.min.js": "X" }, store());
+  addon.bundled = {
+    classified: [
+      {
+        file: "vendor/jquery.min.js",
+        library: true,
+        libraryId: { name: "jquery", version: "1.7.2" },
+      },
+    ],
+  };
+  const c = { n: 0 };
+  await auditIdentifiedLibraries(addon, countingNet(c), JQUERY_BLOCK);
+  assert.equal(c.n, 0); // OSV never queried for a banned library
+  assert.deepEqual(addon.vendor.blocked, [
+    {
+      name: "jquery",
+      version: "1.7.2",
+      status: "banned",
+      reason: "old jquery",
+      file: "vendor/jquery.min.js",
+      token: "",
+    },
+  ]);
+  assert.deepEqual(addon.vendor.vulnerabilities, []);
+});
+
+// An unadvised library is still ALLOWED, so it is recorded but still OSV-audited: a
+// live CVE on an old-but-permitted library must still surface.
+test("blocklist: an unadvised identified library is recorded but still OSV-audited", async () => {
+  const blocks = parseLibraryBlocks(
+    `- name: dompurify\n  unadvised_below: "2.4.0"\n  reason: "old dompurify"`
+  );
+  const addon = addonWith({ "vendor/dompurify.js": "X" }, store());
+  addon.bundled = {
+    classified: [
+      {
+        file: "vendor/dompurify.js",
+        library: true,
+        libraryId: { name: "dompurify", version: "2.0.0" },
+      },
+    ],
+  };
+  const c = { n: 0 };
+  await auditIdentifiedLibraries(addon, countingNet(c), blocks);
+  assert.equal(c.n, 1); // unadvised is still audited
+  assert.equal(addon.vendor.blocked.length, 1);
+  assert.equal(addon.vendor.blocked[0].status, "unadvised");
+});
+
+// Regression: a banned library that is BOTH a declared dep (already on vendor.blocked
+// from verifyVendor) AND hash-identified must NOT be recorded twice -
+// auditIdentifiedLibraries seeds its `seen` dedup from vendor.blocked as well as
+// vendor.vulnerabilities.
+test("blocklist: a declared-AND-bundled banned library is recorded once, not twice", async () => {
+  const addon = addonWith({ "vendor/jquery.min.js": "X" }, store());
+  addon.vendor.blocked.push({
+    name: "jquery",
+    version: "1.7.2",
+    status: "banned",
+    reason: "old jquery",
+    file: "package.json",
+    token: "jquery",
+  });
+  addon.bundled = {
+    classified: [
+      {
+        file: "vendor/jquery.min.js",
+        libraryId: { name: "jquery", version: "1.7.2" },
+      },
+    ],
+  };
+  const c = { n: 0 };
+  await auditIdentifiedLibraries(addon, countingNet(c), JQUERY_BLOCK);
+  assert.equal(c.n, 0); // banned -> no OSV
+  assert.equal(addon.vendor.blocked.length, 1); // not double-recorded
+});
+
+// Regression: a banned SCS devDependency is never shipped, so it must NOT be recorded
+// as a banned-library, and it must STILL be OSV-audited (into devVulnerabilities) -
+// verifyScsDependencies passes no `blocks` for the dev-dep audit.
+test("blocklist: a banned SCS devDependency is not blocked and is still OSV-audited", async () => {
+  const addon = addonWith(
+    { "package.json": '{"devDependencies":{"jquery":"1.7.2"}}' },
+    store({ devPackages: [{ name: "jquery", version: "1.7.2" }] })
+  );
+  const c = { n: 0 };
+  await verifyScsDependencies(addon, countingNet(c), JQUERY_BLOCK);
+  assert.deepEqual(addon.vendor.blocked, []); // dev dep NOT policy-blocked
+  assert.equal(c.n, 1); // still OSV-audited (into devVulnerabilities)
 });
 
 // An npm-sourced VENDOR entry is audited the same way as a package.json dep, but

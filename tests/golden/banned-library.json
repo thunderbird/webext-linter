@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/strict-max-version-api",
+    "addon": "<root>/tests/addons/banned-library",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "local:<root>/tests/schema-fixture",
@@ -94,21 +94,20 @@
     "warning": 0,
     "info": 0,
     "byRule": {
-      "strict-max-version-api": 1
+      "banned-library": 1
     }
   },
   "findings": [
     {
-      "ruleId": "strict-max-version-api",
+      "ruleId": "banned-library",
       "severity": "error",
-      "file": "background.js",
+      "file": "package.json",
       "loc": {
-        "line": 2,
-        "column": 8
+        "line": 5
       },
-      "item": "browser.messages.tags.list()",
-      "hint": "added in Thunderbird 121",
-      "message": "The add-on is setting strict_max_version to 110.* but uses functions or events added in a later Thunderbird. Raise strict_max_version, or stop using these APIs."
+      "item": "jquery",
+      "hint": null,
+      "message": "A bundled library version is disallowed by Mozilla's add-on policy: jquery (2.2.4) — jQuery before 3.0 is unsupported and carries known security issues; update to the latest 3.x. Update to a permitted version and re-bundle."
     }
   ]
 }

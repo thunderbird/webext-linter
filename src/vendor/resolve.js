@@ -70,6 +70,11 @@ import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
  *   unpopularDeps  SCS mode: declared dependencies that are not a confirmed
  *   widely-used library (filled by verifyScsDependencies; empty in XPI mode /
  *   offline). Read by the unpopular-source-dependency check.
+ * @property {{name: string, version: string, status: string, reason: string,
+ *   file: string, token: string}[]} blocked  Bundled library versions Mozilla
+ *   add-on policy disallows (banned) or discourages (unadvised): auditNpm matches
+ *   each audited (name, version) against the policy the audit is given and records a
+ *   hit here (a banned one also skips the OSV query). Read by the banned-library check.
  */
 
 // An exact semver (no range operators) - a concrete pinned version.
@@ -250,6 +255,11 @@ export async function resolveVendor({
     vendorFile: vendorFile?.name ?? null,
     // Filled by verifyVendor's OSV audit (network). Empty for offline runs.
     vulnerabilities: [],
+    // Bundled library versions Mozilla add-on policy disallows (banned) or
+    // discourages (unadvised): auditNpm matches each audited (name, version) against
+    // the policy the audit is given (assets/library-blocks.yaml) and records a hit
+    // here - a banned one also skips the OSV query. Read by the banned-library check.
+    blocked: [],
     // SCS mode only: pinned npm devDependencies with known OSV advisories (filled
     // by verifyScsDependencies; empty in XPI mode / offline). Read by the
     // vendor-vulnerable-dev check.

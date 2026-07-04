@@ -37,6 +37,7 @@ import { tarballHashes } from "./tarball.js";
 import { zipHashesUnder } from "./archive.js";
 import { isVendored } from "./resolve.js";
 import { npmNameForLibrary } from "../checks/lib/library-hashes.js";
+import { matchLibraryBlock } from "../checks/lib/library-blocks.js";
 import { normalizedSha256 } from "../normalize/hash.js";
 import { getProvider } from "../llm/provider.js";
 import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
@@ -109,9 +110,11 @@ import {
  * @param {VendorNet} [net]
  * @param {VendorLlm} [llm]  LLM params for the github->npm resolution fallback;
  *   defaults to "no LLM" (deterministic resolution only).
+ * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist, applied to
+ *   these shipped/declared libraries (see auditNpm).
  * @returns {Promise<void>}
  */
-export async function verifyVendor(addon, net = defaultNet, llm = {}) {
+export async function verifyVendor(addon, net = defaultNet, llm = {}, blocks) {
   const vendor = addon?.vendor;
   if (!vendor) {
     return;
@@ -151,10 +154,11 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}) {
         entry.sourceUrl,
         vendor,
         net,
-        vendor.vulnerabilities
+        vendor.vulnerabilities,
+        blocks
       );
     } else if (src.kind === "github") {
-      await auditGithub(entry, src, addon, vendor, net, llm);
+      await auditGithub(entry, src, addon, vendor, net, llm, blocks);
     }
   }
   for (const pkg of vendor.packages) {
@@ -166,7 +170,8 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}) {
       pkg.name,
       vendor,
       net,
-      vendor.vulnerabilities
+      vendor.vulnerabilities,
+      blocks
     );
   }
   // A `not-popular` outcome is reconciled into addon.bundled.untrusted later, by
@@ -194,9 +199,11 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}) {
  * runs (the listing/downloads throw) therefore record nothing.
  * @param {Addon} addon  Must already carry `addon.vendor` from resolveVendor.
  * @param {VendorNet} [net]
+ * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist, applied to
+ *   the declared (shipped) dependencies - NOT to devDependencies (never shipped).
  * @returns {Promise<void>}
  */
-export async function verifyScsDependencies(addon, net = defaultNet) {
+export async function verifyScsDependencies(addon, net = defaultNet, blocks) {
   const vendor = addon?.vendor;
   if (!vendor) {
     return;
@@ -209,7 +216,8 @@ export async function verifyScsDependencies(addon, net = defaultNet) {
       pkg.name,
       vendor,
       net,
-      vendor.vulnerabilities
+      vendor.vulnerabilities,
+      blocks
     );
     const downloads = await npmDownloads(pkg.name, net);
     if (downloads !== null && downloads < VENDOR_NPM_MIN_DOWNLOADS) {
@@ -241,6 +249,9 @@ export async function verifyScsDependencies(addon, net = defaultNet) {
   // npm dev dep for OSV only - no popularity gate (a niche-but-legit build tool is
   // fine) - recording hits on devVulnerabilities for the vendor-vulnerable-dev check.
   for (const pkg of vendor.devPackages ?? []) {
+    // No blocklist here: a devDependency is never shipped, so the shipped-library
+    // policy does not apply. It is OSV-audited (into devVulnerabilities) but never
+    // recorded as a banned-library - auditNpm is passed no `blocks`.
     await auditNpm(
       pkg.name,
       pkg.version,
@@ -303,6 +314,11 @@ async function npmDownloads(name, net) {
 
 /**
  * Audit a pinned npm package@version against the OSV vulnerability database.
+ * First consults the Mozilla policy blocklist `blocks` (when given): a banned
+ * name@version is recorded on vendor.blocked and SKIPS the OSV query (rejected
+ * regardless); an unadvised one is recorded but still audited (a live CVE on an
+ * allowed library still matters). `blocks` is passed only for SHIPPED libraries, so
+ * an SCS devDependency (never shipped) is audited but never policy-blocked.
  * Best-effort: a package with known advisories is recorded on
  * `into` (one entry aggregating its advisories, anchored at `file`/`token`). Any
  * network or parse error - or an injected net without `postJson` (offline runs,
@@ -319,9 +335,29 @@ async function npmDownloads(name, net) {
  * @param {VendorVuln[]} into  The array to record a hit on: vendor.vulnerabilities
  *   for shipped/declared deps, or vendor.devVulnerabilities for SCS dev deps.
  *   Explicit - never defaulted - so a hit is never silently mis-bucketed.
+ * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist to apply
+ *   (assets/library-blocks.yaml); absent/null for an SCS devDependency (never
+ *   shipped, so never policy-blocked).
  * @returns {Promise<void>}
  */
-async function auditNpm(name, version, file, token, vendor, net, into) {
+async function auditNpm(name, version, file, token, vendor, net, into, blocks) {
+  // The Mozilla policy blocklist is consulted BEFORE the OSV query (see the JSDoc):
+  // a banned version records a hit and returns (no OSV); an unadvised one records a
+  // hit and still audits. `blocks` is passed only for shipped libraries.
+  const block = matchLibraryBlock(blocks, name, version);
+  if (block) {
+    (vendor.blocked ??= []).push({
+      name,
+      version,
+      status: block.status,
+      reason: block.reason,
+      file,
+      token,
+    });
+    if (block.status === "banned") {
+      return;
+    }
+  }
   let vulns;
   try {
     const res = await net.postJson(VENDOR_OSV_API, {
@@ -374,18 +410,29 @@ async function auditNpm(name, version, file, token, vendor, net, into) {
  * addon.vendor (resolveVendor) for the shared vulnerabilities store.
  * @param {Addon} addon  Must carry addon.vendor and addon.bundled.
  * @param {VendorNet} [net]
+ * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist (applied to
+ *   these identified, hence shipped, libraries; see auditNpm).
  * @returns {Promise<void>}
  */
-export async function auditIdentifiedLibraries(addon, net = defaultNet) {
+export async function auditIdentifiedLibraries(
+  addon,
+  net = defaultNet,
+  blocks
+) {
   const vendor = addon?.vendor;
   const classified = addon?.bundled?.classified;
   if (!vendor || !classified) {
     return;
   }
-  // Skip a release already recorded by verifyVendor (a declared dep / VENDOR
-  // entry) and collapse the same library bundled in several files to one audit.
+  // Skip a release already recorded - as a declared dep / VENDOR entry
+  // (vulnerabilities), or as a policy hit (blocked, which a BANNED library never adds
+  // to vulnerabilities) - and collapse the same library bundled in several files to
+  // one audit. Seeding `seen` from `blocked` too keeps a declared-AND-bundled banned
+  // library from being recorded twice.
   const seen = new Set(
-    vendor.vulnerabilities.map((v) => `${v.name}@${v.version}`)
+    [...vendor.vulnerabilities, ...vendor.blocked].map(
+      (v) => `${v.name}@${v.version}`
+    )
   );
   for (const tag of classified) {
     if (!tag.libraryId) {
@@ -410,7 +457,8 @@ export async function auditIdentifiedLibraries(addon, net = defaultNet) {
       "",
       vendor,
       net,
-      vendor.vulnerabilities
+      vendor.vulnerabilities,
+      blocks
     );
   }
 }
@@ -431,15 +479,19 @@ export async function auditIdentifiedLibraries(addon, net = defaultNet) {
  * @param {VendorEntry & {trusted: boolean, pinned: boolean}} entry
  * @param {VendorSource} src  The classified github source (carries repo + ref).
  * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
- * @param {VendorLlm} llm
+ * @param {VendorLlm} llm @param {?Map<string, object>} [blocks]  The Mozilla policy
+ *   blocklist (applied to a proven npm twin; see auditNpm).
  * @returns {Promise<void>}
  */
-async function auditGithub(entry, src, addon, vendor, net, llm) {
+async function auditGithub(entry, src, addon, vendor, net, llm, blocks) {
   const owner = String(src.repo ?? "")
     .split("/")[0]
     .toLowerCase();
   if (VENDOR_TRUSTED_GITHUB_ORGS.includes(owner)) {
-    return; // first-party (e.g. Thunderbird) - trusted by provenance, no audit
+    // First-party (e.g. Thunderbird) - trusted by provenance: no OSV audit, and no
+    // policy blocklist check either (a first-party org is not expected to ship a
+    // banned upstream). The same boundary the OSV audit already draws.
+    return;
   }
   const bundled = addon.files.get(entry.path) ?? Buffer.alloc(0);
   const version = String(src.ref ?? "").replace(/^v/i, "");
@@ -461,7 +513,8 @@ async function auditGithub(entry, src, addon, vendor, net, llm) {
       entry.sourceUrl,
       vendor,
       net,
-      vendor.vulnerabilities
+      vendor.vulnerabilities,
+      blocks
     );
     return;
   }
@@ -484,7 +537,8 @@ async function auditGithub(entry, src, addon, vendor, net, llm) {
         entry.sourceUrl,
         vendor,
         net,
-        vendor.vulnerabilities
+        vendor.vulnerabilities,
+        blocks
       );
       return;
     }

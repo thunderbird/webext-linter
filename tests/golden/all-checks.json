@@ -49,6 +49,7 @@
       "unpinned-dependency",
       "unsupported-dependency",
       "vendor-vulnerable",
+      "banned-library",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",

@@ -230,6 +230,10 @@ export function helpText() {
       "Re-download the library hashes even if a cached copy exists.",
     ],
     [
+      "--lib-mozilla-block-db <path>",
+      "Use a local copy of the banned/unadvised library policy (the library versions Mozilla's add-on policy disallows or discourages) instead of the built-in list. A shipped file, not fetched - no cache/refresh.",
+    ],
+    [
       "--lib-cdn-lookup <true|false>",
       "Identify an unrecognized minified bundle by a jsDelivr content-hash lookup (default: true). Results are cached; an offline run simply finds no match.",
     ],
@@ -392,6 +396,7 @@ const OPTIONS = {
   "lib-mozilla-hash-db": { type: "string" },
   "lib-mozilla-hash-db-cache": { type: "string" },
   "lib-mozilla-hash-db-refresh": { type: "boolean" },
+  "lib-mozilla-block-db": { type: "string" },
   "lib-cdn-lookup": { type: "string" },
   "lib-cdn-lookup-cache": { type: "string" },
   "experiments-zip": { type: "string" },
@@ -667,6 +672,7 @@ function pipelineOptsFromValues(values) {
     libraryHashesCache:
       values["lib-mozilla-hash-db-cache"] || LIBRARY_HASHES_CACHE,
     libraryHashesForceRefresh: values["lib-mozilla-hash-db-refresh"],
+    libraryBlocks: values["lib-mozilla-block-db"],
     // --lib-cdn-lookup true|false (default true); only an explicit "false" disables.
     cdnLookup: values["lib-cdn-lookup"] !== "false",
     cdnLookupCache: values["lib-cdn-lookup-cache"] || CDN_LOOKUP_CACHE,

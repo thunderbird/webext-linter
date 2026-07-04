@@ -1,7 +1,6 @@
 # Table of Contents
 
 - [Defects, false-positive and false-negative (WIP)](#wip)
-- [Hash-based library identification](#hash-based-library-identification)
 - [Detect correct schema reference](#detect-correct-schema-reference)
 - [Improve schema files to remove special hardcoded cases](#improve-schema-files-to-remove-special-hardcoded-cases)
 - [Full type check via typescript engine](#full-type-check-via-typescript-engine)
@@ -14,12 +13,6 @@
 
 - (check build types)
 
-
-# Hash-based library identification
-
-We currently use a popularity system to identify popular and well-maintained
-libraries. We should however also be able to allow-list libraries via a hash,
-and also use the same hash system to block certain libs, which are deemed unsafe.
 
 # Detect correct schema reference
 

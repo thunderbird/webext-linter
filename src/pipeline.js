@@ -57,6 +57,10 @@ import {
   resolveLibraryHashes,
   parseLibraryHashes,
 } from "./checks/lib/library-hashes.js";
+import {
+  resolveLibraryBlocks,
+  parseLibraryBlocks,
+} from "./checks/lib/library-blocks.js";
 import { getPermissionAnalysis } from "./checks/lib/permissions.js";
 import { collapseUnused } from "./checks/lib/unused-folders.js";
 import { isExperiment } from "./checks/lib/util.js";
@@ -361,6 +365,16 @@ export async function runPipeline(opts) {
       budget: llmBudget,
     });
 
+    // The Mozilla add-on policy blocklist (curated assets/library-blocks.yaml, or the
+    // --lib-mozilla-block-db override): a shipped asset read from disk (fast, no
+    // network, so no Setup feed line). Passed to the vendor audit, which consults it
+    // before each OSV query (auditNpm) - a banned library is recorded and skips the
+    // request. Not applied to SCS devDependencies (never shipped).
+    const { text: libraryBlocksText } = await resolveLibraryBlocks({
+      source: opts.libraryBlocks,
+    });
+    const libraryBlocks = parseLibraryBlocks(libraryBlocksText);
+
     if (mode === "scs") {
       // SCS: the source archive's package.json is the only dependency manifest.
       // Audit each declared dependency for popularity (non-popular -> reject) and
@@ -369,7 +383,7 @@ export async function runPipeline(opts) {
       // (so obfuscated-code and the non-authored skip set work); scanMinified is
       // on, so every readable source file is scanned as authored.
       setupStep("Auditing source dependencies");
-      await verifyScsDependencies(addon, opts.vendorNet);
+      await verifyScsDependencies(addon, opts.vendorNet, libraryBlocks);
       addon.bundled = classifyBundled(addon, { scanMinified, libraryHashes });
       // The BUILD files (archive minus the review source + Experiment source) - the
       // build scripts/config the review otherwise drops. buildScsBuildCtx wraps these
@@ -386,15 +400,20 @@ export async function runPipeline(opts) {
       // An offline transport (the golden harness) makes no request. The LLM params
       // drive the github->npm resolution fallback; the run-wide budget is shared.
       setupStep("Verifying vendored libraries");
-      await verifyVendor(addon, opts.vendorNet, {
-        enabled: opts.llmEnabled,
-        resolvePrompt: registry.prompt("vendor-npm-resolve"),
-        token: opts.llmApiKey,
-        model: opts.llmModel,
-        url: opts.llmApiUrl,
-        type: opts.llmApiType,
-        budget: llmBudget,
-      });
+      await verifyVendor(
+        addon,
+        opts.vendorNet,
+        {
+          enabled: opts.llmEnabled,
+          resolvePrompt: registry.prompt("vendor-npm-resolve"),
+          token: opts.llmApiKey,
+          model: opts.llmModel,
+          url: opts.llmApiUrl,
+          type: opts.llmApiType,
+          budget: llmBudget,
+        },
+        libraryBlocks
+      );
 
       // 1e. Classify the bundled (undeclared third-party) JS ONCE into
       // addon.bundled. Runs after verifyVendor so the vendored skip set is final.
@@ -422,7 +441,7 @@ export async function runPipeline(opts) {
       // a declared dependency. Reuses verifyVendor's OSV transport + the shared
       // vulnerabilities store; best-effort, skips offline.
       setupStep("Auditing bundled libraries");
-      await auditIdentifiedLibraries(addon, opts.vendorNet);
+      await auditIdentifiedLibraries(addon, opts.vendorNet, libraryBlocks);
     }
   }
 
