@@ -28,7 +28,7 @@
 
 import { resolveRef, resolveInDir } from "./manifest-refs.js";
 import { scanHtmlRemoteRefs } from "../../scan/html.js";
-import { scanLocalImports } from "../../parse/local-imports.js";
+import { localImportsOf } from "../extract.js";
 import { asArray } from "./util.js";
 import { dirname, extname, HTML_EXTENSIONS } from "../../util/files.js";
 
@@ -98,7 +98,7 @@ function compute(ctx) {
   const imports = new Map();
   for (const src of ctx.jsSources || []) {
     let set = imports.get(src.file);
-    for (const r of scanLocalImports(src.code, src.lineOffset).refs) {
+    for (const r of localImportsOf(src).refs) {
       const t = resolveRef(files, src.file, r.path);
       if (t) {
         if (!set) {

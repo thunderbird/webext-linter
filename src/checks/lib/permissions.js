@@ -33,7 +33,8 @@ import { finding } from "../../report/finding.js";
 import { asArray, isMatchPattern, manifestPathLine } from "./util.js";
 import { resolveApiUsages } from "./api-resolution.js";
 import { buildReachability } from "./reachability.js";
-import { scanWebApiCalls } from "../../parse/web-api-calls.js";
+import { webApiSignatures } from "../../parse/web-api-calls.js";
+import { webApiPermsOf } from "../extract.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../addon/load.js").Manifest} Manifest */
@@ -203,15 +204,7 @@ export function getPermissionAnalysis(ctx) {
  * @returns {Set<string>}  Grounded permission names.
  */
 function groundWebApiPermissions(ctx, declaredNamed) {
-  const signatures = [];
-  for (const [permission, apis] of ctx.schema.permissionWebApis) {
-    if (!declaredNamed.has(permission)) {
-      continue;
-    }
-    for (const { receiver, methods } of apis) {
-      signatures.push({ permission, receiver, methods });
-    }
-  }
+  const signatures = webApiSignatures(ctx.schema, declaredNamed);
   const grounded = new Set();
   if (!signatures.length) {
     return grounded;
@@ -221,8 +214,14 @@ function groundWebApiPermissions(ctx, declaredNamed) {
     if (!webext.has(src.file)) {
       continue;
     }
-    for (const perm of scanWebApiCalls(src.code, signatures, src.parsed)) {
-      grounded.add(perm);
+    // webApiPermsOf returns the pass's grounding against ALL web_api signatures;
+    // keep only the declared ones. A non-authored webext file was not precomputed
+    // and the accessor falls back to a declared-only scan (no filtering needed).
+    const perms = webApiPermsOf(src, signatures);
+    for (const perm of perms) {
+      if (declaredNamed.has(perm)) {
+        grounded.add(perm);
+      }
     }
   }
   return grounded;

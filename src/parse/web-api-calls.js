@@ -29,6 +29,28 @@ import { parseJs, traverse } from "./ast.js";
  */
 
 /**
+ * Flatten the schema's per-permission web_api annotations into scanWebApiCalls
+ * signatures. With `declaredNamed`, keep only permissions the manifest declares
+ * (the grounding scope). Without it, every web_api permission: the extraction pass
+ * scans against all of them and the consumer intersects with what is declared.
+ * @param {import("../schema/index.js").SchemaIndex} [schema]
+ * @param {Set<string>} [declaredNamed]  Keep only these permissions when given.
+ * @returns {WebApiSignature[]}
+ */
+export function webApiSignatures(schema, declaredNamed) {
+  const signatures = [];
+  for (const [permission, apis] of schema?.permissionWebApis ?? []) {
+    if (declaredNamed && !declaredNamed.has(permission)) {
+      continue;
+    }
+    for (const { receiver, methods } of apis) {
+      signatures.push({ permission, receiver, methods });
+    }
+  }
+  return signatures;
+}
+
+/**
  * The accessed property name of a member expression - dot access (`x.foo`) and
  * string-literal bracket access (`x["foo"]`) - else null. Mirrors the helper in
  * network-sinks.js/unsafe-html.js.

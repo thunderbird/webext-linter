@@ -18,15 +18,45 @@ import { eachElement } from "../scan/html-parse.js";
 import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
 
 /**
- * @typedef {object} JsSource
+ * @typedef {object} JsSource  A JavaScript source the review enumerates.
  * @property {string} file  Add-on-relative path (HTML inline scripts keep
  *   the .html path).
  * @property {string} code  JavaScript text.
  * @property {number} lineOffset  Lines to add to AST-reported lines
  *   (0 for .js files).
  * @property {boolean} inline  True if extracted from an HTML <script> block.
- * @property {import("../parse/ast.js").ParseResult} [parsed]  The one-time parse
- *   of `code`, attached by buildRunContext so consumers do not re-parse.
+ * @property {ExtractedResults} [extracted]  The per-file extraction results, set
+ *   by the extraction pass (src/checks/extract.js) and read through its xOf()
+ *   accessors. Absent on a source the pass never ran (the shipped view, hand-built
+ *   unit contexts), where the accessors recompute instead.
+ */
+
+/**
+ * @typedef {object} ExtractedResults  The per-source results the extraction pass
+ *   hangs on src.extracted (having dropped the AST). Whether a source is AUTHORED
+ *   is visible in the shape: the every-source fields are always present; the
+ *   content fields only when authored (a non-authored bundle / library is skipped).
+ * @property {import("../parse/api-usage.js").ApiUsageResult} apiUsage  WebExtension
+ *   API usage (ctx.apiUsages is derived from it; its parseError feeds unparsable-file)
+ *   - every source.
+ * @property {object} localImports  scanLocalImports import/require refs - every
+ *   source (reachability follows a non-authored file's own loaders too).
+ * @property {object} loaderRefs  scanLoaderRefs file-loading API refs - every source.
+ * @property {?{line: number, column: number}} moduleSyntaxLoc  first ES module
+ *   statement loc, or null - every source (the two input:xpi module checks read it).
+ * @property {object} [experimentRefs]  scanExperimentInjectedRefs refs - every
+ *   source, but only for an Experiment add-on (absent otherwise).
+ * @property {object} [remoteJs]  scanRemoteJs (eval-scan + remote-script) - authored.
+ * @property {object} [networkSinks]  scanNetworkSinks (outbound-sinks) - authored.
+ * @property {object} [unsafeHtml]  scanUnsafeHtml - authored.
+ * @property {object} [coreSymbols]  scanCoreSymbols (core-symbol-in-webext) - authored.
+ * @property {object} [syncXhr]  scanSyncXhr (sync-xhr) - authored.
+ * @property {object} [debuggerStmt]  scanDebugger (debugger-statement) - authored.
+ * @property {object} [asyncOnMessage]  scanAsyncOnMessage (async-onmessage) - authored.
+ * @property {Set<string>} [webApiPerms]  scanWebApiCalls grounded permissions
+ *   (against ALL web_api signatures; the consumer intersects with declared) - authored.
+ * @property {?boolean} [obfuscation]  AST obfuscation verdict - only for a byte-geometry
+ *   candidate (null when undecidable / parseError); assembleBundled folds it in.
  */
 
 /**

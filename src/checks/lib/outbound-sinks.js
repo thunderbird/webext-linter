@@ -4,8 +4,8 @@
 // AST scan runs a single time per review - the same "compute once, checks read
 // it" pattern as addon.bundled / addon.vendor.
 //
-// Belongs here: getOutboundSinks - running scanNetworkSinks over each authored
-// source (reusing its already-parsed AST), skipping non-authored code, and
+// Belongs here: getOutboundSinks - reading each authored source's precomputed
+// network-sinks scan (networkSinksOf), skipping non-authored code, and
 // memoizing the result on the addon.
 //
 // Does NOT belong here: the sink AST walk itself (-> src/parse/
@@ -13,7 +13,7 @@
 // cleartext-transmission.js, privacy-policy.js, data-exfiltration.js), and the
 // non-authored skip set (-> bundled.js).
 
-import { scanNetworkSinks } from "../../parse/network-sinks.js";
+import { networkSinksOf } from "../extract.js";
 import { nonAuthoredJs } from "./bundled.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -69,7 +69,7 @@ function scanAll(ctx) {
     if (skip.has(src.file)) {
       continue;
     }
-    const { hits } = scanNetworkSinks(src.code, src.lineOffset, src.parsed);
+    const { hits } = networkSinksOf(src);
     for (const hit of hits) {
       out.push({ ...hit, file: src.file });
     }

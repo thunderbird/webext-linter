@@ -8,41 +8,17 @@
 // API. This positively excludes experiment implementation code and dead code, so an
 // untraceable privileged loader cannot cause a false positive.
 //
-// Belongs here: the core-symbol list and visiting GLOBAL references to it (a name
-// shadowed by a local binding / import is the developer's own symbol, not ours).
-// Does NOT belong here: the WebExtension vs Experiment partition (->
-// src/checks/lib/reachability.js, pureWebExtensionReachable), Babel plumbing (->
-// src/parse/ast.js), the non-authored skip-list (-> src/checks/lib/bundled.js),
-// authored wording / severity (-> assets/registry.yaml), report formatting (->
-// src/report/format.js).
+// Belongs here: restricting to the pure WebExtension tree and emitting one finding
+// per core-symbol hit. Does NOT belong here: the core-symbol list and the global-
+// reference AST match (-> src/parse/core-symbols.js), the WebExtension vs Experiment
+// partition (-> src/checks/lib/reachability.js, pureWebExtensionReachable), the
+// non-authored skip-list (-> src/checks/lib/bundled.js), authored wording / severity
+// (-> assets/registry.yaml), report formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
-import { parseJs, traverse, nodeLoc } from "../../parse/ast.js";
+import { coreSymbolsOf } from "../extract.js";
 import { nonAuthoredJs } from "../lib/bundled.js";
 import { buildReachability } from "../lib/reachability.js";
-
-// Privileged globals a WebExtension sandbox never provides. The short
-// Components shortcuts (Cc/Ci/Cu/Cr/Cm) and the Extension* Experiment base globals
-// are included; all are matched only as GLOBAL references (a shadowing local binding
-// or import of the same name is exempt).
-const CORE_SYMBOLS = new Set([
-  "Services",
-  "Components",
-  "Cc",
-  "Ci",
-  "Cu",
-  "Cr",
-  "Cm",
-  "ChromeUtils",
-  "XPCOMUtils",
-  "ctypes",
-  "IOUtils",
-  "PathUtils",
-  "ChromeWorker",
-  "ExtensionCommon",
-  "ExtensionAPI",
-  "ExtensionParent",
-]);
 
 export default {
   run(ctx) {
@@ -58,33 +34,15 @@ export default {
       if (skip.has(src.file) || !webext.has(src.file)) {
         continue;
       }
-      const { ast } = src.parsed ?? parseJs(src.code);
-      if (!ast) {
-        continue;
+      const { hits } = coreSymbolsOf(src);
+      for (const hit of hits) {
+        const loc = { line: hit.line, column: hit.column };
+        ctx.note?.(src.file, loc, hit.name, "fail");
+        // The registry response carries no {{item}}, so the resolver collapses
+        // these into one grouped entry and surfaces `item` (the symbol) on each
+        // locus line ("file:line - Services") - see report/responses.js + format.js.
+        out.push(finding({ file: src.file, loc, item: hit.name }));
       }
-      const seen = new Set(); // one finding per (file, symbol)
-      traverse(ast, {
-        ReferencedIdentifier(path) {
-          const name = path.node.name;
-          // A core global: in CORE_SYMBOLS, an actual reference (not a property
-          // name / object key / declaration - ReferencedIdentifier guarantees that),
-          // and NOT shadowed by a local binding or import.
-          if (
-            !CORE_SYMBOLS.has(name) ||
-            seen.has(name) ||
-            path.scope.hasBinding(name)
-          ) {
-            return;
-          }
-          seen.add(name);
-          const loc = nodeLoc(path.node, src.lineOffset);
-          ctx.note?.(src.file, loc, name, "fail");
-          // The registry response carries no {{item}}, so the resolver collapses
-          // these into one grouped entry and surfaces `item` (the symbol) on each
-          // locus line ("file:line - Services") - see report/responses.js + format.js.
-          out.push(finding({ file: src.file, loc, item: name }));
-        },
-      });
     }
     return out;
   },

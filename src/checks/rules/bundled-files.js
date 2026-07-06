@@ -19,7 +19,7 @@
 // src/checks/registry.js), and report formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
-import { scanLoaderRefs } from "../../parse/loader-files.js";
+import { loaderRefsOf } from "../extract.js";
 import { buildReachability } from "../lib/reachability.js";
 import { classifyUrl } from "../../scan/url.js";
 import {
@@ -95,12 +95,7 @@ export default {
       if (!isLive(src.file)) {
         continue;
       }
-      const { refs } = scanLoaderRefs(
-        src.code,
-        src.lineOffset,
-        ctx.schema,
-        ctx.schema?.manifestVersionMajor
-      );
+      const { refs } = loaderRefsOf(src, ctx.schema);
       for (const ref of refs) {
         if (!isPackagedPathRef(ref.path)) {
           continue;

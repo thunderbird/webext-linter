@@ -19,7 +19,7 @@
 
 import { scanHtmlRemoteRefs, scanHtmlInlineCssRefs } from "../../scan/html.js";
 import { scanCssRemoteRefs } from "../../scan/css.js";
-import { scanRemoteJs } from "../../parse/remote-js.js";
+import { remoteJsOf } from "../extract.js";
 import { analyzeCsp } from "../../scan/csp.js";
 import { nonAuthoredJs } from "../lib/bundled.js";
 import { dedupe, scheme, trunc } from "../lib/util.js";
@@ -72,7 +72,7 @@ export default {
       if (skip.has(src.file)) {
         continue;
       }
-      const { hits } = scanRemoteJs(src.code, src.lineOffset, src.parsed);
+      const { hits } = remoteJsOf(src);
       for (const hit of hits) {
         pushJs(ctx, findings, esc, src.file, hit);
       }

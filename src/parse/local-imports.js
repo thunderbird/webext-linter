@@ -22,11 +22,13 @@ import { parseJs, traverse, staticPathOf } from "./ast.js";
 /**
  * @param {string} code  JavaScript source text.
  * @param {number} [lineOffset]  Added to reported lines (for inline scripts).
+ * @param {import("./ast.js").ParseResult} [parsed]  Reuse this parse of `code`
+ *   instead of re-parsing it.
  * @returns {{refs: {path: string, line: number, column: number}[],
  *   hasDynamic: boolean, parseError: string|null}}
  */
-export function scanLocalImports(code, lineOffset = 0) {
-  const { ast, parseError } = parseJs(code);
+export function scanLocalImports(code, lineOffset = 0, parsed) {
+  const { ast, parseError } = parsed ?? parseJs(code);
   if (parseError) {
     return { refs: [], hasDynamic: false, parseError };
   }

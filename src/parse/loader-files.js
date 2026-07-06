@@ -95,6 +95,8 @@ const ROOT_RELATIVE_FILE_METHODS = new Set([
  * @param {?number} [manifestVersion]  The add-on's manifest_version, so a
  *   version-specific bridge entry (e.g. browserAction vs action) applies only
  *   for its version. Null leaves every bridge entry in play.
+ * @param {import("./ast.js").ParseResult} [parsed]  Reuse this parse of `code`
+ *   instead of re-parsing it.
  * @returns {{refs: {path: string, line: number, column: number,
  *   base: "page"|"root"}[], hasDynamic: boolean, parseError: string|null}}
  *   Each ref's `base` is the directory its path resolves against at runtime:
@@ -106,9 +108,10 @@ export function scanLoaderRefs(
   code,
   lineOffset = 0,
   schema = null,
-  manifestVersion = null
+  manifestVersion = null,
+  parsed
 ) {
-  const { ast, parseError } = parseJs(code);
+  const { ast, parseError } = parsed ?? parseJs(code);
   if (parseError) {
     return { refs: [], hasDynamic: false, parseError };
   }

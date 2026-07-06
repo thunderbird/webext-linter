@@ -65,11 +65,18 @@ function classifyInjectedArg(value) {
  * @param {string} code
  * @param {Set<string>} namespaces  The add-on's Experiment namespaces.
  * @param {number} [lineOffset]
+ * @param {import("./ast.js").ParseResult} [parsed]  Reuse this parse of `code`
+ *   instead of re-parsing it.
  * @returns {{refs: {ns: string, kind: "path"|"basename", value: string,
  *   line: number, column: number}[], parseError: string|null}}
  */
-export function scanExperimentInjectedRefs(code, namespaces, lineOffset = 0) {
-  const { ast, parseError } = parseJs(code);
+export function scanExperimentInjectedRefs(
+  code,
+  namespaces,
+  lineOffset = 0,
+  parsed
+) {
+  const { ast, parseError } = parsed ?? parseJs(code);
   if (parseError || !ast || !namespaces?.size) {
     return { refs: [], parseError: parseError ?? null };
   }

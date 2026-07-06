@@ -16,6 +16,7 @@
 
 import { finding } from "../../report/finding.js";
 import { parseJs } from "../../parse/ast.js";
+import { moduleSyntaxOf } from "../extract.js";
 import { eachElement } from "../../scan/html-parse.js";
 import { usesModuleSyntax } from "../lib/module-syntax.js";
 import { normalizeRef, resolveRef } from "../lib/manifest-refs.js";
@@ -44,8 +45,9 @@ export default {
       return []; // a declared-but-absent page is bundled-files' concern
     }
 
-    // The page's external scripts are .js files already parsed once into
-    // jsSources. Reuse that, falling back to parsing the bytes ourselves.
+    // The page's external scripts are .js files the pass already parsed; read the
+    // precomputed module-syntax verdict (moduleSyntaxOf), falling back to parsing the
+    // bytes for a target the pass never saw.
     const sources = new Map((ctx.jsSources ?? []).map((s) => [s.file, s]));
     const out = [];
     eachElement(buf.toString("utf8"), (el) => {
@@ -63,8 +65,7 @@ export default {
       if (!target) {
         return; // remote or unresolved src - not our concern
       }
-      const ast = parsedAst(sources, target, addon.files);
-      if (!ast || !usesModuleSyntax(ast)) {
+      if (!targetUsesModuleSyntax(sources, target, addon.files)) {
         return; // a classic script - fine without type="module"
       }
       const loc = { line: el.line };
@@ -76,18 +77,23 @@ export default {
 };
 
 /**
- * The parsed AST for a packaged JS file: the one-time ctx parse when available,
- * else a fresh parse of its bytes. Null when the file is absent or unparsable.
+ * Does a packaged JS file use ES module syntax? For a known jsSource, read the
+ * precomputed moduleSyntaxOf verdict (no re-parse); for a page-referenced target the
+ * pass never saw, parse its bytes. False when the file is absent or unparsable.
  * @param {Map<string, object>} sources  ctx.jsSources keyed by file.
  * @param {string} file  Add-on-relative path.
  * @param {Map<string, Buffer>} files  The add-on file map.
- * @returns {?object}
+ * @returns {boolean}
  */
-function parsedAst(sources, file, files) {
+function targetUsesModuleSyntax(sources, file, files) {
   const src = sources.get(file);
   if (src) {
-    return (src.parsed ?? parseJs(src.code)).ast ?? null;
+    return Boolean(moduleSyntaxOf(src));
   }
   const buf = files.get(file);
-  return buf ? (parseJs(buf.toString("utf8")).ast ?? null) : null;
+  if (!buf) {
+    return false;
+  }
+  const { ast } = parseJs(buf.toString("utf8"));
+  return ast ? usesModuleSyntax(ast) : false;
 }

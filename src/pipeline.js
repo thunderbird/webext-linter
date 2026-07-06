@@ -49,9 +49,12 @@ import {
 } from "./vendor/verify.js";
 import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
 import {
-  classifyBundled,
+  classifyByteGeometry,
+  assembleBundled,
   applyNotPopularVendor,
 } from "./checks/lib/bundled.js";
+import { collectJsSources } from "./addon/sources.js";
+import { runExtractionPass } from "./checks/extract.js";
 import { resolveCdnLibraries } from "./checks/lib/cdn-lookup.js";
 import {
   resolveLibraryHashes,
@@ -365,10 +368,44 @@ export async function runPipeline(opts) {
     }
   }
 
+  // Resolve the review schema up front: the extraction pass (run per-review below,
+  // before cdn-lookup, so its obfuscation verdict is ready for it) needs the web_api /
+  // loader schema, and reviewAddon reviews against it. A rejected Experiment fetches
+  // it too (reviewAddon still runs the reject check and reads schema.applicationVersion).
+  const schemaBranch = chooseBranch({
+    schemaZip: opts.schemaZip,
+    schemaChannel: opts.schemaChannel ?? DEFAULT_CHANNEL,
+    manifest: xpiAddon.manifest,
+  });
+  setupStep(`Fetching review schemas (${schemaBranch})`);
+  const { zipPath: schemaZipPath, source: schemaSource } =
+    await resolveSchemaZip({
+      schemaZip: opts.schemaZip,
+      branch: schemaBranch,
+      cacheDir: opts.schemaCache ?? DEFAULT_CACHE,
+      refresh: opts.schemaForceRefresh ?? false,
+    });
+  const schemaFiles = loadSchemaFiles(schemaZipPath);
+  applySchemaAnnotations(schemaFiles.files, loadSchemaAnnotations());
+  const schema = buildSchemaIndex(schemaFiles);
+  // A valid Experiment's declared APIs are part of its platform: register their base
+  // namespaces so the developer's calls into them (e.g. browser.calendar.*) resolve
+  // instead of tripping unknown-api. Registered from the XPI (in SCS the experiment
+  // schema/scripts live in the built XPI, so the manifest's paths resolve there).
+  if (!invalidExperiment && isExperiment(xpiAddon.manifest)) {
+    schema.registerExperimentNamespaces(
+      experimentApiNamespaces(xpiAddon.manifest, xpiAddon.files)
+    );
+  }
+
   // The known-library hash DB the bundled classifier matches files against. Stays
   // an empty Map for a rejected Experiment (the block below, which classifies, is
   // skipped) so nothing is ever recognized.
   let libraryHashes = new Map();
+  // The parse-first review sources: classifyAndExtractReview runs the extraction pass
+  // and returns them for reviewAddon to reuse. Stays undefined for a rejected Experiment
+  // (which skips the classify block below), so buildRunContext parses there instead.
+  let preParsedJsSources;
 
   if (!invalidExperiment) {
     // 1b. The known-library hash DB the classifier matches bytes against (fetch +
@@ -409,12 +446,18 @@ export async function runPipeline(opts) {
       // SCS: the source archive's package.json is the only dependency manifest.
       // Audit each declared dependency for popularity (non-popular -> reject) and
       // OSV. No VENDOR.md / hash / CDN matching - the built libraries are not in
-      // the readable source and are mangled in the XPI. classifyBundled still runs
-      // (so obfuscated-code and the non-authored skip set work); scanMinified is
-      // on, so every readable source file is scanned as authored.
+      // the readable source and are mangled in the XPI. The bundled classification
+      // still runs (so obfuscated-code and the non-authored skip set work);
+      // scanMinified is on, so every readable source file is scanned as authored.
       setupStep("Auditing source dependencies");
       await verifyScsDependencies(addon, opts.vendorNet, libraryBlocks);
-      addon.bundled = classifyBundled(addon, { scanMinified, libraryHashes });
+      preParsedJsSources = classifyAndExtractReview(addon, {
+        schema,
+        scanMinified,
+        libraryHashes,
+        xpiAddon,
+        setupStep,
+      });
       // The BUILD files (archive minus the review source + Experiment source) - the
       // build scripts/config the review otherwise drops. buildScsBuildCtx wraps these
       // as the `input: build` check's ctx.addon; they never merge into the review addon.
@@ -446,9 +489,17 @@ export async function runPipeline(opts) {
         libraryBlocks
       );
 
-      // 1e. Classify the bundled (undeclared third-party) JS ONCE into
-      // addon.bundled. Runs after verifyVendor so the vendored skip set is final.
-      addon.bundled = classifyBundled(addon, { scanMinified, libraryHashes });
+      // 1e. Classify the bundled (undeclared third-party) JS: byte-geometry, then the
+      // extraction pass (which computes obfuscation on its shared parse), then
+      // assemble addon.bundled. Runs after verifyVendor so the vendored skip set is
+      // final, and before cdn-lookup, which reads the final tag.obfuscated.
+      preParsedJsSources = classifyAndExtractReview(addon, {
+        schema,
+        scanMinified,
+        libraryHashes,
+        xpiAddon,
+        setupStep,
+      });
 
       // 1e-half. Reconcile the not-popular VENDOR/package results from verifyVendor
       // (which ran before addon.bundled existed) into the untrusted family: an
@@ -479,18 +530,18 @@ export async function runPipeline(opts) {
   // 2. Schema review. reviewAddon also generates the advisory AI summaries at
   // the tail of the activity feed (the add-on summary's recheck verdicts feed the
   // post-summary recheck consumers, which run there too), so they come back here.
-  const result = await reviewAddon(
-    addon,
-    opts,
-    registry,
-    invalidExperiment,
-    llmBudget,
+  const result = await reviewAddon(addon, opts, registry, invalidExperiment, {
+    budget: llmBudget,
     setupStep,
     libraryHashes,
     mode,
     xpiAddon,
-    scsExpSource
-  );
+    scsExpSource,
+    schema,
+    schemaSource,
+    schemaBranch,
+    preParsedJsSources,
+  });
   findings.push(...result.findings);
   Object.assign(meta, result.meta);
   const { summarize, summarizeAddon } = result;
@@ -629,6 +680,49 @@ async function generateAddonSummary(
 }
 
 /**
+ * Byte-geometry classification -> the single extraction pass (which computes each
+ * candidate's obfuscation verdict on its shared parse) -> assemble the final
+ * addon.bundled, and return the parsed sources for buildRunContext to reuse. This is
+ * the parse-first order - it runs before cdn-lookup (which reads tag.obfuscated), so
+ * the pass and classifyBundled share ONE parse of each authored candidate rather than
+ * parsing it twice. Only for a reviewed (non-invalid-Experiment) addon; the lazy
+ * getBundled path parses candidates itself via detectObfuscationAst.
+ * @param {import("./addon/load.js").Addon} addon
+ * @param {{schema: object, scanMinified: boolean,
+ *   libraryHashes: Map<string, {name: string, version: string}>,
+ *   xpiAddon: import("./addon/load.js").Addon,
+ *   setupStep: (label: string) => void}} ctx
+ * @returns {import("./addon/sources.js").JsSource[]}  The parsed review sources.
+ */
+function classifyAndExtractReview(
+  addon,
+  { schema, scanMinified, libraryHashes, xpiAddon, setupStep }
+) {
+  const byte = classifyByteGeometry(addon, { scanMinified, libraryHashes });
+  const jsSources = collectJsSources(addon);
+  const experimentNamespaces = isExperiment(xpiAddon.manifest)
+    ? experimentApiNamespaces(xpiAddon.manifest, addon.files)
+    : null;
+  setupStep("Parsing add-on sources");
+  runExtractionPass(jsSources, {
+    schema,
+    nonAuthored: byte.nonAuthored,
+    invalidExperiment: false,
+    experimentNamespaces,
+    obfuscationCandidates: byte.candidates,
+  });
+  // The pass recorded each candidate's obfuscation verdict on src.extracted; collect
+  // them into the file->verdict map assembleBundled folds over the byte geometry.
+  const obfuscated = new Map(
+    jsSources
+      .filter((s) => "obfuscation" in s.extracted)
+      .map((s) => [s.file, s.extracted.obfuscation])
+  );
+  addon.bundled = assembleBundled(byte, obfuscated);
+  return jsSources;
+}
+
+/**
  * The schema-review half of the pipeline, operating on an already-loaded add-on.
  *
  * @param {import("./addon/load.js").Addon} addon
@@ -636,33 +730,44 @@ async function generateAddonSummary(
  * @param {import("./checks/registry.js").Registry} registry
  * @param {boolean} [invalidExperiment]  Reject-only mode: run just the
  *   experiment-not-allowed check, with no LLM, summaries, or manual reminders.
- * @param {import("../llm/budget.js").LlmBudget} [budget]
- * @param {(label: string) => void} [setupStep]  Emits the next numbered "Setup"
- *   feed line; supplied by runPipeline, which owns the section's running count.
- * @param {Map<string, {name: string, version: string}>} [libraryHashes]  The
- *   known-library hash DB runPipeline resolved, carried onto ctx.options so the
- *   lazy getBundled path matches the pre-step's classification (real runs use the
- *   memoized addon.bundled, so this is only the no-pre-step fallback).
+ * @param {object} resolved  The review inputs runPipeline resolved up front, grouped
+ *   to keep this signature small:
+ * @param {import("../llm/budget.js").LlmBudget} [resolved.budget]
+ * @param {(label: string) => void} [resolved.setupStep]  Emits the next numbered
+ *   "Setup" feed line; runPipeline owns the section's running count.
+ * @param {Map<string, {name: string, version: string}>} [resolved.libraryHashes]  The
+ *   known-library hash DB runPipeline resolved, carried onto ctx.options so the lazy
+ *   getBundled path matches the pre-step's classification (real runs use the memoized
+ *   addon.bundled, so this is only the no-pre-step fallback).
+ * @param {"xpi"|"scs"} [resolved.mode]
+ * @param {import("./addon/load.js").Addon} [resolved.xpiAddon]  The built XPI (the
+ *   shipped artifact); === addon in XPI mode.
+ * @param {string} [resolved.scsExpSource]  SCS Experiment folder (source-relative).
+ * @param {import("./schema/index.js").SchemaIndex} [resolved.schema]
+ * @param {string} [resolved.schemaSource]
+ * @param {string} [resolved.schemaBranch]
+ * @param {import("./addon/sources.js").JsSource[]} [resolved.preParsedJsSources]  The
+ *   review sources the extraction pass already parsed (parse-first); absent for a
+ *   rejected Experiment, where buildRunContext parses.
  * @returns {Promise<{findings: Finding[], meta: ReviewMeta,
  *   ctx: import("./checks/registry.js").RunContext}>}
  */
-async function reviewAddon(
-  addon,
-  opts,
-  registry,
-  invalidExperiment,
-  budget,
-  setupStep = () => {},
-  libraryHashes = new Map(),
-  mode = "xpi",
-  xpiAddon = addon,
-  scsExpSource
-) {
+async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
+  const {
+    budget,
+    setupStep = () => {},
+    libraryHashes = new Map(),
+    mode = "xpi",
+    xpiAddon = addon,
+    scsExpSource,
+    schema,
+    schemaSource,
+    schemaBranch,
+    preParsedJsSources,
+  } = resolved;
   const {
     schemaChannel = DEFAULT_CHANNEL,
     schemaZip,
-    schemaCache = DEFAULT_CACHE,
-    schemaForceRefresh = false,
     checksOnly,
     checksSkip,
     eslint,
@@ -676,42 +781,15 @@ async function reviewAddon(
     diffSummary,
   } = opts;
 
-  const branch = chooseBranch({
-    schemaZip,
-    schemaChannel,
-    manifest: xpiAddon.manifest,
-  });
-  setupStep(`Fetching review schemas (${branch})`);
-  const { zipPath, source: schemaSource } = await resolveSchemaZip({
-    schemaZip,
-    branch,
-    cacheDir: schemaCache,
-    refresh: schemaForceRefresh,
-  });
-  // Merge the bundled local schema annotations (e.g. the `web_api` permission
-  // grounding the browser.* schema cannot express) onto the loaded files before
-  // indexing - in memory, so the cached zips stay pristine. Overwrites any
-  // same-named entry the published schema may already carry.
-  const schemaFiles = loadSchemaFiles(zipPath);
-  applySchemaAnnotations(schemaFiles.files, loadSchemaAnnotations());
-  const schema = buildSchemaIndex(schemaFiles);
-  // A valid Experiment's declared APIs are part of its platform: register their
-  // base namespaces so the developer's calls into them (e.g. browser.calendar.*,
-  // including bare browser.calendar) resolve instead of tripping unknown-api -
-  // the developer owns the namespace, so we accept it wholesale rather than
-  // tracing each sub-API. Note that experiment-overrides-api separately flags a
-  // path that collides with a built-in.
-  // Register from the XPI (xpiAddon === addon in XPI mode): in SCS the experiment
-  // schema/scripts live in the built XPI, so the manifest's experiment paths
-  // resolve there - the developer's calls into the namespace still resolve even
-  // though the reviewed source is scsSource.
-  if (!invalidExperiment && isExperiment(xpiAddon.manifest)) {
-    schema.registerExperimentNamespaces(
-      experimentApiNamespaces(xpiAddon.manifest, xpiAddon.files)
-    );
+  // schema + schemaSource (and the Experiment-namespace registration) are resolved by
+  // runPipeline up front, because the extraction pass - which runs there before
+  // cdn-lookup so its obfuscation verdict is ready - needs the schema. For a reviewed
+  // addon runPipeline already ran the pass and passes its parsed sources in as
+  // preParsedJsSources (reused below); a rejected Experiment has no pre-step, so
+  // buildRunContext parses here (narrated).
+  if (!preParsedJsSources) {
+    setupStep("Parsing add-on sources");
   }
-
-  setupStep("Parsing add-on sources");
   // The checks layer assembles its own context (sources, API usage, diff
   // baseline, LLM client) - the pipeline only resolves the schema.
   const ctx = buildRunContext({
@@ -738,6 +816,9 @@ async function reviewAddon(
     // code checks. Undefined in XPI mode.
     scsExpSource,
     budget,
+    // runPipeline parsed the review sources up front (parse-first) and passed them in;
+    // reuse them here. Absent for a rejected Experiment, where buildRunContext parses.
+    preParsedJsSources,
   });
 
   // The orchestrator holds BOTH contexts: `ctx` (the review target) and shippedCtx
@@ -865,7 +946,7 @@ async function reviewAddon(
     summarizeAddon,
     meta: {
       schemaSource,
-      schemaBranch: branch,
+      schemaBranch,
       schemaChannel: schemaZip ? null : schemaChannel,
       applicationVersion: schema.applicationVersion,
       manifestVersion: xpiAddon.manifest?.manifest_version ?? null,

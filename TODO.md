@@ -5,7 +5,6 @@
 - [Full type check via typescript engine](#full-type-check-via-typescript-engine)
 - [Potential permission tracing via typescript engine](#potential-permission-tracing-via-typescript-engine)
 - [Unused-files pre-flight backstop (anchored templates + content type)](#unused-files-pre-flight-backstop-anchored-templates--content-type)
-- [Single-parse extraction pass (drop the double-parse)](#single-parse-extraction-pass-drop-the-double-parse)
 
 
 # Detect correct schema reference
@@ -149,64 +148,3 @@ about the cases we truly cannot decide deterministically.
   but reports its type as string, so a small value step still folds
   getURL(literal) to the path. This is the same value-flow machinery as the
   gated-property permission tracing.
-
-# Single-parse extraction pass (drop the double-parse)
-
-The OOM crash on bundle-heavy add-ons is already fixed (commit 81ef546):
-buildRunContext frees the AST of every non-authored file (the multi-MB minified
-bundles), so peak memory is bounded. This is the follow-up optimization that was
-deferred there - it is NOT a correctness fix, the crash is gone. Two structural
-inefficiencies remain:
-
-1. Double-parse of authored JS. `classifyBundled` (the pre-normalize pipeline
-   step) parses each non-minified, non-library JS file once to compute the
-   AST-based obfuscation signal (`detectObfuscationAst`, src/checks/lib/
-   bundled.js), and then `buildRunContext` (src/checks/context.js) parses every
-   JS file again for api-usage and the checks' `src.parsed`. So an authored
-   non-minified file >= 1024 bytes is parsed twice per review.
-
-2. Authored ASTs are still all retained at once. The pipeline is check-major -
-   each of the ~10 AST consumers (eval-scan, outbound-sinks, core-symbol-in-
-   webext, sync-xhr, debugger-statement, async-onmessage, remote-script,
-   unsafe-html, background-page-module, plus api-usage) loops every file and
-   re-traverses `src.parsed` - so each authored file's AST must stay alive across
-   all checks. Memory is bounded today only because the big files happen to be
-   bundles (now freed); a pathological add-on with many large *authored* files
-   could still strain the heap.
-
-Both follow from the same root: the obfuscation signal is needed by
-`classifyBundled` (which builds the non-authored skip set) *before*
-`buildRunContext` does the main parse, and the checks consume `src.parsed`
-lazily during the review rather than reading a precomputed result.
-
-Idea (the extract-then-free pass). Parse each file exactly once, up front, and
-run every per-file AST extraction in that one pass, storing only the small
-extracted results on the source; then drop the AST (so peak memory is a single
-AST, authored or not). Concretely:
-
-- Reuse the existing standalone scanners as extractors: `parseApiUsage`
-  (api-usage.js), `scanRemoteJs` (remote-js.js -> eval-scan + remote-script),
-  `scanNetworkSinks` (network-sinks.js -> outbound-sinks), the unsafe-html
-  scanner (parse/unsafe-html.js), and `detectObfuscationAst` (bundled.js).
-- Extract the currently-inline traversals into standalone `src/parse/*` scanners
-  and call them in the same pass: core-symbol globals, sync-xhr `open(...,false)`,
-  debugger-statement, async-onmessage, background-page-module.
-- The ~10 consuming checks + `getEvalScan`/`getOutboundSinks` then read the
-  precomputed per-file results instead of re-traversing `src.parsed`;
-  `classifyBundled` reads the precomputed obfuscation signal instead of parsing.
-
-Ordering / caveat. The obfuscation signal feeds `classifyBundled`'s nonAuthored
-set, which is pipeline step 1d (pre-normalize), before the review context. So the
-single parse has to move ahead of `classifyBundled` (parse-first, then classify
-with the signals already available), or `classifyBundled`'s obfuscation result is
-merged in right after the shared parse. Whichever way, `classify()`'s minified /
-library detection is byte-geometry and MUST stay pre-normalize (that is the whole
-reason classifyBundled runs before normalize - see its header comment), so the
-reorder must keep the byte signals on the pre-normalize bytes and only let the
-AST-obfuscation share the one parse.
-
-This is a sizeable, behavior-preserving refactor (~10 check consumers +
-context.js + bundled.js + a few new src/parse/* scanners). Land it
-consumer-by-consumer with the 41 golden + unit suite green at each step; the
-end state removes the double-parse and bounds memory to one AST regardless of how
-much authored code an add-on ships.

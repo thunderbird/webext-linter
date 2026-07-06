@@ -3,17 +3,17 @@
 // flagged. Since `debugger` is a statement, an enclosing `if` is the only way
 // to make it conditional.
 //
-// Belongs here: skipping non-authored code, then visiting DebuggerStatement
-// nodes, skipping any with an enclosing if, and emitting a finding for the rest.
+// Belongs here: skipping non-authored code, then narrating each debugger site
+// (guarded = pass, unconditional = fail) and emitting a finding for the rest.
 //
-// Does NOT belong here: Babel parse/traverse plumbing (-> src/parse/ast.js, the
-// only Babel front door), the non-authored skip-list (->
+// Does NOT belong here: locating DebuggerStatement nodes and the guard test (->
+// src/parse/debugger-statement.js), the non-authored skip-list (->
 // src/checks/lib/bundled.js), authored wording (-> assets/registry.yaml),
 // severity (-> that registry entry, stamped by src/checks/registry.js), and
 // report formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
-import { parseJs, traverse, nodeLoc } from "../../parse/ast.js";
+import { debuggerStmtOf } from "../extract.js";
 import { nonAuthoredJs } from "../lib/bundled.js";
 
 export default {
@@ -24,26 +24,19 @@ export default {
       if (skip.has(src.file)) {
         continue;
       }
-      const { ast } = src.parsed ?? parseJs(src.code);
-      if (!ast) {
-        continue;
-      }
-      traverse(ast, {
-        DebuggerStatement(path) {
-          const loc = nodeLoc(path.node, src.lineOffset);
-          const guarded = Boolean(path.findParent((p) => p.isIfStatement()));
-          ctx.note?.(
-            src.file,
-            loc,
-            guarded ? "debugger (guarded by if)" : "debugger",
-            guarded ? "pass" : "fail"
-          );
-          if (guarded) {
-            return; // guarded by an if (config flag) - allowed
-          }
+      const { hits } = debuggerStmtOf(src);
+      for (const hit of hits) {
+        const loc = { line: hit.line, column: hit.column };
+        ctx.note?.(
+          src.file,
+          loc,
+          hit.guarded ? "debugger (guarded by if)" : "debugger",
+          hit.guarded ? "pass" : "fail"
+        );
+        if (!hit.guarded) {
           out.push(finding({ file: src.file, loc }));
-        },
-      });
+        }
+      }
     }
     return out;
   },

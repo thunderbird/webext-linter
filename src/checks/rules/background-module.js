@@ -12,13 +12,13 @@
 //
 // Belongs here: matching background scripts to their sources and emitting the
 // finding. Does NOT belong here: the AST module-syntax query (-> shared
-// lib/module-syntax.js, firstModuleSyntax), Babel parse (-> src/parse/ast.js),
-// path normalization (-> normalizeRef in src/checks/lib/manifest-refs.js),
-// authored wording (-> assets/registry.yaml), and severity (-> that entry).
+// lib/module-syntax.js, firstModuleSyntax), the parse (-> the extraction pass, read
+// via the moduleSyntaxOf accessor in src/checks/extract.js), path normalization
+// (-> normalizeRef in src/checks/lib/manifest-refs.js), authored wording
+// (-> assets/registry.yaml), and severity (-> that entry).
 
 import { finding } from "../../report/finding.js";
-import { parseJs } from "../../parse/ast.js";
-import { firstModuleSyntax } from "../lib/module-syntax.js";
+import { moduleSyntaxOf } from "../extract.js";
 import { normalizeRef } from "../lib/manifest-refs.js";
 import { asArray } from "../lib/util.js";
 
@@ -54,11 +54,7 @@ export default {
       if (!scripts.has(src.file)) {
         continue;
       }
-      const { ast } = src.parsed ?? parseJs(src.code);
-      if (!ast) {
-        continue;
-      }
-      const loc = firstModuleSyntax(ast, src.lineOffset);
+      const loc = moduleSyntaxOf(src);
       if (!loc) {
         continue; // a classic background script - fine without "type": "module"
       }

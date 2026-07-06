@@ -14,7 +14,7 @@
 // report formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
-import { scanUnsafeHtml } from "../../parse/unsafe-html.js";
+import { unsafeHtmlOf } from "../extract.js";
 import { nonAuthoredJs } from "../lib/bundled.js";
 
 export default {
@@ -25,7 +25,7 @@ export default {
       if (skip.has(src.file)) {
         continue;
       }
-      const { hits } = scanUnsafeHtml(src.code, src.lineOffset, src.parsed);
+      const { hits } = unsafeHtmlOf(src);
       for (const hit of hits) {
         const how =
           hit.sink === "insertAdjacentHTML"

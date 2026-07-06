@@ -47,9 +47,7 @@ import {
 } from "./web-accessible-resources.js";
 import { scanHtmlRemoteRefs } from "../../scan/html.js";
 import { scanCssRemoteRefs } from "../../scan/css.js";
-import { scanLocalImports } from "../../parse/local-imports.js";
-import { scanLoaderRefs } from "../../parse/loader-files.js";
-import { scanExperimentInjectedRefs } from "../../parse/core-loaders.js";
+import { localImportsOf, loaderRefsOf, experimentRefsOf } from "../extract.js";
 import { nonAuthoredJs } from "./bundled.js";
 import { asArray, asObject, isExperiment, isDocFile } from "./util.js";
 import { experimentApiNamespaces } from "./experiments.js";
@@ -240,7 +238,9 @@ function compute(ctx) {
       continue;
     }
     // JS import/require/importScripts are relative to the importing file.
-    const imp = scanLocalImports(src.code, src.lineOffset);
+    // localImportsOf returns the pass's precomputed refs, or re-scans for a
+    // shipped-view source the pass never ran on.
+    const imp = localImportsOf(src);
     for (const r of imp.refs) {
       addEdge(src.file, resolveRef(files, src.file, r.path));
     }
@@ -252,12 +252,7 @@ function compute(ctx) {
     // scripting.* are extension-root-relative (base:"root"); every other loader
     // is page-relative (base:"page") - resolved against the calling script's
     // HOST PAGE directory (".." clamped at root), per script-hosts.js.
-    const loaded = scanLoaderRefs(
-      src.code,
-      src.lineOffset,
-      ctx.schema,
-      ctx.schema?.manifestVersionMajor
-    );
+    const loaded = loaderRefsOf(src, ctx.schema);
     for (const r of loaded.refs) {
       const target =
         r.base === "page"
@@ -338,11 +333,7 @@ function compute(ctx) {
   if (!ctx.invalidExperiment && isExperiment(manifest)) {
     const namespaces = experimentApiNamespaces(manifest, files);
     for (const src of ctx.jsSources || []) {
-      for (const r of scanExperimentInjectedRefs(
-        src.code,
-        namespaces,
-        src.lineOffset
-      ).refs) {
+      for (const r of experimentRefsOf(src, namespaces).refs) {
         for (const t of refTargets(r)) {
           if (PLAIN_HTML.has(extname(t))) {
             htmlInjectedSeeds.add(t);

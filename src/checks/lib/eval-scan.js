@@ -16,9 +16,9 @@
 // non-WebExtension code, which has no such CSP gate. The CSP flags below are
 // independent of this scoping (they describe the manifest, not a file).
 //
-// Belongs here: getEvalScan - running scanRemoteJs over each authored source
-// outside the pure WebExtension tree (reusing its parsed AST, skipping
-// non-authored code) and reading the manifest CSP, memoized on the addon.
+// Belongs here: getEvalScan - reading each authored source's precomputed
+// remote-js scan (remoteJsOf) outside the pure WebExtension tree, skipping
+// non-authored code, and reading the manifest CSP, memoized on the addon.
 //
 // Does NOT belong here: the AST walk (-> src/parse/remote-js.js), CSP parsing
 // (-> src/scan/csp.js), the WebExtension vs Experiment partition (->
@@ -27,7 +27,7 @@
 // csp-unsafe-inline,remote-eval}.js), and the non-authored skip set
 // (-> bundled.js).
 
-import { scanRemoteJs } from "../../parse/remote-js.js";
+import { remoteJsOf } from "../extract.js";
 import { analyzeCsp } from "../../scan/csp.js";
 import { nonAuthoredJs } from "./bundled.js";
 import { buildReachability } from "./reachability.js";
@@ -71,7 +71,7 @@ function scan(ctx) {
     if (skip.has(src.file) || webext.has(src.file)) {
       continue;
     }
-    const { hits: found } = scanRemoteJs(src.code, src.lineOffset, src.parsed);
+    const { hits: found } = remoteJsOf(src);
     for (const hit of found) {
       hits.push({
         file: src.file,
