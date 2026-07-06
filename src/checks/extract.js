@@ -41,6 +41,11 @@ import { firstModuleSyntax } from "./lib/module-syntax.js";
 
 /** @typedef {import("../addon/sources.js").JsSource} JsSource */
 
+/** The parse hint for a source: an explicit `parseAs` override (a Vue <script>
+ *  block carries its `lang`) else the file path, whose extension picks the
+ *  TypeScript/JSX parse mode. @param {JsSource} src @returns {string} */
+const parseHint = (src) => src.parseAs ?? src.file;
+
 /**
  * Parse each source once and store its per-file extraction results on
  * `src.extracted`; the AST is dropped with each iteration.
@@ -75,7 +80,7 @@ export function runExtractionPass(
   const webApiSigs = webApiSignatures(schema);
   const mvMajor = schema?.manifestVersionMajor ?? null;
   for (const src of jsSources) {
-    const parsed = parseJs(src.code);
+    const parsed = parseJs(src.code, parseHint(src));
     // Every source: api-usage (its consumers read ctx.apiUsages) and the load-graph
     // refs (reachability follows a non-authored file's own loaders too).
     const extracted = {
@@ -149,34 +154,48 @@ export function runExtractionPass(
 
 /** @param {JsSource} src */
 export const apiUsageOf = (src) =>
-  src.extracted?.apiUsage ?? parseApiUsage(src.code, src.lineOffset);
+  src.extracted?.apiUsage ??
+  parseApiUsage(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
 /** @param {JsSource} src */
 export const remoteJsOf = (src) =>
-  src.extracted?.remoteJs ?? scanRemoteJs(src.code, src.lineOffset);
+  src.extracted?.remoteJs ??
+  scanRemoteJs(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
 /** @param {JsSource} src */
 export const networkSinksOf = (src) =>
-  src.extracted?.networkSinks ?? scanNetworkSinks(src.code, src.lineOffset);
+  src.extracted?.networkSinks ??
+  scanNetworkSinks(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
 /** @param {JsSource} src */
 export const unsafeHtmlOf = (src) =>
-  src.extracted?.unsafeHtml ?? scanUnsafeHtml(src.code, src.lineOffset);
+  src.extracted?.unsafeHtml ??
+  scanUnsafeHtml(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
 /** @param {JsSource} src */
 export const coreSymbolsOf = (src) =>
-  src.extracted?.coreSymbols ?? scanCoreSymbols(src.code, src.lineOffset);
+  src.extracted?.coreSymbols ??
+  scanCoreSymbols(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
 /** @param {JsSource} src */
 export const syncXhrOf = (src) =>
-  src.extracted?.syncXhr ?? scanSyncXhr(src.code, src.lineOffset);
+  src.extracted?.syncXhr ??
+  scanSyncXhr(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
 /** @param {JsSource} src */
 export const debuggerStmtOf = (src) =>
-  src.extracted?.debuggerStmt ?? scanDebugger(src.code, src.lineOffset);
+  src.extracted?.debuggerStmt ??
+  scanDebugger(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
 /** @param {JsSource} src */
 export const asyncOnMessageOf = (src) =>
-  src.extracted?.asyncOnMessage ?? scanAsyncOnMessage(src.code, src.lineOffset);
+  src.extracted?.asyncOnMessage ??
+  scanAsyncOnMessage(
+    src.code,
+    src.lineOffset,
+    parseJs(src.code, parseHint(src))
+  );
 /** @param {JsSource} src @param {object[]} signatures */
 export const webApiPermsOf = (src, signatures) =>
-  src.extracted?.webApiPerms ?? scanWebApiCalls(src.code, signatures);
+  src.extracted?.webApiPerms ??
+  scanWebApiCalls(src.code, signatures, parseJs(src.code, parseHint(src)));
 /** @param {JsSource} src */
 export const localImportsOf = (src) =>
-  src.extracted?.localImports ?? scanLocalImports(src.code, src.lineOffset);
+  src.extracted?.localImports ??
+  scanLocalImports(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
 /** @param {JsSource} src @param {import("../schema/index.js").SchemaIndex} [schema] */
 export const loaderRefsOf = (src, schema) =>
   src.extracted?.loaderRefs ??
@@ -184,13 +203,19 @@ export const loaderRefsOf = (src, schema) =>
     src.code,
     src.lineOffset,
     schema,
-    schema?.manifestVersionMajor
+    schema?.manifestVersionMajor,
+    parseJs(src.code, parseHint(src))
   );
 /** @param {JsSource} src @param {Set<string>} namespaces  The same namespaces the
  *   pass precomputed with (the review ctx's), so a precomputed hit is correct. */
 export const experimentRefsOf = (src, namespaces) =>
   src.extracted?.experimentRefs ??
-  scanExperimentInjectedRefs(src.code, namespaces, src.lineOffset);
+  scanExperimentInjectedRefs(
+    src.code,
+    namespaces,
+    src.lineOffset,
+    parseJs(src.code, parseHint(src))
+  );
 /** @param {JsSource} src  The loc of the first ES module statement (import/export), or
  *   null if none - precomputed on the shared parse (every source), recomputed for a
  *   source the pass never ran on (the SCS shipped view). */
@@ -198,6 +223,6 @@ export const moduleSyntaxOf = (src) => {
   if (src.extracted && "moduleSyntaxLoc" in src.extracted) {
     return src.extracted.moduleSyntaxLoc;
   }
-  const { ast } = parseJs(src.code);
+  const { ast } = parseJs(src.code, parseHint(src));
   return ast ? firstModuleSyntax(ast, src.lineOffset) : null;
 };

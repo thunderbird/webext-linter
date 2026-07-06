@@ -94,6 +94,6 @@ function targetUsesModuleSyntax(sources, file, files) {
   if (!buf) {
     return false;
   }
-  const { ast } = parseJs(buf.toString("utf8"));
+  const { ast } = parseJs(buf.toString("utf8"), file);
   return ast ? usesModuleSyntax(ast) : false;
 }

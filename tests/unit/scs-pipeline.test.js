@@ -601,6 +601,54 @@ test("SCS e2e: a clean npm build fires neither build-policy check", async () => 
   }
 });
 
+// Framework/TypeScript source (.ts/.tsx and .vue SFCs) is authored code the SCS
+// review must analyze - a compiled XPI never contains it, so it is reviewed only
+// here. Each file carries a real defect the code checks must now catch, proving the
+// source is parsed (TS/JSX) and, for the SFC, that its <script> and its v-html
+// template binding are both scanned.
+test("SCS e2e: TypeScript and Vue source is parsed and its defects are caught", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    ...SRC_FILES,
+    // .ts with a type annotation: a fake API. If TS did not parse, the file would
+    // fatal and no API usage would resolve - so unknown-api firing proves parsing.
+    "src/api.ts": `const n: number = 1;\nbrowser.totallyFakeNamespace.doThing(n);\n`,
+    // .tsx React component writing to an innerHTML sink.
+    "src/Widget.tsx": `export const W = () => {\n  document.body.innerHTML = props.raw;\n  return <div/>;\n};\n`,
+    // .vue SFC: a v-html template binding (an innerHTML-equivalent sink).
+    "src/Comp.vue": `<script setup lang="ts">\nconst raw: string = get();\n</script>\n\n<template>\n  <div v-html="raw"></div>\n</template>\n`,
+  });
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scsRoot: src,
+      scsSource: "src",
+      schemaZip: SCHEMA_FIXTURE,
+    });
+    // (1) The .ts file is parsed and API-resolved.
+    assert.ok(
+      has(
+        findings,
+        "unknown-api",
+        (f) => f.file === "api.ts" && /totallyFakeNamespace/.test(f.item)
+      ),
+      "the .ts source is parsed and its fake API is flagged"
+    );
+    // (2) The .tsx file's innerHTML sink is caught (JSX parsed, sink scanned).
+    assert.ok(
+      has(findings, "unsafe-html", (f) => f.file === "Widget.tsx"),
+      "the .tsx innerHTML sink is flagged"
+    );
+    // (3) The .vue SFC's v-html template binding is caught as an innerHTML sink.
+    assert.ok(
+      has(findings, "unsafe-html", (f) => f.file === "Comp.vue"),
+      "the .vue v-html binding is flagged as an HTML sink"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
 // A committed node_modules folder in --scs-root is a hard fail; its contents are never
 // read (loadAddon skips it, recording only the directory).
 test("SCS e2e: a committed node_modules folder is rejected", async () => {

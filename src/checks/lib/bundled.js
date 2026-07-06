@@ -225,7 +225,7 @@ function obfuscationForCandidates(addon, candidates) {
   for (const file of candidates) {
     const buf = addon.files.get(file);
     if (buf) {
-      out.set(file, detectObfuscationAst(buf.toString("utf8")));
+      out.set(file, detectObfuscationAst(buf.toString("utf8"), file));
     }
   }
   return out;
@@ -459,10 +459,12 @@ export function obfuscationFrom(ast) {
  * itself; the review pipeline instead computes the verdict on the extraction pass's
  * shared AST (obfuscationFrom), so no reviewed source is parsed twice.
  * @param {string} text
+ * @param {string} [file]  The candidate's path, so TypeScript/JSX authored source
+ *   parses (a candidate is always JS, but may be .ts/.tsx/.jsx).
  * @returns {?boolean}  the verdict, or null when the file does not parse (the
  *   caller then keeps classify()'s byte heuristic).
  */
-export function detectObfuscationAst(text) {
-  const { parseError, ast } = parseJs(text);
+export function detectObfuscationAst(text, file) {
+  const { parseError, ast } = parseJs(text, file);
   return parseError ? null : obfuscationFrom(ast);
 }

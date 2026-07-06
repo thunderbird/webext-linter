@@ -7,8 +7,9 @@ issues. It does not modify the reviewed sources.
 
 The schema verification works like
 [`addons-linter`](https://github.com/mozilla/addons-linter) - parsing the
-JavaScript and matching `browser.*` / `messenger.*` / `chrome.*` calls against
-the API surface - but uses Thunderbird's annotated schema files.
+JavaScript, TypeScript and Vue source and matching `browser.*` / `messenger.*` /
+`chrome.*` calls against the API surface - but uses Thunderbird's annotated
+schema files.
 
 Beyond the deterministic checks, a few review judgments that resist static
 analysis can optionally be delegated to an LLM (Claude or ChatGPT) when an API
@@ -255,7 +256,7 @@ escalates it straight to manual review (e.g. `vendor-unverified`,
 | `sync-xhr` | Synchronous `XMLHttpRequest` (`open(..., false)`). |
 | `trademark-violation` | Add-on name (resolved from `_locales` for a `__MSG__` name) using a Mozilla trademark - `Firefox`/`Mozilla`/`MZLA` anywhere, or `Thunderbird` other than as a trailing "for Thunderbird" (error, case-insensitive). The icon is a separate manual check. |
 | `unknown-api` | Unknown namespaces, unknown members (incl. methods on property types like `storage.local.x`), and APIs marked `unsupported`. |
-| `unparsable-file` | A JS file that failed to parse, so its API checks were skipped (info). |
+| `unparsable-file` | A JavaScript, TypeScript, or Vue `<script>` source that failed to parse, so its API checks were skipped (info). |
 | `unpinned-dependency` | A `package.json` dependency declared as a version range with no lock file, so it can't be pinned to one release and verified (error). |
 | `unpinned-vendor-source` | A VENDOR-declared file whose (trusted-host) source is not pinned to an immutable version/tag/commit, so its bytes can't be verified (error). |
 | `unrecognized-manifest-key` | A top-level manifest key the schema does not define - Thunderbird ignores it (warning). |

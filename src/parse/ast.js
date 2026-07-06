@@ -16,6 +16,7 @@
 
 import { parse } from "@babel/parser";
 import _traverse from "@babel/traverse";
+import { extname } from "../util/files.js";
 
 export const traverse = _traverse.default || _traverse;
 
@@ -26,20 +27,53 @@ export const traverse = _traverse.default || _traverse;
  */
 
 /**
+ * The Babel plugins for a parse hint (a filename or a bare extension). The base
+ * set applies to every source; TypeScript and JSX are enabled by extension so
+ * authored framework source parses (type syntax is stripped, not checked). `.ts`
+ * and `.tsx` differ deliberately: with `jsx` on, TSX mode disables `<T>`
+ * angle-bracket type assertions, so a `.ts` file keeps them and a `.tsx` file
+ * does not. Plain JS gets `jsx` too, since React is commonly authored in `.js`.
+ * A missing/unknown hint keeps just the base set, so callers that parse
+ * non-authored text (a library / obfuscation blob) are unaffected.
+ * @param {string} [hint]
+ * @returns {string[]}
+ */
+function pluginsFor(hint) {
+  const base = ["topLevelAwait"];
+  switch (hint ? extname(hint) : "") {
+    case ".ts":
+      return [...base, "typescript"];
+    case ".tsx":
+      return [...base, "typescript", "jsx"];
+    case ".jsx":
+    case ".js":
+    case ".mjs":
+    case ".jsm":
+    case ".es":
+    case ".es6":
+      return [...base, "jsx"];
+    default:
+      return base;
+  }
+}
+
+/**
  * Parse JavaScript leniently. Never throws: a fatal parse error comes back as
  * `parseError` so each caller can surface it its own way (a finding, a
  * scan-result field, ...).
  * @param {string} code
+ * @param {string} [hint]  A filename or extension whose type selects the parse
+ *   mode (TypeScript / JSX). Omitted -> plain-JS base plugins.
  * @returns {ParseResult}
  */
-export function parseJs(code) {
+export function parseJs(code, hint) {
   try {
     return {
       ast: parse(code, {
         sourceType: "unambiguous",
         allowReturnOutsideFunction: true,
         errorRecovery: true,
-        plugins: ["topLevelAwait"],
+        plugins: pluginsFor(hint),
       }),
       parseError: null,
     };

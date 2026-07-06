@@ -9,8 +9,19 @@
 // archive - that is src/addon/load.js for the add-on and src/schema/load.js for
 // schemas.
 
-/** Extensions treated as JavaScript source. */
-export const JS_EXTENSIONS = new Set([".js", ".mjs", ".jsm", ".es", ".es6"]);
+/** Extensions treated as JavaScript source, including TypeScript and JSX
+ *  authored source a source-code submission ships (the parser strips types;
+ *  see src/parse/ast.js). A compiled XPI contains none of these. */
+export const JS_EXTENSIONS = new Set([
+  ".js",
+  ".mjs",
+  ".jsm",
+  ".es",
+  ".es6",
+  ".ts",
+  ".tsx",
+  ".jsx",
+]);
 
 /** Extensions treated as CSS stylesheets. */
 export const CSS_EXTENSIONS = new Set([".css"]);
