@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Source Archive (minified code) required</title>
+    <title>Minified code cannot be reviewed</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
         <h1>
-          Source Archive (minified code) required
+          Minified code cannot be reviewed
           <span class="badge error">error</span>
         </h1>
         <div class="check-id">minified-code</div>
@@ -65,11 +65,14 @@ flowchart TD
       </div>
 
       <p>
-        The geometry heuristic cannot tell a build-tool bundle (webpack, tsc) from
-        a minified library. For a built add-on like this, submit it as a
-        source-code submission (<code>--scs-root</code>/<code>--scs-source</code>)
-        so the readable sources are reviewed directly instead of the bundle.
-        Obfuscated code stays rejected either way.
+        This check runs in <strong>both</strong> review modes. In an ordinary review
+        it flags minified JavaScript shipped in the built add-on; in a source-code
+        submission (<code>--scs-root</code>/<code>--scs-source</code>) it flags a
+        minified file sitting in the readable source, because that source is what gets
+        reviewed — a minified file there defeats the submission's purpose (readable
+        source). Either way the remedy is the same: provide the original,
+        human-readable code, or declare a genuine third-party library and link its
+        source. Obfuscated code is rejected separately by obfuscated-code.
       </p>
 
       <p class="source-note">

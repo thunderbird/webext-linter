@@ -213,16 +213,15 @@ test("a gh-type hit uses GitHub stars for the popularity bar; a popular hit adds
   );
 });
 
-test("scanMinified still identifies a known library on the CDN", async () => {
-  // scanMinified clears tag.minified (the bundle would be scanned as authored),
-  // but a real library must still be recognised - keyed on minifiedGeometry.
+test("a minified bundle is identified as a known library on the CDN", async () => {
+  // An unidentified minified bundle (tag.minified) is offered to the CDN identifier
+  // before minified-code would reject it - a hit recognises it as a real library.
   const addon = addonWith({ "app/fuse.min.js": MINIFIED });
-  addon.bundled = classifyBundled(addon, { scanMinified: true });
+  addon.bundled = classifyBundled(addon);
   const tag0 = addon.bundled.classified.find(
     (c) => c.file === "app/fuse.min.js"
   );
-  assert.equal(tag0.minified, false, "scanMinified cleared the minified flag");
-  assert.equal(tag0.minifiedGeometry, true, "but the geometry signal is kept");
+  assert.equal(tag0.minified, true, "the bundle is tagged minified");
 
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(addon.files.get("app/fuse.min.js"));

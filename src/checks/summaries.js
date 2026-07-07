@@ -263,11 +263,15 @@ export function buildAddonText(
   if (!files) {
     return null;
   }
-  // The skip set comes from the SUMMARIZED add-on's classification. For the review
-  // target (the default) this is nonAuthoredJs(ctx), which classifies on demand -
-  // libraries and minified bundles excluded. For a DIFFERENT summaryAddon (SCS
-  // mode: the built XPI, unclassified) the skip is empty, so its minified files ARE
-  // quoted - the behavioral LLM audit needs the actual shipped code.
+  // The skip set comes from the SUMMARIZED add-on's classification: libraries,
+  // minified and obfuscated bundles, and vendored/trusted files are excluded, so the
+  // summary quotes only reviewable authored code. For the review target (the default)
+  // this is nonAuthoredJs(ctx). For a DIFFERENT summaryAddon (SCS mode: the built XPI)
+  // the pipeline classifies it in setup (xpiAddon.bundled), so its non-authored set is
+  // read directly - the same exclusion an XPI review applies to its own target, so both
+  // modes summarize the shipped XPI identically (and its multi-MB minified bundles are
+  // never quoted). The `?? new Set()` is defensive: only a direct caller that never ran
+  // the setup classification (a unit ctx) reaches it - the pipeline always classifies.
   const skip =
     summaryAddon === ctx.addon
       ? nonAuthoredJs(ctx)

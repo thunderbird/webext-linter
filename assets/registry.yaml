@@ -247,15 +247,16 @@ deterministic-checks:
     The following bundled files were recognized as third-party libraries (via jsDelivr CDN hash lookup), but are not declared as such. Please declare each and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
-# Flags shipped minified JS that is not a recognized library; asks for the
-# original sources.
-- title: Source Archive (minified code) required
+# Flags minified JS that is not a recognized library; asks for the readable
+# original. Runs in both XPI and source-code-submission reviews (no scs gate) - a
+# source submission's promise is readable source, so a minified file there is
+# rejected just like one in a built XPI.
+- title: Minified code cannot be reviewed
   severity: error
-  scs: false
   check: minified-code
   input: auto
   response: |-
-    The following file(s) are minified or otherwise machine-generated code, which cannot be reviewed in this form. Each is either an undeclared third-party library that we did not recognize, or genuinely minified first-party code. If a file is a third-party library, declare it as such and link its source so the (unmodified) bundled copy can be verified against the linked version (a VENDOR.md file at the add-on root is common practice). If it is your own minified code, the simplest fix is to ship the original, human-readable code directly (the add-on does not need to be minified). Alternatively, upload the original sources as a source code archive that includes the build instructions and build process needed to generate the final XPI, using the source code upload field available during submission or on the version page in the developer hub. Note that this route slows review down, as it requires manually verifying the build process and that it reproduces the shipped XPI.
+    The following file(s) are minified or otherwise machine-generated code, which cannot be reviewed in this form. Each is either an undeclared third-party library that we did not recognize, or minified first-party code. If a file is a third-party library, declare it as such and link its source so the (unmodified) bundled copy can be verified against the linked version (a VENDOR.md file at the add-on root is common practice). If it is your own code, provide the original, human-readable source for it - the add-on does not need to be minified. Where the readable code is produced by a build step, supply the build's sources and the instructions needed to reproduce the shipped XPI, using the source code upload field available during submission or on the version page in the developer hub. Note that the source-archive route slows review down, as it requires manually verifying the build process and that it reproduces the shipped XPI.
     Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
     Read more #2: https://extensionworkshop.com/documentation/publish/source-code-submission/
 

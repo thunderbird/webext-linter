@@ -84,10 +84,9 @@ export async function resolveCdnLibraries(
   let dirty = false;
 
   for (const tag of classified) {
-    // The files minified-code would flag: an unidentified minified bundle. Keyed
-    // on the raw geometry verdict, not tag.minified, so scanMinified (which
-    // clears tag.minified) does not suppress identifying a known library here.
-    if (!tag.minifiedGeometry || tag.library || tag.obfuscated) {
+    // The files minified-code would flag: an unidentified minified bundle - try to
+    // recognise it as a known library on the CDN before it is rejected.
+    if (!tag.minified || tag.library || tag.obfuscated) {
       continue;
     }
     const buf = addon.files.get(tag.file);
@@ -151,7 +150,7 @@ export async function resolveCdnLibraries(
         file: tag.file,
         source: tag.cdn.url,
         name: `${hit.name} ${hit.version}`,
-        unreadable: tag.minifiedGeometry || tag.obfuscated,
+        unreadable: tag.minified || tag.obfuscated,
       });
     }
   }

@@ -54,12 +54,13 @@ test("classifyBundled flags an undeclared minified-by-geometry file", () => {
   assert.ok(nonAuthored.has("lib/blob.js"));
 });
 
-// scanMinified treats ONLY a minified-by-geometry file (an unidentifiable
-// webpack/tsc bundle) as authored: it leaves the non-authored set and minified-code
-// goes silent. A hash-identified library is real third-party code (vendored-family),
-// so it stays excluded and still drives missing-library regardless of the flag.
-// Obfuscated and VENDOR-declared files likewise stay excluded.
-test("scanMinified scans a minified non-library, but keeps identified libraries excluded", () => {
+// A minified-by-geometry file (an unidentifiable webpack/tsc bundle) is non-authored
+// in every mode and artifact: it joins the skip set and minified-code REJECTS it -
+// never scanned as authored (a source-code submission's promise is readable source, so
+// a minified file there is rejected too). A hash-identified library is real third-party
+// code and stays excluded (driving missing-library, not minified-code); obfuscated and
+// VENDOR-declared files likewise stay excluded.
+test("a minified non-library is non-authored and rejected; identified libraries stay excluded", () => {
   const LIB_JS = `${MINIFIED}\n//jq`; // minified geometry + distinct bytes
   const addon = addonWith({
     "blob.js": MINIFIED, // minified by geometry, not a known library
@@ -67,17 +68,15 @@ test("scanMinified scans a minified non-library, but keeps identified libraries 
     "packed.js": OBFUSCATED, // obfuscated
     "vendor/dep.min.js": MINIFIED, // VENDOR.md-declared (authoritative)
   });
-  // VENDOR.md declaration is authoritative, not a heuristic, so it must stay
-  // excluded even under scanMinified.
+  // VENDOR.md declaration is authoritative, not a heuristic, so it stays excluded.
   addon.vendor = { set: new Set(["vendor/dep.min.js"]) };
   const { classified, nonAuthored } = classifyBundled(addon, {
-    scanMinified: true,
     libraryHashes: libHashes(addon, "jquery.min.js"),
   });
   const tag = (f) => classified.find((c) => c.file === f);
-  // The minified non-library is now authored (scanned), its minified tag cleared.
-  assert.equal(tag("blob.js").minified, false);
-  assert.ok(!nonAuthored.has("blob.js"));
+  // The minified non-library is non-authored (skipped by the scanners, then rejected).
+  assert.equal(tag("blob.js").minified, true);
+  assert.ok(nonAuthored.has("blob.js"));
   // The identified library KEEPS its tag + identity and stays non-authored.
   assert.equal(tag("jquery.min.js").library, true);
   assert.deepEqual(tag("jquery.min.js").libraryId, {
@@ -85,15 +84,18 @@ test("scanMinified scans a minified non-library, but keeps identified libraries 
     version: "1.0.0",
   });
   assert.ok(nonAuthored.has("jquery.min.js"));
-  // Obfuscated and VENDOR-declared files stay non-authored regardless of the flag.
+  // Obfuscated and VENDOR-declared files stay non-authored.
   assert.equal(tag("packed.js").obfuscated, true);
   assert.ok(nonAuthored.has("packed.js"));
   assert.ok(nonAuthored.has("vendor/dep.min.js"));
 
-  // The bundled checks read the tags: minified-code goes silent, but the identified
-  // library still drives missing-library, and obfuscated-code still fires.
+  // The bundled checks read the tags: minified-code REJECTS the unidentified bundle,
+  // the identified library drives missing-library, and obfuscated-code fires.
   const ctx = { addon: { ...addon, bundled: { classified, nonAuthored } } };
-  assert.equal(minifiedCode.run(ctx).length, 0);
+  assert.deepEqual(
+    minifiedCode.run(ctx).map((f) => f.file),
+    ["blob.js"]
+  );
   assert.deepEqual(
     missingLibrary.run(ctx).map((f) => f.file),
     ["jquery.min.js"]

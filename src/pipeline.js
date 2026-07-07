@@ -50,6 +50,7 @@ import {
 import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
 import {
   classifyByteGeometry,
+  classifyBundled,
   assembleBundled,
   applyNotPopularVendor,
 } from "./checks/lib/bundled.js";
@@ -190,16 +191,15 @@ export async function runPipeline(opts) {
   // So downstream: read `addon` for the code under review, `xpiAddon` for the
   // shipped artifact - no further mode checks. The only other mode forks are the
   // dependency resolution (--scs-root vs the XPI's VENDOR/package.json) and the
-  // check gate (ctx.mode -> scsEligible). `scanMinified` (classify every file as
-  // authored, incl. minified) is just the SCS path - the readable sources are the
-  // review target there, so even a minified-looking one is reviewed as authored.
+  // check gate (ctx.mode -> scsEligible). Minified code is non-authored (and rejected)
+  // in both modes: a source-code submission's promise is readable source, so a minified
+  // file in --scs-source is rejected like one in an XPI, not scanned as authored.
   // --scs-source may name a nested subfolder OR the archive root itself (a flat
   // layout: manifest.json at the root, with the build tooling intermingled). The root
   // case (scsRootRelative resolves ".", an absolute root, or a literal match all to "")
   // is handled throughout: loadScsAddon reviews every file, and loadScsBuildFiles still
   // traces the build off the root package.json (there is no source subtree to exclude).
   const mode = opts.scsRoot && opts.scsSource ? "scs" : "xpi";
-  const scanMinified = mode === "scs";
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly).
   const registry = opts.registry ?? loadRegistry();
@@ -226,7 +226,7 @@ export async function runPipeline(opts) {
   // - i.e. a second classification pass before the banner, which we deliberately avoid;
   // the accepted path (the reviewer's --allow-experiments flow) is exact.
   const setupTotal =
-    (mode === "scs" ? 5 : 7) + (opts.llmEnabled ? 1 : 0) + (isExp ? 1 : 0);
+    (mode === "scs" ? 6 : 7) + (opts.llmEnabled ? 1 : 0) + (isExp ? 1 : 0);
   let setupDone = 0;
   /**
    * Emit the next numbered "Setup" feed line.
@@ -304,15 +304,20 @@ export async function runPipeline(opts) {
   // Experiments are reviewed from the XPI (its shipped-artifact role; xpiAddon ===
   // addon in XPI mode). They are privileged, non-bundled, readable code, and the
   // manifest's experiment paths resolve against the XPI's own files (no
-  // source-layout mismatch). The classification is stored on the review addon for
-  // the experiment checks to read.
+  // source-layout mismatch). The classification is the XPI's, so it is stored on
+  // BOTH the review addon (the experiment checks read ctx.experiments from it) and
+  // xpiAddon itself (its bundled classification seeds the trusted experiment files);
+  // in XPI mode the two are one addon.
   let invalidExperiment = false;
   if (isExp) {
     // The upstream-drafts allow-list fetch (network) - narrated, since it is one of
     // the slow pre-review steps; it stays silent+offline for a bare experiment_apis
     // declaration that bundles nothing.
     setupStep("Verifying bundled experiments");
-    addon.experiments = await verifyExperiments(xpiAddon, opts);
+    addon.experiments = xpiAddon.experiments = await verifyExperiments(
+      xpiAddon,
+      opts
+    );
     invalidExperiment =
       !opts.allowExperiments &&
       addon.experiments.groups.some((g) => g.status === "unsupported");
@@ -439,17 +444,25 @@ export async function runPipeline(opts) {
       // Audit each declared dependency for popularity (non-popular -> reject) and
       // OSV. No VENDOR.md / hash / CDN matching - the built libraries are not in
       // the readable source and are mangled in the XPI. The bundled classification
-      // still runs (so obfuscated-code and the non-authored skip set work);
-      // scanMinified is on, so every readable source file is scanned as authored.
+      // still runs (so obfuscated-code, minified-code, and the non-authored skip set
+      // work); a minified file in the readable source is non-authored and rejected.
       setupStep("Auditing source dependencies");
       await verifyScsDependencies(addon, opts.vendorNet, libraryBlocks);
       preParsedJsSources = classifyAndExtractReview(addon, {
         schema,
-        scanMinified,
         libraryHashes,
         xpiAddon,
         setupStep,
       });
+      // Classify the BUILT XPI too (the review target above is the readable source).
+      // The behavioral LLM summary describes the shipped XPI, and its skip set is this
+      // classification's non-authored set - so the XPI's minified/library bundles are
+      // excluded exactly as in an XPI review (where the XPI IS the review target). Sync
+      // and cheap: the multi-MB minified bundles are byte-tagged, never parsed. The
+      // XPI already carries its own experiments (set at verifyExperiments above), so its
+      // trusted upstream experiment files seed the non-authored set here too.
+      setupStep("Classifying the built add-on");
+      xpiAddon.bundled = classifyBundled(xpiAddon, { libraryHashes });
       // The BUILD files (archive minus the review source + Experiment source) - the
       // build scripts/config the review otherwise drops. buildScsBuildCtx wraps these
       // as the `input: build` check's ctx.addon; they never merge into the review addon.
@@ -501,7 +514,6 @@ export async function runPipeline(opts) {
       // final, and before cdn-lookup, which reads the final tag.obfuscated.
       preParsedJsSources = classifyAndExtractReview(addon, {
         schema,
-        scanMinified,
         libraryHashes,
         xpiAddon,
         setupStep,
@@ -694,7 +706,7 @@ async function generateAddonSummary(
  * parsing it twice. Only for a reviewed (non-invalid-Experiment) addon; the lazy
  * getBundled path parses candidates itself via detectObfuscationAst.
  * @param {import("./addon/load.js").Addon} addon
- * @param {{schema: object, scanMinified: boolean,
+ * @param {{schema: object,
  *   libraryHashes: Map<string, {name: string, version: string}>,
  *   xpiAddon: import("./addon/load.js").Addon,
  *   setupStep: (label: string) => void}} ctx
@@ -702,9 +714,9 @@ async function generateAddonSummary(
  */
 function classifyAndExtractReview(
   addon,
-  { schema, scanMinified, libraryHashes, xpiAddon, setupStep }
+  { schema, libraryHashes, xpiAddon, setupStep }
 ) {
-  const byte = classifyByteGeometry(addon, { scanMinified, libraryHashes });
+  const byte = classifyByteGeometry(addon, { libraryHashes });
   const jsSources = collectJsSources(addon);
   const experimentNamespaces = isExperiment(xpiAddon.manifest)
     ? experimentApiNamespaces(xpiAddon.manifest, addon.files)

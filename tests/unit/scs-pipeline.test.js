@@ -752,6 +752,33 @@ test("SCS e2e: TypeScript and Vue source is parsed and its defects are caught", 
   }
 });
 
+// A minified file in the readable source is a hard reject in SCS: a source-code
+// submission's promise is readable source, so minified-code fires on it exactly as it
+// would for a built XPI - it is never scanned as authored code.
+test("SCS e2e: a minified file in the source is rejected by minified-code", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    ...SRC_FILES,
+    // One long, dense line >= 1024 bytes -> minified by geometry, not a known library.
+    "src/blob.min.js": `var d=[${"1,".repeat(700)}1];`,
+  });
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scsRoot: src,
+      scsSource: "src",
+      schemaZip: SCHEMA_FIXTURE,
+    });
+    // The prefix is stripped by loadScsAddon, so the review file is "blob.min.js".
+    assert.ok(
+      has(findings, "minified-code", (f) => f.file === "blob.min.js"),
+      "a minified source file is rejected by minified-code in SCS"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
 // A package.json install lifecycle hook runs when the reviewer installs the declared
 // dependencies, before the build - a supply-chain vector the deterministic
 // build-lifecycle-hook check flags offline (no token), pointing the reviewer at the hook.

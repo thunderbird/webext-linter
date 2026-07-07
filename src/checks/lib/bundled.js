@@ -31,12 +31,12 @@ import { rawSha256 } from "../../normalize/hash.js";
 /** @typedef {import("../../addon/load.js").Addon} Addon */
 /** @typedef {{name: string, version: string}} LibraryId */
 /** @typedef {{file: string, library: boolean, minified: boolean,
- *   obfuscated: boolean, minifiedGeometry: boolean, untrusted?: boolean, libraryId?: LibraryId,
+ *   obfuscated: boolean, untrusted?: boolean, libraryId?: LibraryId,
  *   cdn?: {url: string, type?: string, popular?: boolean}}} BundleTag  `library` is set by a
  *   content-hash match against the known-library database; `libraryId` names the
- *   matched release (for the missing-library finding). `minifiedGeometry` is the raw
- *   minified-by-geometry verdict, kept even when scanMinified clears `minified`,
- *   so the CDN identifier can still consider the bundle. `cdn` is set later
+ *   matched release (for the missing-library finding). `minified` is the raw
+ *   minified-by-geometry verdict; a minified non-library is non-authored and the CDN
+ *   identifier considers it for a jsDelivr match. `cdn` is set later
  *   (src/checks/lib/cdn-lookup.js) when such a bundle is matched on the jsDelivr CDN:
  *   it holds the jsDelivr source URL (and its type) for the find-lib-on-cdn finding
  *   plus `popular` - whether the matched package cleared the popularity trust bar.
@@ -69,29 +69,31 @@ import { rawSha256 } from "../../normalize/hash.js";
  *
  * Composed of classifyByteGeometry (the byte/geometry tags + skip-set seed, no parse)
  * and assembleBundled (folding in each candidate's AST obfuscation verdict). The
- * verdict comes from `obfuscated` when the extraction pass precomputed it on its
- * shared parse (the pipeline's path), else this parses each candidate itself via
- * detectObfuscationAst - the standalone path for the lazy getBundled callers (unit /
- * rejected-Experiment / XPI-in-SCS contexts that never ran the pass).
+ * verdict comes from `obfuscated` when the extraction pass precomputed it on its shared
+ * parse - the review source's path, via classifyAndExtractReview - else this parses each
+ * candidate itself via detectObfuscationAst: the path for the built XPI's setup
+ * classification (SCS) and the lazy getBundled callers (unit / rejected-Experiment
+ * contexts that never ran a pre-step).
  *
  * @param {Addon} addon
- * @param {{scanMinified?: boolean, libraryHashes?: Map<string, LibraryId>,
+ * @param {{libraryHashes?: Map<string, LibraryId>,
  *   obfuscated?: Map<string, ?boolean>}} [opts]
  *   libraryHashes: the known-library `sha256 -> {name, version}` map - a file whose
  *   raw hash is a key is tagged `library` (and identified). Empty map = nothing
- *   recognized. scanMinified (on for source-code submissions): treat a minified-by-geometry file
- *   (an unidentifiable webpack/tsc bundle) as authored so every source-level check
- *   reviews it. A hash-identified library is real third-party code, so it - like the
+ *   recognized. A minified-by-geometry file (an unidentifiable webpack/tsc bundle) is
+ *   non-authored (skipped by the source-level scanners and rejected by minified-code),
+ *   in both XPI and source-code-submission reviews. A hash-identified library is real
+ *   third-party code, so it - like the
  *   obfuscated tag and VENDOR.md-declared / experiment-trusted files - stays
- *   non-authored. Off by default. obfuscated: precomputed candidate-file -> AST
+ *   non-authored. obfuscated: precomputed candidate-file -> AST
  *   verdict from the extraction pass; absent -> parse each candidate here.
  * @returns {Bundled}
  */
 export function classifyBundled(
   addon,
-  { scanMinified = false, libraryHashes = new Map(), obfuscated } = {}
+  { libraryHashes = new Map(), obfuscated } = {}
 ) {
-  const byte = classifyByteGeometry(addon, { scanMinified, libraryHashes });
+  const byte = classifyByteGeometry(addon, { libraryHashes });
   const verdicts =
     obfuscated ?? obfuscationForCandidates(addon, byte.candidates);
   return assembleBundled(byte, verdicts);
@@ -103,7 +105,7 @@ export function classifyBundled(
  * `tag.obfuscated` carries classify()'s comment/string-blind byte value, which
  * assembleBundled overrides with the AST verdict for each `candidate`.
  * @param {Addon} addon
- * @param {{scanMinified?: boolean, libraryHashes?: Map<string, LibraryId>}} [opts]
+ * @param {{libraryHashes?: Map<string, LibraryId>}} [opts]
  * @returns {{classified: BundleTag[], nonAuthored: Set<string>,
  *   candidates: Set<string>}}  `candidates` are the JS files the AST obfuscation check
  *   applies to (not library, not minified, >=1024 B) - a minified / library bundle is
@@ -111,7 +113,7 @@ export function classifyBundled(
  */
 export function classifyByteGeometry(
   addon,
-  { scanMinified = false, libraryHashes = new Map() } = {}
+  { libraryHashes = new Map() } = {}
 ) {
   const classified = [];
   const candidates = new Set();
@@ -146,29 +148,14 @@ export function classifyByteGeometry(
     if (libraryId) {
       tag.libraryId = libraryId;
     }
-    // Preserve the raw minified-by-geometry verdict where scanMinified cannot
-    // reach it: that option clears tag.minified (treat the bundle as authored), but
-    // the CDN identifier (a later pipeline step) must still recognise a known
-    // library here - a real third-party library is excluded regardless of the
-    // option, exactly as the hash-DB library tag is kept below. See cdn-lookup.js.
-    tag.minifiedGeometry = Boolean(content.minified);
     // Authored-candidate for the AST obfuscation check: a JS file not already
     // library/minified. classify()'s obfuscation signal (on tag.obfuscated) is
     // byte-based and comment/string-blind - `eval(` or `fromCharCode` in a comment
     // trips it - so assembleBundled recomputes it on the AST, where comments and
-    // strings cannot count. Gated BEFORE the scanMinified clear below, so a minified
-    // bundle is never a candidate and the multi-MB bundles are never parsed for this.
+    // strings cannot count. A minified bundle is never a candidate, so the multi-MB
+    // bundles are never parsed for this.
     if (JS_EXTENSIONS.has(ext) && !tag.library && !tag.minified) {
       candidates.add(file);
-    }
-    // scanMinified: clear the minified tag so a merely-minified file (a
-    // webpack/tsc bundle we can't identify) is treated as authored - it leaves the
-    // non-authored set (scanned by every check) and minified-code stays silent. The
-    // library tag is NOT cleared: a hash match is a real, named third-party library
-    // (vendored-family), so it stays excluded and still drives missing-library /
-    // vendor-vulnerable, exactly like a VENDOR.md-declared copy.
-    if (scanMinified) {
-      tag.minified = false;
     }
     classified.push(tag);
     // library/minified join the skip set here; obfuscated is added by assembleBundled
@@ -297,16 +284,12 @@ export function applyNotPopularVendor(addon) {
  * @returns {Bundled}
  */
 function getBundled(ctx) {
+  // The pipeline pre-classifies the review target in setup (and, in SCS, the built XPI
+  // too - in XPI mode they are one artifact), so this lazy fallback only fires for a
+  // caller that ran no pre-step (a rejected Experiment or a direct unit ctx). Minified
+  // is classified identically in every mode and artifact - a minified non-library is
+  // non-authored (and rejected).
   return (ctx.addon.bundled ??= classifyBundled(ctx.addon, {
-    // scanMinified is on in SCS mode (ctx.mode === "scs"). For the review target
-    // (the readable source) it means "scan every file as authored, even a minified-
-    // looking one". For the built XPI - which the orchestrator routes in as ctx.addon
-    // for the `input: xpi` structure checks, carrying the same mode - it keeps the
-    // built bundles' load graph in play (their loaders still count), which keeps
-    // unused-files conservative. The pipeline pre-classifies only the source review
-    // target, so this lazy fallback also runs for the XPI in SCS (besides a rejected
-    // Experiment or a direct unit ctx).
-    scanMinified: ctx.mode === "scs",
     libraryHashes: ctx.options?.libraryHashes,
   }));
 }
@@ -454,10 +437,11 @@ export function obfuscationFrom(ast) {
  * The obfuscation signal computed on the parsed AST instead of raw bytes. Used for
  * authored-candidate files; minified/library files are non-authored regardless and
  * are never parsed here (keeping the multi-MB bundles out of the parser). This is the
- * standalone path for the lazy getBundled callers (unit / rejected-Experiment /
- * XPI-in-SCS shipped ctx) that ran no extraction pass, so it parses each candidate
- * itself; the review pipeline instead computes the verdict on the extraction pass's
- * shared AST (obfuscationFrom), so no reviewed source is parsed twice.
+ * standalone path taken whenever classifyBundled gets no precomputed obfuscation map: the
+ * lazy getBundled callers (unit / rejected-Experiment contexts), and the setup
+ * classification of the built XPI in SCS. It parses each candidate itself. The review
+ * source instead reuses the extraction pass's shared AST (obfuscationFrom), so no reviewed
+ * source is parsed twice.
  * @param {string} text
  * @param {string} [file]  The candidate's path, so TypeScript/JSX authored source
  *   parses (a candidate is always JS, but may be .ts/.tsx/.jsx).

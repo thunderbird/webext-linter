@@ -13,6 +13,7 @@ import {
   buildAddonSummarizer,
 } from "../../src/checks/summaries.js";
 import { loadRegistry } from "../../src/checks/registry.js";
+import { classifyBundled } from "../../src/checks/lib/bundled.js";
 import { parseVendorManifest } from "../../src/normalize/vendor.js";
 
 /** Build an Addon-shaped object from a {path: contents} map. */
@@ -214,10 +215,12 @@ test("buildAddonText trims only the non-authored set (undetected libs included)"
   assert.ok(!text.includes("var $=")); // minified-by-geometry blob: trimmed
 });
 
-// SCS mode: the behavioral add-on summary describes the built XPI (ctx.summaryAddon),
-// not the readable source review target (ctx.addon). The XPI is unclassified, so its
-// almost-entirely-minified files ARE quoted - the LLM audit needs the shipped code.
-test("buildAddonText summarizes the summaryAddon (built XPI), minified included", () => {
+// SCS mode: the behavioral add-on summary describes the built XPI (summaryAddon), not
+// the readable source review target (ctx.addon). The pipeline classifies the shipped
+// XPI in setup, so its minified/library bundles are EXCLUDED from the summary exactly as
+// in an XPI review - the multi-MB shipped bundles are never quoted (which would overflow
+// the model's context window).
+test("buildAddonText summarizes the built XPI, excluding its classified minified bundles", () => {
   const ctx = {
     addon: {
       files: new Map([["from-source.js", Buffer.from("SOURCE_MARKER;")]]),
@@ -233,12 +236,17 @@ test("buildAddonText summarizes the summaryAddon (built XPI), minified included"
         "manifest.json",
         Buffer.from('{"manifest_version":3,"name":"XPI-NAME","version":"9"}'),
       ],
+      ["app.js", Buffer.from("console.log('shipped');")], // authored shipped code
       ["bundle.js", Buffer.from(`var $=${"1;".repeat(600)}`)], // minified by geometry
     ]),
     manifest: { manifest_version: 3, name: "XPI-NAME", version: "9" },
   };
+  // The pipeline classifies the shipped XPI in setup; mirror that here.
+  xpi.bundled = classifyBundled(xpi);
+  assert.ok(xpi.bundled.nonAuthored.has("bundle.js")); // minified -> non-authored
   const text = buildAddonText(ctx, "NONCE", { summaryAddon: xpi });
-  assert.ok(text.includes("var $=")); // the minified XPI bundle IS quoted (empty skip)
+  assert.ok(text.includes("console.log('shipped')")); // authored shipped code: quoted
+  assert.ok(!text.includes("var $=")); // minified XPI bundle: excluded (not quoted)
   assert.ok(text.includes("XPI-NAME")); // the XPI manifest, not the source's (null)
   assert.ok(!text.includes("SOURCE_MARKER")); // the source review target is NOT summarized
 });

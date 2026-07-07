@@ -588,7 +588,11 @@ test("strict-max-version-bump-only is registered as a diff check", async () => {
 test("checks carry the scs mode tag (false=XPI-only, true=SCS-only, undefined=both)", async () => {
   const checks = await loadChecks(loadRegistry());
   const scs = (id) => checks.find((x) => x.id === id)?.scs;
-  assert.equal(scs("minified-code"), false); // XPI-only (bundled dependency tree)
+  // minified-code runs in BOTH modes: a minified file is non-authored and rejected
+  // whether it ships in a built XPI or sits in a source-code submission's source.
+  assert.equal(scs("minified-code"), undefined);
+  // untrusted-minified-library stays XPI-only: it reads untrustedLibs, populated only
+  // by the CDN-lookup setup step, which SCS skips - it cannot fire in SCS regardless.
   assert.equal(scs("untrusted-minified-library"), false);
   // unused-files runs in BOTH modes: it describes the shipped XPI (dead files the
   // build ships), like bundled-files / minimize-WAR - all registered `input: xpi`.

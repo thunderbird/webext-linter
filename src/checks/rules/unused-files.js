@@ -22,7 +22,7 @@
 
 import { finding } from "../../report/finding.js";
 import { ARCHIVE_EXTENSIONS, extname } from "../../util/files.js";
-import { classifyAddonJs, nonAuthoredJs } from "../lib/bundled.js";
+import { nonAuthoredJs } from "../lib/bundled.js";
 import { buildReachability } from "../lib/reachability.js";
 import { aggregateGroups } from "../lib/verdict-resolve.js";
 import {
@@ -73,18 +73,9 @@ export default {
     // unreached one is not the developer's unused file - exempt it. This reads the
     // XPI's OWN classification (getBundled over ctx.addon), intrinsic to the artifact
     // under review, so it needs no cross-artifact review-target metadata: the
-    // non-authored set (hash-identified libraries, obfuscated code, vendored files)
-    // PLUS every minified-by-geometry bundle. The minified add is explicit because the
-    // XPI is classified with scanMinified on in SCS (minified SOURCE is treated as
-    // authored there), which drops the plain `minified` tag from the non-authored set
-    // - but a minified bundle in the built XPI is still third-party, and
-    // minifiedGeometry records it regardless of scanMinified.
+    // non-authored set (hash-identified libraries, minified bundles, obfuscated code,
+    // vendored files), all skipped so a bundle is never orphaned by its loader.
     const skip = new Set(nonAuthoredJs(ctx));
-    for (const tag of classifyAddonJs(ctx)) {
-      if (tag.minifiedGeometry) {
-        skip.add(tag.file);
-      }
-    }
     // An Experiment loads its files by mechanisms static analysis can't trace, so
     // "not reachable" is unreliable there - we'd mostly flag working experiment code.
     // Report only unambiguous junk; a separate "review the whole Experiment" check
