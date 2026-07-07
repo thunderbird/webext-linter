@@ -1,0 +1,6 @@
+{
+  "_comment": "content.js and assets/content.css (message_display_scripts) plus icon.png are reachable manifest entry points seeded by the generic manifest walk, so they are NOT flagged. Only the unreachable/ tree has no entry point.",
+  "expect": {
+    "unused-files": ["unreachable/"]
+  }
+}

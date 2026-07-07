@@ -38,7 +38,7 @@
 // unused-files and minimize-web-accessible-resources verdicts - their rules
 // under src/checks/rules/*.
 
-import { manifestFileRefs, resolveRef } from "./manifest-refs.js";
+import { manifestStringRefs, resolveRef } from "./manifest-refs.js";
 import { scriptHostDirs, resolvePageRelative } from "./script-hosts.js";
 import {
   warResourceList,
@@ -49,7 +49,7 @@ import { scanHtmlRemoteRefs } from "../../scan/html.js";
 import { scanCssRemoteRefs } from "../../scan/css.js";
 import { localImportsOf, loaderRefsOf, experimentRefsOf } from "../extract.js";
 import { nonAuthoredJs } from "./bundled.js";
-import { asArray, asObject, isExperiment, isDocFile } from "./util.js";
+import { asArray, isExperiment, isDocFile } from "./util.js";
 import { experimentApiNamespaces } from "./experiments.js";
 import {
   basename,
@@ -265,7 +265,11 @@ function compute(ctx) {
     }
   }
 
-  // Seeds: the manifest entry points (resolved root-relative).
+  // Seeds: every string in the manifest (outside experiment_apis), resolved
+  // root-relative. The seed gate keeps only those that resolve to a packaged
+  // file, so non-path strings drop out and every file-reference key - declared
+  // (message_display_scripts, background, popups) or icon/dictionary/theme leaf -
+  // is seeded without a per-key enumeration to maintain.
   const generalSeeds = new Set();
   /** @param {Set<string>} set @param {string} raw  Root-relative seed path. */
   const seed = (set, raw) => {
@@ -274,10 +278,7 @@ function compute(ctx) {
       set.add(p);
     }
   };
-  for (const { path } of manifestFileRefs(manifest)) {
-    seed(generalSeeds, path);
-  }
-  for (const raw of extraSeeds(manifest)) {
+  for (const raw of manifestStringRefs(manifest)) {
     seed(generalSeeds, raw);
   }
   for (const entry of warResourceList(manifest)) {
@@ -487,33 +488,4 @@ function makeMentions(files) {
     }
     return hits;
   };
-}
-
-/**
- * Add-on-root-relative seed paths beyond manifestFileRefs (icons, action/sidebar
- * icons, dictionaries, theme images).
- * @param {Manifest} manifest
- * @returns {string[]}
- */
-function extraSeeds(manifest) {
-  const out = [];
-  out.push(...Object.values(asObject(manifest.icons)));
-  for (const key of [
-    "action",
-    "browser_action",
-    "compose_action",
-    "message_display_action",
-    "sidebar_action",
-  ]) {
-    const di = asObject(manifest[key]).default_icon;
-    if (typeof di === "string") {
-      out.push(di);
-    } else {
-      out.push(...Object.values(asObject(di)));
-    }
-  }
-  out.push(manifest.sidebar_action?.default_panel);
-  out.push(...Object.values(asObject(manifest.dictionaries)));
-  out.push(...Object.values(asObject(manifest.theme?.images)));
-  return out.filter((p) => typeof p === "string");
 }

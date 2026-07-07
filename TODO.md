@@ -5,6 +5,7 @@
 - [Full type check via typescript engine](#full-type-check-via-typescript-engine)
 - [Potential permission tracing via typescript engine](#potential-permission-tracing-via-typescript-engine)
 - [Unused-files pre-flight backstop (anchored templates + content type)](#unused-files-pre-flight-backstop-anchored-templates--content-type)
+- [Re-evaluate fully schema-driven manifest file-ref extraction](#re-evaluate-fully-schema-driven-manifest-file-ref-extraction)
 
 
 # Detect correct schema reference
@@ -148,3 +149,35 @@ about the cases we truly cannot decide deterministically.
   but reports its type as string, so a small value step still folds
   getURL(literal) to the path. This is the same value-flow machinery as the
   gated-property permission tracing.
+
+
+# Re-evaluate fully schema-driven manifest file-ref extraction
+
+Reachability now seeds from a generic manifest string-walk (every string outside
+experiment_apis, resolve-gated) in src/checks/lib/manifest-refs.js
+(manifestStringRefs) + src/checks/lib/reachability.js. It is simple and
+schema-independent, but it is not schema-*driven*: it cannot distinguish a file
+reference from a coincidental path-like string, and bundled-files still relies on
+the hardcoded manifestFileRefs() list.
+
+The precise alternative is a schema-guided instance co-walk: walk the parsed
+manifest against the merged manifest.ManifestBase + manifest.WebExtensionManifest
+property types, collecting values whose leaf format is in REL_URL_FORMATS
+(ExtensionURL / ExtensionFileUrl = strictRelativeUrl). It would serve BOTH
+reachability seeding and bundled-files precisely (no false "missing" nags), and
+auto-cover every current + future key (message_display_scripts, compose_scripts,
+chrome_settings_overrides favicons, ...).
+
+Requirements / gaps found when scoping it:
+- Needs a value-extracting co-walk, not the existing boolean _hasPathLeaf
+  (src/schema/index.js).
+- _hasPathLeaf does NOT traverse patternProperties / additionalProperties, so
+  MAP-typed keys (icons, dictionaries, theme.images -> patternProperties ->
+  ExtensionFileUrl) are invisible today; the co-walk must add map handling or
+  those regress.
+- Coverage becomes coupled to schema freshness: keys the loaded schema omits
+  (e.g. theme/dictionaries/sidebar_action are absent from the release-mv3
+  bundle's manifest type) would not be extracted. Emit a log() on an unknown
+  manifest key so a stale schema is visible rather than silent.
+- Relates to the "Improve schema files to remove special hardcoded cases" entry
+  (same REL_URL_FORMATS / bridge machinery).

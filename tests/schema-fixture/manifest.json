@@ -28,6 +28,7 @@
           "options_ui": { "type": "object" },
           "action": { "type": "object" },
           "content_scripts": { "type": "array" },
+          "message_display_scripts": { "type": "array" },
           "experiment_apis": { "type": "object" }
         }
       },

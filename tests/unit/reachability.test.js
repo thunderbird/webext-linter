@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { buildReachability } from "../../src/checks/lib/reachability.js";
+import { manifestStringRefs } from "../../src/checks/lib/manifest-refs.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex } from "../../src/schema/index.js";
@@ -65,6 +66,50 @@ test("reachability follows manifest + import + getURL + HTML/CSS edges", () => {
   }
   assert.ok(!reach.reachable.has("orphan.js"));
   assert.equal(reach.hasDynamicLoaders, false);
+});
+
+// manifestStringRefs is the seed source: it collects EVERY string in the manifest
+// (so any file-reference key, declared or future, becomes a seed), but skips the
+// experiment_apis subtree - whose schema/script paths are privileged experiment
+// implementation that must never seed the WebExtension tree.
+test("manifestStringRefs collects manifest strings but skips experiment_apis", () => {
+  const strings = manifestStringRefs({
+    manifest_version: 3,
+    background: { scripts: ["bg.js"] },
+    message_display_scripts: [{ js: ["content.js"], css: ["a.css"] }],
+    experiment_apis: {
+      wl: { schema: "exp/schema.json", parent: { script: "exp/impl.js" } },
+    },
+  });
+  assert.ok(strings.includes("bg.js"));
+  assert.ok(strings.includes("content.js"));
+  assert.ok(strings.includes("a.css"));
+  // The experiment_apis subtree is skipped entirely.
+  assert.ok(!strings.includes("exp/schema.json"));
+  assert.ok(!strings.includes("exp/impl.js"));
+});
+
+// A file declared under a manifest key the seeder does not special-case
+// (message_display_scripts, a Thunderbird key) is still reachable: the generic
+// walk seeds every manifest string that resolves to a packaged file, so there is
+// no per-key list to fall out of date.
+test("reachability seeds a message_display_scripts file (no per-key list)", () => {
+  const manifest = {
+    manifest_version: 3,
+    background: { scripts: ["bg.js"] },
+    message_display_scripts: [{ js: ["content.js"], css: ["style.css"] }],
+  };
+  const files = {
+    "manifest.json": JSON.stringify(manifest),
+    "bg.js": `console.log(1);`,
+    "content.js": `console.log(2);`,
+    "style.css": `body{}`,
+    "orphan.js": `console.log(3);`,
+  };
+  const reach = buildReachability(ctxFrom(files, manifest));
+  assert.ok(reach.reachable.has("content.js"));
+  assert.ok(reach.reachable.has("style.css"));
+  assert.ok(!reach.reachable.has("orphan.js"));
 });
 
 // webReachable is seeded from content scripts only; a WAR resource a content

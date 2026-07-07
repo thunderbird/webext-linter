@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Message display scripts",
+  "version": "1.0",
+  "description": "message_display_scripts js/css are reachable manifest entry points, not orphans.",
+  "background": { "scripts": ["background.js"] },
+  "message_display_scripts": [
+    { "js": ["content.js"], "css": ["assets/content.css"] }
+  ],
+  "icons": { "16": "icon.png" }
+}

@@ -1,0 +1,3 @@
+body[data-kim-seen] {
+  outline: 1px solid transparent;
+}

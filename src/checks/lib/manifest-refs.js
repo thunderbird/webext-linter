@@ -1,14 +1,23 @@
-// Manifest file references: enumerating the packaged-file paths a manifest
-// declares (entry points, scripts, popups), normalizing a raw reference to an
-// add-on-relative key, and resolving a reference (directory-aware) against the
-// packaged file set. Shared by the bundled-files check (a referenced file must
-// be packaged), the reachability graph (each reference is a seed/edge), and the
-// background-page-module check (a <script src> in the background page).
+// Manifest file references: reading the packaged-file paths a manifest declares,
+// normalizing a raw reference to an add-on-relative key, and resolving a
+// reference (directory-aware) against the packaged file set. Two readers of
+// deliberately different scope, because their consumers ask opposite questions:
+//   - manifestFileRefs: the SPECIFIC declared keys known to carry file paths
+//     (content_scripts, background, options, popups), each with its location.
+//     bundled-files uses it to warn a referenced file is MISSING - which needs
+//     "this string is a file path" to hold independent of the file existing.
+//   - manifestStringRefs: EVERY string in the manifest (outside experiment_apis).
+//     reachability seeds from it, keeping only those that resolve to a packaged
+//     file - so existence is the filter, and there is no per-key list to keep.
+// Shared by the bundled-files check, the reachability graph, and the
+// background-page-module check (a <script src> in the background page, via
+// resolveRef).
 //
-// Belongs here: manifestFileRefs (manifest -> referenced paths), normalizeRef
-// (raw path -> relative key, purely lexical), resolveRef (raw path + referrer ->
-// packaged key, directory-aware), and resolveInDir (raw path + explicit base
-// directory -> packaged key; the page-relative variant resolveRef delegates to).
+// Belongs here: manifestFileRefs and manifestStringRefs (manifest -> paths),
+// normalizeRef (raw path -> relative key, purely lexical), resolveRef (raw path +
+// referrer -> packaged key, directory-aware), and resolveInDir (raw path +
+// explicit base directory -> packaged key; the page-relative variant resolveRef
+// delegates to).
 //
 // Does NOT belong here: walking the reference graph - that is reachability.js.
 // web_accessible_resources shapes - web-accessible-resources.js. The
@@ -71,6 +80,43 @@ export function manifestFileRefs(manifest) {
   }
 
   return refs;
+}
+
+/**
+ * Every string value anywhere in the manifest, EXCEPT under experiment_apis
+ * (privileged Experiment implementation paths, which must never enter the
+ * WebExtension reachability tree). Unlike manifestFileRefs, this makes no
+ * assumption about which keys carry file paths - it is the reachability seed
+ * source, where a value only becomes a seed if it resolves to a packaged file,
+ * so non-path strings (permissions, versions, match patterns, ids) drop out
+ * harmlessly at the resolve gate. This covers every current and future
+ * file-reference key (message_display_scripts, compose_scripts, ...) without an
+ * enumeration to maintain.
+ * @param {Manifest} manifest  Parsed manifest.json.
+ * @returns {string[]}
+ */
+export function manifestStringRefs(manifest) {
+  const out = [];
+  // Iterative walk over an explicit stack: a submitted manifest is untrusted, so
+  // recursion could overflow the call stack on a pathologically nested one. Seed
+  // order does not matter (the caller dedups into a Set).
+  const stack = [manifest];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (typeof node === "string") {
+      out.push(node);
+    } else if (Array.isArray(node)) {
+      stack.push(...node);
+    } else if (node && typeof node === "object") {
+      for (const [key, value] of Object.entries(node)) {
+        if (key === "experiment_apis") {
+          continue;
+        }
+        stack.push(value);
+      }
+    }
+  }
+  return out;
 }
 
 /**
