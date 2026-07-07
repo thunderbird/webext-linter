@@ -29,7 +29,6 @@ import {
   loadScsAddon,
   loadScsBuildFiles,
   scsExpSourceRelative,
-  scsRootRelative,
 } from "./addon/load.js";
 import { resolveReviewUrl } from "./addon/atn.js";
 import { runChecks, runOneCheck, loadRegistry } from "./checks/registry.js";
@@ -194,20 +193,12 @@ export async function runPipeline(opts) {
   // check gate (ctx.mode -> scsEligible). `scanMinified` (classify every file as
   // authored, incl. minified) is just the SCS path - the readable sources are the
   // review target there, so even a minified-looking one is reviewed as authored.
+  // --scs-source may name a nested subfolder OR the archive root itself (a flat
+  // layout: manifest.json at the root, with the build tooling intermingled). The root
+  // case (scsRootRelative resolves ".", an absolute root, or a literal match all to "")
+  // is handled throughout: loadScsAddon reviews every file, and loadScsBuildFiles still
+  // traces the build off the root package.json (there is no source subtree to exclude).
   const mode = opts.scsRoot && opts.scsSource ? "scs" : "xpi";
-  // --scs-source must be a SUBFOLDER of --scs-root, not the root itself: if they are
-  // the same path (scsRootRelative resolves ".", an absolute root, or a literal match
-  // all to ""), there is no source/build separation - the readable source would be the
-  // whole submission and there would be no build files to review.
-  if (
-    mode === "scs" &&
-    !scsRootRelative(opts.scsSource, opts.scsRoot, "--scs-source")
-  ) {
-    throw new Error(
-      "--scs-source must be a subfolder of --scs-root, not --scs-root itself " +
-        `("${opts.scsSource}" resolves to the archive root).`
-    );
-  }
   const scanMinified = mode === "scs";
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly).

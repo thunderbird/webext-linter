@@ -176,9 +176,10 @@ test("loadScsBuildFiles returns the build files outside scsSource + scsExpSource
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// When scsSource IS the archive root, every file is review source, so there are no
-// build files (empty corpus -> the check skips).
-test("loadScsBuildFiles with scsSource at the archive root returns no build files", () => {
+// A flat layout: scsSource IS the archive root, so there is no source subtree to
+// exclude - every file becomes a build candidate, and selectBuildCorpus (called by
+// analyzeBuild) still traces the build off the root package.json.
+test("loadScsBuildFiles with scsSource at the archive root keeps the root as build candidates", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scsb0-"));
   fs.writeFileSync(
     path.join(root, "package.json"),
@@ -186,7 +187,14 @@ test("loadScsBuildFiles with scsSource at the archive root returns no build file
   );
   fs.writeFileSync(path.join(root, "background.js"), "1;\n");
   const { files } = loadScsBuildFiles(loadAddon(root), ".", root, "");
-  assert.equal(files.size, 0);
+  assert.ok(
+    files.has("package.json"),
+    "the root package.json is a build candidate"
+  );
+  assert.ok(
+    files.has("background.js"),
+    "root files are build candidates in a flat layout"
+  );
   fs.rmSync(root, { recursive: true, force: true });
 });
 

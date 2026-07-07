@@ -309,7 +309,7 @@ export function helpText() {
     ],
     [
       "--scs-source <path>",
-      "The add-on code root, relative to --scs-root or an absolute path (e.g. src or addon). Required together with --scs-root.",
+      "The add-on code root, relative to --scs-root or an absolute path (e.g. src or addon), or . for a flat layout where manifest.json sits at --scs-root itself. Required together with --scs-root.",
     ],
     [
       "--scs-exp-source <path>",

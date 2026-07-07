@@ -299,14 +299,17 @@ export function loadScsAddon(archive, scsSource, scsRoot) {
  * addon that the other checks scan.
  *
  * A pure EXCLUDE rule (no allow-list to maintain): whatever remains after removing the
- * add-on source, the Experiment source, and dot-prefixed paths is the build corpus, from
- * which the setup build analysis (analyzeBuild) selects the build-relevant subset to show
- * the model (src/build/corpus.js). Dotfiles/folders (.git, .github, .idea, .yarnrc, ...)
- * are dropped as VCS/editor/CI noise - EXCEPT .npmrc, the npm/pnpm registry config the
- * build-tooling checks read.
+ * add-on source, the Experiment source, and dot-prefixed paths is the build candidate
+ * pool, from which the setup build analysis (analyzeBuild) selects the build-relevant
+ * subset to show the model by tracing package.json (src/build/corpus.js). Dotfiles/folders
+ * (.git, .github, .idea, .yarnrc, ...) are dropped as VCS/editor/CI noise - EXCEPT .npmrc,
+ * the npm/pnpm registry config the build-tooling checks read.
  *
- * When scsSource IS the archive root, every file is review source, so there are no
- * build files (empty corpus -> the check skips).
+ * When scsSource IS the archive root (a flat layout: manifest.json at the root, with the
+ * build tooling intermingled), there is no source subtree to remove, so the candidate pool
+ * is the whole root - and selectBuildCorpus still traces the build off the root package.json
+ * exactly as in a nested layout. The pool then overlaps the review addon (loadScsAddon), but
+ * the two feed different checks, and the package.json trace keeps the build corpus tight.
  * @param {Addon} archive  The scsRoot archive, loaded ONCE by the caller and shared
  *   with loadScsAddon (the tree is not read twice).
  * @param {string} scsSource  The --scs-source flag (the review source subtree).
@@ -318,16 +321,14 @@ export function loadScsAddon(archive, scsSource, scsRoot) {
 export function loadScsBuildFiles(archive, scsSource, scsRoot, scsExpSource) {
   const files = new Map();
   const src = scsRootRelative(scsSource, scsRoot, "--scs-source");
-  if (!src) {
-    // The review source IS the archive root: every file is add-on source, so there
-    // are no build files outside it.
-    return {
-      files,
-      nodeModules: [...archive.nodeModules],
-      archives: [...archive.archives],
-    };
+  // Nested layout: exclude the review-source subtree (it is the add-on, not the build).
+  // Flat layout (scsSource IS the archive root, src === ""): there is no subtree to
+  // exclude, so every file becomes a build candidate and selectBuildCorpus still traces
+  // the build off the root package.json.
+  const prefixes = [];
+  if (src) {
+    prefixes.push(src);
   }
-  const prefixes = [src];
   if (scsExpSource) {
     const exp = scsRootRelative(scsExpSource, scsRoot, "--scs-exp-source");
     if (exp) {

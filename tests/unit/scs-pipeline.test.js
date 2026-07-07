@@ -57,17 +57,120 @@ const SRC_FILES = {
 const has = (findings, ruleId, pred = () => true) =>
   findings.some((f) => f.ruleId === ruleId && pred(f));
 
-// --scs-source must be a subfolder of --scs-root, not the root itself: an add-on
-// source that IS the whole submission has no source/build separation (and no build
-// files). runPipeline throws before loading anything, for both "." and the root path.
-test("SCS: runPipeline throws when --scs-source resolves to --scs-root", async () => {
+// A FLAT layout: manifest.json + the source + the build tooling all sit at --scs-root,
+// with no nested subfolder to name. --scs-source is then "." (or an absolute path equal
+// to --scs-root). The whole submission is accepted and fully reviewed: the code checks
+// review the root source, and the build review still traces the build off the root
+// package.json (so a root yarn.lock is caught) - no source/build subfolder needed.
+const FLAT_SRC = {
+  "manifest.json": JSON.stringify({
+    manifest_version: 3,
+    name: "Flat",
+    version: "1.0",
+    background: { scripts: ["app.js"] },
+  }),
+  "app.js": `browser.totallyFakeNamespace.doThing();\n`,
+  "package.json": JSON.stringify({
+    name: "flat-scs",
+    version: "1.0.0",
+    scripts: { build: "web-ext build" },
+  }),
+  "yarn.lock": "# yarn lockfile v1\n",
+};
+
+test("SCS e2e: a flat layout (--scs-source == --scs-root) is accepted and fully reviewed", async () => {
   const xpi = tmpDir(XPI_FILES);
-  const src = tmpDir(SRC_FILES);
-  for (const scsSource of [".", src]) {
-    await assert.rejects(
-      () => runPipeline({ addonPath: xpi, scsRoot: src, scsSource }),
-      /--scs-source must be a subfolder of --scs-root/
+  const src = tmpDir(FLAT_SRC);
+  try {
+    // "." and an absolute path equal to --scs-root both resolve to the root.
+    for (const scsSource of [".", src]) {
+      const { findings, meta } = await runPipeline({
+        addonPath: xpi,
+        scsRoot: src,
+        scsSource,
+        schemaZip: SCHEMA_FIXTURE,
+      });
+      assert.equal(
+        meta.reviewed,
+        true,
+        "the flat submission is reviewed, not rejected"
+      );
+      // The code checks review the root source: the fake API in app.js is caught.
+      assert.ok(
+        has(
+          findings,
+          "unknown-api",
+          (f) => f.file === "app.js" && /totallyFakeNamespace/.test(f.item)
+        ),
+        "the root source file is reviewed by the code checks"
+      );
+      // The build review works flat: loadScsBuildFiles fed the corpus off the root
+      // package.json, so the root yarn.lock is an Unsupported build tool reject.
+      assert.ok(
+        has(findings, "unsupported-build-tool", (f) => /yarn/.test(f.message)),
+        "the root yarn.lock is flagged (the build review runs in a flat layout)"
+      );
+    }
+  } finally {
+    fs.rmSync(xpi, { recursive: true, force: true });
+    fs.rmSync(src, { recursive: true, force: true });
+  }
+});
+
+// The dependency audit reads the root package.json, which in a flat layout IS the review
+// addon's own package.json - so resolveVendor + the vendor checks run exactly as in a
+// nested layout. A vulnerable devDependency is surfaced by vendor-vulnerable-dev.
+test("SCS e2e: a flat layout audits the root package.json dependencies", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    ...FLAT_SRC,
+    "package.json": JSON.stringify({
+      name: "flat-scs",
+      version: "1.0.0",
+      devDependencies: { "build-tool": "1.0.0" },
+    }),
+  });
+  const vendorNet = {
+    fetchBytes: async () => Buffer.from(""),
+    fetchJson: async () => ({}),
+    postJson: async (_url, body) =>
+      body?.package?.name === "build-tool"
+        ? {
+            vulns: [
+              {
+                id: "GHSA-flat-0000-0000",
+                aliases: ["CVE-2021-9999"],
+                database_specific: { severity: "HIGH" },
+                affected: [
+                  {
+                    package: { ecosystem: "npm", name: "build-tool" },
+                    ranges: [
+                      {
+                        type: "SEMVER",
+                        events: [{ introduced: "0" }, { fixed: "2.0.0" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }
+        : { vulns: [] },
+  };
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scsRoot: src,
+      scsSource: ".",
+      schemaZip: SCHEMA_FIXTURE,
+      vendorNet,
+    });
+    assert.ok(
+      has(findings, "vendor-vulnerable-dev", (f) => /build-tool/.test(f.item)),
+      "the root package.json's dependencies are audited in a flat layout"
     );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
   }
 });
 

@@ -216,7 +216,9 @@ export function buildShippedCtx(ctx, xpiAddon) {
  * A sibling review context whose `addon` is the SCS BUILD files - the tooling that
  * builds the add-on (scripts, configs, package.json/lock: everything in --scs-root
  * outside the review source, with node_modules and dotfiles excluded, from
- * loadScsBuildFiles), plus the setup build classification (buildReview) and the
+ * loadScsBuildFiles; in a flat layout, where the review source IS the root, the whole
+ * root, narrowed by selectBuildCorpus's package.json trace), plus the setup build
+ * classification (buildReview) and the
  * recorded archives/nodeModules. The `input: build` checks are routed here, so each reads
  * off ctx.addon like any other check reads its artifact - keeping artifact selection the
  * single `input` seam, no separate ctx field. SCS mode only.
