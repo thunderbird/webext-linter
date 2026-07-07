@@ -306,7 +306,7 @@ deterministic-checks:
   check: unpopular-source-dependency
   input: auto
   response: |-
-    The following dependencies could not be confirmed to be widely-used. They need to be packaged with the add-on in order to be reviewed.
+    The following dependencies could not be confirmed to be widely-used. They need to be packaged non-minified with the add-on in order to be reviewed.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
 # Diff check (--diff-to): a version + gecko strict_max_version-only bump that the
@@ -445,7 +445,7 @@ deterministic-checks:
   check: unsupported-dependency
   input: auto
   response: |-
-    The following dependencies are declared from a source the review cannot identify or verify. Only npm packages (pinned to an exact version or recorded in a committed lock file) and GitHub URLs are supported. Re-declare each as a pinned npm package or a GitHub source, or bundle the library with the add-on as authored code so it can be reviewed directly.
+    The following dependencies are declared from a source the review cannot identify or verify. Only npm packages (pinned to an exact version or recorded in a committed lock file) and GitHub URLs are supported. Re-declare each as a pinned npm package or a GitHub source, or bundle the library with the add-on as non-minified authored code so it can be reviewed directly.
 
 # Each pinned npm name@version - a package.json dependency or an npm-sourced
 # VENDOR entry - is audited against the OSV database (src/vendor/verify.js); a
