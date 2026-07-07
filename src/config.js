@@ -58,6 +58,16 @@ export const CDN_LOOKUP_URL = "https://data.jsdelivr.com/v1/lookup/hash/";
 export const CDN_LOOKUP_CACHE = ".lib-cdn-lookup-cache";
 
 /**
+ * Minimum size (bytes) for a READABLE file to earn a CDN identification attempt - a
+ * library shipped un-minified (e.g. pdf.mjs) is large, while the developer's own files
+ * are typically small, so this targets likely libraries and avoids a CDN lookup (and a
+ * content fingerprint) for every authored file. 16 KB comfortably clears a typical
+ * authored module while catching un-minified library builds (pdf.mjs is ~810 KB). A
+ * MINIFIED file is always eligible regardless of size. See src/checks/lib/cdn-lookup.js.
+ */
+export const CDN_LOOKUP_READABLE_MIN_BYTES = 16384;
+
+/**
  * Default model per LLM_API_TYPE when LLM_API_MODEL is not set.
  * DEFAULT_MODEL_CLAUDE is the claude (Anthropic) default. DEFAULT_MODEL_OPENAI
  * is the chatgpt (OpenAI) one (gpt-4.1 for its 1M-token context, since add-ons

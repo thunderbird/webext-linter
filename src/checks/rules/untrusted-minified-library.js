@@ -1,6 +1,8 @@
 // Rejects a bundled file that was IDENTIFIED (its bytes match a pinned upstream
-// release - Mozilla hash DB, jsDelivr CDN, or a declared VENDOR source) but did
-// NOT clear the popularity trust bar AND is minified/obfuscated. Such a file is
+// release on the jsDelivr CDN or a declared VENDOR source) but did NOT clear the
+// popularity trust bar AND is minified/obfuscated. (A Mozilla hash-DB match is never
+// gated - DB membership is the trust signal - so it never becomes untrusted.) Such a
+// file is
 // both untrusted (not a confirmed widely-used library, so it does not earn the
 // review exemption) and unreviewable (machine-generated), so the dev must ship a
 // readable build. The popularity verdict + the untrusted tagging happen earlier

@@ -1,8 +1,8 @@
 // Unit tests for the jsDelivr CDN hash-lookup identifier (resolveCdnLibraries): a
-// hit promotes an unrecognized minified bundle into the vendored family
-// (library + libraryId + cdn + nonAuthored), a miss/offline leaves it minified, and
-// results are cached on disk so a second run makes no request. All via an injected
-// `net` - no real network.
+// hit promotes an unrecognized bundle - minified, or a large readable one - into the
+// vendored family (library + libraryId + cdn + nonAuthored), a miss/offline leaves it
+// as classified, and results are cached on disk so a second run makes no request. All
+// via an injected `net` - no real network.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -247,6 +247,161 @@ test("a minified bundle is identified as a known library on the CDN", async () =
   assert.equal(tag.cdn.type, "npm");
   assert.ok(addon.bundled.nonAuthored.has("app/fuse.min.js"));
   assert.equal(findLibOnCdn.run({ addon }).length, 1);
+});
+
+// A library shipped UN-minified (e.g. pdf.mjs) - readable, so the Mozilla hash DB
+// would only recognise it if listed, and it is not minified - is still offered to the
+// CDN identifier (any classified file at/above CDN_LOOKUP_READABLE_MIN_BYTES), so a
+// hit excludes it from content analysis instead of scanning it as the developer's code.
+test("a large readable file is CDN-identified as a library (not scanned as authored)", async () => {
+  // Multi-line, low density -> readable; >= CDN_LOOKUP_READABLE_MIN_BYTES (16KB) -> eligible.
+  const READABLE = "export const x = 1;\n".repeat(1000);
+  const addon = classify(addonWith({ "libs/pdf.mjs": READABLE }));
+  const tag0 = addon.bundled.classified.find((c) => c.file === "libs/pdf.mjs");
+  assert.equal(tag0.minified, false, "the file is readable, not minified");
+  assert.equal(tag0.obfuscated, false);
+  assert.equal(tag0.library, false, "not yet identified");
+
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(addon.files.get("libs/pdf.mjs"));
+  const net = netFor(
+    new Map([
+      [
+        hash,
+        {
+          type: "npm",
+          name: "pdfjs-dist",
+          version: "5.6.205",
+          file: "/build/pdf.mjs",
+        },
+      ],
+    ])
+  );
+
+  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+
+  const tag = addon.bundled.classified.find((c) => c.file === "libs/pdf.mjs");
+  assert.equal(tag.library, true);
+  assert.deepEqual(tag.libraryId, { name: "pdfjs-dist", version: "5.6.205" });
+  assert.ok(
+    addon.bundled.nonAuthored.has("libs/pdf.mjs"),
+    "excluded from content analysis"
+  );
+  assert.equal(findLibOnCdn.run({ addon }).length, 1);
+});
+
+// A small readable file is the developer's own source, not a bundled library: below the
+// size threshold it is not looked up, so authored files are not fingerprinted to the CDN.
+test("a small readable file is below the threshold and not CDN-identified", async () => {
+  const SMALL = "export const y = 2;\n".repeat(80); // ~1.6KB: classified (>=1KB) but < 16KB
+  const addon = classify(addonWith({ "app/util.js": SMALL }));
+  assert.equal(
+    addon.bundled.classified.find((c) => c.file === "app/util.js").minified,
+    false
+  );
+
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(addon.files.get("app/util.js"));
+  const net = netFor(
+    new Map([
+      [
+        hash,
+        { type: "npm", name: "whatever", version: "1.0.0", file: "/x.js" },
+      ],
+    ])
+  );
+
+  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+
+  const tag = addon.bundled.classified.find((c) => c.file === "app/util.js");
+  assert.equal(tag.library, false, "a small readable file is not looked up");
+  assert.equal(net.lookupCalls.length, 0, "not sent to the CDN");
+});
+
+// The obfuscation veto holds for readable files too: an obfuscated file is never sent
+// to the CDN, so identification can never launder obfuscated code into the trusted family.
+test("a readable obfuscated file is NOT CDN-identified (obfuscation is never laundered)", async () => {
+  const OBFUSCATED =
+    `var _0xarr = [${Array.from({ length: 60 }, (_, i) => `"item_${i}"`).join(", ")}];\n` +
+    "function _0xget(i) { return _0xarr[i]; }\n" +
+    Array.from({ length: 20 }, (_, i) => `console["log"](_0xget(${i}));`).join(
+      "\n"
+    );
+  const addon = classify(addonWith({ "libs/packed.js": OBFUSCATED }));
+  const tag0 = addon.bundled.classified.find(
+    (c) => c.file === "libs/packed.js"
+  );
+  assert.equal(tag0.obfuscated, true);
+  assert.equal(tag0.minified, false);
+
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(addon.files.get("libs/packed.js"));
+  const net = netFor(
+    new Map([
+      [hash, { type: "npm", name: "somelib", version: "1.0.0", file: "/x.js" }],
+    ])
+  );
+
+  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+
+  const tag = addon.bundled.classified.find((c) => c.file === "libs/packed.js");
+  assert.equal(tag.library, false, "obfuscated file is not promoted");
+  assert.equal(tag.cdn, undefined, "not even looked up");
+  assert.equal(
+    net.lookupCalls.length,
+    0,
+    "the obfuscated file is never sent to the CDN"
+  );
+});
+
+// A NOT-popular readable hit is identified but untrusted, and - being readable - is
+// reviewed as authored code (removed from the skip set) and flagged info by
+// untrusted-library, NOT rejected as an unreadable bundle.
+test("a NOT-popular readable hit is untrusted and reviewed as authored (info)", async () => {
+  const READABLE = "export const z = 3;\n".repeat(1000); // >= 16KB, readable
+  const addon = classify(addonWith({ "libs/obscure.js": READABLE }));
+  addon.vendor = { results: [] };
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(addon.files.get("libs/obscure.js"));
+  const net = netFor(
+    new Map([
+      [
+        hash,
+        {
+          type: "npm",
+          name: "@me/obscure",
+          version: "1.0.0",
+          file: "/index.js",
+        },
+      ],
+    ]),
+    { downloads: 50 } // below the popularity bar
+  );
+
+  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+
+  const tag = addon.bundled.classified.find(
+    (c) => c.file === "libs/obscure.js"
+  );
+  assert.equal(tag.untrusted, true);
+  assert.equal(tag.library, false);
+  assert.equal(tag.cdn.popular, false);
+  // Readable -> NOT unreadable -> removed from the skip set (reviewed as authored code).
+  assert.equal(addon.bundled.nonAuthored.has("libs/obscure.js"), false);
+  assert.equal(addon.bundled.untrusted[0].unreadable, false);
+
+  const ctx = { addon };
+  assert.equal(
+    untrustedLibrary.run(ctx).length,
+    1,
+    "readable untrusted -> info"
+  );
+  assert.equal(
+    untrustedMinifiedLibrary.run(ctx).length,
+    0,
+    "not rejected as unreadable"
+  );
+  assert.equal(findLibOnCdn.run(ctx).length, 0, "not-popular -> no declare-it");
 });
 
 test("a miss leaves the bundle minified (falls through to minified-code)", async () => {

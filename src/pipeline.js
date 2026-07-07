@@ -127,9 +127,10 @@ import {
  *   instead of fetching (offline/CI/tests; the golden harness injects a fixture).
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
  * @property {boolean} [libraryHashesForceRefresh]  Re-fetch the library hashes.
- * @property {boolean} [cdnLookup]  Identify an unrecognized minified bundle by a
- *   jsDelivr content-hash lookup (on by default; --lib-cdn-lookup false disables). Set
- *   false to skip the per-file CDN request (offline/privacy).
+ * @property {boolean} [cdnLookup]  Identify an unrecognized bundled library (minified,
+ *   or a large readable file) by a jsDelivr content-hash lookup (on by default;
+ *   --lib-cdn-lookup false disables). Set false to skip the per-file CDN request
+ *   (offline/privacy).
  * @property {string} [cdnLookupCache]  Where to cache the CDN hash-lookup results.
  * @property {string} [diffTo]  Path to the previous published version.
  * @property {boolean} [diffSummary]  Add an LLM "Summary of changes" section.
@@ -529,10 +530,11 @@ export async function runPipeline(opts) {
       // trusted/exempt dependency.
       applyNotPopularVendor(addon);
 
-      // 1e-bis. Second-tier identification: for a minified bundle the Mozilla DB
-      // did not recognize, ask jsDelivr (by content hash) whether it is a published
-      // release, promoting a match into the vendored family for find-lib-on-cdn.
-      // Best-effort: cached on disk, silently skipped offline.
+      // 1e-bis. Second-tier identification: for a bundle the Mozilla DB did not
+      // recognize - a minified one, or a large readable file - ask jsDelivr (by content
+      // hash) whether it is a published release; a popular match joins the vendored family
+      // (find-lib-on-cdn), a not-popular one is flagged untrusted. Best-effort: cached on
+      // disk, silently skipped offline.
       setupStep("Identifying bundled libraries on a CDN");
       await resolveCdnLibraries(addon, {
         net: opts.vendorNet,

@@ -58,7 +58,7 @@ The options, grouped as in `--help`:
 | `--lib-mozilla-hash-db-cache <dir>` | Where the fetched hash database is cached (default `.lib-mozilla-hash-db-cache`). |
 | `--lib-mozilla-hash-db-refresh` | Re-download the hash database even if a cached copy exists. |
 | `--lib-mozilla-block-db <path>` | Use a local copy of the banned/unadvised library policy — which library versions Mozilla's add-on policy disallows (banned) or discourages (unadvised), read by `banned-library` — instead of the built-in `assets/library-blocks.yaml`. A shipped file, not fetched: no cache or refresh. |
-| `--lib-cdn-lookup <true\|false>` | Identify an unrecognized minified bundle by a jsDelivr content-hash lookup (default `true`). Results are cached; an offline run simply finds no match. |
+| `--lib-cdn-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached; an offline run simply finds no match. |
 | `--lib-cdn-lookup-cache <dir>` | Where the CDN hash-lookup results are cached (default `.lib-cdn-lookup-cache`). |
 
 The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `banned-library`) is curated by hand from Mozilla's [addons-linter third-party library docs](https://github.com/mozilla/addons-linter/blob/master/docs/third-party-libraries.md), since Mozilla ships no machine-readable list — monitor that page and update the file when the policy changes.

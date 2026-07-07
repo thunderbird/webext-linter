@@ -30,8 +30,8 @@ export default {
     const findings = [];
     for (const c of classifyAddonJs(ctx)) {
       if (c.library || c.untrusted) {
-        // a recognized library is missing-library's concern; an untrusted
-        // (not-popular) identified match is untrusted-minified-library's.
+        // a recognized library is missing-library's concern; an untrusted (not-popular)
+        // identified match is untrusted-library / untrusted-minified-library's.
         continue;
       }
       // A merely-minified (not obfuscated) file is minified-code's finding; here

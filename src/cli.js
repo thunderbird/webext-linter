@@ -235,7 +235,7 @@ export function helpText() {
     ],
     [
       "--lib-cdn-lookup <true|false>",
-      "Identify an unrecognized minified bundle by a jsDelivr content-hash lookup (default: true). Results are cached; an offline run simply finds no match.",
+      "Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default: true). Results are cached; an offline run simply finds no match.",
     ],
     [
       "--lib-cdn-lookup-cache <dir>",

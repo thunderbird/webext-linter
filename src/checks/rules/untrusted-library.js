@@ -1,6 +1,7 @@
 // Info notice for a bundled file that was IDENTIFIED (its bytes match a pinned
-// upstream release - Mozilla hash DB, jsDelivr CDN, or a declared VENDOR source)
-// but did NOT clear the popularity trust bar, and IS readable. It does not earn
+// upstream release on the jsDelivr CDN or a declared VENDOR source) but did NOT clear
+// the popularity trust bar, and IS readable. (A Mozilla hash-DB match is never gated -
+// DB membership is the trust signal - so it never becomes untrusted.) It does not earn
 // the trusted-library review exemption, so it is reviewed as authored code (the
 // standard source-level checks scan it like the developer's own). This notice
 // tells the dev why - otherwise an unsafe-html/etc. finding on a "library" file

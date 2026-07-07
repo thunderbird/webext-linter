@@ -1,28 +1,30 @@
 // Second-tier library identifier: for a bundled file the Mozilla hash DB did NOT
-// recognize (an unidentified minified bundle that would otherwise fall to
-// minified-code), ask the jsDelivr CDN whether the file's exact bytes are a known
-// published release. jsDelivr indexes the raw SHA-256 of every file it serves, so
+// recognize - an unidentified minified bundle that would otherwise fall to
+// minified-code, or a readable file large enough to be a library shipped un-minified
+// (CDN_LOOKUP_READABLE_MIN_BYTES) - ask the jsDelivr CDN whether the file's exact bytes
+// are a known published release. jsDelivr indexes the raw SHA-256 of every file it serves, so
 // `GET <CDN_LOOKUP_URL><sha256>` is a content-addressed reverse lookup (no filename
 // guessing) returning `{type, name, version, file}` on a hit, 404 on a miss.
 //
-// A hit promotes the file into the vendored family - exactly like a Mozilla hash
-// match: the tag becomes `library` (so minified-code skips it) and carries a
-// `libraryId` (so the OSV audit covers it), plus a `cdn` marker holding the
-// canonical, trusted+pinned jsDelivr source URL for the find-lib-on-cdn finding.
-//
-// A hit is then put through the same popularity trust bar a declared
-// VENDOR/package.json source gets (isPopular). jsDelivr is uncurated, so a match
-// alone is not trust: a NOT-popular hit stays identified (still skipped by
-// minified-code and OSV-audited) but is recorded as a `not-popular` vendor result
-// (`addon.vendor.results`), so vendor-unverified escalates it to manual review and
-// find-lib-on-cdn stays silent for it. Only a popular hit keeps the "declare it"
-// finding. (Mozilla hash-DB matches are NOT gated - DB membership is the signal.)
+// Every hit is IDENTIFIED - the tag gets a `libraryId` (so the OSV audit covers it) and a
+// `cdn` marker holding the canonical, trusted+pinned jsDelivr source URL - but whether it
+// is TRUSTED depends on popularity, the same trust bar a declared VENDOR/package.json
+// source gets (isPopular). jsDelivr is uncurated, so a match alone is not trust:
+//   - POPULAR -> joins the vendored family, exactly like a Mozilla hash match: the tag
+//     becomes `library` (so minified-code skips it), the file is excluded from scanning,
+//     and find-lib-on-cdn surfaces the "declare it" finding.
+//   - NOT popular -> identified but UNtrusted (markUntrusted): a minified/obfuscated one is
+//     unreadable, so it stays non-authored and untrusted-minified-library rejects it; a
+//     readable one is reviewed as authored code and untrusted-library flags it (info).
+//     find-lib-on-cdn stays silent.
+// (Mozilla hash-DB matches are NOT gated - DB membership is the signal.)
 //
 // Best-effort, like auditIdentifiedLibraries: results (positive AND negative) are
 // cached on disk so a repeat review of the same bundle makes no request, and any
 // network error - or an injected net with no fetchJson (offline / the golden
-// harness) - simply leaves the tag untouched, so the file falls through to
-// minified-code. Never throws, never blocks a review.
+// harness) - simply leaves the tag untouched, so a minified file falls through to
+// minified-code and a readable one is scanned as authored source. Never throws, never
+// blocks a review.
 //
 // Belongs here: the per-file lookup, the disk cache IO, and the tag promotion.
 // Does NOT belong here: the raw hashing (src/normalize/hash.js rawSha256), the
@@ -36,7 +38,11 @@ import { debug } from "../../util/log.js";
 import { rawSha256 } from "../../normalize/hash.js";
 import { defaultNet, isPopular } from "../../vendor/verify.js";
 import { markUntrusted } from "./bundled.js";
-import { CDN_LOOKUP_URL, CDN_LOOKUP_CACHE } from "../../config.js";
+import {
+  CDN_LOOKUP_URL,
+  CDN_LOOKUP_CACHE,
+  CDN_LOOKUP_READABLE_MIN_BYTES,
+} from "../../config.js";
 
 /** @typedef {import("../../addon/load.js").Addon} Addon */
 /** @typedef {import("../../vendor/verify.js").VendorNet} VendorNet */
@@ -54,11 +60,12 @@ export function cdnUrl({ type, name, version, file }) {
 }
 
 /**
- * Identify unrecognized minified bundles via the jsDelivr hash lookup, promoting a
- * match into the vendored family (library + libraryId + cdn). Mutates the tags in
- * `addon.bundled.classified` and the `nonAuthored` set in place. Must run AFTER
- * classifyBundled (Mozilla hashes) and BEFORE auditIdentifiedLibraries, so a CDN
- * match is OSV-audited like any other identified library.
+ * Identify unrecognized bundles (a minified one, or a large readable one likely to be a
+ * library shipped un-minified) via the jsDelivr hash lookup. A hit is tagged libraryId +
+ * cdn; a POPULAR hit also joins the vendored family (library), a not-popular one is marked
+ * untrusted. Mutates the tags in `addon.bundled.classified` and the `nonAuthored` set in
+ * place. Must run AFTER classifyBundled (Mozilla hashes) and BEFORE auditIdentifiedLibraries,
+ * so a CDN match is OSV-audited like any other identified library.
  *
  * @param {Addon} addon
  * @param {object} [opts]
@@ -84,13 +91,23 @@ export async function resolveCdnLibraries(
   let dirty = false;
 
   for (const tag of classified) {
-    // The files minified-code would flag: an unidentified minified bundle - try to
-    // recognise it as a known library on the CDN before it is rejected.
-    if (!tag.minified || tag.library || tag.obfuscated) {
+    // Never CDN-identify an already-recognized library or an obfuscated file - the
+    // latter must not be laundered into the trusted family, minified or readable.
+    if (tag.library || tag.obfuscated) {
       continue;
     }
     const buf = addon.files.get(tag.file);
     if (!buf) {
+      continue;
+    }
+    // Try to recognise: an unidentified MINIFIED bundle (which minified-code would
+    // otherwise reject), OR a large READABLE file (>= CDN_LOOKUP_READABLE_MIN_BYTES) -
+    // a library shipped un-minified (e.g. pdf.mjs), so it is excluded from content
+    // analysis instead of scanned as authored code. A small readable file is the
+    // developer's own source; skip it. (Unlike the free local Mozilla hash DB, which
+    // matches any file, a CDN lookup is a network request that fingerprints the file's
+    // hash to a third party - hence the size floor, to keep it off small authored files.)
+    if (!tag.minified && buf.length < CDN_LOOKUP_READABLE_MIN_BYTES) {
       continue;
     }
     const hash = rawSha256(buf);
@@ -141,10 +158,11 @@ export async function resolveCdnLibraries(
       tag.library = true;
       nonAuthored.add(tag.file);
     } else {
-      // Not popular -> identified but UNtrusted: it does not earn the review
-      // exemption. CDN lookup only runs on minified-by-geometry bundles, so this
-      // is unreadable -> rejected by untrusted-minified-library (still OSV-audited
-      // via libraryId). markUntrusted keeps it in the non-authored skip set.
+      // Not popular -> identified but UNtrusted: it does not earn the review exemption.
+      // markUntrusted routes it by readability: a minified/obfuscated hit is unreadable,
+      // so it stays in the non-authored skip set and untrusted-minified-library rejects
+      // it; a readable hit is reviewed as authored code and untrusted-library flags it
+      // (info). Either way libraryId is kept for the OSV audit.
       tag.untrusted = true;
       markUntrusted(addon, {
         file: tag.file,

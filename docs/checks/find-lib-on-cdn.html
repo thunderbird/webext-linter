@@ -39,15 +39,19 @@
         blocker.
       </p>
       <p>
-        A CDN match joins the vendored family exactly like a Mozilla hash match: the
-        file is treated as real third-party code (excluded from
-        <code>minified-code</code>) and is
-        audited for known vulnerabilities just like a declared dependency — an
-        undeclared but vulnerable bundle is reported by
-        <code>vendor-vulnerable</code>. A bundle that is on neither the Mozilla DB
-        nor the CDN is not treated as a library: if minified it falls to
-        <code>minified-code</code>, if obfuscated to <code>obfuscated-code</code>,
-        otherwise it is scanned as the developer's own source.
+        jsDelivr is uncurated, so a match must also clear a popularity bar to be
+        trusted. A <em>popular</em> match joins the vendored family exactly like a
+        Mozilla hash match: the file is treated as real third-party code (excluded from
+        <code>minified-code</code>) and is audited for known vulnerabilities just like a
+        declared dependency — an undeclared but vulnerable bundle is reported by
+        <code>vendor-vulnerable</code>. A match that does <em>not</em> clear the bar is
+        identified but untrusted: a minified one is rejected by
+        <code>untrusted-minified-library</code>, a readable one is reviewed as the
+        developer's own code and flagged (info) by <code>untrusted-library</code>. A
+        bundle on neither the Mozilla DB nor the CDN is not treated as a library: if
+        minified it falls to <code>minified-code</code>, if obfuscated to
+        <code>obfuscated-code</code>, otherwise it is scanned as the developer's own
+        source.
       </p>
       <p>
         The lookup runs by default, caches every result on disk (hits and misses),
@@ -60,18 +64,20 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A minified JavaScript or CSS file<br/>the Mozilla hash DB did not recognise"] --> Z{"CDN lookup enabled<br/>and online?"}
-  Z -- no --> OK([no finding — minified-code])
+  A["An unrecognized bundled JS/CSS file<br/>(minified, or a large readable file)"] --> Z{"CDN lookup enabled<br/>and online?"}
+  Z -- no --> OK([no CDN finding])
   Z -- yes --> L{"Raw content hash<br/>published on jsDelivr?"}
   L -- no --> OK
-  L -- yes --> ERR([INFO: library identified on a CDN,<br/>named name@version + source URL])
+  L -- yes --> P{"Clears the<br/>popularity bar?"}
+  P -- yes --> ERR([INFO: library identified on a CDN,<br/>named name@version + source URL])
+  P -- no --> U([identified but untrusted →<br/>untrusted-library / untrusted-minified-library])
 
   classDef err fill:#eaf1fb,stroke:#2c5aa0,color:#1b3a6b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   class ERR err;
   class OK ok;
-  class S skip;
+  class U skip;
         </pre>
       </div>
 

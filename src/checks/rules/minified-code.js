@@ -30,7 +30,8 @@ export default {
     for (const c of classifyAddonJs(ctx)) {
       if (c.library || c.obfuscated || c.untrusted) {
         // library -> missing-library; obfuscated -> obfuscated-code; untrusted (a
-        // not-popular CDN match, always minified) -> untrusted-minified-library.
+        // not-popular CDN match) -> untrusted-minified-library if unreadable, else
+        // untrusted-library.
         continue;
       }
       ctx.note?.(
