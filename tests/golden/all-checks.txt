@@ -45,23 +45,23 @@ Read more: https://webextension-api.thunderbird.net/.
 
 We kindly ask you to resolve the following issues with your next release:
 
-13) Inserting markup via ".innerHTML" is not permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
-Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
- - background.js:29
-
-14) Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.
+13) Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
  - background.js:35
 
 We would like to share the following information with you:
 
-15) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+14) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
  - background.js:9 - Use list() instead.
 
-16) "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+15) "legacy.doThing" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
 Read more: https://webextension-api.thunderbird.net/.
  - background.js:11 - The legacy API was removed; use messages instead.
+
+16) Inserting markup via ".innerHTML" will be no longer permitted after the release of ESR 153. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
+ - background.js:29
 
 17) Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined.
  - background.js:41
@@ -168,4 +168,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-15 error(s), 2 warning(s), 6 info, 13 manual review step(s)
+15 error(s), 1 warning(s), 7 info, 13 manual review step(s)

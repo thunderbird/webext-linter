@@ -1,8 +1,8 @@
 ── Issues ──
 
-Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
+Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
-1) Inserting markup via ".innerHTML" is not permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
+1) Inserting markup via ".innerHTML" will be no longer permitted after the release of ESR 153. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
  - bg.js:2
  - bg.js:4
@@ -91,4 +91,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 3 warning(s), 0 info, 11 manual review step(s)
+0 error(s), 0 warning(s), 3 info, 11 manual review step(s)

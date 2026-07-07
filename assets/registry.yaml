@@ -149,11 +149,11 @@ deterministic-checks:
 # Flags every write to innerHTML/outerHTML/srcdoc/insertAdjacentHTML (only
 # Element.setHTML() is sanctioned); an empty-string/null clear is exempt.
 - title: Modifying innerHTML; use Element.setHTML()
-  severity: warning
+  severity: info
   check: unsafe-html
   input: auto
   response: |-
-    Inserting markup via "{{item}}" is not permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
+    Inserting markup via "{{item}}" will be no longer permitted after the release of ESR 153. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
 
 # Flags unconditional debugger statements left in shipped code.

@@ -11,7 +11,7 @@
       <header class="check-header">
         <h1>
           Modifying innerHTML; use Element.setHTML()
-          <span class="badge warning">warning</span>
+          <span class="badge info">info</span>
         </h1>
         <div class="check-id">unsafe-html</div>
       </header>
@@ -25,9 +25,11 @@
         was run through a sanitizer — a sanitizer is not a pass.
       </p>
       <p>
-        This is a warning rather than an error only because migrating to
-        <em>setHTML()</em> needs Thunderbird 148+, so the check points the reviewer
-        at each site. Every sink write is flagged; the sole exception is an
+        This is advisory (<span class="badge info">info</span>) for now: writing
+        markup to a sink will no longer be permitted after the release of ESR 153,
+        and migrating to <em>setHTML()</em> needs Thunderbird 148+, so the check
+        points the reviewer at each site ahead of the deadline. Every sink write is
+        flagged; the sole exception is an
         empty-string or null clear (<code>el.innerHTML = ""</code>), which writes
         no content. Bundled, minified or otherwise non-authored files are skipped.
         Each remaining sink hit becomes a finding naming the sink involved.
@@ -42,12 +44,12 @@ flowchart TD
   B -- yes --> C["Scan for HTML sinks:<br/>innerHTML, outerHTML, srcdoc,<br/>insertAdjacentHTML"]
   C --> D{"An empty/null clear,<br/>or Element.setHTML()?"}
   D -- yes --> OK([no finding])
-  D -- no --> WARN([WARNING: HTML written<br/>to a sink, use setHTML&#40;&#41;])
+  D -- no --> WARN([INFO: HTML written<br/>to a sink, use setHTML&#40;&#41;])
 
-  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef info fill:#eaf1fb,stroke:#2c5aa0,color:#1b3a6b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
-  class WARN warn;
+  class WARN info;
   class OK ok;
   class S skip;
         </pre>

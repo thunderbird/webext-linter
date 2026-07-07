@@ -91,8 +91,8 @@
   },
   "summary": {
     "error": 0,
-    "warning": 3,
-    "info": 0,
+    "warning": 0,
+    "info": 3,
     "byRule": {
       "unsafe-html": 3
     }
@@ -100,7 +100,7 @@
   "findings": [
     {
       "ruleId": "unsafe-html",
-      "severity": "warning",
+      "severity": "info",
       "file": "bg.js",
       "loc": {
         "line": 2,
@@ -108,11 +108,11 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "Inserting markup via \".innerHTML\" is not permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Inserting markup via \".innerHTML\" will be no longer permitted after the release of ESR 153. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
       "ruleId": "unsafe-html",
-      "severity": "warning",
+      "severity": "info",
       "file": "bg.js",
       "loc": {
         "line": 4,
@@ -120,11 +120,11 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "Inserting markup via \".innerHTML\" is not permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Inserting markup via \".innerHTML\" will be no longer permitted after the release of ESR 153. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
       "ruleId": "unsafe-html",
-      "severity": "warning",
+      "severity": "info",
       "file": "bg.js",
       "loc": {
         "line": 6,
@@ -132,7 +132,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "Inserting markup via \".innerHTML\" is not permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Inserting markup via \".innerHTML\" will be no longer permitted after the release of ESR 153. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     }
   ]
 }

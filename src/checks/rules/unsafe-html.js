@@ -2,8 +2,9 @@
 // / srcdoc / insertAdjacentHTML) - the only sanctioned way to insert markup is
 // the Sanitizer API (Element.setHTML()), so a sink write is flagged regardless of
 // where the content comes from or whether it is sanitized; only an empty/null
-// clear (el.innerHTML = "") is exempt. A warning, not an error: migrating to
-// setHTML() needs Thunderbird 148+, so it points the reviewer at each site.
+// clear (el.innerHTML = "") is exempt. Advisory (info): sink writes are no longer
+// permitted after ESR 153 and migrating to setHTML() needs Thunderbird 148+, so it
+// points the reviewer at each site ahead of the deadline.
 //
 // Belongs here: skipping non-authored code, then emitting one finding per sink
 // hit with the sink name as the item so the reviewer knows what to inspect.

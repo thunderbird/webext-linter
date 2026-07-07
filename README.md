@@ -273,7 +273,7 @@ escalates it straight to manual review (e.g. `vendor-unverified`,
 | `unpinned-dependency` | A `package.json` dependency declared as a version range with no lock file, so it can't be pinned to one release and verified (error). |
 | `unpinned-vendor-source` | A VENDOR-declared file whose (trusted-host) source is not pinned to an immutable version/tag/commit, so its bytes can't be verified (error). |
 | `unrecognized-manifest-key` | A top-level manifest key the schema does not define - Thunderbird ignores it (warning). |
-| `unsafe-html` | Any write to `innerHTML`/`outerHTML`/`srcdoc`/`insertAdjacentHTML`; only `Element.setHTML()` is sanctioned (an empty/null clear is exempt) (warning). |
+| `unsafe-html` | Any write to `innerHTML`/`outerHTML`/`srcdoc`/`insertAdjacentHTML`; only `Element.setHTML()` is sanctioned (an empty/null clear is exempt) (info). |
 | `vendor-modified` | A declared third-party file whose bytes don't match its pinned source (EOL-tolerant compare) - it appears modified from upstream (error). |
 | `vendor-unparseable` | A VENDOR file is present but no block pairs a library file with a source URL that points to a file, so nothing can be verified (error). |
 | `vendor-unverified` | Declarations that can't be settled automatically - an untrusted-host source, a library not confirmed widely used, or an unfetchable source - routed to manual review. |
