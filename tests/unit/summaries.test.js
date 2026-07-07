@@ -215,6 +215,25 @@ test("buildAddonText trims only the non-authored set (undetected libs included)"
   assert.ok(!text.includes("var $=")); // minified-by-geometry blob: trimmed
 });
 
+// _locales/ message catalogs are readable JSON, so the classifier does NOT skip them,
+// but they are pure UI translations - no behavioral signal, and a heavily-localized
+// add-on ships megabytes of them. The summary drops them so its context window is not
+// blown by translations (the locale checks cover their content separately).
+test("buildAddonText excludes _locales/ translations from the corpus", () => {
+  const ctx = {
+    addon: addon({
+      "manifest.json": MV1,
+      "background.js": "console.log('bg');",
+      "_locales/en/messages.json": '{"appName":{"message":"LOCALE_MARKER_EN"}}',
+      "_locales/de/messages.json": '{"appName":{"message":"LOCALE_MARKER_DE"}}',
+    }),
+  };
+  const text = buildAddonText(ctx, "NONCE");
+  assert.ok(text.includes("console.log('bg')")); // authored code: kept
+  assert.ok(!text.includes("LOCALE_MARKER_EN")); // translations: excluded
+  assert.ok(!text.includes("LOCALE_MARKER_DE"));
+});
+
 // SCA mode: the behavioral add-on summary describes the built XPI (summaryAddon), not
 // the readable source review target (ctx.addon). The pipeline classifies the shipped
 // XPI in setup, so its minified/library bundles are EXCLUDED from the summary exactly as

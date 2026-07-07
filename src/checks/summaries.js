@@ -51,14 +51,23 @@ const TEXT_EXTS = new Set([
 ]);
 
 /**
- * Whether a file's contents are worth quoting: an authored text file that is not
- * a non-authored bundle (library / minified / obfuscated / vendored).
+ * Whether a file's contents are worth quoting to the model: an authored text file
+ * that is not a non-authored bundle (library / minified / obfuscated / vendored) and
+ * not a `_locales/` translation. Locale message catalogs carry no behavioral or
+ * security signal - they are UI strings, already covered by the deterministic locale
+ * checks (default-locale-*, missing-english-localization, trademark-violation) - and a
+ * heavily-localized add-on ships megabytes of them, which would blow the summary's
+ * context window for no review value.
  * @param {string} file
  * @param {Set<string>} skip  The nonAuthoredJs set for the current add-on.
  * @returns {boolean}
  */
 function isAuthoredText(file, skip) {
-  return TEXT_EXTS.has(extname(file)) && !skip.has(file);
+  return (
+    TEXT_EXTS.has(extname(file)) &&
+    !skip.has(file) &&
+    !file.startsWith("_locales/")
+  );
 }
 
 /**
@@ -245,9 +254,9 @@ function declaredPermissionsBlock(manifest, used = new Set()) {
 /**
  * The (almost) full current add-on for the add-on summary: the canonical
  * manifest, an explicit declared-permission list, plus every authored text file
- * (isAuthoredText - i.e. not a vendored/minified/obfuscated bundle) that is not
- * in `unused`, each fenced under "=== file ===". No byte cap - a large add-on
- * may approach the context window.
+ * (isAuthoredText - i.e. not a vendored/minified/obfuscated bundle nor a _locales
+ * translation) that is not in `unused`, each fenced under "=== file ===". No byte
+ * cap - a large (non-localized) add-on may still approach the context window.
  * @param {RunContext} ctx
  * @param {{unused?: Set<string>, used?: Set<string>}} [opts]  unused = files the
  *   review found unreachable; used = permissions provably required by a
