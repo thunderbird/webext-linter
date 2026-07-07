@@ -126,19 +126,19 @@ export function buildReachability(ctx) {
 }
 
 /**
- * SCS mode: the WebExtension code set is every readable-source file EXCEPT the
- * Experiment subtree named by ctx.scsExpSource - a source-relative path (runPipeline
- * re-bases the scsRoot-relative --scs-exp-source flag to it via scsExpSourceRelative,
- * matching the addon.files keys loadScsAddon already stripped of the scsSource
+ * SCA mode: the WebExtension code set is every readable-source file EXCEPT the
+ * Experiment subtree named by ctx.scaExpSource - a source-relative path (runPipeline
+ * re-bases the scaRoot-relative --sca-exp-source flag to it via scaExpSourceRelative,
+ * matching the addon.files keys loadScaAddon already stripped of the scaSource
  * prefix). Files equal to `<exp>` or under `<exp>/` are excluded;
  * an empty/absent value excludes nothing (so experiment code is reviewed too, the
  * deferred false-positive case).
  * @param {Map<string, Buffer>} files
- * @param {?string} scsExpSource
+ * @param {?string} scaExpSource
  * @returns {Set<string>}
  */
-function scsWebExtensionFiles(files, scsExpSource) {
-  const exp = String(scsExpSource ?? "")
+function scaWebExtensionFiles(files, scaExpSource) {
+  const exp = String(scaExpSource ?? "")
     .replace(/^[./]+/, "")
     .replace(/\/+$/, "");
   const all = [...files.keys()];
@@ -160,7 +160,7 @@ function compute(ctx) {
   // `addon`/`files`/`jsSources` below is that one artifact's, so the graph is always
   // internally consistent.
   //
-  // pureWebExtensionReachable's SCS "all readable-source files" branch exists only
+  // pureWebExtensionReachable's SCA "all readable-source files" branch exists only
   // for the review source, whose pre-build layout the manifest's built entry-point
   // paths miss (so the closure would be empty). It is gated on the review-target ctx
   // (NOT ctx.isShippedView), so on a shipped view it falls to the closure branch -
@@ -347,18 +347,18 @@ function compute(ctx) {
   // (standard WebExtension edges only) from the manifest entry points PLUS the `.html`
   // Experiment-API parameters. It never traces into experiment implementation code.
   //
-  // The SCS REVIEW SOURCE has no usable tree: the manifest's entry points name BUILT
+  // The SCA REVIEW SOURCE has no usable tree: the manifest's entry points name BUILT
   // paths that don't exist in the readable source layout, so the closure would be
   // empty and every WebExtension code check would review nothing. There we instead
-  // review EVERY source file - except an Experiment subtree named by --scs-exp-source
-  // (ctx.scsExpSource), whose privileged (Services/ChromeUtils) code is not
+  // review EVERY source file - except an Experiment subtree named by --sca-exp-source
+  // (ctx.scaExpSource), whose privileged (Services/ChromeUtils) code is not
   // WebExtension code and would false-positive these checks. The shipped view is
   // excluded (ctx.isShippedView): the built XPI's entry points DO resolve, so it uses
   // the closure branch, like an XPI review. (That closure already excludes experiment
   // implementation code.)
   const pureWebExtensionReachable =
-    ctx.mode === "scs" && !ctx.isShippedView
-      ? scsWebExtensionFiles(files, ctx.scsExpSource)
+    ctx.mode === "sca" && !ctx.isShippedView
+      ? scaWebExtensionFiles(files, ctx.scaExpSource)
       : bfs(new Set([...generalSeeds, ...htmlInjectedSeeds]), outEdges);
 
   const webReachable = bfs(webSeeds, outEdges);

@@ -8,10 +8,10 @@ import path from "node:path";
 
 import {
   loadAddon,
-  loadScsAddon,
-  loadScsBuildFiles,
-  scsRootRelative,
-  scsExpSourceRelative,
+  loadScaAddon,
+  loadScaBuildFiles,
+  scaRootRelative,
+  scaExpSourceRelative,
 } from "../../src/addon/load.js";
 
 // Loading a directory keeps a real .js file but drops a symlink pointing at it,
@@ -61,14 +61,14 @@ test("directory load records a symlinked node_modules without following it", () 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A source-code submission: the add-on code is at <root>/src, package.json/lock at
-// the root. loadScsAddon partitions the src subtree (prefix stripped) and brings the
+// A source code archive: the add-on code is at <root>/src, package.json/lock at
+// the root. loadScaAddon partitions the src subtree (prefix stripped) and brings the
 // root package.json along (for the dependency audit). The source corpus stays PURE -
 // its own manifest.json is kept, never overwritten. The authoritative (shipped)
 // manifest is the built XPI's, resolved separately into ctx.manifest (context.js);
-// loadScsAddon does not touch the source manifest.
-test("loadScsAddon partitions scsSource, keeps root package.json + the source's own manifest", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scs-"));
+// loadScaAddon does not touch the source manifest.
+test("loadScaAddon partitions scaSource, keeps root package.json + the source's own manifest", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-sca-"));
   fs.mkdirSync(path.join(root, "src"));
   fs.writeFileSync(
     path.join(root, "package.json"),
@@ -82,10 +82,10 @@ test("loadScsAddon partitions scsSource, keeps root package.json + the source's 
     "browser.runtime.id;\n"
   );
 
-  // The pipeline reads the --scs-root archive ONCE and shares it with both the review
+  // The pipeline reads the --sca-root archive ONCE and shares it with both the review
   // loader and the build-corpus loader, so the tree is never walked twice.
   const archive = loadAddon(root);
-  const addon = loadScsAddon(archive, "src", root);
+  const addon = loadScaAddon(archive, "src", root);
 
   assert.ok(addon.files.has("background.js"), "src file, prefix stripped");
   assert.ok(!addon.files.has("src/background.js"), "prefix not retained");
@@ -98,8 +98,8 @@ test("loadScsAddon partitions scsSource, keeps root package.json + the source's 
   );
   assert.equal(addon.files.get("manifest.json").toString(), srcManifest);
 
-  // --scs-source accepts an absolute path too: it resolves to the same subtree.
-  const abs = loadScsAddon(archive, path.join(root, "src"), root);
+  // --sca-source accepts an absolute path too: it resolves to the same subtree.
+  const abs = loadScaAddon(archive, path.join(root, "src"), root);
   assert.deepEqual(
     [...abs.files.keys()].sort(),
     [...addon.files.keys()].sort()
@@ -108,13 +108,13 @@ test("loadScsAddon partitions scsSource, keeps root package.json + the source's 
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// loadScsBuildFiles is the COMPLEMENT of loadScsAddon: the archive minus the review
-// source (scsSource), the Experiment source (scsExpSource), node_modules, and
+// loadScaBuildFiles is the COMPLEMENT of loadScaAddon: the archive minus the review
+// source (scaSource), the Experiment source (scaExpSource), node_modules, and
 // dotfiles/dotfolders - the build scripts / config the review otherwise drops. Keys
 // keep their real archive paths (unstripped); the root package.json/lock stay, and a
 // plain .npmrc is kept (the one dotfile exception the build-tooling checks read).
-test("loadScsBuildFiles returns the build files outside scsSource + scsExpSource", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scsb-"));
+test("loadScaBuildFiles returns the build files outside scaSource + scaExpSource", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scab-"));
   fs.mkdirSync(path.join(root, "src", "experiment"), { recursive: true });
   fs.mkdirSync(path.join(root, "scripts"));
   // node_modules is skipped at LOAD (never read) and reported: a nested one (any depth)
@@ -144,7 +144,7 @@ test("loadScsBuildFiles returns the build files outside scsSource + scsExpSource
   );
   fs.writeFileSync(path.join(root, "src", "node_modules", "pkg.js"), "1;\n");
 
-  const { files, nodeModules } = loadScsBuildFiles(
+  const { files, nodeModules } = loadScaBuildFiles(
     loadAddon(root),
     "src",
     root,
@@ -176,17 +176,17 @@ test("loadScsBuildFiles returns the build files outside scsSource + scsExpSource
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// A flat layout: scsSource IS the archive root, so there is no source subtree to
+// A flat layout: scaSource IS the archive root, so there is no source subtree to
 // exclude - every file becomes a build candidate, and selectBuildCorpus (called by
 // analyzeBuild) still traces the build off the root package.json.
-test("loadScsBuildFiles with scsSource at the archive root keeps the root as build candidates", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scsb0-"));
+test("loadScaBuildFiles with scaSource at the archive root keeps the root as build candidates", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scab0-"));
   fs.writeFileSync(
     path.join(root, "package.json"),
     '{"scripts":{"build":"x"}}'
   );
   fs.writeFileSync(path.join(root, "background.js"), "1;\n");
-  const { files } = loadScsBuildFiles(loadAddon(root), ".", root, "");
+  const { files } = loadScaBuildFiles(loadAddon(root), ".", root, "");
   assert.ok(
     files.has("package.json"),
     "the root package.json is a build candidate"
@@ -198,44 +198,44 @@ test("loadScsBuildFiles with scsSource at the archive root keeps the root as bui
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// Both SCS source flags resolve relative to --scs-root, or accept an absolute path
+// Both SCA source flags resolve relative to --sca-root, or accept an absolute path
 // (made relative to the root). An absolute path outside the root is rejected.
-test("scsRootRelative resolves relative + absolute paths, rejects escapes", () => {
+test("scaRootRelative resolves relative + absolute paths, rejects escapes", () => {
   const root = "/tmp/wrr-root";
-  assert.equal(scsRootRelative("addon", root), "addon");
-  assert.equal(scsRootRelative("./addon/", root), "addon"); // normalized
-  assert.equal(scsRootRelative(`${root}/addon`, root), "addon"); // absolute -> relative
-  assert.equal(scsRootRelative(root, root), ""); // the root itself
+  assert.equal(scaRootRelative("addon", root), "addon");
+  assert.equal(scaRootRelative("./addon/", root), "addon"); // normalized
+  assert.equal(scaRootRelative(`${root}/addon`, root), "addon"); // absolute -> relative
+  assert.equal(scaRootRelative(root, root), ""); // the root itself
   assert.throws(
-    () => scsRootRelative("/elsewhere/x", root),
-    /outside --scs-root/
+    () => scaRootRelative("/elsewhere/x", root),
+    /outside --sca-root/
   );
 });
 
-// --scs-exp-source shares the --scs-root base and is re-based to a source-relative
-// path (the --scs-source prefix stripped) for scsWebExtensionFiles. It must be within
-// --scs-source; the OLD source-relative form (no scsSource prefix) is now an error.
-test("scsExpSourceRelative re-bases the scsRoot-relative exp path onto the source", () => {
+// --sca-exp-source shares the --sca-root base and is re-based to a source-relative
+// path (the --sca-source prefix stripped) for scaWebExtensionFiles. It must be within
+// --sca-source; the OLD source-relative form (no scaSource prefix) is now an error.
+test("scaExpSourceRelative re-bases the scaRoot-relative exp path onto the source", () => {
   const root = "/tmp/wrr-root";
   assert.equal(
-    scsExpSourceRelative("addon/experiment-api", "addon", root),
+    scaExpSourceRelative("addon/experiment-api", "addon", root),
     "experiment-api"
   );
   assert.equal(
-    scsExpSourceRelative("addon/experiment-api/x", "addon", root),
+    scaExpSourceRelative("addon/experiment-api/x", "addon", root),
     "experiment-api/x"
   );
   assert.equal(
-    scsExpSourceRelative(`${root}/addon/experiment-api`, "addon", root),
+    scaExpSourceRelative(`${root}/addon/experiment-api`, "addon", root),
     "experiment-api"
   ); // absolute exp path
-  assert.equal(scsExpSourceRelative(undefined, "addon", root), ""); // unset
+  assert.equal(scaExpSourceRelative(undefined, "addon", root), ""); // unset
   assert.throws(
-    () => scsExpSourceRelative("experiment-api", "addon", root),
-    /within --scs-source/
+    () => scaExpSourceRelative("experiment-api", "addon", root),
+    /within --sca-source/
   ); // the old source-relative form
   assert.throws(
-    () => scsExpSourceRelative("other/exp", "addon", root),
-    /within --scs-source/
+    () => scaExpSourceRelative("other/exp", "addon", root),
+    /within --sca-source/
   );
 });

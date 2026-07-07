@@ -51,34 +51,34 @@ test("unknown option errors cleanly (no -- separator hint)", () => {
   assert.doesNotMatch(r.stderr, /To specify a positional argument/);
 });
 
-// --scs-root is the SCS-mode switch; --scs-source / --scs-exp-source name locations
-// inside it, so they are a usage error on their own. (--scs-root alone is fine -
-// --scs-source defaults to ".".)
-test("--scs-source without --scs-root is a usage error (exit 2)", () => {
-  const r = run(["some.xpi", "--scs-source", "src"]);
+// --sca-root is the SCA-mode switch; --sca-source / --sca-exp-source name locations
+// inside it, so they are a usage error on their own. (--sca-root alone is fine -
+// --sca-source defaults to ".".)
+test("--sca-source without --sca-root is a usage error (exit 2)", () => {
+  const r = run(["some.xpi", "--sca-source", "src"]);
   assert.equal(r.code, 2);
   assert.match(
     r.stderr,
-    /--scs-source and --scs-exp-source require --scs-root/
+    /--sca-source and --sca-exp-source require --sca-root/
   );
 });
 
-// In SCS mode, Experiment code is told apart from WebExtension code only by
-// --scs-exp-source, so --allow-experiments without it is a usage error (else the
+// In SCA mode, Experiment code is told apart from WebExtension code only by
+// --sca-exp-source, so --allow-experiments without it is a usage error (else the
 // privileged Experiment code would be reviewed as WebExtension code).
-test("--allow-experiments in SCS mode requires --scs-exp-source (exit 2)", () => {
+test("--allow-experiments in SCA mode requires --sca-exp-source (exit 2)", () => {
   const r = run([
     "some.xpi",
-    "--scs-root",
+    "--sca-root",
     "pkg",
-    "--scs-source",
+    "--sca-source",
     "src",
     "--allow-experiments",
   ]);
   assert.equal(r.code, 2);
   assert.match(
     r.stderr,
-    /--scs-exp-source is required with --allow-experiments/
+    /--sca-exp-source is required with --allow-experiments/
   );
 });
 
@@ -275,14 +275,14 @@ test("provider config is not forwarded unless --llm-enabled", () => {
   }
 });
 
-// --scs-root / --scs-source flow through to the source-code-submission pipeline
-// opts (the pipeline derives SCS mode from both being set).
-test("--scs-root / --scs-source map to the scs pipeline opts", () => {
-  const o = pipelineOptsFromArgv(["--scs-root", "pkg", "--scs-source", "src"]);
-  assert.equal(o.scsRoot, "pkg");
-  assert.equal(o.scsSource, "src");
-  assert.ok(!pipelineOptsFromArgv([]).scsRoot);
-  assert.ok(!pipelineOptsFromArgv([]).scsSource);
+// --sca-root / --sca-source flow through to the source-code submission pipeline
+// opts (the pipeline derives SCA mode from both being set).
+test("--sca-root / --sca-source map to the sca pipeline opts", () => {
+  const o = pipelineOptsFromArgv(["--sca-root", "pkg", "--sca-source", "src"]);
+  assert.equal(o.scaRoot, "pkg");
+  assert.equal(o.scaSource, "src");
+  assert.ok(!pipelineOptsFromArgv([]).scaRoot);
+  assert.ok(!pipelineOptsFromArgv([]).scaSource);
 });
 
 // --llm-review is a convenience alias expanded at parse time into --llm-enabled

@@ -10,7 +10,7 @@
 // schemas.
 
 /** Extensions treated as JavaScript source, including TypeScript and JSX
- *  authored source a source-code submission ships (the parser strips types;
+ *  authored source a source code archive ships (the parser strips types;
  *  see src/parse/ast.js). A compiled XPI contains none of these. */
 export const JS_EXTENSIONS = new Set([
   ".js",
@@ -31,7 +31,7 @@ export const HTML_EXTENSIONS = new Set([".html", ".htm", ".xhtml"]);
 
 /** Binary archive extensions. A committed archive in a source submission is build
  *  output / a decoy, never authored source; the committed-build-artifact check rejects
- *  one anywhere in --scs-root, unused-files flags one shipped in the XPI, and the build
+ *  one anywhere in --sca-root, unused-files flags one shipped in the XPI, and the build
  *  corpus never collects one (binary, not build input). */
 export const ARCHIVE_EXTENSIONS = new Set([
   ".zip",

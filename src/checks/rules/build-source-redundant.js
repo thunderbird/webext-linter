@@ -1,4 +1,4 @@
-// Deterministic (SCS only): mission 3 of the build review - a source submission is only needed
+// Deterministic (SCA only): mission 3 of the build review - a source submission is only needed
 // when the XPI is genuinely built from source. This flags a "build" whose only job is copying
 // installed libraries (from node_modules) into the add-on: nothing is compiled or bundled from
 // authored source, so the developer could ship the XPI plus package.json and submit it as a
@@ -6,7 +6,7 @@
 // the build script can still be used locally. The response points at the vendoring guide.
 //
 // The classification is produced once in setup (analyzeBuild -> addon.buildFiles.buildReview);
-// this check reads it. `classification === "scs-redundant"` -> error (its {{explanation}} is the
+// this check reads it. `classification === "sca-redundant"` -> error (its {{explanation}} is the
 // model's reason).
 //
 // Belongs here: mapping the stored classification to a finding. Does NOT belong here: the analysis
@@ -23,7 +23,7 @@ export default {
    */
   run(ctx) {
     const review = ctx.addon?.buildReview;
-    if (review?.classification !== "scs-redundant") {
+    if (review?.classification !== "sca-redundant") {
       return [];
     }
     const anchor = review.anchor ?? "package.json";

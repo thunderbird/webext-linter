@@ -5,6 +5,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) The following background page code location(s) load a script that uses ES module syntax (import/export), but the <script> tag is not declared type="module", so Thunderbird will fail to load the background page. Add type="module" to the <script> tag.
  - background.html:5
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Standard manual review ──
 
 Continue manual review for the following checks:

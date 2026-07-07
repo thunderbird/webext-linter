@@ -180,7 +180,7 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}, blocks) {
 }
 
 /**
- * SCS (source-code-submission) dependency audit: the network half for SCS mode,
+ * SCA (source code archive) dependency audit: the network half for SCA mode,
  * the analogue of verifyVendor for XPI mode. The source archive's package.json
  * is the only dependency manifest (no VENDOR.md, no hash/CDN matching - the built
  * libraries are not present in the readable source and are mangled in the XPI).
@@ -188,7 +188,7 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}, blocks) {
  * vendor.vulnerabilities, read by vendor-vulnerable) and (b) a non-popular verdict
  * (-> vendor.unpopularDeps, read by unpopular-source-dependency): a dependency
  * that is not a confirmed widely-used library is pulled in at build and cannot be
- * reviewed, so the developer must ship its readable source in --scs-source. Each
+ * reviewed, so the developer must ship its readable source in --sca-source. Each
  * pinned devDependency additionally gets (c) an OSV audit (-> vendor.devVulnerabilities,
  * read by vendor-vulnerable-dev) but no popularity gate: the reviewer builds from
  * source, so a vulnerable build tool is a real risk, while a niche-but-legit one
@@ -203,7 +203,7 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}, blocks) {
  *   the declared (shipped) dependencies - NOT to devDependencies (never shipped).
  * @returns {Promise<void>}
  */
-export async function verifyScsDependencies(addon, net = defaultNet, blocks) {
+export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
   const vendor = addon?.vendor;
   if (!vendor) {
     return;
@@ -318,12 +318,12 @@ async function npmDownloads(name, net) {
  * name@version is recorded on vendor.blocked and SKIPS the OSV query (rejected
  * regardless); an unadvised one is recorded but still audited (a live CVE on an
  * allowed library still matters). `blocks` is passed only for SHIPPED libraries, so
- * an SCS devDependency (never shipped) is audited but never policy-blocked.
+ * an SCA devDependency (never shipped) is audited but never policy-blocked.
  * Best-effort: a package with known advisories is recorded on
  * `into` (one entry aggregating its advisories, anchored at `file`/`token`). Any
  * network or parse error - or an injected net without `postJson` (offline runs,
  * the golden harness) - records nothing. Drives package.json deps and npm-sourced
- * VENDOR entries -> vendor.vulnerabilities (read by vendor-vulnerable), and SCS
+ * VENDOR entries -> vendor.vulnerabilities (read by vendor-vulnerable), and SCA
  * devDependencies -> vendor.devVulnerabilities (read by vendor-vulnerable-dev); the
  * caller passes the target `into` array.
  * @param {string} name  npm package name.
@@ -333,10 +333,10 @@ async function npmDownloads(name, net) {
  * @param {string} token  The string locating the declaration line in `file`.
  * @param {VendorStore} vendor @param {VendorNet} net
  * @param {VendorVuln[]} into  The array to record a hit on: vendor.vulnerabilities
- *   for shipped/declared deps, or vendor.devVulnerabilities for SCS dev deps.
+ *   for shipped/declared deps, or vendor.devVulnerabilities for SCA dev deps.
  *   Explicit - never defaulted - so a hit is never silently mis-bucketed.
  * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist to apply
- *   (assets/library-blocks.yaml); absent/null for an SCS devDependency (never
+ *   (assets/library-blocks.yaml); absent/null for an SCA devDependency (never
  *   shipped, so never policy-blocked).
  * @returns {Promise<void>}
  */

@@ -7,7 +7,7 @@
 // (no host/quote/case handling to slip past); the mere presence of the key is the
 // reject. Deterministic, no network.
 //
-// input: build - reads the SCS build corpus off ctx.addon. loadScsBuildFiles keeps a
+// input: build - reads the SCA build corpus off ctx.addon. loadScaBuildFiles keeps a
 // plain .npmrc at any depth (the one dotfile exception), so EVERY .npmrc is scanned, not
 // just the root: a build that runs from a subfolder (cd frontend && npm ci) reads
 // frontend/.npmrc. The redirect uses the same `registry`/`@scope:registry` key in that

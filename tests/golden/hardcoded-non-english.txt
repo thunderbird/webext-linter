@@ -6,6 +6,9 @@ Thank you for your contribution, it will be approved shortly. We kindly ask you 
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Standard manual review ──
 
 Continue manual review for the following checks:

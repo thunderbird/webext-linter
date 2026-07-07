@@ -5,6 +5,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) "demo" is a published Thunderbird Experiment API draft, but this add-on bundles a modified or outdated copy. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments.
  - manifest.json:8
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

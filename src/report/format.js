@@ -15,6 +15,7 @@
 // src/util/json.js rather than adding JSON utilities here.
 
 import { SEVERITY, sortFindings, countByRule, hasErrors } from "./finding.js";
+import { artifactLabel } from "./artifact.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
 import { MAX_ENTRIES_PER_CATEGORY } from "../config.js";
 
@@ -37,6 +38,11 @@ const SEV_COLOR = {
  *   headings ({ error?, warning?, info? }), registry-owned.
  * @property {Record<string, string>} [verdictIntros]  Issues-section preamble
  *   ({ none?, feedback?, rejected? }), registry-owned.
+ * @property {string} [mode]  Review mode ("sca" | "xpi"). In "sca" each finding's
+ *   file:line is labelled by artifact ([XPI]/[SCA]) and the Issues section gets a
+ *   legend footer; XPI reviews add neither. See src/report/artifact.js.
+ * @property {Map<string, string>} [ruleInputs]  ruleId -> routed input
+ *   ("xpi"|"build"|"auto"), from registry.checkInputs(); the artifact label reads it.
  */
 
 /**
@@ -91,14 +97,25 @@ export function formatText(review) {
  * @returns {string[]}
  */
 function reviewBodyLines(review) {
-  const { findings: issues, meta, issueHeadings, verdictIntros } = review;
+  const {
+    findings: issues,
+    meta,
+    issueHeadings,
+    verdictIntros,
+    mode,
+    ruleInputs,
+  } = review;
   const manual = meta.manualReview ?? [];
   const extended = manual.filter((m) => m.extended);
   const standard = manual.filter((m) => !m.extended);
+  // The artifact label ([XPI]/[SCA]) for one finding/manual item's file:line - "" in
+  // an XPI review (one artifact). Applied wherever locationLine renders a locus.
+  const labelOf = (f) =>
+    artifactLabel({ file: f.file, input: ruleInputs?.get(f.ruleId), mode });
   return [
-    ...issuesLines(issues, issueHeadings, verdictIntros),
-    ...manualSection(extended, "Extended manual review", brightCyan),
-    ...manualSection(standard, "Standard manual review"),
+    ...issuesLines(issues, issueHeadings, verdictIntros, labelOf, mode),
+    ...manualSection(extended, "Extended manual review", brightCyan, labelOf),
+    ...manualSection(standard, "Standard manual review", blue, labelOf),
     ...manualTail(meta.reviewUrl, manual.length),
   ];
 }
@@ -161,9 +178,12 @@ export function headerLines(meta) {
  * @param {import("./finding.js").Finding[]} issues
  * @param {Record<string, string>} [issueHeadings]
  * @param {Record<string, string>} [verdictIntros]
+ * @param {(f: import("./finding.js").Finding) => string} [labelOf]  Artifact label
+ *   ([XPI]/[SCA]) for a finding's file:line, "" when none (see reviewBodyLines).
+ * @param {string} [mode]  Review mode; "sca" appends the label legend footer.
  * @returns {string[]}
  */
-function issuesLines(issues, issueHeadings, verdictIntros) {
+function issuesLines(issues, issueHeadings, verdictIntros, labelOf, mode) {
   const out = section("Issues");
   const intros = verdictIntros ?? {};
   if (issues.length === 0) {
@@ -192,7 +212,7 @@ function issuesLines(issues, issueHeadings, verdictIntros) {
       first = false;
       for (const entry of groupByMessage(group)) {
         out.push("");
-        out.push(...renderGroup(++n, entry));
+        out.push(...renderGroup(++n, entry, labelOf));
       }
     }
   } else {
@@ -200,9 +220,23 @@ function issuesLines(issues, issueHeadings, verdictIntros) {
       if (i > 0) {
         out.push(""); // blank line between entries
       }
-      out.push(...renderGroup(i + 1, entry));
+      out.push(...renderGroup(i + 1, entry, labelOf));
     });
   }
+  // In an SCA review a finding's file:line is prefixed with the artifact it lives in;
+  // a legend explains the labels. XPI reviews (one artifact) omit it.
+  if (mode === "sca") {
+    out.push("");
+    out.push(grey("[XPI] = source file in the submitted XPI"));
+    out.push(grey("[SCA] = source file in the submitted source code archive"));
+  }
+  // A pointer to the tool: the developer can run this same automated review before
+  // submitting and fix the findings above first. Shown in both modes.
+  out.push("");
+  out.push(
+    grey("You can run this automated review yourself before submitting:")
+  );
+  out.push(grey("https://github.com/thunderbird/webext-linter"));
   return out;
 }
 
@@ -240,13 +274,16 @@ function groupByMessage(findings) {
  * just a one-location list. Manual review still wraps - see manualLines.
  * @param {number} n  1-based entry number.
  * @param {import("./finding.js").Finding[]} findings  All sharing one message.
+ * @param {(f: import("./finding.js").Finding) => string} [labelOf]  Artifact label.
  * @returns {string[]}
  */
-function renderGroup(n, findings) {
+function renderGroup(n, findings, labelOf) {
   const [first, ...rest] = findings[0].message.split("\n");
   const lines = [`${n}) ${first}`, ...rest];
   for (const f of findings.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
-    lines.push(` - ${locationLine(f)}${f.hint ? ` - ${f.hint}` : ""}`);
+    lines.push(
+      ` - ${locationLine(f, labelOf?.(f))}${f.hint ? ` - ${f.hint}` : ""}`
+    );
   }
   if (findings.length > MAX_ENTRIES_PER_CATEGORY) {
     lines.push(excludedMarker(findings.length - MAX_ENTRIES_PER_CATEGORY));
@@ -295,7 +332,7 @@ function manualBody(m) {
  * @param {string} title  Section heading, e.g. "Extended manual review".
  * @returns {string[]}
  */
-function manualSection(items, title, accent = blue) {
+function manualSection(items, title, accent = blue, labelOf) {
   if (!items.length) {
     return [];
   }
@@ -342,7 +379,9 @@ function manualSection(items, title, accent = blue) {
     const loci = group.filter((m) => m.file || (m.listItem && m.item));
     for (const m of loci.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
       // Append any per-locus hint after file:line, mirroring renderGroup.
-      where.push(` - ${locationLine(m)}${m.hint ? ` - ${m.hint}` : ""}`);
+      where.push(
+        ` - ${locationLine(m, labelOf?.(m))}${m.hint ? ` - ${m.hint}` : ""}`
+      );
     }
     if (loci.length > MAX_ENTRIES_PER_CATEGORY) {
       where.push(excludedMarker(loci.length - MAX_ENTRIES_PER_CATEGORY));
@@ -427,12 +466,15 @@ function section(title) {
  * show it alone when there is no file (e.g. a missing manifest key). This is how
  * the item-free, grouped checks surface the offending key/permission/path.
  *
+ * In an SCA review a `[XPI] `/`[SCA] ` artifact label prefixes the file (only when
+ * there is a file - an item-only locus names no path to disambiguate).
  * @param {import("./finding.js").Finding} f
+ * @param {string} [label]  Artifact label ("XPI"/"SCA"), or "" for none.
  * @returns {string}
  */
-function locationLine(f) {
+function locationLine(f, label = "") {
   const where = f.file
-    ? `${f.file}${f.loc?.line != null ? `:${f.loc.line}` : ""}`
+    ? `${label ? `[${label}] ` : ""}${f.file}${f.loc?.line != null ? `:${f.loc.line}` : ""}`
     : null;
   const item = f.listItem ? f.item : null;
   if (where && item) {

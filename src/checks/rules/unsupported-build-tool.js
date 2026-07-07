@@ -7,8 +7,8 @@
 // the open-ended "undeclared source" review are owned by other checks
 // (unpinned-dependency, undeclared-build-source).
 //
-// input: build - reads the SCS build corpus off ctx.addon. The build may run from a
-// subfolder (cd frontend && npm ci), and loadScsBuildFiles keeps nested build files,
+// input: build - reads the SCA build corpus off ctx.addon. The build may run from a
+// subfolder (cd frontend && npm ci), and loadScaBuildFiles keeps nested build files,
 // so a fingerprint is matched by BASENAME at any depth, not just at the root. Only ONE
 // finding is emitted (the tool policy is a single verdict).
 //

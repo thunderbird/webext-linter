@@ -302,18 +302,18 @@ export function helpText() {
     ],
   ];
 
-  const scs = [
+  const sca = [
     [
-      "--scs-root <folder|zip>",
-      "The source archive root (holds package.json/lock). Switches to SCS mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the behavioral LLM audit.",
+      "--sca-root <folder|zip>",
+      "The source archive root (holds package.json/lock). Switches to SCA mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the behavioral LLM audit.",
     ],
     [
-      "--scs-source <path>",
-      "The add-on code root, relative to --scs-root or an absolute path (e.g. src or addon). Optional; defaults to . (the whole --scs-root reviewed as the source - a flat layout where manifest.json sits at the root). Needs --scs-root.",
+      "--sca-source <path>",
+      "The add-on code root, relative to --sca-root or an absolute path (e.g. src or addon). Optional; defaults to . (the whole --sca-root reviewed as the source - a flat layout where manifest.json sits at the root). Needs --sca-root.",
     ],
     [
-      "--scs-exp-source <path>",
-      "The Experiment implementation folder, relative to --scs-root or an absolute path, and within --scs-source (e.g. addon/experiment-api). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --scs-root; REQUIRED when --allow-experiments is used in SCS mode.",
+      "--sca-exp-source <path>",
+      "The Experiment implementation folder, relative to --sca-root or an absolute path, and within --sca-source (e.g. addon/experiment-api). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-root; REQUIRED when --allow-experiments is used in SCA mode.",
     ],
   ];
 
@@ -376,8 +376,8 @@ export function helpText() {
     "Environment (LLM checks):",
     ...llmEnv.map(([flag, desc]) => optionLine(flag, desc)),
     "",
-    "Source-code submission (SCS):",
-    ...scs.map(([flag, desc]) => optionLine(flag, desc)),
+    "Source code archive (SCA):",
+    ...sca.map(([flag, desc]) => optionLine(flag, desc)),
     "",
     "Other:",
     ...other.map(([flag, desc]) => optionLine(flag, desc)),
@@ -406,9 +406,9 @@ const OPTIONS = {
   "checks-skip": { type: "string" },
   eslint: { type: "boolean" },
   "allow-experiments": { type: "boolean" },
-  "scs-root": { type: "string" },
-  "scs-source": { type: "string" },
-  "scs-exp-source": { type: "string" },
+  "sca-root": { type: "string" },
+  "sca-source": { type: "string" },
+  "sca-exp-source": { type: "string" },
   "diff-to": { type: "string" },
   "diff-summary": { type: "boolean" },
   "full-summary": { type: "boolean" },
@@ -509,31 +509,31 @@ export async function main(argv) {
     return 2;
   }
 
-  // --scs-root is the SCS-mode switch. --scs-source and --scs-exp-source name locations
-  // INSIDE it, so they are meaningless on their own. --scs-root alone is fine:
-  // --scs-source defaults to "." (the whole root reviewed as the source).
+  // --sca-root is the SCA-mode switch. --sca-source and --sca-exp-source name locations
+  // INSIDE it, so they are meaningless on their own. --sca-root alone is fine:
+  // --sca-source defaults to "." (the whole root reviewed as the source).
   if (
-    (values["scs-source"] || values["scs-exp-source"]) &&
-    !values["scs-root"]
+    (values["sca-source"] || values["sca-exp-source"]) &&
+    !values["sca-root"]
   ) {
     process.stderr.write(
-      "--scs-source and --scs-exp-source require --scs-root (source-code submission mode).\n"
+      "--sca-source and --sca-exp-source require --sca-root (SCA mode).\n"
     );
     return 2;
   }
-  // In SCS mode there is no manifest trace to separate Experiment code from
+  // In SCA mode there is no manifest trace to separate Experiment code from
   // WebExtension code (the readable source is reviewed whole), so allowing
-  // Experiments REQUIRES naming their folder via --scs-exp-source. Without it the
+  // Experiments REQUIRES naming their folder via --sca-exp-source. Without it the
   // privileged Experiment code would be reviewed as WebExtension code and flood the
   // report with false positives.
   if (
-    values["scs-root"] &&
+    values["sca-root"] &&
     values["allow-experiments"] &&
-    !values["scs-exp-source"]
+    !values["sca-exp-source"]
   ) {
     process.stderr.write(
-      "--scs-exp-source is required with --allow-experiments in source-code " +
-        "submission mode (it locates the Experiment code so it is not reviewed " +
+      "--sca-exp-source is required with --allow-experiments in source code " +
+        "archive (SCA) mode (it locates the Experiment code so it is not reviewed " +
         "as WebExtension code).\n"
     );
     return 2;
@@ -679,9 +679,9 @@ function pipelineOptsFromValues(values) {
     checksSkip: splitList(values["checks-skip"]),
     eslint: values.eslint,
     allowExperiments: values["allow-experiments"],
-    scsRoot: values["scs-root"],
-    scsSource: values["scs-source"],
-    scsExpSource: values["scs-exp-source"],
+    scaRoot: values["sca-root"],
+    scaSource: values["sca-source"],
+    scaExpSource: values["sca-exp-source"],
     diffTo: values["diff-to"],
     diffSummary: values["diff-summary"],
     fullSummary: values["full-summary"],

@@ -1,6 +1,6 @@
 // Deterministic check: an add-on whose user-facing text is not English. Declared
 // `input: xpi`, so ctx.addon is the built XPI (a source submission's _locales may
-// be generated or live outside --scs-source). The pre-flight reads its _locales/
+// be generated or live outside --sca-source). The pre-flight reads its _locales/
 // <dir> set:
 //   - uses _locales with an English directory (en, en-US, ...) -> pass.
 //   - uses _locales but has no English directory -> a finding.

@@ -5,6 +5,9 @@ Thank you for your contribution, it will be approved shortly. We kindly ask you 
 1) One or more files listed in "VENDORS.md" are not present in the submission. Add each file to the submission, or remove its entry from "VENDORS.md".
  - lib/ghost.js
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Standard manual review ──
 
 Continue manual review for the following checks:

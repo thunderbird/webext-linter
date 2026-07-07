@@ -1,6 +1,6 @@
-// Unit tests for the unpopular-source-dependency check (SCS mode), which reads
+// Unit tests for the unpopular-source-dependency check (SCA mode), which reads
 // addon.vendor.unpopularDeps (a declared dependency that is not a confirmed
-// widely-used library - see src/vendor/verify.js verifyScsDependencies) and
+// widely-used library - see src/vendor/verify.js verifyScaDependencies) and
 // rejects each, anchored at its package.json declaration line.
 
 import { test } from "node:test";

@@ -26,9 +26,9 @@ import {
 } from "./schema/annotate.js";
 import {
   loadAddon,
-  loadScsAddon,
-  loadScsBuildFiles,
-  scsExpSourceRelative,
+  loadScaAddon,
+  loadScaBuildFiles,
+  scaExpSourceRelative,
 } from "./addon/load.js";
 import { resolveReviewUrl } from "./addon/atn.js";
 import { runChecks, runOneCheck, loadRegistry } from "./checks/registry.js";
@@ -36,7 +36,7 @@ import { analyzeBuild } from "./build/analyze.js";
 import {
   buildRunContext,
   buildShippedCtx,
-  buildScsBuildCtx,
+  buildScaBuildCtx,
 } from "./checks/context.js";
 import { buildSummarizer, buildAddonSummarizer } from "./checks/summaries.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
@@ -44,7 +44,7 @@ import { headerLines } from "./report/format.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import {
   verifyVendor,
-  verifyScsDependencies,
+  verifyScaDependencies,
   auditIdentifiedLibraries,
 } from "./vendor/verify.js";
 import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
@@ -107,22 +107,22 @@ import {
  * @property {boolean} [eslint]  Run the opt-in ESLint code-sanity check (off by
  *   default); when unset, the code-sanity check is skipped entirely.
  * @property {boolean} [allowExperiments]
- * @property {string} [scsRoot]  Source-code-submission mode: path to the source
+ * @property {string} [scaRoot]  SCA mode: path to the source
  *   archive root (folder or zip) holding package.json/lock. Setting it switches the
- *   review to SCS mode - the readable source (scsSource) is reviewed and its declared
+ *   review to SCA mode - the readable source (scaSource) is reviewed and its declared
  *   dependencies are audited; the positional XPI is the shipped artifact against which
  *   the manifest, experiments, file-completeness (`input: xpi`) checks, the --diff-to
  *   comparison, and the behavioral LLM audit all run (a separate shipped context the
  *   orchestrator routes them to - see buildShippedCtx in src/checks/context.js).
- * @property {string} [scsSource]  The add-on code root, relative to scsRoot or an
- *   absolute path (e.g. "src" or "addon"). Optional; defaults to "." (the whole scsRoot
+ * @property {string} [scaSource]  The add-on code root, relative to scaRoot or an
+ *   absolute path (e.g. "src" or "addon"). Optional; defaults to "." (the whole scaRoot
  *   reviewed as the source - a flat layout with manifest.json at the root).
- * @property {string} [scsExpSource]  SCS mode: the Experiment implementation folder,
- *   relative to scsRoot (or absolute) and within scsSource (e.g. "addon/experiment-api");
- *   runPipeline re-bases it to a source-relative ctx.scsExpSource. Its privileged, non-WebExtension
+ * @property {string} [scaExpSource]  SCA mode: the Experiment implementation folder,
+ *   relative to scaRoot (or absolute) and within scaSource (e.g. "addon/experiment-api");
+ *   runPipeline re-bases it to a source-relative ctx.scaExpSource. Its privileged, non-WebExtension
  *   files are excluded from the WebExtension code checks (which review all of the
  *   readable source, having no reachability tree there). Optional in general, but
- *   REQUIRED when allowExperiments is set in SCS mode (the CLI enforces this) -
+ *   REQUIRED when allowExperiments is set in SCA mode (the CLI enforces this) -
  *   without it, Experiment code cannot be told apart from WebExtension code.
  * @property {string} [libraryHashes]  Local known-library hashes.txt to use
  *   instead of fetching (offline/CI/tests; the golden harness injects a fixture).
@@ -175,7 +175,7 @@ import {
  */
 export async function runPipeline(opts) {
   const { addonPath } = opts;
-  // SCS (source-code-submission) mode is on when --scs-root is set (--scs-source is
+  // SCA (source code archive) mode is on when --sca-root is set (--sca-source is
   // optional, defaulting to "."). It splits the review across TWO add-on artifacts
   // with a fixed ROLE each, resolved here ONCE so nothing downstream re-branches on the mode:
   //
@@ -184,27 +184,27 @@ export async function runPipeline(opts) {
   //     behavioral LLM summary (what actually runs on a user's machine).
   //   addon    - the deterministic review target (becomes ctx.addon): the readable
   //     code the source-level checks scan. In XPI mode it simply IS xpiAddon; in
-  //     SCS mode it is the readable source at scsSource - a synthetic addon whose
-  //     files are the source but whose manifest is the XPI's (loadScsAddon), so the
+  //     SCA mode it is the readable source at scaSource - a synthetic addon whose
+  //     files are the source but whose manifest is the XPI's (loadScaAddon), so the
   //     checks stay mode-agnostic.
   //
   // So downstream: read `addon` for the code under review, `xpiAddon` for the
   // shipped artifact - no further mode checks. The only other mode forks are the
-  // dependency resolution (--scs-root vs the XPI's VENDOR/package.json) and the
-  // check gate (ctx.mode -> scsEligible). Minified code is non-authored (and rejected)
+  // dependency resolution (--sca-root vs the XPI's VENDOR/package.json) and the
+  // check gate (ctx.mode -> scaEligible). Minified code is non-authored (and rejected)
   // in both modes: a source-code submission's promise is readable source, so a minified
-  // file in --scs-source is rejected like one in an XPI, not scanned as authored.
-  // --scs-source may name a nested subfolder OR the archive root itself (a flat
+  // file in --sca-source is rejected like one in an XPI, not scanned as authored.
+  // --sca-source may name a nested subfolder OR the archive root itself (a flat
   // layout: manifest.json at the root, with the build tooling intermingled). The root
-  // case (scsRootRelative resolves ".", an absolute root, or a literal match all to "")
-  // is handled throughout: loadScsAddon reviews every file, and loadScsBuildFiles still
+  // case (scaRootRelative resolves ".", an absolute root, or a literal match all to "")
+  // is handled throughout: loadScaAddon reviews every file, and loadScaBuildFiles still
   // traces the build off the root package.json (there is no source subtree to exclude).
-  // --scs-root alone switches to SCS mode; --scs-source is optional and defaults to "."
+  // --sca-root alone switches to SCA mode; --sca-source is optional and defaults to "."
   // (the whole root reviewed as the source - the common flat-layout case).
-  const mode = opts.scsRoot ? "scs" : "xpi";
-  // No (or empty) --scs-source in SCS mode defaults to "." - both resolve to the
-  // archive root via scsRootRelative, so `||` keeps the value a real path.
-  const scsSource = mode === "scs" ? opts.scsSource || "." : opts.scsSource;
+  const mode = opts.scaRoot ? "sca" : "xpi";
+  // No (or empty) --sca-source in SCA mode defaults to "." - both resolve to the
+  // archive root via scaRootRelative, so `||` keeps the value a real path.
+  const scaSource = mode === "sca" ? opts.scaSource || "." : opts.scaSource;
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly).
   const registry = opts.registry ?? loadRegistry();
@@ -221,7 +221,7 @@ export async function runPipeline(opts) {
   // The "Setup" feed: one numbered [i/total] line per slow pre-review step, matching
   // the Activity check loop, so the otherwise-silent pre-review pause shows what is
   // running (a no-op when progress is off - JSON, the golden harness). The total is
-  // sized from what the fast .xpi read already gives us: mode (SCS skips the XPI-only
+  // sized from what the fast .xpi read already gives us: mode (SCA skips the XPI-only
   // CDN + identified-library-audit steps, so is shorter), --llm-enabled, and whether
   // it is an Experiment (which adds a classification step). Exact for every path EXCEPT
   // a REJECTED Experiment (an experiment add-on run WITHOUT --allow-experiments whose
@@ -231,7 +231,7 @@ export async function runPipeline(opts) {
   // - i.e. a second classification pass before the banner, which we deliberately avoid;
   // the accepted path (the reviewer's --allow-experiments flow) is exact.
   const setupTotal =
-    (mode === "scs" ? 6 : 7) + (opts.llmEnabled ? 1 : 0) + (isExp ? 1 : 0);
+    (mode === "sca" ? 6 : 7) + (opts.llmEnabled ? 1 : 0) + (isExp ? 1 : 0);
   let setupDone = 0;
   /**
    * Emit the next numbered "Setup" feed line.
@@ -242,16 +242,16 @@ export async function runPipeline(opts) {
   progress("── Setup ──");
   progress("");
 
-  // 1a. Read the add-on the review scans. In SCS mode this reads the whole --scs-root
+  // 1a. Read the add-on the review scans. In SCA mode this reads the whole --sca-root
   // archive ONCE (the slow directory walk) and shares it with the build-corpus loader
-  // (loadScsBuildFiles) below, so the tree is never read twice; the review addon is
+  // (loadScaBuildFiles) below, so the tree is never read twice; the review addon is
   // the source subtree carrying the XPI's manifest. In XPI mode it IS the .xpi above.
   setupStep("Reading add-on");
-  let scsArchive;
+  let scaArchive;
   let addon;
-  if (mode === "scs") {
-    scsArchive = loadAddon(opts.scsRoot);
-    addon = loadScsAddon(scsArchive, scsSource, opts.scsRoot);
+  if (mode === "sca") {
+    scaArchive = loadAddon(opts.scaRoot);
+    addon = loadScaAddon(scaArchive, scaSource, opts.scaRoot);
   } else {
     addon = xpiAddon;
   }
@@ -261,29 +261,29 @@ export async function runPipeline(opts) {
   // the Setup banner.
   for (const notice of [
     ...(xpiAddon.skipped ?? []),
-    ...(scsArchive?.skipped ?? []),
+    ...(scaArchive?.skipped ?? []),
   ]) {
     warn(notice);
   }
 
-  // --scs-exp-source (like --scs-source) is relative to --scs-root, or absolute.
-  // Re-base it into the review-source keyspace (strip the --scs-source prefix) so
-  // the WebExtension-code checks can exclude the Experiment subtree; ctx.scsExpSource
+  // --sca-exp-source (like --sca-source) is relative to --sca-root, or absolute.
+  // Re-base it into the review-source keyspace (strip the --sca-source prefix) so
+  // the WebExtension-code checks can exclude the Experiment subtree; ctx.scaExpSource
   // is that source-relative value. Warn when it matches nothing - a mis-typed path
   // would otherwise silently exclude nothing and flood the report with false
   // positives on the privileged Experiment code.
-  const scsExpSource =
-    mode === "scs"
-      ? scsExpSourceRelative(opts.scsExpSource, scsSource, opts.scsRoot)
+  const scaExpSource =
+    mode === "sca"
+      ? scaExpSourceRelative(opts.scaExpSource, scaSource, opts.scaRoot)
       : undefined;
   if (
-    scsExpSource &&
+    scaExpSource &&
     ![...addon.files.keys()].some(
-      (f) => f === scsExpSource || f.startsWith(`${scsExpSource}/`)
+      (f) => f === scaExpSource || f.startsWith(`${scaExpSource}/`)
     )
   ) {
     warn(
-      `--scs-exp-source "${opts.scsExpSource}" matched no files under --scs-source; ` +
+      `--sca-exp-source "${opts.scaExpSource}" matched no files under --sca-source; ` +
         "nothing will be excluded from the WebExtension code checks."
     );
   }
@@ -392,7 +392,7 @@ export async function runPipeline(opts) {
   const schema = buildSchemaIndex(schemaFiles);
   // A valid Experiment's declared APIs are part of its platform: register their base
   // namespaces so the developer's calls into them (e.g. browser.calendar.*) resolve
-  // instead of tripping unknown-api. Registered from the XPI (in SCS the experiment
+  // instead of tripping unknown-api. Registered from the XPI (in SCA the experiment
   // schema/scripts live in the built XPI, so the manifest's paths resolve there).
   if (!invalidExperiment && isExperiment(xpiAddon.manifest)) {
     schema.registerExperimentNamespaces(
@@ -438,21 +438,21 @@ export async function runPipeline(opts) {
     // --lib-mozilla-block-db override): a shipped asset read from disk (fast, no
     // network, so no Setup feed line). Passed to the vendor audit, which consults it
     // before each OSV query (auditNpm) - a banned library is recorded and skips the
-    // request. Not applied to SCS devDependencies (never shipped).
+    // request. Not applied to SCA devDependencies (never shipped).
     const { text: libraryBlocksText } = await resolveLibraryBlocks({
       source: opts.libraryBlocks,
     });
     const libraryBlocks = parseLibraryBlocks(libraryBlocksText);
 
-    if (mode === "scs") {
-      // SCS: the source archive's package.json is the only dependency manifest.
+    if (mode === "sca") {
+      // SCA: the source archive's package.json is the only dependency manifest.
       // Audit each declared dependency for popularity (non-popular -> reject) and
       // OSV. No VENDOR.md / hash / CDN matching - the built libraries are not in
       // the readable source and are mangled in the XPI. The bundled classification
       // still runs (so obfuscated-code, minified-code, and the non-authored skip set
       // work); a minified file in the readable source is non-authored and rejected.
       setupStep("Auditing source dependencies");
-      await verifyScsDependencies(addon, opts.vendorNet, libraryBlocks);
+      await verifyScaDependencies(addon, opts.vendorNet, libraryBlocks);
       preParsedJsSources = classifyAndExtractReview(addon, {
         schema,
         libraryHashes,
@@ -469,13 +469,13 @@ export async function runPipeline(opts) {
       setupStep("Classifying the built add-on");
       xpiAddon.bundled = classifyBundled(xpiAddon, { libraryHashes });
       // The BUILD files (archive minus the review source + Experiment source) - the
-      // build scripts/config the review otherwise drops. buildScsBuildCtx wraps these
+      // build scripts/config the review otherwise drops. buildScaBuildCtx wraps these
       // as the `input: build` check's ctx.addon; they never merge into the review addon.
-      addon.buildFiles = loadScsBuildFiles(
-        scsArchive,
-        scsSource,
-        opts.scsRoot,
-        opts.scsExpSource
+      addon.buildFiles = loadScaBuildFiles(
+        scaArchive,
+        scaSource,
+        opts.scaRoot,
+        opts.scaExpSource
       );
       // Classify the build ONCE here (the vendor pattern): one model request over the
       // build corpus, stored on addon.buildFiles.buildReview for the input:build checks to
@@ -559,7 +559,7 @@ export async function runPipeline(opts) {
     libraryHashes,
     mode,
     xpiAddon,
-    scsExpSource,
+    scaExpSource,
     schema,
     schemaSource,
     schemaBranch,
@@ -599,6 +599,11 @@ export async function runPipeline(opts) {
   return {
     findings,
     meta,
+    // The review mode + the per-ruleId input artifact, so the text report can label
+    // each finding's file:line by artifact ([XPI]/[SCA]) in an SCA review (a no-op in
+    // XPI mode). See src/report/artifact.js.
+    mode,
+    ruleInputs: registry.checkInputs(),
     // Severity-group headings + the verdict preamble for the text Issues
     // section.
     issueHeadings: registry.issueHeadings(),
@@ -762,10 +767,10 @@ function classifyAndExtractReview(
  *   known-library hash DB runPipeline resolved, carried onto ctx.options so the lazy
  *   getBundled path matches the pre-step's classification (real runs use the memoized
  *   addon.bundled, so this is only the no-pre-step fallback).
- * @param {"xpi"|"scs"} [resolved.mode]
+ * @param {"xpi"|"sca"} [resolved.mode]
  * @param {import("./addon/load.js").Addon} [resolved.xpiAddon]  The built XPI (the
  *   shipped artifact); === addon in XPI mode.
- * @param {string} [resolved.scsExpSource]  SCS Experiment folder (source-relative).
+ * @param {string} [resolved.scaExpSource]  SCA Experiment folder (source-relative).
  * @param {import("./schema/index.js").SchemaIndex} [resolved.schema]
  * @param {string} [resolved.schemaSource]
  * @param {string} [resolved.schemaBranch]
@@ -782,7 +787,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
     libraryHashes = new Map(),
     mode = "xpi",
     xpiAddon = addon,
-    scsExpSource,
+    scaExpSource,
     schema,
     schemaSource,
     schemaBranch,
@@ -818,7 +823,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
   const ctx = buildRunContext({
     addon,
     // The built XPI - authoritative for the manifest (ctx.manifest). xpiAddon === addon
-    // in XPI mode; in SCS it is the shipped artifact while addon is the readable source.
+    // in XPI mode; in SCA it is the shipped artifact while addon is the readable source.
     xpiAddon,
     schema,
     options: {
@@ -834,10 +839,10 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
     systemIntro: registry.prompt("system-intro"),
     invalidExperiment,
     mode,
-    // SCS: the Experiment folder as a source-relative path (runPipeline re-based it
-    // from the scsRoot-relative --scs-exp-source flag), excluded from the WebExtension
+    // SCA: the Experiment folder as a source-relative path (runPipeline re-based it
+    // from the scaRoot-relative --sca-exp-source flag), excluded from the WebExtension
     // code checks. Undefined in XPI mode.
-    scsExpSource,
+    scaExpSource,
     budget,
     // runPipeline parsed the review sources up front (parse-first) and passed them in;
     // reuse them here. Absent for a rejected Experiment, where buildRunContext parses.
@@ -851,16 +856,16 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
   // ever sees the artifact it was routed to. In an XPI review the two are one object
   // (buildShippedCtx returns ctx unchanged when the XPI IS the review target).
   const shippedCtx = buildShippedCtx(ctx, xpiAddon);
-  // SCS: a sibling context whose addon is the build files (the archive minus the
+  // SCA: a sibling context whose addon is the build files (the archive minus the
   // review source minus node_modules), so the `input: build` check
   // (undeclared-build-source) reads them off ctx.addon via the same one-place
-  // `input` routing - no separate ctx field. Always a build context in SCS mode - an
+  // `input` routing - no separate ctx field. Always a build context in SCA mode - an
   // empty one when an invalid Experiment's reject-only profile skipped loading the
   // files - so an `input: build` check reads a build artifact (never the review
   // source) and cleanly skips on empty. Undefined in XPI mode, where no such check runs.
   const buildCtx =
-    mode === "scs"
-      ? buildScsBuildCtx(ctx, addon.buildFiles ?? { files: new Map() })
+    mode === "sca"
+      ? buildScaBuildCtx(ctx, addon.buildFiles ?? { files: new Map() })
       : undefined;
 
   // The registry.yaml file drives which checks run, by `phase`: runChecks runs

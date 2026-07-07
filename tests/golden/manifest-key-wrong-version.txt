@@ -11,6 +11,9 @@ We would like to share the following information with you:
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json:5 - browser_action
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

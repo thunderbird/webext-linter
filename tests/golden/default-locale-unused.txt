@@ -5,6 +5,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) The manifest declares default_locale but the add-on ships no _locales directory, so Thunderbird will refuse to load the add-on. Add the _locales/<lang>/messages.json files, or remove default_locale.
  - manifest.json:5
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

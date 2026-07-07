@@ -5,6 +5,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) The vendored file lib/widget.min.js cites a source that is not pinned to an immutable version. It is linked to a branch or unversioned URL rather than a specific release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from.
  - VENDORS.md:2 - https://unpkg.com/widget/dist/widget.min.js
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

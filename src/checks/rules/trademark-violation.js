@@ -36,7 +36,7 @@ export default {
     // Registry `input: xpi`: ctx.addon is the built XPI. The displayed name - and a
     // __MSG_ placeholder's _locales resolution - are properties of what actually
     // ships (a source submission's _locales may be generated or live outside
-    // --scs-source), so the name, its anchor line, and the _locales all come from
+    // --sca-source), so the name, its anchor line, and the _locales all come from
     // the XPI's own files.
     const { addon } = ctx;
     const name = ctx.manifest?.name;

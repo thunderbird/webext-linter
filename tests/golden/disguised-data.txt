@@ -5,6 +5,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) This add-on appears to send data through a resource URL (image/iframe/media src) - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
  - background.js:6
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

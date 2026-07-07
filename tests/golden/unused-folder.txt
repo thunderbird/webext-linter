@@ -5,6 +5,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
  - deadtree/
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Standard manual review ──
 
 Continue manual review for the following checks:

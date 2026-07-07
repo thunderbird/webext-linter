@@ -229,7 +229,7 @@ deterministic-checks:
 # release (named after each path) that is not declared in a VENDOR file.
 - title: Missing third-party library reference
   severity: info
-  scs: false
+  sca: false
   check: missing-library
   input: auto
   response: |-
@@ -240,7 +240,7 @@ deterministic-checks:
 # were found on the jsDelivr CDN - a known third-party library, shipped undeclared.
 - title: Library identified on a CDN
   severity: info
-  scs: false
+  sca: false
   check: find-lib-on-cdn
   input: auto
   response: |-
@@ -248,7 +248,7 @@ deterministic-checks:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
 # Flags minified JS that is not a recognized library; asks for the readable
-# original. Runs in both XPI and source-code-submission reviews (no scs gate) - a
+# original. Runs in both XPI and source-code submission reviews (no sca gate) - a
 # source submission's promise is readable source, so a minified file there is
 # rejected just like one in a built XPI.
 - title: Minified code cannot be reviewed
@@ -275,11 +275,11 @@ deterministic-checks:
 # unreviewable, so a readable build is required.
 - title: Source Archive (unverified library) required
   severity: error
-  scs: false
+  sca: false
   check: untrusted-minified-library
   input: auto
   response: |-
-    The following bundled file(s) match a known upstream release, but the package could not be confirmed to be a widely-used library, so it is not trusted as a reviewed dependency - and it is minified or otherwise machine-generated, so it cannot be reviewed in this form. Ship the original, human-readable code directly (it need not be minified), or upload the original sources as a source code archive (with the build instructions and process needed to reproduce the shipped XPI) using the source code upload field during submission or on the version page in the developer hub. Note that the source-archive route slows review down, as it requires manually verifying the build.
+    The following bundled file(s) match a known upstream release, but the package could not be confirmed to be a widely-used library, so it is not trusted as a reviewed dependency - and it is minified or otherwise machine-generated, so it cannot be reviewed in this form. Ship the original, human-readable code directly (it need not be minified), or upload the original sources as a source-code submission (with the build instructions and process needed to reproduce the shipped XPI) using the source code upload field during submission or on the version page in the developer hub. Note that the source-archive route slows review down, as it requires manually verifying the build.
     Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
     Read more #2: https://extensionworkshop.com/documentation/publish/source-code-submission/
 
@@ -288,21 +288,21 @@ deterministic-checks:
 # developer's own code rather than trusted as a vendored dependency.
 - title: Library reviewed as authored code
   severity: info
-  scs: false
+  sca: false
   check: untrusted-library
   input: auto
   response: |-
     The following bundled file(s) match a known upstream release, but the package could not be confirmed to be a widely-used library. They are therefore not trusted as reviewed dependencies and are reviewed as authored code - the standard checks apply to them, so a finding may be reported against library code here. Confirm that each is a legitimate, appropriate dependency.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
-# SCS mode (source-code submission, scs: true): a declared dependency that is not
+# SCA mode (source code archive, sca: true): a declared dependency that is not
 # a confirmed widely-used library cannot be reviewed - its code is pulled in at
 # build, absent from the readable source and mangled in the built XPI - so the
-# developer must ship it readable inside --scs-source. verifyScsDependencies
+# developer must ship it readable inside --sca-source. verifyScaDependencies
 # records the non-popular package.json dependencies (vendor.unpopularDeps).
 - title: Unreviewable build dependency
   severity: error
-  scs: true
+  sca: true
   check: unpopular-source-dependency
   input: auto
   response: |-
@@ -472,20 +472,20 @@ deterministic-checks:
   response: |-
     A bundled library version is {{status}} by Mozilla's add-on policy: {{item}} ({{version}}) — {{reason}} Update to a permitted version and re-bundle.
 
-# Each pinned npm devDependency is OSV-audited in SCS mode too (src/vendor/verify.js
-# verifyScsDependencies): the reviewer builds the add-on from source, so a
+# Each pinned npm devDependency is OSV-audited in SCA mode too (src/vendor/verify.js
+# verifyScaDependencies): the reviewer builds the add-on from source, so a
 # vulnerable build-time dependency runs on the reviewer's machine even though it is
 # never shipped. Mirrors vendor-vulnerable (same severity:auto band mapping) for the
-# dev set; scs:true - dev deps only exist in an SCS review.
+# dev set; sca:true - dev deps only exist in an SCA review.
 - title: Vulnerable build dependency
   severity: auto
-  scs: true
+  sca: true
   check: vendor-vulnerable-dev
   input: auto
   response: |-
     A build dependency (devDependency) has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update {{item}} to {{fixed}} or later and resubmit.
 
-# Deterministic (SCS only): the build must use npm or pnpm - the two package managers
+# Deterministic (SCA only): the build must use npm or pnpm - the two package managers
 # that share the .npmrc config format, keeping the reviewable surface small. A committed
 # yarn/bun fingerprint anywhere in the build corpus (a lockfile, or the package.json
 # "packageManager" field) is a hard reject; the offending tool is surfaced as {{item}}
@@ -493,13 +493,13 @@ deterministic-checks:
 # (unpinned-dependency); the open-ended build review is undeclared-build-source.
 - title: Unsupported build tool
   severity: error
-  scs: true
+  sca: true
   check: unsupported-build-tool
   input: build
   response: |-
     This add-on is built with {{item}}; only npm and pnpm are supported. Please provide an npm or pnpm build (commit a package-lock.json or pnpm-lock.yaml) so the dependency install can be reviewed against the declared dependencies.
 
-# Deterministic (SCS only): a committed .npmrc that SETS a package registry (registry=
+# Deterministic (SCA only): a committed .npmrc that SETS a package registry (registry=
 # or @scope:registry=, case-insensitive) is rejected outright - a legitimate build never
 # needs to set the registry (npm defaults to the public one), and any setting can only
 # point the install at another source, pulling the SAME declared package names from an
@@ -508,38 +508,38 @@ deterministic-checks:
 # build can run from a subfolder), and .npmrc is the one dotfile kept there.
 - title: Build registry override
   severity: error
-  scs: true
+  sca: true
   check: build-registry-redirect
   input: build
   response: |-
     The .npmrc sets a package registry ({{item}}), which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
 
-# Deterministic (SCS only): a node_modules folder anywhere in --scs-root is a hard
+# Deterministic (SCA only): a node_modules folder anywhere in --sca-root is a hard
 # reject. Installed dependencies are build output - the reviewer installs them from the
 # declared package.json/lock - so a committed node_modules is useless bloat and a decoy
 # (its bytes can differ from the declared deps). node_modules is never read: the loader
 # skips it at load and records only the directory paths, surfaced here as {{item}}.
 - title: Committed node_modules folder
   severity: error
-  scs: true
+  sca: true
   check: committed-node-modules
   input: build
   response: |-
     A committed node_modules folder ({{item}}) is not allowed. Remove it and resubmit; the declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission.
 
-# Deterministic (SCS only): a committed binary archive (.zip/.xpi/.crx/...) anywhere in
-# --scs-root is a hard reject. A built archive is build output the reviewer reproduces from
+# Deterministic (SCA only): a committed binary archive (.zip/.xpi/.crx/...) anywhere in
+# --sca-root is a hard reject. A built archive is build output the reviewer reproduces from
 # source, so a committed one is useless bloat and a decoy (its bytes can differ from what the
 # build produces). Recorded at load, spanning the whole submission, and surfaced as {{item}}.
 - title: Committed build artifact
   severity: error
-  scs: true
+  sca: true
   check: committed-build-artifact
   input: build
   response: |-
     A committed build artifact ({{item}}) is not allowed. Remove it and resubmit; a built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces.
 
-# Deterministic (SCS only): a package.json install lifecycle hook (preinstall / install /
+# Deterministic (SCA only): a package.json install lifecycle hook (preinstall / install /
 # postinstall / prepare / prepublish) runs arbitrary code when the reviewer installs the
 # dependencies, BEFORE the build - a known supply-chain vector (a postinstall that fetches
 # and runs remote code). Legitimate uses exist (a husky `prepare`), so this is a warning
@@ -548,13 +548,13 @@ deterministic-checks:
 # name and its command.
 - title: Build install hook
   severity: warning
-  scs: true
+  sca: true
   check: build-lifecycle-hook
   input: build
   response: |-
     The package.json declares an npm install lifecycle hook ({{item}}) that runs when the reviewer installs the dependencies, before the build. Confirm it only runs local build steps and does not fetch or execute remote code (curl/wget, a download-and-run, or a git clone of an unpinned repo).
 
-# Deterministic (SCS only): MISSION 1 of the build review. analyzeBuild classifies the build
+# Deterministic (SCA only): MISSION 1 of the build review. analyzeBuild classifies the build
 # ONCE in setup (src/build/analyze.js), storing addon.buildFiles.buildReview; this
 # check reads it. classification "remote-fetch" -> an error finding: the build fetches or
 # executes code/resources from an UNDECLARED external source (a raw URL, curl|sh, a git clone of
@@ -567,7 +567,7 @@ deterministic-checks:
 # {{buildInstructions}} + {{unresolvedBuildSteps}} render only in the manual instructions.
 - title: Build process review
   severity: error
-  scs: true
+  sca: true
   check: undeclared-build-source
   input: build
   instructions: |-
@@ -578,25 +578,25 @@ deterministic-checks:
   response: |-
     {{explanation}} The build must not fetch or execute code or resources from a remote source; every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 
-# Deterministic (SCS only): MISSION 2 of the build review. Reads the setup classification
+# Deterministic (SCA only): MISSION 2 of the build review. Reads the setup classification
 # (addon.buildFiles.buildReview). classification "not-from-source" -> error: the build does not
 # build - it only copies/zips files already in the submission into the XPI, so the shipped add-on
 # is not derived from the reviewed source. {{explanation}} is analyzeBuild's reason.
 - title: Build not derived from source
   severity: error
-  scs: true
+  sca: true
   check: build-not-from-source
   input: build
   response: |-
     {{explanation}} The shipped XPI must be BUILT from the reviewed source; a build that only copies or zips files already present in the submission produces an add-on that is not derived from the source under review. Provide a build that compiles/bundles the add-on from its source.
 
-# Deterministic (SCS only): MISSION 3 of the build review. Reads the setup classification.
-# classification "scs-redundant" -> error: the build only copies installed libraries (from
+# Deterministic (SCA only): MISSION 3 of the build review. Reads the setup classification.
+# classification "sca-redundant" -> error: the build only copies installed libraries (from
 # node_modules) into the add-on, so a source submission is not needed - the add-on can ship as a
 # plain XPI reviewed as a third-party-library (vendoring) submission. {{explanation}} is the reason.
 - title: Source submission not required
   severity: error
-  scs: true
+  sca: true
   check: build-source-redundant
   input: build
   response: |-
@@ -609,7 +609,7 @@ deterministic-checks:
 # (as the finding's item), so the body needs no {{item}}/{{source}} slots.
 - title: Vendored library not vulnerability-checked
   severity: info
-  scs: false
+  sca: false
   check: vendor-vuln-unknown
   input: auto
   response: |-
@@ -618,7 +618,7 @@ deterministic-checks:
 
 - title: Unpinned vendored source
   severity: error
-  scs: false
+  sca: false
   check: unpinned-vendor-source
   input: auto
   response: |-
@@ -626,7 +626,7 @@ deterministic-checks:
 
 - title: Modified vendored library
   severity: error
-  scs: false
+  sca: false
   check: vendor-modified
   input: auto
   response: |-
@@ -636,7 +636,7 @@ deterministic-checks:
 # automatically to manual review (its `instructions`); it emits no findings, so
 # it carries no severity.
 - title: Vendored library needs manual verification
-  scs: false
+  sca: false
   check: vendor-unverified
   input: auto
   response: |-
@@ -650,7 +650,7 @@ deterministic-checks:
 # Flags a VENDOR entry (file + source URL) whose file is absent from the package.
 - title: Missing vendored file
   severity: warning
-  scs: false
+  sca: false
   check: missing-vendor-file
   input: auto
   response: |-
@@ -661,7 +661,7 @@ deterministic-checks:
 # libraries cannot be verified.
 - title: Unparseable VENDOR file
   severity: error
-  scs: false
+  sca: false
   check: vendor-unparseable
   input: auto
   response: |-
@@ -672,7 +672,7 @@ deterministic-checks:
 # library must be declared as a directory with a single directory source.
 - title: Ambiguous vendored source
   severity: error
-  scs: false
+  sca: false
   check: vendor-ambiguous-source
   input: auto
   response: |-
@@ -1221,9 +1221,9 @@ llm-checks:
   input: auto
   post-summary-recheck: data-exfiltration-recheck
   # The recheck keys on file:line of the SOURCE candidate, which cannot bridge to
-  # the XPI behavioral summary in SCS mode - so there the unsure sites route
+  # the XPI behavioral summary in SCA mode - so there the unsure sites route
   # straight to manual review instead of the summary (see runChecks).
-  scs-recheck: false
+  sca-recheck: false
   prompt: |-
     Each candidate is a site (file:line) that sends data to a remote server (via
     fetch, XMLHttpRequest, WebSocket, EventSource, or sendBeacon). Sending user
@@ -1280,9 +1280,9 @@ llm-checks:
   check: disguised-transmission
   input: auto
   post-summary-recheck: disguised-transmission-recheck
-  # Per-site (file:line) recheck: cannot bridge to the XPI summary in SCS mode, so
+  # Per-site (file:line) recheck: cannot bridge to the XPI summary in SCA mode, so
   # the unsure sites route straight to manual review there (see runChecks).
-  scs-recheck: false
+  sca-recheck: false
   prompt: |-
     Each candidate is a site (file:line) that builds a covert channel - a resource
     URL (image/iframe/media src or href), a stylesheet url(), a window.open(), or a
@@ -1486,7 +1486,7 @@ verdict-intros:
 #                   audited. Used by verify.js when the deterministic repo-name
 #                   match misses; the proposal is re-proved by content hash before
 #                   any audit, so a wrong guess is harmless.
-#   build-analysis: the SCS build review's one classification, run in setup
+#   build-analysis: the SCA build review's one classification, run in setup
 #                   (analyzeBuild) over the selected build corpus; returns
 #                   {classification, reason, buildInstructions} stored on
 #                   addon.buildFiles.buildReview for the three input:build checks.
@@ -1544,7 +1544,7 @@ prompts:
     package. If you cannot confidently identify a corresponding npm package,
     respond {"name": null}. Do not invent a package name.
   build-analysis: |-
-    You are shown the build files of a source-code submission the reviewer will BUILD from the
+    You are shown the build files of a source code archive the reviewer will BUILD from the
     readable source: the build scripts, the config files of the build tools they run, and
     package.json (its "scripts" and the declared dependencies). The reviewer runs `npm ci` to
     install the declared dependencies, then the build. Some files a script names may be absent -
@@ -1566,7 +1566,7 @@ prompts:
     - "not-from-source": the build does not actually build - it only copies or zips files that are
       ALREADY in the submission into the XPI, so the shipped add-on is not derived from the
       reviewed source (phantom artifacts).
-    - "scs-redundant": the build's only real work is copying installed libraries (from
+    - "sca-redundant": the build's only real work is copying installed libraries (from
       node_modules) into the add-on - nothing is compiled or bundled from the authored source, so
       the add-on could ship as a plain XPI without a source submission.
     - "ok": a genuine build that compiles or bundles the authored source and pulls only from the

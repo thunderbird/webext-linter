@@ -27,7 +27,7 @@
       <p>
         The build is classified once, up front, by the build analysis (a single model request in
         the setup phase over the build-relevant files). This check reads that stored
-        classification; when it is <code>scs-redundant</code> it raises one error, anchored at
+        classification; when it is <code>sca-redundant</code> it raises one error, anchored at
         package.json, whose explanation is the analysis's reason.
       </p>
 
@@ -35,7 +35,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Build classification<br/>(build analysis, setup phase)"] --> B{"classification =<br/>scs-redundant?"}
+  A["Build classification<br/>(build analysis, setup phase)"] --> B{"classification =<br/>sca-redundant?"}
   B -- no --> OK([no finding])
   B -- yes --> ERR([ERROR: source submission not required])
 

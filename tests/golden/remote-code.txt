@@ -12,6 +12,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
  - page.html:11 - https://cdn.example.com/bg.png
  - style.css:1 - https://cdn.example.com/theme.css
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

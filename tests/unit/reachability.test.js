@@ -137,13 +137,13 @@ test("pureWebExtensionReachable: webext tree + .html experiment params only", ()
   assert.ok(!pure.has("dead.js"));
 });
 
-// SCS mode: there is no usable reachability tree over the readable source - the
+// SCA mode: there is no usable reachability tree over the readable source - the
 // manifest's BUILT entry points (from the XPI) don't exist in the source layout,
 // so the closure would be empty and every WebExtension code check would review
 // nothing. Instead the whole source is WebExtension code, minus an Experiment
-// subtree named by --scs-exp-source (privileged, non-WebExtension code).
-test("SCS mode: pureWebExtensionReachable is all source, minus --scs-exp-source", () => {
-  // A built entry the readable source layout does not contain (the SCS mismatch).
+// subtree named by --sca-exp-source (privileged, non-WebExtension code).
+test("SCA mode: pureWebExtensionReachable is all source, minus --sca-exp-source", () => {
+  // A built entry the readable source layout does not contain (the SCA mismatch).
   const manifest = {
     manifest_version: 3,
     background: { scripts: ["background.js"] },
@@ -156,42 +156,42 @@ test("SCS mode: pureWebExtensionReachable is all source, minus --scs-exp-source"
 
   // XPI mode (default): the built entry resolves to nothing in this tree, so a
   // non-entry source file is NOT reviewed - this is exactly the under-review the
-  // SCS branch fixes.
+  // SCA branch fixes.
   const xpi = buildReachability(ctxFrom(files, manifest));
   assert.ok(!xpi.pureWebExtensionReachable.has("helper.js"));
 
-  // SCS mode, no exp folder: every source file is WebExtension code (incl. the
+  // SCA mode, no exp folder: every source file is WebExtension code (incl. the
   // experiment subtree - the deferred false-positive case).
-  const scs = buildReachability({ ...ctxFrom(files, manifest), mode: "scs" });
-  assert.ok(scs.pureWebExtensionReachable.has("helper.js"));
-  assert.ok(scs.pureWebExtensionReachable.has("experiments/exp.js"));
+  const sca = buildReachability({ ...ctxFrom(files, manifest), mode: "sca" });
+  assert.ok(sca.pureWebExtensionReachable.has("helper.js"));
+  assert.ok(sca.pureWebExtensionReachable.has("experiments/exp.js"));
 
-  // SCS mode + --scs-exp-source: the Experiment subtree drops out; the rest stays.
-  const scsExp = buildReachability({
+  // SCA mode + --sca-exp-source: the Experiment subtree drops out; the rest stays.
+  const scaExp = buildReachability({
     ...ctxFrom(files, manifest),
-    mode: "scs",
-    scsExpSource: "experiments",
+    mode: "sca",
+    scaExpSource: "experiments",
   });
-  assert.ok(scsExp.pureWebExtensionReachable.has("helper.js"));
-  assert.ok(!scsExp.pureWebExtensionReachable.has("experiments/exp.js"));
+  assert.ok(scaExp.pureWebExtensionReachable.has("helper.js"));
+  assert.ok(!scaExp.pureWebExtensionReachable.has("experiments/exp.js"));
 
   // The SHIPPED view (isShippedView) is not the review source: it uses the closure
   // branch like an XPI review (its entry points resolve against its own files), so
-  // the all-source SCS fallback does NOT apply - a non-entry file is not swept in.
+  // the all-source SCA fallback does NOT apply - a non-entry file is not swept in.
   const shipped = buildReachability({
     ...ctxFrom(files, manifest),
-    mode: "scs",
+    mode: "sca",
     isShippedView: true,
   });
   assert.ok(!shipped.pureWebExtensionReachable.has("helper.js"));
 });
 
-// SCS: the reachable / webReachable / isLive views (what minimize-WAR and
+// SCA: the reachable / webReachable / isLive views (what minimize-WAR and
 // bundled-files read) describe whatever ctx.addon is. Those checks are `input: xpi`,
 // so the orchestrator routes them to a context whose addon is the built XPI
 // (buildShippedCtx); over it a resource the XPI's own content script loads is
 // web-reachable even when the source's pre-build layout would not show it.
-test("SCS: reachability over the built XPI describes the XPI", () => {
+test("SCA: reachability over the built XPI describes the XPI", () => {
   const xpiManifest = {
     manifest_version: 3,
     content_scripts: [{ matches: ["*://*/*"], js: ["content.js"] }],
@@ -214,7 +214,7 @@ test("SCS: reachability over the built XPI describes the XPI", () => {
     withManifest({
       addon: xpi,
       jsSources: collectJsSources(xpi),
-      mode: "scs",
+      mode: "sca",
     })
   );
   assert.ok(reach.webReachable.has("injected.js"));

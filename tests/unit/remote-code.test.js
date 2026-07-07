@@ -498,4 +498,13 @@ test("formatNote renders a padded verdict tag and the site", () => {
   );
   // The verdict is an enforced contract: an unknown one is a programmer error.
   assert.throws(() => formatNote("f.js", null, "x", "nope"), /verdict/);
+  // An artifact label (SCA review) prefixes the site; "" (XPI review) adds nothing.
+  assert.equal(
+    formatNote("bg.js", { line: 4 }, "fetch x", "fail", "SCA"),
+    "• [fail]    [SCA] bg.js:4 - fetch x"
+  );
+  assert.equal(
+    formatNote("bg.js", { line: 4 }, "fetch x", "fail", ""),
+    "• [fail]    bg.js:4 - fetch x"
+  );
 });

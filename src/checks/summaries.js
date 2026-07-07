@@ -128,7 +128,7 @@ function deferredReview(ctx, { system, user }) {
  * @returns {?string}
  */
 export function buildDiffText(ctx, shippedCtx = ctx) {
-  // The diff describes the SHIPPED add-on: in SCS mode the --diff-to baseline (an
+  // The diff describes the SHIPPED add-on: in SCA mode the --diff-to baseline (an
   // XPI) is compared against the built XPI, not the readable source whose pre-build
   // layout would never match it. shippedCtx IS ctx in an XPI review, so the file set
   // and the non-authored skip both come from the shipped artifact in both modes.
@@ -266,7 +266,7 @@ export function buildAddonText(
   // The skip set comes from the SUMMARIZED add-on's classification: libraries,
   // minified and obfuscated bundles, and vendored/trusted files are excluded, so the
   // summary quotes only reviewable authored code. For the review target (the default)
-  // this is nonAuthoredJs(ctx). For a DIFFERENT summaryAddon (SCS mode: the built XPI)
+  // this is nonAuthoredJs(ctx). For a DIFFERENT summaryAddon (SCA mode: the built XPI)
   // the pipeline classifies it in setup (xpiAddon.bundled), so its non-authored set is
   // read directly - the same exclusion an XPI review applies to its own target, so both
   // modes summarize the shipped XPI identically (and its multi-MB minified bundles are

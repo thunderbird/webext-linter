@@ -5,6 +5,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) The following background code location(s) use ES module syntax (import/export), but the manifest’s background is not declared "type": "module", so Thunderbird will fail to load the background script(s). Add "type": "module" to the background entry.
  - background.js:2
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

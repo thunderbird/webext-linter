@@ -419,8 +419,8 @@ test("vendor-vulnerable surfaces an identified-library vulnerability, file-ancho
   assert.equal(out[0].severity, SEVERITY.ERROR); // high band -> error
 });
 
-// vendor-vulnerable-dev mirrors vendor-vulnerable for the SCS dev set: it reads
-// addon.vendor.devVulnerabilities (populated only in SCS mode) and maps each to a
+// vendor-vulnerable-dev mirrors vendor-vulnerable for the SCA dev set: it reads
+// addon.vendor.devVulnerabilities (populated only in SCA mode) and maps each to a
 // finding, band-driven severity and all. A package.json dep anchors at its name.
 test("vendor-vulnerable-dev surfaces a dev-dependency vulnerability", () => {
   const ctx = {
@@ -581,30 +581,30 @@ test("strict-max-version-bump-only is registered as a diff check", async () => {
   assert.equal(c?.diff, true);
 });
 
-// The SCS mode gate (scsEligible, mirrors the diff gate): the XPI bundled/vendor
-// checks are scs:false (skipped for a source-code submission), the source
-// dependency audit is scs:true (XPI-only-skipped), and a code check is untagged
+// The SCA mode gate (scaEligible, mirrors the diff gate): the XPI bundled/vendor
+// checks are sca:false (skipped for a source-code submission), the source
+// dependency audit is sca:true (XPI-only-skipped), and a code check is untagged
 // (runs in both, the orchestrator just switches the review SOURCE).
-test("checks carry the scs mode tag (false=XPI-only, true=SCS-only, undefined=both)", async () => {
+test("checks carry the sca mode tag (false=XPI-only, true=SCA-only, undefined=both)", async () => {
   const checks = await loadChecks(loadRegistry());
-  const scs = (id) => checks.find((x) => x.id === id)?.scs;
+  const sca = (id) => checks.find((x) => x.id === id)?.sca;
   // minified-code runs in BOTH modes: a minified file is non-authored and rejected
   // whether it ships in a built XPI or sits in a source-code submission's source.
-  assert.equal(scs("minified-code"), undefined);
+  assert.equal(sca("minified-code"), undefined);
   // untrusted-minified-library stays XPI-only: it reads untrustedLibs, populated only
-  // by the CDN-lookup setup step, which SCS skips - it cannot fire in SCS regardless.
-  assert.equal(scs("untrusted-minified-library"), false);
+  // by the CDN-lookup setup step, which SCA skips - it cannot fire in SCA regardless.
+  assert.equal(sca("untrusted-minified-library"), false);
   // unused-files runs in BOTH modes: it describes the shipped XPI (dead files the
   // build ships), like bundled-files / minimize-WAR - all registered `input: xpi`.
-  assert.equal(scs("unused-files"), undefined);
-  assert.equal(scs("unused-files-recheck"), undefined);
-  assert.equal(scs("unpopular-source-dependency"), true); // SCS-only dep audit
-  assert.equal(scs("undeclared-build-source"), true); // SCS-only build review
-  assert.equal(scs("unsupported-build-tool"), true); // SCS-only build policy
-  assert.equal(scs("build-registry-redirect"), true); // SCS-only build policy
-  assert.equal(scs("committed-node-modules"), true); // SCS-only build policy
-  assert.equal(scs("eval-call"), undefined); // a code check: both modes
-  assert.equal(scs("unknown-api"), undefined);
+  assert.equal(sca("unused-files"), undefined);
+  assert.equal(sca("unused-files-recheck"), undefined);
+  assert.equal(sca("unpopular-source-dependency"), true); // SCA-only dep audit
+  assert.equal(sca("undeclared-build-source"), true); // SCA-only build review
+  assert.equal(sca("unsupported-build-tool"), true); // SCA-only build policy
+  assert.equal(sca("build-registry-redirect"), true); // SCA-only build policy
+  assert.equal(sca("committed-node-modules"), true); // SCA-only build policy
+  assert.equal(sca("eval-call"), undefined); // a code check: both modes
+  assert.equal(sca("unknown-api"), undefined);
 });
 
 // The shipped-vs-review-target artifact is chosen in ONE place - runChecks routes
@@ -645,7 +645,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "unrecognized-manifest-key",
     "unused-files",
   ]);
-  // input: build reads the SCS build files (archive minus source minus node_modules).
+  // input: build reads the SCA build files (archive minus source minus node_modules).
   // The three build-review checks (gated on the setup classification) plus the
   // deterministic build-policy checks; extending this set is deliberate too.
   const build = checks
@@ -691,7 +691,7 @@ test("an input:xpi LLM check adjudicates over its routed (XPI) addon", async () 
     addon: xpi,
     jsSources: collectJsSources(xpi),
     schema,
-    mode: "scs",
+    mode: "sca",
     options: {},
     llm: {
       evaluate: async (req) => {
@@ -707,7 +707,7 @@ test("an input:xpi LLM check adjudicates over its routed (XPI) addon", async () 
 });
 
 // ---- build review: undeclared-build-source + build-not-from-source + build-source-redundant
-// (SCS deterministic; each reads the setup classification on ctx.addon.buildReview; the one
+// (SCA deterministic; each reads the setup classification on ctx.addon.buildReview; the one
 // LLM call lives in analyzeBuild, tested in build-analysis.test.js) ----
 
 const buildCtx = (review) => ({
@@ -765,7 +765,7 @@ test("undeclared-build-source: remote-fetch -> error, offline/unresolved -> manu
     findings: [],
   });
   // owned by the other checks / no build / no buildReview -> nothing.
-  for (const c of ["not-from-source", "scs-redundant", "none"]) {
+  for (const c of ["not-from-source", "sca-redundant", "none"]) {
     assert.deepEqual(
       undeclaredBuildSource.run(
         buildCtx(review({ classification: c, analyzed: c !== "none" }))
@@ -787,7 +787,7 @@ test("build-not-from-source fires only on the not-from-source classification", (
   );
   assert.equal(hit.length, 1);
   assert.equal(hit[0].data.explanation, "just zips dist/");
-  for (const c of ["ok", "remote-fetch", "scs-redundant", "none", null]) {
+  for (const c of ["ok", "remote-fetch", "sca-redundant", "none", null]) {
     assert.deepEqual(
       buildNotFromSource.run(buildCtx(review({ classification: c }))),
       []
@@ -795,12 +795,12 @@ test("build-not-from-source fires only on the not-from-source classification", (
   }
 });
 
-// build-source-redundant (mission 3): fires ONLY on "scs-redundant".
-test("build-source-redundant fires only on the scs-redundant classification", () => {
+// build-source-redundant (mission 3): fires ONLY on "sca-redundant".
+test("build-source-redundant fires only on the sca-redundant classification", () => {
   const hit = buildSourceRedundant.run(
     buildCtx(
       review({
-        classification: "scs-redundant",
+        classification: "sca-redundant",
         reason: "only copies node_modules",
       })
     )
@@ -815,19 +815,19 @@ test("build-source-redundant fires only on the scs-redundant classification", ()
   }
 });
 
-// scs-recheck: the per-site (file:line) recheck producers are marked so runChecks
-// routes their unsure sites to manual review in SCS (their source line numbers
+// sca-recheck: the per-site (file:line) recheck producers are marked so runChecks
+// routes their unsure sites to manual review in SCA (their source line numbers
 // cannot bridge to the XPI behavioral summary); other recheck producers are not.
-test("the per-site recheck producers carry scsRecheck=false", async () => {
+test("the per-site recheck producers carry scaRecheck=false", async () => {
   const checks = await loadChecks(loadRegistry());
-  const scsRecheck = (id) => checks.find((x) => x.id === id)?.scsRecheck;
-  assert.equal(scsRecheck("data-exfiltration"), false);
-  assert.equal(scsRecheck("disguised-transmission"), false);
+  const scaRecheck = (id) => checks.find((x) => x.id === id)?.scaRecheck;
+  assert.equal(scaRecheck("data-exfiltration"), false);
+  assert.equal(scaRecheck("disguised-transmission"), false);
   // A non-line-anchored recheck (re-judged fine against the XPI summary) is not.
-  assert.equal(scsRecheck("unused-permission"), undefined);
+  assert.equal(scaRecheck("unused-permission"), undefined);
 });
 
-// ---- unsupported-build-tool (SCS deterministic: npm/pnpm only) ----
+// ---- unsupported-build-tool (SCA deterministic: npm/pnpm only) ----
 
 // A committed yarn/bun fingerprint - a lockfile or the package.json "packageManager"
 // field - is a hard reject: the offending tool is the finding's item, anchored at the
@@ -872,7 +872,7 @@ test("unsupported-build-tool rejects yarn/bun by lockfile or packageManager fiel
   );
 });
 
-// ---- build-registry-redirect (SCS deterministic: .npmrc registry) ----
+// ---- build-registry-redirect (SCA deterministic: .npmrc registry) ----
 
 // ANY registry= / @scope:registry= in .npmrc is a hard reject (a legit build never sets
 // the registry) - the raw value is the item, anchored at the line; the value is not
@@ -959,7 +959,7 @@ test("build-registry-redirect scans nested .npmrc and rejects any registry key",
   assert.equal(at(".npmrc", "REGISTRY=https://evil/").length, 1);
 });
 
-// ---- committed-node-modules (SCS deterministic: no committed node_modules) ----
+// ---- committed-node-modules (SCA deterministic: no committed node_modules) ----
 
 // Each node_modules directory the loader recorded (never read) becomes an error finding
 // anchored at that directory; none recorded -> no finding.
@@ -2849,7 +2849,7 @@ test("unrecognized-manifest-key accepts experiment-owned keys", () => {
 // The other experiment-owned exemption: a key an experiment's bundled SCHEMA declares
 // (a `manifest` namespace $extend of WebExtensionManifest). The schema PATH resolves
 // against ctx.addon.files - the built XPI for this `input: xpi` check, where the built
-// path exists. Regression guard for the SCS false positive: as `input: auto` the check
+// path exists. Regression guard for the SCA false positive: as `input: auto` the check
 // ran over the readable source, the built schema path was absent there, the exemption
 // silently returned nothing, and a legitimate experiment key (e.g. calendar_item_action)
 // was flagged. Routing it to the XPI (registry `input: xpi`) restores the pairing.

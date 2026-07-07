@@ -5,6 +5,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) The Experiment API "messages.evil" overrides or extends a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under a new, distinct API namespace.
  - manifest.json:7
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

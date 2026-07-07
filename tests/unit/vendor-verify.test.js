@@ -12,7 +12,7 @@ import { classifySource } from "../../src/vendor/sources.js";
 import { VENDOR_TRUSTED_HOSTS } from "../../src/config.js";
 import {
   verifyVendor,
-  verifyScsDependencies,
+  verifyScaDependencies,
   auditIdentifiedLibraries,
 } from "../../src/vendor/verify.js";
 import { parseLibraryBlocks } from "../../src/checks/lib/library-blocks.js";
@@ -237,14 +237,14 @@ const pinnedEntry = (path, sourceUrl) => ({
   pinned: true,
 });
 
-// ---- verifyScsDependencies (SCS mode dependency audit) ----
+// ---- verifyScaDependencies (SCA mode dependency audit) ----
 
-test("verifyScsDependencies: a non-popular declared dep is recorded as unreviewable", async () => {
+test("verifyScaDependencies: a non-popular declared dep is recorded as unreviewable", async () => {
   const addon = addonWith(
     { "package.json": '{"dependencies":{"niche":"1.0.0"}}' },
     store({ packages: [{ name: "niche", version: "1.0.0" }] })
   );
-  await verifyScsDependencies(
+  await verifyScaDependencies(
     addon,
     net({ downloads: 30, osv: { vulns: [] } })
   );
@@ -253,16 +253,16 @@ test("verifyScsDependencies: a non-popular declared dep is recorded as unreviewa
   ]);
 });
 
-test("verifyScsDependencies: a POPULAR declared dep is allowed (not recorded)", async () => {
+test("verifyScaDependencies: a POPULAR declared dep is allowed (not recorded)", async () => {
   const addon = addonWith(
     { "package.json": "{}" },
     store({ packages: [{ name: "react", version: "18.0.0" }] })
   );
-  await verifyScsDependencies(addon, net({ downloads: 5000 }));
+  await verifyScaDependencies(addon, net({ downloads: 5000 }));
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
-test("verifyScsDependencies: offline (every lookup throws) records nothing", async () => {
+test("verifyScaDependencies: offline (every lookup throws) records nothing", async () => {
   const addon = addonWith(
     { "package.json": "{}" },
     store({ packages: [{ name: "niche", version: "1.0.0" }] })
@@ -278,13 +278,13 @@ test("verifyScsDependencies: offline (every lookup throws) records nothing", asy
       throw new Error("offline");
     },
   };
-  await verifyScsDependencies(addon, offline);
+  await verifyScaDependencies(addon, offline);
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
 // GitHub-sourced deps are gated by stars (the same bar as a VENDOR.md github
-// source), needing no bundled file - so it works for an SCS submission.
-test("verifyScsDependencies: a low-star GitHub dep is recorded as unreviewable", async () => {
+// source), needing no bundled file - so it works for an SCA submission.
+test("verifyScaDependencies: a low-star GitHub dep is recorded as unreviewable", async () => {
   const addon = addonWith(
     { "package.json": "{}" },
     store({
@@ -293,7 +293,7 @@ test("verifyScsDependencies: a low-star GitHub dep is recorded as unreviewable",
       ],
     })
   );
-  await verifyScsDependencies(addon, net({ stars: 5 }));
+  await verifyScaDependencies(addon, net({ stars: 5 }));
   assert.deepEqual(addon.vendor.unpopularDeps, [
     {
       name: "widget",
@@ -304,7 +304,7 @@ test("verifyScsDependencies: a low-star GitHub dep is recorded as unreviewable",
   ]);
 });
 
-test("verifyScsDependencies: a popular (high-star) GitHub dep is allowed", async () => {
+test("verifyScaDependencies: a popular (high-star) GitHub dep is allowed", async () => {
   const addon = addonWith(
     { "package.json": "{}" },
     store({
@@ -313,11 +313,11 @@ test("verifyScsDependencies: a popular (high-star) GitHub dep is allowed", async
       ],
     })
   );
-  await verifyScsDependencies(addon, net({ stars: 5000 }));
+  await verifyScaDependencies(addon, net({ stars: 5000 }));
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
-test("verifyScsDependencies: a trusted-org (thunderbird) GitHub dep is a free pass", async () => {
+test("verifyScaDependencies: a trusted-org (thunderbird) GitHub dep is a free pass", async () => {
   const addon = addonWith(
     { "package.json": "{}" },
     store({
@@ -332,11 +332,11 @@ test("verifyScsDependencies: a trusted-org (thunderbird) GitHub dep is a free pa
     })
   );
   // stars:0 would fail the bar, but the trusted org never triggers the lookup.
-  await verifyScsDependencies(addon, net({ stars: 0 }));
+  await verifyScaDependencies(addon, net({ stars: 0 }));
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
-test("verifyScsDependencies: a GitHub stars lookup failure records nothing", async () => {
+test("verifyScaDependencies: a GitHub stars lookup failure records nothing", async () => {
   const addon = addonWith(
     { "package.json": "{}" },
     store({
@@ -356,20 +356,20 @@ test("verifyScsDependencies: a GitHub stars lookup failure records nothing", asy
       throw new Error("offline");
     },
   };
-  await verifyScsDependencies(addon, offline);
+  await verifyScaDependencies(addon, offline);
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
-// Dev dependencies never ship, but the SCS reviewer builds from source, so a
+// Dev dependencies never ship, but the SCA reviewer builds from source, so a
 // pinned npm dev dep is OSV-audited too - recorded on devVulnerabilities (a set
 // distinct from the prod/vendored `vulnerabilities`), and NOT popularity-gated (a
 // low-download build tool is fine, so nothing is recorded on unpopularDeps).
-test("verifyScsDependencies: a vulnerable dev dependency lands on devVulnerabilities, no popularity gate", async () => {
+test("verifyScaDependencies: a vulnerable dev dependency lands on devVulnerabilities, no popularity gate", async () => {
   const addon = addonWith(
     { "package.json": '{"devDependencies":{"build-tool":"1.0.0"}}' },
     store({ devPackages: [{ name: "build-tool", version: "1.0.0" }] })
   );
-  await verifyScsDependencies(
+  await verifyScaDependencies(
     addon,
     net({
       downloads: 5, // low - but dev deps are not popularity-gated
@@ -954,16 +954,16 @@ test("blocklist: a declared-AND-bundled banned library is recorded once, not twi
   assert.equal(addon.vendor.blocked.length, 1); // not double-recorded
 });
 
-// Regression: a banned SCS devDependency is never shipped, so it must NOT be recorded
+// Regression: a banned SCA devDependency is never shipped, so it must NOT be recorded
 // as a banned-library, and it must STILL be OSV-audited (into devVulnerabilities) -
-// verifyScsDependencies passes no `blocks` for the dev-dep audit.
-test("blocklist: a banned SCS devDependency is not blocked and is still OSV-audited", async () => {
+// verifyScaDependencies passes no `blocks` for the dev-dep audit.
+test("blocklist: a banned SCA devDependency is not blocked and is still OSV-audited", async () => {
   const addon = addonWith(
     { "package.json": '{"devDependencies":{"jquery":"1.7.2"}}' },
     store({ devPackages: [{ name: "jquery", version: "1.7.2" }] })
   );
   const c = { n: 0 };
-  await verifyScsDependencies(addon, countingNet(c), JQUERY_BLOCK);
+  await verifyScaDependencies(addon, countingNet(c), JQUERY_BLOCK);
   assert.deepEqual(addon.vendor.blocked, []); // dev dep NOT policy-blocked
   assert.equal(c.n, 1); // still OSV-audited (into devVulnerabilities)
 });

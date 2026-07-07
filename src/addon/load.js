@@ -92,12 +92,12 @@ import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
  * @property {Map<string, Buffer>} files  Add-on-relative path (posix "/")
  *   -> contents.
  * @property {string[]} nodeModules  Posix paths of node_modules directories
- *   skipped at load (their contents are never read); empty when none. In SCS
+ *   skipped at load (their contents are never read); empty when none. In SCA
  *   mode the committed-node-modules check rejects each.
  * @property {string[]} archives  Posix paths of committed binary archives
- *   (.zip/.xpi/... anywhere in the submission); empty when none. In SCS mode the
+ *   (.zip/.xpi/... anywhere in the submission); empty when none. In SCA mode the
  *   committed-build-artifact check rejects each. Recorded at load, spanning the whole
- *   --scs-root (before the source/build split), so one is caught wherever it sits.
+ *   --sca-root (before the source/build split), so one is caught wherever it sits.
  * @property {string[]} skipped  Ready-to-narrate notices for entries skipped at
  *   load (a non-node_modules symlink, an unsafe archive path); empty when none.
  *   The loader collects them; the pipeline narrates them under "Reading add-on",
@@ -128,10 +128,10 @@ export function loadAddon(source) {
   });
   // Installed-dependency directories are skipped at load (never read) and only their
   // paths are recorded - a committed node_modules is a hard fail (committed-node-modules
-  // in SCS mode), never reviewable input.
+  // in SCA mode), never reviewable input.
   addon.nodeModules = nodeModules;
   // Committed binary archives (.zip/.xpi/...) are recorded by path - a committed built
-  // archive is a hard fail (committed-build-artifact in SCS mode), never authored input.
+  // archive is a hard fail (committed-build-artifact in SCA mode), never authored input.
   addon.archives = archives;
   // Skipped-entry notices (symlinks, unsafe archive paths): the loader stays silent and
   // hands them back for the pipeline to narrate under the "Reading add-on" step, so a
@@ -143,7 +143,7 @@ export function loadAddon(source) {
 /**
  * Build an Addon record from an in-memory file map: parse its manifest.json
  * (BOM-tolerant, JSON5) and stamp the source/kind. Shared by loadAddon and the
- * source-code-submission loader.
+ * source code archive loader.
  * @param {Map<string, Buffer>} files
  * @param {{source: string, kind: "dir"|"zip"}} meta
  * @returns {Addon}
@@ -173,10 +173,10 @@ function assembleAddon(files, { source, kind }) {
   return addon;
 }
 
-// The dependency-manifest files loadScsAddon brings from the archive root into the
+// The dependency-manifest files loadScaAddon brings from the archive root into the
 // review files (the root is the authoritative manifest); the lock names mirror
 // src/vendor/locks.js.
-const SCS_MANIFEST_FILES = [
+const SCA_MANIFEST_FILES = [
   "package.json",
   "package-lock.json",
   "npm-shrinkwrap.json",
@@ -185,22 +185,22 @@ const SCS_MANIFEST_FILES = [
 ];
 
 /**
- * Resolve an SCS source-path flag (--scs-source / --scs-exp-source) to a posix path
- * relative to scsRoot. The value is either already relative to scsRoot, or an
- * absolute filesystem path (made relative to scsRoot). Throws when an absolute path
- * resolves OUTSIDE scsRoot - which also rejects an absolute path against a zip
- * scsRoot, since it can never sit under the archive file.
+ * Resolve an SCA source-path flag (--sca-source / --sca-exp-source) to a posix path
+ * relative to scaRoot. The value is either already relative to scaRoot, or an
+ * absolute filesystem path (made relative to scaRoot). Throws when an absolute path
+ * resolves OUTSIDE scaRoot - which also rejects an absolute path against a zip
+ * scaRoot, since it can never sit under the archive file.
  * @param {string} value  The raw flag value.
- * @param {string} scsRoot  The --scs-root path.
- * @param {string} [flag]  The flag name to name in the error (e.g. "--scs-source").
- * @returns {string} A posix path relative to scsRoot ("" for the root itself).
+ * @param {string} scaRoot  The --sca-root path.
+ * @param {string} [flag]  The flag name to name in the error (e.g. "--sca-source").
+ * @returns {string} A posix path relative to scaRoot ("" for the root itself).
  */
-export function scsRootRelative(value, scsRoot, flag = "SCS path") {
+export function scaRootRelative(value, scaRoot, flag = "SCA path") {
   let v = String(value ?? "");
   if (path.isAbsolute(v)) {
-    v = path.relative(path.resolve(scsRoot), path.resolve(v));
+    v = path.relative(path.resolve(scaRoot), path.resolve(v));
     if (v.startsWith("..") || path.isAbsolute(v)) {
-      throw new Error(`${flag} "${value}" is outside --scs-root (${scsRoot})`);
+      throw new Error(`${flag} "${value}" is outside --sca-root (${scaRoot})`);
     }
   }
   return v
@@ -210,38 +210,38 @@ export function scsRootRelative(value, scsRoot, flag = "SCS path") {
 }
 
 /**
- * The Experiment folder as a path relative to the review SOURCE (scsSource), from
- * the --scs-exp-source flag which - like --scs-source - is relative to scsRoot (or
- * absolute). Both flags share the scsRoot base; this strips the scsSource prefix so
- * scsWebExtensionFiles can match it against the (already source-stripped) file keys.
- * @param {string|undefined} scsExpSource  The --scs-exp-source flag ("" when unset).
- * @param {string} scsSource  The --scs-source flag.
- * @param {string} scsRoot  The --scs-root flag.
- * @returns {string} A posix path relative to scsSource ("" when unset). Throws when
- *   the Experiment folder is not within scsSource.
+ * The Experiment folder as a path relative to the review SOURCE (scaSource), from
+ * the --sca-exp-source flag which - like --sca-source - is relative to scaRoot (or
+ * absolute). Both flags share the scaRoot base; this strips the scaSource prefix so
+ * scaWebExtensionFiles can match it against the (already source-stripped) file keys.
+ * @param {string|undefined} scaExpSource  The --sca-exp-source flag ("" when unset).
+ * @param {string} scaSource  The --sca-source flag.
+ * @param {string} scaRoot  The --sca-root flag.
+ * @returns {string} A posix path relative to scaSource ("" when unset). Throws when
+ *   the Experiment folder is not within scaSource.
  */
-export function scsExpSourceRelative(scsExpSource, scsSource, scsRoot) {
-  if (!scsExpSource) {
+export function scaExpSourceRelative(scaExpSource, scaSource, scaRoot) {
+  if (!scaExpSource) {
     return "";
   }
-  const exp = scsRootRelative(scsExpSource, scsRoot, "--scs-exp-source");
-  const src = scsRootRelative(scsSource, scsRoot, "--scs-source");
+  const exp = scaRootRelative(scaExpSource, scaRoot, "--sca-exp-source");
+  const src = scaRootRelative(scaSource, scaRoot, "--sca-source");
   if (!src) {
     return exp; // the review source IS the archive root
   }
   if (exp === src || !exp.startsWith(`${src}/`)) {
     throw new Error(
-      `--scs-exp-source (${scsExpSource}) must be a folder within --scs-source (${scsSource})`
+      `--sca-exp-source (${scaExpSource}) must be a folder within --sca-source (${scaSource})`
     );
   }
   return exp.slice(src.length + 1);
 }
 
 /**
- * Load a source-code submission. The readable add-on code lives at `scsSource`
- * within the `scsRoot` archive (folder or zip); package.json/lock live at the
- * archive root. Returns a review Addon whose `files` are the scsSource subtree
- * (the prefix stripped, so `<scsSource>/manifest.json` becomes `manifest.json`)
+ * Load a source code archive. The readable add-on code lives at `scaSource`
+ * within the `scaRoot` archive (folder or zip); package.json/lock live at the
+ * archive root. Returns a review Addon whose `files` are the scaSource subtree
+ * (the prefix stripped, so `<scaSource>/manifest.json` becomes `manifest.json`)
  * PLUS the archive-root package.json + lock (so the dependency audit, which reads
  * addon.files, sees them).
  *
@@ -249,15 +249,15 @@ export function scsExpSourceRelative(scsExpSource, scsSource, scsRoot) {
  * authoritative manifest is the built XPI's, exposed separately as ctx.manifest (the
  * orchestrator resolves it - see src/checks/context.js); nothing reviews the source
  * manifest, so it is left untouched here.
- * @param {Addon} archive  The scsRoot archive, loaded ONCE by the caller (loadAddon)
- *   and shared with loadScsBuildFiles - so the source tree is not read twice.
- * @param {string} scsSource  The add-on code root, relative to scsRoot or an
+ * @param {Addon} archive  The scaRoot archive, loaded ONCE by the caller (loadAddon)
+ *   and shared with loadScaBuildFiles - so the source tree is not read twice.
+ * @param {string} scaSource  The add-on code root, relative to scaRoot or an
  *   absolute path (e.g. "src", "addon", or "/abs/path/to/root/addon").
- * @param {string} scsRoot  Path to the source archive root (for the path math).
+ * @param {string} scaRoot  Path to the source archive root (for the path math).
  * @returns {Addon}
  */
-export function loadScsAddon(archive, scsSource, scsRoot) {
-  const rel = scsRootRelative(scsSource, scsRoot, "--scs-source");
+export function loadScaAddon(archive, scaSource, scaRoot) {
+  const rel = scaRootRelative(scaSource, scaRoot, "--sca-source");
   const prefix = rel ? `${rel}/` : "";
   const files = new Map();
   for (const [p, buf] of archive.files) {
@@ -269,12 +269,12 @@ export function loadScsAddon(archive, scsSource, scsRoot) {
   }
   if (files.size === 0) {
     throw new Error(
-      `--scs-source "${scsSource}" matched no files under ${scsRoot}`
+      `--sca-source "${scaSource}" matched no files under ${scaRoot}`
     );
   }
   // Bring the archive-root dependency manifest into the review files (overriding
-  // any same-named file inside scsSource - the root is authoritative).
-  for (const name of SCS_MANIFEST_FILES) {
+  // any same-named file inside scaSource - the root is authoritative).
+  for (const name of SCA_MANIFEST_FILES) {
     const buf = archive.files.get(name);
     if (buf) {
       files.set(name, buf);
@@ -287,15 +287,15 @@ export function loadScsAddon(archive, scsSource, scsRoot) {
 }
 
 /**
- * Load the BUILD files of a source-code submission: EVERY file in the scsRoot archive
- * EXCEPT the review source (scsSource), the Experiment source (scsExpSource), and
+ * Load the BUILD files of a source code archive: EVERY file in the scaRoot archive
+ * EXCEPT the review source (scaSource), the Experiment source (scaExpSource), and
  * dotfiles/dotfolders (at any depth, except .npmrc). node_modules never appears here -
  * loadAddon skips it at load (its contents are never read); its directories are passed
  * through as `nodeModules` for the committed-node-modules check. This is the tooling
  * that BUILDS the add-on - build scripts, bundler configs, Makefiles, package.json/lock,
- * READMEs - which the add-on review (loadScsAddon) deliberately drops. Keys keep their
- * real archive-relative paths (nothing is prefix-stripped). buildScsBuildCtx wraps these
- * as the SCS-only `input: build` checks' ctx.addon, so its files never enter the review
+ * READMEs - which the add-on review (loadScaAddon) deliberately drops. Keys keep their
+ * real archive-relative paths (nothing is prefix-stripped). buildScaBuildCtx wraps these
+ * as the SCA-only `input: build` checks' ctx.addon, so its files never enter the review
  * addon that the other checks scan.
  *
  * A pure EXCLUDE rule (no allow-list to maintain): whatever remains after removing the
@@ -305,32 +305,32 @@ export function loadScsAddon(archive, scsSource, scsRoot) {
  * (.git, .github, .idea, .yarnrc, ...) are dropped as VCS/editor/CI noise - EXCEPT .npmrc,
  * the npm/pnpm registry config the build-tooling checks read.
  *
- * When scsSource IS the archive root (a flat layout: manifest.json at the root, with the
+ * When scaSource IS the archive root (a flat layout: manifest.json at the root, with the
  * build tooling intermingled), there is no source subtree to remove, so the candidate pool
  * is the whole root - and selectBuildCorpus still traces the build off the root package.json
- * exactly as in a nested layout. The pool then overlaps the review addon (loadScsAddon), but
+ * exactly as in a nested layout. The pool then overlaps the review addon (loadScaAddon), but
  * the two feed different checks, and the package.json trace keeps the build corpus tight.
- * @param {Addon} archive  The scsRoot archive, loaded ONCE by the caller and shared
- *   with loadScsAddon (the tree is not read twice).
- * @param {string} scsSource  The --scs-source flag (the review source subtree).
- * @param {string} scsRoot  Path to the source archive root (for the path math).
- * @param {string} [scsExpSource]  The --scs-exp-source flag; excluded too (it sits
- *   inside scsSource, so this is defensive).
+ * @param {Addon} archive  The scaRoot archive, loaded ONCE by the caller and shared
+ *   with loadScaAddon (the tree is not read twice).
+ * @param {string} scaSource  The --sca-source flag (the review source subtree).
+ * @param {string} scaRoot  Path to the source archive root (for the path math).
+ * @param {string} [scaExpSource]  The --sca-exp-source flag; excluded too (it sits
+ *   inside scaSource, so this is defensive).
  * @returns {{files: Map<string, Buffer>, nodeModules: string[], archives: string[]}}
  */
-export function loadScsBuildFiles(archive, scsSource, scsRoot, scsExpSource) {
+export function loadScaBuildFiles(archive, scaSource, scaRoot, scaExpSource) {
   const files = new Map();
-  const src = scsRootRelative(scsSource, scsRoot, "--scs-source");
+  const src = scaRootRelative(scaSource, scaRoot, "--sca-source");
   // Nested layout: exclude the review-source subtree (it is the add-on, not the build).
-  // Flat layout (scsSource IS the archive root, src === ""): there is no subtree to
+  // Flat layout (scaSource IS the archive root, src === ""): there is no subtree to
   // exclude, so every file becomes a build candidate and selectBuildCorpus still traces
   // the build off the root package.json.
   const prefixes = [];
   if (src) {
     prefixes.push(src);
   }
-  if (scsExpSource) {
-    const exp = scsRootRelative(scsExpSource, scsRoot, "--scs-exp-source");
+  if (scaExpSource) {
+    const exp = scaRootRelative(scaExpSource, scaRoot, "--sca-exp-source");
     if (exp) {
       prefixes.push(exp);
     }
@@ -356,9 +356,9 @@ export function loadScsBuildFiles(archive, scsSource, scsRoot, scsExpSource) {
     files.set(p, buf);
   }
   // Copy nodeModules/archives so the build corpus owns its lists - the caller shares one
-  // archive object with loadScsAddon, and the aliased array must not leak mutations back
+  // archive object with loadScaAddon, and the aliased array must not leak mutations back
   // to it (matching the fresh-Map discipline `files` already follows). Both span the whole
-  // --scs-root so the committed-* checks catch a tree anywhere, not just outside the source.
+  // --sca-root so the committed-* checks catch a tree anywhere, not just outside the source.
   return {
     files,
     nodeModules: [...archive.nodeModules],

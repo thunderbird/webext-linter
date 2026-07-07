@@ -1,9 +1,9 @@
-// SCS mode (scs: true). Rejects a declared dependency that is not a confirmed
+// SCA mode (sca: true). Rejects a declared dependency that is not a confirmed
 // widely-used library. In a source-code submission the dependency code is not in
 // the readable source (it is pulled in at build) and is mangled in the built XPI,
 // so a non-popular one cannot be reviewed - the developer must ship its readable
-// source inside --scs-source. The network pre-step (src/vendor/verify.js
-// verifyScsDependencies) looked up each package.json dependency's npm popularity
+// source inside --sca-source. The network pre-step (src/vendor/verify.js
+// verifyScaDependencies) looked up each package.json dependency's npm popularity
 // and, when it is below the trust bar, recorded it on addon.vendor.unpopularDeps.
 // This check only reads that and emits one error finding per such dependency,
 // anchored at its package.json declaration line. Deterministic, no network.

@@ -215,7 +215,7 @@ test("buildAddonText trims only the non-authored set (undetected libs included)"
   assert.ok(!text.includes("var $=")); // minified-by-geometry blob: trimmed
 });
 
-// SCS mode: the behavioral add-on summary describes the built XPI (summaryAddon), not
+// SCA mode: the behavioral add-on summary describes the built XPI (summaryAddon), not
 // the readable source review target (ctx.addon). The pipeline classifies the shipped
 // XPI in setup, so its minified/library bundles are EXCLUDED from the summary exactly as
 // in an XPI review - the multi-MB shipped bundles are never quoted (which would overflow

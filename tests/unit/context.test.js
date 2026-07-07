@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import {
   buildRunContext,
   buildShippedCtx,
-  buildScsBuildCtx,
+  buildScaBuildCtx,
 } from "../../src/checks/context.js";
 
 const addonWith = (files, nonAuthored = []) => ({
@@ -68,7 +68,7 @@ test("buildShippedCtx swaps the artifact fields and is a no-op in an XPI review"
     addon: source,
     schema: { s: 1 },
     options: {},
-    mode: "scs",
+    mode: "sca",
   });
 
   const shipped = buildShippedCtx(ctx, xpi);
@@ -79,7 +79,7 @@ test("buildShippedCtx swaps the artifact fields and is a no-op in an XPI review"
   assert.equal(shipped.jsSources[0].file, "app.js");
   assert.equal(shipped.apiUsages, undefined); // per-source, source-only: dropped
   assert.equal(shipped.schema, ctx.schema); // shared run-state
-  assert.equal(shipped.isShippedView, true); // gates reachability's SCS fallback
+  assert.equal(shipped.isShippedView, true); // gates reachability's SCA fallback
 
   // XPI review: the built XPI IS the review target -> the same ctx object, no copy,
   // and NOT marked a shipped view (there is only one artifact).
@@ -88,23 +88,23 @@ test("buildShippedCtx swaps the artifact fields and is a no-op in an XPI review"
   assert.equal(same.isShippedView, undefined);
 });
 
-// buildScsBuildCtx routes the SCS build corpus onto ctx.addon (the input: build seam),
+// buildScaBuildCtx routes the SCA build corpus onto ctx.addon (the input: build seam),
 // shares run-state, and empties the source-only jsSources/apiUsages. The corpus is
 // projected through reviewView like every other ctx.addon, so a build check can never
 // read ctx.addon.manifest against another artifact's files.
-test("buildScsBuildCtx puts the build corpus on ctx.addon and strips manifest/sources", () => {
+test("buildScaBuildCtx puts the build corpus on ctx.addon and strips manifest/sources", () => {
   const source = addonWith({ "src/app.js": "export const x = 1;" });
   const ctx = buildRunContext({
     addon: source,
     schema: { s: 1 },
     options: {},
-    mode: "scs",
+    mode: "sca",
   });
   const buildFiles = new Map([["build.sh", Buffer.from("echo hi")]]);
   // A full-addon shape (manifest present) must NOT leak through: reviewView strips it.
   const buildAddon = { files: buildFiles, manifest: { name: "leak" } };
 
-  const build = buildScsBuildCtx(ctx, buildAddon);
+  const build = buildScaBuildCtx(ctx, buildAddon);
   assert.equal(build.addon.files, buildFiles); // the build corpus is the artifact
   assert.equal(build.addon.manifest, undefined); // reviewView stripped it (no leak)
   assert.deepEqual(build.jsSources, []); // source-only, emptied
@@ -113,6 +113,6 @@ test("buildScsBuildCtx puts the build corpus on ctx.addon and strips manifest/so
   assert.equal(build.manifest, ctx.manifest); // shipped manifest stays for framing
 
   // The invalid-Experiment fallback shape {files:new Map()} is a valid, readable ctx.
-  const empty = buildScsBuildCtx(ctx, { files: new Map() });
+  const empty = buildScaBuildCtx(ctx, { files: new Map() });
   assert.equal(empty.addon.files.size, 0);
 });

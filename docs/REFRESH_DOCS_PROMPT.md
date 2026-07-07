@@ -33,7 +33,7 @@ that no longer exist.
   switch to a CDN.
 - `docs/checks/<id>.html` — one standalone page per check.
 - `docs/review/<name>.html` — one standalone page per whole-review flow
-  (`standard.html`, `scs.html`). Same page template as a check page, but they
+  (`standard.html`, `sca.html`). Same page template as a check page, but they
   document a review *mode* rather than a single check, so their flowchart walks
   the pipeline stages, not one check's branches.
 
@@ -52,13 +52,13 @@ that no longer exist.
    to them.
 3. `README.md` — overall framing (deterministic vs LLM vs manual checks, the
    `--full-summary` recheck mechanism, producer/consumer pairs), and the
-   **Standard** vs **Source-code submission (SCS)** review modes.
+   **Standard** vs **Source code archive (SCA)** review modes.
 4. `src/pipeline.js` — the review pipeline (`runPipeline` / `reviewAddon`): the
    ground truth for the two whole-review flow pages. It shows the stage order
    (load → experiment classification → setup/vendor → schema/parse → run checks →
-   summaries → recheck → report) and the `mode === "scs"` forks (the source /
+   summaries → recheck → report) and the `mode === "sca"` forks (the source /
    dependency / build / shipped-XPI split, routed via `buildShippedCtx` /
-   `buildScsBuildCtx`).
+   `buildScaBuildCtx`).
 
 ## Steps
 
@@ -94,8 +94,8 @@ that no longer exist.
    - LLM checks — make clear the final branch is a model judgement, and what the
      deterministic pre-flight narrows down before the model is asked.
 5. **Author / update the two review-flow pages** at `docs/review/standard.html`
-   and `docs/review/scs.html`. These document a whole review *mode*, not a single
-   check, so read `src/pipeline.js` (and the README's Standard / SCS sections) and
+   and `docs/review/sca.html`. These document a whole review *mode*, not a single
+   check, so read `src/pipeline.js` (and the README's Standard / SCA sections) and
    keep each page in sync with the pipeline:
    - **Standard** (`verify.js <xpi|folder>`) — the single-artifact flow: load →
      `manifest_version`/schema-branch selection → Experiment classification (with
@@ -104,7 +104,7 @@ that no longer exist.
      & run the deterministic + LLM checks → optional `--full-summary` /
      `--diff-summary` (which re-judge escalated "unsure" items) → post-summary
      rechecks → report + manual-review to-do list.
-   - **Source Code Submission** (`--scs-root`; `--scs-source` optional) — the split-artifact
+   - **Source Code Archive** (`--sca-root`; `--sca-source` optional) — the split-artifact
      flow: the readable source is the code-defect review target; the declared
      dependencies and the build files are audited; the built XPI is authoritative
      for the manifest, experiments, file-completeness, `--diff-to` baseline and the

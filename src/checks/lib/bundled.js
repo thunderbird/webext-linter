@@ -72,7 +72,7 @@ import { rawSha256 } from "../../normalize/hash.js";
  * verdict comes from `obfuscated` when the extraction pass precomputed it on its shared
  * parse - the review source's path, via classifyAndExtractReview - else this parses each
  * candidate itself via detectObfuscationAst: the path for the built XPI's setup
- * classification (SCS) and the lazy getBundled callers (unit / rejected-Experiment
+ * classification (SCA) and the lazy getBundled callers (unit / rejected-Experiment
  * contexts that never ran a pre-step).
  *
  * @param {Addon} addon
@@ -82,7 +82,7 @@ import { rawSha256 } from "../../normalize/hash.js";
  *   raw hash is a key is tagged `library` (and identified). Empty map = nothing
  *   recognized. A minified-by-geometry file (an unidentifiable webpack/tsc bundle) is
  *   non-authored (skipped by the source-level scanners and rejected by minified-code),
- *   in both XPI and source-code-submission reviews. A hash-identified library is real
+ *   in both XPI and source-code submission reviews. A hash-identified library is real
  *   third-party code, so it - like the
  *   obfuscated tag and VENDOR.md-declared / experiment-trusted files - stays
  *   non-authored. obfuscated: precomputed candidate-file -> AST
@@ -284,7 +284,7 @@ export function applyNotPopularVendor(addon) {
  * @returns {Bundled}
  */
 function getBundled(ctx) {
-  // The pipeline pre-classifies the review target in setup (and, in SCS, the built XPI
+  // The pipeline pre-classifies the review target in setup (and, in SCA, the built XPI
   // too - in XPI mode they are one artifact), so this lazy fallback only fires for a
   // caller that ran no pre-step (a rejected Experiment or a direct unit ctx). Minified
   // is classified identically in every mode and artifact - a minified non-library is
@@ -439,7 +439,7 @@ export function obfuscationFrom(ast) {
  * are never parsed here (keeping the multi-MB bundles out of the parser). This is the
  * standalone path taken whenever classifyBundled gets no precomputed obfuscation map: the
  * lazy getBundled callers (unit / rejected-Experiment contexts), and the setup
- * classification of the built XPI in SCS. It parses each candidate itself. The review
+ * classification of the built XPI in SCA. It parses each candidate itself. The review
  * source instead reuses the extraction pass's shared AST (obfuscationFrom), so no reviewed
  * source is parsed twice.
  * @param {string} text

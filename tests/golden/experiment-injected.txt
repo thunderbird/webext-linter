@@ -7,6 +7,9 @@ Read more: https://webextension-api.thunderbird.net/.
  - background.js:4 - browser.controlBogus
  - content/uipage.js:3 - browser.bogusApi
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

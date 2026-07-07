@@ -40,6 +40,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import YAML from "yaml";
 
 import { finding, SEVERITY } from "../report/finding.js";
+import { artifactLabel } from "../report/artifact.js";
 import { progress, debug, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
 import { runLlmCheck, manualEscalations } from "./escalation.js";
@@ -61,12 +62,12 @@ const VALID_CHECK_SEVERITIES = new Set([...CONCRETE_SEVERITIES, AUTO_SEVERITY]);
 
 // The `input` a check entry declares - which add-on artifact is ctx.addon when the
 // check runs. "auto" = the REVIEW TARGET (the built XPI in an XPI review, the
-// readable --scs-source in an SCS review); "xpi" = ALWAYS the built XPI (the shipped
-// artifact), for the structure checks that describe what ships; "build" = the SCS
+// readable --sca-source in an SCA review); "xpi" = ALWAYS the built XPI (the shipped
+// artifact), for the structure checks that describe what ships; "build" = the SCA
 // build files (the archive minus the review source minus node_modules), for the
 // build review. Required on every check: runChecks routes each check to its
 // artifact's context, so the check reads one artifact and has no way to reach
-// another (see buildShippedCtx / buildScsBuildCtx).
+// another (see buildShippedCtx / buildScaBuildCtx).
 const VALID_CHECK_INPUTS = new Set(["auto", "xpi", "build"]);
 
 /**
@@ -90,10 +91,10 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {Severity} severity  Impact stamped onto the check's findings.
  * @property {"auto"|"xpi"|"build"} input  Which add-on artifact is ctx.addon when the
  *   check runs. "auto" = the review target (the built XPI in an XPI review, the
- *   readable --scs-source in an SCS review); "xpi" = always the built XPI (the shipped
- *   artifact), for the structure checks that describe what ships; "build" = the SCS
+ *   readable --sca-source in an SCA review); "xpi" = always the built XPI (the shipped
+ *   artifact), for the structure checks that describe what ships; "build" = the SCA
  *   build files, for the build review. Required - runChecks routes each check to its
- *   artifact's context (see buildShippedCtx / buildScsBuildCtx).
+ *   artifact's context (see buildShippedCtx / buildScaBuildCtx).
  * @property {"deterministic"|"llm"} kind  Which registry section it came from.
  * @property {boolean} [diff]  Diff-mode gate: true = run only with a --diff-to
  *   baseline, false = run only WITHOUT one (new submissions), omitted = always.
@@ -107,9 +108,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {string} [postSummaryRecheck]  Id of a post-summary recheck consumer
  *   this check hands its manual items to when the full summary runs (see
  *   runChecks and src/checks/lib/recheck.js).
- * @property {boolean} [scsRecheck]  `false` marks a per-site (file:line) recheck
+ * @property {boolean} [scaRecheck]  `false` marks a per-site (file:line) recheck
  *   producer whose source-anchored items cannot bridge to the XPI behavioral
- *   summary in SCS mode: runChecks then routes its unsure sites straight to manual
+ *   summary in SCA mode: runChecks then routes its unsure sites straight to manual
  *   review there instead of the summary.
  * @property {Function} run
  */
@@ -129,7 +130,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {?import("../addon/load.js").Manifest} manifest  The authoritative,
  *   SHIPPED manifest (the built XPI's - what Thunderbird loads), resolved once like
  *   `schema`. Every manifest / permission / API check reads this; there is no
- *   ctx.addon.manifest (reviewView strips it), which in SCS would be the readable
+ *   ctx.addon.manifest (reviewView strips it), which in SCA would be the readable
  *   source's pre-build template - no check reviews the source manifest.
  * @property {?string} manifestError  The shipped manifest's JSON parse error, or null.
  * @property {?import("../addon/manifest-loc.js").ManifestLoc} manifestLoc  Position
@@ -143,19 +144,19 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {{llmEnabled?: boolean, llmApiKey?: string, llmApiUrl?: string,
  *   llmApiType?: string, allowExperiments?: boolean}} options
  * @property {import("../addon/load.js").Addon|null} [previous]  Diff baseline.
- * @property {"xpi"|"scs"} [mode]  Review mode: "xpi" (a built add-on, default) or
- *   "scs" (a source-code submission). Gates checks via scsEligible.
+ * @property {"xpi"|"sca"} [mode]  Review mode: "xpi" (a built add-on, default) or
+ *   "sca" (a source code archive). Gates checks via scaEligible.
  *
  *   The SHIPPED artifact (the built XPI) is deliberately NOT a ctx field: a check
  *   has no way to reach the artifact it was not routed to. The orchestrator builds a
  *   separate shipped context (buildShippedCtx, src/checks/context.js) and routes each
  *   `input: xpi` check to it - see runChecks / runOneCheck.
  * @property {boolean} [isShippedView]  Set by buildShippedCtx on the shipped
- *   context (never the review target). buildReachability reads it so the SCS
+ *   context (never the review target). buildReachability reads it so the SCA
  *   "all readable-source files" pureWebExtensionReachable fallback applies only to
  *   the review source, not the built XPI (whose entry points resolve).
- * @property {string} [scsExpSource]  SCS mode: the Experiment folder as a source-
- *   relative path (runPipeline re-bases it from the scsRoot-relative --scs-exp-source
+ * @property {string} [scaExpSource]  SCA mode: the Experiment folder as a source-
+ *   relative path (runPipeline re-bases it from the scaRoot-relative --sca-exp-source
  *   flag). buildReachability excludes it from pureWebExtensionReachable so the
  *   WebExtension code checks skip privileged Experiment code.
  * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
@@ -235,6 +236,19 @@ export class Registry {
    */
   checkIds() {
     return this.checkEntries().map((e) => stem(e.check));
+  }
+
+  /**
+   * The routed input artifact per ruleId (a `Map<ruleId, "xpi"|"build"|"auto">`),
+   * projected for the report layer so it can label a finding's file:line by
+   * artifact ([XPI]/[SCA]) without touching the registry. An omitted `input`
+   * defaults to "auto" (the review target), matching runChecks' routing.
+   * @returns {Map<string, string>}
+   */
+  checkInputs() {
+    return new Map(
+      this.checkEntries().map((e) => [stem(e.check), e.input ?? "auto"])
+    );
   }
 
   /**
@@ -491,7 +505,7 @@ export async function loadChecks(registry, { only, skip } = {}) {
         `rules/${id}.js is missing a valid \`input\` (got ${JSON.stringify(input)}; ` +
           `expected one of: ${[...VALID_CHECK_INPUTS].join(", ")}). ` +
           "Every check must declare which add-on artifact it reads (auto = the " +
-          "review target, xpi = the built XPI, build = the SCS build files)."
+          "review target, xpi = the built XPI, build = the SCA build files)."
       );
     }
     checks.push({
@@ -501,7 +515,7 @@ export async function loadChecks(registry, { only, skip } = {}) {
       input,
       kind: entry.kind,
       diff: typeof entry.diff === "boolean" ? entry.diff : undefined,
-      scs: typeof entry.scs === "boolean" ? entry.scs : undefined,
+      sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
       // A `summary-prompt` or `permission-recheck` marks a recheck consumer: it is
       // re-judged by the add-on summary, so it must run AFTER it (an explicit `phase`
       // still wins).
@@ -516,12 +530,12 @@ export async function loadChecks(registry, { only, skip } = {}) {
         typeof entry["post-summary-recheck"] === "string"
           ? entry["post-summary-recheck"]
           : undefined,
-      // `scs-recheck: false` -> a per-site (file:line) recheck whose source-anchored
-      // items cannot bridge to the XPI behavioral summary in SCS mode; runChecks
+      // `sca-recheck: false` -> a per-site (file:line) recheck whose source-anchored
+      // items cannot bridge to the XPI behavioral summary in SCA mode; runChecks
       // routes them straight to manual review there instead.
-      scsRecheck:
-        typeof entry["scs-recheck"] === "boolean"
-          ? entry["scs-recheck"]
+      scaRecheck:
+        typeof entry["sca-recheck"] === "boolean"
+          ? entry["sca-recheck"]
           : undefined,
       run,
     });
@@ -554,9 +568,11 @@ const VERDICT_COLOR = { fail: red, pass: green, unsure: blue };
  * @param {?string} item
  * @param {"pass"|"fail"|"unsure"|"skipped"} verdict  A DETERMINISTIC_VERDICTS
  *   value (skipped = the check did not apply; unsure = escalated).
+ * @param {string} [label]  Artifact label ("XPI"/"SCA") prepended before the site
+ *   in an SCA review, else "" (an XPI review has one artifact). See report/artifact.js.
  * @returns {string}
  */
-export function formatNote(file, loc, item, verdict) {
+export function formatNote(file, loc, item, verdict, label = "") {
   if (!DETERMINISTIC_VERDICTS.has(verdict)) {
     throw new Error(
       `formatNote: unknown verdict "${verdict}" (expected one of ` +
@@ -564,7 +580,8 @@ export function formatNote(file, loc, item, verdict) {
     );
   }
   const at = loc?.line != null ? `${file}:${loc.line}` : file;
-  const line = `• ${`[${verdict}]`.padEnd(TAG_WIDTH)} ${at}${item ? ` - ${item}` : ""}`;
+  const site = label ? `[${label}] ${at}` : at;
+  const line = `• ${`[${verdict}]`.padEnd(TAG_WIDTH)} ${site}${item ? ` - ${item}` : ""}`;
   return (VERDICT_COLOR[verdict] ?? ((s) => s))(line);
 }
 
@@ -587,21 +604,21 @@ function diffEligible(entry, inDiffMode) {
 }
 
 /**
- * Whether a registry entry runs in the current review MODE, per its `scs` field
- * (mirrors diffEligible): `scs: true` only in SCS mode (a source-code submission,
- * triggered by `--scs-root`), `scs: false` only in XPI mode (reviewing a built
- * add-on), an omitted `scs` in both. The XPI bundled/vendor checks are `scs:
+ * Whether a registry entry runs in the current review MODE, per its `sca` field
+ * (mirrors diffEligible): `sca: true` only in SCA mode (a source code archive,
+ * triggered by `--sca-root`), `sca: false` only in XPI mode (reviewing a built
+ * add-on), an omitted `sca` in both. The XPI bundled/vendor checks are `sca:
  * false` (they need the XPI dependency tree, absent for a source archive); the
- * `--scs-root` dependency audit is `scs: true`.
- * @param {{scs?: boolean}} entry @param {boolean} inScsMode
+ * `--sca-root` dependency audit is `sca: true`.
+ * @param {{sca?: boolean}} entry @param {boolean} inScaMode
  * @returns {boolean}
  */
-function scsEligible(entry, inScsMode) {
-  if (entry.scs === true) {
-    return inScsMode;
+function scaEligible(entry, inScaMode) {
+  if (entry.sca === true) {
+    return inScaMode;
   }
-  if (entry.scs === false) {
-    return !inScsMode;
+  if (entry.sca === false) {
+    return !inScaMode;
   }
   return true;
 }
@@ -616,14 +633,14 @@ function scsEligible(entry, inScsMode) {
  * entry is the only source of severity). A check that throws is reported as a
  * system finding and the rest still run.
  * @param {RunContext} ctx  The review-target check context (ctx.addon = the
- *   reviewed artifact; the XPI in an XPI review, the readable source in SCS).
+ *   reviewed artifact; the XPI in an XPI review, the readable source in SCA).
  * @param {Registry} registry
  * @param {{only?: string[], skip?: string[]}} [opts]
  * @param {RunContext} [shippedCtx]  The SHIPPED-artifact context (built by the
  *   pipeline via buildShippedCtx); each `input: xpi` check is routed to it. IS ctx
  *   in an XPI review; omitted = every check runs over ctx.
- * @param {RunContext} [buildCtx]  The SCS BUILD-files context (buildScsBuildCtx);
- *   each `input: build` check is routed to it. SCS mode only; omitted otherwise.
+ * @param {RunContext} [buildCtx]  The SCA BUILD-files context (buildScaBuildCtx);
+ *   each `input: build` check is routed to it. SCA mode only; omitted otherwise.
  * @returns {Promise<{findings: object[], checks: object[], deferred: object[],
  *   total: number, manualItems: {ruleId: string, item: ?string,
  *   kind: string}[]}>}  `checks` ran in this loop; `deferred` are the
@@ -651,14 +668,14 @@ export async function runChecks(
   // the feed or meta.checksRun.
   const loaded = await loadChecks(registry, opts);
   const inDiffMode = Boolean(ctx.previous);
-  // The `scs` gate keys off the review mode (ctx.mode): SCS mode reviews a
+  // The `sca` gate keys off the review mode (ctx.mode): SCA mode reviews a
   // source-code submission's readable source + its declared deps, so the
-  // XPI-only bundled/vendor checks (`scs: false`) are dropped and the
-  // source-dependency audit (`scs: true`) is added; XPI mode (the default) is
-  // the inverse. An omitted `scs` runs in both.
-  const inScsMode = ctx.mode === "scs";
+  // XPI-only bundled/vendor checks (`sca: false`) are dropped and the
+  // source-dependency audit (`sca: true`) is added; XPI mode (the default) is
+  // the inverse. An omitted `sca` runs in both.
+  const inScaMode = ctx.mode === "sca";
   const eligible = loaded.filter(
-    (c) => diffEligible(c, inDiffMode) && scsEligible(c, inScsMode)
+    (c) => diffEligible(c, inDiffMode) && scaEligible(c, inScaMode)
   );
   const checks = ctx.invalidExperiment
     ? eligible.filter((c) => c.phase === "invalid-experiment")
@@ -676,22 +693,27 @@ export async function runChecks(
   // a trail regardless of the finding. The format is owned here (formatNote);
   // checks emit only {file, loc, item, verdict}. Lines nest under the check's
   // [i/N] line above.
-  ctx.note = (file, loc, item, verdict) => {
+  // The ctx a note fires on IS its artifact (matching the input routing below), so
+  // each sibling context gets a note bound to its input: the review target is the
+  // source archive (auto), the shipped context the built XPI, the build context the
+  // build files. artifactLabel prepends [XPI]/[SCA] in SCA mode (and always [XPI] for
+  // manifest.json - the shipped manifest); an XPI review adds no label.
+  const makeNote = (input) => (file, loc, item, verdict) => {
     try {
-      progress(formatNote(file, loc, item, verdict), FEED.DETAIL);
+      const label = artifactLabel({ file, input, mode: ctx.mode });
+      progress(formatNote(file, loc, item, verdict, label), FEED.DETAIL);
     } catch (err) {
       // A cosmetic feed note must never drop a check's findings - formatNote's
       // throw still guards the contract for its unit test and direct callers.
       debug(`feed note skipped: ${err.message}`);
     }
   };
-  // The shipped context is a sibling object, so it needs the same feed note - an
-  // `input: xpi` check narrates through the ctx it was routed to.
+  ctx.note = makeNote("auto");
   if (shippedCtx && shippedCtx !== ctx) {
-    shippedCtx.note = ctx.note;
+    shippedCtx.note = makeNote("xpi");
   }
   if (buildCtx && buildCtx !== ctx) {
-    buildCtx.note = ctx.note;
+    buildCtx.note = makeNote("build");
   }
   // Heading for the live activity feed, matching the report's section style. A
   // no-op when progress is off (JSON, the golden harness), so goldens are
@@ -701,7 +723,7 @@ export async function runChecks(
   for (const [i, check] of checks.entries()) {
     // Route the check to its declared input artifact - the ONE place the choice is
     // made. `input: xpi` runs over the shipped context (the built XPI), `input: build`
-    // over the SCS build files, everything else over the review target. The check
+    // over the SCA build files, everything else over the review target. The check
     // reads only its ctx.addon and has no way to reach another artifact.
     const checkCtx =
       check.input === "xpi"
@@ -714,16 +736,16 @@ export async function runChecks(
     // A check with `post-summary-recheck: R` hands its manual items to the
     // recheck consumer R, but only when the full summary will actually run to
     // re-judge them (ctx.recheckActive). Otherwise they go straight to manual
-    // review - as do all no-summary paths, including the golden harness. In SCS
-    // mode a `scs-recheck: false` producer (a per-site file:line recheck) is also
+    // review - as do all no-summary paths, including the golden harness. In SCA
+    // mode a `sca-recheck: false` producer (a per-site file:line recheck) is also
     // held back: its source line numbers cannot bridge to the XPI summary, so its
     // unsure sites go straight to manual review.
-    const scsHoldsBack = ctx.mode === "scs" && check.scsRecheck === false;
+    const scaHoldsBack = ctx.mode === "sca" && check.scaRecheck === false;
     if (
       check.postSummaryRecheck &&
       ctx.recheckActive &&
       out.manualItems.length &&
-      !scsHoldsBack
+      !scaHoldsBack
     ) {
       // The registry decides per item whether this consumer can re-judge it: a
       // permission-recheck consumer takes only the permissions it has a rubric prompt

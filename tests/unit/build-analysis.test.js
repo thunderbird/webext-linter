@@ -1,4 +1,4 @@
-// analyzeBuild runs the SCS build review's ONE classification in the setup phase (the vendor
+// analyzeBuild runs the SCA build review's ONE classification in the setup phase (the vendor
 // pattern): it selects the build corpus, asks the model to classify the build, and returns the
 // verdict stored on addon.buildFiles.buildReview. LLM-optional and offline-safe. callText is
 // injected here so no network/model is touched.

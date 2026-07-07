@@ -218,7 +218,7 @@ export const experimentRefsOf = (src, namespaces) =>
   );
 /** @param {JsSource} src  The loc of the first ES module statement (import/export), or
  *   null if none - precomputed on the shared parse (every source), recomputed for a
- *   source the pass never ran on (the SCS shipped view). */
+ *   source the pass never ran on (the SCA shipped view). */
 export const moduleSyntaxOf = (src) => {
   if (src.extracted && "moduleSyntaxLoc" in src.extracted) {
     return src.extracted.moduleSyntaxLoc;

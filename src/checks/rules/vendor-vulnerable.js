@@ -3,7 +3,7 @@
 // audit ran once in the network pre-step (src/vendor/verify.js auditNpm), which
 // recorded each vulnerable package on addon.vendor.vulnerabilities with the file +
 // token to anchor it; this check maps that set to findings via the shared
-// lib/vuln-findings.js mapper (also used by vendor-vulnerable-dev for the SCS dev
+// lib/vuln-findings.js mapper (also used by vendor-vulnerable-dev for the SCA dev
 // set). Deterministic, no network.
 //
 // Belongs here: choosing the prod/vendored vulnerability set. Does NOT belong

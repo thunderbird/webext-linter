@@ -5,6 +5,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) Data is sent over an unencrypted connection to api.example.com. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
  - background.js:4
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

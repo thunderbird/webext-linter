@@ -6,6 +6,9 @@ Thank you for your contribution, it will be approved shortly. We would like to s
 Read more: https://webextension-api.thunderbird.net/.
  - bg.js:3 - The legacy API was removed; use messages instead.
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

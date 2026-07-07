@@ -21,7 +21,7 @@ export default {
   run(ctx) {
     // Registry `input: xpi`: ctx.addon is the built XPI. _locales <-> default_locale
     // is a property of what actually ships (a source submission's _locales may be
-    // generated or live outside --scs-source), so both the manifest and the _locales
+    // generated or live outside --sca-source), so both the manifest and the _locales
     // scan read the XPI.
     const manifest = ctx.manifest;
     if (!manifest) {

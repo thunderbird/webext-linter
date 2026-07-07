@@ -1,4 +1,4 @@
-// Deterministic (SCS only): flags a package.json npm install lifecycle hook
+// Deterministic (SCA only): flags a package.json npm install lifecycle hook
 // (preinstall / install / postinstall / prepare / prepublish / prepublishOnly /
 // prepack). These run when the reviewer installs the dependencies - BEFORE the build -
 // so a postinstall that fetches and runs remote code is a supply-chain vector the

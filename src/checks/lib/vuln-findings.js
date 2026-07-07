@@ -1,6 +1,6 @@
 // Shared vulnerability->finding mapping for the two dependency-vulnerability
 // checks: vendor-vulnerable (prod deps + vendored libs, addon.vendor.vulnerabilities)
-// and vendor-vulnerable-dev (SCS dev deps, addon.vendor.devVulnerabilities). The
+// and vendor-vulnerable-dev (SCA dev deps, addon.vendor.devVulnerabilities). The
 // OSV audit ran once in the network pre-step (src/vendor/verify.js auditNpm), which
 // recorded each vulnerable package with the file + token to anchor it; this maps
 // each recorded vulnerability to a finding, anchored at its declaration line.

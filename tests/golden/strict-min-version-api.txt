@@ -6,6 +6,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
  - background.js:5 - browser.messages.tags.list() - added in Thunderbird 121
  - background.js:6 - browser.messages.tags.create() - added in Thunderbird 121
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

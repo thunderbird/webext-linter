@@ -5,8 +5,8 @@
 // to a tampered artifact. It is a hard fail, exactly like a committed node_modules folder.
 //
 // The archive paths are recorded at load (addon.archives): loadAddon walks the WHOLE
-// --scs-root before the source/build split, so an archive is caught wherever it sits - in
-// the review source, the build tree, anywhere. loadScsBuildFiles passes the list onto the
+// --sca-root before the source/build split, so an archive is caught wherever it sits - in
+// the review source, the build tree, anywhere. loadScaBuildFiles passes the list onto the
 // input: build addon (like nodeModules). This check turns each recorded path into a finding.
 //
 // Belongs here: mapping a recorded archive path to a finding. Does NOT belong here:

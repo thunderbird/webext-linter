@@ -41,13 +41,13 @@ import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
  * @property {{name: string, spec: string}[]} unpinned  Deps with no pin.
  * @property {{name: string, spec: string, repo: string, ref: ?string}[]}
  *   githubDeps  GitHub-sourced package.json deps (popularity-gated like a
- *   VENDOR.md github source; audited by verifyScsDependencies in SCS mode).
+ *   VENDOR.md github source; audited by verifyScaDependencies in SCA mode).
  * @property {{name: string, spec: string}[]} unsupportedDeps  package.json deps
  *   from an unsupported source (not npm, not GitHub); rejected by the
  *   unsupported-dependency check.
  * @property {{name: string, version: string}[]} devPackages  Pinned npm
- *   devDependencies. Never shipped, but OSV-audited in SCS mode because the
- *   reviewer builds from source (verifyScsDependencies).
+ *   devDependencies. Never shipped, but OSV-audited in SCA mode because the
+ *   reviewer builds from source (verifyScaDependencies).
  * @property {VendorEntry[]} missing  VENDOR entries whose file is absent.
  * @property {{source: string, paths: string[]}[]} ambiguousSources  Source URLs
  *   paired with more than one bundled file (the developer must split them or use a
@@ -58,17 +58,17 @@ import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
  * @property {import("./verify.js").VendorVuln[]} vulnerabilities  Pinned npm
  *   packages (package.json deps + npm VENDOR entries) with known OSV advisories
  *   (filled by verifyVendor's audit; empty offline).
- * @property {import("./verify.js").VendorVuln[]} devVulnerabilities  SCS mode
+ * @property {import("./verify.js").VendorVuln[]} devVulnerabilities  SCA mode
  *   only: pinned npm devDependencies with known OSV advisories (filled by
- *   verifyScsDependencies; empty in XPI mode / offline). Read by the
+ *   verifyScaDependencies; empty in XPI mode / offline). Read by the
  *   vendor-vulnerable-dev check.
  * @property {{path: string, source: ?string, repo: ?string}[]} unaudited
  *   GitHub-sourced VENDOR entries that could not be resolved to a verified npm
  *   identity for an OSV audit (filled by verifyVendor; empty offline). Read by
  *   the vendor-vuln-unknown check to surface them as info.
  * @property {{name: string, version: string, file: string, token: string}[]}
- *   unpopularDeps  SCS mode: declared dependencies that are not a confirmed
- *   widely-used library (filled by verifyScsDependencies; empty in XPI mode /
+ *   unpopularDeps  SCA mode: declared dependencies that are not a confirmed
+ *   widely-used library (filled by verifyScaDependencies; empty in XPI mode /
  *   offline). Read by the unpopular-source-dependency check.
  * @property {{name: string, version: string, status: string, reason: string,
  *   file: string, token: string}[]} blocked  Bundled library versions Mozilla
@@ -243,13 +243,13 @@ export async function resolveVendor({
     packages,
     unpinned,
     // GitHub-sourced package.json deps (popularity-gated like a VENDOR.md github
-    // source). Audited by verifyScsDependencies in SCS mode.
+    // source). Audited by verifyScaDependencies in SCA mode.
     githubDeps,
     // package.json deps from an unsupported source (not npm, not GitHub). Read by
     // the unsupported-dependency check, which rejects them.
     unsupportedDeps: unsupported,
-    // Pinned npm devDependencies. Never shipped, but OSV-audited in SCS mode
-    // because the reviewer builds from source (verifyScsDependencies).
+    // Pinned npm devDependencies. Never shipped, but OSV-audited in SCA mode
+    // because the reviewer builds from source (verifyScaDependencies).
     devPackages,
     missing,
     ambiguousSources,
@@ -261,15 +261,15 @@ export async function resolveVendor({
     // the policy the audit is given (assets/library-blocks.yaml) and records a hit
     // here - a banned one also skips the OSV query. Read by the banned-library check.
     blocked: [],
-    // SCS mode only: pinned npm devDependencies with known OSV advisories (filled
-    // by verifyScsDependencies; empty in XPI mode / offline). Read by the
+    // SCA mode only: pinned npm devDependencies with known OSV advisories (filled
+    // by verifyScaDependencies; empty in XPI mode / offline). Read by the
     // vendor-vulnerable-dev check.
     devVulnerabilities: [],
     // Filled by verifyVendor when a github source cannot be resolved to a
     // verified npm identity (network). Empty for offline runs.
     unaudited: [],
-    // SCS mode only: declared dependencies that are not a confirmed widely-used
-    // library (filled by verifyScsDependencies; empty in XPI mode / offline).
+    // SCA mode only: declared dependencies that are not a confirmed widely-used
+    // library (filled by verifyScaDependencies; empty in XPI mode / offline).
     // Read by the unpopular-source-dependency check.
     unpopularDeps: [],
     // "Unparsed" only when we extracted nothing at all - neither a matched entry
@@ -328,9 +328,9 @@ function classifyDeps(deps, addon) {
 
 /**
  * Classify package.json `dependencies` (all buckets) and `devDependencies` (pinned
- * npm only -> `devPackages`). Dev deps never ship, but the SCS reviewer builds the
+ * npm only -> `devPackages`). Dev deps never ship, but the SCA reviewer builds the
  * add-on from source, so a pinned npm dev dep is OSV-audited too
- * (verifyScsDependencies). Only its pinned-npm bucket is kept: dev deps are not
+ * (verifyScaDependencies). Only its pinned-npm bucket is kept: dev deps are not
  * popularity-gated, and their pinning / source support are shipping concerns.
  * A name in `dependencies` is a production dependency (npm ignores a same-named
  * `devDependencies` entry), so it is classified once as prod and dropped from the

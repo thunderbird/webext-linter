@@ -8,6 +8,9 @@ Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html
  - bg.js:4
  - bg.js:6
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

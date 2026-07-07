@@ -1,11 +1,11 @@
 // Flags a pinned npm devDependency whose version has known OSV advisories. Dev
-// dependencies are build-time only and never shipped, but in SCS mode the reviewer
+// dependencies are build-time only and never shipped, but in SCA mode the reviewer
 // builds the add-on from source, so a vulnerable build tool runs on the reviewer's
 // machine. The OSV audit ran in the network pre-step (src/vendor/verify.js
-// verifyScsDependencies -> auditNpm), recording each hit on
+// verifyScaDependencies -> auditNpm), recording each hit on
 // addon.vendor.devVulnerabilities; this check maps that set to findings via the
 // shared lib/vuln-findings.js mapper - identical to vendor-vulnerable, but for the
-// dev set (SCS-only; the registry entry is scs:true).
+// dev set (SCA-only; the registry entry is sca:true).
 //
 // Belongs here: choosing the dev vulnerability set. Does NOT belong here: the
 // vulnerability->finding mapping incl. the severity:auto band mapping

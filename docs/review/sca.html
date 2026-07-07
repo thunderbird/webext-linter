@@ -6,27 +6,27 @@
     <!-- Shown inside the index.html content iframe: links must drive the whole
          window (the docs shell + its hash nav), not navigate within the iframe. -->
     <base target="_top" />
-    <title>Source Code Submission review flow</title>
+    <title>Source Code Archive review flow</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
-        <h1>Source Code Submission review <span class="badge info">flow</span></h1>
-        <div class="check-id">verify.js &lt;xpi&gt; --scs-root &lt;src&gt; [--scs-source &lt;dir&gt;]</div>
+        <h1>Source Code Archive review <span class="badge info">flow</span></h1>
+        <div class="check-id">verify.js &lt;xpi&gt; --sca-root &lt;src&gt; [--sca-source &lt;dir&gt;]</div>
       </header>
 
       <h2>What it reviews</h2>
       <p class="lead">
         Some add-ons are submitted as <strong>both</strong> a built XPI (minified,
         what users install) and a readable source archive. Reviewing the minified
-        XPI directly is noisy, so SCS mode reviews the readable source for code
+        XPI directly is noisy, so SCA mode reviews the readable source for code
         defects while still treating the built XPI as the authoritative shipped
         artifact.
       </p>
       <p>
-        SCS mode is on when <code>--scs-root</code> (the source archive holding
-        <code>package.json</code> / the lock file) is set. <code>--scs-source</code>
+        SCA mode is on when <code>--sca-root</code> (the source archive holding
+        <code>package.json</code> / the lock file) is set. <code>--sca-source</code>
         (the add-on code root within it) is optional and defaults to
         <code>.</code> - the whole root reviewed as the source, for a flat layout with
         <code>manifest.json</code> at the root. The
@@ -41,17 +41,17 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Submission: a built XPI +<br/>a readable source archive<br/>(--scs-root; --scs-source optional)"] --> B["Load both artifacts — built XPI = shipped<br/>artifact, readable source = review target"]
+  A["Submission: a built XPI +<br/>a readable source archive<br/>(--sca-root; --sca-source optional)"] --> B["Load both artifacts — built XPI = shipped<br/>artifact, readable source = review target"]
   B --> LP["LLM pre-flight (only --llm-enabled): validate config +<br/>model reachable — HARD-FAIL exit 2; resolve vendored<br/>declarations (LLM parses package.json when enabled)"]
   LP --> X{"Shipped XPI declares experiment_apis?"}
   X -- no --> SPLIT
-  X -- yes --> XE["Experiments reviewed from the XPI; --scs-exp-source<br/>excludes that privileged subtree from the WebExtension<br/>code checks (required with --allow-experiments). An<br/>unsupported one with experiments off → reject, exit 1"]
+  X -- yes --> XE["Experiments reviewed from the XPI; --sca-exp-source<br/>excludes that privileged subtree from the WebExtension<br/>code checks (required with --allow-experiments). An<br/>unsupported one with experiments off → reject, exit 1"]
   XE --> SPLIT
   SPLIT["Route each check to the artifact its input selects"] --> SRC
   SPLIT --> DEP
   SPLIT --> BLD
   SPLIT --> XPI
-  SRC["Readable source (--scs-source) — the review target:<br/>API / permission / eval / exfiltration checks over every<br/>file (scanned as authored); the LLM checks escalate<br/>their ambiguous residue to the model when enabled"]
+  SRC["Readable source (--sca-source) — the review target:<br/>API / permission / eval / exfiltration checks over every<br/>file (scanned as authored); the LLM checks escalate<br/>their ambiguous residue to the model when enabled"]
   DEP["Declared dependencies (source package.json):<br/>each a pinned npm package or GitHub URL; gated on<br/>popularity + known vulnerabilities (no LLM)"]
   BLD["Build files (archive minus source, no node_modules)<br/>— input: build: npm/pnpm only, no committed node_modules or<br/>build artifact, no registry redirect, install hooks flagged; one setup<br/>LLM call classifies the build (files reached from package.json) and three<br/>checks gate on it: remote fetch / not built from source / redundant submission"]
   XPI["Built XPI (shipped) — input: xpi: manifest, experiments,<br/>file-completeness (bundled / web-accessible / unused /<br/>locales), --diff-to baseline, behavioral LLM audit"]
@@ -76,7 +76,7 @@ flowchart TD
       <h2>Where the LLM is used</h2>
       <p>
         The purple steps are optional and gated on <code>--llm-enabled</code>,
-        sharing the same run-wide request cap as a Standard review. In SCS mode the
+        sharing the same run-wide request cap as a Standard review. In SCA mode the
         LLM is consulted at:
       </p>
       <ul>
@@ -129,10 +129,19 @@ flowchart TD
         machinery with those roles collapsed onto a single add-on.
       </div>
 
+      <p>
+        Because a review spans two submitted artifacts, every finding's
+        <code>file:line</code> is prefixed with the artifact it lives in —
+        <code>[XPI]</code> for a file in the built XPI, <code>[SCA]</code> for a file
+        in the readable source code archive — and the Issues section closes with a
+        legend explaining the two. The same prefix appears on the live activity feed.
+        A Standard (XPI-only) review has one artifact, so it adds no prefix.
+      </p>
+
       <p class="source-note">
-        Source of truth: <code>src/pipeline.js</code> (the <code>mode === "scs"</code>
-        branches, <code>buildShippedCtx</code> / <code>buildScsBuildCtx</code>) and
-        the SCS options in the README.
+        Source of truth: <code>src/pipeline.js</code> (the <code>mode === "sca"</code>
+        branches, <code>buildShippedCtx</code> / <code>buildScaBuildCtx</code>) and
+        the SCA options in the README.
       </p>
     </main>
 

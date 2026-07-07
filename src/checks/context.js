@@ -76,7 +76,7 @@ export function buildRunContext({
   systemIntro,
   invalidExperiment,
   mode = "xpi",
-  scsExpSource,
+  scaExpSource,
   budget,
   preParsedJsSources,
 }) {
@@ -95,7 +95,7 @@ export function buildRunContext({
   // rejected-Experiment ctxs) runs the pass itself here instead. A rejected Experiment
   // runs only the reject check, so it skips content extraction. ctx.apiUsages is
   // derived from the per-source api-usage below. (The two input:xpi module checks read
-  // the precomputed module-syntax loc via moduleSyntaxOf; only the SCS shipped view - a
+  // the precomputed module-syntax loc via moduleSyntaxOf; only the SCA shipped view - a
   // distinct artifact never fed to the pass - falls back to a re-parse.)
   const nonAuthored = addon.bundled?.nonAuthored;
   const jsSources = preParsedJsSources ?? collectJsSources(addon);
@@ -133,18 +133,18 @@ export function buildRunContext({
     options,
     previous: diffTo ? loadAddon(diffTo) : null,
     invalidExperiment,
-    // "xpi" (default - reviewing a built add-on) or "scs" (a source-code
-    // submission, triggered by --scs-root). Gates checks via scsEligible.
+    // "xpi" (default - reviewing a built add-on) or "sca" (a source code
+    // archive review, triggered by --sca-root). Gates checks via scaEligible.
     mode,
-    // SCS mode: the Experiment folder as a source-relative path (runPipeline re-based
-    // it from the scsRoot-relative --scs-exp-source flag). buildReachability excludes
+    // SCA mode: the Experiment folder as a source-relative path (runPipeline re-based
+    // it from the scaRoot-relative --sca-exp-source flag). buildReachability excludes
     // it from the pure-WebExtension set, so the WebExtension code checks skip
     // privileged Experiment code. Undefined in XPI mode.
-    scsExpSource,
+    scaExpSource,
     // The authoritative manifest is the SHIPPED artifact's (the built XPI) - what
     // Thunderbird actually loads. It is explicit shared context, like `schema`, so
     // the manifest / permission / API checks read it - there is no ctx.addon.manifest
-    // (reviewView strips it), which in SCS would be the readable source's pre-build
+    // (reviewView strips it), which in SCA would be the readable source's pre-build
     // template. In XPI mode xpiAddon IS addon. See the RunContext typedef.
     manifest: shippedManifest,
     manifestError: xpiAddon?.manifestError ?? null,
@@ -206,22 +206,22 @@ export function buildShippedCtx(ctx, xpiAddon) {
     apiUsages: undefined,
     // Marks the shipped view for reachability: the built XPI's manifest entry points
     // resolve against its OWN files, so pureWebExtensionReachable takes the closure
-    // branch - not the SCS "all readable-source files" fallback, which exists only
+    // branch - not the SCA "all readable-source files" fallback, which exists only
     // for the review source, whose pre-build layout the manifest's built paths miss.
     isShippedView: true,
   };
 }
 
 /**
- * A sibling review context whose `addon` is the SCS BUILD files - the tooling that
- * builds the add-on (scripts, configs, package.json/lock: everything in --scs-root
+ * A sibling review context whose `addon` is the SCA BUILD files - the tooling that
+ * builds the add-on (scripts, configs, package.json/lock: everything in --sca-root
  * outside the review source, with node_modules and dotfiles excluded, from
- * loadScsBuildFiles; in a flat layout, where the review source IS the root, the whole
+ * loadScaBuildFiles; in a flat layout, where the review source IS the root, the whole
  * root, narrowed by selectBuildCorpus's package.json trace), plus the setup build
  * classification (buildReview) and the
  * recorded archives/nodeModules. The `input: build` checks are routed here, so each reads
  * off ctx.addon like any other check reads its artifact - keeping artifact selection the
- * single `input` seam, no separate ctx field. SCS mode only.
+ * single `input` seam, no separate ctx field. SCA mode only.
  * The build corpus is projected through reviewView (like every other ctx.addon), so a
  * build check can never read ctx.addon.manifest/experiments against another artifact's
  * files; the shipped manifest stays on ctx.manifest for the shared LLM framing.
@@ -231,7 +231,7 @@ export function buildShippedCtx(ctx, xpiAddon) {
  *   spread, for the committed-node-modules / committed-build-artifact checks).
  * @returns {RunContext}
  */
-export function buildScsBuildCtx(ctx, buildAddon) {
+export function buildScaBuildCtx(ctx, buildAddon) {
   return {
     ...ctx,
     addon: reviewView(buildAddon),

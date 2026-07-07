@@ -78,6 +78,9 @@ Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e5
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json:11 - weirdTopLevelKey
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

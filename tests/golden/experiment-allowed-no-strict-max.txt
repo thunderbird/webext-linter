@@ -5,6 +5,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) This add-on uses Experiment APIs but declares no strict_max_version. Experiments rely on internal APIs that change between major Thunderbird versions, so they must set browser_specific_settings.gecko.strict_max_version.
  - manifest.json
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

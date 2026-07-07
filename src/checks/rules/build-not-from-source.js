@@ -1,4 +1,4 @@
-// Deterministic (SCS only): mission 2 of the build review - the shipped XPI must be BUILT from
+// Deterministic (SCA only): mission 2 of the build review - the shipped XPI must be BUILT from
 // the reviewed source. This rejects a "build" that does not build: it just copies or zips files
 // already present in the submission into the XPI, so the shipped add-on is assembled from phantom
 // artifacts, not derived from the source the reviewer reads. Either an oversight (the dev thinks

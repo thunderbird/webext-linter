@@ -89,7 +89,7 @@ test("records module-syntax loc + moduleSyntaxOf reads it or recomputes", () => 
   );
   // The accessor returns the precomputed loc when the pass ran...
   assert.equal(moduleSyntaxOf(mod), mod.extracted.moduleSyntaxLoc);
-  // ...and recomputes for a source the pass never ran on (the SCS shipped view).
+  // ...and recomputes for a source the pass never ran on (the SCA shipped view).
   const noPass = src("late.js", "export const z = 1;");
   assert.ok(moduleSyntaxOf(noPass), "recomputes when the pass did not run");
 });

@@ -5,6 +5,9 @@ Thank you for your contribution, it will be approved shortly. We kindly ask you 
 1) This add-on pins strict_max_version "128.0". The WebExtension APIs are stable and designed to keep add-ons forward-compatible across Thunderbird versions, so a maximum version is usually unnecessary and only blocks installs on newer Thunderbird.
  - manifest.json:5
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

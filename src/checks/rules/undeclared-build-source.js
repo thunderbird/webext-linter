@@ -1,4 +1,4 @@
-// Deterministic (SCS only): mission 1 of the build review - the build must NOT load or fetch
+// Deterministic (SCA only): mission 1 of the build review - the build must NOT load or fetch
 // remote resources. Everything must ship in the source; the only allowed copy-in is installed
 // libraries via `npm ci` (from node_modules). A curl/wget/git-clone/CDN fetch is a reject.
 //
@@ -8,7 +8,7 @@
 // FALLBACK lane: when the build could not be classified with confidence - offline / no token
 // (analyzed === false), or a build step the linter could not statically bound (unresolved: an
 // opaque orchestrator or a network fetch) - the whole build routes to extended manual review,
-// so a human reproduces it. The other classifications ("not-from-source", "scs-redundant") are
+// so a human reproduces it. The other classifications ("not-from-source", "sca-redundant") are
 // owned by their own checks; "ok"/"none" produce nothing.
 //
 // Belongs here: mapping the stored classification to a finding / manual escalation. Does NOT
@@ -21,7 +21,7 @@ import { finding } from "../../report/finding.js";
 /** @typedef {import("../escalation.js").Escalation} Escalation */
 
 // Classifications each owned by their own check - not this check's fallback lane.
-const OWNED_ELSEWHERE = new Set(["not-from-source", "scs-redundant"]);
+const OWNED_ELSEWHERE = new Set(["not-from-source", "sca-redundant"]);
 
 export default {
   /**

@@ -491,3 +491,62 @@ test("Manual review caps a grouped locus list at 25 with a marker", () => {
   const standard = out.split("── Standard manual review ──")[1];
   assert.match(standard, /Spam check: Inspect it\./);
 });
+
+// SCA review: each finding's file:line is prefixed with the artifact it lives in -
+// [XPI] for input:xpi checks (and always for manifest.json, the shipped manifest),
+// [SCA] for the readable source (input:auto/build) - and a legend footer closes the
+// Issues section. An XPI review adds neither.
+test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () => {
+  const r = {
+    mode: "sca",
+    ruleInputs: new Map([
+      ["unused-files", "xpi"],
+      ["unknown-api", "auto"],
+      ["manifest-unknown-permission", "auto"],
+    ]),
+    findings: [
+      {
+        ruleId: "unused-files",
+        severity: "error",
+        file: "orphan.js",
+        loc: { line: 2 },
+        message: "Unused file in the built add-on.",
+      },
+      {
+        ruleId: "unknown-api",
+        severity: "error",
+        file: "app.js",
+        loc: { line: 5 },
+        message: "Unknown API in the source.",
+      },
+      {
+        ruleId: "manifest-unknown-permission",
+        severity: "error",
+        file: "manifest.json",
+        loc: { line: 3 },
+        message: "Unknown permission.",
+      },
+    ],
+    meta: { action: "review", addon: "x", reviewed: false },
+  };
+  const out = formatText(r);
+  assert.match(out, /\[XPI\] orphan\.js:2/); // input:xpi -> XPI
+  assert.match(out, /\[SCA\] app\.js:5/); // input:auto -> SCA
+  assert.match(out, /\[XPI\] manifest\.json:3/); // manifest cross-over -> XPI
+  // The artifact-label legend footer.
+  assert.match(out, /\[XPI\] = source file in the submitted XPI/);
+  assert.match(
+    out,
+    /\[SCA\] = source file in the submitted source code archive/
+  );
+  // The pre-flight pointer to the tool closes the section in every review.
+  assert.match(out, /run this automated review yourself before submitting/);
+  assert.match(out, /github\.com\/thunderbird\/webext-linter/);
+
+  // The SAME result in XPI mode carries no artifact labels or legend, but still the
+  // pre-flight pointer.
+  const xpi = formatText({ ...r, mode: "xpi" });
+  assert.doesNotMatch(xpi, /\[XPI\]|\[SCA\]/);
+  assert.match(xpi, /orphan\.js:2/); // the bare file:line still renders
+  assert.match(xpi, /run this automated review yourself/);
+});

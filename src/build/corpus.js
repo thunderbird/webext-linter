@@ -1,4 +1,4 @@
-// Selects the build files the SCS build analysis (analyzeBuild, ./analyze.js) sends to the
+// Selects the build files the SCA build analysis (analyzeBuild, ./analyze.js) sends to the
 // model, by COLLECTING from package.json (an allowlist), not by pruning the whole build tree. The
 // build has a deterministic entry point exactly like the normal review's manifest.json:
 // package.json. We seed from it and follow its `scripts`, so a file is collected only
@@ -17,7 +17,7 @@
 // (eslint/rimraf/jest/a bundler) are NOT flagged - they run from the declared dependencies.
 //
 // Belongs here: the collection policy and the script scan. Does NOT belong here: loading
-// the build files (-> src/addon/load.js loadScsBuildFiles), running the analysis / model
+// the build files (-> src/addon/load.js loadScaBuildFiles), running the analysis / model
 // transport (-> ./analyze.js + src/llm/provider.js), the finding/manual mapping or wording
 // (-> src/checks/rules/undeclared-build-source.js + assets/registry.yaml).
 

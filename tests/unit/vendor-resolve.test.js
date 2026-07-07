@@ -263,7 +263,7 @@ test("resolveVendor classifies package.json deps by source", async () => {
   );
 });
 
-// devDependencies never ship, but the SCS reviewer builds from source, so their
+// devDependencies never ship, but the SCA reviewer builds from source, so their
 // pinned npm packages are OSV-audited too. Only the pinned-npm bucket lands in
 // devPackages: an exact spec, or a range a lock file pins. A range with no lock, a
 // github source, and an unsupported source are dropped - and never leak into the

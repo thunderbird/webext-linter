@@ -93,13 +93,13 @@ The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `bann
 | `--llm-list-models` | List the models your token can use, then exit. |
 | `--llm-review` | Shorthand for `--llm-enabled --full-summary` - run the AI add-on review in one flag. |
 
-**Source-code submission (SCS):**
+**Source code archive (SCA):**
 
 | Option | Description |
 | --- | --- |
-| `--scs-root <folder\|zip>` | The source archive root (holds `package.json`/lock). Switches to SCS mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the behavioral LLM audit. See [Source-code submission (SCS) mode](#source-code-submission-scs-mode) below. |
-| `--scs-source <path>` | The add-on code root, relative to `--scs-root` or an absolute path (e.g. `src` or `addon`). Optional; defaults to `.` (the whole `--scs-root` reviewed as the source - a flat layout with `manifest.json` at the root). Needs `--scs-root`. |
-| `--scs-exp-source <path>` | The Experiment implementation folder, relative to `--scs-root` or an absolute path, and within `--scs-source` (e.g. `addon/experiment-api`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--scs-root`; required when `--allow-experiments` is used in SCS mode. |
+| `--sca-root <folder\|zip>` | The source archive root (holds `package.json`/lock). Switches to SCA mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the behavioral LLM audit. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
+| `--sca-source <path>` | The add-on code root, relative to `--sca-root` or an absolute path (e.g. `src` or `addon`). Optional; defaults to `.` (the whole `--sca-root` reviewed as the source - a flat layout with `manifest.json` at the root). Needs `--sca-root`. |
+| `--sca-exp-source <path>` | The Experiment implementation folder, relative to `--sca-root` or an absolute path, and within `--sca-source` (e.g. `addon/experiment-api`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--sca-root`; required when `--allow-experiments` is used in SCA mode. |
 
 **Other:**
 
@@ -153,30 +153,30 @@ shows the chosen type and model and **fails hard** if Ollama is unreachable or t
 model is not pulled. Point `LLM_API_URL` at a remote host to use a non-local Ollama.
 
 
-### Source-code submission (SCS) mode
+### Source code archive (SCA) mode
 
 Some add-ons are submitted as **both** a built XPI (minified, what users install)
 and a **readable source archive**. Reviewing the minified XPI directly is noisy, so
-SCS mode reviews the readable source instead while still treating the XPI as the
+SCA mode reviews the readable source instead while still treating the XPI as the
 authoritative shipped artifact:
 
 ```
-node verify.js built.xpi --scs-root ./source-archive --scs-source src
+node verify.js built.xpi --sca-root ./source-archive --sca-source src
 ```
 
-- `--scs-root` is the source archive (folder or zip) that holds `package.json` /
-  the lock file; setting it switches on SCS mode. `--scs-source` is the add-on code
-  root within it (relative to `--scs-root` or an absolute path, e.g. `src`); it is
-  **optional and defaults to `.`** - the whole `--scs-root` reviewed as the source, for
-  a flat layout with `manifest.json` at the root (`node verify.js built.xpi --scs-root
+- `--sca-root` is the source archive (folder or zip) that holds `package.json` /
+  the lock file; setting it switches on SCA mode. `--sca-source` is the add-on code
+  root within it (relative to `--sca-root` or an absolute path, e.g. `src`); it is
+  **optional and defaults to `.`** - the whole `--sca-root` reviewed as the source, for
+  a flat layout with `manifest.json` at the root (`node verify.js built.xpi --sca-root
   ./source-archive`).
 - The **readable source** is reviewed for code defects (the API/permission/eval/
   exfiltration checks run over every source file).
-- The **declared dependencies** (`--scs-root`'s `package.json`) are audited: each
+- The **declared dependencies** (`--sca-root`'s `package.json`) are audited: each
   must be a pinned npm package or a GitHub URL, and is gated on popularity
   (npm downloads / GitHub stars) and known vulnerabilities. Anything unpinned or
   from another source is rejected.
-- The **build tooling** (everything in `--scs-root` outside `--scs-source` - build
+- The **build tooling** (everything in `--sca-root` outside `--sca-source` - build
   scripts, configs, `.npmrc`) is reviewed. Deterministic policy: the build must use
   **npm or pnpm** (a `yarn.lock` / `bun` build is rejected), must not commit a
   `node_modules` folder or a built archive (`.xpi` / `.zip` - both are build output,
@@ -191,10 +191,15 @@ node verify.js built.xpi --scs-root ./source-archive --scs-source src
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest, the experiments, the file-completeness checks (bundled / web-accessible
   / unused / locales), the `--diff-to` baseline, and the behavioral LLM audit.
-- `--scs-exp-source` names an Experiment implementation folder - relative to
-  `--scs-root` (or absolute), and within `--scs-source` (e.g. `addon/experiment-api`)
+- `--sca-exp-source` names an Experiment implementation folder - relative to
+  `--sca-root` (or absolute), and within `--sca-source` (e.g. `addon/experiment-api`)
   - so its privileged, non-WebExtension code is excluded from the WebExtension checks
-  (required when `--allow-experiments` is used in SCS mode).
+  (required when `--allow-experiments` is used in SCA mode).
+- Because a review spans two artifacts, each finding's `file:line` is prefixed with the
+  artifact it lives in - `[XPI]` (the built XPI) or `[SCA]` (the readable source code
+  archive) - so a reviewer knows which one to open; the Issues section closes with a
+  legend, and the same prefix appears on the live activity feed. A plain XPI review
+  (one artifact) adds no prefix.
 
 
 ## Review checks

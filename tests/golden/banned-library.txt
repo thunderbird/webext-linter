@@ -5,6 +5,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) A bundled library version is disallowed by Mozilla's add-on policy: jquery (2.2.4) — jQuery before 3.0 is unsupported and carries known security issues; update to the latest 3.x. Update to a permitted version and re-bundle.
  - package.json:5
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:

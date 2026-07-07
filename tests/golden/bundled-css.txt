@@ -6,6 +6,9 @@ Thank you for your contribution, it will be approved shortly. We would like to s
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
  - vendor/bootstrap/bootstrap.min.css - bootstrap 5.3.0
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Standard manual review ──
 
 Continue manual review for the following checks:

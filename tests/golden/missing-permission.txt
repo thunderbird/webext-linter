@@ -8,6 +8,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 2) "messagesMove" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
  - background.js:3
 
+You can run this automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:
