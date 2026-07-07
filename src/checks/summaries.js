@@ -25,13 +25,11 @@
 import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
 import { canonicalJson } from "../util/json.js";
 import { nonAuthoredJs } from "./lib/bundled.js";
-import { declaredPermissions } from "./lib/permissions.js";
 import { buildRecheckSections } from "./lib/recheck.js";
 import { nonceFor, wrap, wrapFile, framing } from "./lib/untrusted.js";
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
 /** @typedef {import("./registry.js").Registry} Registry */
-/** @typedef {import("../addon/load.js").Manifest} Manifest */
 /** @typedef {import("../llm/schema.js").AddonReview} AddonReview */
 /** @typedef {{bytes: number, run: () => Promise<?string>}} DeferredSummary */
 /**
@@ -216,57 +214,22 @@ export function buildDiffText(ctx, shippedCtx = ctx) {
 }
 
 /**
- * The declared permission set, split for the summary's permission review: the
- * required permissions (manifest.permissions), the optional ones
- * (optional_permissions), and the host match patterns. An explicit anchor so the
- * LLM judges every declared permission even though the manifest is also quoted.
- * A final line names the declared permissions the deterministic analysis already
- * proved used (`used`). The prompt tells the model to treat those as justified
- * and not assess them, so it spends its judgment only on the unsettled rest.
- * @param {Manifest} manifest
- * @param {Set<string>} [used]  Permissions a reachable API call provably
- *   requires.
- * @returns {string}
- */
-function declaredPermissionsBlock(manifest, used = new Set()) {
-  const { required, named, hosts } = declaredPermissions(manifest);
-  const optional = [...named].filter((p) => !required.has(p));
-  const confirmed = [...named].filter((p) => used.has(p));
-  /**
-   * Render one labeled list line, or "(none)" when the list is empty.
-   * @param {string} label
-   * @param {string[]} items
-   * @returns {string}
-   */
-  const line = (label, items) =>
-    `${label}: ${items.length ? [...items].join(", ") : "(none)"}`;
-  return [
-    line("required permissions", [...required]),
-    line("optional permissions", optional),
-    line("host permissions", [...hosts]),
-    line(
-      "confirmed used by static analysis (do not assess, treat as justified)",
-      confirmed
-    ),
-  ].join("\n");
-}
-
-/**
  * The (almost) full current add-on for the add-on summary: the canonical
- * manifest, an explicit declared-permission list, plus every authored text file
- * (isAuthoredText - i.e. not a vendored/minified/obfuscated bundle nor a _locales
- * translation) that is not in `unused`, each fenced under "=== file ===". No byte
- * cap - a large (non-localized) add-on may still approach the context window.
+ * manifest plus every authored text file (isAuthoredText - i.e. not a
+ * vendored/minified/obfuscated bundle nor a _locales translation) that is not in
+ * `unused`, each fenced under "=== file ===". No byte cap - a large
+ * (non-localized) add-on may still approach the context window. Permission usage
+ * is deliberately NOT summarized here: it is settled by the deterministic checks
+ * and, for genuinely-unsure permissions, the recheck sections (buildRecheckSections).
  * @param {RunContext} ctx
- * @param {{unused?: Set<string>, used?: Set<string>}} [opts]  unused = files the
- *   review found unreachable; used = permissions provably required by a
- *   reachable API call (annotated in the declared-permissions block).
+ * @param {{unused?: Set<string>}} [opts]  unused = files the review found
+ *   unreachable.
  * @returns {?string}
  */
 export function buildAddonText(
   ctx,
   nonce,
-  { unused = new Set(), used = new Set(), summaryAddon = ctx.addon } = {}
+  { unused = new Set(), summaryAddon = ctx.addon } = {}
 ) {
   const files = summaryAddon?.files;
   if (!files) {
@@ -288,11 +251,6 @@ export function buildAddonText(
   // Every block is untrusted add-on content, wrapped in nonce markers so the model
   // treats it as data (file bodies stay verbatim - real newlines for line citation).
   const out = [wrap(nonce, "MANIFEST", canonicalJson(ctx.manifest ?? null))];
-  if (ctx.manifest) {
-    out.push(
-      wrap(nonce, "PERMISSIONS", declaredPermissionsBlock(ctx.manifest, used))
-    );
-  }
   for (const file of [...files.keys()].sort()) {
     if (
       file === "manifest.json" ||
@@ -342,9 +300,8 @@ export function buildSummarizer(ctx, registry, shippedCtx = ctx) {
  * no prompt.
  * @param {RunContext} ctx
  * @param {Registry} registry
- * @param {{unused?: Set<string>, used?: Set<string>}} [opts]  unused = files the
- *   review found unreachable; used = permissions a reachable API call provably
- *   requires (so the prompt can mark them settled).
+ * @param {{unused?: Set<string>}} [opts]  unused = files the review found
+ *   unreachable.
  * @returns {?DeferredReview}
  */
 export function buildAddonSummarizer(
@@ -354,7 +311,7 @@ export function buildAddonSummarizer(
   // (minified) code users run, not the readable source review target. The pipeline
   // passes the shipped artifact as summaryAddon; it defaults to ctx.addon (an XPI
   // review, where the two are one).
-  { unused = new Set(), used = new Set(), summaryAddon = ctx.addon } = {}
+  { unused = new Set(), summaryAddon = ctx.addon } = {}
 ) {
   if (!ctx?.llm) {
     return null;
@@ -364,7 +321,7 @@ export function buildAddonSummarizer(
     return null;
   }
   const nonce = nonceFor(ctx);
-  const text = buildAddonText(ctx, nonce, { unused, used, summaryAddon });
+  const text = buildAddonText(ctx, nonce, { unused, summaryAddon });
   if (!text) {
     return null;
   }

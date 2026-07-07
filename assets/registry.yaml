@@ -1516,6 +1516,12 @@ prompts:
     points: what the add-on does (its main features), the notable APIs it uses, and
     how it interacts with the network or the user’s data. Then list any security- or
     privacy-relevant observations. Be factual and specific.
+    Do not judge whether the add-on's permissions are used, unused, needed, or
+    excessive - that review belongs to the formal findings and the permission
+    recheck, not this summary. Describing behavior the manifest enables ("modifies
+    messages") is fine; adjudicating a permission's usage is not. Assess a permission
+    only when a "recheck:" section below lists it, and only the ones it lists; if no
+    recheck section lists permissions, do not remark on any permission's usage at all.
     If the sources below end with one or more "recheck:" sections, also fill the
     "recheck" field. Each section names a check id and lists items to judge against
     that section's rubric; return one "recheck" entry per listed item, giving the

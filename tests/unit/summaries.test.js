@@ -157,17 +157,17 @@ test("buildAddonText includes authored files, excludes vendored and unused", () 
     unused: new Set(["orphan.js"]),
   });
   assert.ok(text.includes("[[[BEGIN MANIFEST NONCE]]]"));
-  assert.ok(text.includes("[[[BEGIN PERMISSIONS NONCE]]]")); // permission anchor
   assert.ok(text.includes('[[[BEGIN FILE NONCE path="background.js"]]]'));
   assert.ok(text.includes("console.log('bg')")); // authored: included (verbatim)
   assert.ok(!text.includes("console.log('orphan')")); // unused: excluded
   assert.ok(!text.includes("third-party lib")); // vendored: excluded
 });
 
-// The declared-permissions block splits the manifest's permission sets so the
-// summary's permission review has an explicit anchor: required (permissions),
-// optional (optional_permissions), and host (match patterns).
-test("buildAddonText lists declared permissions split by kind", () => {
+// The summary does NOT restate or adjudicate declared permissions: permission
+// usage is settled by the deterministic checks and, for unsure permissions, the
+// recheck sections. The manifest is quoted (behavior is describable) but no
+// separate permission block is emitted for the model to editorialize about.
+test("buildAddonText emits no declared-permissions block", () => {
   const manifest = JSON.stringify({
     manifest_version: 3,
     name: "x",
@@ -177,20 +177,9 @@ test("buildAddonText lists declared permissions split by kind", () => {
   });
   const ctx = withManifest({ addon: addon({ "manifest.json": manifest }) });
   const text = buildAddonText(ctx, "NONCE");
-  assert.match(text, /required permissions: messagesRead/);
-  assert.match(text, /optional permissions: downloads/);
-  assert.match(text, /host permissions: <all_urls>/);
-  // No proven-used set -> the confirmed-used line is present but empty.
-  assert.match(text, /confirmed used by static analysis[^\n]*: \(none\)/);
-  // With a proven-used set, the deterministically-used permission is named there
-  // so the prompt can tell the model to leave it alone.
-  const annotated = buildAddonText(ctx, "NONCE", {
-    used: new Set(["messagesRead"]),
-  });
-  assert.match(
-    annotated,
-    /confirmed used by static analysis[^\n]*: messagesRead/
-  );
+  assert.ok(!text.includes("[[[BEGIN PERMISSIONS NONCE]]]"));
+  assert.ok(!text.includes("required permissions:"));
+  assert.ok(!text.includes("confirmed used by static analysis"));
 });
 
 // The model payload trims exactly the non-authored set (nonAuthoredJs) - the same

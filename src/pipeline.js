@@ -65,7 +65,6 @@ import {
   resolveLibraryBlocks,
   parseLibraryBlocks,
 } from "./checks/lib/library-blocks.js";
-import { getPermissionAnalysis } from "./checks/lib/permissions.js";
 import { collapseUnused } from "./checks/lib/unused-folders.js";
 import { isExperiment } from "./checks/lib/util.js";
 import { experimentApiNamespaces } from "./checks/lib/experiments.js";
@@ -671,16 +670,11 @@ async function generateAddonSummary(
   budget,
   summaryAddon
 ) {
-  // Permissions a reachable API call provably requires (memoized, already
-  // computed by the main-loop missing-permission checks). Passed to the prompt's
-  // declared-permissions block as context; the producer (unused-permission-manual)
-  // already excluded these, so the summary only re-judges the unprovable rest.
-  const used = getPermissionAnalysis(ctx).usedPermissions;
-  // The behavioral summary describes the built XPI (summaryAddon); permissions come
-  // from the review target (uniform manifest). In an XPI review they are one addon.
+  // The behavioral summary describes the built XPI (summaryAddon). Permission
+  // usage is settled by the deterministic checks and the recheck sections, not
+  // this summary, so no permission analysis is threaded in here.
   const deferred = buildAddonSummarizer(ctx, registry, {
     unused,
-    used,
     summaryAddon,
   });
   if (!deferred) {
