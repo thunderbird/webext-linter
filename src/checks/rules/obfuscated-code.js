@@ -1,11 +1,11 @@
-// Heuristic: the developer's own code shipped obfuscated - deliberately hidden
-// behavior that cannot be reviewed as-is. Flags such a JS file - that is NOT a
-// recognized third-party library (those are missing-library's job) - so the
-// reviewer can require the original source. Detects javascript-obfuscator "_0x"
-// identifiers and eval/Function-of-decoded-string packers. It cannot catch every
-// obfuscator (high precision, partial recall). A file that is merely minified
-// (not obfuscated) is minified-code's job; a file that is both is reported here,
-// since obfuscation is the stronger signal.
+// The developer's own code shipped obfuscated - deliberately hidden behavior that
+// cannot be reviewed as-is. Flags such a JS file - that is NOT a recognized
+// third-party library (those are missing-library's job) - so the reviewer can
+// require the original source. Obfuscation is recognized structurally, by the AST
+// shape of a known obfuscator family (see src/checks/lib/obfuscation.js); it cannot
+// catch every obfuscator (high precision, partial recall). A file that is merely
+// minified (not obfuscated) is minified-code's job; a file that is both is reported
+// here, since obfuscation is the stronger signal.
 //
 // Belongs here: selecting the classifier verdicts that are obfuscated AND not a
 // library, and emitting one finding per such file.

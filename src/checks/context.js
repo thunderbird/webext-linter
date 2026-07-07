@@ -89,8 +89,8 @@ export function buildRunContext({
   // obfuscated bundle) is skipped by every content scanner via nonAuthoredJs (the
   // addon.bundled.nonAuthored skip set; absent it, every file is treated authored).
   //
-  // The review pipeline runs the pass up front - before classifyBundled's assembly,
-  // so the obfuscation signal is computed on the shared parse - and hands the parsed
+  // The review pipeline runs the pass up front - between the per-file classification
+  // (classifyFiles) and assembleBundled finalizing addon.bundled - and hands the parsed
   // sources in as preParsedJsSources. A direct buildRunContext (unit / lazy /
   // rejected-Experiment ctxs) runs the pass itself here instead. A rejected Experiment
   // runs only the reject check, so it skips content extraction. ctx.apiUsages is

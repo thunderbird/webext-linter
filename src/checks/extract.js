@@ -36,7 +36,6 @@ import { scanWebApiCalls, webApiSignatures } from "../parse/web-api-calls.js";
 import { scanLocalImports } from "../parse/local-imports.js";
 import { scanLoaderRefs } from "../parse/loader-files.js";
 import { scanExperimentInjectedRefs } from "../parse/core-loaders.js";
-import { obfuscationFrom } from "./lib/bundled.js";
 import { firstModuleSyntax } from "./lib/module-syntax.js";
 
 /** @typedef {import("../addon/sources.js").JsSource} JsSource */
@@ -62,20 +61,10 @@ const parseHint = (src) => src.parseAs ?? src.file;
  * @param {Set<string>} [opts.experimentNamespaces]  The add-on's Experiment API
  *   namespaces (null for a non-Experiment); present -> extract the injected file
  *   refs on every source, so reachability reads them instead of re-parsing.
- * @param {Set<string>} [opts.obfuscationCandidates]  Files classifyByteGeometry
- *   marked authored-candidates for the AST obfuscation check (JS, non-library,
- *   non-minified, >=1024B); the pass computes each verdict on its shared parse and
- *   records it on src.extracted.obfuscation for assembleBundled to fold in.
  */
 export function runExtractionPass(
   jsSources,
-  {
-    schema,
-    nonAuthored,
-    invalidExperiment,
-    experimentNamespaces,
-    obfuscationCandidates,
-  } = {}
+  { schema, nonAuthored, invalidExperiment, experimentNamespaces } = {}
 ) {
   const webApiSigs = webApiSignatures(schema);
   const mvMajor = schema?.manifestVersionMajor ?? null;
@@ -109,21 +98,11 @@ export function runExtractionPass(
         parsed
       );
     }
-    // Obfuscation for a byte-geometry candidate (JS, non-library, non-minified),
-    // computed on THIS AST so it is comment/string-blind and recorded on
-    // extracted.obfuscation for assembleBundled to fold in. A candidate is never a
-    // minified/library bundle, so the bundles are never walked here. A definite-yes
-    // also gates content out: an obfuscated file is non-authored, the same skip
-    // classifyBundled's obfuscated tag produces.
-    let obf = false;
-    if (obfuscationCandidates?.has(src.file) && !src.inline) {
-      const verdict = parsed.parseError ? null : obfuscationFrom(parsed.ast);
-      obf = verdict === true;
-      extracted.obfuscation = verdict;
-    }
-    // Content extractors: only the developer's own code. A bundle / library is
-    // non-authored and every content consumer skips it (nonAuthoredJs).
-    if (!invalidExperiment && !nonAuthored?.has(src.file) && !obf) {
+    // Content extractors: only the developer's own code. A bundle / library /
+    // obfuscated file is non-authored (obfuscated files are added to nonAuthored by
+    // classifyFiles, which runs before this pass), so every content consumer
+    // skips it (nonAuthoredJs).
+    if (!invalidExperiment && !nonAuthored?.has(src.file)) {
       extracted.remoteJs = scanRemoteJs(src.code, src.lineOffset, parsed);
       extracted.networkSinks = scanNetworkSinks(
         src.code,

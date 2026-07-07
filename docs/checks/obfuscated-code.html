@@ -20,8 +20,10 @@
       <p class="lead">
         This check flags the developer's own JavaScript when it ships obfuscated —
         code deliberately written to hide its behavior — and so cannot be reviewed
-        as it stands. It detects javascript-obfuscator-style hex identifiers in bulk
-        and eval-or-Function-of-decoded-string packers.
+        as it stands. Obfuscation is recognized structurally: the file is matched
+        against the AST shape of a known obfuscator family (obfuscator.io, array- and
+        function-replacement transforms, caesar-plus) via the
+        <code>obfuscation-detector</code> library.
       </p>
       <p>
         A file that looks like a recognised third-party library is excluded here,
@@ -39,7 +41,7 @@ flowchart TD
   Z -- yes --> S([skip])
   Z -- no --> L{"Recognized third-party library?"}
   L -- yes --> S2([skip — missing-library's concern])
-  L -- no --> B{"Obfuscated?<br/>bulk hex names, or a<br/>decoded-string packer"}
+  L -- no --> B{"Obfuscated?<br/>matches a known<br/>obfuscator family"}
   B -- no --> OK([no finding here — minified-code<br/>handles a merely-minified file])
   B -- yes --> ERR([ERROR: obfuscated code])
 

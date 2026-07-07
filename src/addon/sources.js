@@ -60,8 +60,6 @@ import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
  * @property {object} [asyncOnMessage]  scanAsyncOnMessage (async-onmessage) - authored.
  * @property {Set<string>} [webApiPerms]  scanWebApiCalls grounded permissions
  *   (against ALL web_api signatures; the consumer intersects with declared) - authored.
- * @property {?boolean} [obfuscation]  AST obfuscation verdict - only for a byte-geometry
- *   candidate (null when undecidable / parseError); assembleBundled folds it in.
  */
 
 /**

@@ -49,7 +49,7 @@ import {
 } from "./vendor/verify.js";
 import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
 import {
-  classifyByteGeometry,
+  classifyFiles,
   classifyBundled,
   assembleBundled,
   applyNotPopularVendor,
@@ -369,9 +369,8 @@ export async function runPipeline(opts) {
     }
   }
 
-  // Resolve the review schema up front: the extraction pass (run per-review below,
-  // before cdn-lookup, so its obfuscation verdict is ready for it) needs the web_api /
-  // loader schema, and reviewAddon reviews against it. A rejected Experiment fetches
+  // Resolve the review schema up front: the extraction pass (run per-review below) needs
+  // the web_api / loader schema, and reviewAddon reviews against it. A rejected Experiment fetches
   // it too (reviewAddon still runs the reject check and reads schema.applicationVersion).
   const schemaBranch = chooseBranch({
     schemaZip: opts.schemaZip,
@@ -512,10 +511,11 @@ export async function runPipeline(opts) {
         libraryBlocks
       );
 
-      // 1e. Classify the bundled (undeclared third-party) JS: byte-geometry, then the
-      // extraction pass (which computes obfuscation on its shared parse), then
-      // assemble addon.bundled. Runs after verifyVendor so the vendored skip set is
-      // final, and before cdn-lookup, which reads the final tag.obfuscated.
+      // 1e. Classify the bundled (undeclared third-party) JS per file (library hash,
+      // minified geometry, obfuscation), then the extraction pass (content scanners
+      // over the authored remainder), then assemble addon.bundled. Runs after
+      // verifyVendor so the vendored skip set is final, and before cdn-lookup, which
+      // reads the final tag.obfuscated.
       preParsedJsSources = classifyAndExtractReview(addon, {
         schema,
         libraryHashes,
@@ -702,13 +702,11 @@ async function generateAddonSummary(
 }
 
 /**
- * Byte-geometry classification -> the single extraction pass (which computes each
- * candidate's obfuscation verdict on its shared parse) -> assemble the final
- * addon.bundled, and return the parsed sources for buildRunContext to reuse. This is
- * the parse-first order - it runs before cdn-lookup (which reads tag.obfuscated), so
- * the pass and classifyBundled share ONE parse of each authored candidate rather than
- * parsing it twice. Only for a reviewed (non-invalid-Experiment) addon; the lazy
- * getBundled path parses candidates itself via detectObfuscationAst.
+ * Per-file classification (classifyFiles) -> the single extraction pass -> assemble the
+ * final addon.bundled, and return the parsed sources for buildRunContext to reuse. The
+ * classification precedes both the extraction pass and cdn-lookup (which reads
+ * tag.obfuscated), so obfuscated files are already in the non-authored skip set the pass
+ * and consumers read.
  * @param {import("./addon/load.js").Addon} addon
  * @param {{schema: object,
  *   libraryHashes: Map<string, {name: string, version: string}>,
@@ -720,7 +718,7 @@ function classifyAndExtractReview(
   addon,
   { schema, libraryHashes, xpiAddon, setupStep }
 ) {
-  const byte = classifyByteGeometry(addon, { libraryHashes });
+  const classification = classifyFiles(addon, { libraryHashes });
   const jsSources = collectJsSources(addon);
   const experimentNamespaces = isExperiment(xpiAddon.manifest)
     ? experimentApiNamespaces(xpiAddon.manifest, addon.files)
@@ -728,19 +726,11 @@ function classifyAndExtractReview(
   setupStep("Parsing add-on sources");
   runExtractionPass(jsSources, {
     schema,
-    nonAuthored: byte.nonAuthored,
+    nonAuthored: classification.nonAuthored,
     invalidExperiment: false,
     experimentNamespaces,
-    obfuscationCandidates: byte.candidates,
   });
-  // The pass recorded each candidate's obfuscation verdict on src.extracted; collect
-  // them into the file->verdict map assembleBundled folds over the byte geometry.
-  const obfuscated = new Map(
-    jsSources
-      .filter((s) => "obfuscation" in s.extracted)
-      .map((s) => [s.file, s.extracted.obfuscation])
-  );
-  addon.bundled = assembleBundled(byte, obfuscated);
+  addon.bundled = assembleBundled(classification);
   return jsSources;
 }
 
@@ -804,8 +794,8 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
   } = opts;
 
   // schema + schemaSource (and the Experiment-namespace registration) are resolved by
-  // runPipeline up front, because the extraction pass - which runs there before
-  // cdn-lookup so its obfuscation verdict is ready - needs the schema. For a reviewed
+  // runPipeline up front, because the extraction pass (run there per-review) needs the
+  // schema. For a reviewed
   // addon runPipeline already ran the pass and passes its parsed sources in as
   // preParsedJsSources (reused below); a rejected Experiment has no pre-step, so
   // buildRunContext parses here (narrated).

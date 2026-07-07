@@ -351,10 +351,14 @@ test("minified-code flags minified non-library JS only", () => {
 // is reported here only (obfuscation is the stronger signal), so it never yields
 // two findings.
 test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () => {
-  // "_0x" obfuscator identifiers on short lines: obfuscated, not minified.
+  // Array-replacement obfuscation on short lines: obfuscated (recognized by
+  // structure), NOT minified-by-geometry.
   const obf =
-    "const _0xa1b2=1;\nconst _0xc3d4=2;\nconst _0xe5f6=3;\n" +
-    "const _0x7890=4;\nconst _0xabcd=5;\n".repeat(40);
+    `var _0xarr = [${Array.from({ length: 60 }, (_, i) => `"item_${i}"`).join(", ")}];\n` +
+    "function _0xget(i) { return _0xarr[i]; }\n" +
+    Array.from({ length: 20 }, (_, i) => `console["log"](_0xget(${i}));`).join(
+      "\n"
+    );
   assert.equal(
     obfuscatedCode.run(withManifest(filesCtx({ "o.js": obf }))).length,
     1
@@ -369,9 +373,12 @@ test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () =
     obfuscatedCode.run(withManifest(filesCtx({ "m.js": minified }))).length,
     0
   );
-  // Both minified geometry AND _0x names on one long line -> obfuscated-code
-  // only (precedence), minified-code stays silent (no double finding).
-  const both = "const _0xa1b2=1;".repeat(100) + "\n";
+  // The same obfuscation collapsed onto one dense line -> minified geometry AND
+  // obfuscated -> obfuscated-code only (precedence), minified-code stays silent.
+  const both =
+    `var _0xa=[${Array.from({ length: 80 }, (_, i) => `"s${i}"`).join(",")}];` +
+    "function _0xg(i){return _0xa[i];}" +
+    Array.from({ length: 80 }, (_, i) => `console.log(_0xg(${i}));`).join("");
   assert.equal(
     obfuscatedCode.run(withManifest(filesCtx({ "b.js": both }))).length,
     1

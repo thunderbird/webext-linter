@@ -2,15 +2,16 @@
 // the missing-library, minified-code and obfuscated-code checks. `library` is a
 // TRUE content-hash match against the known-library database (a file whose raw
 // sha256 is a known release is the library, identified by name@version - see
-// src/checks/lib/library-hashes.js). `minified` and `obfuscated` are byte/geometry
-// heuristics.
+// src/checks/lib/library-hashes.js). `minified` is a byte/geometry heuristic (line
+// length); `obfuscated` is a structural match against a known obfuscator family (see
+// src/checks/lib/obfuscation.js).
 //
-// The classification is byte-geometry sensitive (the minification heuristic keys
-// off line length) and the library hash is of the raw bytes, so it is resolved
-// ONCE up front - before the normalizer reformats files - by the pipeline into
-// addon.bundled (classifyBundled), the same "compute once, checks read it" pattern
-// as addon.vendor. Were it computed during the review, build/lint mode (which
-// pretty-prints first) would change the bytes and miss both.
+// The classification keys off the raw bytes (the minified geometry, the library hash,
+// and the obfuscation detector's parse of the shipped source), so it is resolved ONCE
+// up front - before the normalizer reformats files - by the pipeline into addon.bundled
+// (classifyBundled), the same "compute once, checks read it" pattern as addon.vendor.
+// Were it computed during the review, build/lint mode (which pretty-prints first) would
+// change the bytes and miss all three.
 //
 // Belongs here: classifyBundled (the one-shot classification + non-authored skip
 // set) and the per-file tagging it uses. classifyAddonJs / nonAuthoredJs are thin
@@ -24,8 +25,8 @@
 
 import { extname, JS_EXTENSIONS, CSS_EXTENSIONS } from "../../util/files.js";
 import { isVendored } from "../../vendor/resolve.js";
-import { parseJs, traverse } from "../../parse/ast.js";
 import { rawSha256 } from "../../normalize/hash.js";
+import { isObfuscated } from "./obfuscation.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../addon/load.js").Addon} Addon */
@@ -67,56 +68,37 @@ import { rawSha256 } from "../../normalize/hash.js";
  * vulnerable bundle is caught. TODO: extend the same hashing to recognize
  * minified/obfuscated bundles.
  *
- * Composed of classifyByteGeometry (the byte/geometry tags + skip-set seed, no parse)
- * and assembleBundled (folding in each candidate's AST obfuscation verdict). The
- * verdict comes from `obfuscated` when the extraction pass precomputed it on its shared
- * parse - the review source's path, via classifyAndExtractReview - else this parses each
- * candidate itself via detectObfuscationAst: the path for the built XPI's setup
- * classification (SCA) and the lazy getBundled callers (unit / rejected-Experiment
- * contexts that never ran a pre-step).
+ * Composed of classifyFiles (the per-file library/minified/obfuscated tags +
+ * non-authored skip set) and assembleBundled (the thin finalizer that seeds the empty
+ * `untrusted` list). Every mode and caller shares this one path - there is no separate
+ * precomputed-verdict route, since the obfuscation detector is self-contained.
  *
  * @param {Addon} addon
- * @param {{libraryHashes?: Map<string, LibraryId>,
- *   obfuscated?: Map<string, ?boolean>}} [opts]
+ * @param {{libraryHashes?: Map<string, LibraryId>}} [opts]
  *   libraryHashes: the known-library `sha256 -> {name, version}` map - a file whose
  *   raw hash is a key is tagged `library` (and identified). Empty map = nothing
  *   recognized. A minified-by-geometry file (an unidentifiable webpack/tsc bundle) is
  *   non-authored (skipped by the source-level scanners and rejected by minified-code),
  *   in both XPI and source-code submission reviews. A hash-identified library is real
- *   third-party code, so it - like the
- *   obfuscated tag and VENDOR.md-declared / experiment-trusted files - stays
- *   non-authored. obfuscated: precomputed candidate-file -> AST
- *   verdict from the extraction pass; absent -> parse each candidate here.
+ *   third-party code, so it - like the obfuscated tag and VENDOR.md-declared /
+ *   experiment-trusted files - stays non-authored.
  * @returns {Bundled}
  */
-export function classifyBundled(
-  addon,
-  { libraryHashes = new Map(), obfuscated } = {}
-) {
-  const byte = classifyByteGeometry(addon, { libraryHashes });
-  const verdicts =
-    obfuscated ?? obfuscationForCandidates(addon, byte.candidates);
-  return assembleBundled(byte, verdicts);
+export function classifyBundled(addon, { libraryHashes = new Map() } = {}) {
+  return assembleBundled(classifyFiles(addon, { libraryHashes }));
 }
 
 /**
- * The byte-geometry half of the classification (no parse): per-file library/minified
- * tags and the vendored / experiment-trusted / library / minified non-authored seed.
- * `tag.obfuscated` carries classify()'s comment/string-blind byte value, which
- * assembleBundled overrides with the AST verdict for each `candidate`.
+ * The per-file classification: library (content hash) / minified (geometry) /
+ * obfuscated (structural, via classify) tags, plus the vendored / experiment-trusted /
+ * library / minified / obfuscated non-authored seed. `tag.obfuscated` is the final
+ * verdict here - the detector is structural, so there is no later AST correction.
  * @param {Addon} addon
  * @param {{libraryHashes?: Map<string, LibraryId>}} [opts]
- * @returns {{classified: BundleTag[], nonAuthored: Set<string>,
- *   candidates: Set<string>}}  `candidates` are the JS files the AST obfuscation check
- *   applies to (not library, not minified, >=1024 B) - a minified / library bundle is
- *   never one, so is never AST-parsed.
+ * @returns {{classified: BundleTag[], nonAuthored: Set<string>}}
  */
-export function classifyByteGeometry(
-  addon,
-  { libraryHashes = new Map() } = {}
-) {
+export function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
   const classified = [];
-  const candidates = new Set();
   // Files of a recognised allowed Experiment (pristine or modified) are
   // upstream-derived, not the developer's - the byte-match IS their review, so
   // the source-level scanners skip them like a vendored library, regardless of
@@ -137,7 +119,11 @@ export function classifyByteGeometry(
       continue;
     }
     if (buf.length < 1024) {
-      continue; // too small (by bytes, as hashed) to be a library or worrying blob.
+      // Too small (by bytes, as hashed) to be a library or a worrying blob. The floor
+      // also bounds the obfuscation detector to sizes where it is precise: on a tiny
+      // file its array-replacement heuristic fires on an ordinary string-lookup table
+      // (e.g. a day-name array), a false positive that vanishes above ~1KB.
+      continue;
     }
     const text = buf.toString("utf8");
     // The library tag is a true content-hash match against the known-library DB;
@@ -148,74 +134,30 @@ export function classifyByteGeometry(
     if (libraryId) {
       tag.libraryId = libraryId;
     }
-    // Authored-candidate for the AST obfuscation check: a JS file not already
-    // library/minified. classify()'s obfuscation signal (on tag.obfuscated) is
-    // byte-based and comment/string-blind - `eval(` or `fromCharCode` in a comment
-    // trips it - so assembleBundled recomputes it on the AST, where comments and
-    // strings cannot count. A minified bundle is never a candidate, so the multi-MB
-    // bundles are never parsed for this.
-    if (JS_EXTENSIONS.has(ext) && !tag.library && !tag.minified) {
-      candidates.add(file);
-    }
     classified.push(tag);
-    // library/minified join the skip set here; obfuscated is added by assembleBundled
-    // once the AST verdict is known.
-    if (tag.library || tag.minified) {
+    // A library/minified/obfuscated file is not the developer's reviewable source, so
+    // it joins the skip set: identified libraries are declared third-party, minified
+    // and obfuscated files are rejected (and their original source requested) rather
+    // than scanned.
+    if (tag.library || tag.minified || tag.obfuscated) {
       nonAuthored.add(file);
     }
   }
-  return { classified, nonAuthored, candidates };
+  return { classified, nonAuthored };
 }
 
 /**
- * Finalize the classification: fold each candidate's AST obfuscation verdict over
- * classify()'s byte value (the AST verdict wins unless null - the exact merge
- * classifyBundled has always used), then add every obfuscated file to the
- * non-authored set. Pure, no parse.
- * @param {{classified: BundleTag[], nonAuthored: Set<string>,
- *   candidates: Set<string>}} byteResult  From classifyByteGeometry.
- * @param {Map<string, ?boolean>} obfuscated  candidate file -> AST verdict; null
- *   (undecidable / parseError) or absent keeps classify()'s byte value.
+ * Finalize the classification into a Bundled: the classified tags and non-authored set
+ * from classifyFiles, plus the empty `untrusted` list. Pure, no parse.
+ * @param {{classified: BundleTag[], nonAuthored: Set<string>}} byteResult  From
+ *   classifyFiles.
  * @returns {Bundled}
  */
-export function assembleBundled(
-  { classified, nonAuthored, candidates },
-  obfuscated
-) {
-  for (const tag of classified) {
-    if (candidates.has(tag.file)) {
-      const astVerdict = obfuscated.get(tag.file);
-      if (astVerdict !== null && astVerdict !== undefined) {
-        tag.obfuscated = astVerdict;
-      }
-    }
-    if (tag.obfuscated) {
-      nonAuthored.add(tag.file);
-    }
-  }
+export function assembleBundled({ classified, nonAuthored }) {
   // `untrusted` is filled later (cdn-lookup.js, vendor/verify.js) for an
   // identified-but-not-popular library: known by content, but not confirmed
   // widely used, so NOT in the trusted/exempt family - see markUntrusted.
   return { classified, nonAuthored, untrusted: [] };
-}
-
-/**
- * Parse each candidate and record its AST obfuscation verdict - the standalone path
- * used when no extraction pass precomputed it (the lazy getBundled callers). Mirrors
- * the extraction pass's per-candidate compute.
- * @param {Addon} addon
- * @param {Set<string>} candidates
- * @returns {Map<string, ?boolean>}
- */
-function obfuscationForCandidates(addon, candidates) {
-  const out = new Map();
-  for (const file of candidates) {
-    const buf = addon.files.get(file);
-    if (buf) {
-      out.set(file, detectObfuscationAst(buf.toString("utf8"), file));
-    }
-  }
-  return out;
 }
 
 /**
@@ -324,16 +266,17 @@ export function untrustedLibs(ctx) {
 
 /**
  * The CONTENT signal for one file: whether it is minified (line geometry) or
- * obfuscated (JS packer signatures). Library detection is NOT here - it is a true
- * content-hash match against the known-library database, done in classifyBundled.
- * Pure (bytes + filename only).
+ * obfuscated (a recognized obfuscator's AST structure, via isObfuscated). Library
+ * detection is NOT here - it is a true content-hash match against the known-library
+ * database, done in classifyBundled. Pure (bytes + filename only; the obfuscation
+ * detector parses `text` internally, offline).
  * @param {string} text
  * @param {string} file
  * @returns {{minified: boolean, obfuscated: boolean}}
  */
 export function classify(text, file) {
-  // Obfuscation is JS-only (a stylesheet is never "obfuscated" in the packer
-  // sense); minified geometry applies to JS and CSS alike.
+  // Obfuscation is JS-only (a stylesheet is never obfuscated in this sense); minified
+  // geometry applies to JS and CSS alike.
   const isJs = JS_EXTENSIONS.has(extname(file));
 
   // Minified line geometry: at least one very long line, dense on average.
@@ -341,114 +284,10 @@ export function classify(text, file) {
   const maxLine = lines.reduce((m, l) => (l.length > m ? l.length : m), 0);
   const minified = maxLine > 500 && text.length / lines.length > 150;
 
-  // Obfuscation (JS only): javascript-obfuscator "_0x...." identifiers in bulk,
-  // or an eval/Function-of-decoded-string packer.
-  const hexNames = isJs ? (text.match(/_0x[0-9a-f]{4,}/gi) || []).length : 0;
-  const packed =
-    isJs &&
-    (/\beval\s*\(/.test(text) || /\bFunction\s*\(/.test(text)) &&
-    (/\batob\s*\(/.test(text) || /String\.fromCharCode/.test(text));
-  const obfuscated = hexNames >= 5 || packed;
+  // Obfuscation: structural match against a known obfuscator family. Precise by
+  // construction - readable code and plain-minified libraries match none - so this is
+  // the final verdict (no separate byte-vs-AST correction), computed on JS bytes only.
+  const obfuscated = isJs && isObfuscated(text, file);
 
   return { minified, obfuscated };
-}
-
-// Identifiers that denote the global object, so window.eval / globalThis.Function
-// are the same packer sinks as the bare forms (mirrors src/parse/remote-js.js).
-const GLOBAL_OBJECTS = new Set([
-  "window",
-  "self",
-  "globalThis",
-  "global",
-  "frames",
-  "top",
-  "parent",
-]);
-
-// The bare name a call/new targets: `eval`, `Function`, `atob`, or the dotted
-// `String.fromCharCode` - unwrapping a global-object receiver (window.eval -> eval)
-// but only for a non-computed member, so a string/comment can never be the name.
-function calleeName(callee) {
-  if (!callee) {
-    return null;
-  }
-  if (callee.type === "Identifier") {
-    return callee.name;
-  }
-  if (
-    callee.type === "MemberExpression" &&
-    !callee.computed &&
-    callee.property?.type === "Identifier" &&
-    callee.object?.type === "Identifier"
-  ) {
-    return GLOBAL_OBJECTS.has(callee.object.name)
-      ? callee.property.name
-      : `${callee.object.name}.${callee.property.name}`;
-  }
-  return null;
-}
-
-/**
- * The obfuscation signal on a parsed AST: the same heuristic as classify() (>=5
- * `_0x….` identifiers, or an eval/Function call paired with an
- * atob/String.fromCharCode decode) but blind to comments and string literals, where
- * a mere mention of `eval(`/`fromCharCode` must NOT count. Called by
- * detectObfuscationAst (which parses first) and by the extraction pass on its shared
- * AST (src/checks/extract.js), so the walk is separate from the parse.
- * @param {?import("@babel/types").File} ast  A parsed AST (parseJs's `.ast`).
- * @returns {?boolean}  the verdict, or null when the AST is absent or the scope walk
- *   is undecidable (the caller then keeps classify()'s byte heuristic).
- */
-export function obfuscationFrom(ast) {
-  if (!ast) {
-    return null;
-  }
-  let hexNames = 0;
-  let hasEval = false;
-  let hasDecode = false;
-  const visitInvocation = (path) => {
-    const name = calleeName(path.node.callee);
-    if (name === "eval" || name === "Function") {
-      hasEval = true;
-    } else if (name === "atob" || name === "String.fromCharCode") {
-      hasDecode = true;
-    }
-  };
-  try {
-    traverse(ast, {
-      Identifier(path) {
-        if (/^_0x[0-9a-f]{4,}$/i.test(path.node.name)) {
-          hexNames += 1;
-        }
-      },
-      CallExpression: visitInvocation,
-      NewExpression: visitInvocation,
-    });
-  } catch {
-    // @babel/traverse builds scope and throws on some pathological inputs (e.g. a
-    // duplicate `const`, common in machine-generated code). The walk is then
-    // undecidable, so fall back to classify()'s byte heuristic.
-    return null;
-  }
-  return hexNames >= 5 || (hasEval && hasDecode);
-}
-
-/**
- * The obfuscation signal computed on the parsed AST instead of raw bytes. Used for
- * authored-candidate files; minified/library files are non-authored regardless and
- * are never parsed here (keeping the multi-MB bundles out of the parser). This is the
- * standalone path taken whenever classifyBundled gets no precomputed obfuscation map: the
- * lazy getBundled callers (unit / rejected-Experiment contexts), and the setup
- * classification of the built XPI in SCA. It parses each candidate itself. The review
- * source instead reuses the extraction pass's shared AST (obfuscationFrom), so no reviewed
- * source is parsed twice.
- * @param {string} text
- * @param {string} [file]  The candidate's path, so TypeScript/JSX authored source
- *   parses (a candidate is always JS, but may be .ts/.tsx/.jsx).
- * @returns {?boolean}  the verdict, or null when the file does not parse (the
- *   caller then keeps classify()'s byte heuristic).
- */
-export function detectObfuscationAst(text, file) {
-  const { parseError, ast } = parseJs(text, file);
-  return parseError ? null : obfuscationFrom(ast);
 }

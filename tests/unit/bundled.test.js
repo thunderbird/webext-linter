@@ -9,7 +9,6 @@ import assert from "node:assert/strict";
 import {
   classifyBundled,
   classifyAddonJs,
-  detectObfuscationAst,
 } from "../../src/checks/lib/bundled.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
 import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
@@ -30,10 +29,15 @@ const libHashes = (addon, ...keys) =>
 // One long, dense line (no newline): minified by geometry, not by name, so it
 // exercises the heuristic rather than the ".min.js" / library-name shortcut.
 const MINIFIED = `var data=[${"1,".repeat(700)}1];`;
-// javascript-obfuscator "_0x" identifiers in bulk -> obfuscated, not minified.
+// A real array-replacement obfuscation: a string array dereferenced through an accessor,
+// the AST structure obfuscation-detector recognizes. Multi-line and low-density, so it is
+// obfuscated but NOT minified-by-geometry. >= 1024 bytes so it is classified, not skipped.
 const OBFUSCATED =
-  "const _0xa1b2=1;\nconst _0xc3d4=2;\nconst _0xe5f6=3;\n" +
-  "const _0x7890=4;\nconst _0xabcd=5;\n".repeat(40);
+  `var _0xarr = [${Array.from({ length: 60 }, (_, i) => `"item_${i}"`).join(", ")}];\n` +
+  "function _0xget(i) { return _0xarr[i]; }\n" +
+  Array.from({ length: 20 }, (_, i) => `console["log"](_0xget(${i}));`).join(
+    "\n"
+  );
 // Readable, multi-line, still >= 1024 bytes so it is classified (not skipped):
 // short lines, low density -> NOT minified. This is what prettier would produce.
 const PRETTY = "const x = 1;\n".repeat(120);
@@ -104,38 +108,6 @@ test("a minified non-library is non-authored and rejected; identified libraries 
     obfuscatedCode.run(ctx).map((f) => f.file),
     ["packed.js"]
   );
-});
-
-// The obfuscation signal is read off the parsed AST, not raw bytes, so a comment
-// or string that merely mentions eval(/Function(/atob(/fromCharCode does not count
-// (the byte heuristic's false positive) - only a real call/identifier does.
-test("detectObfuscationAst ignores eval/decode tokens in comments and strings", () => {
-  // Mentioned only in a comment / a string literal -> NOT obfuscated.
-  assert.equal(
-    detectObfuscationAst(
-      "// once: eval(x), String.fromCharCode(0x41), new Function(c)\nexport const ok = 1;"
-    ),
-    false
-  );
-  assert.equal(
-    detectObfuscationAst('const help = "use eval( and String.fromCharCode";'),
-    false
-  );
-  // A real eval-of-decoded-string packer, the same sink through a global-object
-  // receiver (window.eval / self.atob), and bulk _0x identifiers -> obfuscated.
-  assert.equal(detectObfuscationAst('const d = eval(atob("Zm9v"));'), true);
-  assert.equal(
-    detectObfuscationAst("globalThis.run = window.eval(self.atob(p));"),
-    true
-  );
-  assert.equal(
-    detectObfuscationAst(
-      "var _0xa1b2=1,_0xc3d4=2,_0xe5f6=3,_0x7890=4,_0xabcd=5;"
-    ),
-    true
-  );
-  // An unparseable file is undecidable -> null (caller keeps the byte heuristic).
-  assert.equal(detectObfuscationAst("function ("), null);
 });
 
 test("classification done before normalize survives reformatting (the fix)", () => {

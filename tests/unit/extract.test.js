@@ -103,29 +103,3 @@ test("extracts experimentRefs only when Experiment namespaces are supplied", () 
   runExtractionPass([withoutNs]);
   assert.equal(withoutNs.extracted.experimentRefs, undefined);
 });
-
-test("records each candidate's obfuscation verdict + gates content on a positive one", () => {
-  // >=5 `_0x…` identifiers -> obfuscationFrom returns true (see bundled.js).
-  const obf =
-    "var _0x1111=1,_0x2222=2,_0x3333=3,_0x4444=4,_0x5555=5; eval(_0x1111);";
-  const bundle = src("bundle.js", obf);
-  runExtractionPass([bundle], {
-    obfuscationCandidates: new Set(["bundle.js"]),
-  });
-  assert.equal(bundle.extracted.obfuscation, true, "AST verdict recorded");
-  assert.equal(
-    bundle.extracted.remoteJs,
-    undefined,
-    "an obfuscated candidate is content-gated out"
-  );
-  // A non-obfuscated candidate records false and is still content-scanned.
-  const clean = src("app.js", "eval(x);");
-  runExtractionPass([clean], {
-    obfuscationCandidates: new Set(["app.js"]),
-  });
-  assert.equal(clean.extracted.obfuscation, false);
-  assert.ok(
-    clean.extracted.remoteJs,
-    "authored non-obfuscated candidate is scanned"
-  );
-});
