@@ -4,13 +4,15 @@
 //   - <script> / <script setup> blocks are JS/TS modules, extracted verbatim
 //     (exactly like an HTML inline <script>), with the block's `lang` attribute
 //     selecting the parse mode (ts/tsx/jsx) through JsSource.parseAs.
-//   - a <template> binding value is a JS expression: `@click="fetch(x)"`,
-//     `:src="u"`, `v-html="markup"`. Each is lifted into an equivalent JsSource
-//     so the ordinary extractors (network-sinks, unsafe-html, ...) scan it with
-//     no new plumbing. `v-html` is lifted to an `el.innerHTML = (expr)` write
-//     because that is exactly the sink it is; every other binding becomes a bare
-//     parenthesised expression, so its value is still scanned for sinks (a
-//     `fetch` in an `@click`) without inventing a false HTML sink.
+//   - a <template> binding value is JavaScript: `:src="u"`, `v-html="markup"`,
+//     `@click="fetch(x)"`. Each is lifted into an equivalent JsSource so the
+//     ordinary extractors (network-sinks, unsafe-html, ...) scan it with no new
+//     plumbing. `v-html` is lifted to an `el.innerHTML = (expr)` write because that
+//     is exactly the sink it is. A `@`/`v-on` handler is STATEMENT context in Vue
+//     (its value may be several statements, `a=1; b=2`), so it is lifted as a
+//     statement body `() => { expr }`; every other binding is an expression, lifted
+//     as a bare parenthesised `(expr)`. Either way the value is still scanned for
+//     sinks (a `fetch` in an `@click`) without inventing a false HTML sink.
 //
 // Reuses the parse5 element walk (src/scan/html-parse.js) - the same front door
 // the HTML inline-script extractor uses - so quoting, line positions and the
@@ -98,9 +100,15 @@ function bindingSource(file, a) {
     return null;
   }
   // v-html writes its expression to innerHTML: lift it to exactly that sink so
-  // scanUnsafeHtml flags it (and still scans the expression itself). Every other
-  // binding becomes a bare expression - the value is scanned, no false HTML sink.
-  const code = name === "v-html" ? `__vhtml.innerHTML=(${expr})` : `(${expr})`;
+  // scanUnsafeHtml flags it. A v-on/@ handler is a statement body (it may hold
+  // several statements), lifted as an arrow so it parses; every other binding is
+  // an expression, lifted bare. Either way the value is scanned, no false HTML sink.
+  const code =
+    name === "v-html"
+      ? `__vhtml.innerHTML=(${expr})`
+      : isEventHandler(name)
+        ? `()=>{${expr}}`
+        : `(${expr})`;
   return {
     file,
     code,
@@ -108,4 +116,16 @@ function bindingSource(file, a) {
     inline: true,
     parseAs: ".js",
   };
+}
+
+/**
+ * Whether a directive name is a v-on event handler (`@x`, `v-on:x`, or the
+ * object form `v-on`). Its value is Vue statement context - a method name, a
+ * call, or several statements - not an expression, so it is lifted as a statement
+ * body rather than a parenthesised expression.
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isEventHandler(name) {
+  return name === "v-on" || name.startsWith("v-on:") || name.startsWith("@");
 }

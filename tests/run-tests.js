@@ -50,6 +50,19 @@ function loadFixture(dir) {
   return { expect: parsed.expect ?? {}, options: parsed.options ?? {} };
 }
 
+// A fixture is an SCA (source-code archive) review when it holds two artifacts as
+// subfolders: `xpi/` (the shipped built add-on, the authoritative manifest) and
+// `src/` (the readable source tree the code checks review, e.g. a Vue .vue file).
+// The harness then drives runPipeline in SCA mode; a plain fixture folder is an
+// ordinary XPI review. Detected by layout, so expected.json needs no extra flag.
+function isScaFixture(dir) {
+  return ["xpi", "src"].every(
+    (sub) =>
+      fs.existsSync(path.join(dir, sub)) &&
+      fs.statSync(path.join(dir, sub)).isDirectory()
+  );
+}
+
 // Turn a fixture's flag-keyed "options" object into a CLI argv: a `true` value
 // is a bare boolean flag, anything else becomes `--flag <value>`.
 function optionsToArgv(options) {
@@ -145,23 +158,35 @@ async function main() {
     const { expect: expected, options } = loadFixture(dir);
     let problems;
     try {
-      // Load the add-on ourselves and drop the expected.json sidecar so it is
-      // not seen as an (unused) add-on file by the review.
-      const addon = loadAddon(dir);
-      addon.files.delete("expected.json");
       // Pure schema review: no pretty-print, no packing — keeps lines stable.
-      // A fixture's flag "options" parse in first; the core review opts win.
-      const review = await runPipeline({
+      // A fixture's flag "options" parse in first; the core review opts win. The
+      // CDN identifier is a networked step that cannot match offline; turn it off
+      // so golden runs are hermetic (no per-run cache file written).
+      const base = {
         ...pipelineOptsFromArgv(optionsToArgv(options)),
-        addon,
         schemaZip: SCHEMA_FIXTURE,
         experimentsZip: EXPERIMENTS_FIXTURE,
         libraryHashes: LIBRARY_HASHES_FIXTURE,
         vendorNet: OFFLINE_NET,
-        // The CDN identifier is a networked step that cannot match offline; turn
-        // it off so golden runs are hermetic (no per-run cache file written).
         cdnLookup: false,
-      });
+      };
+      let review;
+      if (isScaFixture(dir)) {
+        // SCA mode: the shipped XPI is the authoritative artifact (addonPath), the
+        // src/ tree is the review target (scaRoot, flat so scaSource is ".").
+        review = await runPipeline({
+          ...base,
+          addonPath: path.join(dir, "xpi"),
+          scaRoot: path.join(dir, "src"),
+          scaSource: ".",
+        });
+      } else {
+        // XPI mode: load the add-on ourselves and drop the expected.json sidecar so
+        // it is not seen as an (unused) add-on file by the review.
+        const addon = loadAddon(dir);
+        addon.files.delete("expected.json");
+        review = await runPipeline({ ...base, addon });
+      }
       problems = diff(expected, locationsByRule(review.findings));
       for (const [ext, fmt] of [
         ["txt", "text"],

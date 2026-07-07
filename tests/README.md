@@ -66,6 +66,13 @@ win), so a fixture can exercise a flag-gated check - e.g.
 locations you expect per rule. (Tip: run the harness once - a mismatch prints
 the actual `got [...]` list to copy from.)
 
+**SCA fixtures:** a fixture that instead holds two subfolders - `xpi/` (the
+shipped built add-on, the authoritative manifest) and `src/` (the readable source
+tree, e.g. a Vue `.vue`) - is run in **SCA** mode (source-code archive) rather than
+XPI mode. The layout is auto-detected (no flag needed); `expected.json` stays at the
+fixture root. Use one when a check depends on the source/shipped split or on a source
+format that only exists pre-build.
+
 | Add-on | Exercises |
 | --- | --- |
 | `all-checks` | Triggers every deterministic violation check at once - the broad smoke test. (`missing-library` / `obfuscated-code` need a bundled or minified file, and `api-coverage` a parse/resolution gap, so those three don't show here.) |
@@ -85,6 +92,7 @@ the actual `got [...]` list to copy from.)
 | `experiment-disallowed` | An Experiment (`experiment_apis`) reviewed with experiments off (default): `experiment-not-allowed` on the `experiment_apis` line. |
 | `experiment-allowed-no-strict-max` | An Experiment with no `strict_max_version`, reviewed with `"options": { "--allow-experiments": true }`: `experiment-missing-strict-max-version` (and `experiment-not-allowed` stays silent). |
 | `strict-max-not-experiment` | `non-experiment-strict-max-version`: a non-Experiment that pins `strict_max_version` (warning). |
+| `vue-sca-handler` | SCA mode (`xpi/`+`src/` layout): a Vue `.vue` whose multi-statement `@` handler carries an `innerHTML` sink - `unsafe-html` fires on the handler line, proving the handler is parsed (no `unparsable-file` coverage gap) and still scanned. |
 
 
 ### Unit tests (`unit/`)

@@ -52,11 +52,49 @@ test("extractVueSfc: v-html lifts to an innerHTML sink write", () => {
   assert.equal(hits[0].line, 7, "the finding lands on the .vue line");
 });
 
-test("extractVueSfc: @click and :src bindings become scannable expressions", () => {
+test("extractVueSfc: @click handler lifts to a statement body, :src to an expression", () => {
   const srcs = extractVueSfc("Comp.vue", SFC);
   const codes = srcs.map((s) => s.code);
-  assert.ok(codes.includes("(fetch(remote))"), "@click handler is lifted");
+  // A v-on/@ handler is statement context in Vue, lifted as an arrow body; a :bind
+  // value is an expression, lifted bare. Both must parse and still expose the call.
+  assert.ok(codes.includes("()=>{fetch(remote)}"), "@click handler is lifted");
   assert.ok(codes.includes("(dynUrl)"), ":src binding is lifted");
+  const handler = srcs.find((s) => s.code === "()=>{fetch(remote)}");
+  assert.equal(parseJs(handler.code, ".js").parseError, null);
+});
+
+// A Vue @/v-on handler may be several statements (`a = 1; b = 2`) - statement
+// context, not an expression. Lifting it bare as `(a = 1; b = 2)` is invalid JS and
+// fails to parse (the real-world bug: a false "could not be parsed" coverage gap).
+// Lifting it as a `() => { ... }` body parses.
+test("extractVueSfc: a multi-statement @ handler parses (statement body)", () => {
+  const srcs = extractVueSfc(
+    "Comp.vue",
+    `<template><input @keydown.esc="a = false; b = ''; c = []" /></template>`
+  );
+  const handler = srcs.find((s) => /a = false/.test(s.code));
+  assert.ok(handler, "the handler is lifted");
+  assert.equal(handler.code, "()=>{a = false; b = ''; c = []}");
+  assert.equal(
+    parseJs(handler.code, ".js").parseError,
+    null,
+    "the multi-statement handler parses"
+  );
+});
+
+// The arrow wrapper does not hide sinks: an innerHTML write inside a multi-statement
+// handler is still flagged by scanUnsafeHtml, on the handler's .vue line.
+test("extractVueSfc: a sink inside a multi-statement @ handler is still scanned", () => {
+  const srcs = extractVueSfc(
+    "Comp.vue",
+    `<template>\n  <button @click="el.innerHTML = raw; open = false">x</button>\n</template>`
+  );
+  const handler = srcs.find((s) => /innerHTML/.test(s.code));
+  assert.ok(handler, "the handler is lifted");
+  const { hits } = scanUnsafeHtml(handler.code, handler.lineOffset);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].sink, "innerHTML");
+  assert.equal(hits[0].line, 2, "the finding lands on the handler's .vue line");
 });
 
 test("extractVueSfc: v-for is not lifted (its `x in xs` is not an expression)", () => {

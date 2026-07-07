@@ -1,0 +1,6 @@
+{
+  "_comment": "SCA fixture: a Vue .vue whose @keydown.esc handler is multi-statement and holds an innerHTML sink. Proves extractVueSfc lifts v-on handlers as a statement body: the handler parses (no unparsable-file coverage gap) and the sink is still scanned (unsafe-html on the handler line).",
+  "expect": {
+    "unsafe-html": ["Comp.vue:7"]
+  }
+}
