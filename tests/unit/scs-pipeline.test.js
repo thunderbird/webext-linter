@@ -117,6 +117,38 @@ test("SCS e2e: a flat layout (--scs-source == --scs-root) is accepted and fully 
   }
 });
 
+// --scs-root alone (no --scs-source) switches to SCS mode and defaults the source to
+// ".", so a flat submission needs only the one flag - identical to passing --scs-source ".".
+test("SCS e2e: --scs-root without --scs-source defaults the source to '.'", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir(FLAT_SRC);
+  try {
+    const { findings, meta } = await runPipeline({
+      addonPath: xpi,
+      scsRoot: src,
+      // no scsSource - defaults to "."
+      schemaZip: SCHEMA_FIXTURE,
+    });
+    assert.equal(meta.reviewed, true, "SCS mode engaged from --scs-root alone");
+    // The root source is reviewed (proves mode === "scs", source === the root).
+    assert.ok(
+      has(
+        findings,
+        "unknown-api",
+        (f) => f.file === "app.js" && /totallyFakeNamespace/.test(f.item)
+      ),
+      "the root source file is reviewed"
+    );
+    // The build review ran (SCS-only), so the root yarn.lock is rejected.
+    assert.ok(
+      has(findings, "unsupported-build-tool", (f) => /yarn/.test(f.message)),
+      "the SCS build review ran with --scs-root alone"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
 // The dependency audit reads the root package.json, which in a flat layout IS the review
 // addon's own package.json - so resolveVendor + the vendor checks run exactly as in a
 // nested layout. A vulnerable devDependency is surfaced by vendor-vulnerable-dev.

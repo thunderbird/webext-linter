@@ -108,15 +108,15 @@ import {
  *   default); when unset, the code-sanity check is skipped entirely.
  * @property {boolean} [allowExperiments]
  * @property {string} [scsRoot]  Source-code-submission mode: path to the source
- *   archive root (folder or zip) holding package.json/lock. Requires scsSource.
- *   When both are set the review runs in SCS mode - the readable source (scsSource)
- *   is reviewed and its declared dependencies are audited; the positional XPI is
- *   the shipped artifact against which the manifest, experiments, file-completeness
- *   (`input: xpi`) checks, the --diff-to comparison, and the behavioral LLM audit
- *   all run (a separate shipped context the orchestrator routes them to - see
- *   buildShippedCtx in src/checks/context.js).
+ *   archive root (folder or zip) holding package.json/lock. Setting it switches the
+ *   review to SCS mode - the readable source (scsSource) is reviewed and its declared
+ *   dependencies are audited; the positional XPI is the shipped artifact against which
+ *   the manifest, experiments, file-completeness (`input: xpi`) checks, the --diff-to
+ *   comparison, and the behavioral LLM audit all run (a separate shipped context the
+ *   orchestrator routes them to - see buildShippedCtx in src/checks/context.js).
  * @property {string} [scsSource]  The add-on code root, relative to scsRoot or an
- *   absolute path (e.g. "src" or "addon"). Required together with scsRoot.
+ *   absolute path (e.g. "src" or "addon"). Optional; defaults to "." (the whole scsRoot
+ *   reviewed as the source - a flat layout with manifest.json at the root).
  * @property {string} [scsExpSource]  SCS mode: the Experiment implementation folder,
  *   relative to scsRoot (or absolute) and within scsSource (e.g. "addon/experiment-api");
  *   runPipeline re-bases it to a source-relative ctx.scsExpSource. Its privileged, non-WebExtension
@@ -175,9 +175,9 @@ import {
  */
 export async function runPipeline(opts) {
   const { addonPath } = opts;
-  // SCS (source-code-submission) mode is on when BOTH --scs-* are set. It splits
-  // the review across TWO add-on artifacts with a fixed ROLE each, resolved here
-  // ONCE so nothing downstream re-branches on the mode:
+  // SCS (source-code-submission) mode is on when --scs-root is set (--scs-source is
+  // optional, defaulting to "."). It splits the review across TWO add-on artifacts
+  // with a fixed ROLE each, resolved here ONCE so nothing downstream re-branches on the mode:
   //
   //   xpiAddon - the built XPI (the positional addonPath). The SHIPPED artifact,
   //     authoritative in BOTH modes for the manifest, the experiments, and the
@@ -199,7 +199,12 @@ export async function runPipeline(opts) {
   // case (scsRootRelative resolves ".", an absolute root, or a literal match all to "")
   // is handled throughout: loadScsAddon reviews every file, and loadScsBuildFiles still
   // traces the build off the root package.json (there is no source subtree to exclude).
-  const mode = opts.scsRoot && opts.scsSource ? "scs" : "xpi";
+  // --scs-root alone switches to SCS mode; --scs-source is optional and defaults to "."
+  // (the whole root reviewed as the source - the common flat-layout case).
+  const mode = opts.scsRoot ? "scs" : "xpi";
+  // No (or empty) --scs-source in SCS mode defaults to "." - both resolve to the
+  // archive root via scsRootRelative, so `||` keeps the value a real path.
+  const scsSource = mode === "scs" ? opts.scsSource || "." : opts.scsSource;
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly).
   const registry = opts.registry ?? loadRegistry();
@@ -246,7 +251,7 @@ export async function runPipeline(opts) {
   let addon;
   if (mode === "scs") {
     scsArchive = loadAddon(opts.scsRoot);
-    addon = loadScsAddon(scsArchive, opts.scsSource, opts.scsRoot);
+    addon = loadScsAddon(scsArchive, scsSource, opts.scsRoot);
   } else {
     addon = xpiAddon;
   }
@@ -269,7 +274,7 @@ export async function runPipeline(opts) {
   // positives on the privileged Experiment code.
   const scsExpSource =
     mode === "scs"
-      ? scsExpSourceRelative(opts.scsExpSource, opts.scsSource, opts.scsRoot)
+      ? scsExpSourceRelative(opts.scsExpSource, scsSource, opts.scsRoot)
       : undefined;
   if (
     scsExpSource &&
@@ -468,7 +473,7 @@ export async function runPipeline(opts) {
       // as the `input: build` check's ctx.addon; they never merge into the review addon.
       addon.buildFiles = loadScsBuildFiles(
         scsArchive,
-        opts.scsSource,
+        scsSource,
         opts.scsRoot,
         opts.scsExpSource
       );

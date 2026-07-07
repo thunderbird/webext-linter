@@ -589,7 +589,7 @@ function diffEligible(entry, inDiffMode) {
 /**
  * Whether a registry entry runs in the current review MODE, per its `scs` field
  * (mirrors diffEligible): `scs: true` only in SCS mode (a source-code submission,
- * `--scs-root`/`--scs-source`), `scs: false` only in XPI mode (reviewing a built
+ * triggered by `--scs-root`), `scs: false` only in XPI mode (reviewing a built
  * add-on), an omitted `scs` in both. The XPI bundled/vendor checks are `scs:
  * false` (they need the XPI dependency tree, absent for a source archive); the
  * `--scs-root` dependency audit is `scs: true`.

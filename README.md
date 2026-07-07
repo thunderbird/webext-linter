@@ -97,9 +97,9 @@ The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `bann
 
 | Option | Description |
 | --- | --- |
-| `--scs-root <folder\|zip>` | The source archive root (holds `package.json`/lock). Requires `--scs-source`, and switches to SCS mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the behavioral LLM audit. See [Source-code submission (SCS) mode](#source-code-submission-scs-mode) below. |
-| `--scs-source <path>` | The add-on code root, relative to `--scs-root` or an absolute path (e.g. `src` or `addon`). Required together with `--scs-root`. |
-| `--scs-exp-source <path>` | The Experiment implementation folder, relative to `--scs-root` or an absolute path, and within `--scs-source` (e.g. `addon/experiment-api`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--scs-source`; required when `--allow-experiments` is used in SCS mode. |
+| `--scs-root <folder\|zip>` | The source archive root (holds `package.json`/lock). Switches to SCS mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the behavioral LLM audit. See [Source-code submission (SCS) mode](#source-code-submission-scs-mode) below. |
+| `--scs-source <path>` | The add-on code root, relative to `--scs-root` or an absolute path (e.g. `src` or `addon`). Optional; defaults to `.` (the whole `--scs-root` reviewed as the source - a flat layout with `manifest.json` at the root). Needs `--scs-root`. |
+| `--scs-exp-source <path>` | The Experiment implementation folder, relative to `--scs-root` or an absolute path, and within `--scs-source` (e.g. `addon/experiment-api`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--scs-root`; required when `--allow-experiments` is used in SCS mode. |
 
 **Other:**
 
@@ -165,8 +165,11 @@ node verify.js built.xpi --scs-root ./source-archive --scs-source src
 ```
 
 - `--scs-root` is the source archive (folder or zip) that holds `package.json` /
-  the lock file; `--scs-source` is the add-on code root, relative to `--scs-root`
-  or an absolute path (e.g. `src`). Both are required together.
+  the lock file; setting it switches on SCS mode. `--scs-source` is the add-on code
+  root within it (relative to `--scs-root` or an absolute path, e.g. `src`); it is
+  **optional and defaults to `.`** - the whole `--scs-root` reviewed as the source, for
+  a flat layout with `manifest.json` at the root (`node verify.js built.xpi --scs-root
+  ./source-archive`).
 - The **readable source** is reviewed for code defects (the API/permission/eval/
   exfiltration checks run over every source file).
 - The **declared dependencies** (`--scs-root`'s `package.json`) are audited: each

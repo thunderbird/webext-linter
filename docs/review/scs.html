@@ -13,7 +13,7 @@
     <main class="page">
       <header class="check-header">
         <h1>Source Code Submission review <span class="badge info">flow</span></h1>
-        <div class="check-id">verify.js &lt;xpi&gt; --scs-root &lt;src&gt; --scs-source &lt;dir&gt;</div>
+        <div class="check-id">verify.js &lt;xpi&gt; --scs-root &lt;src&gt; [--scs-source &lt;dir&gt;]</div>
       </header>
 
       <h2>What it reviews</h2>
@@ -25,9 +25,11 @@
         artifact.
       </p>
       <p>
-        SCS mode is on when both <code>--scs-root</code> (the source archive
-        holding <code>package.json</code> / the lock file) and
-        <code>--scs-source</code> (the add-on code root within it) are set. The
+        SCS mode is on when <code>--scs-root</code> (the source archive holding
+        <code>package.json</code> / the lock file) is set. <code>--scs-source</code>
+        (the add-on code root within it) is optional and defaults to
+        <code>.</code> - the whole root reviewed as the source, for a flat layout with
+        <code>manifest.json</code> at the root. The
         review then splits across four inputs with a fixed role each, and each
         check is routed to exactly the artifact its <code>input</code> selects. The
         purple nodes are the optional LLM side-steps (only with
@@ -39,7 +41,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Submission: a built XPI +<br/>a readable source archive<br/>(--scs-root / --scs-source)"] --> B["Load both artifacts — built XPI = shipped<br/>artifact, readable source = review target"]
+  A["Submission: a built XPI +<br/>a readable source archive<br/>(--scs-root; --scs-source optional)"] --> B["Load both artifacts — built XPI = shipped<br/>artifact, readable source = review target"]
   B --> LP["LLM pre-flight (only --llm-enabled): validate config +<br/>model reachable — HARD-FAIL exit 2; resolve vendored<br/>declarations (LLM parses package.json when enabled)"]
   LP --> X{"Shipped XPI declares experiment_apis?"}
   X -- no --> SPLIT

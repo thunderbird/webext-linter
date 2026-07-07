@@ -67,7 +67,7 @@ flowchart TD
       <p>
         This check runs in <strong>both</strong> review modes. In an ordinary review
         it flags minified JavaScript shipped in the built add-on; in a source-code
-        submission (<code>--scs-root</code>/<code>--scs-source</code>) it flags a
+        submission (<code>--scs-root</code>) it flags a
         minified file sitting in the readable source, because that source is what gets
         reviewed — a minified file there defeats the submission's purpose (readable
         source). Either way the remedy is the same: provide the original,

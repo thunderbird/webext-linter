@@ -305,15 +305,15 @@ export function helpText() {
   const scs = [
     [
       "--scs-root <folder|zip>",
-      "The source archive root (holds package.json/lock). Requires --scs-source. Switches to SCS mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the behavioral LLM audit.",
+      "The source archive root (holds package.json/lock). Switches to SCS mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the behavioral LLM audit.",
     ],
     [
       "--scs-source <path>",
-      "The add-on code root, relative to --scs-root or an absolute path (e.g. src or addon), or . for a flat layout where manifest.json sits at --scs-root itself. Required together with --scs-root.",
+      "The add-on code root, relative to --scs-root or an absolute path (e.g. src or addon). Optional; defaults to . (the whole --scs-root reviewed as the source - a flat layout where manifest.json sits at the root). Needs --scs-root.",
     ],
     [
       "--scs-exp-source <path>",
-      "The Experiment implementation folder, relative to --scs-root or an absolute path, and within --scs-source (e.g. addon/experiment-api). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --scs-source; REQUIRED when --allow-experiments is used in SCS mode.",
+      "The Experiment implementation folder, relative to --scs-root or an absolute path, and within --scs-source (e.g. addon/experiment-api). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --scs-root; REQUIRED when --allow-experiments is used in SCS mode.",
     ],
   ];
 
@@ -509,19 +509,15 @@ export async function main(argv) {
     return 2;
   }
 
-  // SCS mode needs both halves: the archive root (for package.json/lock) AND the
-  // add-on code root within it. One without the other is a usage error.
-  if (Boolean(values["scs-root"]) !== Boolean(values["scs-source"])) {
+  // --scs-root is the SCS-mode switch. --scs-source and --scs-exp-source name locations
+  // INSIDE it, so they are meaningless on their own. --scs-root alone is fine:
+  // --scs-source defaults to "." (the whole root reviewed as the source).
+  if (
+    (values["scs-source"] || values["scs-exp-source"]) &&
+    !values["scs-root"]
+  ) {
     process.stderr.write(
-      "--scs-root and --scs-source must be given together (source-code submission mode).\n"
-    );
-    return 2;
-  }
-  // The Experiment folder is a path inside --scs-source, so it is meaningless on
-  // its own.
-  if (values["scs-exp-source"] && !values["scs-source"]) {
-    process.stderr.write(
-      "--scs-exp-source needs --scs-source (the Experiment folder must be within it).\n"
+      "--scs-source and --scs-exp-source require --scs-root (source-code submission mode).\n"
     );
     return 2;
   }
@@ -531,7 +527,7 @@ export async function main(argv) {
   // privileged Experiment code would be reviewed as WebExtension code and flood the
   // report with false positives.
   if (
-    values["scs-source"] &&
+    values["scs-root"] &&
     values["allow-experiments"] &&
     !values["scs-exp-source"]
   ) {

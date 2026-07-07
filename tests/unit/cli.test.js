@@ -51,12 +51,16 @@ test("unknown option errors cleanly (no -- separator hint)", () => {
   assert.doesNotMatch(r.stderr, /To specify a positional argument/);
 });
 
-// SCS mode needs both halves: --scs-root (the archive root) and --scs-source (the
-// add-on code root within it). One without the other is a usage error.
-test("--scs-root without --scs-source is a usage error (exit 2)", () => {
-  const r = run(["some.xpi", "--scs-root", "pkg"]);
+// --scs-root is the SCS-mode switch; --scs-source / --scs-exp-source name locations
+// inside it, so they are a usage error on their own. (--scs-root alone is fine -
+// --scs-source defaults to ".".)
+test("--scs-source without --scs-root is a usage error (exit 2)", () => {
+  const r = run(["some.xpi", "--scs-source", "src"]);
   assert.equal(r.code, 2);
-  assert.match(r.stderr, /--scs-root and --scs-source must be given together/);
+  assert.match(
+    r.stderr,
+    /--scs-source and --scs-exp-source require --scs-root/
+  );
 });
 
 // In SCS mode, Experiment code is told apart from WebExtension code only by

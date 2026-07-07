@@ -104,7 +104,7 @@ that no longer exist.
      & run the deterministic + LLM checks → optional `--full-summary` /
      `--diff-summary` (which re-judge escalated "unsure" items) → post-summary
      rechecks → report + manual-review to-do list.
-   - **Source Code Submission** (`--scs-root` + `--scs-source`) — the split-artifact
+   - **Source Code Submission** (`--scs-root`; `--scs-source` optional) — the split-artifact
      flow: the readable source is the code-defect review target; the declared
      dependencies and the build files are audited; the built XPI is authoritative
      for the manifest, experiments, file-completeness, `--diff-to` baseline and the

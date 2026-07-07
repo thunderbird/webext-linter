@@ -134,7 +134,7 @@ export function buildRunContext({
     previous: diffTo ? loadAddon(diffTo) : null,
     invalidExperiment,
     // "xpi" (default - reviewing a built add-on) or "scs" (a source-code
-    // submission: --scs-root/--scs-source). Gates checks via scsEligible.
+    // submission, triggered by --scs-root). Gates checks via scsEligible.
     mode,
     // SCS mode: the Experiment folder as a source-relative path (runPipeline re-based
     // it from the scsRoot-relative --scs-exp-source flag). buildReachability excludes
