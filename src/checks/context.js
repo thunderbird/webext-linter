@@ -217,11 +217,9 @@ export function buildShippedCtx(ctx, xpiAddon) {
  * builds the add-on (scripts, configs, package.json/lock: everything in --scs-root
  * outside the review source, with node_modules and dotfiles excluded, from
  * loadScsBuildFiles), plus the setup build classification (buildReview) and the
- * recorded archives/nodeModules. The `input: build` checks (undeclared-build-source,
- * build-not-from-source, build-source-redundant, build-lifecycle-hook,
- * committed-build-artifact) are routed here, so each reads off ctx.addon like any other
- * check reads its artifact - keeping artifact selection the single `input` seam, no
- * separate ctx field. SCS mode only.
+ * recorded archives/nodeModules. The `input: build` checks are routed here, so each reads
+ * off ctx.addon like any other check reads its artifact - keeping artifact selection the
+ * single `input` seam, no separate ctx field. SCS mode only.
  * The build corpus is projected through reviewView (like every other ctx.addon), so a
  * build check can never read ctx.addon.manifest/experiments against another artifact's
  * files; the shipped manifest stays on ctx.manifest for the shared LLM framing.
