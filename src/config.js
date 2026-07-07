@@ -93,7 +93,8 @@ export const MAX_FILES_PER_BATCH = 12;
 /**
  * Cap on the TOTAL model requests one run may make before pausing - across
  * every LLM check (each candidate batch is one request), the advisory
- * summaries, and the vendor-parse fallback. MAX_FILES_PER_BATCH bounds a single
+ * summaries, the vendor-parse fallback, and the SCS build analysis (analyzeBuild,
+ * one setup request). MAX_FILES_PER_BATCH bounds a single
  * request. This bounds their count, so a pathological add-on cannot fan out into
  * thousands of calls. On reaching it the run asks (at an interactive terminal)
  * whether to run this many more, re-asking at every multiple. Non-interactively

@@ -18,6 +18,7 @@ import AdmZip from "adm-zip";
 import JSON5 from "json5";
 
 import { buildManifestLoc } from "./manifest-loc.js";
+import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
 
 /**
  * @typedef {object} GeckoSettings
@@ -93,6 +94,10 @@ import { buildManifestLoc } from "./manifest-loc.js";
  * @property {string[]} nodeModules  Posix paths of node_modules directories
  *   skipped at load (their contents are never read); empty when none. In SCS
  *   mode the committed-node-modules check rejects each.
+ * @property {string[]} archives  Posix paths of committed binary archives
+ *   (.zip/.xpi/... anywhere in the submission); empty when none. In SCS mode the
+ *   committed-build-artifact check rejects each. Recorded at load, spanning the whole
+ *   --scs-root (before the source/build split), so one is caught wherever it sits.
  * @property {string[]} skipped  Ready-to-narrate notices for entries skipped at
  *   load (a non-node_modules symlink, an unsafe archive path); empty when none.
  *   The loader collects them; the pipeline narrates them under "Reading add-on",
@@ -114,7 +119,7 @@ export function loadAddon(source) {
     throw new Error(`Add-on not found: ${resolved}`);
   }
   const stat = fs.statSync(resolved);
-  const { files, nodeModules, skipped } = stat.isDirectory()
+  const { files, nodeModules, archives, skipped } = stat.isDirectory()
     ? readDir(resolved)
     : readZip(resolved);
   const addon = assembleAddon(files, {
@@ -125,6 +130,9 @@ export function loadAddon(source) {
   // paths are recorded - a committed node_modules is a hard fail (committed-node-modules
   // in SCS mode), never reviewable input.
   addon.nodeModules = nodeModules;
+  // Committed binary archives (.zip/.xpi/...) are recorded by path - a committed built
+  // archive is a hard fail (committed-build-artifact in SCS mode), never authored input.
+  addon.archives = archives;
   // Skipped-entry notices (symlinks, unsafe archive paths): the loader stays silent and
   // hands them back for the pipeline to narrate under the "Reading add-on" step, so a
   // pre-banner sizing load never prints before the Setup banner.
@@ -291,8 +299,9 @@ export function loadScsAddon(archive, scsSource, scsRoot) {
  * addon that the other checks scan.
  *
  * A pure EXCLUDE rule (no allow-list to maintain): whatever remains after removing the
- * add-on source, the Experiment source, and dot-prefixed paths is the build corpus,
- * shown to the model wholesale. Dotfiles/folders (.git, .github, .idea, .yarnrc, ...)
+ * add-on source, the Experiment source, and dot-prefixed paths is the build corpus, from
+ * which the setup build analysis (analyzeBuild) selects the build-relevant subset to show
+ * the model (src/build/corpus.js). Dotfiles/folders (.git, .github, .idea, .yarnrc, ...)
  * are dropped as VCS/editor/CI noise - EXCEPT .npmrc, the npm/pnpm registry config the
  * build-tooling checks read.
  *
@@ -304,7 +313,7 @@ export function loadScsAddon(archive, scsSource, scsRoot) {
  * @param {string} scsRoot  Path to the source archive root (for the path math).
  * @param {string} [scsExpSource]  The --scs-exp-source flag; excluded too (it sits
  *   inside scsSource, so this is defensive).
- * @returns {{files: Map<string, Buffer>, nodeModules: string[]}}
+ * @returns {{files: Map<string, Buffer>, nodeModules: string[], archives: string[]}}
  */
 export function loadScsBuildFiles(archive, scsSource, scsRoot, scsExpSource) {
   const files = new Map();
@@ -312,7 +321,11 @@ export function loadScsBuildFiles(archive, scsSource, scsRoot, scsExpSource) {
   if (!src) {
     // The review source IS the archive root: every file is add-on source, so there
     // are no build files outside it.
-    return { files, nodeModules: [...archive.nodeModules] };
+    return {
+      files,
+      nodeModules: [...archive.nodeModules],
+      archives: [...archive.archives],
+    };
   }
   const prefixes = [src];
   if (scsExpSource) {
@@ -341,10 +354,15 @@ export function loadScsBuildFiles(archive, scsSource, scsRoot, scsExpSource) {
     }
     files.set(p, buf);
   }
-  // Copy nodeModules so the build corpus owns its list - the caller shares one archive
-  // object with loadScsAddon, and the aliased array must not leak mutations back to it
-  // (matching the fresh-Map discipline `files` already follows).
-  return { files, nodeModules: [...archive.nodeModules] };
+  // Copy nodeModules/archives so the build corpus owns its lists - the caller shares one
+  // archive object with loadScsAddon, and the aliased array must not leak mutations back
+  // to it (matching the fresh-Map discipline `files` already follows). Both span the whole
+  // --scs-root so the committed-* checks catch a tree anywhere, not just outside the source.
+  return {
+    files,
+    nodeModules: [...archive.nodeModules],
+    archives: [...archive.archives],
+  };
 }
 
 /**
@@ -356,6 +374,7 @@ function readZip(zipPath) {
   const zip = new AdmZip(zipPath);
   const files = new Map();
   const nodeModules = new Set();
+  const archives = new Set();
   const skipped = [];
   for (const entry of zip.getEntries()) {
     if (entry.isDirectory) {
@@ -376,9 +395,20 @@ function readZip(zipPath) {
       nodeModules.add(segs.slice(0, nm + 1).join("/"));
       continue;
     }
+    // A committed binary archive is recorded (the committed-build-artifact check reads
+    // the list) but its bytes are still kept - unlike node_modules we do not skip, since
+    // a shipped .xpi/.zip resource must remain readable for the normal XPI review.
+    if (ARCHIVE_EXTENSIONS.has(extname(name))) {
+      archives.add(name);
+    }
     files.set(name, entry.getData());
   }
-  return { files, nodeModules: [...nodeModules], skipped };
+  return {
+    files,
+    nodeModules: [...nodeModules],
+    archives: [...archives],
+    skipped,
+  };
 }
 
 /**
@@ -389,6 +419,7 @@ function readZip(zipPath) {
 function readDir(dir) {
   const files = new Map();
   const nodeModules = [];
+  const archives = [];
   const skipped = [];
   /** @param {string} current  Directory to recurse into. */
   const walk = (current) => {
@@ -416,13 +447,16 @@ function readDir(dir) {
           walk(full);
         }
       } else if (e.isFile()) {
-        const rel = path.relative(dir, full);
-        files.set(normalize(rel), fs.readFileSync(full));
+        const rel = normalize(path.relative(dir, full));
+        if (ARCHIVE_EXTENSIONS.has(extname(rel))) {
+          archives.push(rel);
+        }
+        files.set(rel, fs.readFileSync(full));
       }
     }
   };
   walk(dir);
-  return { files, nodeModules, skipped };
+  return { files, nodeModules, archives, skipped };
 }
 
 /**

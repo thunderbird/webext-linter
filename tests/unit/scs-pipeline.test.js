@@ -509,11 +509,11 @@ test("SCS e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
   }
 });
 
-// The build files (everything in --scs-root outside --scs-source) are reviewed by
-// undeclared-build-source (SCS-only LLM check). This proves the pipeline wires
-// loadScsBuildFiles -> addon.buildFiles -> buildCtx (ctx.addon) -> the check: with NO
-// LLM token every candidate escalates to Extended manual review (graceful offline
-// degradation).
+// The build files (everything in --scs-root outside --scs-source) are reviewed by the setup
+// build analysis (analyzeBuild) + the deterministic undeclared-build-source check. This proves
+// the pipeline wires loadScsBuildFiles -> addon.buildFiles.buildReview -> buildCtx (ctx.addon) ->
+// the check: with NO LLM token analyzeBuild stores analyzed:false and the check escalates the
+// build to Extended manual review (graceful offline degradation).
 test("SCS e2e: a build script outside the source is reviewed by undeclared-build-source", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
@@ -649,8 +649,75 @@ test("SCS e2e: TypeScript and Vue source is parsed and its defects are caught", 
   }
 });
 
+// A package.json install lifecycle hook runs when the reviewer installs the declared
+// dependencies, before the build - a supply-chain vector the deterministic
+// build-lifecycle-hook check flags offline (no token), pointing the reviewer at the hook.
+test("SCS e2e: a package.json install hook is flagged by build-lifecycle-hook", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    ...SRC_FILES,
+    "package.json": JSON.stringify({
+      name: "scs-e2e",
+      version: "1.0.0",
+      scripts: { postinstall: "node scripts/setup.js", build: "webpack" },
+    }),
+  });
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scsRoot: src,
+      scsSource: "src",
+      schemaZip: SCHEMA_FIXTURE,
+    });
+    assert.ok(
+      has(findings, "build-lifecycle-hook", (f) => /postinstall/.test(f.item)),
+      "the postinstall install hook is flagged"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
 // A committed node_modules folder in --scs-root is a hard fail; its contents are never
 // read (loadAddon skips it, recording only the directory).
+// A committed built archive (.xpi/.zip) anywhere in --scs-root is a hard reject, caught at
+// load like node_modules - so an archive in the build tree AND one inside the review source
+// both fire, regardless of the source/build split.
+test("SCS e2e: a committed build archive is rejected anywhere in --scs-root", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    ...SRC_FILES,
+    "conversations.xpi": "BUILT ARTIFACT AT ROOT", // build tree (outside src/)
+    "src/vendor/lib.zip": "ARCHIVE IN THE REVIEW SOURCE", // inside --scs-source
+  });
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scsRoot: src,
+      scsSource: "src",
+      schemaZip: SCHEMA_FIXTURE,
+    });
+    assert.ok(
+      has(
+        findings,
+        "committed-build-artifact",
+        (f) => f.file === "conversations.xpi"
+      ),
+      "the committed .xpi in the build tree is flagged"
+    );
+    assert.ok(
+      has(
+        findings,
+        "committed-build-artifact",
+        (f) => f.file === "src/vendor/lib.zip"
+      ),
+      "an archive inside the review source is flagged too (loader spans all of --scs-root)"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
 test("SCS e2e: a committed node_modules folder is rejected", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({

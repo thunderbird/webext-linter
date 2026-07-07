@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Build install hook</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Build install hook
+          <span class="badge warning">warning</span>
+        </h1>
+        <div class="check-id">build-lifecycle-hook</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission whose package.json declares an npm install
+        lifecycle hook — a <code>preinstall</code>, <code>install</code>,
+        <code>postinstall</code>, <code>prepare</code>, <code>prepublish</code>,
+        <code>prepublishOnly</code>, or <code>prepack</code> script. These run
+        automatically when the reviewer installs the declared dependencies, before
+        the build even starts, so a hook that fetches and runs remote code is a
+        supply-chain vector the dependency audit — which only reads the declared
+        package.json and lock file — never sees.
+      </p>
+      <p>
+        This is a deterministic, offline backstop for the same concern the build
+        process review asks a model about: it needs no token and always runs. It is
+        a warning, not a hard reject, because legitimate hooks exist (a husky
+        <code>prepare</code>, a local codegen step) — it points the reviewer at each
+        hook to confirm it only runs local build steps and does not reach out to the
+        network. Each declared install hook becomes one warning finding, anchored at
+        its line in package.json.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The build files (input: build)"] --> B{"package.json present<br/>with a scripts block?"}
+  B -- no --> OK([no finding])
+  B -- yes --> C{"Any install lifecycle hook?<br/>preinstall / install / postinstall /<br/>prepare / prepublish / prepack"}
+  C -- no --> OK
+  C -- yes --> WARN([WARNING: install hook —<br/>confirm it runs no remote code])
+
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class WARN warn;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that the package.json declares an install lifecycle hook
+        that runs when the reviewer installs the dependencies, before the build, and
+        is asked to confirm it only runs local build steps and does not fetch or
+        execute remote code (curl/wget, a download-and-run, or a git clone of an
+        unpinned repo).
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/build-lifecycle-hook.js</code> and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

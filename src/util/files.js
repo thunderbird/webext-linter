@@ -29,6 +29,21 @@ export const CSS_EXTENSIONS = new Set([".css"]);
 /** Extensions treated as HTML documents. */
 export const HTML_EXTENSIONS = new Set([".html", ".htm", ".xhtml"]);
 
+/** Binary archive extensions. A committed archive in a source submission is build
+ *  output / a decoy, never authored source; the committed-build-artifact check rejects
+ *  one anywhere in --scs-root, unused-files flags one shipped in the XPI, and the build
+ *  corpus never collects one (binary, not build input). */
+export const ARCHIVE_EXTENSIONS = new Set([
+  ".zip",
+  ".xpi",
+  ".crx",
+  ".7z",
+  ".rar",
+  ".tar",
+  ".tgz",
+  ".gz",
+]);
+
 /**
  * Lowercased file extension including the dot (e.g. ".html"), or "".
  * @param {string} file

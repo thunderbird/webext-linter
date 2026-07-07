@@ -47,15 +47,14 @@ export const RESULT_SCHEMA = {
             type: "string",
             description:
               "A short reason for this verdict. Shown in the activity feed; a " +
-              "check may also surface it to the developer (e.g. undeclared-build-" +
-              "source uses it as the build explanation).",
+              "check may also surface it to the developer as the finding " +
+              "explanation.",
           },
           additionalInformation: {
             type: "string",
             description:
               "Optional. Extra structured detail a check explicitly asks for " +
-              "beyond the verdict + reason - e.g. undeclared-build-source returns " +
-              "the build instructions here. Leave empty unless the rubric asks.",
+              "beyond the verdict + reason. Leave empty unless the rubric asks.",
           },
         },
         required: ["id", "verdict"],

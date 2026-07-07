@@ -51,7 +51,7 @@ flowchart TD
   SPLIT --> XPI
   SRC["Readable source (--scs-source) — the review target:<br/>API / permission / eval / exfiltration checks over every<br/>file (scanned as authored); the LLM checks escalate<br/>their ambiguous residue to the model when enabled"]
   DEP["Declared dependencies (source package.json):<br/>each a pinned npm package or GitHub URL; gated on<br/>popularity + known vulnerabilities (no LLM)"]
-  BLD["Build files (archive minus source, no node_modules)<br/>— input: build: npm/pnpm only, no committed node_modules,<br/>no registry redirect; the LLM judges whether the build<br/>pulls code from an undeclared source"]
+  BLD["Build files (archive minus source, no node_modules)<br/>— input: build: npm/pnpm only, no committed node_modules or<br/>build artifact, no registry redirect, install hooks flagged; one setup<br/>LLM call classifies the build (files reached from package.json) and three<br/>checks gate on it: remote fetch / not built from source / redundant submission"]
   XPI["Built XPI (shipped) — input: xpi: manifest, experiments,<br/>file-completeness (bundled / web-accessible / unused /<br/>locales), --diff-to baseline, behavioral LLM audit"]
   SRC --> SUM
   DEP --> SUM
@@ -94,12 +94,17 @@ flowchart TD
           residue over the readable source.
         </li>
         <li>
-          <strong>The build-process review</strong> —
-          <code>undeclared-build-source</code> (<code>input: build</code>) has the
-          model judge whether the build pulls code or resources from a source that
-          is not among the declared dependencies (a raw URL,
+          <strong>The build-process review</strong> — one setup model call
+          (<code>analyzeBuild</code>) classifies the build over the files reached
+          from package.json, and three deterministic <code>input: build</code>
+          checks gate on the result: <code>undeclared-build-source</code> (the
+          build fetches code or a resource from an undeclared source — a raw URL,
           <code>curl | sh</code>, an unpinned <code>git clone</code>, a CDN, a
-          postinstall hook).
+          postinstall hook — plus the offline/unresolved manual-review fallback),
+          <code>build-not-from-source</code> (the XPI is packaged from committed
+          artifacts, not built from the source), and
+          <code>build-source-redundant</code> (the build only vendors
+          node_modules, so a source submission is not needed).
         </li>
         <li>
           <strong>The summaries + recheck</strong> — the behavioral

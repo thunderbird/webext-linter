@@ -216,16 +216,19 @@ export function buildShippedCtx(ctx, xpiAddon) {
  * A sibling review context whose `addon` is the SCS BUILD files - the tooling that
  * builds the add-on (scripts, configs, package.json/lock: everything in --scs-root
  * outside the review source, with node_modules and dotfiles excluded, from
- * loadScsBuildFiles). The
- * `input: build` check (undeclared-build-source) is routed here, so it reads the
- * build corpus off ctx.addon like any other check reads its artifact - keeping
- * artifact selection the single `input` seam, no separate ctx field. SCS mode only.
+ * loadScsBuildFiles), plus the setup build classification (buildReview) and the
+ * recorded archives/nodeModules. The `input: build` checks (undeclared-build-source,
+ * build-not-from-source, build-source-redundant, build-lifecycle-hook,
+ * committed-build-artifact) are routed here, so each reads off ctx.addon like any other
+ * check reads its artifact - keeping artifact selection the single `input` seam, no
+ * separate ctx field. SCS mode only.
  * The build corpus is projected through reviewView (like every other ctx.addon), so a
  * build check can never read ctx.addon.manifest/experiments against another artifact's
  * files; the shipped manifest stays on ctx.manifest for the shared LLM framing.
  * @param {RunContext} ctx  The review context.
- * @param {{files: Map<string, Buffer>, nodeModules?: string[]}} buildAddon  The
- *   build-file corpus (nodeModules rides along for the committed-node-modules check).
+ * @param {{files: Map<string, Buffer>, nodeModules?: string[], archives?: string[]}}
+ *   buildAddon  The build-file corpus (nodeModules / archives ride along, via reviewView's
+ *   spread, for the committed-node-modules / committed-build-artifact checks).
  * @returns {RunContext}
  */
 export function buildScsBuildCtx(ctx, buildAddon) {

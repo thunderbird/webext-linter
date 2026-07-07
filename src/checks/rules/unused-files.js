@@ -21,6 +21,7 @@
 // assets/registry.yaml. Severity -> that registry entry, stamped by runChecks.
 
 import { finding } from "../../report/finding.js";
+import { ARCHIVE_EXTENSIONS, extname } from "../../util/files.js";
 import { classifyAddonJs, nonAuthoredJs } from "../lib/bundled.js";
 import { buildReachability } from "../lib/reachability.js";
 import { aggregateGroups } from "../lib/verdict-resolve.js";
@@ -42,13 +43,13 @@ import {
 // known doc name).
 const ALLOW = [DEPENDENCY_FILE_RE, /^manifest\.json$/i, /^_locales\//];
 
-// Definite "should not ship" by name: OS/editor junk, source maps, archives.
+// Definite "should not ship" by name: OS/editor junk, source maps. Archives are handled
+// separately via ARCHIVE_EXTENSIONS (shared with the loader / committed-build-artifact).
 const JUNK = [
   /(^|\/)\.[^/]+(\/|$)/, // a dotfile/dotdir segment (.git/, .DS_Store, .vscode/)
   /(^|\/)(Thumbs\.db|__MACOSX(\/|$))/i,
   /~$/, // editor backups
   /\.(map|orig|bak|swp|tmp)$/i,
-  /\.(zip|xpi|crx|7z|rar|tar|tgz|gz)$/i,
 ];
 
 export default {
@@ -105,7 +106,10 @@ export default {
       ) {
         continue;
       }
-      if (JUNK.some((re) => re.test(file))) {
+      if (
+        JUNK.some((re) => re.test(file)) ||
+        ARCHIVE_EXTENSIONS.has(extname(file))
+      ) {
         ctx.note?.(file, null, "hidden/junk file", "fail");
         findings.push(finding({ file }));
         continue;

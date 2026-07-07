@@ -174,12 +174,17 @@ node verify.js built.xpi --scs-root ./source-archive --scs-source src
   (npm downloads / GitHub stars) and known vulnerabilities. Anything unpinned or
   from another source is rejected.
 - The **build tooling** (everything in `--scs-root` outside `--scs-source` - build
-  scripts, configs, `.npmrc`) is reviewed: the build must use **npm or pnpm** (a
-  `yarn.lock` / `bun` build is rejected), must not commit a `node_modules` folder
-  (installed dependencies are build output, never shipped), and must not point the
-  package registry elsewhere (an `.npmrc` `registry=` is rejected), and the LLM judges
-  whether it pulls code or resources from a source not among the declared dependencies
-  (a raw URL, `curl|sh`, an unpinned `git clone`, a CDN, a postinstall hook).
+  scripts, configs, `.npmrc`) is reviewed. Deterministic policy: the build must use
+  **npm or pnpm** (a `yarn.lock` / `bun` build is rejected), must not commit a
+  `node_modules` folder or a built archive (`.xpi` / `.zip` - both are build output,
+  never shipped in a source submission), must not point the package registry elsewhere
+  (an `.npmrc` `registry=` is rejected), and any `package.json` install hook
+  (`postinstall`, …) is flagged. Then one setup model call classifies the build (over
+  the files reached from `package.json`), and three checks gate on it: it must **not
+  fetch code or a resource from an undeclared source** (a raw URL, `curl|sh`, an
+  unpinned `git clone`, a CDN, a postinstall hook), must be **built from the source**
+  (not packaged from committed artifacts), and must **need a source submission at all**
+  (a build that only vendors `node_modules` should ship as a plain XPI + vendoring).
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest, the experiments, the file-completeness checks (bundled / web-accessible
   / unused / locales), the `--diff-to` baseline, and the behavioral LLM audit.

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Committed build artifact</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Committed build artifact
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">committed-build-artifact</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission that ships a committed binary archive — a
+        <code>.xpi</code>, <code>.zip</code>, <code>.crx</code>, or other archive
+        anywhere in the submission. A built archive is build output: the reviewer
+        reproduces it from the readable source during the build, so a committed one is
+        useless bloat and, worse, a decoy — its bytes can differ from what the build
+        actually produces, presenting a clean-looking source next to a tampered artifact.
+      </p>
+      <p>
+        Archive paths are recorded when the submission is loaded, before it is split into
+        the review source and the build files, so an archive is caught wherever it sits —
+        in the review source, the build tree, anywhere in the submission. Each recorded
+        archive becomes one error finding. This mirrors the committed node_modules reject.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The submitted source archive"] --> B{"A committed binary archive<br/>(.xpi / .zip / .crx / ...) anywhere?"}
+  B -- no --> OK([no finding])
+  B -- yes --> ERR([ERROR: committed build artifact])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that a committed build artifact is not allowed and must be
+        removed before resubmitting: a built archive is produced from the source during
+        the build, so it must never be part of the submission, where its bytes cannot be
+        verified against what the build produces.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/committed-build-artifact.js</code> (fed by the archive
+        recording in <code>src/addon/load.js</code>, using
+        <code>ARCHIVE_EXTENSIONS</code> from <code>src/util/files.js</code>) and its entry
+        in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

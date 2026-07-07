@@ -526,6 +526,81 @@ deterministic-checks:
   response: |-
     A committed node_modules folder ({{item}}) is not allowed. Remove it and resubmit; the declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission.
 
+# Deterministic (SCS only): a committed binary archive (.zip/.xpi/.crx/...) anywhere in
+# --scs-root is a hard reject. A built archive is build output the reviewer reproduces from
+# source, so a committed one is useless bloat and a decoy (its bytes can differ from what the
+# build produces). Recorded at load, spanning the whole submission, and surfaced as {{item}}.
+- title: Committed build artifact
+  severity: error
+  scs: true
+  check: committed-build-artifact
+  input: build
+  response: |-
+    A committed build artifact ({{item}}) is not allowed. Remove it and resubmit; a built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces.
+
+# Deterministic (SCS only): a package.json install lifecycle hook (preinstall / install /
+# postinstall / prepare / prepublish) runs arbitrary code when the reviewer installs the
+# dependencies, BEFORE the build - a known supply-chain vector (a postinstall that fetches
+# and runs remote code). Legitimate uses exist (a husky `prepare`), so this is a warning
+# pointing the reviewer at each hook, not a hard reject. The setup build analysis also
+# covers hooks, but only with a token; this is the offline backstop. {{item}} is the hook
+# name and its command.
+- title: Build install hook
+  severity: warning
+  scs: true
+  check: build-lifecycle-hook
+  input: build
+  response: |-
+    The package.json declares an npm install lifecycle hook ({{item}}) that runs when the reviewer installs the dependencies, before the build. Confirm it only runs local build steps and does not fetch or execute remote code (curl/wget, a download-and-run, or a git clone of an unpinned repo).
+
+# Deterministic (SCS only): MISSION 1 of the build review. analyzeBuild classifies the build
+# ONCE in setup (src/build/analyze.js), storing addon.buildFiles.buildReview; this
+# check reads it. classification "remote-fetch" -> an error finding: the build fetches or
+# executes code/resources from an UNDECLARED external source (a raw URL, curl|sh, a git clone of
+# an unpinned repo, a CDN, a postinstall hook). Only installing the declared dependencies (npm
+# ci from node_modules, importing a declared package) is allowed. This check also owns the
+# FALLBACK lane: a build that could not be classified with confidence - offline / no token
+# (analyzed = false), or a step the linter could not statically bound (unresolved) - escalates
+# the whole build to extended manual review. Neutral title: the one entry drives BOTH the
+# remote-fetch error and the fallback advisory; {{explanation}} carries the specifics, and
+# {{buildInstructions}} + {{unresolvedBuildSteps}} render only in the manual instructions.
+- title: Build process review
+  severity: error
+  scs: true
+  check: undeclared-build-source
+  input: build
+  instructions: |-
+    Reproduce the build from the source by hand and confirm it pulls ONLY from the
+    dependencies declared in package.json/lock - no remote code or resources from a raw
+    URL, curl/wget, a git clone of an unpinned repo, a CDN, or a postinstall hook.
+    {{unresolvedBuildSteps}} {{buildInstructions}}
+  response: |-
+    {{explanation}} The build must not fetch or execute code or resources from a remote source; every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+
+# Deterministic (SCS only): MISSION 2 of the build review. Reads the setup classification
+# (addon.buildFiles.buildReview). classification "not-from-source" -> error: the build does not
+# build - it only copies/zips files already in the submission into the XPI, so the shipped add-on
+# is not derived from the reviewed source. {{explanation}} is analyzeBuild's reason.
+- title: Build not derived from source
+  severity: error
+  scs: true
+  check: build-not-from-source
+  input: build
+  response: |-
+    {{explanation}} The shipped XPI must be BUILT from the reviewed source; a build that only copies or zips files already present in the submission produces an add-on that is not derived from the source under review. Provide a build that compiles/bundles the add-on from its source.
+
+# Deterministic (SCS only): MISSION 3 of the build review. Reads the setup classification.
+# classification "scs-redundant" -> error: the build only copies installed libraries (from
+# node_modules) into the add-on, so a source submission is not needed - the add-on can ship as a
+# plain XPI reviewed as a third-party-library (vendoring) submission. {{explanation}} is the reason.
+- title: Source submission not required
+  severity: error
+  scs: true
+  check: build-source-redundant
+  input: build
+  response: |-
+    {{explanation}} This build only copies installed libraries into the add-on; nothing is compiled or bundled from authored source, so a source-code submission is not required. Submit the built XPI (with its package.json) as a standard third-party-library review and declare the bundled libraries. You can keep using the build script locally. See https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
+
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the deterministic repo-name candidate, then an
 # LLM-proposed name, each re-proved by content hash); surfaced as info so the
@@ -1194,75 +1269,6 @@ llm-checks:
   response: |-
     The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
 
-# LLM check (SCS only): in a source-code submission the reviewer BUILDS the add-on
-# from source, but the dependency audit reads only the root package.json/lock. A
-# build script or config could ignore package.json and pull code/resources from an
-# UNDECLARED source (a raw URL, curl|sh, a git clone of an unpinned repo, a CDN, a
-# postinstall hook), leaving package.json a clean decoy. ALL the build files (build/CI
-# scripts, bundler configs, Makefile, .npmrc, README/BUILD docs, the package.json
-# scripts/hooks) are judged TOGETHER as ONE whole-build candidate, with package.json +
-# the lock as the declared-dependency reference. `input: build` routes ctx.addon to
-# those build files (archive minus the review source minus node_modules), so the check
-# reads them like any other check reads its artifact. The structured verdict is
-# {verdict, reason = the build explanation, additionalInformation = the build steps}.
-# fail -> an error finding (response = explanation). pass / unsure / offline -> an
-# extended manual-review item (response = explanation + the build steps).
-# Neutral title + response: the entry drives BOTH a fail finding (an error) and the
-# pass/offline extended-review advisory, so both must read for either - the verdict
-# severity + the model's {{explanation}} carry the fail/pass specifics (no fail-only
-# imperative in the response).
-- title: Build process review
-  severity: error
-  scs: true
-  check: undeclared-build-source
-  input: build
-  prompt: |-
-    You are shown ALL the BUILD files of a source-code submission - everything outside
-    the add-on source and the installed dependencies: the build scripts, bundler configs
-    (webpack/vite/rollup/esbuild), Makefiles, and the package.json build "scripts" /
-    install hooks - TOGETHER with package.json and its lock file, the AUTHORITATIVE list
-    of declared dependencies ("dependencies", "devDependencies", "optionalDependencies",
-    "peerDependencies" resolved from npm or the lock file). There is one candidate id,
-    BUILD.
-
-    The reviewer builds the add-on from this readable source, so every piece of code and
-    every resource that ends up in the build MUST come from a declared dependency. Judge
-    the build AS A WHOLE - a URL or repo defined in one file may be used by a script or
-    hook in another.
-
-    verdict fail: some part of the build fetches or executes code or a resource from a
-    source that is NOT among the declared dependencies - a raw http(s) URL, curl / wget
-    / Invoke-WebRequest / a download-and-run of a remote blob, a `git clone` of a repo
-    not pinned in the lock file, a <script>/CDN tag, a postinstall/preinstall/prepare
-    hook that fetches remote code, or a script that downloads and runs a build tool.
-    Installing the declared dependencies (an npm install/ci that resolves the lock
-    file, importing a declared package) is NOT a fail.
-    verdict pass: every source the build pulls from is a declared dependency, or the
-    build fetches/executes nothing external at all (pure local bundling, copying, or
-    compilation of the submitted source).
-    verdict unsure: you genuinely cannot tell.
-
-    Separate deterministic checks already own three build-policy violations - do NOT
-    report them here: a package registry set in an .npmrc (`registry=` /
-    `@scope:registry=`), a package manager other than npm or pnpm (a yarn/bun lockfile),
-    and an unpinned dependency version. Focus on code or resources fetched or executed
-    from OUTSIDE the declared dependencies.
-
-    In `reason`, explain in a sentence or two how the add-on is built and whether it
-    pulls from any external or undeclared source (shown to the developer). In
-    `additionalInformation`, state how to build the XPI as one short self-contained note
-    ("Build the XPI with: ..." or "The source documents no build steps."), taking the
-    steps from the scanned files (a README/BUILD/CONTRIBUTING, or the package.json
-    scripts) and CALLING OUT any dedicated Thunderbird build instructions. Judge only
-    whether sources are declared - not code quality.
-  instructions: |-
-    Reproduce the build from the source by hand and confirm it pulls ONLY from the
-    dependencies declared in package.json/lock - no remote code or resources from a raw
-    URL, curl/wget, a git clone of an unpinned repo, a CDN, or a postinstall hook.
-    {{buildInstructions}}
-  response: |-
-    {{explanation}} Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
-
 # LLM check: the WEAK disguised-transmission residue - a covert channel (resource
 # URL, stylesheet url(), window.open, or page navigation) built with a runtime
 # value but no user-data API call. The strong case (a user-data call in the URL) is
@@ -1479,6 +1485,10 @@ verdict-intros:
 #                   audited. Used by verify.js when the deterministic repo-name
 #                   match misses; the proposal is re-proved by content hash before
 #                   any audit, so a wrong guess is harmless.
+#   build-analysis: the SCS build review's one classification, run in setup
+#                   (analyzeBuild) over the selected build corpus; returns
+#                   {classification, reason, buildInstructions} stored on
+#                   addon.buildFiles.buildReview for the three input:build checks.
 prompts:
   system-intro: >-
     You are a Thunderbird WebExtension add-on reviewer. Each request gives you
@@ -1532,3 +1542,37 @@ prompts:
     Use the exact npm package name, including an "@scope/" prefix for a scoped
     package. If you cannot confidently identify a corresponding npm package,
     respond {"name": null}. Do not invent a package name.
+  build-analysis: |-
+    You are shown the build files of a source-code submission the reviewer will BUILD from the
+    readable source: the build scripts, the config files of the build tools they run, and
+    package.json (its "scripts" and the declared dependencies). The reviewer runs `npm ci` to
+    install the declared dependencies, then the build. Some files a script names may be absent -
+    those are inert assets (icons, docs) the linter dropped; do NOT treat an absent file as a
+    problem. A "LINTER SIGNALS" block, if present, lists build steps the linter could not
+    statically follow - weigh them.
+
+    Classify the build into EXACTLY ONE category and respond with ONLY a JSON object
+    {"classification": "<value>", "reason": "<one sentence for the developer>",
+    "buildInstructions": "<one short note on how the XPI is built>"}.
+
+    classification values (choose the MOST SEVERE that applies; remote-fetch outranks the rest):
+    - "remote-fetch": a build step fetches or executes code or a resource from a source that is
+      NOT a declared dependency - a raw http(s) URL, curl / wget / Invoke-WebRequest, a
+      download-and-run of a remote blob, a `git clone` of a repo not pinned in the lock file, a
+      <script>/CDN tag, or an install hook that fetches remote code. Installing the declared
+      dependencies (npm ci/install resolving the lock file, importing a declared package, copying
+      from node_modules) is NOT a remote fetch.
+    - "not-from-source": the build does not actually build - it only copies or zips files that are
+      ALREADY in the submission into the XPI, so the shipped add-on is not derived from the
+      reviewed source (phantom artifacts).
+    - "scs-redundant": the build's only real work is copying installed libraries (from
+      node_modules) into the add-on - nothing is compiled or bundled from the authored source, so
+      the add-on could ship as a plain XPI without a source submission.
+    - "ok": a genuine build that compiles or bundles the authored source and pulls only from the
+      declared dependencies.
+
+    In "reason" explain the classification in one or two sentences (shown to the developer). In
+    "buildInstructions" state how the XPI is built as one short self-contained note ("Build the
+    XPI with: ..." or "The source documents no build steps."), taking the steps from the scanned
+    files (a README/BUILD/CONTRIBUTING or the package.json scripts) and calling out any dedicated
+    Thunderbird build instructions. Judge only the build's sources - not code quality.

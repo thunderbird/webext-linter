@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Build not derived from source</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Build not derived from source
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">build-not-from-source</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission whose "build" does not actually build the add-on. Instead of
+        compiling or bundling the reviewed source, the build only copies or zips files that are
+        already present in the submission into the XPI. The shipped add-on is then assembled from
+        phantom artifacts, not derived from the source the reviewer reads — either an oversight
+        (the developer thinks zipping is the required build) or an attempt to have the reviewer
+        vet a source the shipped XPI does not come from.
+      </p>
+      <p>
+        The build is classified once, up front, by the build analysis (a single model request in
+        the setup phase over the build-relevant files). This check reads that stored
+        classification; when it is <code>not-from-source</code> it raises one error, anchored at
+        package.json, whose explanation is the analysis's reason.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Build classification<br/>(build analysis, setup phase)"] --> B{"classification =<br/>not-from-source?"}
+  B -- no --> OK([no finding])
+  B -- yes --> ERR([ERROR: build not derived from source])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the shipped XPI must be built from the reviewed source; a build that
+        only copies or zips files already in the submission produces an add-on that is not derived
+        from the source under review. The developer must provide a build that compiles or bundles
+        the add-on from its source.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/build-not-from-source.js</code> (fed by
+        <code>src/build/analyze.js</code>) and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

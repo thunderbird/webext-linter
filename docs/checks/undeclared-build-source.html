@@ -22,36 +22,33 @@
         dependencies a clean decoy.
       </p>
       <p>
-        A deterministic pre-flight gathers the whole build corpus — every file
-        outside the add-on source and the installed dependencies, such as build
-        and CI scripts, bundler configs, Makefiles, install hooks, and build
-        documentation — together with the manifest and lock file as the
-        authoritative list of declared dependencies. When there is nothing to
-        review the check is skipped; otherwise the corpus is judged as one whole
-        build candidate by the model. Registry overrides, disallowed package
-        managers, and unpinned dependencies are owned by other checks and are
-        explicitly excluded here.
+        The build is classified once, up front, by the build analysis: a single model request in
+        the setup phase over the build-relevant files (collected by following the package manifest,
+        so build output and tooling the build never runs are never sent). This check reads that
+        stored classification. A <code>remote-fetch</code> classification — the build pulls code or
+        a resource from an undeclared external source — is the error. It also owns the fallback
+        lane: when the build could not be classified with confidence (offline / no token, or a step
+        the linter could not statically follow, such as an opaque orchestrator or a network fetch)
+        the whole build routes to extended manual review. The other build classifications
+        (not-from-source, redundant source submission) are owned by their own checks; a genuine
+        build, and a submission with no manifest to follow, produce nothing here.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The build corpus of a<br/>source-code submission"] --> B{"Any build files to review?"}
-  B -- no --> S([skip — nothing to review])
-  B -- yes --> C["One whole-build candidate<br/>(anchored at the manifest)"]
-  C --> L{"Model verdict: does the build fetch or<br/>execute code or resources from a source<br/>NOT among the declared dependencies?"}
-  L -- "fail, with a substantiated reason" --> ERR([ERROR: build process review])
-  L -- "pass" --> M([escalate to extended<br/>manual review])
-  L -- "unsure / offline" --> M
-  L -- "fail, no reason given" --> M
+  A["Build classification<br/>(build analysis, setup phase)"] --> B{"classification =<br/>remote-fetch?"}
+  B -- yes --> ERR([ERROR: build fetches an<br/>undeclared source])
+  B -- no --> C{"Could not classify with confidence?<br/>(offline, or a step the linter<br/>could not statically follow)"}
+  C -- yes --> M([escalate to extended<br/>manual review])
+  C -- no --> OK([no finding<br/>— clean, or owned by another check])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
-  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
   class ERR err;
-  class S skip;
+  class OK ok;
   class M manual;
         </pre>
       </div>
@@ -68,7 +65,8 @@ flowchart TD
 
       <p class="source-note">
         Source of truth: <code>src/checks/rules/undeclared-build-source.js</code>
-        and its entry in <code>assets/registry.yaml</code>.
+        (fed by the setup build analysis, <code>src/build/analyze.js</code>) and its
+        entry in <code>assets/registry.yaml</code>.
       </p>
     </main>
 

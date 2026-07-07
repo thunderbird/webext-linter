@@ -1,120 +1,97 @@
-// LLM check (SCS only): in source-code-submission mode the reviewer BUILDS the
-// add-on from the readable source, but the dependency audit only reads the root
-// package.json/lock. A build script or config could ignore package.json and pull
-// code/resources from an UNDECLARED source (a raw URL, curl|sh, a git clone of an
-// unpinned repo, a CDN, a postinstall hook), leaving package.json a clean decoy.
+// Deterministic (SCS only): mission 1 of the build review - the build must NOT load or fetch
+// remote resources. Everything must ship in the source; the only allowed copy-in is installed
+// libraries via `npm ci` (from node_modules). A curl/wget/git-clone/CDN fetch is a reject.
 //
-// ALL the build files are judged TOGETHER (one candidate, whole corpus) for one
-// structured verdict - the report_verdicts result {verdict, reason,
-// additionalInformation}: reason = a prose explanation of the build + any external
-// sources, additionalInformation = the steps to build the XPI. This check carries NO
-// user-facing prose: it emits only the verdict-derived data slots {explanation,
-// buildInstructions}, and the wording lives in assets/registry.yaml (response +
-// instructions). A fail WITH a reason -> an error finding (registry response); a fail
-// with no reason, pass, or unsure -> extended manual review (registry instructions +
-// response). Offline (no token) needs
-// no special case: the check still returns its llm step and the orchestrator's
-// no-token path defaults the candidate to unsure -> the manual lane, exactly like
-// data-exfiltration degrades offline.
+// The classification is produced ONCE in the setup phase (analyzeBuild -> addon.buildFiles
+// .buildReview, the vendor pattern); this check just reads it. `classification === "remote-fetch"`
+// is the error finding (its {{explanation}} is the model's reason). This check also owns the
+// FALLBACK lane: when the build could not be classified with confidence - offline / no token
+// (analyzed === false), or a build step the linter could not statically bound (unresolved: an
+// opaque orchestrator or a network fetch) - the whole build routes to extended manual review,
+// so a human reproduces it. The other classifications ("not-from-source", "scs-redundant") are
+// owned by their own checks; "ok"/"none" produce nothing.
 //
-// The check declares `input: build`, so the orchestrator routes ctx.addon to the
-// build files (buildScsBuildCtx: every file outside the review source, the Experiment
-// source, and dotfiles - see loadScsBuildFiles; node_modules is skipped earlier, at
-// load, so it never reaches the corpus) - read like any other check reads its artifact,
-// and fed to the model through the normal evaluate path (framing + wrapFile injection
-// defense, identical to the llm-summary).
-//
-// The WHOLE build corpus is judged: which files count as build files is a pure exclude
-// rule in loadScsBuildFiles, so there is nothing to select here - the check sends every
-// file it is routed.
-//
-// Belongs here: mapping the one verdict to finding/manual data. Does NOT belong here:
-// loading + selecting the build files (-> src/addon/load.js loadScsBuildFiles), the
-// model transport + injection wrapping (-> src/checks/llm-client.js), or ANY wording
-// (-> the registry).
+// Belongs here: mapping the stored classification to a finding / manual escalation. Does NOT
+// belong here: the analysis (-> src/build/analyze.js), the corpus policy
+// (-> build-corpus.js), or the wording (-> assets/registry.yaml).
 
 import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
+/** @typedef {import("../escalation.js").Escalation} Escalation */
+
+// Classifications each owned by their own check - not this check's fallback lane.
+const OWNED_ELSEWHERE = new Set(["not-from-source", "scs-redundant"]);
 
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {{findings: [], llm?: import("../escalation.js").LlmStep}}
+   * @returns {{findings: import("../../report/finding.js").Finding[], escalations?: Escalation[]}}
    */
   run(ctx) {
-    // input: build - the orchestrator routed ctx.addon to the build files
-    // (loadScsBuildFiles excluded the review source, the Experiment source, and
-    // dotfiles; node_modules was skipped earlier, at load). No files left -> nothing
-    // to review.
-    const build = ctx.addon;
-    if (!build?.files?.size) {
+    const review = ctx.addon?.buildReview;
+    if (!review) {
       return { findings: [] };
     }
-    // One whole-build judgment over the ENTIRE routed corpus, read from ctx.addon by
-    // the normal evaluate path. Anchor at package.json (the build manifest) if present,
-    // else the first file. Offline (no token) -> runLlmCheck defaults the candidate to
-    // unsure -> the manual lane.
-    const corpus = [...build.files.keys()];
-    const anchor = build.files.has("package.json") ? "package.json" : corpus[0];
-    ctx.note?.(anchor, null, "the build configuration", "unsure");
-    return {
-      findings: [],
-      llm: {
-        candidates: [
+    const { classification, reason, buildInstructions, unresolved, analyzed } =
+      review;
+    const anchor = review.anchor ?? "package.json";
+    const explanation = typeof reason === "string" ? reason : "";
+
+    // Mission 1: the build fetches from an undeclared/remote source.
+    if (classification === "remote-fetch") {
+      ctx.note?.(
+        anchor,
+        null,
+        "the build fetches from a remote source",
+        "fail"
+      );
+      return { findings: [finding({ file: anchor, data: { explanation } })] };
+    }
+
+    // Fallback lane: a build that exists (not "none") but could not be classified with
+    // confidence - offline, or with a step the linter could not statically bound - and is
+    // not already a reject another check owns -> extended manual review.
+    const anotherRejectOwnsIt = OWNED_ELSEWHERE.has(classification);
+    const couldNotVerify = !analyzed || (unresolved?.length ?? 0) > 0;
+    if (classification !== "none" && !anotherRejectOwnsIt && couldNotVerify) {
+      ctx.note?.(anchor, null, "the build configuration", "unsure");
+      return {
+        findings: [],
+        escalations: [
           {
-            id: "BUILD",
             file: anchor,
-            note: "the build configuration",
-            corpus,
+            data: {
+              explanation,
+              buildInstructions:
+                typeof buildInstructions === "string" ? buildInstructions : "",
+              unresolvedBuildSteps: formatUnresolved(unresolved),
+            },
           },
         ],
-        resolve: resolveBuild(anchor),
-      },
-    };
+      };
+    }
+
+    return { findings: [] };
   },
 };
 
 /**
- * The one whole-build verdict -> outcome, carrying only data slots (no prose - the
- * registry owns the wording, which is authored to read with empty slots). A `fail`
- * WITH a substantiating reason = an error finding whose response uses {{explanation}}.
- * A `fail` with no reason, `pass`, `unsure` (and offline, where the candidate defaults
- * to unsure) = an extended manual-review note whose instructions/response use
- * {{explanation}} + {{buildInstructions}}. The model's reason/additionalInformation
- * pass through raw ("" when absent).
- * @param {string} anchor  The file the finding / manual note anchors at.
- * @returns {(verdicts: Map<string, {verdict: string, reason: ?string,
- *   additionalInformation?: string}>) => {findings: object[], manual: object[]}}
+ * One sentence naming the build steps the linter could not statically bound, or "" when there
+ * are none (the registry template is authored to read with the slot empty).
+ * @param {{kind: string, detail: string}[]} [unresolved]
+ * @returns {string}
  */
-function resolveBuild(anchor) {
-  return (verdicts) => {
-    const v = verdicts.get("BUILD");
-    // Defensive coercion: coerceResult forces reason to string|null on the live path,
-    // but this is the only reason.trim()-style check in the codebase, so a non-string
-    // reason (an injected/stubbed verdict) must not crash it.
-    const explanation = typeof v?.reason === "string" ? v.reason : "";
-    // A fail must carry a substantiating reason (the finding anchors at the manifest,
-    // so the reason is its only account of what is undeclared); a reason that is empty,
-    // whitespace, or only zero-width characters cannot, so route it to manual review.
-    const substantiated = /[^\s\u200b-\u200d\u2060\ufeff]/u.test(explanation);
-    if (v?.verdict === "fail" && substantiated) {
-      return {
-        findings: [finding({ file: anchor, data: { explanation } })],
-        manual: [],
-      };
-    }
-    return {
-      findings: [],
-      manual: [
-        {
-          file: anchor,
-          data: {
-            explanation,
-            buildInstructions: v?.additionalInformation ?? "",
-          },
-        },
-      ],
-    };
-  };
+function formatUnresolved(unresolved) {
+  if (!unresolved?.length) {
+    return "";
+  }
+  const parts = unresolved.map((u) =>
+    u.kind === "tool"
+      ? `an unrecognized build tool (\`${u.detail}\`)`
+      : u.kind === "network"
+        ? `a network fetch in ${u.detail}`
+        : u.detail
+  );
+  return `The linter could not statically analyze part of the build (${parts.join("; ")}), so the build corpus may be incomplete - reproduce the build by hand.`;
 }

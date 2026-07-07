@@ -33,6 +33,7 @@ import {
 } from "./addon/load.js";
 import { resolveReviewUrl } from "./addon/atn.js";
 import { runChecks, runOneCheck, loadRegistry } from "./checks/registry.js";
+import { analyzeBuild } from "./build/analyze.js";
 import {
   buildRunContext,
   buildShippedCtx,
@@ -467,6 +468,20 @@ export async function runPipeline(opts) {
         opts.scsRoot,
         opts.scsExpSource
       );
+      // Classify the build ONCE here (the vendor pattern): one model request over the
+      // build corpus, stored on addon.buildFiles.buildReview for the input:build checks to
+      // read deterministically. Offline / no token -> analyzed:false (routed to manual review).
+      setupStep("Analyzing the build");
+      addon.buildFiles.buildReview = await analyzeBuild({
+        build: addon.buildFiles,
+        analysisPrompt: registry.prompt("build-analysis"),
+        enabled: opts.llmEnabled,
+        token: opts.llmApiKey,
+        model: opts.llmModel,
+        url: opts.llmApiUrl,
+        type: opts.llmApiType,
+        budget: llmBudget,
+      });
     } else {
       // XPI: the full vendored-library pipeline.
       // 1d. Verify the resolved declarations over the network ONCE - fetch,
