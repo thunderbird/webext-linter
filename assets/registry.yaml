@@ -941,6 +941,10 @@ permission-prompts:
       "cookies" is justified by opening a tab or window in a specific container by
       passing cookieStoreId to tabs.create, windows.create, spaces.create or
       spaces.update (reading cookieStoreId needs no permission).
+  - permissions: webRequestBlocking
+    prompt: |-
+      "webRequestBlocking" is justified only by a webRequest.on* addListener call
+      whose arguments include the literal string "blocking".
   - permissions: unlimitedStorage
     prompt: |-
       "unlimitedStorage" gates no API or property; it raises the browser's storage
