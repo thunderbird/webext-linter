@@ -937,8 +937,12 @@ permission-prompts:
       spaces.update (reading cookieStoreId needs no permission).
   - permissions: webRequestBlocking
     prompt: |-
-      "webRequestBlocking" is justified only by a webRequest.on* addListener call
-      whose arguments include the literal string "blocking".
+      "webRequestBlocking" is justified by a webRequest.on* addListener call that passes
+      the string "blocking" inside one of its ARRAY arguments (the extraInfoSpec array), e.g.
+      onBeforeSendHeaders.addListener(fn, {urls}, ["blocking", "requestHeaders"]). The
+      "blocking" string sits INSIDE that array - it is not a standalone argument and its
+      position varies by event, so look inside the array arguments. A call with no "blocking"
+      entry in any array argument does NOT justify the permission.
   - permissions: unlimitedStorage
     prompt: |-
       "unlimitedStorage" gates no API or property; it raises the browser's storage

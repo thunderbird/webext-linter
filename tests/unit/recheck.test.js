@@ -409,6 +409,16 @@ test("assembly grounds accountsRead on its widened gates and unlimitedStorage on
   assert.match(quota, /IndexedDB|storage\.local/); // grounded on persisting data
 });
 
+// webRequestBlocking is arg-gated: the "blocking" string sits INSIDE the extraInfoSpec
+// array passed to a webRequest.on* addListener, not as a standalone argument. The prompt
+// must say so, or the model reads ["blocking", ...] as absent (the thunderjira false positive).
+test("assembly grounds webRequestBlocking on the blocking string inside an array argument", () => {
+  const wrb = permRubric(["webRequestBlocking"], "154");
+  assert.match(wrb, /\bwebRequestBlocking\b/);
+  assert.match(wrb, /extraInfoSpec/);
+  assert.match(wrb, /\barray\b/); // the array argument, not a standalone "blocking" arg
+});
+
 test("assembly selects the tabs variant by strict_min_version", () => {
   for (const min of ["154", "154.0", "200"]) {
     const post = permRubric(["tabs"], min);
