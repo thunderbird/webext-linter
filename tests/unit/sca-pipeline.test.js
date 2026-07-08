@@ -241,6 +241,96 @@ test("SCA e2e: a flat layout audits the root package.json dependencies", async (
   }
 });
 
+// A third-party library bundled into the readable SOURCE (a committed copy the Mozilla
+// hash DB misses) that is NOT declared in package.json now gets the full identification the
+// XPI review already ran: a jsDelivr content-hash match (so it is recognized as a library -
+// excluded from content review, not rejected by minified-code) and an OSV audit (so a
+// vulnerable one is caught by vendor-vulnerable). On HEAD the SCA source got no CDN/OSV pass,
+// so this file would be rejected as minified and its vulnerability missed.
+test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-audited", async () => {
+  const LIB = `var x=[${"1,".repeat(700)}1];`; // one dense line -> minified geometry
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const libHash = rawSha256(Buffer.from(LIB));
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    "manifest.json": JSON.stringify({
+      manifest_version: 3,
+      name: "L",
+      version: "1.0",
+      background: { scripts: ["app.js"] },
+    }),
+    "app.js": "console.log('app');\n",
+    "vendor/lib.min.js": LIB, // undeclared: not in package.json
+    "package.json": JSON.stringify({ name: "l", version: "1.0.0" }),
+  });
+  // A net that recognizes the vendored file's hash on jsDelivr (popular) and returns an OSV
+  // advisory for it - so it is identified AND audited.
+  const vendorNet = {
+    fetchBytes: async () => Buffer.from(""),
+    fetchJson: async (url) => {
+      if (url.includes("api.npmjs.org/downloads/")) {
+        return { downloads: 50000 };
+      }
+      if (url.includes("api.github.com/repos/")) {
+        return { stargazers_count: 5000 };
+      }
+      if (url.split("/").pop() === libHash) {
+        return { type: "npm", name: "leftpad", version: "1.0.0", file: "/lib.min.js" };
+      }
+      throw new Error("HTTP 404");
+    },
+    postJson: async (_url, body) =>
+      body?.package?.name === "leftpad"
+        ? {
+            vulns: [
+              {
+                id: "GHSA-lib-0000-0000",
+                aliases: ["CVE-2020-0001"],
+                database_specific: { severity: "HIGH" },
+                affected: [
+                  {
+                    package: { ecosystem: "npm", name: "leftpad" },
+                    ranges: [
+                      {
+                        type: "SEMVER",
+                        events: [{ introduced: "0" }, { fixed: "2.0.0" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }
+        : { vulns: [] },
+  };
+  const cdnCache = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-cdn-"));
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scaRoot: src,
+      scaSource: ".",
+      schemaZip: SCHEMA_FIXTURE,
+      vendorNet,
+      cdnLookupCache: cdnCache,
+    });
+    // Identified on the CDN -> library -> exempt from minified-code (which would reject an
+    // unrecognized minified file in the readable source).
+    assert.ok(
+      !has(findings, "minified-code", (f) => /lib\.min\.js/.test(f.file)),
+      "the CDN-identified source library is not rejected as minified"
+    );
+    // OSV-audited on the SOURCE -> vendor-vulnerable (would not fire on HEAD).
+    assert.ok(
+      has(findings, "vendor-vulnerable", (f) => /leftpad/.test(f.item ?? "")),
+      "the undeclared source-bundled library is OSV-audited"
+    );
+  } finally {
+    [xpi, src, cdnCache].forEach((d) =>
+      fs.rmSync(d, { recursive: true, force: true })
+    );
+  }
+});
+
 // Regression: the --sca-root tree is read ONCE and the archive is shared by the review
 // loader (loadScaAddon) and the build-corpus loader (loadScaBuildFiles), so it is not
 // walked (nor its symlinks warned) twice. Before the dedupe each loader called

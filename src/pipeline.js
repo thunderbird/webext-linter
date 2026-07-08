@@ -231,7 +231,7 @@ export async function runPipeline(opts) {
   // - i.e. a second classification pass before the banner, which we deliberately avoid;
   // the accepted path (the reviewer's --allow-experiments flow) is exact.
   const setupTotal =
-    (mode === "sca" ? 6 : 7) + (opts.llmEnabled ? 1 : 0) + (isExp ? 1 : 0);
+    (mode === "sca" ? 10 : 7) + (opts.llmEnabled ? 1 : 0) + (isExp ? 1 : 0);
   let setupDone = 0;
   /**
    * Emit the next numbered "Setup" feed line.
@@ -444,12 +444,11 @@ export async function runPipeline(opts) {
     const libraryBlocks = parseLibraryBlocks(libraryBlocksText);
 
     if (mode === "sca") {
-      // SCA: the source archive's package.json is the only dependency manifest.
-      // Audit each declared dependency for popularity (non-popular -> reject) and
-      // OSV. No VENDOR.md / hash / CDN matching - the built libraries are not in
-      // the readable source and are mangled in the XPI. The bundled classification
-      // still runs (so obfuscated-code, minified-code, and the non-authored skip set
-      // work); a minified file in the readable source is non-authored and rejected.
+      // SCA: the source archive's package.json declares the dependencies - audit each for
+      // popularity (non-popular -> reject) and OSV. The readable source may ALSO vendor a
+      // library as a committed copy, so full identification (Mozilla-hash + CDN + OSV,
+      // deduped against the declared audit) runs on it below. An unrecognized minified file
+      // the source vendors stays non-authored and is rejected.
       setupStep("Auditing source dependencies");
       await verifyScaDependencies(addon, opts.vendorNet, libraryBlocks);
       preParsedJsSources = classifyAndExtractReview(addon, {
@@ -457,6 +456,18 @@ export async function runPipeline(opts) {
         libraryHashes,
         xpiAddon,
         setupStep,
+      });
+      // Identify + OSV-audit any third-party library VENDORED into the readable source (a
+      // committed copy the Mozilla hash DB missed): a jsDelivr content-hash match plus OSV,
+      // deduped against the declared-dependency audit above. Corrects the authored /
+      // non-authored split the content checks and the source summary read.
+      await identifyBundledLibraries(addon, {
+        net: opts.vendorNet,
+        cacheDir: opts.cdnLookupCache,
+        cdnEnabled: opts.cdnLookup !== false,
+        blocks: libraryBlocks,
+        setupStep,
+        scope: "source",
       });
       // Classify the BUILT XPI too (the review target above is the readable source).
       // The behavioral LLM summary describes the shipped XPI, and its skip set is this
@@ -467,6 +478,16 @@ export async function runPipeline(opts) {
       // trusted upstream experiment files seed the non-authored set here too.
       setupStep("Classifying the built add-on");
       xpiAddon.bundled = classifyBundled(xpiAddon, { libraryHashes });
+      // Second-tier identification for the shipped XPI too: a readable/minified library the
+      // Mozilla DB missed, matched on jsDelivr, so the XPI's non-authored set (read by the
+      // input:xpi checks) is correct. No OSV audit here - the XPI carries no vendor store,
+      // and an undeclared library the BUILD bundled is the build review's concern.
+      setupStep("Identifying built-add-on libraries on a CDN");
+      await resolveCdnLibraries(xpiAddon, {
+        net: opts.vendorNet,
+        cacheDir: opts.cdnLookupCache,
+        enabled: opts.cdnLookup !== false,
+      });
       // The BUILD files (archive minus the review source + Experiment source) - the
       // build scripts/config the review otherwise drops. buildScaBuildCtx wraps these
       // as the `input: build` check's ctx.addon; they never merge into the review addon.
@@ -524,30 +545,17 @@ export async function runPipeline(opts) {
         setupStep,
       });
 
-      // 1e-half. Reconcile the not-popular VENDOR/package results from verifyVendor
-      // (which ran before addon.bundled existed) into the untrusted family: an
-      // identified-but-not-popular library is reviewed as authored code, not a
-      // trusted/exempt dependency.
-      applyNotPopularVendor(addon);
-
-      // 1e-bis. Second-tier identification: for a bundle the Mozilla DB did not
-      // recognize - a minified one, or a large readable file - ask jsDelivr (by content
-      // hash) whether it is a published release; a popular match joins the vendored family
-      // (find-lib-on-cdn), a not-popular one is flagged untrusted. Best-effort: cached on
-      // disk, silently skipped offline.
-      setupStep("Identifying bundled libraries on a CDN");
-      await resolveCdnLibraries(addon, {
+      // 1e-half..1f. Reconcile the not-popular declared libraries, then CDN-identify and
+      // OSV-audit the undeclared bundles (Mozilla-hash + jsDelivr matches), so an undeclared
+      // vulnerable/not-popular library is caught like a declared dependency. See
+      // identifyBundledLibraries.
+      await identifyBundledLibraries(addon, {
         net: opts.vendorNet,
         cacheDir: opts.cdnLookupCache,
-        enabled: opts.cdnLookup !== false,
+        cdnEnabled: opts.cdnLookup !== false,
+        blocks: libraryBlocks,
+        setupStep,
       });
-
-      // 1f. OSV-audit the identified (but undeclared) libraries - both Mozilla
-      // hash-DB and CDN matches - so an undeclared vulnerable bundle is caught like
-      // a declared dependency. Reuses verifyVendor's OSV transport + the shared
-      // vulnerabilities store; best-effort, skips offline.
-      setupStep("Auditing bundled libraries");
-      await auditIdentifiedLibraries(addon, opts.vendorNet, libraryBlocks);
     }
   }
 
@@ -734,6 +742,39 @@ function classifyAndExtractReview(
   });
   addon.bundled = assembleBundled(classification);
   return jsSources;
+}
+
+/**
+ * Second-tier library identification over an already-classified add-on: reconcile the
+ * not-popular declared (VENDOR/package) results into the untrusted family, match still-
+ * unrecognized bundles against jsDelivr by content hash, then OSV-audit every identified
+ * (undeclared) library - both Mozilla-hash and CDN matches. Reads/writes addon.bundled and
+ * addon.vendor; every step is best-effort and skips silently offline. Runs AFTER
+ * classification (so the Mozilla-hash matches and tag.obfuscated are final) and after the
+ * declared-dependency audit (so auditIdentifiedLibraries dedups against it). Requires
+ * addon.vendor for the OSV audit; the shipped XPI in SCA has none, so it gets only the CDN
+ * pass (resolveCdnLibraries directly), not this routine.
+ * @param {import("./addon/load.js").Addon} addon
+ * @param {{net?: object, cacheDir?: string, cdnEnabled?: boolean,
+ *   blocks?: Map<string, object>, setupStep?: (label: string) => void,
+ *   scope?: string}} opts  `scope` names the artifact in the narration (default "bundled").
+ */
+async function identifyBundledLibraries(
+  addon,
+  {
+    net,
+    cacheDir,
+    cdnEnabled = true,
+    blocks,
+    setupStep = () => {},
+    scope = "bundled",
+  }
+) {
+  applyNotPopularVendor(addon);
+  setupStep(`Identifying ${scope} libraries on a CDN`);
+  await resolveCdnLibraries(addon, { net, cacheDir, enabled: cdnEnabled });
+  setupStep(`Auditing ${scope} libraries`);
+  await auditIdentifiedLibraries(addon, net, blocks);
 }
 
 /**
