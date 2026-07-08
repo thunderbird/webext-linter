@@ -152,6 +152,35 @@ test("required permissions include a function-level-only permission", () => {
   ]);
 });
 
+// A nested namespace is gated by its parent namespace's permission too: calling
+// scripting.messageDisplay.registerScripts needs BOTH the parent "scripting"
+// permission and the sub-namespace's "messagesRead". resolveApi longest-prefix
+// matches scripting.messageDisplay, so requiredPermissions must walk up to the
+// scripting ancestor rather than only reporting the deepest namespace's perm.
+test("required permissions include ancestor sub-namespaces", () => {
+  const idx = new SchemaIndex({
+    "scripting.json": [
+      { namespace: "scripting", permissions: ["scripting"], functions: [] },
+      {
+        namespace: "scripting.messageDisplay",
+        permissions: ["messagesRead"],
+        functions: [{ name: "registerScripts", async: true }],
+      },
+    ],
+  });
+  const res = idx.resolveApi([
+    "scripting",
+    "messageDisplay",
+    "registerScripts",
+  ]);
+  assert.equal(res.kind, "function");
+  assert.equal(res.namespace, "scripting.messageDisplay");
+  assert.deepEqual(idx.requiredPermissions(res).sort(), [
+    "messagesRead",
+    "scripting",
+  ]);
+});
+
 // Accessing a property (storage.local) resolves to a property kind and still
 // inherits the namespace permission, so reads are not treated as unguarded.
 test("namespace-level permission applies to property access (storage.local)", () => {

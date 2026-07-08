@@ -1,0 +1,6 @@
+{
+  "_comment": "browser.messages.tags.list needs the parent messages namespace's messagesRead (it gates browser.messages) in addition to the declared messagesTagsList, so messagesRead is flagged missing. Exercises requiredPermissions' ancestor-namespace walk end-to-end.",
+  "expect": {
+    "missing-permission": ["background.js:5"]
+  }
+}

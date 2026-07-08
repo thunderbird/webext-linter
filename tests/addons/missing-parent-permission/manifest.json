@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Missing Parent Permission",
+  "version": "1.0",
+  "permissions": ["messagesTagsList"],
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

@@ -484,8 +484,10 @@ export class SchemaIndex {
 
   /**
    * Walk the segments after a matched namespace, descending through property
-   * types. `ns` is the top namespace object and is always returned as
-   * namespaceDef (so namespace-level permissions still apply to deep members).
+   * types. `ns` is the top namespace object, always returned as namespaceDef
+   * (with nsName as namespace) so namespace-level facts still apply to deep
+   * members: version_added/deprecation/unsupported read namespaceDef, and
+   * requiredPermissions resolves namespace-level permissions from namespace.
    * @param {SchemaNode} ns  Matched top namespace object.
    * @param {string} nsName  Matched namespace name.
    * @param {string[]} segments  Full path segments.
@@ -592,14 +594,25 @@ export class SchemaIndex {
 
   /**
    * Permissions required to use a given resolved API (namespace + member
-   * function).
+   * function). A nested namespace is gated by its ancestors' permissions too -
+   * the runtime only exposes browser.a.b when the permission gating each
+   * namespace along the path (a, then a.b) is held - so this unions permissions
+   * across every dotted prefix, not just the deepest matched namespace (which is
+   * all resolution.namespaceDef holds).
    * @param {ApiResolution} resolution  Resolved API object from resolveApi.
    * @returns {string[]} List of required permission strings.
    */
   requiredPermissions(resolution) {
     const perms = new Set();
-    for (const p of resolution.namespaceDef?.permissions || []) {
-      perms.add(p);
+    const nsName = resolution.namespace;
+    if (nsName) {
+      const parts = nsName.split(".");
+      for (let n = 1; n <= parts.length; n++) {
+        const ns = this.namespaces.get(parts.slice(0, n).join("."));
+        for (const p of ns?.permissions || []) {
+          perms.add(p);
+        }
+      }
     }
     for (const p of resolution.def?.permissions || []) {
       perms.add(p);

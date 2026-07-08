@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Tag Lister",
   "version": "1.0",
-  "permissions": ["messagesTagsList"],
+  "permissions": ["messagesRead", "messagesTagsList"],
   "background": { "scripts": ["background.js"] },
   "browser_specific_settings": { "gecko": { "strict_min_version": "115.0" } },
   "icons": { "16": "icon.png", "48": "icon.png" }
