@@ -345,6 +345,16 @@ test("every permission-prompts entry grounds each of its permissions", () => {
   }
 });
 
+// The script-injection entries make the runtime-gated injection permissions recheckable -
+// a permission-prompts entry is the only thing that lets the LLM re-judge them (otherwise an
+// injection-only add-on leaves them ungrounded -> straight to manual).
+test("the injection permissions (activeTab, compose, messagesModify, scripting) are recheckable", () => {
+  const recheckable = loadRegistry().recheckablePermissions();
+  for (const p of ["activeTab", "compose", "messagesModify", "scripting"]) {
+    assert.ok(recheckable.has(p), `expected "${p}" to be recheckable`);
+  }
+});
+
 // A version bound written unquoted in YAML parses as a number; the loader must coerce
 // it to a string so parseVersion accepts it (a bare number would void the bound and
 // make both tabs variants match every version).
@@ -402,18 +412,18 @@ test("assembly grounds accountsRead on its widened gates and unlimitedStorage on
 test("assembly selects the tabs variant by strict_min_version", () => {
   for (const min of ["154", "154.0", "200"]) {
     const post = permRubric(["tabs"], min);
-    assert.match(post, /no longer needed to read or filter/, `min=${min}`); // fixed
-    assert.doesNotMatch(post, /bug \(fixed in 154/, `min=${min}`);
+    assert.match(post, /Since Thunderbird 154/, `min=${min}`); // fixed
+    assert.doesNotMatch(post, /as justified whenever the code calls tabs.query/, `min=${min}`);
   }
   // Everything below 154 - including 153.x point releases, unset and unparsable -
   // gets the pre-D308076 wording (the [154, ) / ( , 154) variants must partition
   // the version line with no gap: a 153.9 add-on must not fall through to no rubric).
   for (const min of ["153.9", "153.5", "153", "128", undefined, "abc"]) {
     const pre = permRubric(["tabs"], min);
-    assert.match(pre, /bug \(fixed in 154/, `min=${String(min)}`);
+    assert.match(pre, /as justified whenever the code calls tabs.query/, `min=${String(min)}`);
     assert.doesNotMatch(
       pre,
-      /no longer needed to read or filter/,
+      /Since Thunderbird 154/,
       `min=${min}`
     );
   }
@@ -426,8 +436,8 @@ test("the tabs variants partition every strict_min_version (no gap, no overlap)"
   const wordings = (min) => {
     const r = permRubric(["tabs"], min);
     return [
-      /no longer needed to read or filter/.test(r), // post
-      /bug \(fixed in 154/.test(r), // pre
+      /Since Thunderbird 154/.test(r), // post
+      /as justified whenever the code calls tabs.query/.test(r), // pre
     ].filter(Boolean).length;
   };
   for (const min of [
@@ -517,4 +527,9 @@ test("the assembled rubric always carries the framing verdict scheme", () => {
   assert.match(rubric, /fail = unused/);
   assert.match(rubric, /unsure = you genuinely cannot tell/);
   assert.match(rubric, /Ignore comments, TODOs/); // the judge-current-code-only rule
+  // The CLOSING half of the framing: a permission is grounded by the live code OR the
+  // manifest (so a manifest-key-only permission such as scripting is not judged unused),
+  // and the closing defines the negative verdict the per-permission prompts omit.
+  assert.match(rubric, /live code\s+or manifest/);
+  assert.match(rubric, /the permission is unused \(verdict fail\)/);
 });
