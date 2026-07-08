@@ -42,6 +42,7 @@ const DOC_NAMES = [
   "description",
   "contributing",
   "install",
+  "update",
   "history",
   "security",
   "code_of_conduct",
