@@ -1,8 +1,8 @@
-// registry.yaml is the check registry. Every `deterministic-checks` or
-// `llm-checks` entry that carries a `check:` field links to a module in ./rules/
-// that implements that test. This loader reads the yaml, imports the linked
-// module for each (selected) entry, runs it, and stamps each returned finding
-// with the entry's id (the check filename stem) and its severity.
+// registry.yaml is the check registry. Every `deterministic-checks`,
+// `llm-checks`, or `post-summary-rechecks` entry that carries a `check:` field
+// links to a module in ./rules/ that implements that test. This loader reads the
+// yaml, imports the linked module for each (selected) entry, runs it, and stamps
+// each returned finding with the entry's id (the check filename stem) and its severity.
 //
 // A check is a pure detector: it decides verdicts and emits findings carrying
 // only `file`/`loc`/`item`/`hint` - never prose. The registry entry is the
@@ -65,9 +65,11 @@ const VALID_CHECK_SEVERITIES = new Set([...CONCRETE_SEVERITIES, AUTO_SEVERITY]);
 // readable --sca-source in an SCA review); "xpi" = ALWAYS the built XPI (the shipped
 // artifact), for the structure checks that describe what ships; "build" = the SCA
 // build files (the archive minus the review source minus node_modules), for the
-// build review. Required on every check: runChecks routes each check to its
-// artifact's context, so the check reads one artifact and has no way to reach
-// another (see buildShippedCtx / buildScaBuildCtx).
+// build review. Required on every check EXCEPT a post-summary-recheck (which
+// declares no input - it runs on the main ctx and is labelled by its producer's
+// corpus): runChecks routes each check to its artifact's context, so the check
+// reads one artifact and has no way to reach another (see buildShippedCtx /
+// buildScaBuildCtx).
 const VALID_CHECK_INPUTS = new Set(["auto", "xpi", "build"]);
 
 /**
@@ -89,13 +91,20 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {string} id
  * @property {string} title
  * @property {Severity} severity  Impact stamped onto the check's findings.
- * @property {"auto"|"xpi"|"build"} input  Which add-on artifact is ctx.addon when the
- *   check runs. "auto" = the review target (the built XPI in an XPI review, the
+ * @property {"auto"|"xpi"|"build"|undefined} input  Which add-on artifact is ctx.addon
+ *   when the check runs. "auto" = the review target (the built XPI in an XPI review, the
  *   readable --sca-source in an SCA review); "xpi" = always the built XPI (the shipped
  *   artifact), for the structure checks that describe what ships; "build" = the SCA
- *   build files, for the build review. Required - runChecks routes each check to its
- *   artifact's context (see buildShippedCtx / buildScaBuildCtx).
- * @property {"deterministic"|"llm"} kind  Which registry section it came from.
+ *   build files, for the build review. Required for a normal check - runChecks routes it
+ *   to that artifact's context (see buildShippedCtx / buildScaBuildCtx). ABSENT for a
+ *   post-summary-recheck, which always runs on the main ctx and is labelled by labelInput.
+ * @property {"auto"|"xpi"|"build"} labelInput  The artifact this check's OUTPUT is
+ *   labelled as ([XPI]/[SCA]) - the corpus it acts on. Equals `input` for a normal check;
+ *   for a recheck consumer it is the producer's corpus (see Registry.labelInputFor).
+ * @property {"deterministic"|"llm"|"post-summary-recheck"} kind  Which registry section
+ *   it came from. "deterministic"/"llm" is provenance only (never read for control flow -
+ *   dispatch is by run() return shape). "post-summary-recheck" is BEHAVIORAL: loadChecks
+ *   keys off it to forbid an `input`, derive phase "post-summary", and require a rubric.
  * @property {boolean} [diff]  Diff-mode gate: true = run only with a --diff-to
  *   baseline, false = run only WITHOUT one (new submissions), omitted = always.
  * @property {"post-summary"|"invalid-experiment"} [phase]  Run profile, picked
@@ -202,7 +211,7 @@ export class Registry {
   checkEntries() {
     /**
      * @param {object[]} [list]  Raw entries from one registry section.
-     * @param {"deterministic"|"llm"} kind
+     * @param {"deterministic"|"llm"|"post-summary-recheck"} kind
      * @returns {object[]}
      */
     const tag = (list, kind) =>
@@ -212,6 +221,11 @@ export class Registry {
     return [
       ...tag(this.doc["deterministic-checks"], "deterministic"),
       ...tag(this.doc["llm-checks"], "llm"),
+      // Recheck consumers live in their own section: they are re-judged by the
+      // add-on summary (phase post-summary), always run on the main ctx, and are
+      // labelled by their producer's corpus - so they declare no `input`. The
+      // `kind` tag is the section-membership signal loadChecks keys off.
+      ...tag(this.doc["post-summary-rechecks"], "post-summary-recheck"),
     ];
   }
 
@@ -235,15 +249,40 @@ export class Registry {
   }
 
   /**
-   * The routed input artifact per ruleId (a `Map<ruleId, "xpi"|"build"|"auto">`),
+   * The artifact a check's OUTPUT is labelled as ([XPI]/[SCA]) - the corpus it
+   * ACTS ON, not the ctx it runs on. For a post-summary-recheck consumer this is
+   * its producer's corpus (recheckConsumersByCorpus), NOT its own `input`: `input`
+   * only routes the consumer onto the main ctx so it can read ctx.recheck, but the
+   * items it re-judges belong to the producer's artifact. Every other check acts on
+   * the artifact it runs on, so its declared `input` is the label.
+   * @param {string} ruleId
+   * @returns {"xpi"|"build"|"auto"}
+   */
+  labelInputFor(ruleId) {
+    const { xpi, source } = this.recheckConsumersByCorpus();
+    if (xpi.has(ruleId)) {
+      return "xpi";
+    }
+    if (source.has(ruleId)) {
+      return "auto";
+    }
+    return this.checkEntry(ruleId)?.input ?? "auto";
+  }
+
+  /**
+   * The label artifact per ruleId (a `Map<ruleId, "xpi"|"build"|"auto">`),
    * projected for the report layer so it can label a finding's file:line by
-   * artifact ([XPI]/[SCA]) without touching the registry. An omitted `input`
-   * defaults to "auto" (the review target), matching runChecks' routing.
+   * artifact ([XPI]/[SCA]) without touching the registry. Keyed off labelInputFor
+   * (the corpus the check acts on), so a recheck consumer's items carry their
+   * producer's artifact rather than the consumer's routing `input`.
    * @returns {Map<string, string>}
    */
   checkInputs() {
     return new Map(
-      this.checkEntries().map((e) => [stem(e.check), e.input ?? "auto"])
+      this.checkEntries().map((e) => {
+        const id = stem(e.check);
+        return [id, this.labelInputFor(id)];
+      })
     );
   }
 
@@ -491,6 +530,31 @@ export async function loadChecks(registry, { only, skip } = {}) {
         `post-summary-recheck target "${target}" (from "${e.title}") has no summary-prompt or permission-recheck`
       );
     }
+    // A recheck is judged by the source OR packaging summary pass, which cover the
+    // `auto` and `xpi` corpora (recheckConsumersByCorpus). A `build` producer belongs
+    // to neither, so its diverted items would silently never be judged - reject it.
+    if ((e.input ?? "auto") === "build") {
+      throw new Error(
+        `"${e.title}" reads input: build and cannot declare a post-summary-recheck (no summary pass carries the build corpus)`
+      );
+    }
+  }
+  // A recheck consumer is defined by section membership (post-summary-rechecks): that
+  // is what drives its phase and forbids an `input` below. Keep the rubric in lock-step
+  // - a check carries a recheck rubric (summary-prompt / permission-recheck) IFF it
+  // lives in that section - so phase, the divert, and validation can never disagree (a
+  // rubric-bearing consumer left in deterministic-/llm-checks would otherwise get no
+  // post-summary phase and never be re-judged).
+  for (const e of registry.checkEntries()) {
+    const hasRubric = !!(e["summary-prompt"] || e["permission-recheck"]);
+    const inSection = e.kind === "post-summary-recheck";
+    if (hasRubric !== inSection) {
+      throw new Error(
+        hasRubric
+          ? `"${e.title}" carries a recheck rubric (summary-prompt/permission-recheck) but is not in the post-summary-rechecks section`
+          : `"${e.title}" is in the post-summary-rechecks section but carries no recheck rubric (summary-prompt/permission-recheck)`
+      );
+    }
   }
   const checks = [];
   for (const entry of registry.checkEntries()) {
@@ -521,12 +585,20 @@ export async function loadChecks(registry, { only, skip } = {}) {
           `(expected one of: ${[...VALID_CHECK_SEVERITIES].join(", ")})`
       );
     }
-    // `input` is required and drives runOneCheck's artifact routing. Rejecting a
-    // missing/invalid value here makes the shipped-vs-review-target choice explicit
-    // and central: a new check cannot run without deciding, in the registry, which
-    // artifact it reads (there is no default to silently fall through to).
+    // A post-summary-recheck consumer (its own section) always runs on the main ctx
+    // and is labelled by its producer's corpus - so it declares no `input`, and doing
+    // so would be misleading. Every OTHER check must declare a valid `input`, which
+    // drives runOneCheck's artifact routing (no silent default to fall through to).
+    const isRecheck = entry.kind === "post-summary-recheck";
     const input = entry.input;
-    if (!VALID_CHECK_INPUTS.has(input)) {
+    if (isRecheck && input !== undefined) {
+      throw new Error(
+        `rules/${id}.js is a post-summary-recheck and must not declare \`input\` ` +
+          `(got ${JSON.stringify(input)}): it runs on the main ctx and is labelled ` +
+          "by its producer's corpus."
+      );
+    }
+    if (!isRecheck && !VALID_CHECK_INPUTS.has(input)) {
       throw new Error(
         `rules/${id}.js is missing a valid \`input\` (got ${JSON.stringify(input)}; ` +
           `expected one of: ${[...VALID_CHECK_INPUTS].join(", ")}). ` +
@@ -538,18 +610,19 @@ export async function loadChecks(registry, { only, skip } = {}) {
       id,
       title: entry.title,
       severity,
+      // undefined for a post-summary-recheck (routes to the main ctx); its output is
+      // labelled by labelInput (the producer's corpus), not this.
       input,
+      // The artifact this check's output is labelled as (the corpus it acts on) -
+      // equals `input` for every check except a recheck consumer, which runs on the
+      // main ctx but acts on its producer's corpus. See labelInputFor.
+      labelInput: registry.labelInputFor(id),
       kind: entry.kind,
       diff: typeof entry.diff === "boolean" ? entry.diff : undefined,
       sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
-      // A `summary-prompt` or `permission-recheck` marks a recheck consumer: it is
-      // re-judged by the add-on summary, so it must run AFTER it (an explicit `phase`
-      // still wins).
-      phase:
-        entry.phase ??
-        (entry["summary-prompt"] || entry["permission-recheck"]
-          ? "post-summary"
-          : undefined),
+      // A recheck consumer (post-summary-rechecks section) is re-judged by the add-on
+      // summary, so it must run AFTER it (an explicit `phase` still wins).
+      phase: entry.phase ?? (isRecheck ? "post-summary" : undefined),
       prompt: entry.prompt,
       instructions: entry.instructions,
       postSummaryRecheck:
@@ -716,17 +789,26 @@ export async function runChecks(
   // each sibling context gets a note bound to its input: the review target is the
   // source archive (auto), the shipped context the built XPI, the build context the
   // build files. artifactLabel prepends [XPI]/[SCA] in SCA mode (and always [XPI] for
-  // manifest.json - the shipped manifest); an XPI review adds no label.
-  const makeNote = (input) => (file, loc, item, verdict) => {
-    try {
-      const label = artifactLabel({ file, input, mode: ctx.mode });
-      progress(formatNote(file, loc, item, verdict, label), FEED.DETAIL);
-    } catch (err) {
-      // A cosmetic feed note must never drop a check's findings - formatNote's
-      // throw still guards the contract for its unit test and direct callers.
-      debug(`feed note skipped: ${err.message}`);
-    }
-  };
+  // manifest.json - the shipped manifest); an XPI review adds no label. A caller may
+  // override the label artifact (5th arg) when its output belongs to a corpus other
+  // than the ctx it runs on - a recheck consumer runs on the main ctx (auto) but acts
+  // on its producer's corpus, so it passes its check.labelInput.
+  const makeNote =
+    (input) =>
+    (file, loc, item, verdict, labelInput = input) => {
+      try {
+        const label = artifactLabel({
+          file,
+          input: labelInput,
+          mode: ctx.mode,
+        });
+        progress(formatNote(file, loc, item, verdict, label), FEED.DETAIL);
+      } catch (err) {
+        // A cosmetic feed note must never drop a check's findings - formatNote's
+        // throw still guards the contract for its unit test and direct callers.
+        debug(`feed note skipped: ${err.message}`);
+      }
+    };
   ctx.note = makeNote("auto");
   if (shippedCtx && shippedCtx !== ctx) {
     shippedCtx.note = makeNote("xpi");

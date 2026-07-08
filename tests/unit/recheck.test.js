@@ -15,6 +15,7 @@ import {
 } from "../../src/checks/lib/recheck.js";
 import {
   runChecks,
+  loadChecks,
   loadRegistry,
   Registry,
 } from "../../src/checks/registry.js";
@@ -65,6 +66,41 @@ test("resolveRecheck maps each verdict to a finding, a drop, or a manual item", 
   const c = out.escalations.find((e) => e.item === "c");
   assert.equal(c.data.reason, "cannot tell");
   assert.equal(c.loc.line, 6);
+});
+
+// A recheck consumer runs on the main ctx (input: auto) but its items belong to its
+// producer's corpus. Its feed notes must be labelled by that corpus (check.labelInput),
+// passed to ctx.note as the 5th arg - so an XPI-corpus recheck's notes read [XPI], not
+// [SCA]. Covers the pass path (item "a") and the no-verdict -> unsure path (item "b").
+test("resolveRecheck labels its feed notes by the consumer's labelInput", () => {
+  const noteCalls = [];
+  const ctx = {
+    note: (...args) => noteCalls.push(args),
+    recheck: new Map([["c", [handed("a", 4), handed("b", 5)]]]),
+    addon: {
+      recheck: [{ check: "c", item: "a", verdict: "pass", reason: "" }],
+    },
+  };
+  resolveRecheck(withManifest(ctx), { id: "c", labelInput: "xpi" });
+  assert.ok(noteCalls.length >= 2); // one per handed item
+  for (const args of noteCalls) {
+    assert.equal(args[4], "xpi", "every feed note carries the acts-on corpus");
+  }
+});
+
+// When a consumer carries no labelInput, resolveRecheck passes undefined so makeNote
+// falls back to its bound (run-ctx) input - the pre-existing behaviour is preserved.
+test("resolveRecheck passes undefined labelInput when the check has none", () => {
+  const noteCalls = [];
+  const ctx = {
+    note: (...args) => noteCalls.push(args),
+    recheck: new Map([["c", [handed("a", 4)]]]),
+    addon: {
+      recheck: [{ check: "c", item: "a", verdict: "pass", reason: "" }],
+    },
+  };
+  resolveRecheck(withManifest(ctx), { id: "c" });
+  assert.equal(noteCalls[0][4], undefined);
 });
 
 // The guard: resolveRecheck only consults verdicts for items it was actually
@@ -355,6 +391,104 @@ test("the injection permissions (activeTab, compose, messagesModify, scripting) 
   }
 });
 
+// The report/feed label is the corpus a check ACTS ON, not the ctx it runs on. A recheck
+// consumer runs on the main ctx (input: auto) but acts on its producer's corpus, so
+// checkInputs (the report's ruleInputs) must report that corpus - else an XPI-corpus
+// recheck mislabels its items [SCA]. Non-recheck checks keep their declared input.
+test("checkInputs labels a recheck consumer by the corpus it acts on, not its input", () => {
+  const reg = loadRegistry();
+  const inputs = reg.checkInputs();
+  const { xpi, source } = reg.recheckConsumersByCorpus();
+  assert.ok(xpi.size > 0, "expected at least one XPI-corpus recheck consumer");
+  for (const id of xpi) {
+    assert.equal(inputs.get(id), "xpi", id);
+  }
+  for (const id of source) {
+    assert.equal(inputs.get(id), "auto", id);
+  }
+  // a non-recheck check keeps its declared input (unused-files producer is input: xpi)
+  assert.equal(inputs.get("unused-files"), "xpi");
+});
+
+// The recheck consumers live in their own post-summary-rechecks section: tagged kind
+// "post-summary-recheck", they declare NO input (they run on the main ctx and are
+// labelled by their producer's corpus), and load with phase "post-summary".
+test("post-summary-recheck consumers are section-tagged, input-free, and post-summary", async () => {
+  const reg = loadRegistry();
+  const { xpi, source } = reg.recheckConsumersByCorpus();
+  const consumers = [...xpi, ...source];
+  assert.ok(consumers.length >= 6, "expected the recheck consumers");
+  for (const id of consumers) {
+    assert.equal(reg.checkEntry(id)?.kind, "post-summary-recheck", id);
+  }
+  const loaded = await loadChecks(reg);
+  for (const id of consumers) {
+    const c = loaded.find((x) => x.id === id);
+    assert.equal(c.input, undefined, `${id} input`);
+    assert.equal(c.phase, "post-summary", `${id} phase`);
+  }
+});
+
+// A post-summary-rechecks entry must NOT declare `input` (its corpus is derived from its
+// producer); declaring one is a config error caught at load.
+test("loadChecks rejects a post-summary-recheck that declares input", async () => {
+  const reg = new Registry({
+    "post-summary-rechecks": [
+      {
+        title: "X",
+        check: "unused-permission",
+        input: "auto",
+        "permission-recheck": true,
+      },
+    ],
+  });
+  await assert.rejects(loadChecks(reg), /must not declare/);
+});
+
+// A recheck rubric (summary-prompt / permission-recheck) and post-summary-rechecks section
+// membership must be in lock-step: phase is derived from the section, so a rubric-bearing
+// consumer left in another section would silently get no post-summary phase and never be
+// re-judged. loadChecks rejects either half of the mismatch.
+test("loadChecks requires a recheck rubric to live in (and only in) the post-summary-rechecks section", async () => {
+  const stray = new Registry({
+    "llm-checks": [
+      {
+        title: "S",
+        check: "unused-files-recheck",
+        input: "auto",
+        "summary-prompt": "x",
+      },
+    ],
+  });
+  await assert.rejects(
+    loadChecks(stray),
+    /not in the post-summary-rechecks section/
+  );
+  const bare = new Registry({
+    "post-summary-rechecks": [{ title: "B", check: "unused-files-recheck" }],
+  });
+  await assert.rejects(loadChecks(bare), /carries no recheck rubric/);
+});
+
+// A recheck is judged by the source or packaging summary pass (the auto / xpi corpora); a
+// build-input producer belongs to neither, so its diverted items would never be judged.
+test("loadChecks rejects a build-input producer that declares a post-summary-recheck", async () => {
+  const reg = new Registry({
+    "deterministic-checks": [
+      {
+        title: "P",
+        check: "unused-files",
+        input: "build",
+        "post-summary-recheck": "unused-files-recheck",
+      },
+    ],
+    "post-summary-rechecks": [
+      { title: "C", check: "unused-files-recheck", "summary-prompt": "x" },
+    ],
+  });
+  await assert.rejects(loadChecks(reg), /input: build/);
+});
+
 // A version bound written unquoted in YAML parses as a number; the loader must coerce
 // it to a string so parseVersion accepts it (a bare number would void the bound and
 // make both tabs variants match every version).
@@ -423,19 +557,23 @@ test("assembly selects the tabs variant by strict_min_version", () => {
   for (const min of ["154", "154.0", "200"]) {
     const post = permRubric(["tabs"], min);
     assert.match(post, /Since Thunderbird 154/, `min=${min}`); // fixed
-    assert.doesNotMatch(post, /as justified whenever the code calls tabs.query/, `min=${min}`);
+    assert.doesNotMatch(
+      post,
+      /as justified whenever the code calls tabs.query/,
+      `min=${min}`
+    );
   }
   // Everything below 154 - including 153.x point releases, unset and unparsable -
   // gets the pre-D308076 wording (the [154, ) / ( , 154) variants must partition
   // the version line with no gap: a 153.9 add-on must not fall through to no rubric).
   for (const min of ["153.9", "153.5", "153", "128", undefined, "abc"]) {
     const pre = permRubric(["tabs"], min);
-    assert.match(pre, /as justified whenever the code calls tabs.query/, `min=${String(min)}`);
-    assert.doesNotMatch(
+    assert.match(
       pre,
-      /Since Thunderbird 154/,
-      `min=${min}`
+      /as justified whenever the code calls tabs.query/,
+      `min=${String(min)}`
     );
+    assert.doesNotMatch(pre, /Since Thunderbird 154/, `min=${min}`);
   }
 });
 

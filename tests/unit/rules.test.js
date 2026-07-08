@@ -625,9 +625,19 @@ test("checks carry the sca mode tag (false=XPI-only, true=SCA-only, undefined=bo
 // Every check declares a valid input, and the (rare, dangerous) input:xpi set is
 // pinned to exactly the structure checks. A new or flipped check trips this test
 // rather than silently reading the wrong artifact.
-test("every check declares a valid input; the input:xpi set is exactly the pinned structure checks", async () => {
+test("every non-recheck check declares a valid input (rechecks declare none); the input:xpi set is exactly the pinned structure checks", async () => {
   const checks = await loadChecks(loadRegistry());
   for (const c of checks) {
+    if (c.kind === "post-summary-recheck") {
+      // A recheck consumer declares NO input - it runs on the main ctx and is
+      // labelled by its producer's corpus (see labelInputFor). Its input is undefined.
+      assert.equal(
+        c.input,
+        undefined,
+        `recheck "${c.id}" must not declare an input`
+      );
+      continue;
+    }
     assert.ok(
       c.input === "auto" || c.input === "xpi" || c.input === "build",
       `check "${c.id}" has an invalid input ${JSON.stringify(c.input)}`

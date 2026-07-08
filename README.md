@@ -216,6 +216,10 @@ A review has three kinds of check, all declared in
   manual review.
 - **Manual** - checks the tool can't make itself, surfaced as a todo list.
 
+The `--full-summary` recheck **consumers** (which re-judge a producer's escalated
+items with the whole add-on in view) live in a dedicated `post-summary-rechecks:`
+section; a consumer inherits the mechanism of its producer.
+
 ### Deterministic checks
 
 Each `deterministic-checks` entry links to a module in

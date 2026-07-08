@@ -207,24 +207,6 @@ deterministic-checks:
     Review whether the following declared permissions are used, and ask the
     developer to remove any that are not needed.
 
-# The recheck consumer for the permissions handed over above. `permission-recheck`
-# makes the --full-summary pass assemble a rubric from the permission-prompt-framing
-# and permission-prompts sections, including only the sections for the permissions
-# actually handed over and the tabs variant matching the add-on's strict_min_version.
-# The model's verdict maps to justified (drop), unused (this warning), or unsure
-# (manual review); it runs in the post-summary phase, inferred from being named as
-# the post-summary-recheck target above. The {{reason}} slot carries the model's why.
-- title: Unused permission
-  severity: warning
-  check: unused-permission
-  input: auto
-  permission-recheck: true
-  response: |-
-    The "{{item}}" permission appears to be unused. {{reason}} An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If it is in fact used, please specify which part of your add-on stops working if it is removed.
-  instructions: |-
-    The "{{item}}" permission may be unused. {{reason}} Confirm whether the add-on
-    actually needs it, and if not, ask the developer to remove it.
-
 # Flags a bundled file whose content hash matches a known third-party library
 # release (named after each path) that is not declared in a VENDOR file.
 - title: Missing third-party library reference
@@ -855,30 +837,6 @@ deterministic-checks:
     Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
     An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
 
-# Recheck consumer for missing-english-localization (above): re-judges the
-# low-confidence language case (too little text, or a near-tie with English) with a
-# model reading ALL the user-facing text. pass -> English / nothing to localize
-# (drop), fail -> a finding, unsure -> manual. Same wording as the producer;
-# post-summary phase inferred.
-- title: Missing English localization
-  severity: warning
-  check: missing-english-localization-recheck
-  input: auto
-  summary-prompt: |-
-    The listed item (manifest.json) stands for the add-on's user-facing text - the
-    manifest name and description plus the visible text of its HTML pages, all
-    quoted among the sources above. Reading all of it together, decide: verdict fail
-    = the user-facing text is hardcoded in a non-English language (an English
-    localization should be added), pass = it is English, or there is nothing to
-    localize, unsure = you genuinely cannot tell. Judge only this item.
-  instructions: |-
-    This add-on ships no English localization, so user-facing text may be
-    hardcoded in another language. Review its strings by hand and confirm if an
-    English localization is provided.
-  response: |-
-    Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
-    An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
-
 # Grounding for the unused-permission recheck consumer (permission-recheck: true).
 # The --full-summary pass assembles its rubric as: framing.preamble + the prompt of
 # every permission-prompts entry whose `permissions` intersects the permissions
@@ -939,7 +897,7 @@ permission-prompts:
     prompt: |-
       "webRequestBlocking" is justified by a webRequest.on* addListener call that passes
       the string "blocking" inside one of its ARRAY arguments (the extraInfoSpec array), e.g.
-      onBeforeSendHeaders.addListener(fn, {urls}, ["blocking", "requestHeaders"]). The
+      onAfterSendHeaders.addListener(fn, {urls}, ["blocking", "requestHeaders"]). The
       "blocking" string sits INSIDE that array - it is not a standalone argument and its
       position varies by event, so look inside the array arguments. A call with no "blocking"
       entry in any array argument does NOT justify the permission.
@@ -1087,32 +1045,6 @@ llm-checks:
   response: |-
     The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
 
-# Recheck consumer for unused-files (above): re-judges the files it could not
-# resolve from a single site, now with the whole add-on in view. Its summary-prompt
-# is appended to the --full-summary pass; pass -> loaded (drop), fail -> an unused
-# finding, unsure -> manual review. Same wording as unused-files (its findings read
-# identically); the post-summary phase is inferred from being its recheck target.
-- title: Unused, hidden or duplicate files or folders
-  severity: error
-  check: unused-files-recheck
-  input: auto
-  summary-prompt: |-
-    Each listed item is a packaged file not reachable from any manifest entry point
-    that the per-file analysis could not resolve to a loader. With the whole add-on
-    in view, decide whether ANYTHING in it loads or uses each file at runtime: a
-    static or dynamic import, a getURL or executeScript/insertCSS, an HTML or CSS
-    reference, a data or configuration entry the add-on consumes, or a runtime-built
-    path that plausibly resolves to it (for example code building
-    "icons/icon-${theme}-${size}.png" loads the icons in that family). Verdict pass
-    = it is loaded somewhere (keep it), fail = nothing in the add-on loads it (it is
-    unused and safe to remove), unsure = you genuinely cannot tell. Judge only the
-    listed files, by their packaged path.
-  instructions: |-
-    The following files are not reachable from any entry point but may be loaded
-    dynamically. Confirm by hand whether they are unused and safe to remove.
-  response: |-
-    The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
-
 # LLM check: over-broad or unloaded web_accessible_resources exposure.
 - title: Minimize web_accessible_resources
   severity: warning
@@ -1142,31 +1074,6 @@ llm-checks:
     which does not require web_accessible_resources.
 
     Use unsure only when you genuinely cannot tell.
-  instructions: |-
-    The following resources are exposed via web_accessible_resources but nothing
-    in the add-on loads them. Confirm by hand whether they need to be exposed.
-  response: |-
-    One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise, remove these entries to reduce the add-on’s exposed surface.
-
-# Recheck consumer for minimize-web-accessible-resources (above): re-judges the
-# entries it could not clear from a single referencing site, now with the whole
-# add-on in view. pass -> needed (drop), fail -> a needless-exposure finding,
-# unsure -> manual. Same wording as the producer; post-summary phase inferred.
-- title: Minimize web_accessible_resources
-  severity: warning
-  check: minimize-web-accessible-resources-recheck
-  input: auto
-  summary-prompt: |-
-    Each listed item is a web_accessible_resources entry the per-site analysis
-    could not clear. web_accessible_resources is only needed when something OUTSIDE
-    the add-on reads the file: a content script (it runs in the web page's world), a
-    real web page, or another extension. The add-on opening or embedding its own
-    file or page from its own extension contexts (background, popup, sidebar,
-    options or tab page, or an iframe of it inside another of the add-on's own
-    pages) never needs it. With the whole add-on in view, decide for each entry:
-    verdict pass = something external reads it (keep it), fail = nothing external
-    reads it (it is needless and should be removed), unsure = you cannot tell. Judge
-    only the listed entries.
   instructions: |-
     The following resources are exposed via web_accessible_resources but nothing
     in the add-on loads them. Confirm by hand whether they need to be exposed.
@@ -1235,34 +1142,6 @@ llm-checks:
   response: |-
     The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
 
-# Recheck consumer for data-exfiltration (above): re-judges each transmission site
-# it could not clear, now with the whole add-on in view, so a user opt-in defined in
-# any settings or background module is visible (not only the options page in the
-# narrow corpus). pass -> consented (drop), fail -> an exfiltration finding, unsure
-# -> manual. Same wording as the producer; post-summary phase inferred.
-- title: User-data exfiltration
-  severity: error
-  check: data-exfiltration-recheck
-  input: auto
-  summary-prompt: |-
-    Each listed item is a code location (file:line) that sends data to a remote
-    server (fetch, XMLHttpRequest, WebSocket, EventSource, or sendBeacon). Sending
-    user data such as message content, attachments, contacts, or credentials to a
-    remote host is allowed ONLY if the user actively enabled it - by entering the
-    destination URL or credentials on an options page that lists what is
-    transmitted, or via an explicit off-by-default opt-in for a hard-coded URL.
-    Thunderbird has no built-in data-collection consent prompt. With the whole
-    add-on in view (every settings page, background flag, and stored preference),
-    decide for each location: verdict fail = user data is transmitted WITHOUT such
-    consent, pass = it is not, unsure = you cannot tell. Judge only the listed
-    locations.
-  instructions: |-
-    The following code locations transmit data to a remote server. Confirm by
-    hand that any user data they send is gated behind an explicit opt-in (a
-    documented options-page setting) and is never sent without consent.
-  response: |-
-    The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
-
 # LLM check: the WEAK disguised-transmission residue - a covert channel (resource
 # URL, stylesheet url(), window.open, or page navigation) built with a runtime
 # value but no user-data API call. The strong case (a user-data call in the URL) is
@@ -1292,13 +1171,133 @@ llm-checks:
   response: |-
     The following code location(s) appear to send data through a resource or navigation URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
+# Post-summary recheck consumers. Each is the recheck TARGET named by a producer's
+# `post-summary-recheck:` above. It is re-judged by the --full-summary add-on summary
+# (phase post-summary), always runs on the main ctx - so it declares no `input` - and
+# is labelled by its producer's corpus (see labelInputFor). Its run() is resolveRecheck.
+post-summary-rechecks:
+# The recheck consumer for the permissions handed over above. `permission-recheck`
+# makes the --full-summary pass assemble a rubric from the permission-prompt-framing
+# and permission-prompts sections, including only the sections for the permissions
+# actually handed over and the tabs variant matching the add-on's strict_min_version.
+# The model's verdict maps to justified (drop), unused (this warning), or unsure
+# (manual review); it runs in the post-summary phase, inferred from being named as
+# the post-summary-recheck target above. The {{reason}} slot carries the model's why.
+- title: Unused permission
+  severity: warning
+  check: unused-permission
+  permission-recheck: true
+  response: |-
+    The "{{item}}" permission appears to be unused. {{reason}} An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If it is in fact used, please specify which part of your add-on stops working if it is removed.
+  instructions: |-
+    The "{{item}}" permission may be unused. {{reason}} Confirm whether the add-on
+    actually needs it, and if not, ask the developer to remove it.
+
+# Recheck consumer for missing-english-localization (above): re-judges the
+# low-confidence language case (too little text, or a near-tie with English) with a
+# model reading ALL the user-facing text. pass -> English / nothing to localize
+# (drop), fail -> a finding, unsure -> manual. Same wording as the producer;
+# post-summary phase inferred.
+- title: Missing English localization
+  severity: warning
+  check: missing-english-localization-recheck
+  summary-prompt: |-
+    The listed item (manifest.json) stands for the add-on's user-facing text - the
+    manifest name and description plus the visible text of its HTML pages, all
+    quoted among the sources above. Reading all of it together, decide: verdict fail
+    = the user-facing text is hardcoded in a non-English language (an English
+    localization should be added), pass = it is English, or there is nothing to
+    localize, unsure = you genuinely cannot tell. Judge only this item.
+  instructions: |-
+    This add-on ships no English localization, so user-facing text may be
+    hardcoded in another language. Review its strings by hand and confirm if an
+    English localization is provided.
+  response: |-
+    Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
+    An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
+
+# Recheck consumer for unused-files (above): re-judges the files it could not
+# resolve from a single site, now with the whole add-on in view. Its summary-prompt
+# is appended to the --full-summary pass; pass -> loaded (drop), fail -> an unused
+# finding, unsure -> manual review. Same wording as unused-files (its findings read
+# identically); the post-summary phase is inferred from being its recheck target.
+- title: Unused, hidden or duplicate files or folders
+  severity: error
+  check: unused-files-recheck
+  summary-prompt: |-
+    Each listed item is a packaged file not reachable from any manifest entry point
+    that the per-file analysis could not resolve to a loader. With the whole add-on
+    in view, decide whether ANYTHING in it loads or uses each file at runtime: a
+    static or dynamic import, a getURL or executeScript/insertCSS, an HTML or CSS
+    reference, a data or configuration entry the add-on consumes, or a runtime-built
+    path that plausibly resolves to it (for example code building
+    "icons/icon-${theme}-${size}.png" loads the icons in that family). Verdict pass
+    = it is loaded somewhere (keep it), fail = nothing in the add-on loads it (it is
+    unused and safe to remove), unsure = you genuinely cannot tell. Judge only the
+    listed files, by their packaged path.
+  instructions: |-
+    The following files are not reachable from any entry point but may be loaded
+    dynamically. Confirm by hand whether they are unused and safe to remove.
+  response: |-
+    The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
+
+# Recheck consumer for minimize-web-accessible-resources (above): re-judges the
+# entries it could not clear from a single referencing site, now with the whole
+# add-on in view. pass -> needed (drop), fail -> a needless-exposure finding,
+# unsure -> manual. Same wording as the producer; post-summary phase inferred.
+- title: Minimize web_accessible_resources
+  severity: warning
+  check: minimize-web-accessible-resources-recheck
+  summary-prompt: |-
+    Each listed item is a web_accessible_resources entry the per-site analysis
+    could not clear. web_accessible_resources is only needed when something OUTSIDE
+    the add-on reads the file: a content script (it runs in the web page's world), a
+    real web page, or another extension. The add-on opening or embedding its own
+    file or page from its own extension contexts (background, popup, sidebar,
+    options or tab page, or an iframe of it inside another of the add-on's own
+    pages) never needs it. With the whole add-on in view, decide for each entry:
+    verdict pass = something external reads it (keep it), fail = nothing external
+    reads it (it is needless and should be removed), unsure = you cannot tell. Judge
+    only the listed entries.
+  instructions: |-
+    The following resources are exposed via web_accessible_resources but nothing
+    in the add-on loads them. Confirm by hand whether they need to be exposed.
+  response: |-
+    One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise, remove these entries to reduce the add-on’s exposed surface.
+
+# Recheck consumer for data-exfiltration (above): re-judges each transmission site
+# it could not clear, now with the whole add-on in view, so a user opt-in defined in
+# any settings or background module is visible (not only the options page in the
+# narrow corpus). pass -> consented (drop), fail -> an exfiltration finding, unsure
+# -> manual. Same wording as the producer; post-summary phase inferred.
+- title: User-data exfiltration
+  severity: error
+  check: data-exfiltration-recheck
+  summary-prompt: |-
+    Each listed item is a code location (file:line) that sends data to a remote
+    server (fetch, XMLHttpRequest, WebSocket, EventSource, or sendBeacon). Sending
+    user data such as message content, attachments, contacts, or credentials to a
+    remote host is allowed ONLY if the user actively enabled it - by entering the
+    destination URL or credentials on an options page that lists what is
+    transmitted, or via an explicit off-by-default opt-in for a hard-coded URL.
+    Thunderbird has no built-in data-collection consent prompt. With the whole
+    add-on in view (every settings page, background flag, and stored preference),
+    decide for each location: verdict fail = user data is transmitted WITHOUT such
+    consent, pass = it is not, unsure = you cannot tell. Judge only the listed
+    locations.
+  instructions: |-
+    The following code locations transmit data to a remote server. Confirm by
+    hand that any user data they send is gated behind an explicit opt-in (a
+    documented options-page setting) and is never sent without consent.
+  response: |-
+    The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
+
 # Recheck consumer for disguised-transmission (above): re-judges each weak covert
 # sink it could not clear, now with the whole add-on in view. pass -> legitimate
 # dynamic URL (drop), fail -> a disguised-transmission finding, unsure -> manual.
 - title: Disguised data transmission
   severity: error
   check: disguised-transmission-recheck
-  input: auto
   summary-prompt: |-
     Each listed item is a code location (file:line) that builds a covert channel - a
     resource URL, a stylesheet url(), a window.open(), or a page navigation - to a
@@ -1312,7 +1311,6 @@ llm-checks:
     data out through that channel rather than a normal, disclosed request.
   response: |-
     The following code location(s) appear to send data through a resource or navigation URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
-
 
 manual-checks:
 # Manual: inspect the listing + add-on for spam, inappropriate, or low-effort

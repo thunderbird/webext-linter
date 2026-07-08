@@ -121,6 +121,10 @@ export function renderManualItems(refs, registry) {
       // The developer-facing response (printed under the instructions). Filled
       // like the instructions. Null when the entry has no response.
       response: fill(entry?.response, ref.item, ref.data),
+      // Carried so the text report can label the item's file:line by artifact
+      // ([XPI]/[SCA]) via ruleInputs - the corpus the owning check acts on. Without
+      // it a non-manifest manual item has no ruleId and defaults to [SCA].
+      ruleId: ref.ruleId,
       file: ref.file ?? null,
       loc: ref.loc ?? null,
       item: ref.item ?? null,

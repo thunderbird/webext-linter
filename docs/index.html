@@ -23,8 +23,8 @@
     </div>
 
     <script>
-      // Generated from assets/registry.yaml (regenerate via doc/REFRESH_DOCS_PROMPT.md).
-      // Order and grouping match the registry sections.
+      // Generated from assets/registry.yaml (regenerate via docs/REFRESH_DOCS_PROMPT.md).
+      // Order and grouping follow the registry's check-bearing sections.
       const CHECKS = [
         // Deterministic checks
         { id: "core-symbol-in-webext", group: "Deterministic checks", title: "Privileged core symbol in WebExtension code", severity: "error" },
@@ -49,7 +49,6 @@
         { id: "code-sanity", group: "Deterministic checks", title: "JavaScript code errors", severity: "info" },
         { id: "minimize-host-permissions", group: "Deterministic checks", title: "Minimize host permissions", severity: "info" },
         { id: "unused-permission-manual", group: "Deterministic checks", title: "Possibly unused permissions", severity: "manual" },
-        { id: "unused-permission", group: "Deterministic checks", title: "Unused permission", severity: "warning" },
         { id: "missing-library", group: "Deterministic checks", title: "Missing third-party library reference", severity: "info" },
         { id: "find-lib-on-cdn", group: "Deterministic checks", title: "Library identified on a CDN", severity: "info" },
         { id: "minified-code", group: "Deterministic checks", title: "Minified code cannot be reviewed", severity: "error" },
@@ -105,19 +104,21 @@
         { id: "csp-unsafe-eval", group: "Deterministic checks", title: "CSP allows 'unsafe-eval'", severity: "error" },
         { id: "csp-unsafe-inline", group: "Deterministic checks", title: "CSP allows 'unsafe-inline'", severity: "error" },
         { id: "missing-english-localization", group: "Deterministic checks", title: "Missing English localization", severity: "warning" },
-        { id: "missing-english-localization-recheck", group: "Deterministic checks", title: "Missing English localization", severity: "warning" },
         // LLM checks
         { id: "strict-min-version-api", group: "LLM checks", title: "API newer than strict_min_version", severity: "error" },
         { id: "unused-files", group: "LLM checks", title: "Unused, hidden or duplicate files or folders", severity: "error" },
-        { id: "unused-files-recheck", group: "LLM checks", title: "Unused, hidden or duplicate files or folders", severity: "error" },
         { id: "minimize-web-accessible-resources", group: "LLM checks", title: "Minimize web_accessible_resources", severity: "warning" },
-        { id: "minimize-web-accessible-resources-recheck", group: "LLM checks", title: "Minimize web_accessible_resources", severity: "warning" },
         { id: "remote-script", group: "LLM checks", title: "Remote script injection", severity: "error" },
         { id: "remote-eval", group: "LLM checks", title: "Remote eval", severity: "error" },
         { id: "data-exfiltration", group: "LLM checks", title: "User-data exfiltration", severity: "error" },
-        { id: "data-exfiltration-recheck", group: "LLM checks", title: "User-data exfiltration", severity: "error" },
         { id: "disguised-transmission", group: "LLM checks", title: "Disguised data transmission", severity: "error" },
-        { id: "disguised-transmission-recheck", group: "LLM checks", title: "Disguised data transmission", severity: "error" },
+        // Post-summary rechecks (recheck consumers, re-judged by the --full-summary summary)
+        { id: "unused-permission", group: "Post-summary rechecks", title: "Unused permission", severity: "warning" },
+        { id: "missing-english-localization-recheck", group: "Post-summary rechecks", title: "Missing English localization", severity: "warning" },
+        { id: "unused-files-recheck", group: "Post-summary rechecks", title: "Unused, hidden or duplicate files or folders", severity: "error" },
+        { id: "minimize-web-accessible-resources-recheck", group: "Post-summary rechecks", title: "Minimize web_accessible_resources", severity: "warning" },
+        { id: "data-exfiltration-recheck", group: "Post-summary rechecks", title: "User-data exfiltration", severity: "error" },
+        { id: "disguised-transmission-recheck", group: "Post-summary rechecks", title: "Disguised data transmission", severity: "error" },
         // Manual review
         { id: "check-submission-spam", group: "Manual review", title: "Check the submission for spam", severity: "manual" },
         { id: "test-add-on", group: "Manual review", title: "Test the add-on and request testing information if needed", severity: "manual" },

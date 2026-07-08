@@ -44,7 +44,10 @@ that no longer exist.
    kebab-case id), `response` (developer-facing message), and often a leading
    comment block describing intent. Some entries have no `severity` (manual /
    producer checks) or special fields (`phase`, `diff`, `summary-prompt`,
-   `permission-recheck`).
+   `permission-recheck`). The check-bearing sections are `deterministic-checks`,
+   `llm-checks`, `manual-checks`, and `post-summary-rechecks` — the last holds every
+   recheck CONSUMER (the target of a producer's `post-summary-recheck:`), which is
+   re-judged by the `--full-summary` summary and declares no `input`.
 2. `src/checks/rules/<id>.js` — the implementation of each check. The header
    comment block describes the decision logic in prose; the `run()` body is the
    ground truth for the branches. Shared logic lives in `src/checks/lib/`
@@ -63,9 +66,10 @@ that no longer exist.
 ## Steps
 
 1. **Enumerate checks.** Parse `assets/registry.yaml` to get the full ordered
-   list of checks and their metadata. Note the section each lives under
-   (e.g. deterministic vs LLM vs localization) and any check with no severity
-   (manual-review / escalation producers).
+   list of checks and their metadata. Cover ALL check-bearing sections -
+   `deterministic-checks`, `llm-checks`, `manual-checks`, and `post-summary-rechecks`
+   (do not miss the recheck consumers in that last section) - noting the section each
+   lives under and any check with no severity (manual-review / escalation producers).
 2. **Diff against the site.** Compare that list to the `CHECKS` array in
    `docs/index.html` and the files in `docs/checks/`. Identify: new checks (need a
    page), removed checks (delete the page + sidebar entry), and existing checks

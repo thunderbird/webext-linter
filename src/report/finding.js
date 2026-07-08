@@ -147,6 +147,9 @@ export function sortFindings(findings) {
  *   locus mirrors a Finding so escalated items list "file:line - item" beneath
  *   the message, grouped like Issues; standalone reminders carry none.
  * @property {string} title
+ * @property {string} [ruleId]  The owning check's id (as a Finding's), so the report
+ *   can label the locus by artifact ([XPI]/[SCA]) via ruleInputs. Absent for a
+ *   standalone registry manual-checks reminder (which carries no locus).
  * @property {string} [instructions]
  * @property {string|null} [response]  Developer-facing wording (the registry
  *   `response`), printed under the instructions in the report; null when none.

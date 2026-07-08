@@ -1006,7 +1006,9 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
   const ran = [...checks];
   for (const [j, check] of deferred.entries()) {
     // Route like the main loop: each check runs over the artifact its `input`
-    // selects (all post-summary checks are `auto` today, but route for correctness).
+    // selects. The post-summary rechecks declare NO `input` (undefined) - they run on
+    // the main ctx (the final `: ctx` branch, where ctx.recheck lives) and are labelled
+    // by their producer's corpus; the ternary still routes any input-bearing check right.
     const checkCtx =
       check.input === "xpi"
         ? shippedCtx

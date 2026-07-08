@@ -239,13 +239,18 @@ export function resolveRecheck(ctx, check) {
     // The feed suffix after `file:line`: the item token, else a per-locus hint
     // (e.g. a transmission method). Never the file - that only repeated the locus.
     const label = ref.item ?? ref.hint ?? null;
+    // Label the feed note by the corpus this consumer ACTS ON (its producer's), not
+    // the main ctx it runs on to read ctx.recheck - so a recheck's notes carry [XPI]
+    // when they re-judge XPI-corpus items. check.labelInput is set at load; it falls
+    // back to the note's bound input when absent.
+    const labelInput = check.labelInput;
     if (verdict === "pass") {
-      ctx.note?.(ref.file, ref.loc, label, "pass");
+      ctx.note?.(ref.file, ref.loc, label, "pass", labelInput);
       continue; // the summary confirmed it is used / justified - drop it
     }
     const data = { ...(ref.data ?? {}), reason: v?.reason ?? "" };
     if (verdict === "fail") {
-      ctx.note?.(ref.file, ref.loc, label, "fail");
+      ctx.note?.(ref.file, ref.loc, label, "fail", labelInput);
       findings.push(
         finding({
           file: ref.file,
@@ -258,7 +263,7 @@ export function resolveRecheck(ctx, check) {
     } else {
       // unsure, or no verdict at all (the summary was skipped or errored): the
       // item still needs a human, so route it to manual review.
-      ctx.note?.(ref.file, ref.loc, label, "unsure");
+      ctx.note?.(ref.file, ref.loc, label, "unsure", labelInput);
       escalations.push({
         item: ref.item ?? null,
         hint: ref.hint ?? null,

@@ -10,6 +10,7 @@ import {
   renderManualItems,
 } from "../../src/report/responses.js";
 import { loadRegistry } from "../../src/checks/registry.js";
+import { artifactLabel } from "../../src/report/artifact.js";
 
 const registry = loadRegistry();
 
@@ -137,6 +138,41 @@ test("renderManualItems resolves an escalation to title + instructions + locus",
   assert.match(item.instructions, /not reachable/);
   assert.equal(item.file, "stray.js"); // listed by the report, not in the prose
   assert.ok(!item.instructions.includes("{{item}}"));
+});
+
+// The report labels a manual item's file:line by artifact ([XPI]/[SCA]) via
+// ruleInputs.get(ruleId), so renderManualItems must carry ruleId through. Without it a
+// non-manifest manual item has no ruleId and defaults to [SCA] (the unused-files mislabel).
+test("renderManualItems carries the ruleId through for the artifact label", () => {
+  const [item] = renderManualItems(
+    [{ ruleId: "unused-files", file: "assets/x.png", kind: "escalation" }],
+    registry
+  );
+  assert.equal(item.ruleId, "unused-files");
+});
+
+// End-to-end: a recheck consumer's manual item flows renderManualItems (ruleId) ->
+// checkInputs/labelInputFor (its producer's corpus) -> artifactLabel. unused-files-recheck's
+// producer (unused-files) is input: xpi, so its item must render [XPI], not [SCA] - the bug
+// this change fixed. (Its OWN kind is post-summary-recheck with no input; the label follows
+// the producer, proving the report never falls back to the consumer's absent input.)
+test("a recheck consumer's XPI-corpus manual item labels [XPI] end-to-end", () => {
+  const [item] = renderManualItems(
+    [
+      {
+        ruleId: "unused-files-recheck",
+        file: "assets/x.png",
+        kind: "escalation",
+      },
+    ],
+    registry
+  );
+  const label = artifactLabel({
+    file: item.file,
+    input: registry.checkInputs().get(item.ruleId),
+    mode: "sca",
+  });
+  assert.equal(label, "XPI");
 });
 
 // A manual-review escalation can carry extra `data` slots (e.g. a reason),
