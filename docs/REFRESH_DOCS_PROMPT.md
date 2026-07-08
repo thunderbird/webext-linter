@@ -105,11 +105,12 @@ that no longer exist.
      `--diff-summary` (which re-judge escalated "unsure" items) → post-summary
      rechecks → report + manual-review to-do list.
    - **Source Code Archive** (`--sca-root`; `--sca-source` optional) — the split-artifact
-     flow: the readable source is the code-defect review target; the declared
-     dependencies and the build files are audited; the built XPI is authoritative
-     for the manifest, experiments, file-completeness, `--diff-to` baseline and the
-     behavioral summary. Show each check routed to its `input` (source / build /
-     XPI) context.
+     flow: the readable source is the code-defect review target and the subject of the
+     behavioral `--full-summary`; the declared dependencies and the build files are
+     audited; the built XPI is authoritative for the manifest, experiments,
+     file-completeness, `--diff-to` baseline and the packaging summary. In SCA
+     `--full-summary` runs two passes — behavioral over the source, packaging over the
+     XPI. Show each check routed to its `input` (source / build / XPI) context.
 
    Follow the check-page template but use a **Review flow** section whose
    `flowchart TD` walks the pipeline stages (not one check's branches), and a

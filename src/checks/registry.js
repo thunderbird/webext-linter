@@ -108,10 +108,6 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {string} [postSummaryRecheck]  Id of a post-summary recheck consumer
  *   this check hands its manual items to when the full summary runs (see
  *   runChecks and src/checks/lib/recheck.js).
- * @property {boolean} [scaRecheck]  `false` marks a per-site (file:line) recheck
- *   producer whose source-anchored items cannot bridge to the XPI behavioral
- *   summary in SCA mode: runChecks then routes its unsure sites straight to manual
- *   review there instead of the summary.
  * @property {Function} run
  */
 
@@ -415,6 +411,36 @@ export class Registry {
     }
     return this.recheckablePermissions().has(item.item);
   }
+
+  /**
+   * Partition the post-summary recheck CONSUMERS by the corpus their PRODUCER read, so
+   * the SCA split can run one summary per corpus - each carrying only the consumers whose
+   * items live in that corpus. A producer reads the review target when `input: auto`
+   * (the source in SCA) and the shipped XPI when `input: xpi`; its items are anchored
+   * accordingly, so its consumer bridges only to a summary of that same artifact. Derived
+   * from the producers' declared `input` - no separate tag. `input: build` producers (none
+   * today) belong to no summary corpus and are omitted.
+   * @returns {{source: Set<string>, xpi: Set<string>}}
+   */
+  recheckConsumersByCorpus() {
+    return (this._recheckByCorpus ??= (() => {
+      const source = new Set();
+      const xpi = new Set();
+      for (const e of this.checkEntries()) {
+        const target = e["post-summary-recheck"];
+        if (typeof target !== "string") {
+          continue;
+        }
+        const input = e.input ?? "auto";
+        if (input === "xpi") {
+          xpi.add(target);
+        } else if (input === "auto") {
+          source.add(target);
+        }
+      }
+      return { source, xpi };
+    })());
+  }
 }
 
 /**
@@ -529,13 +555,6 @@ export async function loadChecks(registry, { only, skip } = {}) {
       postSummaryRecheck:
         typeof entry["post-summary-recheck"] === "string"
           ? entry["post-summary-recheck"]
-          : undefined,
-      // `sca-recheck: false` -> a per-site (file:line) recheck whose source-anchored
-      // items cannot bridge to the XPI behavioral summary in SCA mode; runChecks
-      // routes them straight to manual review there instead.
-      scaRecheck:
-        typeof entry["sca-recheck"] === "boolean"
-          ? entry["sca-recheck"]
           : undefined,
       run,
     });
@@ -736,16 +755,13 @@ export async function runChecks(
     // A check with `post-summary-recheck: R` hands its manual items to the
     // recheck consumer R, but only when the full summary will actually run to
     // re-judge them (ctx.recheckActive). Otherwise they go straight to manual
-    // review - as do all no-summary paths, including the golden harness. In SCA
-    // mode a `sca-recheck: false` producer (a per-site file:line recheck) is also
-    // held back: its source line numbers cannot bridge to the XPI summary, so its
-    // unsure sites go straight to manual review.
-    const scaHoldsBack = ctx.mode === "sca" && check.scaRecheck === false;
+    // review - as do all no-summary paths, including the golden harness. In SCA the
+    // summary runs once per corpus (recheckConsumersByCorpus), so a producer's items
+    // always reach the summary of the artifact they are anchored to - no hold-back.
     if (
       check.postSummaryRecheck &&
       ctx.recheckActive &&
-      out.manualItems.length &&
-      !scaHoldsBack
+      out.manualItems.length
     ) {
       // The registry decides per item whether this consumer can re-judge it: a
       // permission-recheck consumer takes only the permissions it has a rubric prompt

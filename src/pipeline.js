@@ -111,8 +111,9 @@ import {
  *   review to SCA mode - the readable source (scaSource) is reviewed and its declared
  *   dependencies are audited; the positional XPI is the shipped artifact against which
  *   the manifest, experiments, file-completeness (`input: xpi`) checks, the --diff-to
- *   comparison, and the behavioral LLM audit all run (a separate shipped context the
- *   orchestrator routes them to - see buildShippedCtx in src/checks/context.js).
+ *   comparison, and the packaging summary all run (a separate shipped context the
+ *   orchestrator routes them to - see buildShippedCtx in src/checks/context.js). The
+ *   behavioral --full-summary reviews the readable source instead.
  * @property {string} [scaSource]  The add-on code root, relative to scaRoot or an
  *   absolute path (e.g. "src" or "addon"). Optional; defaults to "." (the whole scaRoot
  *   reviewed as the source - a flat layout with manifest.json at the root).
@@ -470,9 +471,10 @@ export async function runPipeline(opts) {
         scope: "source",
       });
       // Classify the BUILT XPI too (the review target above is the readable source).
-      // The behavioral LLM summary describes the shipped XPI, and its skip set is this
-      // classification's non-authored set - so the XPI's minified/library bundles are
-      // excluded exactly as in an XPI review (where the XPI IS the review target). Sync
+      // The packaging summary + the input:xpi checks read the shipped XPI, and their skip
+      // set is this classification's non-authored set - so the XPI's minified/library
+      // bundles are excluded exactly as in an XPI review (where the XPI IS the review
+      // target). Sync
       // and cheap: the multi-MB minified bundles are byte-tagged, never parsed. The
       // XPI already carries its own experiments (set at verifyExperiments above), so its
       // trusted upstream experiment files seed the non-authored set here too.
@@ -658,35 +660,30 @@ async function generateSummary(deferred, label, budget) {
   }
 }
 
+/** The recheck verdicts from a summary pass that belong to `allowed` consumers. */
+const keepVerdicts = (verdicts, allowed) =>
+  (verdicts ?? []).filter((v) => v && allowed.has(v.check));
+
 /**
- * Generate the --full-summary add-on review and store its recheck verdicts on the
- * context (the post-summary recheck consumers, which run next, read them). Mirrors
- * generateSummary but unpacks the review object: the prose goes to the returned
- * summary (printed after the report), the recheck verdicts onto ctx.recheckVerdicts.
- * They are set ONLY when the model actually returned a review, so a missing
- * `ctx.recheckVerdicts` is the clean signal that no analysis happened (LLM error
- * here, or never called) - the consumers then fall their handed-over items back to
- * manual review. Undefined when there is no summary to make.
+ * Generate one --full-summary add-on review pass over a chosen corpus and return its
+ * prose plus its recheck verdicts (the caller merges the verdicts onto
+ * ctx.recheckVerdicts for the post-summary consumers). In SCA the pipeline runs two
+ * passes - a behavioral one over the source and a packaging one over the built XPI - each
+ * carrying only its corpus's recheck consumers (opts.consumers) and its own framing
+ * (opts.promptId). Undefined when there is nothing to summarize (no token / no prompt /
+ * budget spent); `{ text: null, error }` on an LLM failure; otherwise `{ bytes, text,
+ * verdicts }` where a defined `verdicts` (possibly empty) means the model returned a
+ * review - the clean signal that analysis happened.
  * @param {import("./checks/registry.js").RunContext} ctx
  * @param {import("./checks/registry.js").Registry} registry
- * @param {Set<string>} unused  Files the review found unreachable (excluded).
  * @param {import("./llm/budget.js").LlmBudget} [budget]  Run-wide request cap.
- * @returns {Promise<GeneratedSummary|undefined>}
+ * @param {{unused?: Set<string>, summaryAddon?: object, promptId?: string,
+ *   consumers?: ?Set<string>, label?: string}} [opts]
+ * @returns {Promise<(GeneratedSummary & {verdicts?: object[]})|undefined>}
  */
-async function generateAddonSummary(
-  ctx,
-  registry,
-  unused,
-  budget,
-  summaryAddon
-) {
-  // The behavioral summary describes the built XPI (summaryAddon). Permission
-  // usage is settled by the deterministic checks and the recheck sections, not
-  // this summary, so no permission analysis is threaded in here.
-  const deferred = buildAddonSummarizer(ctx, registry, {
-    unused,
-    summaryAddon,
-  });
+async function generateAddonSummary(ctx, registry, budget, opts = {}) {
+  const { label = "full", ...summarizerOpts } = opts;
+  const deferred = buildAddonSummarizer(ctx, registry, summarizerOpts);
   if (!deferred) {
     return undefined;
   }
@@ -694,7 +691,7 @@ async function generateAddonSummary(
     return undefined; // run-wide request cap reached
   }
   progress(
-    `LLM: Generating full summary (${humanSize(deferred.bytes)}) ...`,
+    `LLM: Generating ${label} summary (${humanSize(deferred.bytes)}) ...`,
     FEED.STEP
   );
   let review;
@@ -702,13 +699,14 @@ async function generateAddonSummary(
     review = await deferred.run();
   } catch (err) {
     const reason = llmErrorText(err);
-    progress(red(`LLM: full summary failed - ${reason}`), FEED.STEP);
+    progress(red(`LLM: ${label} summary failed - ${reason}`), FEED.STEP);
     return { bytes: deferred.bytes, text: null, error: reason };
   }
-  if (review) {
-    ctx.recheckVerdicts = review.recheck;
-  }
-  return { bytes: deferred.bytes, text: review?.summary ?? null };
+  return {
+    bytes: deferred.bytes,
+    text: review?.summary ?? null,
+    verdicts: review?.recheck,
+  };
 }
 
 /**
@@ -878,7 +876,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
 
   // The orchestrator holds BOTH contexts: `ctx` (the review target) and shippedCtx
   // (the built XPI - the manifest-coupled `input: xpi` checks resolve declared paths
-  // against it and the behavioral summary describes it). Each check is routed to one
+  // against it, the diff + packaging summaries describe it). Each check is routed to one
   // or the other by its `input`; a check cannot derive one from the other, so it only
   // ever sees the artifact it was routed to. In an XPI review the two are one object
   // (buildShippedCtx returns ctx unchanged when the XPI IS the review target).
@@ -928,22 +926,67 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
   // `LLM: Generating ...` line shows what is being waited on). The prose is
   // printed after the report by the caller (src/cli.js). The add-on summary runs
   // first to match that display order, and because it re-judges the recheck items
-  // handed to it (ctx.recheck) - storing the verdicts on ctx.recheckVerdicts for
+  // handed to it (ctx.recheck) - merging the verdicts onto ctx.recheckVerdicts for
   // the post-summary recheck consumers below. It excludes files the review found
   // unreachable - that set is a product of reachability (unused-files), so it
   // exists only now, which is why the summary runs after the checks.
   let summarizeAddon;
   if (!invalidExperiment && fullSummary) {
-    const unused = new Set(
+    // unused-files runs over the built XPI (input: xpi), so its paths are the XPI's.
+    const unusedFiles = new Set(
       findings.filter((f) => f.ruleId === "unused-files").map((f) => f.file)
     );
-    summarizeAddon = await generateAddonSummary(
-      ctx,
-      registry,
-      unused,
-      budget,
-      shippedCtx.addon
-    );
+    if (mode === "sca") {
+      // SCA: one summary per corpus. The behavioral pass over the readable SOURCE is the
+      // displayed "Summary of add-on" and re-judges the source-anchored rechecks; the
+      // packaging pass over the built XPI is recheck-only (its prose is discarded). Each
+      // pass carries only its corpus's consumers, and its verdicts are filtered to those
+      // consumers before they merge, so neither can resolve the other's items. The source
+      // pass excludes no `unused` files - those XPI paths do not apply to the source corpus.
+      const { source, xpi } = registry.recheckConsumersByCorpus();
+      summarizeAddon = await generateAddonSummary(ctx, registry, budget, {
+        summaryAddon: ctx.addon,
+        consumers: source,
+        label: "source",
+      });
+      const verdicts = [];
+      let ran = false;
+      if (summarizeAddon && !summarizeAddon.error) {
+        ran = true;
+        verdicts.push(...keepVerdicts(summarizeAddon.verdicts, source));
+      }
+      // The packaging pass runs only when an XPI-anchored recheck actually escalated -
+      // otherwise it has nothing to judge over the (often near-empty) built corpus.
+      const hasXpiItems = [...(ctx.recheck ?? new Map()).keys()].some((id) =>
+        xpi.has(id)
+      );
+      if (hasXpiItems) {
+        const packaging = await generateAddonSummary(ctx, registry, budget, {
+          unused: unusedFiles,
+          summaryAddon: shippedCtx.addon,
+          consumers: xpi,
+          promptId: "shipped-package-summary",
+          label: "packaging",
+        });
+        if (packaging && !packaging.error) {
+          ran = true;
+          verdicts.push(...keepVerdicts(packaging.verdicts, xpi));
+        }
+      }
+      if (ran) {
+        ctx.recheckVerdicts = verdicts;
+      }
+    } else {
+      // XPI review: one all-in-one summary over the single artifact (the review target),
+      // carrying every recheck consumer.
+      summarizeAddon = await generateAddonSummary(ctx, registry, budget, {
+        unused: unusedFiles,
+        summaryAddon: ctx.addon,
+      });
+      if (summarizeAddon && !summarizeAddon.error) {
+        ctx.recheckVerdicts = summarizeAddon.verdicts;
+      }
+    }
   }
   let summarize;
   if (!invalidExperiment && diffSummary) {

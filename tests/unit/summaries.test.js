@@ -223,11 +223,11 @@ test("buildAddonText excludes _locales/ translations from the corpus", () => {
   assert.ok(!text.includes("LOCALE_MARKER_DE"));
 });
 
-// SCA mode: the behavioral add-on summary describes the built XPI (summaryAddon), not
-// the readable source review target (ctx.addon). The pipeline classifies the shipped
-// XPI in setup, so its minified/library bundles are EXCLUDED from the summary exactly as
-// in an XPI review - the multi-MB shipped bundles are never quoted (which would overflow
-// the model's context window).
+// SCA mode: the PACKAGING summary describes the built XPI (summaryAddon), not the readable
+// source review target (ctx.addon, which the behavioral summary describes). The pipeline
+// classifies the shipped XPI in setup, so its minified/library bundles are EXCLUDED from
+// the summary exactly as in an XPI review - the multi-MB shipped bundles are never quoted
+// (which would overflow the model's context window).
 test("buildAddonText summarizes the built XPI, excluding its classified minified bundles", () => {
   const ctx = {
     addon: {
@@ -304,6 +304,50 @@ test("buildAddonSummarizer sends prompt+add-on and returns the structured review
     Buffer.byteLength(received.system, "utf8") +
       Buffer.byteLength(received.user, "utf8")
   );
+});
+
+// The SCA split runs buildAddonSummarizer twice: a behavioral pass (add-on-summary prompt,
+// source-anchored consumers) and a packaging pass (shipped-package-summary prompt, XPI-
+// anchored consumers). Each pass uses its own framing and carries ONLY its consumers'
+// recheck sections; the other corpus's consumer is absent.
+test("buildAddonSummarizer routes the prompt and recheck consumers per corpus", async () => {
+  let last;
+  const ctx = {
+    addon: addon({ "manifest.json": MV1, "app.js": "console.log('app');" }),
+    recheck: new Map([
+      [
+        "data-exfiltration-recheck",
+        [{ item: null, file: "app.js", loc: { line: 1 }, hint: "fetch()" }],
+      ],
+      ["unused-files-recheck", [{ item: null, file: "extra.js" }]],
+    ]),
+    llm: {
+      reviewAddon: async (msg) => {
+        last = msg;
+        return { summary: "s", recheck: [] };
+      },
+    },
+  };
+  const registry = loadRegistry();
+
+  // Behavioral source pass.
+  await buildAddonSummarizer(ctx, registry, {
+    consumers: new Set(["data-exfiltration-recheck"]),
+  }).run();
+  assert.ok(last.system.includes(registry.prompt("add-on-summary")));
+  assert.ok(last.system.includes("recheck: data-exfiltration-recheck"));
+  assert.ok(last.user.includes("- app.js:1"));
+  assert.ok(!last.system.includes("unused-files-recheck")); // rides the XPI pass
+
+  // Packaging XPI pass.
+  await buildAddonSummarizer(ctx, registry, {
+    promptId: "shipped-package-summary",
+    consumers: new Set(["unused-files-recheck"]),
+  }).run();
+  assert.ok(last.system.includes(registry.prompt("shipped-package-summary")));
+  assert.ok(last.system.includes("recheck: unused-files-recheck"));
+  assert.ok(last.user.includes("- extra.js"));
+  assert.ok(!last.system.includes("data-exfiltration-recheck"));
 });
 
 // run() propagates an LLM error; the pipeline (generateAddonSummary) catches it

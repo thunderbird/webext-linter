@@ -51,15 +51,15 @@ flowchart TD
   SPLIT --> DEP
   SPLIT --> BLD
   SPLIT --> XPI
-  SRC["Readable source (--sca-source) — the review target:<br/>API / permission / eval / exfiltration checks over every<br/>file (scanned as authored); the LLM checks escalate<br/>their ambiguous residue to the model when enabled"]
+  SRC["Readable source (--sca-source) — the review target:<br/>API / permission / eval / exfiltration checks over every<br/>file (scanned as authored); the LLM checks escalate<br/>their ambiguous residue to the model when enabled;<br/>the behavioral --full-summary reviews this source"]
   DEP["Declared dependencies (source package.json):<br/>each a pinned npm package or GitHub URL; gated on<br/>popularity + known vulnerabilities (no LLM)"]
   BLD["Build files (archive minus source, no node_modules)<br/>— input: build: npm/pnpm only, no committed node_modules or<br/>build artifact, no registry redirect, install hooks flagged; one setup<br/>LLM call classifies the build (files reached from package.json) and three<br/>checks gate on it: remote fetch / not built from source / redundant submission"]
-  XPI["Built XPI (shipped) — input: xpi: manifest, experiments,<br/>file-completeness (bundled / web-accessible / unused /<br/>locales), --diff-to baseline, behavioral LLM audit"]
+  XPI["Built XPI (shipped) — input: xpi: manifest, experiments,<br/>file-completeness (bundled / web-accessible / unused /<br/>locales), --diff-to baseline, packaging summary"]
   SRC --> SUM
   DEP --> SUM
   BLD --> SUM
   XPI --> SUM{"--full-summary or --diff-summary?"}
-  SUM -- yes --> SG["AI add-on / change summary of the XPI (LLM);<br/>re-judges escalated 'unsure' items, then the<br/>post-summary recheck consumers resolve them"]
+  SUM -- yes --> SG["AI summaries (LLM): a behavioral one over the SOURCE and a<br/>packaging one over the XPI, each re-judging its corpus's escalated<br/>'unsure' items; the post-summary recheck consumers resolve them"]
   SUM -- no --> RPT
   SG --> RPT["Render findings + the manual-review to-do list"]
   RPT --> OUT([Report — exit 0 clean /<br/>1 error findings / 2 tool failure])
@@ -109,20 +109,26 @@ flowchart TD
           node_modules, so a source submission is not needed).
         </li>
         <li>
-          <strong>The summaries + recheck</strong> — the behavioral
-          <code>--full-summary</code> / <code>--diff-summary</code> describe the
-          built XPI, and the full-summary pass re-judges the escalated
-          <em>unsure</em> items with whole-add-on context.
+          <strong>The summaries + recheck</strong> — <code>--full-summary</code>
+          runs <em>two</em> passes in SCA: a behavioral summary over the readable
+          <strong>source</strong> (the human-facing "Summary of add-on", re-judging
+          the source-anchored rechecks — data exfiltration, disguised transmission,
+          unused permissions) and a recheck-only packaging summary over the built
+          <strong>XPI</strong> (the XPI-anchored rechecks — unused files,
+          <code>web_accessible_resources</code>, localization). Each pass re-judges
+          only its corpus's escalated <em>unsure</em> items. <code>--diff-summary</code>
+          still describes the built XPI.
         </li>
       </ul>
 
       <div class="outcome">
         <strong>One review, four inputs with fixed roles</strong>
-        The readable source is the deterministic review target; the source
-        <code>package.json</code> supplies the audited dependencies; the build
-        files are reviewed on their own; and the built XPI is authoritative for the
-        manifest, the experiments, the file-completeness checks, the diff baseline
-        and the behavioral summary. A check derives one from the other only through
+        The readable source is the deterministic review target and the subject of
+        the behavioral summary; the source <code>package.json</code> supplies the
+        audited dependencies; the build files are reviewed on their own; and the
+        built XPI is authoritative for the manifest, the experiments, the
+        file-completeness checks, the diff baseline and the packaging summary. A
+        check derives one from the other only through
         its declared <code>input</code>, so the source-level checks never touch the
         shipped bytes and the manifest-coupled checks never touch the source. The
         <a href="../index.html#review-standard">Standard</a> flow is the same

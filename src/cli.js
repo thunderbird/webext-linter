@@ -305,7 +305,7 @@ export function helpText() {
   const sca = [
     [
       "--sca-root <folder|zip>",
-      "The source archive root (holds package.json/lock). Switches to SCA mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the behavioral LLM audit.",
+      "The source archive root (holds package.json/lock). Switches to SCA mode - the readable source is reviewed for code defects (and is the subject of the behavioral --full-summary), its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the packaging summary.",
     ],
     [
       "--sca-source <path>",

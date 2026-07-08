@@ -72,9 +72,12 @@ function itemKey(ref) {
  * @param {RunContext} ctx
  * @param {import("../registry.js").Registry} registry
  * @param {string} nonce  The per-review nonce wrapping the item lists.
+ * @param {?Set<string>} [consumers]  When set, only these recheck-consumer ids are
+ *   emitted - the SCA split runs one summary per corpus, each carrying the consumers
+ *   anchored to that corpus. Undefined = every bucket (a single all-in-one summary).
  * @returns {{rubric: string, items: string}}
  */
-export function buildRecheckSections(ctx, registry, nonce) {
+export function buildRecheckSections(ctx, registry, nonce, consumers) {
   const buckets = ctx.recheck;
   if (!buckets || !buckets.size) {
     return { rubric: "", items: "" };
@@ -82,7 +85,7 @@ export function buildRecheckSections(ctx, registry, nonce) {
   const rubrics = [];
   const itemBlocks = [];
   for (const [id, items] of buckets) {
-    if (!items.length) {
+    if (!items.length || (consumers && !consumers.has(id))) {
       continue;
     }
     const entry = registry.checkEntry(id);

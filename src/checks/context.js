@@ -179,8 +179,9 @@ export function buildRunContext({
 /**
  * A sibling of a review context whose `addon` / `jsSources` are the SHIPPED
  * artifact's (the built XPI), for the `input: xpi` structure checks (bundled-files,
- * minimize-web-accessible-resources, ...) and the behavioral add-on summary, which
- * describe what actually ships. The orchestrator (registry.js runChecks / pipeline)
+ * minimize-web-accessible-resources, ...), the diff summary, and - in SCA - the packaging
+ * summary, which describe what actually ships. (The behavioral --full-summary describes the
+ * review target: the source in SCA.) The orchestrator (registry.js runChecks / pipeline)
  * builds this once and routes it to those consumers; every other field is shared with
  * the review context, and `apiUsages` (per-source, source-only) is dropped so the
  * shipped view never carries the source's. It REQUIRES the built XPI as an argument,

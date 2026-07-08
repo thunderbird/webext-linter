@@ -298,25 +298,34 @@ export function buildSummarizer(ctx, registry, shippedCtx = ctx) {
  * The model returns prose plus the structured recheck verdicts (the post-summary
  * recheck consumers map those to Issues). Returns null when there is no token or
  * no prompt.
+ * The corpus and its recheck consumers are chosen by the caller: an XPI review runs one
+ * all-in-one summary over ctx.addon; an SCA review runs two - a behavioral pass over the
+ * readable source (ctx.addon) and a packaging pass over the built XPI (shippedCtx.addon),
+ * each carrying only the recheck consumers anchored to its corpus (opts.consumers) and its
+ * own framing prompt (opts.promptId).
  * @param {RunContext} ctx
  * @param {Registry} registry
- * @param {{unused?: Set<string>}} [opts]  unused = files the review found
- *   unreachable.
+ * @param {{unused?: Set<string>, summaryAddon?: object, promptId?: string,
+ *   consumers?: ?Set<string>}} [opts]  unused = files the review found unreachable;
+ *   summaryAddon = the artifact to quote (defaults to the review target); promptId = the
+ *   registry framing prompt; consumers = the recheck consumers this pass carries (all when
+ *   unset).
  * @returns {?DeferredReview}
  */
 export function buildAddonSummarizer(
   ctx,
   registry,
-  // The behavioral add-on summary describes the built XPI - the actual shipped
-  // (minified) code users run, not the readable source review target. The pipeline
-  // passes the shipped artifact as summaryAddon; it defaults to ctx.addon (an XPI
-  // review, where the two are one).
-  { unused = new Set(), summaryAddon = ctx.addon } = {}
+  {
+    unused = new Set(),
+    summaryAddon = ctx.addon,
+    promptId = "add-on-summary",
+    consumers,
+  } = {}
 ) {
   if (!ctx?.llm) {
     return null;
   }
-  const prompt = registry.prompt("add-on-summary");
+  const prompt = registry.prompt(promptId);
   if (!prompt) {
     return null;
   }
@@ -327,8 +336,8 @@ export function buildAddonSummarizer(
   }
   // Items earlier checks handed to a post-summary recheck consumer (ctx.recheck):
   // the trusted RUBRICS join the system prompt; the untrusted ITEM lists are wrapped
-  // into the user data. Empty (and a no-op) when nothing was handed over.
-  const { rubric, items } = buildRecheckSections(ctx, registry, nonce);
+  // into the user data. Restricted to this pass's consumers; empty when none carry items.
+  const { rubric, items } = buildRecheckSections(ctx, registry, nonce, consumers);
   return deferredReview(ctx, {
     system: `${framing(nonce)}\n\n${prompt}${rubric ? `\n\n${rubric}` : ""}`,
     user: items ? `${text}\n\n${items}` : text,

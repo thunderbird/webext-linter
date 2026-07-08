@@ -185,6 +185,32 @@ test("buildRecheckSections composes a labeled section per consumer", () => {
   assert.ok(rubric.includes('labeled "Unused permission"'));
 });
 
+// The SCA split runs one summary per corpus; each passes a `consumers` set so its prompt
+// carries only the recheck consumers anchored to that corpus. Buckets outside the set are
+// omitted (they ride the other corpus's summary).
+test("buildRecheckSections restricts to the given consumers", () => {
+  const registry = {
+    checkEntry: (id) => ({ "summary-prompt": `RUBRIC for ${id}` }),
+  };
+  const ctx = {
+    recheck: new Map([
+      ["data-exfiltration-recheck", [handed("bg.js:4", 4)]],
+      ["unused-files-recheck", [handed("lib/x.js", 1)]],
+    ]),
+  };
+  const { rubric, items } = buildRecheckSections(
+    ctx,
+    registry,
+    "NONCE",
+    new Set(["data-exfiltration-recheck"])
+  );
+  assert.ok(rubric.includes("recheck: data-exfiltration-recheck"));
+  assert.ok(items.includes("- bg.js:4"));
+  // The XPI-anchored consumer is not in this (source) pass.
+  assert.ok(!rubric.includes("unused-files-recheck"));
+  assert.ok(!items.includes("lib/x.js"));
+});
+
 // The bullet label falls back to the check id when the consumer entry has no title.
 test("buildRecheckSections labels the bullet with the id when no title", () => {
   const registry = {

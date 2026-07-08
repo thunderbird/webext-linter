@@ -1224,10 +1224,6 @@ llm-checks:
   check: data-exfiltration
   input: auto
   post-summary-recheck: data-exfiltration-recheck
-  # The recheck keys on file:line of the SOURCE candidate, which cannot bridge to
-  # the XPI behavioral summary in SCA mode - so there the unsure sites route
-  # straight to manual review instead of the summary (see runChecks).
-  sca-recheck: false
   prompt: |-
     Each candidate is a site (file:line) that sends data to a remote server (via
     fetch, XMLHttpRequest, WebSocket, EventSource, or sendBeacon). Sending user
@@ -1284,9 +1280,6 @@ llm-checks:
   check: disguised-transmission
   input: auto
   post-summary-recheck: disguised-transmission-recheck
-  # Per-site (file:line) recheck: cannot bridge to the XPI summary in SCA mode, so
-  # the unsure sites route straight to manual review there (see runChecks).
-  sca-recheck: false
   prompt: |-
     Each candidate is a site (file:line) that builds a covert channel - a resource
     URL (image/iframe/media src or href), a stylesheet url(), a window.open(), or a
@@ -1536,6 +1529,19 @@ prompts:
     in the overview and not only in the structured result.
     This is an advisory overview. The formal findings in the review report above are
     authoritative, not this summary.
+  shipped-package-summary: |-
+    Review the BUILT, SHIPPED package of this Thunderbird WebExtension add-on from its
+    files below and report by calling the report_addon_review tool. This pass judges
+    only the PACKAGING questions about the shipped artifact that the "recheck:" sections
+    below list - which packaged files are reachable at runtime, whether each
+    web_accessible_resources entry is needed, and whether the user-facing text is
+    localized. Do NOT assess the add-on's behavior, security, data flow, or permissions:
+    that review is done separately over the readable source.
+    Each recheck section names a check id and lists items to judge against that section's
+    rubric; fill the "recheck" field with one entry per listed item, giving the matching
+    check id, the exact item text, your verdict, and a one-sentence reason. Judge only
+    the listed items and never add others. The "summary" prose field is not shown to the
+    reviewer, so keep it brief.
   vendor-parse: |-
     The text below is an add-on’s VENDOR file: a developer’s free-form list of the
     bundled third-party library files it ships, each with the source URL it was

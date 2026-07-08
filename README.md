@@ -97,7 +97,7 @@ The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `bann
 
 | Option | Description |
 | --- | --- |
-| `--sca-root <folder\|zip>` | The source archive root (holds `package.json`/lock). Switches to SCA mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the behavioral LLM audit. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
+| `--sca-root <folder\|zip>` | The source archive root (holds `package.json`/lock). Switches to SCA mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the packaging summary (the behavioral `--full-summary` reviews the readable source). See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
 | `--sca-source <path>` | The add-on code root, relative to `--sca-root` or an absolute path (e.g. `src` or `addon`). Optional; defaults to `.` (the whole `--sca-root` reviewed as the source - a flat layout with `manifest.json` at the root). Needs `--sca-root`. |
 | `--sca-exp-source <path>` | The Experiment implementation folder, relative to `--sca-root` or an absolute path, and within `--sca-source` (e.g. `addon/experiment-api`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--sca-root`; required when `--allow-experiments` is used in SCA mode. |
 
@@ -190,7 +190,8 @@ node verify.js built.xpi --sca-root ./source-archive --sca-source src
   (a build that only vendors `node_modules` should ship as a plain XPI + vendoring).
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest, the experiments, the file-completeness checks (bundled / web-accessible
-  / unused / locales), the `--diff-to` baseline, and the behavioral LLM audit.
+  / unused / locales), the `--diff-to` baseline, and the packaging summary. The
+  behavioral `--full-summary` reviews the readable source instead (see below).
 - `--sca-exp-source` names an Experiment implementation folder - relative to
   `--sca-root` (or absolute), and within `--sca-source` (e.g. `addon/experiment-api`)
   - so its privileged, non-WebExtension code is excluded from the WebExtension checks

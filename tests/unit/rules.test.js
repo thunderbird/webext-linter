@@ -59,6 +59,7 @@ import {
   loadChecks,
   loadRegistry,
   runOneCheck,
+  runChecks,
 } from "../../src/checks/registry.js";
 import { finding, SEVERITY } from "../../src/report/finding.js";
 import unknownApi from "../../src/checks/rules/unknown-api.js";
@@ -822,16 +823,61 @@ test("build-source-redundant fires only on the sca-redundant classification", ()
   }
 });
 
-// sca-recheck: the per-site (file:line) recheck producers are marked so runChecks
-// routes their unsure sites to manual review in SCA (their source line numbers
-// cannot bridge to the XPI behavioral summary); other recheck producers are not.
-test("the per-site recheck producers carry scaRecheck=false", async () => {
-  const checks = await loadChecks(loadRegistry());
-  const scaRecheck = (id) => checks.find((x) => x.id === id)?.scaRecheck;
-  assert.equal(scaRecheck("data-exfiltration"), false);
-  assert.equal(scaRecheck("disguised-transmission"), false);
-  // A non-line-anchored recheck (re-judged fine against the XPI summary) is not.
-  assert.equal(scaRecheck("unused-permission"), undefined);
+// The SCA summary split partitions the recheck CONSUMERS by their producer's corpus:
+// input:auto producers read the source, input:xpi producers read the built XPI. Each
+// consumer bridges only to the summary of its own corpus.
+test("recheckConsumersByCorpus partitions consumers by their producer's input", () => {
+  const { source, xpi } = loadRegistry().recheckConsumersByCorpus();
+  // source-anchored (producer input: auto)
+  assert.ok(source.has("data-exfiltration-recheck"));
+  assert.ok(source.has("disguised-transmission-recheck"));
+  assert.ok(source.has("unused-permission"));
+  // XPI-anchored (producer input: xpi)
+  assert.ok(xpi.has("unused-files-recheck"));
+  assert.ok(xpi.has("minimize-web-accessible-resources-recheck"));
+  assert.ok(xpi.has("missing-english-localization-recheck"));
+  // disjoint
+  assert.equal([...source].filter((c) => xpi.has(c)).length, 0);
+});
+
+// In SCA the summary runs once per corpus, so a source-anchored recheck (data-exfiltration,
+// input: auto) bridges to the source summary: its unsure sites divert to the recheck bucket
+// like any other producer, rather than routing straight to manual review.
+test("SCA diverts a source-anchored recheck to the summary", async () => {
+  const mk = (obj) =>
+    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
+  const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
+  // A remote fetch carrying a body -> data-exfiltration escalates it (ambiguous consent).
+  const addon = {
+    files: mk({
+      "manifest.json": JSON.stringify(manifest),
+      "bg.js": `const data = "x";\nfetch("https://api.example.com/", { body: data });`,
+    }),
+    manifest,
+  };
+  const ctx = withManifest({
+    addon,
+    jsSources: collectJsSources(addon),
+    schema,
+    mode: "sca",
+    recheckActive: true,
+    options: {},
+    // The per-site adjudication returns unsure, so the site becomes a manual item the
+    // divert then routes.
+    llm: {
+      evaluate: async (req) =>
+        new Map(req.candidates.map((c) => [c.id, { verdict: "unsure" }])),
+    },
+  });
+  const out = await runChecks(ctx, loadRegistry(), {
+    only: ["data-exfiltration"],
+  });
+  // Diverted to the summary (source corpus), not left in manual review.
+  assert.ok(
+    ctx.recheck?.get("data-exfiltration-recheck")?.length,
+    "the exfiltration site is handed to the recheck consumer in SCA"
+  );
+  assert.ok(!out.manualItems.some((m) => m.file === "bg.js"));
 });
 
 // ---- unsupported-build-tool (SCA deterministic: npm/pnpm only) ----
