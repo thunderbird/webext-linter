@@ -49,45 +49,36 @@ own manifest — no channel flag. Two dimensions:
   `version_added` checks still flag genuinely unsupported APIs.
 
 To compare the channels' versions the cache holds the full set (every channel ×
-both manifest versions). The first run — or any `--schema-force-refresh` — fetches
-them all together so their versions stay on one train.
+both manifest versions), fetched together so their versions stay on one train.
 
 The options, grouped as in `--help`:
 
-**Schema selection** (channel and `manifest_version` are auto-detected):
+**Cache:** the schema, the library-hash DB and the allowed-experiments list are each
+downloaded once and reused; the CDN lookup cache fills incrementally as a best-effort
+side-channel (it backs the optional `--cdn-lib-lookup`, so an offline run without it
+simply finds no match).
 
 | Option | Description |
 | --- | --- |
-| `--schema-cache <dir>` | Where downloaded schema zips are cached (default `.schema-cache`). Pre-seed it for a fully offline run. |
-| `--schema-force-refresh` | Re-download all schemas (every channel) even if cached copies exist. |
-
-**Library identification:**
-
-| Option | Description |
-| --- | --- |
-| `--lib-mozilla-hash-db-cache <dir>` | Where the fetched hash database (the addons-linter "dispensary" `hashes.txt`, used by `missing-library` to identify a bundled library by its exact content hash) is cached (default `.lib-mozilla-hash-db-cache`). Pre-seed it for a fully offline run. |
-| `--lib-mozilla-hash-db-refresh` | Re-download the hash database even if a cached copy exists. |
-| `--lib-cdn-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached; an offline run simply finds no match. |
-| `--lib-cdn-lookup-cache <dir>` | Where the CDN hash-lookup results are cached (default `.lib-cdn-lookup-cache`). |
+| `--cache-clear` | Delete every cache directory below before the review, so all fetched sources (schema, library-hash DB, CDN lookups, allowed-experiments) are re-downloaded from scratch — as on a first run. |
+| `--cache-schema-dir <dir>` | Where the downloaded schema zips are cached (default `.schema-cache`). |
+| `--cache-hash-db-dir <dir>` | Where the fetched library-hash database (the addons-linter "dispensary" `hashes.txt`, used by `missing-library` to identify a bundled library by its exact content hash) is cached (default `.lib-mozilla-hash-db-cache`). |
+| `--cache-cdn-lookup-dir <dir>` | Where the jsDelivr CDN hash-lookup results are cached — best-effort, backing the optional `--cdn-lib-lookup` (default `.lib-cdn-lookup-cache`). |
+| `--cache-experiments-dir <dir>` | Where the fetched allowed-experiments zip (the Thunderbird Draft-API list feeding the Experiment checks, e.g. `experiment-modified`) is cached (default `.experiments-cache`). |
 
 The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `banned-library`) is curated by hand from Mozilla's [addons-linter third-party library docs](https://github.com/mozilla/addons-linter/blob/master/docs/third-party-libraries.md), since Mozilla ships no machine-readable list — monitor that page and update the file when the policy changes.
-
-**Thunderbird Draft APIs:**
-
-| Option | Description |
-| --- | --- |
-| `--experiments-cache <dir>` | Where the fetched allowed-experiments zip (the Thunderbird Draft-API list feeding the Experiment checks, e.g. `experiment-modified`) is cached (default `.experiments-cache`). Pre-seed it for a fully offline run. |
-| `--experiments-force-refresh` | Re-download the allowed-experiments list even if a cached copy exists. |
 
 **Offline / air-gapped runs:** the schema, the library-hash database, and the
 allowed-experiments list are the networked inputs a review *hard-requires* (an
 unavailable one is a fatal error), and each is cache-first. On a machine with network
-access, run the review once (or `--*-force-refresh`) to populate the three cache
-directories, then copy them to the offline host and point the matching `--*-cache`
-flags at them. The remaining network calls degrade gracefully offline: the jsDelivr
-CDN lookup finds no match (or disable it with `--lib-cdn-lookup false`), and an SCA
-dependency audit's OSV/registry queries fall back to manual review. (Pre-seeding the
-three caches is exactly what the test suite does; see `tests/seed-caches.js`.)
+access, run the review once to populate those three cache directories, then copy them
+to the offline host and point `--cache-schema-dir` / `--cache-hash-db-dir` /
+`--cache-experiments-dir` at them; `--cache-clear` forces a fresh re-fetch of
+everything. The remaining network calls degrade gracefully offline, so their caches
+need not be copied: the jsDelivr CDN lookup finds no match (or disable it with
+`--cdn-lib-lookup false`), and an SCA dependency audit's OSV/registry queries fall
+back to manual review.
+(Pre-seeding the caches is exactly what the test suite does; see `tests/seed-caches.js`.)
 
 **Check selection:**
 
@@ -124,6 +115,7 @@ three caches is exactly what the test suite does; see `tests/seed-caches.js`.)
 | Option | Description |
 | --- | --- |
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
+| `--cdn-lib-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached; an offline run simply finds no match. |
 | `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
 | `--diff-summary` | Add an AI assisted **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and `--llm-enabled`. |
 | `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes - from its (almost) full current source (vendored and unused files excluded). The same pass also **re-checks the unsure items** other checks escalated (including any permissions), judging them with full-add-on context, so confident cases resolve instead of landing in manual review (see [LLM checks](#llm-checks)). Advisory, not a finding. Needs `--llm-enabled`. |

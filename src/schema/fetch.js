@@ -37,8 +37,8 @@ export function schemaBranch(channel, mv) {
 
 /**
  * The canonical set of branches the cache must hold: every channel × manifest
- * version. Auto-population and --schema-force-refresh both operate on this whole
- * set, so the anchors stay mutually fresh (all from the same schema train).
+ * version. The whole set is (re)fetched together, so the anchors stay mutually
+ * fresh (all from the same schema train).
  * @returns {string[]}
  */
 export function allSchemaBranches() {
@@ -69,9 +69,10 @@ export function hasAllCachedSchemas(cacheDir) {
 }
 
 /**
- * (Re)download the whole canonical branch set into the cache. Used both to
- * populate an empty/partial cache and to service --schema-force-refresh, so the
- * six branches are always fetched together (same train).
+ * (Re)download the whole canonical branch set into the cache, to populate an
+ * empty/partial cache or re-sync a corrupt one, so the six branches are always
+ * fetched together (same train). `refresh:true` re-downloads even branches that
+ * happen to already exist, keeping the whole set on one train.
  * @param {{cacheDir: string}} opts
  * @returns {Promise<void>}
  */

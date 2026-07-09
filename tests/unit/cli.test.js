@@ -21,11 +21,11 @@ const REVIEW = path.join(ROOT, "verify.js");
 // fully offline.
 const CACHE = seedFixtureCache();
 const OFFLINE_FLAGS = [
-  "--schema-cache",
+  "--cache-schema-dir",
   CACHE,
-  "--lib-mozilla-hash-db-cache",
+  "--cache-hash-db-dir",
   CACHE,
-  "--experiments-cache",
+  "--cache-experiments-dir",
   CACHE,
 ];
 
@@ -61,6 +61,69 @@ test("unknown option errors cleanly (no -- separator hint)", () => {
   assert.equal(r.code, 2);
   assert.match(r.stderr, /Unknown option '--bogusflag'/);
   assert.doesNotMatch(r.stderr, /To specify a positional argument/);
+});
+
+// None of these flag strings is a valid option; passing any of them is an
+// "Unknown option" error (exit 2). Guards the CLI surface against their return.
+test("unrecognized cache/cdn flag strings are unknown options", () => {
+  for (const flag of [
+    "--schema-force-refresh",
+    "--schema-cache",
+    "--lib-mozilla-hash-db-cache",
+    "--experiments-cache",
+    "--lib-cdn-lookup",
+  ]) {
+    const r = run(["x.xpi", flag, "v"]);
+    assert.equal(r.code, 2, `${flag} should exit 2`);
+    assert.match(r.stderr, /Unknown option/, `${flag} should be unknown`);
+  }
+});
+
+// The renamed cache/cdn flags map to the internal pipeline opts.
+test("cache/cdn flags map to the pipeline opts", () => {
+  assert.equal(pipelineOptsFromArgv([]).cdnLookup, true); // default on
+  assert.equal(
+    pipelineOptsFromArgv(["--cdn-lib-lookup", "false"]).cdnLookup,
+    false
+  );
+  const o = pipelineOptsFromArgv([
+    "--cache-schema-dir",
+    "/a",
+    "--cache-hash-db-dir",
+    "/b",
+    "--cache-cdn-lookup-dir",
+    "/c",
+    "--cache-experiments-dir",
+    "/d",
+  ]);
+  assert.equal(o.schemaCache, "/a");
+  assert.equal(o.libraryHashesCache, "/b");
+  assert.equal(o.cdnLookupCache, "/c");
+  assert.equal(o.experimentsCache, "/d");
+});
+
+// --cache-clear wipes the cache directories before the review (so every source
+// re-fetches from scratch). ALL FOUR --cache-*-dir point at one temp dir so the
+// delete touches nothing else, and a nonexistent add-on makes runPipeline fail at
+// load (before any network) - we assert only that the stale cache file was deleted.
+test("--cache-clear deletes the cache directories before the review", () => {
+  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-clear-"));
+  const stale = path.join(cacheDir, "webext-annotated-schemas-junk.zip");
+  fs.writeFileSync(stale, "stale");
+  run([
+    "/no/such/addon.xpi",
+    "--cache-clear",
+    "--cache-schema-dir",
+    cacheDir,
+    "--cache-hash-db-dir",
+    cacheDir,
+    "--cache-cdn-lookup-dir",
+    cacheDir,
+    "--cache-experiments-dir",
+    cacheDir,
+  ]);
+  assert.ok(!fs.existsSync(stale), "the stale cache file was cleared");
+  fs.rmSync(cacheDir, { recursive: true, force: true });
 });
 
 // A pipeline hard-fail the review could not run through (here a missing add-on; an

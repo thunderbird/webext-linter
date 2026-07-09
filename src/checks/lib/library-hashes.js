@@ -26,7 +26,6 @@ export function cachedHashesPath(cacheDir) {
 /**
  * @typedef {object} ResolveLibraryHashesOpts
  * @property {string} [cacheDir]  Where to cache the downloaded file.
- * @property {boolean} [refresh]  Re-download even if a cached copy exists.
  */
 
 /**
@@ -43,11 +42,10 @@ export function cachedHashesPath(cacheDir) {
  */
 export async function resolveLibraryHashes({
   cacheDir = LIBRARY_HASHES_CACHE,
-  refresh = false,
 } = {}) {
   fs.mkdirSync(cacheDir, { recursive: true });
   const cached = cachedHashesPath(cacheDir);
-  if (fs.existsSync(cached) && !refresh) {
+  if (fs.existsSync(cached)) {
     debug(`Using cached library hashes: ${cached}`);
     return { text: fs.readFileSync(cached, "utf8"), source: "cache" };
   }

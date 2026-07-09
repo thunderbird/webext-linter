@@ -3,7 +3,7 @@
 // modules. CLI flags override the defaults at runtime. The toggles have no flag
 // and are changed here, where each records why it has its value.
 
-/** Directory where fetched schema zips are cached (--schema-cache default). */
+/** Directory where fetched schema zips are cached (--cache-schema-dir default). */
 export const DEFAULT_CACHE = ".schema-cache";
 
 /**
@@ -17,7 +17,7 @@ export const EXPERIMENTS_REPO = "thunderbird/webext-experiments";
 export const EXPERIMENTS_BRANCH = "main";
 
 /**
- * Directory where the fetched experiments zip is cached (--experiments-cache).
+ * Directory where the fetched experiments zip is cached (--cache-experiments-dir).
  */
 export const EXPERIMENTS_CACHE = ".experiments-cache";
 
@@ -31,11 +31,10 @@ export const LIBRARY_HASHES_URL =
   "https://raw.githubusercontent.com/mozilla/dispensary/master/src/hashes.txt";
 
 /**
- * Directory where the fetched library hashes are cached
- * (--lib-mozilla-hash-db-cache). The internal names (LIBRARY_HASHES_*,
- * library-hashes.js) keep the accurate "Mozilla dispensary hashes.txt"
- * description; the user-facing --lib-* flag/dir is the discoverable label,
- * mapped to the internal opts once, in cli.js.
+ * Directory where the fetched library hashes are cached (--cache-hash-db-dir).
+ * The internal names (LIBRARY_HASHES_*, library-hashes.js) keep the accurate
+ * "Mozilla dispensary hashes.txt" description; the user-facing --cache-* flag is
+ * the discoverable label, mapped to the internal opts once, in cli.js.
  */
 export const LIBRARY_HASHES_CACHE = ".lib-mozilla-hash-db-cache";
 
@@ -48,7 +47,7 @@ export const LIBRARY_HASHES_CACHE = ".lib-mozilla-hash-db-cache";
  */
 export const CDN_LOOKUP_URL = "https://data.jsdelivr.com/v1/lookup/hash/";
 
-/** Directory where CDN hash-lookup results are cached (--lib-cdn-lookup-cache). */
+/** Directory where CDN hash-lookup results are cached (--cache-cdn-lookup-dir). */
 export const CDN_LOOKUP_CACHE = ".lib-cdn-lookup-cache";
 
 /**

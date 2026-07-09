@@ -120,7 +120,7 @@ const HELP_COL = 32;
  * Format one option row for the help screen: the flag left-aligned in the fixed
  * column, its description wrapped to 80 columns with continuation lines hanging
  * under the description.
- * @param {string} flag  The flag and its argument, e.g. "--schema-cache <dir>".
+ * @param {string} flag  The flag and its argument, e.g. "--cache-schema-dir <dir>".
  * @param {string} desc  The description prose.
  * @returns {string}
  */
@@ -195,44 +195,26 @@ function resolveLlm(values) {
  * @returns {string}
  */
 export function helpText() {
-  const schema = [
+  const cache = [
     [
-      "--schema-cache <dir>",
-      `Where downloaded schema zips are cached (default: ${DEFAULT_CACHE}).`,
+      "--cache-clear",
+      "Delete every cache directory before the review, so all fetched sources (schema, library-hash DB, CDN lookups, allowed-experiments) are re-downloaded from scratch - as on a first run.",
     ],
     [
-      "--schema-force-refresh",
-      "Re-download all schemas (every channel) even if cached copies exist.",
-    ],
-  ];
-
-  const libraryId = [
-    [
-      "--lib-mozilla-hash-db-cache <dir>",
-      `Where the fetched library hashes are cached (default: ${LIBRARY_HASHES_CACHE}).`,
+      "--cache-schema-dir <dir>",
+      `Where the downloaded schema zips are cached (default: ${DEFAULT_CACHE}).`,
     ],
     [
-      "--lib-mozilla-hash-db-refresh",
-      "Re-download the library hashes even if a cached copy exists.",
+      "--cache-hash-db-dir <dir>",
+      `Where the fetched library-hash database is cached (default: ${LIBRARY_HASHES_CACHE}).`,
     ],
     [
-      "--lib-cdn-lookup <true|false>",
-      "Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default: true). Results are cached; an offline run simply finds no match.",
+      "--cache-cdn-lookup-dir <dir>",
+      `Where the CDN hash-lookup results are cached - best-effort, backing the optional --cdn-lib-lookup (default: ${CDN_LOOKUP_CACHE}).`,
     ],
     [
-      "--lib-cdn-lookup-cache <dir>",
-      `Where the CDN hash-lookup results are cached (default: ${CDN_LOOKUP_CACHE}).`,
-    ],
-  ];
-
-  const draftApis = [
-    [
-      "--experiments-cache <dir>",
+      "--cache-experiments-dir <dir>",
       `Where the fetched allowed-experiments zip is cached (default: ${EXPERIMENTS_CACHE}).`,
-    ],
-    [
-      "--experiments-force-refresh",
-      "Re-download the allowed-experiments list even if a cached copy exists.",
     ],
   ];
 
@@ -301,6 +283,10 @@ export function helpText() {
       "Accept add-ons that use Experiment APIs (off by default).",
     ],
     [
+      "--cdn-lib-lookup <true|false>",
+      "Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default: true). Results are cached; an offline run simply finds no match.",
+    ],
+    [
       "--diff-to <xpi|folder>",
       "Previously published version, to diff against.",
     ],
@@ -333,14 +319,8 @@ export function helpText() {
     "Usage:",
     ...commands.map(([cmd, desc]) => optionLine(cmd, desc)),
     "",
-    "Schema selection (channel and manifest_version are auto-detected):",
-    ...schema.map(([flag, desc]) => optionLine(flag, desc)),
-    "",
-    "Library identification:",
-    ...libraryId.map(([flag, desc]) => optionLine(flag, desc)),
-    "",
-    "Thunderbird Draft APIs:",
-    ...draftApis.map(([flag, desc]) => optionLine(flag, desc)),
+    "Cache:",
+    ...cache.map(([flag, desc]) => optionLine(flag, desc)),
     "",
     "Check selection:",
     ...checks.map(([flag, desc]) => optionLine(flag, desc)),
@@ -367,14 +347,12 @@ export function helpText() {
 }
 
 const OPTIONS = {
-  "schema-cache": { type: "string" },
-  "schema-force-refresh": { type: "boolean" },
-  "lib-mozilla-hash-db-cache": { type: "string" },
-  "lib-mozilla-hash-db-refresh": { type: "boolean" },
-  "lib-cdn-lookup": { type: "string" },
-  "lib-cdn-lookup-cache": { type: "string" },
-  "experiments-cache": { type: "string" },
-  "experiments-force-refresh": { type: "boolean" },
+  "cache-clear": { type: "boolean" },
+  "cache-schema-dir": { type: "string" },
+  "cache-hash-db-dir": { type: "string" },
+  "cache-cdn-lookup-dir": { type: "string" },
+  "cache-experiments-dir": { type: "string" },
+  "cdn-lib-lookup": { type: "string" },
   "checks-only": { type: "string" },
   "checks-skip": { type: "string" },
   eslint: { type: "boolean" },
@@ -529,11 +507,25 @@ export async function main(argv) {
   const interactive =
     format === "text" && Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
+  const opts = pipelineOptsFromValues(values);
+  // --cache-clear: wipe every cache dir up front so the resolvers re-fetch each
+  // source from scratch during this review, exactly as on a first run. Lists every
+  // cache dir opt - a new cache added to pipelineOptsFromValues must be added here
+  // too, or --cache-clear would silently skip it.
+  if (values["cache-clear"]) {
+    clearCaches([
+      opts.schemaCache,
+      opts.libraryHashesCache,
+      opts.cdnLookupCache,
+      opts.experimentsCache,
+    ]);
+  }
+
   let result;
   try {
     result = await runPipeline({
       addonPath: positionals[0],
-      ...pipelineOptsFromValues(values),
+      ...opts,
       // The reviewer review-page URL is a text-report extra (JSON omits it).
       reviewUrl: format === "text",
       confirmMore: interactive ? confirmMoreLlmRequests : undefined,
@@ -619,6 +611,18 @@ export async function main(argv) {
 }
 
 /**
+ * Delete cache directories so the next review re-fetches every source from
+ * scratch (--cache-clear). `force:true` makes an already-absent dir a no-op.
+ * @param {string[]} dirs
+ * @returns {void}
+ */
+function clearCaches(dirs) {
+  for (const dir of dirs) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
  * Map parsed CLI `values` (from parseArgs with OPTIONS) to runPipeline opts.
  * Shared by main() and the test harness so both honor the real flag names.
  * Does not include `action`/`addonPath` (those come from the command/path).
@@ -628,16 +632,12 @@ export async function main(argv) {
 function pipelineOptsFromValues(values) {
   const llm = resolveLlm(values);
   return {
-    schemaCache: values["schema-cache"] || DEFAULT_CACHE,
-    schemaForceRefresh: values["schema-force-refresh"],
-    libraryHashesCache:
-      values["lib-mozilla-hash-db-cache"] || LIBRARY_HASHES_CACHE,
-    libraryHashesForceRefresh: values["lib-mozilla-hash-db-refresh"],
-    // --lib-cdn-lookup true|false (default true); only an explicit "false" disables.
-    cdnLookup: values["lib-cdn-lookup"] !== "false",
-    cdnLookupCache: values["lib-cdn-lookup-cache"] || CDN_LOOKUP_CACHE,
-    experimentsCache: values["experiments-cache"] || EXPERIMENTS_CACHE,
-    experimentsForceRefresh: values["experiments-force-refresh"],
+    schemaCache: values["cache-schema-dir"] || DEFAULT_CACHE,
+    libraryHashesCache: values["cache-hash-db-dir"] || LIBRARY_HASHES_CACHE,
+    cdnLookupCache: values["cache-cdn-lookup-dir"] || CDN_LOOKUP_CACHE,
+    experimentsCache: values["cache-experiments-dir"] || EXPERIMENTS_CACHE,
+    // --cdn-lib-lookup true|false (default true); only an explicit "false" disables.
+    cdnLookup: values["cdn-lib-lookup"] !== "false",
     checksOnly: splitList(values["checks-only"]),
     checksSkip: splitList(values["checks-skip"]),
     eslint: values.eslint,

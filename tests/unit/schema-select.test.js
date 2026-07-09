@@ -198,7 +198,6 @@ test("resolveReviewSchema: uncapped mv3 → release, one setup step, offline", a
     let steps = 0;
     const r = await resolveReviewSchema({
       cacheDir: dir,
-      forceRefresh: false,
       manifest: {
         manifest_version: 3,
         browser_specific_settings: { gecko: {} },
@@ -219,7 +218,6 @@ test("resolveReviewSchema: strict_max 140.* mv3 → esr (backport case), offline
     seedCache(dir, { release: "152.0.1", esr: "140.11.1esr", beta: "153.0" });
     const r = await resolveReviewSchema({
       cacheDir: dir,
-      forceRefresh: false,
       manifest: {
         manifest_version: 3,
         browser_specific_settings: { gecko: { strict_max_version: "140.*" } },

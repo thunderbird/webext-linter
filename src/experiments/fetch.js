@@ -31,7 +31,6 @@ export function cachedExperimentsPath(cacheDir, branch) {
  * @typedef {object} ResolveExperimentsZipOpts
  * @property {string} [branch]  Branch to download (default EXPERIMENTS_BRANCH).
  * @property {string} [cacheDir]  Where to store the downloaded zip.
- * @property {boolean} [refresh]  Re-download even if a cached copy exists.
  */
 
 /**
@@ -45,12 +44,11 @@ export function cachedExperimentsPath(cacheDir, branch) {
 export async function resolveExperimentsZip({
   branch = EXPERIMENTS_BRANCH,
   cacheDir,
-  refresh = false,
 } = {}) {
   fs.mkdirSync(cacheDir, { recursive: true });
   const cached = cachedExperimentsPath(cacheDir, branch);
 
-  if (fs.existsSync(cached) && !refresh) {
+  if (fs.existsSync(cached)) {
     debug(`Using cached experiments zip: ${cached}`);
     return { zipPath: cached, source: `cache:${branch}` };
   }

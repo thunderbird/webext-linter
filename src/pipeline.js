@@ -108,10 +108,8 @@ import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
  * @typedef {object} PipelineOpts
  * @property {string} addonPath
  * @property {string} [schemaCache]
- * @property {boolean} [schemaForceRefresh]
  * @property {string} [experimentsCache]  Where to cache the fetched experiments
  *   zip.
- * @property {boolean} [experimentsForceRefresh]  Re-fetch the allow-list.
  * @property {string[]} [checksOnly]
  * @property {string[]} [checksSkip]
  * @property {boolean} [eslint]  Run the opt-in ESLint code-sanity check (off by
@@ -136,10 +134,9 @@ import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
  *   REQUIRED when allowExperiments is set in SCA mode (the CLI enforces this) -
  *   without it, Experiment code cannot be told apart from WebExtension code.
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
- * @property {boolean} [libraryHashesForceRefresh]  Re-fetch the library hashes.
  * @property {boolean} [cdnLookup]  Identify an unrecognized bundled library (minified,
  *   or a large readable file) by a jsDelivr content-hash lookup (on by default;
- *   --lib-cdn-lookup false disables). Set false to skip the per-file CDN request
+ *   --cdn-lib-lookup false disables). Set false to skip the per-file CDN request
  *   (offline/privacy).
  * @property {string} [cdnLookupCache]  Where to cache the CDN hash-lookup results.
  * @property {string} [diffTo]  Path to the previous published version.
@@ -390,7 +387,6 @@ export async function runPipeline(opts) {
     channel: schemaChannel,
   } = await resolveReviewSchema({
     cacheDir: opts.schemaCache ?? DEFAULT_CACHE,
-    forceRefresh: opts.schemaForceRefresh ?? false,
     manifest: xpiAddon.manifest,
     setupStep,
   });
@@ -423,7 +419,6 @@ export async function runPipeline(opts) {
     setupStep("Fetching library hashes");
     const { text: libraryHashesText } = await resolveLibraryHashes({
       cacheDir: opts.libraryHashesCache,
-      refresh: opts.libraryHashesForceRefresh,
     });
     libraryHashes = parseLibraryHashes(libraryHashesText);
 
@@ -1156,14 +1151,12 @@ export function peekBranchMajor(cacheDir, branch) {
  *
  * @param {object} params
  * @param {string} params.cacheDir      Schema cache directory.
- * @param {boolean} params.forceRefresh Re-download the whole canonical set.
  * @param {import("./addon/load.js").Manifest} params.manifest  Shipped manifest.
  * @param {(label: string) => void} [params.setupStep]  Setup-feed narrator.
  * @returns {Promise<{zipPath: string, source: string, branch: string, channel: string}>}
  */
 export async function resolveReviewSchema({
   cacheDir,
-  forceRefresh,
   manifest,
   setupStep = () => {},
 }) {
@@ -1180,15 +1173,14 @@ export async function resolveReviewSchema({
 
   // Schema resolution is ONE numbered setup step (the counter is pre-sized), so
   // fire setupStep exactly once on every path. The cache must be COMPLETE and
-  // READABLE: a forced refresh, a missing branch, or a corrupt anchor (fewer
-  // readable candidates than channels) re-downloads all six together so they share
-  // one train - the slow, narrated step. Refreshing on corruption self-heals
-  // rather than silently reviewing against the wrong channel. With the cache
-  // already complete and readable, the step is nominal and names the chosen branch.
+  // READABLE: a missing branch or a corrupt anchor (fewer readable candidates than
+  // channels) re-downloads all six together so they share one train - the slow,
+  // narrated step. Refreshing on corruption self-heals rather than silently
+  // reviewing against the wrong channel. With the cache already complete and
+  // readable, the step is nominal and names the chosen branch.
   let stepped = false;
   let candidates = readAnchors();
   if (
-    forceRefresh ||
     !hasAllCachedSchemas(cacheDir) ||
     candidates.length < SCHEMA_CHANNELS.length
   ) {
@@ -1206,7 +1198,7 @@ export async function resolveReviewSchema({
     ).map((c) => branchName(c, mv.version));
     throw new Error(
       `Schema cache unusable: no readable version stamp for ${bad.join(", ")} even after refresh. ` +
-        "Clear the schema cache and re-run (check network access to the schema source)."
+        "Re-run with --cache-clear (and check network access to the schema source)."
     );
   }
 
