@@ -3,12 +3,6 @@
 // modules. CLI flags override the defaults at runtime. The toggles have no flag
 // and are changed here, where each records why it has its value.
 
-/** Schema channel fetched when --schema-channel is not given. */
-export const DEFAULT_CHANNEL = "release";
-
-/** The channels --schema-channel accepts. */
-export const VALID_CHANNELS = ["release", "beta", "esr"];
-
 /** Directory where fetched schema zips are cached (--schema-cache default). */
 export const DEFAULT_CACHE = ".schema-cache";
 

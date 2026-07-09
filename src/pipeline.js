@@ -7,18 +7,27 @@
 // repacks the submission.
 //
 // Belongs here: the stage orchestration (runPipeline, reviewAddon) and the
-// pipeline-level schema-branch helpers (chooseBranch, detectManifestVersion).
+// pipeline-level schema-selection helpers (resolveReviewSchema,
+// selectSchemaChannel, detectManifestVersion).
 //
-// Does NOT belong here: the channel/cache/model defaults and behavior toggles -
-// src/config.js. Argv parse, validation, and printing (src/cli.js and
+// Does NOT belong here: the cache/model defaults and behavior toggles -
+// src/config.js. The schema channel set + branch names - src/schema/fetch.js.
+// Argv parse, validation, and printing (src/cli.js and
 // src/report/format.js); each stage's own work - add-on load
 // (src/addon/load.js), vendor resolution/verification (src/vendor/*), schema
 // fetch/load/index (src/schema/*), check orchestration and run context
 // (src/checks/registry.js and src/checks/context.js), and all user-facing text
 // (src/checks/registry.js plus src/report/responses.js).
 
-import { resolveSchemaZip } from "./schema/fetch.js";
-import { loadSchemaFiles } from "./schema/load.js";
+import {
+  resolveSchemaZip,
+  refreshAllSchemas,
+  hasAllCachedSchemas,
+  cachedZipPath,
+  schemaBranch as branchName,
+  SCHEMA_CHANNELS,
+} from "./schema/fetch.js";
+import { loadSchemaFiles, peekApplicationVersion } from "./schema/load.js";
 import { buildSchemaIndex } from "./schema/index.js";
 import {
   loadSchemaAnnotations,
@@ -72,18 +81,18 @@ import {
   parseLibraryBlocks,
 } from "./checks/lib/library-blocks.js";
 import { collapseUnused } from "./checks/lib/unused-folders.js";
-import { isExperiment } from "./checks/lib/util.js";
+import {
+  isExperiment,
+  parseVersion,
+  strictMaxVersion,
+} from "./checks/lib/util.js";
 import { experimentApiNamespaces } from "./checks/lib/experiments.js";
 import { verifyExperiments } from "./experiments/verify.js";
 import { createLlmBudget } from "./llm/budget.js";
 import { debug, progress, warn, FEED, llmErrorText } from "./util/log.js";
 import { red } from "./util/color.js";
 import { humanSize } from "./util/text.js";
-import {
-  DEFAULT_CHANNEL,
-  DEFAULT_CACHE,
-  MAX_LLM_REQUESTS_PER_RUN,
-} from "./config.js";
+import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
 
 /** @typedef {import("./report/finding.js").Finding} Finding */
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
@@ -98,7 +107,6 @@ import {
 /**
  * @typedef {object} PipelineOpts
  * @property {string} addonPath
- * @property {string} [schemaChannel]
  * @property {string} [schemaZip]
  * @property {string} [schemaCache]
  * @property {boolean} [schemaForceRefresh]
@@ -380,19 +388,18 @@ export async function runPipeline(opts) {
   // Resolve the review schema up front: the extraction pass (run per-review below) needs
   // the web_api / loader schema, and reviewAddon reviews against it. A rejected Experiment fetches
   // it too (reviewAddon still runs the reject check and reads schema.applicationVersion).
-  const schemaBranch = chooseBranch({
+  const {
+    zipPath: schemaZipPath,
+    source: schemaSource,
+    branch: schemaBranch,
+    channel: schemaChannel,
+  } = await resolveReviewSchema({
     schemaZip: opts.schemaZip,
-    schemaChannel: opts.schemaChannel ?? DEFAULT_CHANNEL,
+    cacheDir: opts.schemaCache ?? DEFAULT_CACHE,
+    forceRefresh: opts.schemaForceRefresh ?? false,
     manifest: xpiAddon.manifest,
+    setupStep,
   });
-  setupStep(`Fetching review schemas (${schemaBranch})`);
-  const { zipPath: schemaZipPath, source: schemaSource } =
-    await resolveSchemaZip({
-      schemaZip: opts.schemaZip,
-      branch: schemaBranch,
-      cacheDir: opts.schemaCache ?? DEFAULT_CACHE,
-      refresh: opts.schemaForceRefresh ?? false,
-    });
   const schemaFiles = loadSchemaFiles(schemaZipPath);
   applySchemaAnnotations(schemaFiles.files, loadSchemaAnnotations());
   const schema = buildSchemaIndex(schemaFiles);
@@ -580,6 +587,7 @@ export async function runPipeline(opts) {
     schema,
     schemaSource,
     schemaBranch,
+    schemaChannel,
     preParsedJsSources,
   });
   findings.push(...result.findings);
@@ -805,6 +813,8 @@ async function identifyBundledLibraries(
  * @param {import("./schema/index.js").SchemaIndex} [resolved.schema]
  * @param {string} [resolved.schemaSource]
  * @param {string} [resolved.schemaBranch]
+ * @param {string|null} [resolved.schemaChannel]  The auto-detected channel, or null
+ *   for --schema-zip.
  * @param {import("./addon/sources.js").JsSource[]} [resolved.preParsedJsSources]  The
  *   review sources the extraction pass already parsed (parse-first); absent for a
  *   rejected Experiment, where buildRunContext parses.
@@ -822,11 +832,10 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
     schema,
     schemaSource,
     schemaBranch,
+    schemaChannel,
     preParsedJsSources,
   } = resolved;
   const {
-    schemaChannel = DEFAULT_CHANNEL,
-    schemaZip,
     checksOnly,
     checksSkip,
     eslint,
@@ -1055,7 +1064,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
     meta: {
       schemaSource,
       schemaBranch,
-      schemaChannel: schemaZip ? null : schemaChannel,
+      schemaChannel,
       applicationVersion: schema.applicationVersion,
       manifestVersion: xpiAddon.manifest?.manifest_version ?? null,
       checksRun: ran.map((c) => c.id),
@@ -1129,31 +1138,156 @@ function collapseUnusedFolders(entries, allFiles) {
 }
 
 /**
- * @typedef {object} BranchParams
- * @property {string|undefined} schemaZip
- * @property {string} schemaChannel
- * @property {import("./addon/load.js").Manifest} manifest  The shipped (XPI) manifest.
+ * The Thunderbird major a cached branch targets (its applicationVersion stamp), or
+ * null when the zip is missing, unreadable, corrupt, or carries no parseable stamp
+ * - a null excludes the channel from the candidates, which resolveReviewSchema
+ * reads as a corrupt/incomplete cache and self-heals. Never throws.
+ * @param {string} cacheDir @param {string} branch
+ * @returns {number|null}
  */
-
-/**
- * Choose the schema branch for the add-on. The add-on's manifest_version
- * selects the schema, combined with the channel. A local --schema-zip bypasses
- * branch selection.
- *
- * @param {BranchParams} params
- * @returns {string|null}
- */
-function chooseBranch({ schemaZip, schemaChannel, manifest }) {
-  if (schemaZip) {
+export function peekBranchMajor(cacheDir, branch) {
+  try {
+    return (
+      parseVersion(
+        peekApplicationVersion(cachedZipPath(cacheDir, branch))
+      )?.[0] ?? null
+    );
+  } catch {
     return null;
   }
+}
+
+/**
+ * Resolve which schema to review against, downloading if needed. A local
+ * --schema-zip is used verbatim (no auto-detection). Otherwise the channel is
+ * auto-detected from the add-on's version range (see selectSchemaChannel): the
+ * cache is first brought to the full canonical set (all channels × both manifest
+ * versions, re-downloading a missing OR corrupt branch), then the add-on's
+ * manifest_version + strict_max_version pick the branch to load.
+ *
+ * @param {object} params
+ * @param {string} [params.schemaZip]   Explicit local schema (bypass).
+ * @param {string} params.cacheDir      Schema cache directory.
+ * @param {boolean} params.forceRefresh Re-download the whole canonical set.
+ * @param {import("./addon/load.js").Manifest} params.manifest  Shipped manifest.
+ * @param {(label: string) => void} [params.setupStep]  Setup-feed narrator.
+ * @returns {Promise<{zipPath: string, source: string, branch: string|null,
+ *   channel: string|null}>}
+ */
+export async function resolveReviewSchema({
+  schemaZip,
+  cacheDir,
+  forceRefresh,
+  manifest,
+  setupStep = () => {},
+}) {
+  if (schemaZip) {
+    setupStep("Fetching review schemas (local)");
+    const { zipPath, source } = await resolveSchemaZip({ schemaZip });
+    return { zipPath, source, branch: null, channel: null };
+  }
+
   const mv = detectManifestVersion(manifest);
-  const branch = `${schemaChannel}-mv${mv.version}`;
+  // The detected manifest version's channel anchors. A channel is a candidate only
+  // if its cached zip is present AND carries a readable version stamp - a
+  // present-but-corrupt zip yields null (peekBranchMajor) and counts as absent, so
+  // it triggers a re-download below instead of being silently selected around.
+  const readAnchors = () =>
+    SCHEMA_CHANNELS.map((channel) => {
+      const branch = branchName(channel, mv.version);
+      return { channel, branch, major: peekBranchMajor(cacheDir, branch) };
+    }).filter((c) => c.major != null);
+
+  // Schema resolution is ONE numbered setup step (the counter is pre-sized), so
+  // fire setupStep exactly once on every path. The cache must be COMPLETE and
+  // READABLE: a forced refresh, a missing branch, or a corrupt anchor (fewer
+  // readable candidates than channels) re-downloads all six together so they share
+  // one train - the slow, narrated step. Refreshing on corruption self-heals
+  // rather than silently reviewing against the wrong channel. With the cache
+  // already complete and readable, the step is nominal and names the chosen branch.
+  let stepped = false;
+  let candidates = readAnchors();
+  if (
+    forceRefresh ||
+    !hasAllCachedSchemas(cacheDir) ||
+    candidates.length < SCHEMA_CHANNELS.length
+  ) {
+    setupStep("Fetching review schemas (all channels)");
+    stepped = true;
+    await refreshAllSchemas({ cacheDir });
+    candidates = readAnchors();
+  }
+
+  // Still short after a full re-download means the schema set itself is unusable -
+  // fail loudly rather than review against a wrong or partial schema.
+  if (candidates.length < SCHEMA_CHANNELS.length) {
+    const bad = SCHEMA_CHANNELS.filter(
+      (c) => !candidates.some((x) => x.channel === c)
+    ).map((c) => branchName(c, mv.version));
+    throw new Error(
+      `Schema cache unusable: no readable version stamp for ${bad.join(", ")} even after refresh. ` +
+        "Pass --schema-zip <path> to review against a local schema."
+    );
+  }
+
+  const { channel, branch, reason } = selectSchemaChannel({
+    candidates,
+    strictMax: strictMaxVersion(manifest),
+  });
   debug(
-    `Detected manifest_version ${mv.detected ? mv.version : `? (defaulting to ${mv.version})`}` +
-      ` → using schema branch "${branch}".`
+    `manifest_version ${mv.detected ? mv.version : `? (defaulting to ${mv.version})`}; ${reason}` +
+      ` → schema branch "${branch}".`
   );
-  return branch;
+  if (!stepped) {
+    setupStep(`Fetching review schemas (${branch})`);
+  }
+  const { zipPath, source } = await resolveSchemaZip({ branch, cacheDir });
+  return { zipPath, source, branch, channel };
+}
+
+/**
+ * Pick the schema channel for an add-on from its supported version range. Driven
+ * by the UPPER bound (strict_max_version): an add-on capped at a channel's own
+ * major targets that train, so its schema (with the backported version_added
+ * entries for that train) is authoritative. With no exact-major match - a gap, a
+ * range below/above every cached train, or no cap at all - fall back to release
+ * (the version_added checks still flag genuinely unsupported APIs). Never rejects
+ * on version grounds. `candidates` are in channel priority (release > esr > beta),
+ * so an exact-major tie resolves to the earlier (more stable) channel.
+ *
+ * @param {object} params
+ * @param {{channel: string, branch: string, major: number}[]} params.candidates
+ * @param {string|null|undefined} params.strictMax  The add-on's strict_max_version.
+ * @returns {{channel: string, branch: string, reason: string}}
+ */
+export function selectSchemaChannel({ candidates, strictMax }) {
+  if (candidates.length === 0) {
+    throw new Error("No schema candidates available to choose from.");
+  }
+  const cap = parseVersion(strictMax)?.[0] ?? null;
+  if (cap != null) {
+    const hit = candidates.find((c) => c.major === cap);
+    if (hit) {
+      return {
+        channel: hit.channel,
+        branch: hit.branch,
+        reason: `strict_max ${strictMax} targets the ${hit.channel} train (Thunderbird ${hit.major})`,
+      };
+    }
+  }
+  // Default: release if present, else the newest-major candidate available.
+  const def =
+    candidates.find((c) => c.channel === "release") ??
+    candidates.reduce((a, b) => (b.major > a.major ? b : a));
+  const why =
+    cap == null
+      ? "no strict_max cap"
+      : `strict_max ${strictMax} matches no cached train`;
+  return {
+    channel: def.channel,
+    branch: def.branch,
+    reason: `${why} → ${def.channel} (Thunderbird ${def.major})`,
+  };
 }
 
 /**
@@ -1163,7 +1297,7 @@ function chooseBranch({ schemaZip, schemaChannel, manifest }) {
  * @param {object|null|undefined} manifest
  * @returns {{version: number, detected: boolean}}
  */
-function detectManifestVersion(manifest) {
+export function detectManifestVersion(manifest) {
   const v = manifest?.manifest_version;
   if (v === 2 || v === 3) {
     return { version: v, detected: true };

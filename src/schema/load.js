@@ -25,6 +25,57 @@ import { debug } from "../util/log.js";
 /** Matches ".../schema-files/<name>.json" and captures the base name. */
 const SCHEMA_ENTRY = /(?:^|\/)schema-files\/([^/]+\.json)$/;
 
+/** The Thunderbird version each schema file is stamped with (same on every file). */
+const APP_VERSION_RE = /"applicationVersion"\s*:\s*"([^"]*)"/;
+
+/**
+ * Yield `[name, rawText]` for each schema-files/*.json in a zip or directory
+ * source - the single reader that both the full parse (loadSchemaFiles) and the
+ * cheap applicationVersion peek walk, so the zip/dir layout handling lives in one
+ * place. A directory may hold the files directly or under a schema-files/ subdir
+ * (test fixtures use the flat form); a zip yields only schema-files/ entries.
+ * @param {string} source  Path to a .zip, a repo dir, or a dir of *.json.
+ * @returns {Generator<[string, string]>}
+ */
+function* schemaFileTexts(source) {
+  if (fs.statSync(source).isDirectory()) {
+    const dir = fs.existsSync(path.join(source, "schema-files"))
+      ? path.join(source, "schema-files")
+      : source;
+    for (const name of fs.readdirSync(dir)) {
+      if (name.endsWith(".json")) {
+        yield [name, fs.readFileSync(path.join(dir, name), "utf8")];
+      }
+    }
+    return;
+  }
+  const zip = new AdmZip(source);
+  for (const entry of zip.getEntries()) {
+    const m = entry.isDirectory ? null : entry.entryName.match(SCHEMA_ENTRY);
+    if (m) {
+      yield [m[1], entry.getData().toString("utf8")];
+    }
+  }
+}
+
+/**
+ * Read just the `applicationVersion` anchor a schema is stamped with (the target
+ * Thunderbird version, e.g. "140.11.1esr") without parsing or indexing the whole
+ * set. Every schema-files entry carries the same value, so the first match wins.
+ * Used to compare a candidate branch's train against the add-on's version range.
+ * @param {string} source  Path to a .zip, a repo dir, or a dir of *.json.
+ * @returns {string|null} The version string, or null if none is stamped.
+ */
+export function peekApplicationVersion(source) {
+  for (const [, text] of schemaFileTexts(source)) {
+    const m = APP_VERSION_RE.exec(text);
+    if (m) {
+      return m[1];
+    }
+  }
+  return null;
+}
+
 /**
  * @typedef {object} LoadedSchemas
  * @property {Record<string, SchemaNode[]>} files  "<name>.json" -> parsed.
@@ -38,9 +89,10 @@ const SCHEMA_ENTRY = /(?:^|\/)schema-files\/([^/]+\.json)$/;
  * @returns {LoadedSchemas}
  */
 export function loadSchemaFiles(source) {
-  const stat = fs.statSync(source);
-  const files = stat.isDirectory() ? loadFromDir(source) : loadFromZip(source);
-
+  const files = {};
+  for (const [name, text] of schemaFileTexts(source)) {
+    files[name] = parse(name, text);
+  }
   if (Object.keys(files).length === 0) {
     throw new Error(
       `No schema-files/*.json found in ${source}. ` +
@@ -49,49 +101,6 @@ export function loadSchemaFiles(source) {
   }
   debug(`Loaded ${Object.keys(files).length} schema files from ${source}`);
   return { files, source };
-}
-
-/**
- * @param {string} zipPath  Path to the zip archive.
- * @returns {Record<string, SchemaNode[]>} Name -> parsed schema array.
- */
-function loadFromZip(zipPath) {
-  const zip = new AdmZip(zipPath);
-  const files = {};
-  for (const entry of zip.getEntries()) {
-    if (entry.isDirectory) {
-      continue;
-    }
-    const m = entry.entryName.match(SCHEMA_ENTRY);
-    if (!m) {
-      continue;
-    }
-    const name = m[1];
-    files[name] = parse(name, entry.getData().toString("utf8"));
-  }
-  return files;
-}
-
-/**
- * @param {string} dir  Path to the directory to load schema files from.
- * @returns {Record<string, SchemaNode[]>} Name -> parsed schema array.
- */
-function loadFromDir(dir) {
-  // Accept either <dir>/schema-files/*.json or <dir>/*.json.
-  const schemaDir = fs.existsSync(path.join(dir, "schema-files"))
-    ? path.join(dir, "schema-files")
-    : dir;
-  const files = {};
-  for (const name of fs.readdirSync(schemaDir)) {
-    if (!name.endsWith(".json")) {
-      continue;
-    }
-    files[name] = parse(
-      name,
-      fs.readFileSync(path.join(schemaDir, name), "utf8")
-    );
-  }
-  return files;
 }
 
 /**

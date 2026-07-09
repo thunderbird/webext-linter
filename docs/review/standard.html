@@ -24,8 +24,10 @@
         the code under review and the shipped package.
       </p>
       <p>
-        The pipeline loads the add-on, picks the schema branch from its
-        <code>manifest_version</code> and the chosen channel, classifies any
+        The pipeline loads the add-on, picks the schema branch automatically from
+        its <code>manifest_version</code> and its supported version range (the
+        <code>strict_max_version</code> selects the channel — an ESR-capped add-on
+        is reviewed against the ESR schema), classifies any
         bundled Experiment, resolves and verifies its vendored libraries, then
         runs the deterministic, LLM, and manual checks over it. The purple nodes
         below are the optional LLM side-steps — they only run with

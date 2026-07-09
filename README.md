@@ -35,20 +35,32 @@ Run the `node` script directly:
 node verify.js <xpi|folder> [options]
 ```
 
-The schema review **always** reads `manifest_version` and uses the matching
-schema (MV2 → `<channel>-mv2`, MV3 → `<channel>-mv3`). An add-on that omits
-`manifest_version` (or has a missing/invalid manifest) is treated as MV2.
+The schema review picks the matching schema **automatically** from the add-on's
+own manifest — no channel flag. Two dimensions:
+
+- **Manifest version**: `manifest_version` selects `mv2` vs `mv3`. An add-on that
+  omits it (or has a missing/invalid manifest) is treated as MV2.
+- **Channel** (`release`, `esr`, `beta`): chosen from the add-on's supported
+  version range. The **upper bound** (`strict_max_version`) decides: an add-on
+  capped at a channel's own Thunderbird major targets that train, so its schema is
+  used — e.g. `strict_max_version: "140.*"` with ESR at 140 → the **ESR** schema
+  (whose `version_added` entries reflect APIs backported into the ESR train). With
+  no cap, or a cap that matches no cached train, it falls back to **release**; the
+  `version_added` checks still flag genuinely unsupported APIs.
+
+To compare the channels' versions the cache holds the full set (every channel ×
+both manifest versions). The first run — or any `--schema-force-refresh` — fetches
+them all together so their versions stay on one train.
 
 The options, grouped as in `--help`:
 
-**Schema selection** (`manifest_version` is auto-detected; you pick the channel):
+**Schema selection** (channel and `manifest_version` are auto-detected):
 
 | Option | Description |
 | --- | --- |
-| `--schema-channel <name>` | Schema channel (default `release`). One of `release`, `beta`, `esr`. |
 | `--schema-cache <dir>` | Where downloaded schema zips are cached (default `.schema-cache`). |
-| `--schema-force-refresh` | Re-download the schema even if a cached copy exists. |
-| `--schema-zip <path>` | Use a local schema zip (or directory) instead of downloading. |
+| `--schema-force-refresh` | Re-download all schemas (every channel) even if cached copies exist. |
+| `--schema-zip <path>` | Use a local schema zip (or directory) instead of downloading (bypasses auto-detection). |
 
 **Library identification:**
 
@@ -339,8 +351,8 @@ node verify.js ./submission.xpi
 # Review an unpacked source folder
 node verify.js ./my-addon
 
-# esr channel, machine-readable, offline schema
-node verify.js ./submission.xpi --schema-channel esr --report-format json --schema-zip ./schemas.zip
+# machine-readable, offline schema (a local zip bypasses channel auto-detection)
+node verify.js ./submission.xpi --report-format json --schema-zip ./schemas.zip
 
 # Review with the LLM checks enabled, plus an AI summary of the add-on
 export LLM_API_KEY=sk-…

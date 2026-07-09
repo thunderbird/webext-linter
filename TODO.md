@@ -1,16 +1,11 @@
 # Table of Contents
 
-- [Detect correct schema reference](#detect-correct-schema-reference)
 - [Improve schema files to remove special hardcoded cases](#improve-schema-files-to-remove-special-hardcoded-cases)
 - [Full type check via typescript engine](#full-type-check-via-typescript-engine)
 - [Potential permission tracing via typescript engine](#potential-permission-tracing-via-typescript-engine)
 - [Unused-files pre-flight backstop (anchored templates + content type)](#unused-files-pre-flight-backstop-anchored-templates--content-type)
 - [Re-evaluate fully schema-driven manifest file-ref extraction](#re-evaluate-fully-schema-driven-manifest-file-ref-extraction)
 
-
-# Detect correct schema reference
-
-Evaluate if a submission which is limited to 140.* (ESR) should be verified against the ESR schema, or the standard release schema.
 
 # Improve schema files to remove special hardcoded cases
 

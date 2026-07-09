@@ -35,8 +35,6 @@ import {
   formatSummary,
 } from "./report/format.js";
 import {
-  DEFAULT_CHANNEL,
-  VALID_CHANNELS,
   DEFAULT_CACHE,
   EXPERIMENTS_CACHE,
   LIBRARY_HASHES_CACHE,
@@ -51,7 +49,7 @@ import {
   setCapture,
   getCapture,
 } from "./util/log.js";
-import { setColor, stripColor } from "./util/color.js";
+import { setColor, stripColor, red } from "./util/color.js";
 import { wrapText } from "./util/text.js";
 
 /** @typedef {import("./pipeline.js").PipelineOpts} PipelineOpts */
@@ -199,10 +197,6 @@ function resolveLlm(values) {
 export function helpText() {
   const schema = [
     [
-      "--schema-channel <name>",
-      `Channel to use (default: ${DEFAULT_CHANNEL}). One of: ${VALID_CHANNELS.join(", ")}.`,
-    ],
-    [
       "--schema-zip <path>",
       "Use a local schema zip (or directory) instead of downloading.",
     ],
@@ -212,7 +206,7 @@ export function helpText() {
     ],
     [
       "--schema-force-refresh",
-      "Re-download the schema even if a cached copy exists.",
+      "Re-download all schemas (every channel) even if cached copies exist.",
     ],
   ];
 
@@ -355,7 +349,7 @@ export function helpText() {
     "Usage:",
     ...commands.map(([cmd, desc]) => optionLine(cmd, desc)),
     "",
-    "Schema selection (manifest_version is auto-detected, you pick the channel):",
+    "Schema selection (channel and manifest_version are auto-detected):",
     ...schema.map(([flag, desc]) => optionLine(flag, desc)),
     "",
     "Library identification:",
@@ -389,7 +383,6 @@ export function helpText() {
 }
 
 const OPTIONS = {
-  "schema-channel": { type: "string" },
   "schema-zip": { type: "string" },
   "schema-cache": { type: "string" },
   "schema-force-refresh": { type: "boolean" },
@@ -501,14 +494,6 @@ export async function main(argv) {
     return 2;
   }
 
-  const schemaChannel = values["schema-channel"] || DEFAULT_CHANNEL;
-  if (!VALID_CHANNELS.includes(schemaChannel)) {
-    process.stderr.write(
-      `Invalid --schema-channel "${schemaChannel}" (expected one of: ${VALID_CHANNELS.join(", ")}).\n`
-    );
-    return 2;
-  }
-
   // --sca-root is the SCA-mode switch. --sca-source and --sca-exp-source name locations
   // INSIDE it, so they are meaningless on their own. --sca-root alone is fine:
   // --sca-source defaults to "." (the whole root reviewed as the source).
@@ -575,7 +560,10 @@ export async function main(argv) {
       registry,
     });
   } catch (err) {
-    process.stderr.write(`${err.message}\n`);
+    // A pipeline throw is a tool failure the review could not run through (an
+    // unreachable/unusable schema, a bad LLM config, an unreadable add-on): state
+    // it plainly and exit 2, distinct from a completed review that found errors.
+    process.stderr.write(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
 
@@ -660,7 +648,6 @@ export async function main(argv) {
 function pipelineOptsFromValues(values) {
   const llm = resolveLlm(values);
   return {
-    schemaChannel: values["schema-channel"] || DEFAULT_CHANNEL,
     schemaZip: values["schema-zip"],
     schemaCache: values["schema-cache"] || DEFAULT_CACHE,
     schemaForceRefresh: values["schema-force-refresh"],

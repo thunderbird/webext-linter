@@ -51,6 +51,16 @@ test("unknown option errors cleanly (no -- separator hint)", () => {
   assert.doesNotMatch(r.stderr, /To specify a positional argument/);
 });
 
+// A pipeline hard-fail the review could not run through (here an unresolvable
+// schema; a failed schema download is the same path) exits 2 and states "verify
+// failed" on stderr - distinct from a completed review that found error findings.
+test("unusable schema aborts: exit 2 and 'verify failed' on stderr", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const r = run([addon, "--schema-zip", "/no/such/schema.zip"]);
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /verify failed/);
+});
+
 // --sca-root is the SCA-mode switch; --sca-source / --sca-exp-source name locations
 // inside it, so they are a usage error on their own. (--sca-root alone is fine -
 // --sca-source defaults to ".".)
