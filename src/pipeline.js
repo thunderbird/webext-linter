@@ -1050,6 +1050,9 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
       applicationVersion: schema.applicationVersion,
       manifestVersion: xpiAddon.manifest?.manifest_version ?? null,
       checksRun: ran.map((c) => c.id),
+      // True when the LLM review was active (--llm-review): the model re-judged
+      // escalated items and produced the add-on summary, so the report notes it.
+      llmReviewed: Boolean(ctx.llm),
       // One manual-review list, tagged by origin so the report can split it into
       // two sections: `extended` items are checks that escalated (the
       // orchestrator's refs, resolved to their registry text). The rest are the

@@ -550,3 +550,37 @@ test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () =
   assert.match(xpi, /orphan\.js:2/); // the bare file:line still renders
   assert.match(xpi, /run this automated review yourself/);
 });
+
+// The "run this yourself" pointer notes the --llm-review option only when the
+// LLM review was active (meta.llmReviewed); the flag stays out of JSON.
+test("run-it-yourself pointer reflects whether the LLM review ran", () => {
+  const base = {
+    findings: [
+      {
+        ruleId: "eval-usage",
+        severity: "error",
+        message: "eval used",
+        file: "bg.js",
+        loc: { line: 2 },
+        item: null,
+        hint: null,
+      },
+    ],
+    meta: { action: "review", addon: "x", reviewed: true },
+  };
+  const off = formatText(base);
+  assert.match(off, /run this automated review yourself before submitting:/);
+  assert.doesNotMatch(off, /--llm-review option/);
+
+  const on = formatText({ ...base, meta: { ...base.meta, llmReviewed: true } });
+  assert.match(
+    on,
+    /run this automated review yourself before submitting \(this review was performed using the --llm-review option\):/
+  );
+
+  // Human-only: the flag never leaks into the machine JSON.
+  const json = JSON.parse(
+    formatJson({ ...base, meta: { ...base.meta, llmReviewed: true } })
+  );
+  assert.equal(json.meta.llmReviewed, undefined);
+});

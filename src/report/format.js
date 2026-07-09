@@ -57,6 +57,8 @@ const SEV_COLOR = {
  * @property {string} [applicationVersion]
  * @property {number} [manifestVersion]
  * @property {string[]} [checksRun]  Ids of the checks that ran.
+ * @property {boolean} [llmReviewed]  The review ran with the LLM (--llm-review)
+ *   active, so the "run this yourself" pointer notes the option was used.
  * @property {string} [reviewUrl]  ATN reviewer review-page URL, appended to the
  *   Manual review section. Text reports only; dropped from JSON.
  * @property {import("./finding.js").ManualItem[]} [manualReview]  The
@@ -113,7 +115,14 @@ function reviewBodyLines(review) {
   const labelOf = (f) =>
     artifactLabel({ file: f.file, input: ruleInputs?.get(f.ruleId), mode });
   return [
-    ...issuesLines(issues, issueHeadings, verdictIntros, labelOf, mode),
+    ...issuesLines(
+      issues,
+      issueHeadings,
+      verdictIntros,
+      labelOf,
+      mode,
+      meta.llmReviewed
+    ),
     ...manualSection(extended, "Extended manual review", brightCyan, labelOf),
     ...manualSection(standard, "Standard manual review", blue, labelOf),
     ...manualTail(meta.reviewUrl, manual.length),
@@ -182,7 +191,14 @@ export function headerLines(meta) {
  * @param {string} [mode]  Review mode; "sca" appends the label legend footer.
  * @returns {string[]}
  */
-function issuesLines(issues, issueHeadings, verdictIntros, labelOf, mode) {
+function issuesLines(
+  issues,
+  issueHeadings,
+  verdictIntros,
+  labelOf,
+  mode,
+  llmReviewed
+) {
   const out = section("Issues");
   const intros = verdictIntros ?? {};
   if (issues.length === 0) {
@@ -233,7 +249,11 @@ function issuesLines(issues, issueHeadings, verdictIntros, labelOf, mode) {
   // submitting and fix the findings above first. Shown in both modes.
   out.push("");
   out.push(
-    grey("You can run this automated review yourself before submitting:")
+    grey(
+      llmReviewed
+        ? "You can run this automated review yourself before submitting (this review was performed using the --llm-review option):"
+        : "You can run this automated review yourself before submitting:"
+    )
   );
   out.push(grey("https://github.com/thunderbird/webext-linter"));
   return out;
@@ -427,10 +447,15 @@ function summaryLines(issues, manualCount) {
  * @returns {string}
  */
 export function formatJson(review) {
-  // The manual-review to-do list and the reviewer URL are human-only, not
-  // machine-verifiable, so they are dropped from JSON (ATN consumes this for
-  // auto-verification). findings are already issues only.
-  const { manualReview: _omitted, reviewUrl: _url, ...meta } = review.meta;
+  // The manual-review to-do list, the reviewer URL, and the llmReviewed pointer
+  // flag are human-only, not machine-verifiable, so they are dropped from JSON
+  // (ATN consumes this for auto-verification). findings are already issues only.
+  const {
+    manualReview: _omitted,
+    reviewUrl: _url,
+    llmReviewed: _llm,
+    ...meta
+  } = review.meta;
   const issues = review.findings;
   // `data` (template-resolution input, baked into `message`) and `listItem` (a
   // text-layout flag) are internal, so they are dropped from the machine output.
