@@ -44,25 +44,25 @@
     "test:unit": "node --test tests/unit/*.test.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.65.0",
-    "@babel/parser": "^7.28.4",
-    "@babel/traverse": "^7.28.4",
-    "@babel/types": "^7.28.4",
-    "adm-zip": "^0.5.10",
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@babel/parser": "^8.0.4",
+    "@babel/traverse": "^8.0.4",
+    "@babel/types": "^8.0.4",
+    "adm-zip": "^0.5.18",
     "ajv": "^8.17.1",
-    "eslint": "^9.0.0",
+    "eslint": "^10.6.0",
     "franc-min": "^6.2.0",
     "json5": "^2.2.3",
     "jsonc-parser": "^3.3.1",
     "obfuscation-detector": "^3.0.0",
-    "openai": "^4.104.0",
-    "parse5": "^7.1.2",
-    "postcss": "^8.4.47",
+    "openai": "^6.45.0",
+    "parse5": "^8.0.1",
+    "postcss": "^8.5.16",
     "postcss-value-parser": "^4.2.0",
     "yaml": "^2.5.0"
   },
   "devDependencies": {
-    "prettier": "^3.3.3"
+    "prettier": "^3.9.4"
   },
   "engines": {
     "node": ">=20"

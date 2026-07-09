@@ -60,11 +60,10 @@ export function scanLocalImports(code, lineOffset = 0, parsed) {
     ImportDeclaration: (p) => add(p.node.source),
     ExportNamedDeclaration: (p) => p.node.source && add(p.node.source),
     ExportAllDeclaration: (p) => add(p.node.source),
+    ImportExpression: (p) => add(p.node.source), // dynamic import()
     CallExpression(p) {
       const callee = p.node.callee;
-      if (callee?.type === "Import") {
-        add(p.node.arguments[0]); // dynamic import()
-      } else if (
+      if (
         callee?.type === "Identifier" &&
         (callee.name === "require" || callee.name === "importScripts")
       ) {

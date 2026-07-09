@@ -119,14 +119,14 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
         }
       }
     },
+    // Dynamic import() parses as its own ImportExpression node (not a
+    // CallExpression), so it gets its own visitor.
+    ImportExpression(path) {
+      classifyDynamicRef("import", path.node.source, path.node, push);
+    },
     CallExpression(path) {
       const { callee, arguments: args } = path.node;
 
-      // Dynamic import()
-      if (callee.type === "Import") {
-        classifyDynamicRef("import", args[0], path.node, push);
-        return;
-      }
       // eval(...) / Function(...) (Function() without `new`), and the same
       // sinks via a global object (window.eval, self.importScripts, etc.).
       if (isIdent(callee, "eval") || isGlobalMember(callee, "eval")) {
