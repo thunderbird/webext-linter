@@ -195,7 +195,7 @@ deterministic-checks:
 # permission a reachable API call does not provably require (host patterns are
 # Minimize host permissions' concern). Runs in the main loop and schedules each as
 # a manual-review case; same-bodied cases auto-group into the one reminder here.
-# When --full-summary runs, it hands them to its Unused permission recheck consumer
+# When --llm-review runs, it hands them to its Unused permission recheck consumer
 # (post-summary-recheck) instead, to be re-judged against the whole add-on.
 - title: Possibly unused permissions
   check: unused-permission-manual
@@ -838,7 +838,7 @@ deterministic-checks:
     An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
 
 # Grounding for the unused-permission recheck consumer (permission-recheck: true).
-# The --full-summary pass assembles its rubric as: framing.preamble + the prompt of
+# The --llm-review pass assembles its rubric as: framing.preamble + the prompt of
 # every permission-prompts entry whose `permissions` intersects the permissions
 # actually handed over (deduped, in order) + framing.closing. So the model is only
 # ever sent grounding for the permissions in play - not the whole catalogue. Each
@@ -1176,12 +1176,12 @@ llm-checks:
     The following code location(s) appear to send data through a resource or navigation URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 # Post-summary recheck consumers. Each is the recheck TARGET named by a producer's
-# `post-summary-recheck:` above. It is re-judged by the --full-summary add-on summary
+# `post-summary-recheck:` above. It is re-judged by the --llm-review add-on summary
 # (phase post-summary), always runs on the main ctx - so it declares no `input` - and
 # is labelled by its producer's corpus (see labelInputFor). Its run() is resolveRecheck.
 post-summary-rechecks:
 # The recheck consumer for the permissions handed over above. `permission-recheck`
-# makes the --full-summary pass assemble a rubric from the permission-prompt-framing
+# makes the --llm-review pass assemble a rubric from the permission-prompt-framing
 # and permission-prompts sections, including only the sections for the permissions
 # actually handed over and the tabs variant matching the add-on's strict_min_version.
 # The model's verdict maps to justified (drop), unused (this warning), or unsure
@@ -1222,7 +1222,7 @@ post-summary-rechecks:
 
 # Recheck consumer for unused-files (above): re-judges the files it could not
 # resolve from a single site, now with the whole add-on in view. Its summary-prompt
-# is appended to the --full-summary pass; pass -> loaded (drop), fail -> an unused
+# is appended to the --llm-review pass; pass -> loaded (drop), fail -> an unused
 # finding, unsure -> manual review. Same wording as unused-files (its findings read
 # identically); the post-summary phase is inferred from being its recheck target.
 - title: Unused, hidden or duplicate files or folders
@@ -1457,18 +1457,26 @@ verdict-intros:
 #   system-intro:   the fixed reviewer role prompt - the first system block of
 #                   every LLM check call. It explains the fail/pass/unsure
 #                   verdicts whose structured shape (the forced result tool) lives
-#                   in src/llm/claude.js (RESULT_SCHEMA).
+#                   in src/llm/schema.js (RESULT_SCHEMA).
 #   change-summary: the AI "Summary of changes" prompt. The orchestrator emits it
-#                   only with --diff-summary (which itself needs --diff-to and an
+#                   only with --diff-to under --llm-review (which needs an
 #                   Anthropic token); the model’s prose is shown verbatim as an
 #                   advisory aid (not a finding).
 #   add-on-summary: the AI "Summary of add-on" prompt. Emitted only with
-#                   --full-summary and a token; via the forced report_addon_review
+#                   --llm-review and a token; via the forced report_addon_review
 #                   tool it returns prose (what the (almost) full current add-on
 #                   does, with security notes and a permission review) plus the
 #                   structured list of permissions that appear unused. The prose is
 #                   advisory; the unused-permission list feeds the
-#                   unused-permission check, which raises it as Issues.
+#                   unused-permission check, which raises it as Issues. In SCA mode
+#                   this pass judges only the source-anchored rechecks; the packaging
+#                   rechecks go to shipped-package-summary below.
+#   shipped-package-summary: the packaging-only "Summary of add-on" pass. In SCA
+#                   mode it runs over the BUILT, shipped XPI corpus (only when an
+#                   XPI-anchored recheck escalated) and judges just the packaging
+#                   rechecks - reachable files, web_accessible_resources, English
+#                   localization. Its prose is not shown to the reviewer; only its
+#                   recheck verdicts are consumed.
 #   vendor-parse:   the LLM fallback that parses a free-form VENDOR file into
 #                   structured {file, url} declarations, used during vendor
 #                   resolution when the deterministic scan comes up empty and a

@@ -119,7 +119,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {string} [prompt]  LLM rubric for an ambiguous case (llm checks).
  * @property {string} [instructions]  Manual-review message (llm checks).
  * @property {string} [postSummaryRecheck]  Id of a post-summary recheck consumer
- *   this check hands its manual items to when the full summary runs (see
+ *   this check hands its manual items to when the add-on summary runs (see
  *   runChecks and src/checks/lib/recheck.js).
  * @property {Function} run
  */
@@ -150,7 +150,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   computed from the SHIPPED XPI. Shipped-authoritative and shared like the manifest,
  *   so the experiment checks read ctx.experiments, not ctx.addon.experiments. Null for
  *   a non-Experiment add-on.
- * @property {{llmEnabled?: boolean, llmApiKey?: string, llmApiUrl?: string,
+ * @property {{llmReview?: boolean, llmApiKey?: string, llmApiUrl?: string,
  *   llmApiType?: string, allowExperiments?: boolean}} options
  * @property {import("../addon/load.js").Addon|null} [previous]  Diff baseline.
  * @property {"xpi"|"sca"} [mode]  Review mode: "xpi" (a built add-on, default) or
@@ -172,10 +172,10 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   --allow-experiments is off: the review short-circuits to the reject check
  *   only, with no LLM (see runChecks and buildRunContext).
  * @property {{evaluate: Function}} [llm]  LLM client, present only with a token.
- * @property {boolean} [recheckActive]  Set by reviewAddon when the full summary
+ * @property {boolean} [recheckActive]  Set by reviewAddon when the add-on summary
  *   will run: checks with a `post-summary-recheck` hand their manual items to the
  *   summary to re-judge, instead of straight to manual review.
- * @property {object[]} [recheckVerdicts]  The full add-on summary's recheck verdicts
+ * @property {object[]} [recheckVerdicts]  The add-on summary's recheck verdicts
  *   (set by the pipeline after the summary runs); resolveRecheck reads them to settle
  *   the handed-over items. Review-level data, so it is a ctx field, not on ctx.addon.
  * @property {Map<string, object[]>} [recheck]  Manual items handed to each
@@ -847,7 +847,7 @@ export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
     const out = await runOneCheck(checkCtx, check, `[${i + 1}/${total}]`);
     findings.push(...out.findings);
     // A check with `post-summary-recheck: R` hands its manual items to the
-    // recheck consumer R, but only when the full summary will actually run to
+    // recheck consumer R, but only when the add-on summary will actually run to
     // re-judge them (ctx.recheckActive). Otherwise they go straight to manual
     // review - as do all no-summary paths, including the golden harness. In SCA the
     // summary runs once per corpus (recheckConsumersByCorpus), so a producer's items

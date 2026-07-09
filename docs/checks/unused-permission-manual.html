@@ -27,11 +27,11 @@
         the minimize-host-permissions check.
       </p>
       <p>
-        When the whole-add-on summary pass is enabled, the escalated permissions the
+        Under <code>--llm-review</code>, the escalated permissions the
         registry has a recheck prompt for are handed to the
         <code>unused-permission</code> consumer to be re-judged with full context;
         every other unused permission (function-gated, where static analysis is
-        authoritative) stays a manual-review reminder. Without the summary pass, all
+        authoritative) stays a manual-review reminder. Without <code>--llm-review</code>, all
         of them stand as the reminder. This one producer serves every add-on: the
         version-specific <code>tabs</code> wording (the D308076 fix in Thunderbird
         154) is selected later, when the recheck rubric is assembled, from the
@@ -48,7 +48,7 @@ flowchart TD
   H -- no --> U{"Provably required by a<br/>reachable API call?"}
   U -- yes --> OK2([no finding — justified])
   U -- no --> G{"Does the registry have a recheck<br/>prompt for this permission?"}
-  G -- yes --> ESC(["handed to the unused-permission recheck<br/>consumer under the summary pass,<br/>else a manual-review reminder"])
+  G -- yes --> ESC(["handed to the unused-permission recheck<br/>consumer under --llm-review,<br/>else a manual-review reminder"])
   G -- no --> MAN(["manual-review reminder only<br/>— never sent to the model"])
 
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;

@@ -109,7 +109,7 @@ export function isVendored(vendor, file) {
  * @param {Addon} params.addon
  * @param {?string} [params.parsePrompt]  The registry prompts.vendor-parse text.
  * @param {boolean} [params.enabled]  Whether the LLM is enabled
- *   (--llm-enabled); gates the LLM parse fallback. Decoupled from the token (a
+ *   (--llm-review); gates the LLM parse fallback. Decoupled from the token (a
  *   keyless provider has none).
  * @param {?string} [params.token]  LLM token (a real key, or undefined keyless).
  * @param {string} [params.model]

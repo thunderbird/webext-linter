@@ -25,7 +25,7 @@
         time.
       </p>
       <p>
-        It runs only in the post-summary phase. When a full add-on summary is
+        It runs only in the post-summary phase. When a add-on summary is
         produced, those unresolved entries are appended to it under this entry's
         summary rubric and re-judged: web_accessible_resources is needed only
         when something outside the add-on — a content script, a real web page, or
@@ -39,7 +39,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Entries the producer<br/>left unresolved"] --> B{"Did a full add-on<br/>summary run?"}
+  A["Entries the producer<br/>left unresolved"] --> B{"Did a add-on<br/>summary run?"}
   B -- no --> S([skip — nothing handed over;<br/>producer's items stand])
   B -- yes --> L{"LLM judges with the whole<br/>add-on in view: does anything<br/>external read this file?"}
   L -- "pass: needed by a web context" --> OK([no finding — exposure kept])

@@ -116,7 +116,7 @@ export async function callText({
 }
 
 /**
- * The structured --full-summary review: a forced report_addon_review tool whose
+ * The structured --llm-review review: a forced report_addon_review tool whose
  * input is { summary, recheck }.
  * @param {object} params
  * @param {string} params.token @param {string} [params.model]

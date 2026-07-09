@@ -1,6 +1,6 @@
 // The post-summary recheck consumer for missing-english-localization. That check
 // escalates when its language detection is low-confidence (too little text, or a
-// near-tie with English); when --full-summary runs, that one item is appended to
+// near-tie with English); when --llm-review runs, that one item is appended to
 // the add-on summary under this entry's `summary-prompt` and re-judged by a model
 // reading ALL the user-facing text (far more reliable than franc on a short
 // sample). resolveRecheck maps the verdict: pass -> English / nothing to localize

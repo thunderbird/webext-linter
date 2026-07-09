@@ -93,7 +93,7 @@ import {
  *   fallback, threaded from the pipeline (mirrors resolveVendor's LLM inputs).
  *   When absent or `enabled` is false, github entries resolve deterministically
  *   only (offline runs and the golden harness pass nothing).
- * @property {boolean} [enabled]  Whether the LLM is enabled (--llm-enabled).
+ * @property {boolean} [enabled]  Whether the LLM is enabled (--llm-review).
  * @property {?string} [resolvePrompt]  The registry prompts.vendor-npm-resolve
  *   text (the rubric for proposing an npm package).
  * @property {?string} [token]  LLM token (a real key, or undefined keyless).

@@ -47,14 +47,14 @@ that no longer exist.
    `permission-recheck`). The check-bearing sections are `deterministic-checks`,
    `llm-checks`, `manual-checks`, and `post-summary-rechecks` — the last holds every
    recheck CONSUMER (the target of a producer's `post-summary-recheck:`), which is
-   re-judged by the `--full-summary` summary and declares no `input`.
+   re-judged by the `--llm-review` summary and declares no `input`.
 2. `src/checks/rules/<id>.js` — the implementation of each check. The header
    comment block describes the decision logic in prose; the `run()` body is the
    ground truth for the branches. Shared logic lives in `src/checks/lib/`
    (e.g. `permissions.js`, `reachability.js`) — read those when a rule delegates
    to them.
 3. `README.md` — overall framing (deterministic vs LLM vs manual checks, the
-   `--full-summary` recheck mechanism, producer/consumer pairs), and the
+   `--llm-review` recheck mechanism, producer/consumer pairs), and the
    **Standard** vs **Source code archive (SCA)** review modes.
 4. `src/pipeline.js` — the review pipeline (`runPipeline` / `reviewAddon`): the
    ground truth for the two whole-review flow pages. It shows the stage order
@@ -93,7 +93,7 @@ that no longer exist.
      flowchart terminate in an "escalate to manual review" node rather than an
      error/warning/info;
    - producer / recheck pairs (e.g. `*-manual` → its consumer, or the
-     `--full-summary` rechecks) — describe the escalation and where it is
+     `--llm-review` rechecks) — describe the escalation and where it is
      re-judged;
    - LLM checks — make clear the final branch is a model judgement, and what the
      deterministic pre-flight narrows down before the model is asked.
@@ -105,15 +105,15 @@ that no longer exist.
      `manifest_version`/schema-branch selection → Experiment classification (with
      the outright-reject short-circuit for an unrecognised Experiment when
      `--allow-experiments` is off) → setup/vendor resolution & verification → parse
-     & run the deterministic + LLM checks → optional `--full-summary` /
-     `--diff-summary` (which re-judge escalated "unsure" items) → post-summary
+     & run the deterministic + LLM checks → the `--llm-review` summaries
+     (which re-judge escalated "unsure" items) → post-summary
      rechecks → report + manual-review to-do list.
    - **Source Code Archive** (`--sca-root`; `--sca-source` optional) — the split-artifact
      flow: the readable source is the code-defect review target and the subject of the
-     behavioral `--full-summary`; the declared dependencies and the build files are
+     behavioral `--llm-review`; the declared dependencies and the build files are
      audited; the built XPI is authoritative for the manifest, experiments,
      file-completeness, `--diff-to` baseline and the packaging summary. In SCA
-     `--full-summary` runs two passes — behavioral over the source, packaging over the
+     `--llm-review` runs two passes — behavioral over the source, packaging over the
      XPI. Show each check routed to its `input` (source / build / XPI) context.
 
    Follow the check-page template but use a **Review flow** section whose

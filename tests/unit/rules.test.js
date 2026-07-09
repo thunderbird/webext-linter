@@ -1112,7 +1112,7 @@ test("manual checks have unique, doc-backed check ids distinct from rule ids", (
 // ---- unused-permission-manual (producer of permissions to vet) ----
 // It always enumerates the declared NAMED permissions a reachable API call does
 // not provably require, one escalation each (anchored to the manifest line); host
-// match patterns are skipped. When --full-summary runs the orchestrator hands
+// match patterns are skipped. When --llm-review runs the orchestrator hands
 // these to the unused-permission recheck consumer; otherwise they auto-group into
 // the by-hand reminder.
 test("unused-permission-manual lists the unprovable declared named permissions", () => {

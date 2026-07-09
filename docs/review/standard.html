@@ -31,7 +31,7 @@
         bundled Experiment, resolves and verifies its vendored libraries, then
         runs the deterministic, LLM, and manual checks over it. The purple nodes
         below are the optional LLM side-steps — they only run with
-        <code>--llm-enabled</code>; without it, each escalates to manual review
+        <code>--llm-review</code>; without it, each escalates to manual review
         instead. The tool is read-only: it never modifies or repacks the
         submission.
       </p>
@@ -48,7 +48,7 @@ flowchart TD
   XD -- "yes — reject outright" --> RJ([Run ONLY experiment-not-allowed — skip<br/>vendor setup, the LLM, the summaries and<br/>the manual list. Exit 1.])
   XD -- "no — recognised, modified or accepted" --> XR["Register the Experiment API namespaces into the<br/>schema (experiment-modified, -manual-review,<br/>-overrides-api, -missing-strict-max-version run as checks)"]
   XR --> LP
-  LP["Setup · LLM pre-flight (only --llm-enabled): validate<br/>config + model reachable — HARD-FAIL, exit 2"] --> LH
+  LP["Setup · LLM pre-flight (only --llm-review): validate<br/>config + model reachable — HARD-FAIL, exit 2"] --> LH
   LH["Setup · fetch the known-library hash DB"] --> VR
   VR["Setup · resolve vendored declarations<br/>(LLM parses package.json / VENDOR when enabled)"] --> VV
   VV["Setup · verify vendored libraries over the network<br/>(LLM github→npm fallback when enabled); classify<br/>bundled code, CDN-identify, vulnerability-audit"] --> P
@@ -56,8 +56,8 @@ flowchart TD
   P --> LC
   DET["Deterministic checks — each case decided in code"] --> SM
   LC["LLM checks — deterministic pre-flight always;<br/>ambiguous residue → model verdict fail / pass /<br/>unsure, else the manual-review queue"] --> SM
-  SM{"--full-summary or --diff-summary?<br/>(--llm-review = --llm-enabled --full-summary)"}
-  SM -- yes --> SG["AI add-on / change summary (LLM); re-judges<br/>the escalated 'unsure' items with whole-add-on context"]
+  SM{"--llm-review?"}
+  SM -- yes --> SG["AI add-on summary (and a change summary with --diff-to);<br/>re-judges the escalated 'unsure' items with whole-add-on context"]
   SG --> RC["Post-summary recheck consumers resolve<br/>the re-judged items"]
   SM -- no --> RPT
   RC --> RPT["Render findings + the Standard<br/>manual-review to-do list"]
@@ -76,7 +76,7 @@ flowchart TD
 
       <h2>Where the LLM is used</h2>
       <p>
-        Every purple step above is optional and gated on <code>--llm-enabled</code>
+        Every purple step above is optional and gated on <code>--llm-review</code>
         with an <code>LLM_API_KEY</code>. All of them draw on one run-wide request
         cap (<code>MAX_LLM_REQUESTS_PER_RUN</code>): when it is hit the CLI prompts
         to run more, and otherwise the remaining LLM work escalates to manual
@@ -102,13 +102,12 @@ flowchart TD
           the model, which returns <em>fail</em> / <em>pass</em> / <em>unsure</em>.
         </li>
         <li>
-          <strong>The summaries</strong> — <code>--full-summary</code> (an add-on
-          summary) and <code>--diff-summary</code> (what
-          changed since <code>--diff-to</code>). <code>--llm-review</code> is the
-          shorthand for <code>--llm-enabled --full-summary</code>.
+          <strong>The summaries</strong> — part of <code>--llm-review</code>: an
+          add-on summary always, plus a summary of what changed since
+          <code>--diff-to</code> when that baseline is given.
         </li>
         <li>
-          <strong>The post-summary recheck</strong> — the full-summary pass
+          <strong>The post-summary recheck</strong> — the <code>--llm-review</code> pass
           re-judges every <em>unsure</em> item other checks escalated, with
           whole-add-on context, so confident cases resolve instead of landing in
           manual review.

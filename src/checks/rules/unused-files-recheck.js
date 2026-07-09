@@ -1,6 +1,6 @@
 // The post-summary recheck consumer for unused-files. unused-files hands over the
 // files it could not resolve to a loader from a single site (its residual "unsure"
-// manual items); when --full-summary runs, those are appended to the add-on
+// manual items); when --llm-review runs, those are appended to the add-on
 // summary under this entry's `summary-prompt` rubric and re-judged with the whole
 // add-on in view. The shared resolveRecheck maps each verdict: pass -> loaded
 // (drop), fail -> an unused finding, unsure or no verdict -> manual review. It runs

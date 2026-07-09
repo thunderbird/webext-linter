@@ -1,5 +1,5 @@
 // The post-summary recheck mechanism: re-judging items an earlier check could
-// not settle, using the whole-add-on context of the --full-summary pass.
+// not settle, using the whole-add-on context of the --llm-review pass.
 //
 // A check that declares `post-summary-recheck: R` hands the manual-review items
 // it would have produced to the recheck consumer R (the orchestrator diverts

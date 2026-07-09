@@ -17,7 +17,7 @@ import { loadAddon } from "../addon/load.js";
 import { collectJsSources } from "../addon/sources.js";
 import { runExtractionPass, apiUsageOf } from "./extract.js";
 import { createLlmClient } from "./llm-client.js";
-import { llmEnabled, isExperiment } from "./lib/util.js";
+import { llmReview, isExperiment } from "./lib/util.js";
 import { experimentApiNamespaces } from "./lib/experiments.js";
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
@@ -50,7 +50,7 @@ function reviewView(addon) {
  * @param {object} params
  * @param {import("../addon/load.js").Addon} params.addon
  * @param {import("../schema/index.js").SchemaIndex} params.schema
- * @param {{llmEnabled?: boolean, llmApiKey?: string, llmApiUrl?: string,
+ * @param {{llmReview?: boolean, llmApiKey?: string, llmApiUrl?: string,
  *   llmApiType?: string, allowExperiments?: boolean,
  *   libraryHashes?: Map<string, {name: string, version: string}>}}
  *   params.options
@@ -162,7 +162,7 @@ export function buildRunContext({
   // those modules escalate to manual review (the tool stays deterministic and
   // offline). An invalid Experiment rejects outright with no LLM at all, so the
   // client is never attached in that mode (even with a token).
-  if (llmEnabled(ctx) && !invalidExperiment) {
+  if (llmReview(ctx) && !invalidExperiment) {
     ctx.llm = createLlmClient({
       ctx,
       token: options.llmApiKey,
@@ -180,7 +180,7 @@ export function buildRunContext({
  * A sibling of a review context whose `addon` / `jsSources` are the SHIPPED
  * artifact's (the built XPI), for the `input: xpi` structure checks (bundled-files,
  * minimize-web-accessible-resources, ...), the diff summary, and - in SCA - the packaging
- * summary, which describe what actually ships. (The behavioral --full-summary describes the
+ * summary, which describe what actually ships. (The behavioral --llm-review describes the
  * review target: the source in SCA.) The orchestrator (registry.js runChecks / pipeline)
  * builds this once and routes it to those consumers; every other field is shared with
  * the review context, and `apiUsages` (per-source, source-only) is dropped so the

@@ -211,18 +211,15 @@ test("--eslint gates the code-sanity check", () => {
 });
 
 // The two unused-permission checks always run (after the add-on summary) and read
-// the checks memory, so both are in checksRun whether or not --full-summary is
-// set: `unused-permission` evaluates a produced list, `unused-permission-manual`
-// raises the by-hand reminder when none was produced.
+// the checks memory, so both are in checksRun even in a plain (no-LLM) review:
+// `unused-permission` evaluates a produced list, `unused-permission-manual` raises
+// the by-hand reminder when none was produced.
 test("both unused-permission checks always run", () => {
   const addon = path.join(ROOT, "tests", "addons", "all-checks");
   const base = [addon, ...OFFLINE_FLAGS, "--report-format", "json"];
   const off = JSON.parse(run(base).stdout);
   assert.ok(off.meta.checksRun.includes("unused-permission"));
   assert.ok(off.meta.checksRun.includes("unused-permission-manual"));
-  const on = JSON.parse(run([...base, "--full-summary"]).stdout);
-  assert.ok(on.meta.checksRun.includes("unused-permission"));
-  assert.ok(on.meta.checksRun.includes("unused-permission-manual"));
 });
 
 // JSON is a machine contract: stdout is the document, stderr is silent - even
@@ -276,31 +273,15 @@ test("JSON + --report-out writes a plain JSON file", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// --full-summary needs a token: without one, the review still runs and a one-line
-// notice is printed instead of an add-on summary section.
-test("--full-summary without a token prints a skip notice, no add-on section", () => {
-  const addon = path.join(ROOT, "tests", "addons", "clean");
-  const env = { ...process.env };
-  delete env.LLM_API_KEY;
-  const r = spawnSync(
-    process.execPath,
-    [REVIEW, addon, ...OFFLINE_FLAGS, "--full-summary"],
-    { encoding: "utf8", env }
-  );
-  assert.ok([0, 1].includes(r.status));
-  assert.match(r.stdout, /--full-summary needs the LLM/);
-  assert.ok(!r.stdout.includes("── Summary of add-on ──"));
-});
-
-// --llm-enabled without any token is a usage error: the run asked for the LLM
+// --llm-review without any token is a usage error: the run asked for the LLM
 // but no key resolved, so fail fast on stderr, exit 2.
-test("--llm-enabled without a token errors to stderr and exits 2", () => {
+test("--llm-review without a token errors to stderr and exits 2", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const env = { ...process.env };
   delete env.LLM_API_KEY;
   const r = spawnSync(
     process.execPath,
-    [REVIEW, addon, ...OFFLINE_FLAGS, "--llm-enabled"],
+    [REVIEW, addon, ...OFFLINE_FLAGS, "--llm-review"],
     { encoding: "utf8", env }
   );
   assert.equal(r.status, 2);
@@ -309,12 +290,12 @@ test("--llm-enabled without a token errors to stderr and exits 2", () => {
 
 // An unknown LLM_API_TYPE is a usage error even with a key set: there is no
 // provider for it, so fail fast on stderr, exit 2 (before any network call).
-test("--llm-enabled with an unknown LLM_API_TYPE errors and exits 2", () => {
+test("--llm-review with an unknown LLM_API_TYPE errors and exits 2", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const env = { ...process.env, LLM_API_KEY: "sk-test", LLM_API_TYPE: "bogus" };
   const r = spawnSync(
     process.execPath,
-    [REVIEW, addon, ...OFFLINE_FLAGS, "--llm-enabled"],
+    [REVIEW, addon, ...OFFLINE_FLAGS, "--llm-review"],
     { encoding: "utf8", env }
   );
   assert.equal(r.status, 2);
@@ -322,13 +303,13 @@ test("--llm-enabled with an unknown LLM_API_TYPE errors and exits 2", () => {
 });
 
 // The model is set via the LLM_API_MODEL env var (there is no --llm-model flag):
-// it reaches the pipeline's llmModel when --llm-enabled, and stays undefined
-// otherwise (the wants gate - config without --llm-enabled does not turn it on).
-test("LLM_API_MODEL sets llmModel only when --llm-enabled", () => {
+// it reaches the pipeline's llmModel when --llm-review, and stays undefined
+// otherwise (the wants gate - config without --llm-review does not turn it on).
+test("LLM_API_MODEL sets llmModel only when --llm-review", () => {
   const saved = process.env.LLM_API_MODEL;
   process.env.LLM_API_MODEL = "my-model";
   try {
-    assert.equal(pipelineOptsFromArgv(["--llm-enabled"]).llmModel, "my-model");
+    assert.equal(pipelineOptsFromArgv(["--llm-review"]).llmModel, "my-model");
     assert.equal(pipelineOptsFromArgv([]).llmModel, undefined);
   } finally {
     if (saved === undefined) {
@@ -339,14 +320,14 @@ test("LLM_API_MODEL sets llmModel only when --llm-enabled", () => {
   }
 });
 
-// Without --llm-enabled, the provider config (LLM_API_KEY) is NOT forwarded.
-test("provider config is not forwarded unless --llm-enabled", () => {
+// Without --llm-review, the provider config (LLM_API_KEY) is NOT forwarded.
+test("provider config is not forwarded unless --llm-review", () => {
   const saved = process.env.LLM_API_KEY;
   process.env.LLM_API_KEY = "sk-test-key";
   try {
     assert.equal(pipelineOptsFromArgv([]).llmApiKey, undefined);
     assert.equal(
-      pipelineOptsFromArgv(["--llm-enabled"]).llmApiKey,
+      pipelineOptsFromArgv(["--llm-review"]).llmApiKey,
       "sk-test-key"
     );
   } finally {
@@ -368,16 +349,11 @@ test("--sca-root / --sca-source map to the sca pipeline opts", () => {
   assert.ok(!pipelineOptsFromArgv([]).scaSource);
 });
 
-// --llm-review is a convenience alias expanded at parse time into --llm-enabled
-// and --full-summary, so both opts come on together and nothing downstream needs to
-// know about the alias. Without it, both stay off.
-test("--llm-review enables both llmEnabled and fullSummary", () => {
-  const opts = pipelineOptsFromArgv(["--llm-review"]);
-  assert.equal(opts.llmEnabled, true);
-  assert.equal(opts.fullSummary, true);
-  const bare = pipelineOptsFromArgv([]);
-  assert.equal(bare.llmEnabled, false);
-  assert.ok(!bare.fullSummary);
+// --llm-review is the sole LLM on-switch: it sets llmReview (which turns on the
+// checks + the summaries + the recheck). Without it, the LLM stays off.
+test("--llm-review is the LLM on-switch (llmReview)", () => {
+  assert.equal(pipelineOptsFromArgv(["--llm-review"]).llmReview, true);
+  assert.equal(pipelineOptsFromArgv([]).llmReview, false);
 });
 
 // LLM_API_TYPE=ollama is keyless and local: a localhost default base URL and the
@@ -390,8 +366,8 @@ test("LLM_API_TYPE=ollama resolves keyless local defaults", () => {
   }
   process.env.LLM_API_TYPE = "ollama";
   try {
-    const opts = pipelineOptsFromArgv(["--llm-enabled"]);
-    assert.equal(opts.llmEnabled, true);
+    const opts = pipelineOptsFromArgv(["--llm-review"]);
+    assert.equal(opts.llmReview, true);
     assert.equal(opts.llmApiType, "ollama");
     assert.equal(opts.llmModel, "llama3.1"); // provider default
     assert.equal(opts.llmApiUrl, "http://localhost:11434/v1"); // local default
@@ -399,7 +375,7 @@ test("LLM_API_TYPE=ollama resolves keyless local defaults", () => {
     // An explicit LLM_API_URL wins over the local default.
     process.env.LLM_API_URL = "http://remote:11434/v1";
     assert.equal(
-      pipelineOptsFromArgv(["--llm-enabled"]).llmApiUrl,
+      pipelineOptsFromArgv(["--llm-review"]).llmApiUrl,
       "http://remote:11434/v1"
     );
   } finally {
@@ -413,34 +389,26 @@ test("LLM_API_TYPE=ollama resolves keyless local defaults", () => {
   }
 });
 
-// A bare LLM_API_KEY in the environment does not auto-enable the LLM: with
-// --full-summary but no opt-in flag, the run stays deterministic and skips the
-// add-on summary even though the env var is set.
-test("a bare LLM_API_KEY does not enable the LLM without an opt-in", () => {
+// A bare LLM_API_KEY in the environment does not auto-enable the LLM: without
+// --llm-review the run stays deterministic - no LLM, and no add-on summary section
+// - even though the env var is set.
+test("a bare LLM_API_KEY does not enable the LLM without --llm-review", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const env = { ...process.env, LLM_API_KEY: "sk-not-used" };
-  const r = spawnSync(
-    process.execPath,
-    [REVIEW, addon, ...OFFLINE_FLAGS, "--full-summary"],
-    { encoding: "utf8", env }
-  );
+  const r = spawnSync(process.execPath, [REVIEW, addon, ...OFFLINE_FLAGS], {
+    encoding: "utf8",
+    env,
+  });
   assert.ok([0, 1].includes(r.status));
-  assert.match(r.stdout, /--full-summary needs the LLM/);
   assert.ok(!r.stdout.includes("── Summary of add-on ──"));
 });
 
-// --diff-summary needs --diff-to and a token; with neither, the review still
-// completes and prints a one-line notice instead of a change-summary section.
-test("--diff-summary without --diff-to or a token prints a skip notice", () => {
-  const addon = path.join(ROOT, "tests", "addons", "clean");
-  const env = { ...process.env };
-  delete env.LLM_API_KEY;
-  const r = spawnSync(
-    process.execPath,
-    [REVIEW, addon, ...OFFLINE_FLAGS, "--diff-summary"],
-    { encoding: "utf8", env }
-  );
-  assert.ok([0, 1].includes(r.status));
-  assert.match(r.stdout, /--diff-summary needs/);
-  assert.ok(!r.stdout.includes("── Summary of changes ──"));
+// The removed LLM/summary flags parse as unknown options (exit 2): --llm-review is
+// the sole on-switch; the summaries are part of it, not separate flags.
+test("removed LLM/summary flags are unknown options", () => {
+  for (const flag of ["--llm-enabled", "--full-summary", "--diff-summary"]) {
+    const r = run(["x.xpi", flag]);
+    assert.equal(r.code, 2, `${flag} should exit 2`);
+    assert.match(r.stderr, /Unknown option/, `${flag} should be unknown`);
+  }
 });

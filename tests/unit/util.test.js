@@ -4,24 +4,24 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  llmEnabled,
+  llmReview,
   parseVersion,
   cmpVersion,
 } from "../../src/checks/lib/util.js";
 import { llmErrorText } from "../../src/util/log.js";
 
-// The LLM is enabled ONLY by ctx.options.llmEnabled (set from --llm-enabled),
+// The LLM is enabled ONLY by ctx.options.llmReview (set from --llm-review),
 // fully decoupled from the credentials - a keyless provider (Ollama) has no key
 // yet is still enabled, and a stray key never enables it.
-test("llmEnabled is driven solely by options.llmEnabled", () => {
-  assert.equal(llmEnabled({ options: { llmEnabled: true } }), true);
-  assert.equal(llmEnabled({ options: { llmEnabled: false } }), false);
-  assert.equal(llmEnabled({ options: {} }), false);
-  assert.equal(llmEnabled({}), false);
+test("llmReview is driven solely by options.llmReview", () => {
+  assert.equal(llmReview({ options: { llmReview: true } }), true);
+  assert.equal(llmReview({ options: { llmReview: false } }), false);
+  assert.equal(llmReview({ options: {} }), false);
+  assert.equal(llmReview({}), false);
   // A key present without the flag does NOT enable; the flag without a key does.
-  assert.equal(llmEnabled({ options: { llmApiKey: "sk-x" } }), false);
+  assert.equal(llmReview({ options: { llmApiKey: "sk-x" } }), false);
   assert.equal(
-    llmEnabled({ options: { llmEnabled: true, llmApiKey: undefined } }),
+    llmReview({ options: { llmReview: true, llmApiKey: undefined } }),
     true
   );
 });

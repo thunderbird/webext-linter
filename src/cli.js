@@ -161,7 +161,7 @@ function summarySection({ title, summary }) {
 }
 
 /**
- * Resolve the LLM config for this run. `--llm-enabled` is the SOLE enabler
+ * Resolve the LLM config for this run. `--llm-review` is the SOLE enabler
  * (`wants`) of the LLM CHECKS. The LLM_API_* env vars only configure the client
  * and never turn the checks on. The config is forwarded only when `wants`, and
  * validated later, hard-failing at the pipeline's Setup pre-flight if it is
@@ -175,7 +175,7 @@ function summarySection({ title, summary }) {
  *   model?: string}}
  */
 function resolveLlm(values) {
-  const wants = values["llm-enabled"] === true;
+  const wants = values["llm-review"] === true;
   const apiType = (process.env.LLM_API_TYPE || DEFAULT_LLM_TYPE).toLowerCase();
   const apiKey = process.env.LLM_API_KEY || undefined;
   const apiUrl = process.env.LLM_API_URL || defaultBaseUrlFor(apiType);
@@ -236,14 +236,10 @@ export function helpText() {
 
   const llmFlags = [
     [
-      "--llm-enabled",
-      "Enable the LLM checks - cloud (Claude/ChatGPT) or a local model (Ollama), configured via the LLM_API_* environment variables; see the README.",
+      "--llm-review",
+      "Run the AI review (off by default): the model re-judges escalated 'unsure' items, and a Summary of add-on (plus a Summary of changes with --diff-to) is added. Cloud (Claude/ChatGPT) or a local model (Ollama), configured via the LLM_API_* environment variables; see the README.",
     ],
     ["--llm-list-models", "List the models your token can use, then exit."],
-    [
-      "--llm-review",
-      "Shorthand for --llm-enabled --full-summary: run an extended AI add-on review.",
-    ],
   ];
 
   const llmEnv = [
@@ -265,7 +261,7 @@ export function helpText() {
   const sca = [
     [
       "--sca-root <folder|zip>",
-      "The source archive root (holds package.json/lock). Switches to SCA mode - the readable source is reviewed for code defects (and is the subject of the behavioral --full-summary), its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the packaging summary.",
+      "The source archive root (holds package.json/lock). Switches to SCA mode - the readable source is reviewed for code defects (and is the subject of the behavioral --llm-review), its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the packaging summary.",
     ],
     [
       "--sca-source <path>",
@@ -288,15 +284,7 @@ export function helpText() {
     ],
     [
       "--diff-to <xpi|folder>",
-      "Previously published version, to diff against.",
-    ],
-    [
-      "--diff-summary",
-      "Adds an AI Summary of the changes between the current and last version (needs --diff-to and an LLM configuration, see README.md).",
-    ],
-    [
-      "--full-summary",
-      "Add an AI Summary of the full add-on, what the add-on does, with security notes and a permission review (needs an LLM configuration, see README.md).",
+      "Previously published version, to diff against. With --llm-review, adds an AI Summary of the changes.",
     ],
     [
       "--eslint",
@@ -361,11 +349,8 @@ const OPTIONS = {
   "sca-source": { type: "string" },
   "sca-exp-source": { type: "string" },
   "diff-to": { type: "string" },
-  "diff-summary": { type: "boolean" },
-  "full-summary": { type: "boolean" },
   "report-format": { type: "string" },
   "report-out": { type: "string" },
-  "llm-enabled": { type: "boolean" },
   "llm-list-models": { type: "boolean" },
   "llm-review": { type: "boolean" },
   verbose: { type: "boolean" },
@@ -415,7 +400,6 @@ export async function main(argv) {
     return 2;
   }
   const { values, positionals } = parsed;
-  expandAliasFlags(values);
 
   // Output routing by format. Everything the tool narrates (the what-is-going-on
   // feed) is standard output, alongside the report - only real tool errors go to
@@ -496,7 +480,7 @@ export async function main(argv) {
     return 2;
   }
 
-  // The LLM is opt-in (--llm-enabled). Its config (key requirement, an unknown
+  // The LLM is opt-in (--llm-review). Its config (key requirement, an unknown
   // type, a missing/unreachable local model) is validated at the pipeline's
   // Setup pre-flight, which hard-fails there - so there is nothing to check
   // here.
@@ -555,36 +539,25 @@ export async function main(argv) {
         title: "Summary of add-on",
         summary: result.summarizeAddon,
       });
-    } else if (values["full-summary"] && !values["llm-enabled"]) {
-      const note =
-        "\n  (--full-summary needs the LLM; add --llm-enabled with " +
-        "LLM_API_KEY set. Skipped.)\n";
-      process.stdout.write(note);
-      summaryBlock += note;
     }
     if (result.summarize) {
       summaryBlock += summarySection({
         title: "Summary of changes",
         summary: result.summarize,
       });
-    } else if (values["diff-summary"]) {
-      const note =
-        "\n  (--diff-summary needs --diff-to and the LLM; skipped.)\n";
-      process.stdout.write(note);
-      summaryBlock += note;
     }
     // The review tally closes the report, after the advisory summaries above.
     const reviewSummary = formatSummary(result) + "\n";
     process.stdout.write(reviewSummary);
     summaryBlock += reviewSummary;
-    // Nudge toward --full-summary only when it would actually help: it would have
+    // Nudge toward --llm-review only when it would actually help: it would have
     // re-judged the escalated (`extended`) manual items with full-add-on context.
     // Gate strictly on that count - with no unsure items a re-run gains nothing,
     // so we never push the user to spend tokens for nothing.
     const unsureCount = (result.meta.manualReview ?? []).filter(
       (m) => m.extended
     ).length;
-    if (!values["full-summary"] && unsureCount > 0) {
+    if (!values["llm-review"] && unsureCount > 0) {
       const note =
         "\n  (tip: re-run with --llm-review to have the AI " +
         `re-check the ${unsureCount} unsure item(s) above with full-add-on ` +
@@ -646,9 +619,7 @@ function pipelineOptsFromValues(values) {
     scaSource: values["sca-source"],
     scaExpSource: values["sca-exp-source"],
     diffTo: values["diff-to"],
-    diffSummary: values["diff-summary"],
-    fullSummary: values["full-summary"],
-    llmEnabled: llm.wants,
+    llmReview: llm.wants,
     llmApiKey: llm.apiKey,
     llmModel: llm.model,
     llmApiUrl: llm.apiUrl,
@@ -668,22 +639,7 @@ export function pipelineOptsFromArgv(argv) {
     options: OPTIONS,
     allowPositionals: true,
   });
-  expandAliasFlags(values);
   return pipelineOptsFromValues(values);
-}
-
-/**
- * Expand convenience alias flags into the underlying flags, so the rest of the CLI
- * only ever sees the underlying flags. `--llm-review` is shorthand for
- * "--llm-enabled --full-summary"; it is deliberately referenced nowhere else.
- * @param {Record<string, string|boolean|string[]>} values  Parsed flag values
- *   (mutated in place).
- */
-function expandAliasFlags(values) {
-  if (values["llm-review"] === true) {
-    values["llm-enabled"] = true;
-    values["full-summary"] = true;
-  }
 }
 
 /**

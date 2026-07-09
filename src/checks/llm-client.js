@@ -11,7 +11,7 @@
 // Belongs here: creating the per-review client, building the cached add-on
 // metadata block once, forwarding each criterion to the transport via
 // evaluate(), the free-form change summary via summarize(), and the structured
-// --full-summary add-on review via reviewAddon().
+// --llm-review add-on review via reviewAddon().
 // Does NOT belong here: the wire protocol - the forced structured output and
 // coercion - which lives in the provider adapters (src/llm/{anthropic,openai}.js
 // + schema.js), selected by src/llm/provider.js. The system intro and criterion
@@ -216,7 +216,7 @@ export function createLlmClient({
     },
 
     /**
-     * Structured --full-summary review (forced report_addon_review tool). The
+     * Structured --llm-review review (forced report_addon_review tool). The
      * trusted rubric + framing go in `system`; the untrusted, nonce-wrapped add-on
      * corpus + recheck items go in `user`. Returns the prose summary plus the
      * recheck verdicts. Throws on a transport/API error (the caller treats that as

@@ -4,7 +4,7 @@
 // both. A check that cannot settle a case returns an escalation. Only the
 // orchestrator (escalation.js) routes it to the LLM or to manual review.
 //
-// Belongs here: generic, dependency-light check helpers - dedupe, llmEnabled,
+// Belongs here: generic, dependency-light check helpers - dedupe, llmReview,
 // the asArray/asObject manifest guards, isMatchPattern/isBroadHost, scheme,
 // trunc, manifestTokenLine, isExperiment/strictMaxVersion, the suspected-loader
 // helpers referrerSupported/loaderSites, and the feed-note builder loaderTrace.
@@ -115,16 +115,16 @@ export function dedupe(findings) {
 }
 
 /**
- * Whether the LLM is enabled for this run - controlled ONLY by --llm-enabled
- * (the CLI sets ctx.options.llmEnabled from it, see resolveLlm in cli.js).
+ * Whether the LLM is enabled for this run - controlled ONLY by --llm-review
+ * (the CLI sets ctx.options.llmReview from it, see resolveLlm in cli.js).
  * Decoupled from credentials: a keyless provider (Ollama) is still enabled. An
  * enabled run with an invalid config fails hard at the Setup pre-flight, so by
  * the time a check reads this the config is known-good.
  * @param {RunContext} ctx
  * @returns {boolean}
  */
-export function llmEnabled(ctx) {
-  return Boolean(ctx.options?.llmEnabled);
+export function llmReview(ctx) {
+  return Boolean(ctx.options?.llmReview);
 }
 
 /**

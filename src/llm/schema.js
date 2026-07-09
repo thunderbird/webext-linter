@@ -69,7 +69,7 @@ export const RESULT_SCHEMA = {
 // registry.js): the LLM never returns "skipped".
 export const LLM_VERDICTS = new Set(["fail", "pass", "unsure"]);
 
-// The --full-summary structured result: the prose summary the reviewer reads,
+// The --llm-review structured result: the prose summary the reviewer reads,
 // plus `recheck` - one verdict per item handed to a post-summary recheck consumer
 // (unused permissions, unused files, ...) so it can be re-judged with whole-add-on
 // context. Each consumer maps its own verdicts to Issues / manual-review notes -
@@ -136,7 +136,7 @@ export const ADDON_REVIEW_SCHEMA = {
  */
 
 /**
- * @typedef {object} RecheckVerdict  One re-judged item from the full summary.
+ * @typedef {object} RecheckVerdict  One re-judged item from the add-on summary.
  * @property {string} check  Id of the recheck consumer the item belongs to.
  * @property {string} item  The exact item text it was listed under.
  * @property {"fail"|"pass"|"unsure"} verdict  fail = issue present (finding),
@@ -145,7 +145,7 @@ export const ADDON_REVIEW_SCHEMA = {
  */
 
 /**
- * @typedef {object} AddonReview  The --full-summary structured result.
+ * @typedef {object} AddonReview  The --llm-review structured result.
  * @property {string} summary  The prose add-on summary.
  * @property {RecheckVerdict[]} recheck  One verdict per re-judged item.
  */

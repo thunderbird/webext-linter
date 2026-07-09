@@ -1,6 +1,6 @@
 // Producer of the declared permissions that warrant a closer look: every named
 // permission a reachable API call does not provably require, scheduled as a
-// manual-review escalation. When --full-summary is on, the orchestrator hands the
+// manual-review escalation. When --llm-review is on, the orchestrator hands the
 // ones the registry has a rubric prompt for to the `unused-permission` consumer to
 // be re-judged with whole-add-on context; the rest stay manual (the divert applies
 // registry.rechecks - see src/checks/registry.js and src/checks/lib/recheck.js).

@@ -33,7 +33,7 @@
         review then splits across five inputs with a fixed role each, and each
         check is routed to exactly the artifact its <code>input</code> selects. The
         purple nodes are the optional LLM side-steps (only with
-        <code>--llm-enabled</code>); Experiment handling and the summaries work as
+        <code>--llm-review</code>); Experiment handling and the summaries work as
         in the <a href="../index.html#review-standard">Standard</a> flow.
       </p>
 
@@ -42,7 +42,7 @@
         <pre class="mermaid">
 flowchart TD
   A["Submission: a built XPI +<br/>a readable source archive<br/>(--sca-root; --sca-source optional)"] --> B["Load both artifacts — built XPI = shipped<br/>artifact, readable source = review target"]
-  B --> LP["LLM pre-flight (only --llm-enabled): validate config +<br/>model reachable — HARD-FAIL exit 2; resolve vendored<br/>declarations (LLM parses package.json when enabled)"]
+  B --> LP["LLM pre-flight (only --llm-review): validate config +<br/>model reachable — HARD-FAIL exit 2; resolve vendored<br/>declarations (LLM parses package.json when enabled)"]
   LP --> X{"Shipped XPI declares experiment_apis?"}
   X -- no --> SPLIT
   X -- yes --> XE["Experiments reviewed from the XPI; --sca-exp-source<br/>excludes that privileged subtree from the WebExtension<br/>code checks (required with --allow-experiments). An<br/>unsupported one with experiments off → reject, exit 1"]
@@ -52,7 +52,7 @@ flowchart TD
   SPLIT --> BLD
   SPLIT --> XPI
   SPLIT --> MAN
-  SRC["Readable source (--sca-source) — the review target, input: source:<br/>API / permission / eval / exfiltration checks over every<br/>file (scanned as authored); the LLM checks escalate<br/>their ambiguous residue to the model when enabled;<br/>the behavioral --full-summary reviews this source"]
+  SRC["Readable source (--sca-source) — the review target, input: source:<br/>API / permission / eval / exfiltration checks over every<br/>file (scanned as authored); the LLM checks escalate<br/>their ambiguous residue to the model when enabled;<br/>the behavioral --llm-review reviews this source"]
   DEP["Declared dependencies (source package.json):<br/>each a pinned npm package or GitHub URL; gated on<br/>popularity + known vulnerabilities (no LLM)"]
   BLD["Build files (archive minus source, no node_modules)<br/>— input: build: npm/pnpm only, no committed node_modules or<br/>build artifact, no registry redirect, install hooks flagged; one setup<br/>LLM call classifies the build (files reached from package.json) and three<br/>checks gate on it: remote fetch / not built from source / redundant submission"]
   XPI["Built XPI (shipped) — input: xpi: experiments,<br/>file-completeness (bundled / web-accessible / unused /<br/>locales), --diff-to baseline, packaging summary"]
@@ -61,7 +61,7 @@ flowchart TD
   DEP --> SUM
   BLD --> SUM
   MAN --> SUM
-  XPI --> SUM{"--full-summary or --diff-summary?"}
+  XPI --> SUM{"--llm-review?"}
   SUM -- yes --> SG["AI summaries (LLM): a behavioral one over the SOURCE and a<br/>packaging one over the XPI, each re-judging its corpus's escalated<br/>'unsure' items; the post-summary recheck consumers resolve them"]
   SUM -- no --> RPT
   SG --> RPT["Render findings + the manual-review to-do list"]
@@ -78,7 +78,7 @@ flowchart TD
 
       <h2>Where the LLM is used</h2>
       <p>
-        The purple steps are optional and gated on <code>--llm-enabled</code>,
+        The purple steps are optional and gated on <code>--llm-review</code>,
         sharing the same run-wide request cap as a Standard review. In SCA mode the
         LLM is consulted at:
       </p>
@@ -112,15 +112,15 @@ flowchart TD
           node_modules, so a source submission is not needed).
         </li>
         <li>
-          <strong>The summaries + recheck</strong> — <code>--full-summary</code>
+          <strong>The summaries + recheck</strong> — <code>--llm-review</code>
           runs <em>two</em> passes in SCA: a behavioral summary over the readable
           <strong>source</strong> (the human-facing "Summary of add-on", re-judging
           the source-anchored rechecks — data exfiltration, disguised transmission,
           unused permissions) and a recheck-only packaging summary over the built
           <strong>XPI</strong> (the XPI-anchored rechecks — unused files,
           <code>web_accessible_resources</code>, localization). Each pass re-judges
-          only its corpus's escalated <em>unsure</em> items. <code>--diff-summary</code>
-          still describes the built XPI.
+          only its corpus's escalated <em>unsure</em> items. With <code>--diff-to</code>,
+          a summary of changes describes the built XPI.
         </li>
       </ul>
 

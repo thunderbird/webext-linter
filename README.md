@@ -98,15 +98,14 @@ back to manual review.
 
 | Option | Description |
 | --- | --- |
-| `--llm-enabled` | Enable the LLM checks. The key is read from the `LLM_API_KEY` environment variable (see [LLM configuration](#llm-configuration)). |
+| `--llm-review` | Run the AI review (the sole LLM on-switch, off by default): the model re-judges the "unsure" items other checks escalated, and a **"Summary of add-on"** section is added (plus a **"Summary of changes"** with `--diff-to`). The key is read from the `LLM_API_KEY` environment variable (see [LLM configuration](#llm-configuration)). |
 | `--llm-list-models` | List the models your token can use, then exit. |
-| `--llm-review` | Shorthand for `--llm-enabled --full-summary` - run the AI add-on review in one flag. |
 
 **Source code archive (SCA):**
 
 | Option | Description |
 | --- | --- |
-| `--sca-root <folder\|zip>` | The source archive root (holds `package.json`/lock). Switches to SCA mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the packaging summary (the behavioral `--full-summary` reviews the readable source). See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
+| `--sca-root <folder\|zip>` | The source archive root (holds `package.json`/lock). Switches to SCA mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the packaging summary (the behavioral `--llm-review` reviews the readable source). See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
 | `--sca-source <path>` | The add-on code root, relative to `--sca-root` or an absolute path (e.g. `src` or `addon`). Optional; defaults to `.` (the whole `--sca-root` reviewed as the source - a flat layout with `manifest.json` at the root). Needs `--sca-root`. |
 | `--sca-exp-source <path>` | The Experiment implementation folder, relative to `--sca-root` or an absolute path, and within `--sca-source` (e.g. `addon/experiment-api`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--sca-root`; required when `--allow-experiments` is used in SCA mode. |
 
@@ -116,9 +115,7 @@ back to manual review.
 | --- | --- |
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
 | `--cdn-lib-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached; an offline run simply finds no match. |
-| `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
-| `--diff-summary` | Add an AI assisted **"Summary of changes"** section: how the add-on changed since the `--diff-to` baseline. Needs `--diff-to` and `--llm-enabled`. |
-| `--full-summary` | Add an AI **"Summary of add-on"** section after the report - what the add-on does, with security/privacy notes - from its (almost) full current source (vendored and unused files excluded). The same pass also **re-checks the unsure items** other checks escalated (including any permissions), judging them with full-add-on context, so confident cases resolve instead of landing in manual review (see [LLM checks](#llm-checks)). Advisory, not a finding. Needs `--llm-enabled`. |
+| `--diff-to <xpi\|folder>` | Previously published version, to diff against. With `--llm-review`, adds an AI **"Summary of changes"** section (how the add-on changed since this baseline). |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--verbose` | Verbose logging. |
 
@@ -127,7 +124,7 @@ tool failure.
 
 ### LLM configuration
 
-The LLM checks are configured from the environment, and enabled via the `--llm-enabled` flag:
+The LLM checks are configured from the environment, and enabled via the `--llm-review` flag:
 
 | Variable | Description |
 | --- | --- |
@@ -139,16 +136,16 @@ The LLM checks are configured from the environment, and enabled via the `--llm-e
 ```sh
 # Claude (the default provider)
 export LLM_API_KEY=sk-ant-...
-node verify.js <xpi|folder> --llm-enabled
+node verify.js <xpi|folder> --llm-review
 
 # ChatGPT
 export LLM_API_TYPE=chatgpt
 export LLM_API_KEY=sk-...
-node verify.js <xpi|folder> --llm-enabled
+node verify.js <xpi|folder> --llm-review
 
 # local Ollama - no API key
 export LLM_API_TYPE=ollama
-node verify.js <xpi|folder> --llm-enabled
+node verify.js <xpi|folder> --llm-review
 ```
 
 Each provider has a default model (`claude-sonnet-4-6` for `claude`, `gpt-4.1`
@@ -201,7 +198,7 @@ node verify.js built.xpi --sca-root ./source-archive --sca-source src
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest, the experiments, the file-completeness checks (bundled / web-accessible
   / unused / locales), the `--diff-to` baseline, and the packaging summary. The
-  behavioral `--full-summary` reviews the readable source instead (see below).
+  behavioral `--llm-review` reviews the readable source instead (see below).
 - `--sca-exp-source` names an Experiment implementation folder - relative to
   `--sca-root` (or absolute), and within `--sca-source` (e.g. `addon/experiment-api`)
   - so its privileged, non-WebExtension code is excluded from the WebExtension checks
@@ -226,7 +223,7 @@ A review has three kinds of check, all declared in
   manual review.
 - **Manual** - checks the tool can't make itself, surfaced as a todo list.
 
-The `--full-summary` recheck **consumers** (which re-judge a producer's escalated
+The `--llm-review` recheck **consumers** (which re-judge a producer's escalated
 items with the whole add-on in view) live in a dedicated `post-summary-rechecks:`
 section; a consumer inherits the mechanism of its producer.
 
@@ -298,16 +295,15 @@ escalates it straight to manual review (e.g. `vendor-unverified`,
 Each LLM check **always runs its deterministic pre-flight**, regardless if LLM support is enabled or not.
 Cases the pre-flight can settle become findings directly, and only the
 genuinely-ambiguous residue is escalated, per case. When LLM support is not enabled, unsure findings are added to the manual review queue. When LLM support *is* enabled
-(`--llm-enabled` with an `LLM_API_KEY`), each escalated case is sent to the model
+(`--llm-review` with an `LLM_API_KEY`), each escalated case is sent to the model
 with the check's rubric and that case's evidence (e.g. the offending file's
 source). The model returns a three-way verdict - **fail** / **pass** /
 **unsure** - so a confident result is final. Any **unsure** finding is routed to manual review.
 
-`--full-summary` adds a second pass over those unsure items. The whole-add-on
+`--llm-review` then runs a second pass over those unsure items: the whole-add-on
 summary re-judges each one with full-add-on context (richer than the per-case
 evidence of the first pass), so many resolve to a confident **pass**/**fail**
-instead of staying on the manual-review list. Without `--full-summary`, each
-unsure case simply goes to manual review as above.
+instead of staying on the manual-review list.
 
 | Check id (`check:`) | Pre-flight (always) + what the LLM judges |
 | --- | --- |
@@ -352,13 +348,13 @@ node verify.js ./my-addon
 # machine-readable JSON output
 node verify.js ./submission.xpi --report-format json
 
-# Review with the LLM checks enabled, plus an AI summary of the add-on
+# Run the AI review (LLM checks + a Summary of the add-on)
 export LLM_API_KEY=sk-…
-node verify.js ./submission.xpi --llm-enabled --full-summary
+node verify.js ./submission.xpi --llm-review
 
 # Same, but use ChatGPT instead of the default (Claude)
 export LLM_API_KEY=sk-… LLM_API_TYPE=chatgpt
-node verify.js ./submission.xpi --llm-enabled
+node verify.js ./submission.xpi --llm-review
 
 # List the models your token can use, then exit (needs a token)
 export LLM_API_KEY=sk-…

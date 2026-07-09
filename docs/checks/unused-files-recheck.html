@@ -24,7 +24,7 @@
         view rather than one site at a time.
       </p>
       <p>
-        It runs only in the post-summary phase. When a full add-on summary is
+        It runs only in the post-summary phase. When a add-on summary is
         produced, those unresolved files are appended to it under this entry's
         summary rubric and re-judged: the model decides whether anything anywhere
         in the add-on loads each file (a static or dynamic import, a getURL or
@@ -37,7 +37,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Files unused-files left<br/>unresolved (its manual items)"] --> B{"Did a full add-on<br/>summary run?"}
+  A["Files unused-files left<br/>unresolved (its manual items)"] --> B{"Did a add-on<br/>summary run?"}
   B -- no --> S([skip — nothing handed over;<br/>producer's items stand])
   B -- yes --> L{"LLM judges with the whole<br/>add-on in view: does anything<br/>load this file at runtime?"}
   L -- "pass: loaded somewhere" --> OK([no finding — file kept])

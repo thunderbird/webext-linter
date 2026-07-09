@@ -72,7 +72,7 @@ test("coerceResult survives hostile shapes", () => {
   ]);
 });
 
-// Well-formed --full-summary review input passes through; the summary defaults
+// Well-formed --llm-review review input passes through; the summary defaults
 // to "" when absent, and each recheck entry keeps its check + item, coerces an
 // unknown verdict to the safe "unsure", and defaults a missing reason to "". An
 // entry missing a check or item string is dropped.

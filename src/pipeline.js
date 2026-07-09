@@ -122,7 +122,7 @@ import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
  *   the manifest, experiments, file-completeness (`input: xpi`) checks, the --diff-to
  *   comparison, and the packaging summary all run (a separate shipped context the
  *   orchestrator routes them to - see buildShippedCtx in src/checks/context.js). The
- *   behavioral --full-summary reviews the readable source instead.
+ *   behavioral --llm-review reviews the readable source instead.
  * @property {string} [scaSource]  The add-on code root, relative to scaRoot or an
  *   absolute path (e.g. "src" or "addon"). Optional; defaults to "." (the whole scaRoot
  *   reviewed as the source - a flat layout with manifest.json at the root).
@@ -140,11 +140,9 @@ import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
  *   (offline/privacy).
  * @property {string} [cdnLookupCache]  Where to cache the CDN hash-lookup results.
  * @property {string} [diffTo]  Path to the previous published version.
- * @property {boolean} [diffSummary]  Add an LLM "Summary of changes" section.
- * @property {boolean} [fullSummary]  Add an LLM "Summary of add-on" section.
  * @property {boolean} [reviewUrl]  Look up the ATN reviewer review-page URL and
  *   put it on meta.reviewUrl - set for text reports, off for JSON/the harness.
- * @property {boolean} [llmEnabled]  The sole LLM on-switch (--llm-enabled).
+ * @property {boolean} [llmReview]  The sole LLM on-switch (--llm-review).
  * @property {string} [llmApiKey]  Real API key, or undefined (a keyless
  *   provider).
  * @property {string} [llmModel]
@@ -229,7 +227,7 @@ export async function runPipeline(opts) {
   // the Activity check loop, so the otherwise-silent pre-review pause shows what is
   // running (a no-op when progress is off - JSON, the golden harness). The total is
   // sized from what the fast .xpi read already gives us: mode (SCA skips the XPI-only
-  // CDN + identified-library-audit steps, so is shorter), --llm-enabled, and whether
+  // CDN + identified-library-audit steps, so is shorter), --llm-review, and whether
   // it is an Experiment (which adds a classification step). Exact for every path EXCEPT
   // a REJECTED Experiment (an experiment add-on run WITHOUT --allow-experiments whose
   // bundled draft is unrecognised): it skips the whole vendor block, so its counter
@@ -238,7 +236,7 @@ export async function runPipeline(opts) {
   // - i.e. a second classification pass before the banner, which we deliberately avoid;
   // the accepted path (the reviewer's --allow-experiments flow) is exact.
   const setupTotal =
-    (mode === "sca" ? 10 : 7) + (opts.llmEnabled ? 1 : 0) + (isExp ? 1 : 0);
+    (mode === "sca" ? 10 : 7) + (opts.llmReview ? 1 : 0) + (isExp ? 1 : 0);
   let setupDone = 0;
   /**
    * Emit the next numbered "Setup" feed line.
@@ -355,11 +353,11 @@ export async function runPipeline(opts) {
   });
 
   // The LLM pre-flight: shown in the Setup feed with the chosen type + model,
-  // and a HARD FAIL on a bad config. Runs whenever --llm-enabled, regardless of
+  // and a HARD FAIL on a bad config. Runs whenever --llm-review, regardless of
   // whether this run will actually use the LLM (a rejected Experiment included)
   // - if you ask for the LLM, its config must be usable. A throw here is
   // surfaced by main()'s catch as a stderr message + exit 2.
-  if (opts.llmEnabled) {
+  if (opts.llmReview) {
     setupStep(`Checking the LLM (${opts.llmApiType}, ${opts.llmModel})`);
     const configError = validateLlmConfig(opts.llmApiType, {
       apiKey: opts.llmApiKey,
@@ -427,7 +425,7 @@ export async function runPipeline(opts) {
     addon.vendor = await resolveVendor({
       addon,
       parsePrompt: registry.prompt("vendor-parse"),
-      enabled: opts.llmEnabled,
+      enabled: opts.llmReview,
       token: opts.llmApiKey,
       model: opts.llmModel,
       url: opts.llmApiUrl,
@@ -505,7 +503,7 @@ export async function runPipeline(opts) {
       addon.buildFiles.buildReview = await analyzeBuild({
         build: addon.buildFiles,
         analysisPrompt: registry.prompt("build-analysis"),
-        enabled: opts.llmEnabled,
+        enabled: opts.llmReview,
         token: opts.llmApiKey,
         model: opts.llmModel,
         url: opts.llmApiUrl,
@@ -523,7 +521,7 @@ export async function runPipeline(opts) {
         addon,
         opts.vendorNet,
         {
-          enabled: opts.llmEnabled,
+          enabled: opts.llmReview,
           resolvePrompt: registry.prompt("vendor-npm-resolve"),
           token: opts.llmApiKey,
           model: opts.llmModel,
@@ -665,7 +663,7 @@ const keepVerdicts = (verdicts, allowed) =>
   (verdicts ?? []).filter((v) => v && allowed.has(v.check));
 
 /**
- * Generate one --full-summary add-on review pass over a chosen corpus and return its
+ * Generate one --llm-review add-on review pass over a chosen corpus and return its
  * prose plus its recheck verdicts (the caller merges the verdicts onto
  * ctx.recheckVerdicts for the post-summary consumers). In SCA the pipeline runs two
  * passes - a behavioral one over the source and a packaging one over the built XPI - each
@@ -682,7 +680,7 @@ const keepVerdicts = (verdicts, allowed) =>
  * @returns {Promise<(GeneratedSummary & {verdicts?: object[]})|undefined>}
  */
 async function generateAddonSummary(ctx, registry, budget, opts = {}) {
-  const { label = "full", ...summarizerOpts } = opts;
+  const { label = "add-on", ...summarizerOpts } = opts;
   const deferred = buildAddonSummarizer(ctx, registry, summarizerOpts);
   if (!deferred) {
     return undefined;
@@ -824,14 +822,12 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
     checksOnly,
     checksSkip,
     eslint,
-    llmEnabled,
+    llmReview,
     llmApiKey,
     llmApiUrl,
     llmApiType,
     allowExperiments,
     diffTo,
-    fullSummary,
-    diffSummary,
   } = opts;
 
   // schema + schemaSource (and the Experiment-namespace registration) are resolved by
@@ -852,7 +848,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
     xpiAddon,
     schema,
     options: {
-      llmEnabled,
+      llmReview,
       llmApiKey,
       llmApiUrl,
       llmApiType,
@@ -915,13 +911,14 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
   const baseSkip = eslint
     ? (checksSkip ?? [])
     : [...(checksSkip ?? []), "code-sanity"];
-  // When the full add-on summary will run, a check that declares a
+  // When the add-on summary will run, a check that declares a
   // `post-summary-recheck` hands its manual items to that recheck consumer to be
   // re-judged with whole-add-on context (runChecks diverts them - except any a
   // producer marked manual-only; the summary judges them; the consumer resolves
   // them - see src/checks/lib/recheck.js).
-  // Without the summary this is false, so those items go straight to manual review.
-  ctx.recheckActive = !invalidExperiment && fullSummary && Boolean(ctx.llm);
+  // Without the LLM review (no ctx.llm) this is false, so those items go straight
+  // to manual review.
+  ctx.recheckActive = !invalidExperiment && Boolean(ctx.llm);
   progress(""); // close the Setup section before runChecks prints "── Activity ──"
   const { findings, checks, manualItems, deferred, total } = await runChecks(
     ctx,
@@ -939,7 +936,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
   // unreachable - that set is a product of reachability (unused-files), so it
   // exists only now, which is why the summary runs after the checks.
   let summarizeAddon;
-  if (!invalidExperiment && fullSummary) {
+  if (!invalidExperiment && llmReview) {
     // unused-files runs over the built XPI (input: xpi), so its paths are the XPI's.
     const unusedFiles = new Set(
       findings.filter((f) => f.ruleId === "unused-files").map((f) => f.file)
@@ -997,7 +994,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
     }
   }
   let summarize;
-  if (!invalidExperiment && diffSummary) {
+  if (!invalidExperiment && llmReview && diffTo) {
     summarize = await generateSummary(
       buildSummarizer(ctx, registry, shippedCtx),
       "diff summary",

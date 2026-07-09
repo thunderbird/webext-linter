@@ -1,6 +1,6 @@
 // The post-summary recheck consumer for data-exfiltration. data-exfiltration hands
 // over each remote-transmission site it could not clear from the narrow per-site
-// view (its residual "unsure" manual items); when --full-summary runs, those are
+// view (its residual "unsure" manual items); when --llm-review runs, those are
 // appended to the add-on summary under this entry's `summary-prompt` and re-judged
 // with the whole add-on in view (so a user opt-in defined in any settings or
 // background module is visible, not only the options page in the narrow corpus).

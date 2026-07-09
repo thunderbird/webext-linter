@@ -9,7 +9,7 @@
 // We do NOT report declared-but-unused permissions: a permission can be needed
 // only to read a permission-gated property of returned data (e.g. accountsRead
 // for a message header's folder), which a static scan cannot confirm, so any
-// "unused" verdict would be unsound. The optional --full-summary LLM pass
+// "unused" verdict would be unsound. The optional --llm-review LLM pass
 // assesses unused permissions advisorily instead.
 //
 // The schema expresses "this API needs a manifest key" via pseudo-permissions

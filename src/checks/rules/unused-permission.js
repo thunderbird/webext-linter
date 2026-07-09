@@ -2,7 +2,7 @@
 // (unused-permission-manual) hands over every declared named permission a reachable
 // API call does not provably require; the divert (registry.rechecks) keeps only the
 // ones the registry has a rubric prompt for and the rest stay manual. When
-// --full-summary runs, the kept items are appended to the add-on summary under a
+// --llm-review runs, the kept items are appended to the add-on summary under a
 // rubric the assembler builds from the permission-prompt-framing + permission-prompts
 // sections (choosing the tabs variant by the add-on's strict_min_version). The model
 // returns a verdict per permission, and this check maps each: pass -> justified

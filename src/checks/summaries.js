@@ -6,7 +6,7 @@
 // buildSummarizer is the "Summary of changes" (ctx.previous vs ctx.addon as a
 // changed-files diff, --diff-to). buildAddonSummarizer is the "Summary of
 // add-on" (the almost-full current authored add-on, minus vendored and unused
-// files, --full-summary).
+// files, --llm-review).
 //
 // The diff summary is free-form prose; the add-on summary is structured (prose
 // plus the machine-readable recheck verdicts, via the forced report_addon_review
@@ -292,7 +292,7 @@ export function buildSummarizer(ctx, registry, shippedCtx = ctx) {
 }
 
 /**
- * Prepare the deferred "Summary of add-on" (--full-summary): the (almost) full
+ * Prepare the deferred "Summary of add-on" (--llm-review): the (almost) full
  * current add-on handed to the LLM with the registry "add-on-summary" prompt,
  * plus a recheck section for any items earlier checks handed over (ctx.recheck).
  * The model returns prose plus the structured recheck verdicts (the post-summary
@@ -337,7 +337,12 @@ export function buildAddonSummarizer(
   // Items earlier checks handed to a post-summary recheck consumer (ctx.recheck):
   // the trusted RUBRICS join the system prompt; the untrusted ITEM lists are wrapped
   // into the user data. Restricted to this pass's consumers; empty when none carry items.
-  const { rubric, items } = buildRecheckSections(ctx, registry, nonce, consumers);
+  const { rubric, items } = buildRecheckSections(
+    ctx,
+    registry,
+    nonce,
+    consumers
+  );
   return deferredReview(ctx, {
     system: `${framing(nonce)}\n\n${prompt}${rubric ? `\n\n${rubric}` : ""}`,
     user: items ? `${text}\n\n${items}` : text,

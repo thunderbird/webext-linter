@@ -24,7 +24,7 @@
         view rather than just the one suspected site.
       </p>
       <p>
-        It runs only in the post-summary phase. When a full add-on summary is
+        It runs only in the post-summary phase. When a add-on summary is
         produced, those unresolved locations are appended to it under this entry's
         summary rubric and re-judged, so context elsewhere in the add-on can show
         whether a dynamic remote URL is a legitimate load or a covert data send.
@@ -38,7 +38,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Locations disguised-transmission<br/>left unresolved"] --> B{"Did a full add-on<br/>summary run?"}
+  A["Locations disguised-transmission<br/>left unresolved"] --> B{"Did a add-on<br/>summary run?"}
   B -- no --> S([skip — nothing handed over;<br/>producer's items stand])
   B -- yes --> L{"LLM judges with the whole<br/>add-on in view: is data smuggled<br/>out through this channel?"}
   L -- "pass: legitimate dynamic URL" --> OK([no finding])
