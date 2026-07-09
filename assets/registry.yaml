@@ -894,6 +894,10 @@ permission-prompts:
       passing cookieStoreId to tabs.create, windows.create, spaces.create or
       spaces.update (reading cookieStoreId needs no permission).
   - permissions: webRequestBlocking
+    # The example event `onAfterSendHeaders` below is DELIBERATELY fictional (real ones are
+    # onBeforeSendHeaders / onSendHeaders / onBeforeRequest / ...): it forces the model to
+    # match the PATTERN (a webRequest.on* addListener with "blocking" in an array arg) and
+    # apply it to the real event in the code, not echo the example. Do NOT "correct" it.
     prompt: |-
       "webRequestBlocking" is justified by a webRequest.on* addListener call that passes
       the string "blocking" inside one of its ARRAY arguments (the extraInfoSpec array), e.g.
