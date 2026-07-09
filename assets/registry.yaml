@@ -1188,16 +1188,19 @@ post-summary-rechecks:
 # actually handed over and the tabs variant matching the add-on's strict_min_version.
 # The model's verdict maps to justified (drop), unused (this warning), or unsure
 # (manual review); it runs in the post-summary phase, inferred from being named as
-# the post-summary-recheck target above. The {{reason}} slot carries the model's why.
+# the post-summary-recheck target above. Both texts are deliberately item-free and
+# reason-free: same-bodied findings collapse into one numbered entry with the
+# permissions on the locus lines (like the producer's manual reminder), and the
+# model's per-permission reasons appear only in the AI summary bullets.
 - title: Unused permission
   severity: warning
   check: unused-permission
   permission-recheck: true
   response: |-
-    The "{{item}}" permission appears to be unused. {{reason}} An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If it is in fact used, please specify which part of your add-on stops working if it is removed.
+    One or more declared permissions are unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If a permission is in fact used, please specify which part of your add-on stops working if it is removed.
   instructions: |-
-    The "{{item}}" permission may be unused. {{reason}} Confirm whether the add-on
-    actually needs it, and if not, ask the developer to remove it.
+    One or more declared permissions may be unused. Confirm whether the add-on
+    actually needs them, and if not, ask the developer to remove them.
 
 # Recheck consumer for missing-english-localization (above): re-judges the
 # low-confidence language case (too little text, or a near-tie with English) with a

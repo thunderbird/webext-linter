@@ -9,7 +9,7 @@ import {
   renderFindings,
   renderManualItems,
 } from "../../src/report/responses.js";
-import { loadRegistry } from "../../src/checks/registry.js";
+import { loadRegistry, Registry } from "../../src/checks/registry.js";
 import { artifactLabel } from "../../src/report/artifact.js";
 
 const registry = loadRegistry();
@@ -175,25 +175,88 @@ test("a recheck consumer's XPI-corpus manual item labels [XPI] end-to-end", () =
   assert.equal(label, "XPI");
 });
 
-// A manual-review escalation can carry extra `data` slots (e.g. a reason),
-// filled into the instructions alongside {{item}} - used by the
-// unused-permission check's "unsure" cases.
-test("renderManualItems fills {{reason}} from the ref's data", () => {
+// A manual-review escalation can carry extra `data` slots, filled into the
+// instructions alongside {{item}} - the mechanism any entry with a data-keyed
+// placeholder rides on.
+test("renderManualItems fills a data slot from the ref's data", () => {
+  const reg = new Registry({
+    "deterministic-checks": [
+      {
+        title: "Data slot",
+        check: "data-slot",
+        instructions:
+          'The "{{item}}" case needs review. {{reason}} Decide by hand.',
+      },
+    ],
+  });
   const [item] = renderManualItems(
     [
       {
-        ruleId: "unused-permission",
+        ruleId: "data-slot",
         item: "tabs",
         kind: "escalation",
         data: { reason: "no tab property is read" },
       },
     ],
-    registry
+    reg
   );
-  assert.match(item.title, /unused permission/i);
   assert.match(item.instructions, /"tabs"/);
   assert.match(item.instructions, /no tab property is read/);
   assert.ok(!item.instructions.includes("{{reason}}"));
+});
+
+// The unused-permission recheck consumer deliberately renders item-free and
+// reason-free on BOTH verdict paths, so its entries collapse like the producer's
+// manual reminder: fail findings share one identical message (groupByMessage
+// merges them into a single numbered entry) and the permissions surface on the
+// locus lines via listItem; the model's reason never reaches the report body.
+test("unused-permission findings share one reason-free message and collapse", () => {
+  const findings = [
+    {
+      ruleId: "unused-permission",
+      item: "compose",
+      file: "manifest.json",
+      loc: { line: 17 },
+      message: null,
+      data: { reason: "no compose-tab injection found" },
+    },
+    {
+      ruleId: "unused-permission",
+      item: "tabs",
+      file: "manifest.json",
+      loc: { line: 25 },
+      message: null,
+      data: { reason: "no privileged tab reads found" },
+    },
+  ];
+  renderFindings(findings, registry);
+  assert.equal(findings[0].message, findings[1].message); // one group in the report
+  assert.equal(findings[0].listItem, true); // permission on the locus line
+  // LLM-confirmed: the finding states the verdict plainly, no "appears" hedging
+  // (the hedged wording belongs to the unsure/manual paths).
+  assert.match(findings[0].message, /permissions are unused/);
+  assert.ok(!findings[0].message.includes("compose-tab injection"));
+  assert.ok(!findings[0].message.includes("{{"));
+});
+
+test("an unsure unused-permission ref renders reason-free and item-listed", () => {
+  const [m] = renderManualItems(
+    [
+      {
+        ruleId: "unused-permission",
+        item: "tabs",
+        file: "manifest.json",
+        loc: { line: 25 },
+        kind: "escalation",
+        data: { reason: "no privileged tab reads found" },
+      },
+    ],
+    registry
+  );
+  assert.equal(m.listItem, true);
+  assert.equal(m.item, "tabs");
+  assert.ok(!m.instructions.includes("no privileged tab reads found"));
+  assert.ok(!m.instructions.includes("{{"));
 });
 
 // A manual ref whose instructions are item-free (e.g. unused-permission-manual)
