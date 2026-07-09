@@ -9,7 +9,7 @@ deterministic-checks:
 - title: Privileged core symbol in WebExtension code
   severity: error
   check: core-symbol-in-webext
-  input: auto
+  input: source
   response: |-
     This add-on is using privileged Thunderbird internals in a WebExtension context, where they are not available: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage.
 
@@ -26,7 +26,7 @@ deterministic-checks:
 - title: Unknown or unsupported WebExtension API
   severity: error
   check: unknown-api
-  input: auto
+  input: source
   response: |-
     The following WebExtension APIs are not supported in the targeted Thunderbird version.
     Read more: https://webextension-api.thunderbird.net/.
@@ -35,7 +35,7 @@ deterministic-checks:
 - title: Deprecated WebExtension API
   severity: info
   check: deprecated-api
-  input: auto
+  input: source
   response: |-
     "{{item}}" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
     Read more: https://webextension-api.thunderbird.net/.
@@ -45,7 +45,7 @@ deterministic-checks:
 - title: API newer than strict_max_version
   severity: error
   check: strict-max-version-api
-  input: auto
+  input: source
   response: |-
     The add-on is setting strict_max_version to {{max}} but uses functions or events added in a later Thunderbird. Raise strict_max_version, or stop using these APIs.
 
@@ -53,7 +53,7 @@ deterministic-checks:
 - title: Missing permission
   severity: error
   check: missing-permission
-  input: auto
+  input: source
   response: |-
     "{{item}}" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
 
@@ -61,7 +61,7 @@ deterministic-checks:
 - title: Missing manifest key
   severity: error
   check: missing-manifest-key
-  input: auto
+  input: source
   response: |-
     {{item}} needs a manifest key that is not declared: {{keys}}. Add one of those keys to manifest.json.
 
@@ -69,7 +69,7 @@ deterministic-checks:
 - title: Invalid manifest JSON
   severity: error
   check: manifest-invalid-json
-  input: auto
+  input: manifest
   response: |-
     Invalid manifest.json: manifest.json is not valid JSON.
     Read more: https://webextension-api.thunderbird.net/.
@@ -78,7 +78,7 @@ deterministic-checks:
 - title: Missing manifest
   severity: error
   check: manifest-missing
-  input: auto
+  input: manifest
   response: |-
     Invalid manifest.json: no manifest.json at the add-on root.
     Read more: https://webextension-api.thunderbird.net/.
@@ -87,7 +87,7 @@ deterministic-checks:
 - title: Missing required manifest key
   severity: error
   check: manifest-missing-key
-  input: auto
+  input: manifest
   response: |-
     Invalid manifest.json: one or more required properties are missing.
     Read more: https://webextension-api.thunderbird.net/.
@@ -96,7 +96,7 @@ deterministic-checks:
 - title: Manifest version mismatch
   severity: error
   check: manifest-version-mismatch
-  input: auto
+  input: manifest
   response: |-
     Invalid manifest.json: manifest_version {{item}} does not match the schema set (Manifest V{{schema}}).
     Read more: https://webextension-api.thunderbird.net/.
@@ -106,7 +106,7 @@ deterministic-checks:
 - title: Unknown permission
   severity: error
   check: manifest-unknown-permission
-  input: auto
+  input: manifest
   response: |-
     Invalid manifest.json: one or more requested permissions are unknown.
     Read more: https://webextension-api.thunderbird.net/.
@@ -124,7 +124,7 @@ deterministic-checks:
 - title: Mistyped manifest value
   severity: warning
   check: mistyped-manifest-value
-  input: auto
+  input: manifest
   response: |-
     Manifest entry issue: "{{item}}" {{detail}}. Thunderbird ignores or misreads such entries.
     Read more: https://webextension-api.thunderbird.net/.
@@ -142,7 +142,7 @@ deterministic-checks:
 - title: Synchronous XMLHttpRequests
   severity: error
   check: sync-xhr
-  input: auto
+  input: source
   response: |-
     The add-on makes a synchronous XMLHttpRequest, which can lock up the user interface. Please use an asynchronous request instead.
 
@@ -151,7 +151,7 @@ deterministic-checks:
 - title: Modifying innerHTML; use Element.setHTML()
   severity: info
   check: unsafe-html
-  input: auto
+  input: source
   response: |-
     Inserting markup via "{{item}}" will be no longer permitted after the release of ESR 153. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
@@ -160,7 +160,7 @@ deterministic-checks:
 - title: Debugger statement
   severity: error
   check: debugger-statement
-  input: auto
+  input: source
   response: |-
     Unconditional debugger statement. Please remove it or move it behind a config flag.
 
@@ -168,7 +168,7 @@ deterministic-checks:
 - title: Async listener in runtime.onMessage()
   severity: warning
   check: async-onmessage
-  input: auto
+  input: source
   response: |-
     Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
@@ -178,7 +178,7 @@ deterministic-checks:
 - title: JavaScript code errors
   severity: info
   check: code-sanity
-  input: auto
+  input: source
   response: |-
     Static analysis flagged a likely code error: {{item}}
 
@@ -186,7 +186,7 @@ deterministic-checks:
 - title: Minimize host permissions
   severity: info
   check: minimize-host-permissions
-  input: auto
+  input: manifest
   response: |-
     The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
     Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
@@ -199,7 +199,7 @@ deterministic-checks:
 # (post-summary-recheck) instead, to be re-judged against the whole add-on.
 - title: Possibly unused permissions
   check: unused-permission-manual
-  input: auto
+  input: source
   post-summary-recheck: unused-permission
   response: |-
     One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
@@ -213,7 +213,7 @@ deterministic-checks:
   severity: info
   sca: false
   check: missing-library
-  input: auto
+  input: source
   response: |-
     The following bundled files were recognized as third-party libraries (via Mozilla library hash database), but are not declared as such. Please declare each and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
@@ -224,7 +224,7 @@ deterministic-checks:
   severity: info
   sca: false
   check: find-lib-on-cdn
-  input: auto
+  input: source
   response: |-
     The following bundled files were recognized as third-party libraries (via jsDelivr CDN hash lookup), but are not declared as such. Please declare each and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
@@ -236,7 +236,7 @@ deterministic-checks:
 - title: Minified code cannot be reviewed
   severity: error
   check: minified-code
-  input: auto
+  input: source
   response: |-
     The following file(s) are minified or otherwise machine-generated code, which cannot be reviewed in this form. Each is either an undeclared third-party library that we did not recognize, or minified first-party code. If a file is a third-party library, declare it as such and link its source so the (unmodified) bundled copy can be verified against the linked version (a VENDOR.md file at the add-on root is common practice). If it is your own code, provide the original, human-readable source for it - the add-on does not need to be minified. Where the readable code is produced by a build step, supply the build's sources and the instructions needed to reproduce the shipped XPI, using the source code upload field available during submission or on the version page in the developer hub. Note that the source-archive route slows review down, as it requires manually verifying the build process and that it reproduces the shipped XPI.
     Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
@@ -247,7 +247,7 @@ deterministic-checks:
 - title: Obfuscated code is not permitted
   severity: error
   check: obfuscated-code
-  input: auto
+  input: source
   response: |-
     The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
     Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
@@ -259,7 +259,7 @@ deterministic-checks:
   severity: error
   sca: false
   check: untrusted-minified-library
-  input: auto
+  input: source
   response: |-
     The following bundled file(s) match a known upstream release, but the package could not be confirmed to be a widely-used library, so it is not trusted as a reviewed dependency - and it is minified or otherwise machine-generated, so it cannot be reviewed in this form. Ship the original, human-readable code directly (it need not be minified), or upload the original sources as a source-code submission (with the build instructions and process needed to reproduce the shipped XPI) using the source code upload field during submission or on the version page in the developer hub. Note that the source-archive route slows review down, as it requires manually verifying the build.
     Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
@@ -272,7 +272,7 @@ deterministic-checks:
   severity: info
   sca: false
   check: untrusted-library
-  input: auto
+  input: source
   response: |-
     The following bundled file(s) match a known upstream release, but the package could not be confirmed to be a widely-used library. They are therefore not trusted as reviewed dependencies and are reviewed as authored code - the standard checks apply to them, so a finding may be reported against library code here. Confirm that each is a legitimate, appropriate dependency.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
@@ -286,7 +286,7 @@ deterministic-checks:
   severity: error
   sca: true
   check: unpopular-source-dependency
-  input: auto
+  input: source
   response: |-
     The following dependencies could not be confirmed to be widely-used. They need to be packaged non-minified with the add-on in order to be reviewed.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
@@ -305,7 +305,7 @@ deterministic-checks:
 - title: Static analysis coverage
   severity: info
   check: api-coverage
-  input: auto
+  input: source
   response: |-
     Limited static-analysis coverage: {{item}}
 
@@ -313,7 +313,7 @@ deterministic-checks:
 - title: Unparsable file
   severity: info
   check: unparsable-file
-  input: auto
+  input: source
   response: |-
     Limited static-analysis coverage: could not be parsed, so API checks were skipped ({{detail}})
 
@@ -325,7 +325,7 @@ deterministic-checks:
 - title: Experiment APIs not accepted
   severity: error
   check: experiment-not-allowed
-  input: auto
+  input: source
   phase: invalid-experiment
   response: |-
     We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). The following cannot be accepted:
@@ -336,7 +336,7 @@ deterministic-checks:
 - title: Modified or outdated Experiment draft
   severity: error
   check: experiment-modified
-  input: auto
+  input: source
   response: |-
     "{{item}}" is a published Thunderbird Experiment API draft, but this add-on bundles a modified or outdated copy. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments.
 
@@ -345,7 +345,7 @@ deterministic-checks:
 - title: Experiment missing strict_max_version
   severity: error
   check: experiment-missing-strict-max-version
-  input: auto
+  input: manifest
   response: |-
     This add-on uses Experiment APIs but declares no strict_max_version. Experiments rely on internal APIs that change between major Thunderbird versions, so they must set browser_specific_settings.gecko.strict_max_version.
 
@@ -354,7 +354,7 @@ deterministic-checks:
 - title: Experiment overrides a built-in API
   severity: error
   check: experiment-overrides-api
-  input: auto
+  input: manifest
   response: |-
     The Experiment API "{{item}}" overrides or extends a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under a new, distinct API namespace.
 
@@ -363,7 +363,7 @@ deterministic-checks:
 # they need a careful human review. Emits no findings, so it carries no severity.
 - title: Experiment code review
   check: experiment-manual-review
-  input: auto
+  input: manifest
   instructions: |-
     This is an Experiment submission, which requires careful code review since it
     has full access to Thunderbird's internals. The Experiment surface should be
@@ -382,7 +382,7 @@ deterministic-checks:
 # severity); unknown-api already lists the specific APIs.
 - title: Experiment with unrecognized API usage
   check: experiment-unknown-api
-  input: auto
+  input: source
   instructions: |-
     This Experiment calls WebExtension APIs the schema does not recognize (see the
     "Unknown or unsupported WebExtension API" findings). For an experiment's OWN API,
@@ -402,7 +402,7 @@ deterministic-checks:
 - title: Unnecessary strict_max_version
   severity: warning
   check: non-experiment-strict-max-version
-  input: auto
+  input: manifest
   response: |-
     This add-on pins strict_max_version "{{item}}". The WebExtension APIs are stable and designed to keep add-ons forward-compatible across Thunderbird versions, so a maximum version is usually unnecessary and only blocks installs on newer Thunderbird.
 
@@ -416,7 +416,7 @@ deterministic-checks:
 - title: Unpinned dependency
   severity: error
   check: unpinned-dependency
-  input: auto
+  input: source
   response: |-
     The following dependencies are not pinned to an exact version. A version range can resolve to different releases over time, so the bundled copy cannot be verified against a known upstream. Pin each to an exact version in package.json, or commit the lock file (package-lock.json, npm-shrinkwrap.json, yarn.lock, or pnpm-lock.yaml) that records the exact version used.
 
@@ -425,7 +425,7 @@ deterministic-checks:
 - title: Unsupported dependency source
   severity: error
   check: unsupported-dependency
-  input: auto
+  input: source
   response: |-
     The following dependencies are declared from a source the review cannot identify or verify. Only npm packages (pinned to an exact version or recorded in a committed lock file) and GitHub URLs are supported. Re-declare each as a pinned npm package or a GitHub source, or bundle the library with the add-on as non-minified authored code so it can be reviewed directly.
 
@@ -437,7 +437,7 @@ deterministic-checks:
 - title: Vulnerable dependency
   severity: auto
   check: vendor-vulnerable
-  input: auto
+  input: source
   response: |-
     A bundled dependency has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). Update {{item}} to {{fixed}} or later, re-bundle, and resubmit.
 
@@ -450,7 +450,7 @@ deterministic-checks:
 - title: Banned library
   severity: auto
   check: banned-library
-  input: auto
+  input: source
   response: |-
     A bundled library version is {{status}} by Mozilla's add-on policy: {{item}} ({{version}}) — {{reason}} Update to a permitted version and re-bundle.
 
@@ -463,7 +463,7 @@ deterministic-checks:
   severity: auto
   sca: true
   check: vendor-vulnerable-dev
-  input: auto
+  input: source
   response: |-
     A build dependency (devDependency) has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update {{item}} to {{fixed}} or later and resubmit.
 
@@ -593,7 +593,7 @@ deterministic-checks:
   severity: info
   sca: false
   check: vendor-vuln-unknown
-  input: auto
+  input: source
   response: |-
     The add-on sourced a third-party file from a CDN, where its known-vulnerability status could not be determined automatically. To benefit from automated auditing against the OSV database, consider switching to an npm-hosted source and update your vendor mechanism to point to an unpkg or jsDelivr package (pinned to an exact version).
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
@@ -602,7 +602,7 @@ deterministic-checks:
   severity: error
   sca: false
   check: unpinned-vendor-source
-  input: auto
+  input: source
   response: |-
     The vendored file {{item}} cites a source that is not pinned to an immutable version. It is linked to a branch or unversioned URL rather than a specific release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from.
 
@@ -610,7 +610,7 @@ deterministic-checks:
   severity: error
   sca: false
   check: vendor-modified
-  input: auto
+  input: source
   response: |-
     A bundled third-party file does not match its declared source: {{item}} does not match the bytes its declared source ({{url}}) serves, so it appears to have been modified from the upstream release. Ship the file exactly as the source publishes it, or correct the declared source to the release the file actually came from.
 
@@ -620,7 +620,7 @@ deterministic-checks:
 - title: Vendored library needs manual verification
   sca: false
   check: vendor-unverified
-  input: auto
+  input: source
   response: |-
     The following bundled third-party file(s) could not be automatically verified against their upstream source. For each, make sure your vendor mechanism gives the library’s exact upstream version and a source URL that pins that release on a trusted host (unpkg, jsDelivr, an npm-registry tarball, or a raw GitHub URL), and that the bundled copy is unmodified, so it can be verified automatically.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
@@ -634,7 +634,7 @@ deterministic-checks:
   severity: warning
   sca: false
   check: missing-vendor-file
-  input: auto
+  input: source
   response: |-
     One or more files listed in "{{item}}" are not present in the submission. Add each file to the submission, or remove its entry from "{{item}}".
 
@@ -645,7 +645,7 @@ deterministic-checks:
   severity: error
   sca: false
   check: vendor-unparseable
-  input: auto
+  input: source
   response: |-
     A VENDOR file is present but no third-party library could be parsed from it. List each bundled library in its own block as the packaged file path together with a source URL that points to the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so it can be verified automatically.
 
@@ -656,7 +656,7 @@ deterministic-checks:
   severity: error
   sca: false
   check: vendor-ambiguous-source
-  input: auto
+  input: source
   response: |-
     A single source URL ({{item}}) is declared as the source of more than one bundled file ({{files}}). A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL.
 
@@ -666,28 +666,28 @@ deterministic-checks:
 - title: Disguised data transmission (resource)
   severity: error
   check: disguised-resource
-  input: auto
+  input: source
   response: |-
     This add-on appears to send data through a resource URL (image/iframe/media src) - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 - title: Disguised data transmission (stylesheet)
   severity: error
   check: disguised-stylesheet
-  input: auto
+  input: source
   response: |-
     This add-on appears to send data through a stylesheet or CSS url() - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 - title: Disguised data transmission (window)
   severity: error
   check: disguised-window
-  input: auto
+  input: source
   response: |-
     This add-on appears to send data through a window.open() to a remote URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 - title: Disguised data transmission (navigation)
   severity: error
   check: disguised-navigation
-  input: auto
+  input: source
   response: |-
     This add-on appears to send data through a page navigation - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
@@ -696,7 +696,7 @@ deterministic-checks:
 - title: Unencrypted data transmission
   severity: error
   check: cleartext-transmission
-  input: auto
+  input: source
   response: |-
     Data is sent over an unencrypted connection to {{item}}. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
 
@@ -704,7 +704,7 @@ deterministic-checks:
 # listing must carry a privacy policy, which is not part of the package.
 - title: Remote data transmission needs a privacy policy
   check: privacy-policy
-  input: auto
+  input: source
   response: |-
     Please add a privacy policy to this add-on that details which user data is being sent and to what services. The critical things to describe in the policy are how your extension collects, uses, stores, shares or discloses information about people. If your add-on makes it apparent to websites that it is installed, this must also be mentioned. The policy should be about the extension only, not a copy of the website’s privacy policy. It should also be the actual text, as opposed to a link to a privacy policy on a website. The privacy policy can be added in the add-on settings under "Manage Authors & License" on addons.thunderbird.net. For more information, please check our Review Policies [1], and Mozilla’s own privacy policy [2] as an example.
 
@@ -720,7 +720,7 @@ deterministic-checks:
 # to a native application that is not part of the package.
 - title: Native messaging needs disclosure
   check: native-messaging
-  input: auto
+  input: manifest
   response: |-
     This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged. The native host itself does not need to be part of the package.
   instructions: |-
@@ -753,7 +753,7 @@ deterministic-checks:
 - title: Add-on icon missing
   severity: info
   check: addon-icon-missing
-  input: auto
+  input: manifest
   response: |-
     Adding an add-on icon in manifest.json improves user acceptance.
     Read more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons
@@ -786,35 +786,35 @@ deterministic-checks:
 - title: eval() usage
   severity: error
   check: eval-call
-  input: auto
+  input: source
   response: |-
     Dynamic code execution via "eval()" is not allowed.
 
 - title: Function constructor usage
   severity: error
   check: function-constructor
-  input: auto
+  input: source
   response: |-
     Dynamic code execution via "the Function constructor" is not allowed.
 
 - title: Code-string timer
   severity: error
   check: string-timer
-  input: auto
+  input: source
   response: |-
     Dynamic code execution via "a code string passed to setTimeout/setInterval" is not allowed.
 
 - title: CSP allows 'unsafe-eval'
   severity: error
   check: csp-unsafe-eval
-  input: auto
+  input: manifest
   response: |-
     Dynamic code execution via "content_security_policy 'unsafe-eval'" is not allowed.
 
 - title: CSP allows 'unsafe-inline'
   severity: error
   check: csp-unsafe-inline
-  input: auto
+  input: manifest
   response: |-
     Dynamic code execution via "content_security_policy 'unsafe-inline'" is not allowed.
 
@@ -978,7 +978,7 @@ llm-checks:
 - title: API newer than strict_min_version
   severity: error
   check: strict-min-version-api
-  input: auto
+  input: source
   prompt: |-
     Each candidate is a call site of a WebExtension API that DOES exist and is
     supported, but was added in a Thunderbird newer than the add-on's declared
@@ -1085,7 +1085,7 @@ llm-checks:
 - title: Remote script injection
   severity: error
   check: remote-script
-  input: auto
+  input: source
   prompt: |-
     Each candidate is a site (file:line) that loads or injects script or code
     from a source static analysis could not resolve to a bundled file. For each
@@ -1105,7 +1105,7 @@ llm-checks:
 - title: Remote eval
   severity: error
   check: remote-eval
-  input: auto
+  input: source
   prompt: |-
     Each candidate is a site (file:line) that executes code built or fetched at
     runtime, such as fetch().then(eval). For each candidate, determine whether the
@@ -1122,7 +1122,7 @@ llm-checks:
 - title: User-data exfiltration
   severity: error
   check: data-exfiltration
-  input: auto
+  input: source
   post-summary-recheck: data-exfiltration-recheck
   prompt: |-
     Each candidate is a site (file:line) that sends data to a remote server (via
@@ -1150,7 +1150,7 @@ llm-checks:
 - title: Disguised data transmission
   severity: error
   check: disguised-transmission
-  input: auto
+  input: source
   post-summary-recheck: disguised-transmission-recheck
   prompt: |-
     Each candidate is a site (file:line) that builds a covert channel - a resource

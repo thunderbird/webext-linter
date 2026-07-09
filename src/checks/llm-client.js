@@ -80,7 +80,7 @@ export function createLlmClient({
   const nonce = nonceFor(ctx);
   // The intro + framing block is artifact-independent. The add-on context (the file
   // inventory) describes ONE artifact, so it is built for whichever add-on the
-  // orchestrator adjudicates a check against - the review target for `input: auto`
+  // orchestrator adjudicates a check against - the review target for `input: source`
   // checks, the built XPI for `input: xpi` - and memoized per addon so its cached
   // prefix is reused within an artifact.
   const introBlock = {

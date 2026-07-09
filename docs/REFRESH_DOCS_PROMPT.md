@@ -60,8 +60,8 @@ that no longer exist.
    ground truth for the two whole-review flow pages. It shows the stage order
    (load → experiment classification → setup/vendor → schema/parse → run checks →
    summaries → recheck → report) and the `mode === "sca"` forks (the source /
-   dependency / build / shipped-XPI split, routed via `buildShippedCtx` /
-   `buildScaBuildCtx`).
+   dependency / build / shipped-XPI / shipped-manifest split, routed via `routeCtx`
+   through `buildShippedCtx` / `buildScaBuildCtx` / `buildManifestCtx`).
 
 ## Steps
 

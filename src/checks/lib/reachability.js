@@ -156,7 +156,7 @@ function compute(ctx) {
   // Reachability describes whatever artifact the orchestrator routed into ctx.addon:
   // the built XPI for the structure checks (registry `input: xpi` - bundled-files,
   // unused-files, minimize-web-accessible-resources), the review target for the
-  // WebExtension-code checks (`input: auto` - the API/permission validators). Every
+  // WebExtension-code checks (`input: source` - the API/permission validators). Every
   // `addon`/`files`/`jsSources` below is that one artifact's, so the graph is always
   // internally consistent.
   //
@@ -165,7 +165,7 @@ function compute(ctx) {
   // paths miss (so the closure would be empty). It is gated on the review-target ctx
   // (NOT ctx.isShippedView), so on a shipped view it falls to the closure branch -
   // the XPI's manifest entry points resolve against its own files, giving a
-  // meaningful WebExtension scope there too. (It is still read only by `input: auto`
+  // meaningful WebExtension scope there too. (It is still read only by `input: source`
   // checks over the review target - see the consumer split the reachability tests
   // pin - so the shipped-view value is unused; the gate keeps it correct regardless.)
   const addon = ctx.addon;

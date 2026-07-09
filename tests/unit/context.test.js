@@ -11,6 +11,7 @@ import {
   buildRunContext,
   buildShippedCtx,
   buildScaBuildCtx,
+  buildManifestCtx,
 } from "../../src/checks/context.js";
 
 const addonWith = (files, nonAuthored = []) => ({
@@ -115,4 +116,44 @@ test("buildScaBuildCtx puts the build corpus on ctx.addon and strips manifest/so
   // The invalid-Experiment fallback shape {files:new Map()} is a valid, readable ctx.
   const empty = buildScaBuildCtx(ctx, { files: new Map() });
   assert.equal(empty.addon.files.size, 0);
+});
+
+// buildManifestCtx gives an input: manifest check the shipped manifest but NO file
+// corpus - ctx.addon.files is empty, so it is impossible to reach a file artifact,
+// while the shipped manifest/schema are inherited from the review ctx.
+test("buildManifestCtx has an empty file corpus and keeps the shipped manifest", () => {
+  const ctx = buildRunContext({
+    addon: addonWith({ "src/app.js": "export const x = 1;" }),
+    schema: { s: 1 },
+    options: {},
+    mode: "sca",
+  });
+  const man = buildManifestCtx(ctx);
+  assert.equal(man.addon.files.size, 0); // no file corpus - cannot read a file artifact
+  assert.equal(man.addon.manifest, undefined); // reviewView stripped it
+  assert.deepEqual(man.jsSources, []);
+  assert.equal(man.apiUsages, undefined);
+  assert.equal(man.manifest, ctx.manifest); // shipped manifest inherited
+  assert.equal(man.schema, ctx.schema); // shared run-state
+});
+
+// End-to-end: an input: manifest check runs on the empty-corpus ctx and yields the SAME
+// result as on the full ctx - it reads only the shipped manifest, so the missing file
+// corpus cannot change its verdict (and it does not crash reading an empty ctx.addon).
+test("an input: manifest check reads only the manifest (same result on the no-corpus ctx)", async () => {
+  const full = {
+    addon: { files: new Map([["a.js", Buffer.from("x")]]) },
+    manifest: null, // a missing manifest is what manifest-missing flags
+    manifestError: null,
+    jsSources: [],
+    apiUsages: [],
+  };
+  const man = buildManifestCtx(full);
+  assert.equal(man.addon.files.size, 0); // enforced: no file corpus
+  const check = (await import("../../src/checks/rules/manifest-missing.js"))
+    .default;
+  const onFull = check.run(full);
+  const onManifest = check.run(man);
+  assert.ok(onFull.length > 0); // the manifest is missing -> a finding
+  assert.deepEqual(onManifest, onFull); // identical - the empty corpus is irrelevant
 });

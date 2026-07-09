@@ -42,7 +42,7 @@ const SEV_COLOR = {
  *   file:line is labelled by artifact ([XPI]/[SCA]) and the Issues section gets a
  *   legend footer; XPI reviews add neither. See src/report/artifact.js.
  * @property {Map<string, string>} [ruleInputs]  ruleId -> routed input
- *   ("xpi"|"build"|"auto"), from registry.checkInputs(); the artifact label reads it.
+ *   ("xpi"|"build"|"source"|"manifest"), from registry.checkInputs(); the artifact label reads it.
  */
 
 /**

@@ -493,16 +493,16 @@ test("Manual review caps a grouped locus list at 25 with a marker", () => {
 });
 
 // SCA review: each finding's file:line is prefixed with the artifact it lives in -
-// [XPI] for input:xpi checks (and always for manifest.json, the shipped manifest),
-// [SCA] for the readable source (input:auto/build) - and a legend footer closes the
-// Issues section. An XPI review adds neither.
+// [XPI] for input:xpi and input:manifest checks (and always for manifest.json, the
+// shipped manifest), [SCA] for the readable source (input:source/build) - and a legend
+// footer closes the Issues section. An XPI review adds neither.
 test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () => {
   const r = {
     mode: "sca",
     ruleInputs: new Map([
       ["unused-files", "xpi"],
-      ["unknown-api", "auto"],
-      ["manifest-unknown-permission", "auto"],
+      ["unknown-api", "source"],
+      ["manifest-unknown-permission", "manifest"],
     ]),
     findings: [
       {
@@ -531,7 +531,7 @@ test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () =
   };
   const out = formatText(r);
   assert.match(out, /\[XPI\] orphan\.js:2/); // input:xpi -> XPI
-  assert.match(out, /\[SCA\] app\.js:5/); // input:auto -> SCA
+  assert.match(out, /\[SCA\] app\.js:5/); // input:source -> SCA
   assert.match(out, /\[XPI\] manifest\.json:3/); // manifest cross-over -> XPI
   // The artifact-label legend footer.
   assert.match(out, /\[XPI\] = source file in the submitted XPI/);

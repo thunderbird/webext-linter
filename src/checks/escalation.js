@@ -79,8 +79,8 @@ export async function runLlmCheck(ctx, check, step) {
     narrateBatchHeader(check, candidates);
     // ctx is the check's ROUTED context (runOneCheck), so ctx.addon is the artifact
     // this check runs over - the model reads its files/inventory, not a captured one.
-    // Every check reads its routed ctx.addon (input: auto | xpi | build); there is no
-    // per-step artifact override.
+    // Every check reads its routed ctx.addon (input: source | xpi | build | manifest); there
+    // is no per-step artifact override.
     verdicts = await ctx.llm.evaluate({
       rubric: check.prompt,
       candidates,

@@ -9,7 +9,7 @@
 // The rule keys off the check's routed `input` (the ONE place artifact selection is
 // made - see runChecks), with a single cross-over: the shipped manifest is exposed to
 // EVERY check regardless of input (ctx.manifest is the built XPI's), so a
-// manifest.json finding is always about the XPI even from an `input: auto` check.
+// manifest.json finding is always about the XPI even from an `input: source` check.
 //
 // Belongs here: the label strings and the pure determination rule. Does NOT belong
 // here: threading `mode`/the ruleId->input map to the renderers (-> src/pipeline.js +
@@ -23,7 +23,7 @@ export const ARTIFACT_SCA = "SCA";
  * The artifact label for a finding's file, or "" when none applies.
  * @param {{file?: string, input?: string, mode?: string}} params
  *   file: the finding's file; input: the owning check's registry `input`
- *   ("xpi" | "build" | "auto"); mode: the review mode ("sca" | "xpi").
+ *   ("xpi" | "build" | "source" | "manifest"); mode: the review mode ("sca" | "xpi").
  * @returns {string} "XPI", "SCA", or "" (XPI review - a single artifact).
  */
 export function artifactLabel({ file, input, mode }) {
@@ -33,8 +33,11 @@ export function artifactLabel({ file, input, mode }) {
   if (file === "manifest.json") {
     return ARTIFACT_XPI; // the shipped manifest is authoritative for every check.
   }
-  if (input === "xpi") {
-    return ARTIFACT_XPI; // bundled-files, unused-files, minimize-WAR, locales, ...
+  if (input === "xpi" || input === "manifest") {
+    // xpi = bundled-files, unused-files, minimize-WAR, locales, ...; manifest = the
+    // pure-manifest checks (the manifest IS the shipped XPI's). Their manifest.json
+    // findings already take the branch above; this covers their fileless findings/notes.
+    return ARTIFACT_XPI;
   }
-  return ARTIFACT_SCA; // input auto/build -> the readable source + build files.
+  return ARTIFACT_SCA; // input source/build -> the readable source + build files.
 }

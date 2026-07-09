@@ -68,7 +68,7 @@ test("resolveRecheck maps each verdict to a finding, a drop, or a manual item", 
   assert.equal(c.loc.line, 6);
 });
 
-// A recheck consumer runs on the main ctx (input: auto) but its items belong to its
+// A recheck consumer runs on the main ctx (input: source) but its items belong to its
 // producer's corpus. Its feed notes must be labelled by that corpus (check.labelInput),
 // passed to ctx.note as the 5th arg - so an XPI-corpus recheck's notes read [XPI], not
 // [SCA]. Covers the pass path (item "a") and the no-verdict -> unsure path (item "b").
@@ -392,7 +392,7 @@ test("the injection permissions (activeTab, compose, messagesModify, scripting) 
 });
 
 // The report/feed label is the corpus a check ACTS ON, not the ctx it runs on. A recheck
-// consumer runs on the main ctx (input: auto) but acts on its producer's corpus, so
+// consumer runs on the main ctx (input: source) but acts on its producer's corpus, so
 // checkInputs (the report's ruleInputs) must report that corpus - else an XPI-corpus
 // recheck mislabels its items [SCA]. Non-recheck checks keep their declared input.
 test("checkInputs labels a recheck consumer by the corpus it acts on, not its input", () => {
@@ -404,7 +404,7 @@ test("checkInputs labels a recheck consumer by the corpus it acts on, not its in
     assert.equal(inputs.get(id), "xpi", id);
   }
   for (const id of source) {
-    assert.equal(inputs.get(id), "auto", id);
+    assert.equal(inputs.get(id), "source", id);
   }
   // a non-recheck check keeps its declared input (unused-files producer is input: xpi)
   assert.equal(inputs.get("unused-files"), "xpi");
@@ -437,7 +437,7 @@ test("loadChecks rejects a post-summary-recheck that declares input", async () =
       {
         title: "X",
         check: "unused-permission",
-        input: "auto",
+        input: "source",
         "permission-recheck": true,
       },
     ],
@@ -455,7 +455,7 @@ test("loadChecks requires a recheck rubric to live in (and only in) the post-sum
       {
         title: "S",
         check: "unused-files-recheck",
-        input: "auto",
+        input: "source",
         "summary-prompt": "x",
       },
     ],
@@ -470,23 +470,26 @@ test("loadChecks requires a recheck rubric to live in (and only in) the post-sum
   await assert.rejects(loadChecks(bare), /carries no recheck rubric/);
 });
 
-// A recheck is judged by the source or packaging summary pass (the auto / xpi corpora); a
-// build-input producer belongs to neither, so its diverted items would never be judged.
-test("loadChecks rejects a build-input producer that declares a post-summary-recheck", async () => {
-  const reg = new Registry({
-    "deterministic-checks": [
-      {
-        title: "P",
-        check: "unused-files",
-        input: "build",
-        "post-summary-recheck": "unused-files-recheck",
-      },
-    ],
-    "post-summary-rechecks": [
-      { title: "C", check: "unused-files-recheck", "summary-prompt": "x" },
-    ],
-  });
-  await assert.rejects(loadChecks(reg), /input: build/);
+// A recheck is judged by the source or packaging summary pass (the source / xpi corpora); a
+// producer on any OTHER corpus (build, manifest) belongs to neither, so its diverted
+// items would never be judged - loadChecks rejects it.
+test("loadChecks rejects a non-source/xpi producer that declares a post-summary-recheck", async () => {
+  const producer = (input) =>
+    new Registry({
+      "deterministic-checks": [
+        {
+          title: "P",
+          check: "unused-files",
+          input,
+          "post-summary-recheck": "unused-files-recheck",
+        },
+      ],
+      "post-summary-rechecks": [
+        { title: "C", check: "unused-files-recheck", "summary-prompt": "x" },
+      ],
+    });
+  await assert.rejects(loadChecks(producer("build")), /input: build/);
+  await assert.rejects(loadChecks(producer("manifest")), /input: manifest/);
 });
 
 // A version bound written unquoted in YAML parses as a number; the loader must coerce

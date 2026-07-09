@@ -28,7 +28,7 @@ const REPORTABLE = new Set([
 
 export default {
   run(ctx) {
-    const { addon, schema } = ctx;
+    const { schema } = ctx;
     if (ctx.manifestError || !ctx.manifest) {
       return [];
     }

@@ -61,16 +61,18 @@ const CONCRETE_SEVERITIES = new Set([
 const VALID_CHECK_SEVERITIES = new Set([...CONCRETE_SEVERITIES, AUTO_SEVERITY]);
 
 // The `input` a check entry declares - which add-on artifact is ctx.addon when the
-// check runs. "auto" = the REVIEW TARGET (the built XPI in an XPI review, the
-// readable --sca-source in an SCA review); "xpi" = ALWAYS the built XPI (the shipped
-// artifact), for the structure checks that describe what ships; "build" = the SCA
-// build files (the archive minus the review source minus node_modules), for the
-// build review. Required on every check EXCEPT a post-summary-recheck (which
-// declares no input - it runs on the main ctx and is labelled by its producer's
-// corpus): runChecks routes each check to its artifact's context, so the check
-// reads one artifact and has no way to reach another (see buildShippedCtx /
-// buildScaBuildCtx).
-const VALID_CHECK_INPUTS = new Set(["auto", "xpi", "build"]);
+// check runs. "source" = the REVIEW TARGET, the readable submitted code (the readable
+// --sca-source in an SCA review, the built XPI in an XPI review - the only artifact
+// there); "xpi" = ALWAYS the built XPI (the shipped artifact), for the structure checks
+// that describe what ships; "build" = the SCA build files (the archive minus the review
+// source minus node_modules), for the build review; "manifest" = the shipped manifest
+// ONLY, on a ctx with an EMPTY file corpus (buildManifestCtx), for pure-manifest checks
+// that read ctx.manifest and no files. Required on every check EXCEPT a
+// post-summary-recheck (which declares no input - it runs on the main ctx and is
+// labelled by its producer's corpus): runChecks routes each check to its artifact's
+// context, so the check reads one artifact and has no way to reach another (see
+// buildShippedCtx / buildScaBuildCtx / buildManifestCtx).
+const VALID_CHECK_INPUTS = new Set(["source", "xpi", "build", "manifest"]);
 
 /**
  * Whether `s` is a concrete finding severity (error/warning/info) - i.e. a value
@@ -91,14 +93,16 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {string} id
  * @property {string} title
  * @property {Severity} severity  Impact stamped onto the check's findings.
- * @property {"auto"|"xpi"|"build"|undefined} input  Which add-on artifact is ctx.addon
- *   when the check runs. "auto" = the review target (the built XPI in an XPI review, the
- *   readable --sca-source in an SCA review); "xpi" = always the built XPI (the shipped
- *   artifact), for the structure checks that describe what ships; "build" = the SCA
- *   build files, for the build review. Required for a normal check - runChecks routes it
- *   to that artifact's context (see buildShippedCtx / buildScaBuildCtx). ABSENT for a
- *   post-summary-recheck, which always runs on the main ctx and is labelled by labelInput.
- * @property {"auto"|"xpi"|"build"} labelInput  The artifact this check's OUTPUT is
+ * @property {"source"|"xpi"|"build"|"manifest"|undefined} input  Which add-on artifact is
+ *   ctx.addon when the check runs. "source" = the review target, the readable submitted code
+ *   (the readable --sca-source in an SCA review, the built XPI in an XPI review); "xpi" = always
+ *   the built XPI (the shipped artifact), for the structure checks that describe what ships;
+ *   "build" = the SCA build files, for the build review; "manifest" = the shipped manifest only,
+ *   on a ctx with an empty file corpus (buildManifestCtx), for pure-manifest checks. Required for
+ *   a normal check - runChecks routes it to that artifact's context (see buildShippedCtx /
+ *   buildScaBuildCtx / buildManifestCtx). ABSENT for a post-summary-recheck, which always
+ *   runs on the main ctx and is labelled by labelInput.
+ * @property {"source"|"xpi"|"build"|"manifest"} labelInput  The artifact this check's OUTPUT is
  *   labelled as ([XPI]/[SCA]) - the corpus it acts on. Equals `input` for a normal check;
  *   for a recheck consumer it is the producer's corpus (see Registry.labelInputFor).
  * @property {"deterministic"|"llm"|"post-summary-recheck"} kind  Which registry section
@@ -256,7 +260,7 @@ export class Registry {
    * items it re-judges belong to the producer's artifact. Every other check acts on
    * the artifact it runs on, so its declared `input` is the label.
    * @param {string} ruleId
-   * @returns {"xpi"|"build"|"auto"}
+   * @returns {"xpi"|"build"|"source"|"manifest"}
    */
   labelInputFor(ruleId) {
     const { xpi, source } = this.recheckConsumersByCorpus();
@@ -264,13 +268,13 @@ export class Registry {
       return "xpi";
     }
     if (source.has(ruleId)) {
-      return "auto";
+      return "source";
     }
-    return this.checkEntry(ruleId)?.input ?? "auto";
+    return this.checkEntry(ruleId)?.input ?? "source";
   }
 
   /**
-   * The label artifact per ruleId (a `Map<ruleId, "xpi"|"build"|"auto">`),
+   * The label artifact per ruleId (a `Map<ruleId, "xpi"|"build"|"source"|"manifest">`),
    * projected for the report layer so it can label a finding's file:line by
    * artifact ([XPI]/[SCA]) without touching the registry. Keyed off labelInputFor
    * (the corpus the check acts on), so a recheck consumer's items carry their
@@ -454,8 +458,8 @@ export class Registry {
   /**
    * Partition the post-summary recheck CONSUMERS by the corpus their PRODUCER read, so
    * the SCA split can run one summary per corpus - each carrying only the consumers whose
-   * items live in that corpus. A producer reads the review target when `input: auto`
-   * (the source in SCA) and the shipped XPI when `input: xpi`; its items are anchored
+   * items live in that corpus. A producer reads the review target when `input: source`
+   * (the source archive in SCA) and the shipped XPI when `input: xpi`; its items are anchored
    * accordingly, so its consumer bridges only to a summary of that same artifact. Derived
    * from the producers' declared `input` - no separate tag. `input: build` producers (none
    * today) belong to no summary corpus and are omitted.
@@ -470,10 +474,10 @@ export class Registry {
         if (typeof target !== "string") {
           continue;
         }
-        const input = e.input ?? "auto";
+        const input = e.input ?? "source";
         if (input === "xpi") {
           xpi.add(target);
-        } else if (input === "auto") {
+        } else if (input === "source") {
           source.add(target);
         }
       }
@@ -531,11 +535,13 @@ export async function loadChecks(registry, { only, skip } = {}) {
       );
     }
     // A recheck is judged by the source OR packaging summary pass, which cover the
-    // `auto` and `xpi` corpora (recheckConsumersByCorpus). A `build` producer belongs
-    // to neither, so its diverted items would silently never be judged - reject it.
-    if ((e.input ?? "auto") === "build") {
+    // `source` and `xpi` corpora (recheckConsumersByCorpus). A `build` or `manifest`
+    // producer belongs to neither, so its diverted items would silently never be
+    // judged - reject it.
+    const producerInput = e.input ?? "source";
+    if (producerInput !== "source" && producerInput !== "xpi") {
       throw new Error(
-        `"${e.title}" reads input: build and cannot declare a post-summary-recheck (no summary pass carries the build corpus)`
+        `"${e.title}" reads input: ${producerInput} and cannot declare a post-summary-recheck (no summary pass carries that corpus)`
       );
     }
   }
@@ -602,8 +608,9 @@ export async function loadChecks(registry, { only, skip } = {}) {
       throw new Error(
         `rules/${id}.js is missing a valid \`input\` (got ${JSON.stringify(input)}; ` +
           `expected one of: ${[...VALID_CHECK_INPUTS].join(", ")}). ` +
-          "Every check must declare which add-on artifact it reads (auto = the " +
-          "review target, xpi = the built XPI, build = the SCA build files)."
+          "Every check must declare which add-on artifact it reads (source = the " +
+          "review target, xpi = the built XPI, build = the SCA build files, " +
+          "manifest = the shipped manifest only)."
       );
     }
     checks.push({
@@ -716,6 +723,21 @@ function scaEligible(entry, inScaMode) {
 }
 
 /**
+ * The ctx a check runs on: the sibling for its declared `input` artifact, else the main
+ * review ctx. The ONE place artifact routing is decided - shared by runChecks (the main
+ * loop) and the pipeline's deferred post-summary loop, so the two can never drift. An
+ * `input: source`/undefined check, or one whose sibling is absent (a test caller, or
+ * buildCtx in an XPI review), falls back to `ctx`.
+ * @param {LoadedCheck} check
+ * @param {RunContext} ctx
+ * @param {Record<string, RunContext>} siblings  Keyed by input value (xpi/build/manifest).
+ * @returns {RunContext}
+ */
+export function routeCtx(check, ctx, siblings) {
+  return siblings[check.input] ?? ctx;
+}
+
+/**
  * Run the selected checks. A check returns its verdicts as findings, and may
  * also return `escalations` (cases it could not settle), which this orchestrator
  * - the sole authority on manual review - resolves an llm check's via
@@ -728,24 +750,19 @@ function scaEligible(entry, inScaMode) {
  *   reviewed artifact; the XPI in an XPI review, the readable source in SCA).
  * @param {Registry} registry
  * @param {{only?: string[], skip?: string[]}} [opts]
- * @param {RunContext} [shippedCtx]  The SHIPPED-artifact context (built by the
- *   pipeline via buildShippedCtx); each `input: xpi` check is routed to it. IS ctx
- *   in an XPI review; omitted = every check runs over ctx.
- * @param {RunContext} [buildCtx]  The SCA BUILD-files context (buildScaBuildCtx);
- *   each `input: build` check is routed to it. SCA mode only; omitted otherwise.
+ * @param {Record<string, RunContext>} [siblings]  The sibling artifact contexts,
+ *   keyed by the `input` value that routes to each (built by the pipeline):
+ *   `xpi` = buildShippedCtx (the shipped XPI), `build` = buildScaBuildCtx (the SCA
+ *   build files), `manifest` = buildManifestCtx (the shipped manifest, no file corpus).
+ *   A check's `input` selects its ctx here via routeCtx; an absent sibling (or an
+ *   `input: source`/undefined check) falls back to `ctx`. Omitted = every check runs over ctx.
  * @returns {Promise<{findings: object[], checks: object[], deferred: object[],
  *   total: number, manualItems: {ruleId: string, item: ?string,
  *   kind: string}[]}>}  `checks` ran in this loop; `deferred` are the
  *   post-summary checks for the caller to run next (continuing the [i/total]
  *   numbering); `total` is the whole-review check count.
  */
-export async function runChecks(
-  ctx,
-  registry,
-  opts = {},
-  shippedCtx,
-  buildCtx
-) {
+export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
   // Two gates pick which checks run. The `diff` gate (a registry field) keys off
   // the mode: `diff: true` (e.g. strict-max-version-bump-only) needs a --diff-to
   // baseline (ctx.previous), `diff: false` is new-submission only (the same gate
@@ -787,11 +804,11 @@ export async function runChecks(
   // [i/N] line above.
   // The ctx a note fires on IS its artifact (matching the input routing below), so
   // each sibling context gets a note bound to its input: the review target is the
-  // source archive (auto), the shipped context the built XPI, the build context the
+  // source archive (source), the shipped context the built XPI, the build context the
   // build files. artifactLabel prepends [XPI]/[SCA] in SCA mode (and always [XPI] for
   // manifest.json - the shipped manifest); an XPI review adds no label. A caller may
   // override the label artifact (5th arg) when its output belongs to a corpus other
-  // than the ctx it runs on - a recheck consumer runs on the main ctx (auto) but acts
+  // than the ctx it runs on - a recheck consumer runs on the main ctx (source) but acts
   // on its producer's corpus, so it passes its check.labelInput.
   const makeNote =
     (input) =>
@@ -809,12 +826,13 @@ export async function runChecks(
         debug(`feed note skipped: ${err.message}`);
       }
     };
-  ctx.note = makeNote("auto");
-  if (shippedCtx && shippedCtx !== ctx) {
-    shippedCtx.note = makeNote("xpi");
-  }
-  if (buildCtx && buildCtx !== ctx) {
-    buildCtx.note = makeNote("build");
+  // Each sibling ctx gets a note bound to the input that routes to it, so a feed note
+  // is labelled by the artifact its check ran over (ctx.note is the review target).
+  ctx.note = makeNote("source");
+  for (const [input, sib] of Object.entries(siblings)) {
+    if (sib && sib !== ctx) {
+      sib.note = makeNote(input);
+    }
   }
   // Heading for the live activity feed, matching the report's section style. A
   // no-op when progress is off (JSON, the golden harness), so goldens are
@@ -823,15 +841,9 @@ export async function runChecks(
   progress("");
   for (const [i, check] of checks.entries()) {
     // Route the check to its declared input artifact - the ONE place the choice is
-    // made. `input: xpi` runs over the shipped context (the built XPI), `input: build`
-    // over the SCA build files, everything else over the review target. The check
-    // reads only its ctx.addon and has no way to reach another artifact.
-    const checkCtx =
-      check.input === "xpi"
-        ? (shippedCtx ?? ctx)
-        : check.input === "build"
-          ? (buildCtx ?? ctx)
-          : ctx;
+    // made (shared with the pipeline's deferred loop via routeCtx). The check reads
+    // only its ctx.addon and has no way to reach another artifact.
+    const checkCtx = routeCtx(check, ctx, siblings);
     const out = await runOneCheck(checkCtx, check, `[${i + 1}/${total}]`);
     findings.push(...out.findings);
     // A check with `post-summary-recheck: R` hands its manual items to the

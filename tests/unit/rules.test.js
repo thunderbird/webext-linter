@@ -616,7 +616,7 @@ test("checks carry the sca mode tag (false=XPI-only, true=SCA-only, undefined=bo
 });
 
 // The shipped-vs-review-target artifact is chosen in ONE place - runChecks routes
-// each check to its artifact's context on the registry `input` (auto = the review
+// each check to its artifact's context on the registry `input` (source = the review
 // target, xpi = the built XPI). A check reads only ctx.addon and the orchestrator
 // hands it the correct one; no ctx field or helper exposes the other artifact, so
 // the guarantee is structural (not a source scan). These tests pin the dangerous
@@ -639,10 +639,36 @@ test("every non-recheck check declares a valid input (rechecks declare none); th
       continue;
     }
     assert.ok(
-      c.input === "auto" || c.input === "xpi" || c.input === "build",
+      c.input === "source" ||
+        c.input === "xpi" ||
+        c.input === "build" ||
+        c.input === "manifest",
       `check "${c.id}" has an invalid input ${JSON.stringify(c.input)}`
     );
   }
+  // input: manifest reads the shipped manifest ONLY, on a ctx with no file corpus
+  // (buildManifestCtx). The pure-manifest checks; extending this set is deliberate too.
+  const manifest = checks
+    .filter((c) => c.input === "manifest")
+    .map((c) => c.id)
+    .sort();
+  assert.deepEqual(manifest, [
+    "addon-icon-missing",
+    "csp-unsafe-eval",
+    "csp-unsafe-inline",
+    "experiment-manual-review",
+    "experiment-missing-strict-max-version",
+    "experiment-overrides-api",
+    "manifest-invalid-json",
+    "manifest-missing",
+    "manifest-missing-key",
+    "manifest-unknown-permission",
+    "manifest-version-mismatch",
+    "minimize-host-permissions",
+    "mistyped-manifest-value",
+    "native-messaging",
+    "non-experiment-strict-max-version",
+  ]);
   const xpi = checks
     .filter((c) => c.input === "xpi")
     .map((c) => c.id)
@@ -834,11 +860,11 @@ test("build-source-redundant fires only on the sca-redundant classification", ()
 });
 
 // The SCA summary split partitions the recheck CONSUMERS by their producer's corpus:
-// input:auto producers read the source, input:xpi producers read the built XPI. Each
+// input:source producers read the source, input:xpi producers read the built XPI. Each
 // consumer bridges only to the summary of its own corpus.
 test("recheckConsumersByCorpus partitions consumers by their producer's input", () => {
   const { source, xpi } = loadRegistry().recheckConsumersByCorpus();
-  // source-anchored (producer input: auto)
+  // source-anchored (producer input: source)
   assert.ok(source.has("data-exfiltration-recheck"));
   assert.ok(source.has("disguised-transmission-recheck"));
   assert.ok(source.has("unused-permission"));
@@ -851,7 +877,7 @@ test("recheckConsumersByCorpus partitions consumers by their producer's input", 
 });
 
 // In SCA the summary runs once per corpus, so a source-anchored recheck (data-exfiltration,
-// input: auto) bridges to the source summary: its unsure sites divert to the recheck bucket
+// input: source) bridges to the source summary: its unsure sites divert to the recheck bucket
 // like any other producer, rather than routing straight to manual review.
 test("SCA diverts a source-anchored recheck to the summary", async () => {
   const mk = (obj) =>
@@ -2552,7 +2578,7 @@ test("loadChecks accepts severity: auto", async () => {
   const tmp = path.join(os.tmpdir(), `auto-registry-${process.pid}.yaml`);
   fs.writeFileSync(
     tmp,
-    "deterministic-checks:\n- title: Ok\n  severity: auto\n  check: sync-xhr.js\n  input: auto\n"
+    "deterministic-checks:\n- title: Ok\n  severity: auto\n  check: sync-xhr.js\n  input: source\n"
   );
   try {
     const checks = await loadChecks(loadRegistry(tmp));
@@ -2562,7 +2588,7 @@ test("loadChecks accepts severity: auto", async () => {
   }
 });
 
-// loadChecks requires a valid `input` on every check (auto | xpi) - it drives
+// loadChecks requires a valid `input` on every check (source | xpi) - it drives
 // runOneCheck's artifact routing, so a missing/invalid value is a loud config error
 // (no default to silently fall through to).
 test("loadChecks rejects a check with no valid input", async () => {
@@ -2580,7 +2606,7 @@ test("loadChecks rejects a check with no valid input", async () => {
     // An out-of-set value is rejected too.
     fs.writeFileSync(
       tmp,
-      "deterministic-checks:\n- title: BadInput\n  severity: error\n  check: sync-xhr.js\n  input: source\n"
+      "deterministic-checks:\n- title: BadInput\n  severity: error\n  check: sync-xhr.js\n  input: bogus\n"
     );
     await assert.rejects(
       () => loadChecks(loadRegistry(tmp)),
@@ -2912,7 +2938,7 @@ test("unrecognized-manifest-key accepts experiment-owned keys", () => {
 // The other experiment-owned exemption: a key an experiment's bundled SCHEMA declares
 // (a `manifest` namespace $extend of WebExtensionManifest). The schema PATH resolves
 // against ctx.addon.files - the built XPI for this `input: xpi` check, where the built
-// path exists. Regression guard for the SCA false positive: as `input: auto` the check
+// path exists. Regression guard for the SCA false positive: as `input: source` the check
 // ran over the readable source, the built schema path was absent there, the exemption
 // silently returned nothing, and a legitimate experiment key (e.g. calendar_item_action)
 // was flagged. Routing it to the XPI (registry `input: xpi`) restores the pairing.

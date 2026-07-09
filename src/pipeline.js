@@ -31,12 +31,18 @@ import {
   scaExpSourceRelative,
 } from "./addon/load.js";
 import { resolveReviewUrl } from "./addon/atn.js";
-import { runChecks, runOneCheck, loadRegistry } from "./checks/registry.js";
+import {
+  runChecks,
+  runOneCheck,
+  routeCtx,
+  loadRegistry,
+} from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
 import {
   buildRunContext,
   buildShippedCtx,
   buildScaBuildCtx,
+  buildManifestCtx,
 } from "./checks/context.js";
 import { buildSummarizer, buildAddonSummarizer } from "./checks/summaries.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
@@ -874,12 +880,14 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
     preParsedJsSources,
   });
 
-  // The orchestrator holds BOTH contexts: `ctx` (the review target) and shippedCtx
-  // (the built XPI - the manifest-coupled `input: xpi` checks resolve declared paths
-  // against it, the diff + packaging summaries describe it). Each check is routed to one
-  // or the other by its `input`; a check cannot derive one from the other, so it only
-  // ever sees the artifact it was routed to. In an XPI review the two are one object
-  // (buildShippedCtx returns ctx unchanged when the XPI IS the review target).
+  // The orchestrator holds the review-target `ctx` plus its sibling contexts (below,
+  // gathered into `siblings`): shippedCtx (the built XPI - the `input: xpi` checks
+  // resolve declared paths against it, the diff + packaging summaries describe it),
+  // buildCtx (the SCA build files), and manifestCtx (the shipped manifest, no file
+  // corpus). Each check is routed to exactly one by its `input` (see routeCtx); a check
+  // cannot derive one from another, so it only ever sees the artifact it was routed to.
+  // In an XPI review shippedCtx IS ctx (buildShippedCtx returns it unchanged when the
+  // XPI is the review target).
   const shippedCtx = buildShippedCtx(ctx, xpiAddon);
   // SCA: a sibling context whose addon is the build files (the archive minus the
   // review source minus node_modules), so the `input: build` check
@@ -892,6 +900,13 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
     mode === "sca"
       ? buildScaBuildCtx(ctx, addon.buildFiles ?? { files: new Map() })
       : undefined;
+  // A sibling context with NO file corpus (empty ctx.addon.files), for `input: manifest`
+  // checks - they read only the shipped manifest (on ctx.manifest), so there is no
+  // artifact's files for them to reach. Both modes (the manifest exists in each).
+  const manifestCtx = buildManifestCtx(ctx);
+  // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). A
+  // check's `input` selects its ctx; anything else runs over the review-target ctx.
+  const siblings = { xpi: shippedCtx, build: buildCtx, manifest: manifestCtx };
 
   // The registry.yaml file drives which checks run, by `phase`: runChecks runs
   // the default-phase checks in its loop now and returns the post-summary checks
@@ -918,8 +933,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
     ctx,
     registry,
     { only: checksOnly, skip: baseSkip },
-    shippedCtx,
-    buildCtx
+    siblings
   );
 
   // Advisory AI summaries, generated at the tail of the activity feed (a
@@ -1005,16 +1019,10 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
   // reads [1/total] .. [total/total]. This list is empty for an invalid Experiment.
   const ran = [...checks];
   for (const [j, check] of deferred.entries()) {
-    // Route like the main loop: each check runs over the artifact its `input`
-    // selects. The post-summary rechecks declare NO `input` (undefined) - they run on
-    // the main ctx (the final `: ctx` branch, where ctx.recheck lives) and are labelled
-    // by their producer's corpus; the ternary still routes any input-bearing check right.
-    const checkCtx =
-      check.input === "xpi"
-        ? shippedCtx
-        : check.input === "build"
-          ? (buildCtx ?? ctx)
-          : ctx;
+    // Route via the SAME helper as the main loop (registry.routeCtx), so the two can
+    // never drift. The post-summary rechecks declare no `input`, so they run on the main
+    // ctx (where ctx.recheck lives) and are labelled by their producer's corpus.
+    const checkCtx = routeCtx(check, ctx, siblings);
     const out = await runOneCheck(
       checkCtx,
       check,

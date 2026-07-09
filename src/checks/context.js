@@ -233,9 +233,40 @@ export function buildShippedCtx(ctx, xpiAddon) {
  * @returns {RunContext}
  */
 export function buildScaBuildCtx(ctx, buildAddon) {
+  return buildCorpusCtx(ctx, buildAddon);
+}
+
+/**
+ * A sibling review context with NO file corpus - `addon` is an empty reviewView, so
+ * `ctx.addon.files` is empty and its lazy caches derive from nothing. The shipped
+ * manifest / schema / manifestLoc are inherited from `ctx` (they are shipped-authoritative
+ * and read from the XPI regardless of the files map). The `input: manifest` checks are
+ * routed here: they read ONLY the shipped manifest, and there is no artifact's files for
+ * them to reach - ctx.addon.files is empty, so a stray file lookup finds nothing rather
+ * than another artifact's bytes. Not mode-gated - the shipped manifest exists in both
+ * XPI and SCA reviews.
+ * @param {RunContext} ctx  The review context.
+ * @returns {RunContext}
+ */
+export function buildManifestCtx(ctx) {
+  return buildCorpusCtx(ctx, { files: new Map() });
+}
+
+/**
+ * A sibling review context over an arbitrary CORPUS: `addon` is that corpus projected
+ * through reviewView (so no artifact's manifest/experiments leak against another's
+ * files), with the source-only `jsSources`/`apiUsages` emptied; the shipped manifest /
+ * schema stay on `ctx`. Shared by buildScaBuildCtx (the SCA build files) and
+ * buildManifestCtx (an empty corpus) - the two sibling ctxs that differ only in the
+ * corpus they carry (buildShippedCtx differs: a real corpus with re-collected sources).
+ * @param {RunContext} ctx
+ * @param {{files: Map<string, Buffer>, nodeModules?: string[], archives?: string[]}} corpusAddon
+ * @returns {RunContext}
+ */
+function buildCorpusCtx(ctx, corpusAddon) {
   return {
     ...ctx,
-    addon: reviewView(buildAddon),
+    addon: reviewView(corpusAddon),
     jsSources: [],
     apiUsages: undefined,
   };

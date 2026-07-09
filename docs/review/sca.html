@@ -30,7 +30,7 @@
         (the add-on code root within it) is optional and defaults to
         <code>.</code> - the whole root reviewed as the source, for a flat layout with
         <code>manifest.json</code> at the root. The
-        review then splits across four inputs with a fixed role each, and each
+        review then splits across five inputs with a fixed role each, and each
         check is routed to exactly the artifact its <code>input</code> selects. The
         purple nodes are the optional LLM side-steps (only with
         <code>--llm-enabled</code>); Experiment handling and the summaries work as
@@ -51,13 +51,16 @@ flowchart TD
   SPLIT --> DEP
   SPLIT --> BLD
   SPLIT --> XPI
-  SRC["Readable source (--sca-source) — the review target:<br/>API / permission / eval / exfiltration checks over every<br/>file (scanned as authored); the LLM checks escalate<br/>their ambiguous residue to the model when enabled;<br/>the behavioral --full-summary reviews this source"]
+  SPLIT --> MAN
+  SRC["Readable source (--sca-source) — the review target, input: source:<br/>API / permission / eval / exfiltration checks over every<br/>file (scanned as authored); the LLM checks escalate<br/>their ambiguous residue to the model when enabled;<br/>the behavioral --full-summary reviews this source"]
   DEP["Declared dependencies (source package.json):<br/>each a pinned npm package or GitHub URL; gated on<br/>popularity + known vulnerabilities (no LLM)"]
   BLD["Build files (archive minus source, no node_modules)<br/>— input: build: npm/pnpm only, no committed node_modules or<br/>build artifact, no registry redirect, install hooks flagged; one setup<br/>LLM call classifies the build (files reached from package.json) and three<br/>checks gate on it: remote fetch / not built from source / redundant submission"]
-  XPI["Built XPI (shipped) — input: xpi: manifest, experiments,<br/>file-completeness (bundled / web-accessible / unused /<br/>locales), --diff-to baseline, packaging summary"]
+  XPI["Built XPI (shipped) — input: xpi: experiments,<br/>file-completeness (bundled / web-accessible / unused /<br/>locales), --diff-to baseline, packaging summary"]
+  MAN["Shipped manifest only — input: manifest (no file corpus):<br/>the pure-manifest checks (manifest structure, declared<br/>permissions &amp; host access, versions, CSP directives,<br/>native-messaging, the manifest half of experiments) read<br/>the shipped manifest and cannot reach any file"]
   SRC --> SUM
   DEP --> SUM
   BLD --> SUM
+  MAN --> SUM
   XPI --> SUM{"--full-summary or --diff-summary?"}
   SUM -- yes --> SG["AI summaries (LLM): a behavioral one over the SOURCE and a<br/>packaging one over the XPI, each re-judging its corpus's escalated<br/>'unsure' items; the post-summary recheck consumers resolve them"]
   SUM -- no --> RPT
@@ -122,15 +125,16 @@ flowchart TD
       </ul>
 
       <div class="outcome">
-        <strong>One review, four inputs with fixed roles</strong>
+        <strong>One review, five inputs with fixed roles</strong>
         The readable source is the deterministic review target and the subject of
         the behavioral summary; the source <code>package.json</code> supplies the
-        audited dependencies; the build files are reviewed on their own; and the
-        built XPI is authoritative for the manifest, the experiments, the
-        file-completeness checks, the diff baseline and the packaging summary. A
-        check derives one from the other only through
+        audited dependencies; the build files are reviewed on their own; the built
+        XPI is authoritative for the experiments, the file-completeness checks, the
+        diff baseline and the packaging summary; and the pure-manifest checks read
+        the shipped manifest on a context with no file corpus at all
+        (<code>input: manifest</code>). A check derives one from the other only through
         its declared <code>input</code>, so the source-level checks never touch the
-        shipped bytes and the manifest-coupled checks never touch the source. The
+        shipped bytes and the manifest checks never touch any file. The
         <a href="../index.html#review-standard">Standard</a> flow is the same
         machinery with those roles collapsed onto a single add-on.
       </div>
@@ -146,8 +150,9 @@ flowchart TD
 
       <p class="source-note">
         Source of truth: <code>src/pipeline.js</code> (the <code>mode === "sca"</code>
-        branches, <code>buildShippedCtx</code> / <code>buildScaBuildCtx</code>) and
-        the SCA options in the README.
+        branches, <code>buildShippedCtx</code> / <code>buildScaBuildCtx</code> /
+        <code>buildManifestCtx</code>, routed via <code>routeCtx</code>) and the SCA
+        options in the README.
       </p>
     </main>
 
