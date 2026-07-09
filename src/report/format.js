@@ -202,7 +202,7 @@ function issuesLines(
   const out = section("Issues");
   const intros = verdictIntros ?? {};
   if (issues.length === 0) {
-    out.push(intros.none ?? "No issues found.");
+    out.push(intros.none ?? "The automated review did not find any issues.");
     return out;
   }
   // One preamble for the whole section, glued onto the first rendered heading.

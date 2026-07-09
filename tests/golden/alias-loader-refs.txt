@@ -1,5 +1,5 @@
 ── Issues ──
-No issues found.
+The automated review did not find any issues.
 
 ── Standard manual review ──
 

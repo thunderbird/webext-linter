@@ -1450,7 +1450,7 @@ messages:
 # "feedback" otherwise (warnings/info only). With findings, it is glued to the
 # first severity heading; with none, it is the whole Issues body.
 verdict-intros:
-  none: "No issues found."
+  none: "The automated review did not find any issues."
   feedback: "Thank you for your contribution, it will be approved shortly."
   rejected: "Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form."
 
