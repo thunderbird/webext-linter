@@ -26,7 +26,7 @@
 // references are src/parse/local-imports.js. Babel access goes through
 // src/parse/ast.js.
 
-import { API_ROOTS } from "./api-usage.js";
+import { apiBasesOf, calleeApiPath } from "./api-base.js";
 import { parseJs, traverse, staticPathOf } from "./ast.js";
 import { REL_URL_FORMATS } from "../schema/index.js";
 
@@ -116,6 +116,7 @@ export function scanLoaderRefs(
     return { refs: [], hasDynamic: false, parseError };
   }
 
+  const bases = apiBasesOf(ast);
   const refs = [];
   const seenRef = new Set();
   const state = { hasDynamic: false };
@@ -140,7 +141,7 @@ export function scanLoaderRefs(
         seenRef.add(key);
         refs.push({ path, line, column, base: currentBase });
       }
-    } else if (isDynamicValue(node)) {
+    } else if (isDynamicValue(node, bases)) {
       state.hasDynamic = true; // a runtime-built path static analysis can't follow
     }
   };
@@ -149,7 +150,7 @@ export function scanLoaderRefs(
   const canWalk = typeof schema?.resolveApi === "function";
   traverse(ast, {
     CallExpression(path) {
-      const dotted = dottedApiPath(path.node.callee);
+      const dotted = dottedApiPath(path.node.callee, bases);
       if (!dotted) {
         return;
       }
@@ -297,29 +298,21 @@ function extractBridge(spec, args, take) {
 }
 
 /**
- * The dotted member path after a browser/messenger/chrome root (e.g.
+ * The dotted member path after the API root (e.g.
  * "messageDisplayScripts.register", "scripting.messageDisplay.registerScripts"),
- * or null if the callee is not such a member chain.
+ * or null if the callee is not such a member chain. The chain base resolves
+ * through the AST's api-base index, so an aliased root (`const api = messenger ||
+ * browser; api.runtime.getURL(...)`) or a captured namespace (`const rt =
+ * messenger.runtime; rt.getURL(...)`) yields the same dotted path as a direct
+ * call - keeping the dotted-keyed tables (BRIDGE, ROOT_RELATIVE_FILE_METHODS,
+ * the schema's fileLoaderMethods) working for all shapes.
  * @param {AstNode} callee
+ * @param {Map<AstNode, import("./api-base.js").AliasTarget>} bases
  * @returns {string|null}
  */
-function dottedApiPath(callee) {
-  if (callee?.type !== "MemberExpression" || callee.computed) {
-    return null;
-  }
-  const segments = [];
-  let cur = callee;
-  while (cur?.type === "MemberExpression" && !cur.computed) {
-    if (cur.property?.type !== "Identifier") {
-      return null;
-    }
-    segments.unshift(cur.property.name);
-    cur = cur.object;
-  }
-  if (cur?.type !== "Identifier" || !API_ROOTS.has(cur.name)) {
-    return null;
-  }
-  return segments.join(".");
+function dottedApiPath(callee, bases) {
+  const resolved = calleeApiPath(callee, bases);
+  return resolved ? resolved.segments.join(".") : null;
 }
 
 /**
@@ -328,9 +321,10 @@ function dottedApiPath(callee) {
  * opposed to a static string or a structured object/array/function matching a
  * non-string choice. Drives the caller's conservative `hasDynamic` handling.
  * @param {AstNode} node
+ * @param {Map<AstNode, import("./api-base.js").AliasTarget>} bases
  * @returns {boolean}
  */
-function isDynamicValue(node) {
+function isDynamicValue(node, bases) {
   // A runtime.getURL(...) call sitting in a loader slot (e.g.
   // windows.create({url: getURL("popup.html")})) is a resolved-URL value, not a
   // runtime-built path: the getURL call is itself captured by the getURL loader,
@@ -338,7 +332,7 @@ function isDynamicValue(node) {
   // must not re-flag the outer slot as dynamic.
   if (
     node?.type === "CallExpression" &&
-    dottedApiPath(node.callee) === "runtime.getURL"
+    dottedApiPath(node.callee, bases) === "runtime.getURL"
   ) {
     return false;
   }

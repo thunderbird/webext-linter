@@ -10,35 +10,11 @@
 import { classifyUrl } from "../scan/url.js";
 import { parseJs, traverse, nodeLoc } from "./ast.js";
 import { basename } from "../util/files.js";
-import { API_ROOTS } from "./api-usage.js";
+import { apiBasesOf, calleeApiPath } from "./api-base.js";
 
 // A URL scheme (resource:, chrome:, moz-extension:, ...). A scheme-bearing parameter
 // is matched by name; a relative path is resolved root-relative.
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
-
-/**
- * The dotted identifier names of a member-expression callee, root-first
- * (`messenger.WindowListener.registerWindow` -> ["messenger","WindowListener",
- * "registerWindow"]), or null if any link is computed or non-identifier.
- * @param {any} node
- * @returns {?string[]}
- */
-function memberPath(node) {
-  const parts = [];
-  let cur = node;
-  while (cur?.type === "MemberExpression") {
-    if (cur.computed || cur.property?.type !== "Identifier") {
-      return null;
-    }
-    parts.unshift(cur.property.name);
-    cur = cur.object;
-  }
-  if (cur?.type !== "Identifier") {
-    return null;
-  }
-  parts.unshift(cur.name);
-  return parts;
-}
 
 /**
  * Classify a string passed to an Experiment API as a packaged-file reference: a
@@ -60,8 +36,9 @@ function classifyInjectedArg(value) {
 /**
  * Find the packaged-file paths an add-on hands to an Experiment API: string
  * arguments (top level, and one level inside an array argument) of any call
- * `browser|messenger|chrome.<ns>.…(args)` whose `<ns>` is in `namespaces`. Each ref is
- * tagged with its namespace.
+ * `<api root>.<ns>.…(args)` whose `<ns>` is in `namespaces` - the root resolved
+ * through the api-base index, so aliases and captured namespaces count. Each ref
+ * is tagged with its namespace.
  * @param {string} code
  * @param {Set<string>} namespaces  The add-on's Experiment namespaces.
  * @param {number} [lineOffset]
@@ -90,14 +67,16 @@ export function scanExperimentInjectedRefs(
       refs.push({ ns, ...c, ...nodeLoc(node, lineOffset) });
     }
   };
+  const bases = apiBasesOf(ast);
   traverse(ast, {
     CallExpression(p) {
-      const path = memberPath(p.node.callee);
-      if (!path || path.length < 2) {
-        return;
-      }
-      const [root, ns] = path;
-      if (!API_ROOTS.has(root) || !namespaces.has(ns)) {
+      // The callee resolves through the api-base index, so an aliased root or a
+      // captured Experiment namespace (`const wl = messenger.WindowListener;
+      // wl.registerWindow(...)`) matches like a direct call. The namespace is
+      // the first resolved segment after the (implicit) root.
+      const resolved = calleeApiPath(p.node.callee, bases);
+      const ns = resolved?.segments[0];
+      if (!ns || !namespaces.has(ns)) {
         return;
       }
       for (const arg of p.node.arguments) {

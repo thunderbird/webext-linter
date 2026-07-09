@@ -88,4 +88,35 @@ test("scanAsyncOnMessage ignores a non-matching addListener shape", () => {
       .hits.length,
     0
   );
+  // The full resolved path must equal runtime.onMessage.addListener - a longer
+  // chain that merely ends in those names is a different API surface.
+  assert.equal(
+    scanAsyncOnMessage(
+      "browser.foo.runtime.onMessage.addListener(async () => {});"
+    ).hits.length,
+    0
+  );
+});
+
+// The callee resolves through the shared api-base index: the feature-detection
+// alias and a captured namespace register like a direct call, and a shadowed
+// local named like a root does not.
+test("scanAsyncOnMessage resolves aliased roots and captured namespaces", () => {
+  assert.deepEqual(
+    scanAsyncOnMessage(
+      `
+        const api = typeof messenger !== "undefined" ? messenger : browser;
+        api.runtime.onMessage.addListener(async () => {});
+        const rt = messenger.runtime;
+        rt.onMessage.addListener(function () {});
+      `
+    ).hits.map((h) => h.async),
+    [true, false]
+  );
+  assert.equal(
+    scanAsyncOnMessage(
+      `function f(browser) { browser.runtime.onMessage.addListener(async () => {}); }`
+    ).hits.length,
+    0
+  );
 });

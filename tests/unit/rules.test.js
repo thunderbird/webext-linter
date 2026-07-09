@@ -2743,6 +2743,36 @@ test("scanNetworkSinks classifies channel, destination, appended data", () => {
   );
 });
 
+// carriesData resolves the payload's chain base through the shared api-base
+// index: a whole-object alias and a captured data-API namespace (the API is the
+// capture's prefix) count as user data; a shadowed local named like a root does
+// not.
+test("scanNetworkSinks carriesData follows aliases and captured namespaces", () => {
+  const one = (code) => scanNetworkSinks(code).hits[0];
+  assert.equal(
+    one(
+      `const api = messenger || browser;
+       fetch(u, { body: api.messages.getFull(id) });`
+    ).carriesData,
+    true
+  );
+  assert.equal(
+    one(
+      `const m = messenger.messages;
+       fetch(u, { body: m.getFull(id) });`
+    ).carriesData,
+    true
+  );
+  assert.equal(
+    one(
+      `function f(messenger) {
+         fetch(u, { body: messenger.messages.getFull(id) });
+       }`
+    ).carriesData,
+    false
+  );
+});
+
 // ---- cleartext-transmission ----
 // Any overt transmission to a remote host over a non-TLS scheme is an error,
 // with or without a payload; encrypted (https/wss) and local destinations are

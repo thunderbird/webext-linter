@@ -32,3 +32,21 @@ test("scanExperimentInjectedRefs extracts file args of experiment-namespace call
     "wl:path:content/entry.js",
   ]);
 });
+
+// The callee resolves through the shared api-base index: an aliased root and a
+// captured Experiment namespace inject like a direct call (the namespace is the
+// first resolved segment), while a shadowed local named like a root does not.
+test("scanExperimentInjectedRefs resolves aliased roots and captured namespaces", () => {
+  const ns = new Set(["wl"]);
+  const code = `
+    const api = messenger || browser;
+    api.wl.add("content/a.js");
+    const wl = messenger.wl;
+    wl.registerWindow("content/b.js");
+    function f(messenger) { messenger.wl.add("content/skip.js"); }
+  `;
+  const got = scanExperimentInjectedRefs(code, ns)
+    .refs.map((r) => `${r.ns}:${r.kind}:${r.value}`)
+    .sort();
+  assert.deepEqual(got, ["wl:path:content/a.js", "wl:path:content/b.js"]);
+});

@@ -157,6 +157,60 @@ test("tags document-relative loaders base:page, root loaders base:root", () => {
   assert.equal(base["pop.html"], "page");
 });
 
+// Chain bases resolve through the shared api-base index, so the common
+// Thunderbird feature-detection alias and a captured namespace load like a
+// direct call - the shape that previously produced unused-files false positives
+// (an aliased getURL ref created no reachability edge).
+test("resolves loader calls through an aliased root and a captured namespace", () => {
+  const code = `
+    const api = typeof messenger !== "undefined" ? messenger : browser;
+    api.runtime.getURL("help/help.html");
+    api.tabs.create({ url: "manager/manager.html" });
+    const rt = messenger.runtime;
+    rt.getURL("icons/a.png");
+    api.messageDisplayScripts.register({ js: [{ file: "display.js" }] });
+  `;
+  const out = scanLoaderRefs(code, 0, schema);
+  assert.deepEqual(
+    out.refs.map((r) => `${r.base}:${r.path}`).sort(),
+    [
+      "page:display.js",
+      "page:manager/manager.html",
+      "root:help/help.html",
+      "root:icons/a.png",
+    ].sort()
+  );
+});
+
+// The nested-getURL exemption in the dynamic-value check follows the alias too:
+// a resolved-URL value in a loader slot is not a runtime-built path.
+test("an aliased getURL inside a loader url slot does not set hasDynamic", () => {
+  const out = scanLoaderRefs(
+    `
+      const api = messenger || browser;
+      api.tabs.create({ url: api.runtime.getURL("page.html") });
+    `,
+    0,
+    schema
+  );
+  assert.deepEqual(
+    out.refs.map((r) => r.path),
+    ["page.html"]
+  );
+  assert.equal(out.hasDynamic, false);
+});
+
+// A local named like a root is not the API global - scope-aware resolution
+// rejects it where literal-name matching used to accept it.
+test("a shadowed root name yields no loader refs", () => {
+  const out = scanLoaderRefs(
+    `function f(browser) { browser.runtime.getURL("x.html"); }`,
+    0,
+    schema
+  );
+  assert.deepEqual(out.refs, []);
+});
+
 // Version-specific bridge entries respect the run's manifest version: the
 // default action is browserAction in MV2, renamed to action in MV3, and
 // tabs.executeScript is MV2-only (scripting.* covers MV3).

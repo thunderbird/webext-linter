@@ -1,37 +1,28 @@
 // Extracts WebExtension API usage from JavaScript by walking the AST for
-// member-expression chains rooted at `browser`, `messenger`, or `chrome` (all
-// three are valid in Thunderbird submissions). For
+// member-expression chains rooted at the API object. For
 // `browser.messages.tags.list(...)` it yields segments
-// ["messages","tags","list"]. It also follows an alias of the API object OR one of
-// its namespaces - the common Thunderbird feature-detection shapes `const api =
-// messenger || browser`, `const api = typeof messenger !== "undefined" ? messenger
-// : browser`, and a namespace captured into a local (`const m = browser.messages`,
-// or the guarded shim shape `_m = _api && _api.messages || null`) - so `api.*` and
-// `m.*` calls resolve to their full path (`m.archive()` -> messages.archive). The
-// alias is resolved by its binding's initializer, not its name, and back to a real
-// root (browser/messenger/chrome). This is deliberately best-effort: dynamic/computed
-// access and destructured aliases (const { messages } = browser) can't always be
-// resolved statically, so we surface those as "limitations" rather than silently
-// dropping them.
-//
-// Within this module, `aliasTarget` is the single notion of "does this expression
-// denote an API object?" - both the usage extraction above AND the feature-detection
-// guard signal (whether a call sits behind `if (typeof _m.foo === "function") _m.foo()`)
-// consume it, so an aliased namespace is understood the same way in both paths. (Coarse
-// scanners elsewhere - network-sinks, loader detection - match only a literal root and
-// do not resolve aliases; a tolerable best-effort gap there.)
+// ["messages","tags","list"]. Chain bases are resolved through the shared
+// per-AST index (apiBasesOf in src/parse/api-base.js), so an alias of the API
+// object or a captured namespace (`const api = messenger || browser`,
+// `const m = browser.messages`) yields the same full path as a direct call
+// (`m.archive()` -> messages.archive). This is deliberately best-effort:
+// dynamic/computed access and destructured aliases (const { messages } =
+// browser) can't always be resolved statically, so we surface those as
+// "limitations" rather than silently dropping them.
 //
 // Belongs here: usage extraction (segments, line/column, dynamic-tail and alias
-// limitations), the feature-detection guard signal, and the shared API_ROOTS set.
+// limitations) and the feature-detection guard signal (whether a call sits
+// behind `if (typeof _m.foo === "function") _m.foo()`).
 //
-// Does NOT belong here: deciding whether a usage needs a permission, is covered
-// by the manifest, or is otherwise allowed - those verdicts live in the checks
-// (src/checks/rules/* and src/checks/lib/permissions.js). User-facing wording
-// lives in assets/registry.yaml. Babel access goes through src/parse/ast.js.
+// Does NOT belong here: what denotes an API object - the API_ROOTS set, alias
+// resolution, and the per-AST base index (-> src/parse/api-base.js). Deciding
+// whether a usage needs a permission, is covered by the manifest, or is
+// otherwise allowed - those verdicts live in the checks (src/checks/rules/* and
+// src/checks/lib/permissions.js). User-facing wording lives in
+// assets/registry.yaml. Babel access goes through src/parse/ast.js.
 
 import { parseJs, traverse } from "./ast.js";
-
-export const API_ROOTS = new Set(["browser", "messenger", "chrome"]);
+import { API_ROOTS, aliasTarget, apiBasesOf } from "./api-base.js";
 
 /** @typedef {object} BabelPath A @babel/traverse NodePath object. */
 
@@ -80,17 +71,16 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
     column: node.loc?.start.column ?? 0,
   });
 
+  const bases = apiBasesOf(ast);
   traverse(ast, {
     Identifier(path) {
       const name = path.node.name;
       // A chain-base identifier that denotes an API object: a literal root, a
       // whole-object alias (const api = messenger || browser), or a captured namespace
-      // (const m = browser.messages; _m = _api && _api.messages || null). aliasTarget
-      // resolves it by its binding's initializer to {root, prefix}, where prefix is the
-      // captured segment path (browser.messages -> ["messages"]), prepended to the chain.
-      const target = isChainBase(path)
-        ? aliasTarget(path.node, path.scope, new Set())
-        : null;
+      // (const m = browser.messages; _m = _api && _api.messages || null). The shared
+      // index resolves it to {root, prefix}, where prefix is the captured segment
+      // path (browser.messages -> ["messages"]), prepended to the chain.
+      const target = bases.get(path.node) ?? null;
 
       if (!target) {
         // A direct alias/destructuring of the API object we could NOT resolve to
@@ -130,138 +120,6 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
   });
 
   return { usages, limitations, parseError: null };
-}
-
-/**
- * True when this identifier is the base object of a member chain (e.g. the `x` in
- * `x.foo.bar`), not a property name. Says nothing about whether `x` is an API
- * object - just the syntactic position.
- * @param {BabelPath} path
- * @returns {boolean}
- */
-function isChainBase(path) {
-  if (path.key === "property" && path.parent.type === "MemberExpression") {
-    return false; // it's the `.x` part of something.x
-  }
-  return Boolean(
-    path.parentPath?.isMemberExpression() && path.parent.object === path.node
-  );
-}
-
-/**
- * @typedef {object} AliasTarget
- * @property {"browser"|"messenger"|"chrome"} root  The real API global the alias
- *   resolves back to.
- * @property {string[]} prefix  The captured segment path between the root and the
- *   alias site (browser.messages -> ["messages"]; a whole-object alias -> []).
- */
-
-/**
- * The API target an initializer expression resolves to, or null. Handles the common
- * Thunderbird feature-detection alias shapes AND a namespace captured into a local:
- *   const api = messenger                                  (direct root)
- *   const api = messenger || browser || chrome             (|| / ?? chain)
- *   const api = typeof messenger !== 'undefined' ? messenger : browser  (ternary)
- *   const m = browser.messages                             (namespace capture)
- *   const m = _api && _api.messages || null                (guarded shim capture)
- * Resolution is by structure, back to a real root: a member access appends its
- * static property name to the prefix; a computed/dynamic property gives up (null).
- * @param {object} node  An expression node (a VariableDeclarator init).
- * @param {object} scope  The declarator's scope, for resolving nested identifiers.
- * @param {Set<string>} seen  Binding names already being resolved (cycle guard).
- * @returns {?AliasTarget}
- */
-function aliasTarget(node, scope, seen) {
-  if (!node) {
-    return null;
-  }
-  switch (node.type) {
-    case "Identifier":
-      if (API_ROOTS.has(node.name)) {
-        // The GLOBAL api object only - a shadowed local named browser/messenger/
-        // chrome (e.g. a function parameter) is not the API root.
-        return scope?.getBinding(node.name)
-          ? null
-          : { root: node.name, prefix: [] };
-      }
-      return aliasedTarget(scope?.getBinding(node.name), scope, seen);
-    case "MemberExpression":
-    case "OptionalMemberExpression": {
-      const base = aliasTarget(node.object, scope, seen);
-      if (!base) {
-        return null;
-      }
-      const key = memberName(node);
-      return key === null
-        ? null
-        : { root: base.root, prefix: [...base.prefix, key] };
-    }
-    case "ParenthesizedExpression":
-      return aliasTarget(node.expression, scope, seen);
-    case "LogicalExpression":
-      // ||/?? -> either operand carries the value; && -> the RHS is the value
-      // (`_api && _api.messages`), the LHS is just the presence guard.
-      if (node.operator === "||" || node.operator === "??") {
-        return (
-          aliasTarget(node.left, scope, seen) ??
-          aliasTarget(node.right, scope, seen)
-        );
-      }
-      if (node.operator === "&&") {
-        // `A && B` is B when A is truthy; A is the value only on short-circuit
-        // (the API is absent), so the presence guard (LHS) is never the alias.
-        return aliasTarget(node.right, scope, seen);
-      }
-      return null;
-    case "ConditionalExpression":
-      return (
-        aliasTarget(node.consequent, scope, seen) ??
-        aliasTarget(node.alternate, scope, seen)
-      );
-    default:
-      return null;
-  }
-}
-
-/**
- * The static property name of a member expression (`x.foo` -> "foo",
- * `x["foo"]` -> "foo"), or null for a computed/dynamic property (`x[k]`).
- * @param {object} node  A MemberExpression / OptionalMemberExpression.
- * @returns {?string}
- */
-function memberName(node) {
-  if (node.computed) {
-    return node.property.type === "StringLiteral" ? node.property.value : null;
-  }
-  return node.property.type === "Identifier" ? node.property.name : null;
-}
-
-/**
- * Resolve a binding to the API target its initializer aliases, or null. Only a
- * `const/let/var x = <init>` whose id is a plain identifier counts (destructuring
- * does not - that stays a coverage-gap limitation). Recurses through multi-hop
- * captures (`_m` -> `_api.messages`, `_api` -> browser); `seen` (keyed by binding
- * name) guarantees termination - each binding is resolved at most once, and bindings
- * are finite, so a cycle bottoms out at null.
- * @param {object} binding  A Babel scope binding (or undefined).
- * @param {object} scope  Fallback scope for nested identifier lookups.
- * @param {Set<string>} seen  Binding names already being resolved.
- * @returns {?AliasTarget}
- */
-function aliasedTarget(binding, scope, seen) {
-  const decl = binding?.path;
-  if (!decl || decl.type !== "VariableDeclarator") {
-    return null;
-  }
-  if (decl.node.id.type !== "Identifier") {
-    return null; // destructuring etc. - not a whole-object/namespace alias
-  }
-  const name = decl.node.id.name;
-  if (seen.has(name)) {
-    return null; // a cycle - each binding is resolved at most once
-  }
-  seen.add(name);
-  return aliasTarget(decl.node.init, decl.scope ?? scope, seen);
 }
 
 /**

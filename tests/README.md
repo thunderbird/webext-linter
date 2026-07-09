@@ -140,10 +140,11 @@ JSON format** the tool consumes. (The real download nests its files under a
 `schema-files/` subfolder - the loader also accepts a flat directory, which the
 fixture uses.)
 
-One file per namespace (`browserAction`, `clipboard`, `legacy`, `manifest`,
-`messages`, `runtime`, `storage`), each an array of namespace objects with
-`functions` / `events` / `properties` / `types`. The entries are deliberately
-seeded with the annotations the checks key off:
+One file per namespace (`action`, `clipboard`, `compose`, `legacy`, `manifest`,
+`messageDisplayScripts`, `messages`, `runtime`, `storage`, `tabs`), each an
+array of namespace objects with `functions` / `events` / `properties` /
+`types`. The entries are deliberately seeded with the annotations the checks
+key off:
 
 | Annotation | Drives | In the fixture |
 | --- | --- | --- |

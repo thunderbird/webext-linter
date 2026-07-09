@@ -20,7 +20,7 @@
 
 import { parseJs, traverse, nodeLoc } from "./ast.js";
 import { classifyUrl, isLoopback } from "../scan/url.js";
-import { API_ROOTS } from "./api-usage.js";
+import { apiBasesOf } from "./api-base.js";
 
 /** @typedef {import("@babel/types").Node} AstNode */
 
@@ -91,6 +91,7 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
   }
 
   const hits = [];
+  const bases = apiBasesOf(ast);
   /** @param {AstNode} node @returns {{line:number, column:number}} */
   const at = (node) => nodeLoc(node, lineOffset);
 
@@ -110,7 +111,7 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
       cleartext,
       host,
       dataAppended,
-      carriesData: [urlNode, ...dataNodes].some(carriesData),
+      carriesData: [urlNode, ...dataNodes].some((n) => carriesData(n, bases)),
       ...at(site),
     });
   };
@@ -458,21 +459,31 @@ function bareUrl(s) {
 /**
  * True if a `<root>.<dataApi>...` member call sits anywhere in the node subtree
  * (e.g. `messenger.messages.getFull(id)` in a fetch body), evidence the payload
- * carries user data.
+ * carries user data. The chain base is looked up by node identity in the AST's
+ * api-base index - the walk itself is scope-less, but the index was built with
+ * scope, so aliases (`api.messages.getFull(id)`) and captured namespaces
+ * (`const m = messenger.messages; m.getFull(id)`, where the data API is the
+ * capture's prefix) resolve, and a shadowed local named like a root does not.
  * @param {?AstNode} node
+ * @param {Map<AstNode, import("./api-base.js").AliasTarget>} bases
  * @returns {boolean}
  */
-function carriesData(node) {
+function carriesData(node, bases) {
   let found = false;
   walk(node, (n) => {
-    if (
-      !found &&
-      n.type === "MemberExpression" &&
-      n.object?.type === "Identifier" &&
-      API_ROOTS.has(n.object.name) &&
-      n.property?.type === "Identifier" &&
-      DATA_APIS.has(n.property.name)
-    ) {
+    if (found || n.type !== "MemberExpression") {
+      return;
+    }
+    const target = n.object?.type === "Identifier" ? bases.get(n.object) : null;
+    if (!target) {
+      return;
+    }
+    const ns =
+      target.prefix[0] ??
+      (!n.computed && n.property?.type === "Identifier"
+        ? n.property.name
+        : null);
+    if (ns && DATA_APIS.has(ns)) {
       found = true;
     }
   });

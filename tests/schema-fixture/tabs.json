@@ -1,0 +1,19 @@
+[
+  {
+    "namespace": "tabs",
+    "functions": [
+      {
+        "name": "create",
+        "parameters": [
+          {
+            "name": "createProperties",
+            "type": "object",
+            "properties": {
+              "url": { "type": "string" }
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

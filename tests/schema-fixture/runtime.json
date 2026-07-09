@@ -2,6 +2,12 @@
   {
     "namespace": "runtime",
     "annotations": [{ "version_added": "57" }],
+    "functions": [
+      {
+        "name": "getURL",
+        "parameters": [{ "name": "path", "type": "string" }]
+      }
+    ],
     "events": [
       { "name": "onMessage" },
       {

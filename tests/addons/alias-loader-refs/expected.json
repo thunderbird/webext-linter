@@ -1,0 +1,4 @@
+{
+  "_comment": "help/ is loaded only via an aliased API root (const api = typeof messenger !== 'undefined' ? messenger : browser) and a captured namespace (const rt = api.runtime). Resolving those through the shared api-base index makes help/ reachable, so unused-files reports nothing - the aliased-getURL false positive this fixture locks in.",
+  "expect": {}
+}

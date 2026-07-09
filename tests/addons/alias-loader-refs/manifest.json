@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Alias loader refs",
+  "version": "1.0",
+  "description": "Loads packaged pages only through an aliased API root and a captured namespace.",
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

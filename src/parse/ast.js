@@ -9,10 +9,10 @@
 // Any module needing Babel goes through parseJs/traverse/nodeLoc here.
 //
 // Does NOT belong here: extracting facts from the AST or any check logic - the
-// per-concern AST walks live in the sibling parsers (src/parse/api-usage.js,
-// remote-js.js, unsafe-html.js, local-imports.js, loader-files.js). Verdicts go
-// to src/checks/rules/*. HTML/markup parsing is a separate subsystem
-// (src/scan/html.js and src/scan/html-parse.js).
+// per-concern AST walks live in the sibling parsers (src/parse/api-base.js,
+// api-usage.js, remote-js.js, unsafe-html.js, local-imports.js,
+// loader-files.js). Verdicts go to src/checks/rules/*. HTML/markup parsing is a
+// separate subsystem (src/scan/html.js and src/scan/html-parse.js).
 
 import { parse } from "@babel/parser";
 import _traverse from "@babel/traverse";
