@@ -30,7 +30,10 @@ function tmpDir(files) {
 }
 
 // The SHIPPED XPI: built entry scripts (background.js / content.js) that load a
-// web-accessible resource. This is a self-consistent built add-on.
+// web-accessible resource. This is a self-consistent built add-on. background.js ships
+// MINIFIED (first-party, one dense line) so the XPI is not directly reviewable - which is
+// what makes an SCA submission legitimate. An XPI whose first-party code is readable is
+// downgraded to a plain XPI review (sca-not-required), so these SCA-mode tests need one.
 const XPI_FILES = {
   "manifest.json": JSON.stringify({
     manifest_version: 3,
@@ -42,7 +45,7 @@ const XPI_FILES = {
       { resources: ["injected.js"], matches: ["*://*/*"] },
     ],
   }),
-  "background.js": `console.log("built bg");`,
+  "background.js": `var _b=[${"1,".repeat(700)}1];console.log("built bg");`,
   "content.js": `const u=browser.runtime.getURL("injected.js");const s=document.createElement("script");s.src=u;document.head.append(s);`,
   "injected.js": `console.log("built injected");`,
 };
@@ -1029,6 +1032,131 @@ test("SCA e2e: a committed node_modules folder is rejected", async () => {
         /node_modules/.test(f.message)
       ),
       "a committed node_modules folder is flagged"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
+// A readable built XPI (no minified/obfuscated first-party code) makes a --sca-root
+// submission a false SCA: the shipped add-on can be reviewed directly, so its source
+// archive adds nothing. The pipeline downgrades to a plain XPI review and reports it
+// (sca-not-required). The decision is purely the XPI's own classification - the source
+// content is never consulted.
+const READABLE_XPI = {
+  "manifest.json": JSON.stringify({
+    manifest_version: 3,
+    name: "Readable XPI",
+    version: "1.0",
+    background: { scripts: ["background.js"] },
+  }),
+  "background.js": `console.log("readable shipped code");`,
+};
+
+test("SCA e2e: a readable-XPI submission is downgraded to a plain XPI review (sca-not-required)", async () => {
+  const xpi = tmpDir(READABLE_XPI);
+  // The source has a copy-only build (a package.json whose build merely vendors libraries),
+  // yet the readable XPI downgrades BEFORE any build review runs, so sca-not-required fires.
+  // The source also carries a fake API in a file the XPI lacks; if the source were reviewed
+  // unknown-api would catch it - so its ABSENCE proves the XPI, not the source, was reviewed.
+  const src = tmpDir({
+    "package.json": JSON.stringify({
+      name: "dg",
+      version: "1.0.0",
+      scripts: { build: "cp -r node_modules/lib dist" },
+    }),
+    "src/only-in-source.js": `browser.totallyFakeNamespace.doThing();\n`,
+  });
+  try {
+    const result = await runPipeline({
+      addonPath: xpi,
+      scaRoot: src,
+      scaSource: ".",
+      ...OFFLINE,
+    });
+    const { findings, mode } = result;
+    assert.equal(
+      mode,
+      "xpi",
+      "a directly-reviewable XPI downgrades the SCA to a plain XPI review"
+    );
+    assert.ok(
+      has(findings, "sca-not-required"),
+      "the redundant source submission is reported"
+    );
+    assert.ok(
+      !has(findings, "unknown-api", (f) =>
+        /totallyFakeNamespace/.test(f.item ?? "")
+      ),
+      "the source content is not reviewed after the downgrade - the XPI is"
+    );
+    // Lock the rendered response wording (no golden fires this check).
+    assert.match(
+      formatReviewBody(result),
+      /separate, more involved review process that is considerably slower/,
+      "the report explains that the source archive triggers a slower review"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
+test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", async () => {
+  const xpi = tmpDir(XPI_FILES); // background.js ships minified -> the XPI is not reviewable as-is
+  const src = tmpDir(SRC_FILES);
+  try {
+    const { findings, mode } = await runPipeline({
+      addonPath: xpi,
+      scaRoot: src,
+      scaSource: "src",
+      ...OFFLINE,
+    });
+    assert.equal(
+      mode,
+      "sca",
+      "a minified XPI keeps the source-code-archive review"
+    );
+    assert.ok(
+      !has(findings, "sca-not-required"),
+      "no downgrade warning for a legitimate SCA"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
+// Regression: a downgrade re-classifies the XPI vendor-aware in Phase 3, so a VENDOR-declared
+// readable library is excluded from content review - identical to a native XPI review of the
+// same artifact. (If the pre-vendor Phase-1 decision classification were reused, the library
+// would be scanned as authored and unknown-api would fire on its fake API.)
+test("SCA e2e: a downgrade excludes VENDOR-declared readable files from content review", async () => {
+  const xpi = tmpDir({
+    "manifest.json": JSON.stringify({
+      manifest_version: 3,
+      name: "Vendor Downgrade",
+      version: "1.0",
+      background: { scripts: ["background.js"] },
+    }),
+    "background.js": `console.log("readable first-party");`, // readable -> XPI downgrades
+    "VENDOR.md":
+      "File: lib/widget.js\nSource: https://unpkg.com/widget@1.0.0/widget.js\n",
+    "lib/widget.js": `browser.totallyFakeNamespace.doThing();\n`, // scanned-as-authored -> unknown-api
+  });
+  const src = tmpDir({
+    "package.json": JSON.stringify({ name: "d", version: "1.0.0" }),
+  });
+  try {
+    const { findings, mode } = await runPipeline({
+      addonPath: xpi,
+      scaRoot: src,
+      scaSource: ".",
+      ...OFFLINE,
+    });
+    assert.equal(mode, "xpi", "the readable XPI downgrades");
+    assert.ok(has(findings, "sca-not-required"));
+    assert.ok(
+      !has(findings, "unknown-api", (f) => /widget\.js/.test(f.file ?? "")),
+      "the VENDOR-declared library is excluded from content review (vendor-aware classify)"
     );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));

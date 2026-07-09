@@ -171,6 +171,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
  *   --allow-experiments is off: the review short-circuits to the reject check
  *   only, with no LLM (see runChecks and buildRunContext).
+ * @property {boolean} [scaNotRequired]  A submitted SCA (--sca-root) was downgraded to
+ *   this plain XPI review because the shipped XPI is directly reviewable; the
+ *   sca-not-required check reads this to report the redundant source submission.
  * @property {{evaluate: Function}} [llm]  LLM client, present only with a token.
  * @property {boolean} [recheckActive]  Set by reviewAddon when the add-on summary
  *   will run: checks with a `post-summary-recheck` hand their manual items to the

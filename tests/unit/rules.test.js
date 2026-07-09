@@ -38,7 +38,6 @@ import unparsableFile from "../../src/checks/rules/unparsable-file.js";
 import dataExfiltration from "../../src/checks/rules/data-exfiltration.js";
 import undeclaredBuildSource from "../../src/checks/rules/undeclared-build-source.js";
 import buildNotFromSource from "../../src/checks/rules/build-not-from-source.js";
-import buildSourceRedundant from "../../src/checks/rules/build-source-redundant.js";
 import unsupportedBuildTool from "../../src/checks/rules/unsupported-build-tool.js";
 import buildRegistryRedirect from "../../src/checks/rules/build-registry-redirect.js";
 import committedNodeModules from "../../src/checks/rules/committed-node-modules.js";
@@ -700,7 +699,6 @@ test("every non-recheck check declares a valid input (rechecks declare none); th
     "build-lifecycle-hook",
     "build-not-from-source",
     "build-registry-redirect",
-    "build-source-redundant",
     "committed-build-artifact",
     "committed-node-modules",
     "undeclared-build-source",
@@ -750,9 +748,9 @@ test("an input:xpi LLM check adjudicates over its routed (XPI) addon", async () 
   assert.equal(seenAddon, xpi); // the model read the XPI's files, not a source addon
 });
 
-// ---- build review: undeclared-build-source + build-not-from-source + build-source-redundant
-// (SCA deterministic; each reads the setup classification on ctx.addon.buildReview; the one
-// LLM call lives in analyzeBuild, tested in build-analysis.test.js) ----
+// ---- build review: undeclared-build-source + build-not-from-source (SCA deterministic;
+// each reads the setup classification on ctx.addon.buildReview; the one LLM call lives in
+// analyzeBuild, tested in build-analysis.test.js) ----
 
 const buildCtx = (review) => ({
   addon: { files: new Map(), buildReview: review },
@@ -808,8 +806,8 @@ test("undeclared-build-source: remote-fetch -> error, offline/unresolved -> manu
   assert.deepEqual(undeclaredBuildSource.run(buildCtx(review())), {
     findings: [],
   });
-  // owned by the other checks / no build / no buildReview -> nothing.
-  for (const c of ["not-from-source", "sca-redundant", "none"]) {
+  // owned by the other check / no build / no buildReview -> nothing.
+  for (const c of ["not-from-source", "none"]) {
     assert.deepEqual(
       undeclaredBuildSource.run(
         buildCtx(review({ classification: c, analyzed: c !== "none" }))
@@ -831,29 +829,9 @@ test("build-not-from-source fires only on the not-from-source classification", (
   );
   assert.equal(hit.length, 1);
   assert.equal(hit[0].data.explanation, "just zips dist/");
-  for (const c of ["ok", "remote-fetch", "sca-redundant", "none", null]) {
+  for (const c of ["ok", "remote-fetch", "none", null]) {
     assert.deepEqual(
       buildNotFromSource.run(buildCtx(review({ classification: c }))),
-      []
-    );
-  }
-});
-
-// build-source-redundant (mission 3): fires ONLY on "sca-redundant".
-test("build-source-redundant fires only on the sca-redundant classification", () => {
-  const hit = buildSourceRedundant.run(
-    buildCtx(
-      review({
-        classification: "sca-redundant",
-        reason: "only copies node_modules",
-      })
-    )
-  );
-  assert.equal(hit.length, 1);
-  assert.equal(hit[0].data.explanation, "only copies node_modules");
-  for (const c of ["ok", "remote-fetch", "not-from-source", "none", null]) {
-    assert.deepEqual(
-      buildSourceRedundant.run(buildCtx(review({ classification: c }))),
       []
     );
   }

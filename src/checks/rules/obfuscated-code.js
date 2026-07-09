@@ -18,7 +18,7 @@
 // formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
-import { classifyAddonJs } from "../lib/bundled.js";
+import { classifyAddonJs, isObfuscatedFirstParty } from "../lib/bundled.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {
@@ -42,7 +42,7 @@ export default {
         c.obfuscated ? "obfuscated" : "readable",
         c.obfuscated ? "fail" : "pass"
       );
-      if (c.obfuscated) {
+      if (isObfuscatedFirstParty(c)) {
         findings.push(finding({ file: c.file }));
       }
     }

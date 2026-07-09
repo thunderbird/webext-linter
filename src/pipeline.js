@@ -68,6 +68,7 @@ import {
   classifyBundled,
   assembleBundled,
   applyNotPopularVendor,
+  hasUnreviewableCode,
 } from "./checks/lib/bundled.js";
 import { collectJsSources } from "./addon/sources.js";
 import { runExtractionPass } from "./checks/extract.js";
@@ -206,19 +207,23 @@ export async function runPipeline(opts) {
   // traces the build off the root package.json (there is no source subtree to exclude).
   // --sca-root alone switches to SCA mode; --sca-source is optional and defaults to "."
   // (the whole root reviewed as the source - the common flat-layout case).
-  const mode = opts.scaRoot ? "sca" : "xpi";
-  // No (or empty) --sca-source in SCA mode defaults to "." - both resolve to the
-  // archive root via scaRootRelative, so `||` keeps the value a real path.
-  const scaSource = mode === "sca" ? opts.scaSource || "." : opts.scaSource;
+  //
+  // `preliminaryMode` sizes the Setup feed only (the counter is fixed before the first
+  // step). The EFFECTIVE mode is resolved below (resolveReviewMode) once the XPI is
+  // classified: a false SCA - one whose shipped XPI is directly reviewable - downgrades to
+  // a plain XPI review. Everything mode-dependent (the source load, scaSource, scaExpSource,
+  // meta) is then DERIVED from the resolved mode, so nothing is mutated/patched afterward.
+  const preliminaryMode = opts.scaRoot ? "sca" : "xpi";
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly).
   const registry = opts.registry ?? loadRegistry();
 
   // 1. Load the .xpi archive (a fast in-memory unzip). Read before the "Setup" banner
   // because it sizes the feed - it gives the mode and whether the add-on is an
-  // Experiment. Everything slow below (the source directory read, the network
-  // experiment fetch, vendor verification, schema fetch, AST parse) is narrated as a
-  // Setup step, so nothing slow runs un-narrated. A caller may inject a pre-loaded XPI
+  // Experiment. Every slow NETWORK step below (the experiment fetch, schema fetch, vendor
+  // verification, CDN lookups) plus the AST parse is narrated as a Setup step. The add-on
+  // reads are fast local unzips (this .xpi, and in a kept SCA the source archive loaded in
+  // Phase 2) marked by the "Reading add-on" step. A caller may inject a pre-loaded XPI
   // add-on (the test harness does, to drop its expected.json).
   const xpiAddon = opts.addon ?? loadAddon(addonPath);
   const isExp = isExperiment(xpiAddon.manifest);
@@ -234,9 +239,13 @@ export async function runPipeline(opts) {
   // stops MID-count (e.g. [4/8]) rather than completing. Sizing the total for that short
   // path would need `invalidExperiment`, known only AFTER the narrated experiment fetch
   // - i.e. a second classification pass before the banner, which we deliberately avoid;
-  // the accepted path (the reviewer's --allow-experiments flow) is exact.
+  // the accepted path (the reviewer's --allow-experiments flow) is exact. A false SCA that
+  // is downgraded to an XPI review (below) likewise under-runs the SCA-sized total by the
+  // few SCA-only steps it then skips - the same accepted inexactness, no re-sizing.
   const setupTotal =
-    (mode === "sca" ? 10 : 7) + (opts.llmReview ? 1 : 0) + (isExp ? 1 : 0);
+    (preliminaryMode === "sca" ? 10 : 7) +
+    (opts.llmReview ? 1 : 0) +
+    (isExp ? 1 : 0);
   let setupDone = 0;
   /**
    * Emit the next numbered "Setup" feed line.
@@ -247,51 +256,21 @@ export async function runPipeline(opts) {
   progress("── Setup ──");
   progress("");
 
-  // 1a. Read the add-on the review scans. In SCA mode this reads the whole --sca-root
-  // archive ONCE (the slow directory walk) and shares it with the build-corpus loader
-  // (loadScaBuildFiles) below, so the tree is never read twice; the review addon is
-  // the source subtree carrying the XPI's manifest. In XPI mode it IS the .xpi above.
+  // 1a. Mark the start of the review. The .xpi was already read pre-banner (above); the SCA
+  // source archive is loaded later, in Phase 2, and ONLY when the effective mode stays SCA -
+  // a downgraded false SCA never reads it. The review target (`addon`) and the derived
+  // `scaSource`/`scaExpSource` are set there, from the resolved mode. Narrate the .xpi
+  // loader's skip notices (a non-node_modules symlink, an unsafe archive path) here; the
+  // source loader's notices are narrated in Phase 2.
   setupStep("Reading add-on");
-  let scaArchive;
-  let addon;
-  if (mode === "sca") {
-    scaArchive = loadAddon(opts.scaRoot);
-    addon = loadScaAddon(scaArchive, scaSource, opts.scaRoot);
-  } else {
-    addon = xpiAddon;
-  }
-  // Narrate anything the loader skipped (a non-node_modules symlink, an unsafe archive
-  // path) as a notice under this step. The loaders collect these instead of printing, so
-  // the pre-banner .xpi sizing read (loadAddon above) stays silent - nothing leaks before
-  // the Setup banner.
-  for (const notice of [
-    ...(xpiAddon.skipped ?? []),
-    ...(scaArchive?.skipped ?? []),
-  ]) {
+  for (const notice of xpiAddon.skipped ?? []) {
     warn(notice);
   }
-
-  // --sca-exp-source (like --sca-source) is relative to --sca-root, or absolute.
-  // Re-base it into the review-source keyspace (strip the --sca-source prefix) so
-  // the WebExtension-code checks can exclude the Experiment subtree; ctx.scaExpSource
-  // is that source-relative value. Warn when it matches nothing - a mis-typed path
-  // would otherwise silently exclude nothing and flood the report with false
-  // positives on the privileged Experiment code.
-  const scaExpSource =
-    mode === "sca"
-      ? scaExpSourceRelative(opts.scaExpSource, scaSource, opts.scaRoot)
-      : undefined;
-  if (
-    scaExpSource &&
-    ![...addon.files.keys()].some(
-      (f) => f === scaExpSource || f.startsWith(`${scaExpSource}/`)
-    )
-  ) {
-    warn(
-      `--sca-exp-source "${opts.scaExpSource}" matched no files under --sca-source; ` +
-        "nothing will be excluded from the WebExtension code checks."
-    );
-  }
+  // Resolved in Phase 2 from the effective mode (below).
+  let addon;
+  let scaArchive;
+  let scaSource;
+  let scaExpSource;
 
   // Classify every Experiment add-on against the upstream drafts
   // (github.com/thunderbird/webext-experiments), regardless of
@@ -315,31 +294,22 @@ export async function runPipeline(opts) {
   // addon in XPI mode). They are privileged, non-bundled, readable code, and the
   // manifest's experiment paths resolve against the XPI's own files (no
   // source-layout mismatch). The classification is the XPI's, so it is stored on
-  // BOTH the review addon (the experiment checks read ctx.experiments from it) and
-  // xpiAddon itself (its bundled classification seeds the trusted experiment files);
-  // in XPI mode the two are one addon.
+  // xpiAddon here (its bundled classification seeds the trusted experiment files) and
+  // mirrored onto the review addon in Phase 2 (the experiment checks read
+  // ctx.experiments from it); in XPI mode the two are one addon.
   let invalidExperiment = false;
   if (isExp) {
     // The upstream-drafts allow-list fetch (network) - narrated, since it is one of
     // the slow pre-review steps; it stays silent+offline for a bare experiment_apis
     // declaration that bundles nothing.
     setupStep("Verifying bundled experiments");
-    addon.experiments = xpiAddon.experiments = await verifyExperiments(
-      xpiAddon,
-      opts
-    );
+    xpiAddon.experiments = await verifyExperiments(xpiAddon, opts);
     invalidExperiment =
       !opts.allowExperiments &&
-      addon.experiments.groups.some((g) => g.status === "unsupported");
+      xpiAddon.experiments.groups.some((g) => g.status === "unsupported");
   }
 
   const findings = [];
-  const meta = {
-    action: "review",
-    addon: addon.source,
-    addonKind: addon.kind,
-    reviewed: true,
-  };
 
   // Run-wide model-request cap, shared by every LLM site this run: the vendor
   // parse, the LLM checks (each candidate batch is one request), and the
@@ -405,21 +375,108 @@ export async function runPipeline(opts) {
   // an empty Map for a rejected Experiment (the block below, which classifies, is
   // skipped) so nothing is ever recognized.
   let libraryHashes = new Map();
+  // Set true below when a submitted SCA is downgraded to a plain XPI review because the
+  // shipped XPI is directly reviewable (stays false for a rejected Experiment, which skips
+  // the classify block). Read by the sca-not-required check via reviewAddon -> ctx.
+  let scaNotRequired = false;
   // The parse-first review sources: classifyAndExtractReview runs the extraction pass
   // and returns them for reviewAddon to reuse. Stays undefined for a rejected Experiment
   // (which skips the classify block below), so buildRunContext parses there instead.
   let preParsedJsSources;
 
+  // Phase 1 tail: fetch the hash DB and, when an SCA was submitted, classify the shipped
+  // XPI to RESOLVE the effective mode. A rejected Experiment skips this (nothing is
+  // classified, so it is never downgraded - `mode` stays `preliminaryMode`).
+  let mode = preliminaryMode;
   if (!invalidExperiment) {
     // 1b. The known-library hash DB the classifier matches bytes against (fetched
-    // and cached; a pre-seeded cache keeps offline runs deterministic). Both modes
-    // classify.
+    // and cached; a pre-seeded cache keeps offline runs deterministic). Both modes classify.
     setupStep("Fetching library hashes");
     const { text: libraryHashesText } = await resolveLibraryHashes({
       cacheDir: opts.libraryHashesCache,
     });
     libraryHashes = parseLibraryHashes(libraryHashesText);
 
+    // A source-code archive is only needed when the shipped XPI cannot be reviewed
+    // directly. Classify the built XPI and decide purely from ITS OWN code - whether it
+    // ships minified/obfuscated first-party code - so the SCA source content is irrelevant.
+    // A directly-reviewable XPI downgrades to a plain XPI review (which still runs
+    // minified-code and the rest against the XPI); sca-not-required reports it.
+    if (opts.scaRoot) {
+      setupStep("Classifying the built add-on");
+      const bundled = classifyBundled(xpiAddon, { libraryHashes });
+      ({ mode, scaNotRequired } = resolveReviewMode(opts, bundled));
+      // Persist the classification ONLY for a kept SCA: there the packaging / input:xpi
+      // checks read xpiAddon.bundled, the XPI carries no vendor store, and resolveCdnLibraries
+      // refines it - so this pre-resolveVendor classification is final. On a DOWNGRADE the XPI
+      // becomes the review target and is re-classified vendor-aware in Phase 3; reusing this
+      // pre-vendor bundle would scan VENDOR-declared readable files as authored, unlike a
+      // native XPI review of the same artifact.
+      if (mode === "sca") {
+        xpiAddon.bundled = bundled;
+      }
+    }
+  }
+
+  // Phase 2: everything mode-dependent, DERIVED from the resolved mode - no mutation. The
+  // SCA source archive is read HERE, and only when the mode stays SCA (a downgrade never
+  // touches it). The review target `addon`, `scaSource`, `scaExpSource`, the experiment
+  // mirror, and `meta` all follow the resolved mode.
+  if (mode === "sca") {
+    // Read the whole --sca-root archive ONCE (shared with loadScaBuildFiles below); the
+    // review addon is the source subtree carrying the XPI's manifest.
+    scaSource = opts.scaSource || ".";
+    scaArchive = loadAddon(opts.scaRoot);
+    addon = loadScaAddon(scaArchive, scaSource, opts.scaRoot);
+    for (const notice of scaArchive.skipped ?? []) {
+      warn(notice);
+    }
+    // Mirror the XPI's experiment classification onto the review addon (the experiment
+    // checks read ctx.experiments from it; in XPI mode the two are one addon anyway).
+    addon.experiments = xpiAddon.experiments;
+    // --sca-exp-source is relative to --sca-root (or absolute); re-base it into the
+    // review-source keyspace so the WebExtension-code checks can exclude the Experiment
+    // subtree. Warn when it matches nothing - a mis-typed path would silently exclude
+    // nothing and flood the report with false positives on the privileged Experiment code.
+    scaExpSource = scaExpSourceRelative(
+      opts.scaExpSource,
+      scaSource,
+      opts.scaRoot
+    );
+    if (
+      scaExpSource &&
+      ![...addon.files.keys()].some(
+        (f) => f === scaExpSource || f.startsWith(`${scaExpSource}/`)
+      )
+    ) {
+      warn(
+        `--sca-exp-source "${opts.scaExpSource}" matched no files under --sca-source; ` +
+          "nothing will be excluded from the WebExtension code checks."
+      );
+    }
+  } else {
+    // XPI review (native, or a downgraded false SCA): the review target IS the .xpi.
+    addon = xpiAddon;
+    scaSource = opts.scaSource;
+    scaExpSource = undefined;
+  }
+  const meta = {
+    action: "review",
+    addon: addon.source,
+    addonKind: addon.kind,
+    reviewed: true,
+  };
+  if (scaNotRequired) {
+    // Surfaced twice on purpose: this live feed notice explains the mode switch as it
+    // happens; the sca-not-required check emits the formal finding in the report.
+    warn(
+      "Shipped XPI is directly reviewable; source archive not required - reviewing the XPI."
+    );
+  }
+
+  // Phase 3: resolve the dependency manifest and run the mode-specific vendor / library /
+  // build setup. Skipped for a rejected Experiment (only the reject check runs).
+  if (!invalidExperiment) {
     // 1c. Resolve the dependency manifest ONCE (package.json deps + any VENDOR
     // declarations), so the review's checks share one immutable store.
     addon.vendor = await resolveVendor({
@@ -467,16 +524,11 @@ export async function runPipeline(opts) {
         setupStep,
         scope: "source",
       });
-      // Classify the BUILT XPI too (the review target above is the readable source).
-      // The packaging summary + the input:xpi checks read the shipped XPI, and their skip
-      // set is this classification's non-authored set - so the XPI's minified/library
-      // bundles are excluded exactly as in an XPI review (where the XPI IS the review
-      // target). Sync
-      // and cheap: the multi-MB minified bundles are byte-tagged, never parsed. The
-      // XPI already carries its own experiments (set at verifyExperiments above), so its
-      // trusted upstream experiment files seed the non-authored set here too.
-      setupStep("Classifying the built add-on");
-      xpiAddon.bundled = classifyBundled(xpiAddon, { libraryHashes });
+      // The BUILT XPI was already classified above (the sca-not-required decision) into
+      // xpiAddon.bundled - the packaging summary + the input:xpi checks read it, and their
+      // skip set is that classification's non-authored set, so the XPI's minified/library
+      // bundles are excluded exactly as in an XPI review. Its trusted upstream experiment
+      // files (verifyExperiments) seeded the non-authored set there too.
       // Second-tier identification for the shipped XPI too: a readable/minified library the
       // Mozilla DB missed, matched on jsDelivr, so the XPI's non-authored set (read by the
       // input:xpi checks) is correct. No OSV audit here - the XPI carries no vendor store,
@@ -568,6 +620,7 @@ export async function runPipeline(opts) {
     mode,
     xpiAddon,
     scaExpSource,
+    scaNotRequired,
     schema,
     schemaSource,
     schemaBranch,
@@ -724,7 +777,10 @@ function classifyAndExtractReview(
   addon,
   { schema, libraryHashes, xpiAddon, setupStep }
 ) {
-  const classification = classifyFiles(addon, { libraryHashes });
+  // Reuse the classification if the caller already computed it (a false SCA classified the
+  // XPI in Phase 1 to resolve the mode); otherwise classify now. Same result either way.
+  const bundled =
+    addon.bundled ?? assembleBundled(classifyFiles(addon, { libraryHashes }));
   const jsSources = collectJsSources(addon);
   const experimentNamespaces = isExperiment(xpiAddon.manifest)
     ? experimentApiNamespaces(xpiAddon.manifest, addon.files)
@@ -732,11 +788,11 @@ function classifyAndExtractReview(
   setupStep("Parsing add-on sources");
   runExtractionPass(jsSources, {
     schema,
-    nonAuthored: classification.nonAuthored,
+    nonAuthored: bundled.nonAuthored,
     invalidExperiment: false,
     experimentNamespaces,
   });
-  addon.bundled = assembleBundled(classification);
+  addon.bundled = bundled;
   return jsSources;
 }
 
@@ -812,6 +868,7 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
     mode = "xpi",
     xpiAddon = addon,
     scaExpSource,
+    scaNotRequired = false,
     schema,
     schemaSource,
     schemaBranch,
@@ -864,6 +921,9 @@ async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
     // from the scaRoot-relative --sca-exp-source flag), excluded from the WebExtension
     // code checks. Undefined in XPI mode.
     scaExpSource,
+    // A submitted SCA was downgraded to this XPI review because the shipped XPI is
+    // directly reviewable; the sca-not-required check reads this to report it.
+    scaNotRequired,
     budget,
     // runPipeline parsed the review sources up front (parse-first) and passed them in;
     // reuse them here. Absent for a rejected Experiment, where buildRunContext parses.
@@ -1260,6 +1320,29 @@ export function selectSchemaChannel({ candidates, strictMax }) {
     branch: def.branch,
     reason: `${why} → ${def.channel} (Thunderbird ${def.major})`,
   };
+}
+
+/**
+ * Resolve the effective review mode from the submission. A source-code archive
+ * (--sca-root) is only needed when the shipped XPI cannot be reviewed directly; if
+ * its first-party code is not minified/obfuscated (hasUnreviewableCode false), the
+ * source archive adds nothing, so the review is downgraded to a plain XPI review and
+ * sca-not-required reports it. The decision reads ONLY the built XPI's own
+ * classification - the source content is irrelevant. Not called for a rejected
+ * Experiment (which is never downgraded).
+ *
+ * @param {object} opts  Pipeline opts; only `opts.scaRoot` is read here.
+ * @param {?import("./checks/lib/bundled.js").Bundled} bundled  classifyBundled(xpiAddon).
+ * @returns {{mode: "xpi"|"sca", scaNotRequired: boolean}}
+ */
+export function resolveReviewMode(opts, bundled) {
+  if (!opts.scaRoot) {
+    return { mode: "xpi", scaNotRequired: false };
+  }
+  if (hasUnreviewableCode(bundled)) {
+    return { mode: "sca", scaNotRequired: false };
+  }
+  return { mode: "xpi", scaNotRequired: true };
 }
 
 /**

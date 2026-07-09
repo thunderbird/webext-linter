@@ -29,9 +29,9 @@
         a resource from an undeclared external source — is the error. It also owns the fallback
         lane: when the build could not be classified with confidence (offline / no token, or a step
         the linter could not statically follow, such as an opaque orchestrator or a network fetch)
-        the whole build routes to extended manual review. The other build classifications
-        (not-from-source, redundant source submission) are owned by their own checks; a genuine
-        build, and a submission with no manifest to follow, produce nothing here.
+        the whole build routes to extended manual review. The other build classification
+        (not-from-source) is owned by its own check; a genuine build, and a submission with no
+        manifest to follow, produce nothing here.
       </p>
 
       <h2>Decision flow</h2>

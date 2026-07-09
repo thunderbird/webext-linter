@@ -166,6 +166,12 @@ authoritative shipped artifact:
 node verify.js built.xpi --sca-root ./source-archive --sca-source src
 ```
 
+SCA only helps when the built XPI can't be read directly. If the shipped XPI's first-party
+code is **not** minified or obfuscated, the source archive adds nothing: the review is
+performed on the XPI directly (a plain XPI review) and `sca-not-required` (warning) is
+reported. Submit only the XPI in that case — a source archive is needed only for a
+minified/obfuscated build.
+
 - `--sca-root` is the source archive (folder or zip) that holds `package.json` /
   the lock file; setting it switches on SCA mode. `--sca-source` is the add-on code
   root within it (relative to `--sca-root` or an absolute path, e.g. `src`); it is
@@ -185,11 +191,10 @@ node verify.js built.xpi --sca-root ./source-archive --sca-source src
   never shipped in a source submission), must not point the package registry elsewhere
   (an `.npmrc` `registry=` is rejected), and any `package.json` install hook
   (`postinstall`, …) is flagged. Then one setup model call classifies the build (over
-  the files reached from `package.json`), and three checks gate on it: it must **not
+  the files reached from `package.json`), and two checks gate on it: it must **not
   fetch code or a resource from an undeclared source** (a raw URL, `curl|sh`, an
-  unpinned `git clone`, a CDN, a postinstall hook), must be **built from the source**
-  (not packaged from committed artifacts), and must **need a source submission at all**
-  (a build that only vendors `node_modules` should ship as a plain XPI + vendoring).
+  unpinned `git clone`, a CDN, a postinstall hook), and must be **built from the source**
+  (not packaged from committed artifacts).
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest, the experiments, the file-completeness checks (bundled / web-accessible
   / unused / locales), the `--diff-to` baseline, and the packaging summary. The

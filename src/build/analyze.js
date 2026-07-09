@@ -7,8 +7,6 @@
 //                       (curl/wget/git clone/CDN). Only `npm ci` from node_modules is allowed.
 //   - "not-from-source" the build does not build; it packages files already in the submission
 //                       into the XPI (phantom artifacts not derived from the reviewed source).
-//   - "sca-redundant"   the build only copies node_modules libraries in - the add-on could ship
-//                       as a plain XPI + vendoring review, so the source submission is not needed.
 //   - "ok"              a genuine build that pulls only from the declared dependencies.
 //   - "none"            no package.json entry point to follow (nothing to review).
 //   - null              the model could not run (offline / no token) or its reply did not parse;
@@ -26,16 +24,11 @@ import { getProvider } from "../llm/provider.js";
 import { progress, FEED, llmErrorText } from "../util/log.js";
 import { red } from "../util/color.js";
 
-const CLASSIFICATIONS = new Set([
-  "ok",
-  "remote-fetch",
-  "not-from-source",
-  "sca-redundant",
-]);
+const CLASSIFICATIONS = new Set(["ok", "remote-fetch", "not-from-source"]);
 
 /**
  * @typedef {object} BuildReview
- * @property {"ok"|"remote-fetch"|"not-from-source"|"sca-redundant"|"none"|null} classification
+ * @property {"ok"|"remote-fetch"|"not-from-source"|"none"|null} classification
  * @property {string} reason  One-line model explanation (for the finding {{explanation}}).
  * @property {string} buildInstructions  How to build the XPI (for the manual note).
  * @property {{kind: string, detail: string}[]} unresolved  Deterministic build-corpus signals.

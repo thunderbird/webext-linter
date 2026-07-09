@@ -49,6 +49,7 @@
       "unsupported-dependency",
       "vendor-vulnerable",
       "banned-library",
+      "sca-not-required",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",

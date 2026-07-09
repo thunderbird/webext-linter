@@ -26,7 +26,12 @@
       </p>
       <p>
         SCA mode is on when <code>--sca-root</code> (the source archive holding
-        <code>package.json</code> / the lock file) is set. <code>--sca-source</code>
+        <code>package.json</code> / the lock file) is set. But SCA only helps when the
+        shipped XPI cannot be read directly: if the built XPI's first-party code is not
+        minified or obfuscated, the source archive adds nothing, so the review is
+        downgraded to a plain <a href="../index.html#review-standard">Standard</a> XPI
+        review and <code>sca-not-required</code> (warning) is reported (the decision node
+        below). <code>--sca-source</code>
         (the add-on code root within it) is optional and defaults to
         <code>.</code> - the whole root reviewed as the source, for a flat layout with
         <code>manifest.json</code> at the root. The
@@ -42,7 +47,9 @@
         <pre class="mermaid">
 flowchart TD
   A["Submission: a built XPI +<br/>a readable source archive<br/>(--sca-root; --sca-source optional)"] --> B["Load both artifacts — built XPI = shipped<br/>artifact, readable source = review target"]
-  B --> LP["LLM pre-flight (only --llm-review): validate config +<br/>model reachable — HARD-FAIL exit 2; resolve vendored<br/>declarations (LLM parses package.json when enabled)"]
+  B --> DG{"Is the shipped XPI directly reviewable?<br/>(first-party code not minified/obfuscated)"}
+  DG -- "yes — source archive not needed" --> DOWN(["Downgrade to a plain XPI review:<br/>report sca-not-required (warning) and review<br/>the XPI as a Standard review"])
+  DG -- "no — the XPI needs its source" --> LP["LLM pre-flight (only --llm-review): validate config +<br/>model reachable — HARD-FAIL exit 2; resolve vendored<br/>declarations (LLM parses package.json when enabled)"]
   LP --> X{"Shipped XPI declares experiment_apis?"}
   X -- no --> SPLIT
   X -- yes --> XE["Experiments reviewed from the XPI; --sca-exp-source<br/>excludes that privileged subtree from the WebExtension<br/>code checks (required with --allow-experiments). An<br/>unsupported one with experiments off → reject, exit 1"]
@@ -72,7 +79,7 @@ flowchart TD
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   class B,SPLIT,DEP,XPI,RPT step;
   class LP,SRC,BLD,SG llm;
-  class OUT ok;
+  class OUT,DOWN ok;
         </pre>
       </div>
 
@@ -101,15 +108,13 @@ flowchart TD
         <li>
           <strong>The build-process review</strong> — one setup model call
           (<code>analyzeBuild</code>) classifies the build over the files reached
-          from package.json, and three deterministic <code>input: build</code>
+          from package.json, and two deterministic <code>input: build</code>
           checks gate on the result: <code>undeclared-build-source</code> (the
           build fetches code or a resource from an undeclared source — a raw URL,
           <code>curl | sh</code>, an unpinned <code>git clone</code>, a CDN, a
-          postinstall hook — plus the offline/unresolved manual-review fallback),
-          <code>build-not-from-source</code> (the XPI is packaged from committed
-          artifacts, not built from the source), and
-          <code>build-source-redundant</code> (the build only vendors
-          node_modules, so a source submission is not needed).
+          postinstall hook — plus the offline/unresolved manual-review fallback)
+          and <code>build-not-from-source</code> (the XPI is packaged from committed
+          artifacts, not built from the source).
         </li>
         <li>
           <strong>The summaries + recheck</strong> — <code>--llm-review</code>

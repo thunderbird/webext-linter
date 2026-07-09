@@ -572,17 +572,19 @@ deterministic-checks:
   response: |-
     {{explanation}} The shipped XPI must be BUILT from the reviewed source; a build that only copies or zips files already present in the submission produces an add-on that is not derived from the source under review. Provide a build that compiles/bundles the add-on from its source.
 
-# Deterministic (SCA only): MISSION 3 of the build review. Reads the setup classification.
-# classification "sca-redundant" -> error: the build only copies installed libraries (from
-# node_modules) into the add-on, so a source submission is not needed - the add-on can ship as a
-# plain XPI reviewed as a third-party-library (vendoring) submission. {{explanation}} is the reason.
-- title: Source submission not required
-  severity: error
-  sca: true
-  check: build-source-redundant
-  input: build
+# Deterministic: a submitted source-code archive (--sca-root) was unnecessary because the shipped
+# XPI is directly reviewable (its first-party code is not minified or obfuscated). The pipeline
+# decides this from the built XPI's own classification (hasUnreviewableCode over xpiAddon.bundled)
+# and downgrades to a plain XPI review, setting ctx.scaNotRequired, which this check reports. A
+# readable XPI whose build merely copies vendored libraries is caught here too - it downgrades
+# before the build review runs. No `sca:` gate - it fires in the downgraded XPI review; silent in
+# every other review.
+- title: Source archive not required
+  severity: warning
+  check: sca-not-required
+  input: source
   response: |-
-    {{explanation}} This build only copies installed libraries into the add-on; nothing is compiled or bundled from authored source, so a source-code submission is not required. Submit the built XPI (with its package.json) as a standard third-party-library review and declare the bundled libraries. You can keep using the build script locally. See https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
+    The shipped add-on (the built XPI) is directly reviewable - its code is not minified or obfuscated - so a separate source-code archive is not required, and the review was performed on the submitted XPI directly. Submitting a source-code archive switches the add-on into a separate, more involved review process that is considerably slower to complete; because your shipped code is already human-readable, you can avoid that delay by submitting only the XPI as a standard review. A source-code submission is needed only when the shipped code is minified or otherwise not human-readable.
 
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the deterministic repo-name candidate, then an
@@ -1585,11 +1587,9 @@ prompts:
     - "not-from-source": the build does not actually build - it only copies or zips files that are
       ALREADY in the submission into the XPI, so the shipped add-on is not derived from the
       reviewed source (phantom artifacts).
-    - "sca-redundant": the build's only real work is copying installed libraries (from
-      node_modules) into the add-on - nothing is compiled or bundled from the authored source, so
-      the add-on could ship as a plain XPI without a source submission.
     - "ok": a genuine build that compiles or bundles the authored source and pulls only from the
-      declared dependencies.
+      declared dependencies (this includes a build whose only real work is copying installed
+      libraries from node_modules into the add-on).
 
     In "reason" explain the classification in one or two sentences (shown to the developer). In
     "buildInstructions" state how the XPI is built as one short self-contained note ("Build the

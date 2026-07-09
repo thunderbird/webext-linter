@@ -265,6 +265,48 @@ export function untrustedLibs(ctx) {
 }
 
 /**
+ * A minified first-party file: minified geometry, not a recognized library, not
+ * obfuscated, not an identified-but-untrusted match - exactly what minified-code flags.
+ * @param {BundleTag} c
+ * @returns {boolean}
+ */
+export function isMinifiedFirstParty(c) {
+  return Boolean(c.minified && !c.library && !c.obfuscated && !c.untrusted);
+}
+
+/**
+ * An obfuscated first-party file: obfuscated, not a recognized library, not an
+ * identified-but-untrusted match - exactly what obfuscated-code flags.
+ * @param {BundleTag} c
+ * @returns {boolean}
+ */
+export function isObfuscatedFirstParty(c) {
+  return Boolean(c.obfuscated && !c.library && !c.untrusted);
+}
+
+/**
+ * Whether the add-on ships code that cannot be reviewed as-is: minified or obfuscated
+ * first-party code, or an identified-but-untrusted library that is unreadable. The union
+ * of what minified-code / obfuscated-code / untrusted-minified-library flag, so the
+ * pipeline's "is the shipped XPI directly reviewable?" decision and those checks share one
+ * definition. (The untrusted list is CDN/vendor-filled later, so at the pipeline decision
+ * point only the deterministic hash-DB classification contributes - the conservative choice.)
+ * @param {?Bundled} bundled  A classifyBundled result.
+ * @returns {boolean}
+ */
+export function hasUnreviewableCode(bundled) {
+  if (!bundled) {
+    return false;
+  }
+  const classified = bundled.classified ?? [];
+  return (
+    classified.some(isMinifiedFirstParty) ||
+    classified.some(isObfuscatedFirstParty) ||
+    (bundled.untrusted ?? []).some((lib) => lib.unreadable)
+  );
+}
+
+/**
  * The CONTENT signal for one file: whether it is minified (line geometry) or
  * obfuscated (a recognized obfuscator's AST structure, via isObfuscated). Library
  * detection is NOT here - it is a true content-hash match against the known-library

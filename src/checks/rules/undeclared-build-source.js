@@ -8,8 +8,8 @@
 // FALLBACK lane: when the build could not be classified with confidence - offline / no token
 // (analyzed === false), or a build step the linter could not statically bound (unresolved: an
 // opaque orchestrator or a network fetch) - the whole build routes to extended manual review,
-// so a human reproduces it. The other classifications ("not-from-source", "sca-redundant") are
-// owned by their own checks; "ok"/"none" produce nothing.
+// so a human reproduces it. The "not-from-source" classification is owned by its own check;
+// "ok"/"none" produce nothing.
 //
 // Belongs here: mapping the stored classification to a finding / manual escalation. Does NOT
 // belong here: the analysis (-> src/build/analyze.js), the corpus policy
@@ -21,7 +21,7 @@ import { finding } from "../../report/finding.js";
 /** @typedef {import("../escalation.js").Escalation} Escalation */
 
 // Classifications each owned by their own check - not this check's fallback lane.
-const OWNED_ELSEWHERE = new Set(["not-from-source", "sca-redundant"]);
+const OWNED_ELSEWHERE = new Set(["not-from-source"]);
 
 export default {
   /**

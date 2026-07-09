@@ -15,6 +15,7 @@ import {
   detectManifestVersion,
   peekBranchMajor,
   resolveReviewSchema,
+  resolveReviewMode,
 } from "../../src/pipeline.js";
 import {
   schemaBranch,
@@ -242,4 +243,39 @@ test("peekBranchMajor: missing / corrupt zip → null, never throws", () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// resolveReviewMode: the effective review mode from --sca-root + the built XPI's
+// reviewability. A minimal Bundled: one minified first-party file => unreviewable.
+const bundled = (files = []) => ({
+  classified: files,
+  nonAuthored: new Set(),
+  untrusted: [],
+});
+const MINIFIED_FIRST_PARTY = {
+  file: "bundle.js",
+  minified: true,
+  library: false,
+  obfuscated: false,
+};
+
+test("resolveReviewMode: no --sca-root -> plain XPI review", () => {
+  assert.deepEqual(resolveReviewMode({}, bundled()), {
+    mode: "xpi",
+    scaNotRequired: false,
+  });
+});
+
+test("resolveReviewMode: --sca-root + an unreviewable (minified) XPI -> keep SCA", () => {
+  assert.deepEqual(
+    resolveReviewMode({ scaRoot: "src" }, bundled([MINIFIED_FIRST_PARTY])),
+    { mode: "sca", scaNotRequired: false }
+  );
+});
+
+test("resolveReviewMode: --sca-root + a directly-reviewable XPI -> downgrade", () => {
+  assert.deepEqual(resolveReviewMode({ scaRoot: "src" }, bundled([])), {
+    mode: "xpi",
+    scaNotRequired: true,
+  });
 });

@@ -77,6 +77,7 @@ export function buildRunContext({
   invalidExperiment,
   mode = "xpi",
   scaExpSource,
+  scaNotRequired,
   budget,
   preParsedJsSources,
 }) {
@@ -141,6 +142,10 @@ export function buildRunContext({
     // it from the pure-WebExtension set, so the WebExtension code checks skip
     // privileged Experiment code. Undefined in XPI mode.
     scaExpSource,
+    // A submitted SCA was downgraded to this XPI review because the shipped XPI is
+    // directly reviewable (not minified/obfuscated); the sca-not-required check reads
+    // this to report the redundant source submission. False in a normal review.
+    scaNotRequired,
     // The authoritative manifest is the SHIPPED artifact's (the built XPI) - what
     // Thunderbird actually loads. It is explicit shared context, like `schema`, so
     // the manifest / permission / API checks read it - there is no ctx.addon.manifest

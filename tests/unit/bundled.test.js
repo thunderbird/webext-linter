@@ -9,6 +9,9 @@ import assert from "node:assert/strict";
 import {
   classifyBundled,
   classifyAddonJs,
+  hasUnreviewableCode,
+  isMinifiedFirstParty,
+  isObfuscatedFirstParty,
 } from "../../src/checks/lib/bundled.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
 import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
@@ -200,4 +203,76 @@ test("a minified-by-geometry CSS is minified but not a library or obfuscated", (
     [tag.minified, tag.library, tag.obfuscated],
     [true, false, false]
   );
+});
+
+// hasUnreviewableCode is the single definition of "code we cannot review" shared by the
+// pipeline's SCA-downgrade decision and the minified-code / obfuscated-code /
+// untrusted-minified-library checks: minified or obfuscated FIRST-PARTY code (recognized
+// libraries excluded), or an identified-but-untrusted unreadable library.
+test("hasUnreviewableCode: minified/obfuscated first-party -> true; library/readable -> false", () => {
+  const min = classifyBundled(addonWith({ "bundle.js": MINIFIED }));
+  assert.equal(
+    hasUnreviewableCode(min),
+    true,
+    "minified first-party is unreviewable"
+  );
+  assert.equal(
+    isMinifiedFirstParty(min.classified.find((c) => c.file === "bundle.js")),
+    true
+  );
+
+  const obf = classifyBundled(addonWith({ "o.js": OBFUSCATED }));
+  assert.equal(
+    hasUnreviewableCode(obf),
+    true,
+    "obfuscated first-party is unreviewable"
+  );
+  assert.equal(
+    isObfuscatedFirstParty(obf.classified.find((c) => c.file === "o.js")),
+    true
+  );
+
+  const readable = classifyBundled(addonWith({ "app.js": PRETTY }));
+  assert.equal(
+    hasUnreviewableCode(readable),
+    false,
+    "readable code is reviewable"
+  );
+
+  // A recognized (hash-matched) minified library does NOT make the add-on unreviewable -
+  // it is excluded, so an otherwise-readable add-on that merely bundles it stays reviewable.
+  const addon = addonWith({ "jq.min.js": MINIFIED, "app.js": PRETTY });
+  const withLib = classifyBundled(addon, {
+    libraryHashes: libHashes(addon, "jq.min.js"),
+  });
+  assert.equal(
+    hasUnreviewableCode(withLib),
+    false,
+    "a recognized minified library alone does not force a source review"
+  );
+  assert.equal(
+    isMinifiedFirstParty(
+      withLib.classified.find((c) => c.file === "jq.min.js")
+    ),
+    false
+  );
+
+  // The untrusted-unreadable clause (the CDN/vendor pass fills `untrusted` later).
+  const base = { classified: [], nonAuthored: new Set() };
+  assert.equal(
+    hasUnreviewableCode({
+      ...base,
+      untrusted: [{ file: "x.js", unreadable: true }],
+    }),
+    true
+  );
+  assert.equal(
+    hasUnreviewableCode({
+      ...base,
+      untrusted: [{ file: "x.js", unreadable: false }],
+    }),
+    false
+  );
+  assert.equal(hasUnreviewableCode({ ...base, untrusted: [] }), false);
+  assert.equal(hasUnreviewableCode(null), false);
 });

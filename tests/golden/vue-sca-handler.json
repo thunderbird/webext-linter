@@ -54,7 +54,7 @@
       "build-lifecycle-hook",
       "undeclared-build-source",
       "build-not-from-source",
-      "build-source-redundant",
+      "sca-not-required",
       "disguised-resource",
       "disguised-stylesheet",
       "disguised-window",

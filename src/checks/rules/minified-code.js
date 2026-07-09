@@ -17,7 +17,7 @@
 // formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
-import { classifyAddonJs } from "../lib/bundled.js";
+import { classifyAddonJs, isMinifiedFirstParty } from "../lib/bundled.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {
@@ -40,7 +40,7 @@ export default {
         c.minified ? "minified" : "readable",
         c.minified ? "fail" : "pass"
       );
-      if (c.minified) {
+      if (isMinifiedFirstParty(c)) {
         findings.push(finding({ file: c.file }));
       }
     }

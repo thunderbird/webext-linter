@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Source archive not required</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Source archive not required
+          <span class="badge warning">warning</span>
+        </h1>
+        <div class="check-id">sca-not-required</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code archive (<code>--sca-root</code>) that was not needed, because the shipped
+        XPI is already directly reviewable — its first-party code is not minified or obfuscated.
+        SCA mode exists only to review the readable source of an add-on whose built XPI cannot be
+        read; when the XPI itself is readable, the separate source submission adds nothing.
+      </p>
+      <p>
+        The decision is made purely from the built XPI's own classification (the same
+        minified/obfuscated first-party signal <code>minified-code</code> and
+        <code>obfuscated-code</code> use, recognized libraries excluded) — the source archive's
+        content is never consulted. If the XPI is directly reviewable the pipeline downgrades to a
+        plain XPI review (so <code>minified-code</code> and the rest still run against the XPI) and
+        this check raises one warning, anchored at the manifest. If the shipped XPI is
+        minified/obfuscated the source archive is kept and this never fires.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["--sca-root submitted"] --> B{"Shipped XPI has minified/<br/>obfuscated first-party code?"}
+  B -- "yes (cannot review the XPI)" --> OK([keep SCA — review the source; no finding here])
+  B -- "no (XPI is reviewable)" --> D["Downgrade to a plain XPI review"]
+  D --> WARN([WARNING: source archive not required])
+
+  classDef warn fill:#fdf6e3,stroke:#b58900,color:#6b5300;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef step fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
+  class WARN warn;
+  class OK ok;
+  class D step;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on's built XPI is directly reviewable, so a separate source-code archive is not
+        required; it was reviewed as a standard XPI. A source-code archive switches the add-on into
+        a separate, more involved review process that is considerably slower — since the shipped
+        code is already human-readable, submitting only the XPI as a standard review avoids that
+        delay. A source-code submission is needed only when the shipped code is minified or
+        otherwise not human-readable.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/sca-not-required.js</code> (fed by the downgrade decision in
+        <code>src/pipeline.js</code> and <code>hasUnreviewableCode</code> in
+        <code>src/checks/lib/bundled.js</code>) and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>
