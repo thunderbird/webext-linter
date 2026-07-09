@@ -19,6 +19,7 @@ import JSON5 from "json5";
 
 import { buildManifestLoc } from "./manifest-loc.js";
 import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
+import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
 
 /**
  * @typedef {object} GeckoSettings
@@ -366,6 +367,12 @@ export function loadScaBuildFiles(archive, scaSource, scaRoot, scaExpSource) {
   };
 }
 
+/** @returns {Error} The add-on-too-large error, shared by readZip and readDir. */
+function addonTooLargeError() {
+  const mb = ADDON_MAX_UNPACKED_BYTES / (1024 * 1024);
+  return new Error(`Add-on unpacked size exceeds the ${mb} MB limit`);
+}
+
 /**
  * @param {string} zipPath  Path to the .xpi/.zip archive.
  * @returns {{files: Map<string, Buffer>, nodeModules: string[],
@@ -377,6 +384,7 @@ function readZip(zipPath) {
   const nodeModules = new Set();
   const archives = new Set();
   const skipped = [];
+  let unpacked = 0;
   for (const entry of zip.getEntries()) {
     if (entry.isDirectory) {
       continue;
@@ -402,7 +410,18 @@ function readZip(zipPath) {
     if (ARCHIVE_EXTENSIONS.has(extname(name))) {
       archives.add(name);
     }
-    files.set(name, entry.getData());
+    // Bound decompression against a zip bomb: check the declared size before
+    // getData() so a lying-huge header aborts before inflating, then the actual
+    // inflated length in case a crafted header under-reports it.
+    if (unpacked + entry.header.size > ADDON_MAX_UNPACKED_BYTES) {
+      throw addonTooLargeError();
+    }
+    const data = entry.getData();
+    unpacked += data.length;
+    if (unpacked > ADDON_MAX_UNPACKED_BYTES) {
+      throw addonTooLargeError();
+    }
+    files.set(name, data);
   }
   return {
     files,
@@ -422,6 +441,7 @@ function readDir(dir) {
   const nodeModules = [];
   const archives = [];
   const skipped = [];
+  let unpacked = 0;
   /** @param {string} current  Directory to recurse into. */
   const walk = (current) => {
     for (const e of fs.readdirSync(current, { withFileTypes: true })) {
@@ -451,6 +471,11 @@ function readDir(dir) {
         const rel = normalize(path.relative(dir, full));
         if (ARCHIVE_EXTENSIONS.has(extname(rel))) {
           archives.push(rel);
+        }
+        // Bound the total unpacked size, matching the archive path's zip-bomb cap.
+        unpacked += fs.statSync(full).size;
+        if (unpacked > ADDON_MAX_UNPACKED_BYTES) {
+          throw addonTooLargeError();
         }
         files.set(rel, fs.readFileSync(full));
       }

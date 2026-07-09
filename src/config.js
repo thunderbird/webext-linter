@@ -183,6 +183,14 @@ export const VENDOR_FETCH_MAX_BYTES = 12 * 1024 * 1024;
 export const VENDOR_TARBALL_MAX_UNPACKED_BYTES = 64 * 1024 * 1024;
 
 /**
+ * Decompressed-size cap when unpacking a submitted add-on (.xpi/.zip or folder),
+ * to bound a decompression bomb: a small archive can inflate to gigabytes and
+ * exhaust memory before any check runs. Sits well above a real Thunderbird add-on
+ * (tens of MB unpacked) while stopping a bomb long before RAM is exhausted.
+ */
+export const ADDON_MAX_UNPACKED_BYTES = 128 * 1024 * 1024;
+
+/**
  * OSV vulnerability database query endpoint (https://osv.dev). A pinned
  * package.json dependency (name@version, exact or lock-resolved) is POSTed here
  * to learn whether the bundled version has known advisories. No API token is
