@@ -18,12 +18,13 @@ import { runPipeline } from "../src/pipeline.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { loadAddon } from "../src/addon/load.js";
 import { formatReview } from "../src/report/format.js";
+import { fixtureCacheOpts } from "./seed-caches.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..");
-const SCHEMA_FIXTURE = path.join(here, "schema-fixture");
-const EXPERIMENTS_FIXTURE = path.join(here, "experiments-fixture");
-const LIBRARY_HASHES_FIXTURE = path.join(here, "library-hashes-fixture.txt");
+// A cache pre-seeded from the fixtures, so the pipeline's schema / experiments /
+// library-hash fetches all hit disk - the whole harness runs offline.
+const CACHE_OPTS = fixtureCacheOpts();
 const ADDONS_DIR = path.join(here, "addons");
 const GOLDEN_DIR = path.join(here, "golden");
 const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
@@ -164,9 +165,7 @@ async function main() {
       // so golden runs are hermetic (no per-run cache file written).
       const base = {
         ...pipelineOptsFromArgv(optionsToArgv(options)),
-        schemaZip: SCHEMA_FIXTURE,
-        experimentsZip: EXPERIMENTS_FIXTURE,
-        libraryHashes: LIBRARY_HASHES_FIXTURE,
+        ...CACHE_OPTS,
         vendorNet: OFFLINE_NET,
         cdnLookup: false,
       };

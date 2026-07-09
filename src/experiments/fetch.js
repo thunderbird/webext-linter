@@ -1,12 +1,11 @@
-// Obtains the upstream allowed-Experiments repo as a local zip. Either returns a
-// user-supplied --experiments-zip path as-is, or downloads the branch from
-// GitHub (codeload) into the cache dir. Mirrors src/schema/fetch.js (one request
-// for the whole branch, atomic download-into-cache, reuse of a cached/supplied
-// source).
+// Obtains the upstream allowed-Experiments repo as a local zip: downloads the
+// branch from GitHub (codeload) into the cache dir, or reuses the cached copy.
+// Mirrors src/schema/fetch.js (one request for the whole branch, atomic
+// download-into-cache, reuse of a cached source).
 //
 // Belongs here: network and on-disk cache IO that resolves the experiments
-// source to a local zip (or directory) path. Does NOT belong here: reading the
-// files out of it or hashing them (src/experiments/verify.js).
+// source to a local zip path. Does NOT belong here: reading the files out of it
+// or hashing them (src/experiments/verify.js).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -20,16 +19,23 @@ function codeloadUrl(branch) {
 }
 
 /**
+ * @param {string} cacheDir  The experiments cache directory.
+ * @param {string} branch    Branch name.
+ * @returns {string} Path of the branch's cached zip.
+ */
+export function cachedExperimentsPath(cacheDir, branch) {
+  return path.join(cacheDir, `webext-experiments-${branch}.zip`);
+}
+
+/**
  * @typedef {object} ResolveExperimentsZipOpts
- * @property {string} [experimentsZip]  Explicit local zip or directory; skips
- *   the network.
  * @property {string} [branch]  Branch to download (default EXPERIMENTS_BRANCH).
  * @property {string} [cacheDir]  Where to store the downloaded zip.
  * @property {boolean} [refresh]  Re-download even if a cached copy exists.
  */
 
 /**
- * Resolve the experiments allow-list source to a local zip (or directory) path,
+ * Resolve the experiments allow-list source to a local cached zip path,
  * downloading if needed. Throws on a download failure (the caller turns an
  * unavailable allow-list into a hard exit, never a review verdict).
  *
@@ -37,21 +43,12 @@ function codeloadUrl(branch) {
  * @returns {Promise<{zipPath: string, source: string}>}
  */
 export async function resolveExperimentsZip({
-  experimentsZip,
   branch = EXPERIMENTS_BRANCH,
   cacheDir,
   refresh = false,
 } = {}) {
-  if (experimentsZip) {
-    const resolved = path.resolve(experimentsZip);
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`--experiments-zip not found: ${resolved}`);
-    }
-    return { zipPath: resolved, source: `local:${resolved}` };
-  }
-
   fs.mkdirSync(cacheDir, { recursive: true });
-  const cached = path.join(cacheDir, `webext-experiments-${branch}.zip`);
+  const cached = cachedExperimentsPath(cacheDir, branch);
 
   if (fs.existsSync(cached) && !refresh) {
     debug(`Using cached experiments zip: ${cached}`);

@@ -152,8 +152,6 @@ function walkDir(root) {
 
 /**
  * @typedef {object} VerifyExperimentsOpts  Pipeline opts (experiments source).
- * @property {string} [experimentsZip]  Explicit local zip or directory; skips
- *   the network.
  * @property {string} [experimentsCache]  Cache dir for the downloaded zip.
  * @property {boolean} [experimentsForceRefresh]  Re-download even if cached.
  */
@@ -233,7 +231,6 @@ export async function verifyExperiments(addon, opts = {}) {
  */
 async function loadAllowed(opts) {
   const { zipPath, source } = await resolveExperimentsZip({
-    experimentsZip: opts.experimentsZip,
     cacheDir: opts.experimentsCache || EXPERIMENTS_CACHE,
     refresh: opts.experimentsForceRefresh,
   });

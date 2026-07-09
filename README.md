@@ -58,18 +58,15 @@ The options, grouped as in `--help`:
 
 | Option | Description |
 | --- | --- |
-| `--schema-cache <dir>` | Where downloaded schema zips are cached (default `.schema-cache`). |
+| `--schema-cache <dir>` | Where downloaded schema zips are cached (default `.schema-cache`). Pre-seed it for a fully offline run. |
 | `--schema-force-refresh` | Re-download all schemas (every channel) even if cached copies exist. |
-| `--schema-zip <path>` | Use a local schema zip (or directory) instead of downloading (bypasses auto-detection). |
 
 **Library identification:**
 
 | Option | Description |
 | --- | --- |
-| `--lib-mozilla-hash-db <path>` | Use a local copy of Mozilla's known-library hash database — the addons-linter "dispensary" `hashes.txt`, used by `missing-library` to identify a bundled third-party library by its exact content hash — instead of fetching it (offline runs). |
-| `--lib-mozilla-hash-db-cache <dir>` | Where the fetched hash database is cached (default `.lib-mozilla-hash-db-cache`). |
+| `--lib-mozilla-hash-db-cache <dir>` | Where the fetched hash database (the addons-linter "dispensary" `hashes.txt`, used by `missing-library` to identify a bundled library by its exact content hash) is cached (default `.lib-mozilla-hash-db-cache`). Pre-seed it for a fully offline run. |
 | `--lib-mozilla-hash-db-refresh` | Re-download the hash database even if a cached copy exists. |
-| `--lib-mozilla-block-db <path>` | Use a local copy of the banned/unadvised library policy — which library versions Mozilla's add-on policy disallows (banned) or discourages (unadvised), read by `banned-library` — instead of the built-in `assets/library-blocks.yaml`. A shipped file, not fetched: no cache or refresh. |
 | `--lib-cdn-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached; an offline run simply finds no match. |
 | `--lib-cdn-lookup-cache <dir>` | Where the CDN hash-lookup results are cached (default `.lib-cdn-lookup-cache`). |
 
@@ -79,9 +76,18 @@ The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `bann
 
 | Option | Description |
 | --- | --- |
-| `--experiments-zip <path>` | Use a local copy of the Thunderbird Draft-API repo (the allowed-experiments list; zip or directory) instead of downloading. Feeds the Experiment checks (e.g. `experiment-modified`, which compares a bundled Experiment against the upstream published draft). |
-| `--experiments-cache <dir>` | Where the fetched allowed-experiments zip is cached (default `.experiments-cache`). |
+| `--experiments-cache <dir>` | Where the fetched allowed-experiments zip (the Thunderbird Draft-API list feeding the Experiment checks, e.g. `experiment-modified`) is cached (default `.experiments-cache`). Pre-seed it for a fully offline run. |
 | `--experiments-force-refresh` | Re-download the allowed-experiments list even if a cached copy exists. |
+
+**Offline / air-gapped runs:** the schema, the library-hash database, and the
+allowed-experiments list are the networked inputs a review *hard-requires* (an
+unavailable one is a fatal error), and each is cache-first. On a machine with network
+access, run the review once (or `--*-force-refresh`) to populate the three cache
+directories, then copy them to the offline host and point the matching `--*-cache`
+flags at them. The remaining network calls degrade gracefully offline: the jsDelivr
+CDN lookup finds no match (or disable it with `--lib-cdn-lookup false`), and an SCA
+dependency audit's OSV/registry queries fall back to manual review. (Pre-seeding the
+three caches is exactly what the test suite does; see `tests/seed-caches.js`.)
 
 **Check selection:**
 
@@ -351,8 +357,8 @@ node verify.js ./submission.xpi
 # Review an unpacked source folder
 node verify.js ./my-addon
 
-# machine-readable, offline schema (a local zip bypasses channel auto-detection)
-node verify.js ./submission.xpi --report-format json --schema-zip ./schemas.zip
+# machine-readable JSON output
+node verify.js ./submission.xpi --report-format json
 
 # Review with the LLM checks enabled, plus an AI summary of the add-on
 export LLM_API_KEY=sk-…

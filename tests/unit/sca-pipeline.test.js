@@ -10,13 +10,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { runPipeline } from "../../src/pipeline.js";
 import { formatReviewBody } from "../../src/report/format.js";
+import { fixtureCacheOpts } from "../seed-caches.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const SCHEMA_FIXTURE = path.join(here, "..", "schema-fixture");
+// A cache pre-seeded from the fixtures so the schema / experiments / library-hash
+// fetches all hit disk - these runs stay offline.
+const OFFLINE = fixtureCacheOpts();
 
 function tmpDir(files) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-sca-"));
@@ -89,7 +90,7 @@ test("SCA e2e: a flat layout (--sca-source == --sca-root) is accepted and fully 
         addonPath: xpi,
         scaRoot: src,
         scaSource,
-        schemaZip: SCHEMA_FIXTURE,
+        ...OFFLINE,
       });
       assert.equal(
         meta.reviewed,
@@ -131,7 +132,7 @@ test("SCA e2e: the rendered report carries [XPI]/[SCA] labels + the footer", asy
     const result = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     const report = formatReviewBody(result);
     assert.match(
@@ -162,7 +163,7 @@ test("SCA e2e: --sca-root without --sca-source defaults the source to '.'", asyn
       addonPath: xpi,
       scaRoot: src,
       // no scaSource - defaults to "."
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     assert.equal(meta.reviewed, true, "SCA mode engaged from --sca-root alone");
     // The root source is reviewed (proves mode === "sca", source === the root).
@@ -229,7 +230,7 @@ test("SCA e2e: a flat layout audits the root package.json dependencies", async (
       addonPath: xpi,
       scaRoot: src,
       scaSource: ".",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
       vendorNet,
     });
     assert.ok(
@@ -275,7 +276,12 @@ test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-au
         return { stargazers_count: 5000 };
       }
       if (url.split("/").pop() === libHash) {
-        return { type: "npm", name: "leftpad", version: "1.0.0", file: "/lib.min.js" };
+        return {
+          type: "npm",
+          name: "leftpad",
+          version: "1.0.0",
+          file: "/lib.min.js",
+        };
       }
       throw new Error("HTTP 404");
     },
@@ -309,7 +315,7 @@ test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-au
       addonPath: xpi,
       scaRoot: src,
       scaSource: ".",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
       vendorNet,
       cdnLookupCache: cdnCache,
     });
@@ -351,7 +357,7 @@ test("SCA: the --sca-root archive is read once, not twice", async () => {
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     assert.equal(rootReads, 1, "--sca-root walked once, not twice");
   } finally {
@@ -369,7 +375,7 @@ test("SCA e2e: code checks review the source; manifest/WAR resolve against the X
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     const { findings } = result;
 
@@ -419,7 +425,7 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     };
     // Without the flag, the privileged Experiment code is reviewed as WebExtension
     // code and false-positives core-symbol-in-webext.
@@ -488,7 +494,7 @@ test("SCA e2e: unused-files flags the build's dead files, not source scaffolding
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     // unused-files describes the SHIPPED artifact: the XPI's dead file is flagged...
     assert.ok(
@@ -534,7 +540,7 @@ test("SCA e2e: --diff-to diffs the built XPI against the baseline XPI, not the s
       scaRoot: src,
       scaSource: "src",
       diffTo: oldXpi,
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     // Only strict_max_version moved between the two XPIs, so the bump-only diff
     // fires - proving --diff-to compared the built XPIs, not the source tree (whose
@@ -570,7 +576,7 @@ test("SCA e2e: locale checks evaluate _locales against the XPI, not the source",
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     // The shipped XPI satisfies default_locale, so there is no false reject - even
     // though the source has no _locales directory.
@@ -607,7 +613,7 @@ test("SCA e2e: missing-english-localization checks the XPI's _locales, not sourc
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     assert.ok(
       !has(findings, "missing-english-localization"),
@@ -649,7 +655,7 @@ test("SCA e2e: background-module judges the XPI's background script, not the ESM
       addonPath: xpiClassic,
       scaRoot: srcEsm,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     assert.ok(
       !has(a.findings, "background-module"),
@@ -659,7 +665,7 @@ test("SCA e2e: background-module judges the XPI's background script, not the ESM
       addonPath: xpiEsm,
       scaRoot: srcEsm,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     assert.ok(
       has(b.findings, "background-module"),
@@ -693,7 +699,7 @@ test("SCA e2e: trademark-violation resolves a localized name via the XPI's _loca
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     assert.ok(
       has(findings, "trademark-violation"),
@@ -751,7 +757,7 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
       vendorNet,
     });
     assert.ok(
@@ -785,7 +791,7 @@ test("SCA e2e: a build script outside the source is reviewed by undeclared-build
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     // The check ran (SCA-eligible)...
     assert.ok(
@@ -821,7 +827,7 @@ test("SCA e2e: build-policy checks flag yarn + a redirected registry offline", a
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     assert.ok(
       has(findings, "unsupported-build-tool", (f) => /yarn/.test(f.message)),
@@ -851,7 +857,7 @@ test("SCA e2e: a clean npm build fires neither build-policy check", async () => 
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     assert.ok(!has(findings, "unsupported-build-tool"));
     assert.ok(!has(findings, "build-registry-redirect"));
@@ -883,7 +889,7 @@ test("SCA e2e: TypeScript and Vue source is parsed and its defects are caught", 
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     // (1) The .ts file is parsed and API-resolved.
     assert.ok(
@@ -924,7 +930,7 @@ test("SCA e2e: a minified file in the source is rejected by minified-code", asyn
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     // The prefix is stripped by loadScaAddon, so the review file is "blob.min.js".
     assert.ok(
@@ -954,7 +960,7 @@ test("SCA e2e: a package.json install hook is flagged by build-lifecycle-hook", 
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     assert.ok(
       has(findings, "build-lifecycle-hook", (f) => /postinstall/.test(f.item)),
@@ -982,7 +988,7 @@ test("SCA e2e: a committed build archive is rejected anywhere in --sca-root", as
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     assert.ok(
       has(
@@ -1016,7 +1022,7 @@ test("SCA e2e: a committed node_modules folder is rejected", async () => {
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
-      schemaZip: SCHEMA_FIXTURE,
+      ...OFFLINE,
     });
     assert.ok(
       has(findings, "committed-node-modules", (f) =>

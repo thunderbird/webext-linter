@@ -11,11 +11,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { pipelineOptsFromArgv } from "../../src/cli.js";
+import { seedFixtureCache } from "../seed-caches.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..", "..");
 const REVIEW = path.join(ROOT, "verify.js");
-const SCHEMA = path.join(ROOT, "tests", "schema-fixture");
+// A cache pre-seeded from the fixtures. Point every fetchable source at it so the
+// spawned CLI (schema auto-detection, library-hash DB, experiments allow-list) runs
+// fully offline.
+const CACHE = seedFixtureCache();
+const OFFLINE_FLAGS = [
+  "--schema-cache",
+  CACHE,
+  "--lib-mozilla-hash-db-cache",
+  CACHE,
+  "--experiments-cache",
+  CACHE,
+];
 
 /** Run a root entry file, capturing stdout/stderr/exit code. */
 function runFile(file, args = []) {
@@ -51,12 +63,12 @@ test("unknown option errors cleanly (no -- separator hint)", () => {
   assert.doesNotMatch(r.stderr, /To specify a positional argument/);
 });
 
-// A pipeline hard-fail the review could not run through (here an unresolvable
-// schema; a failed schema download is the same path) exits 2 and states "verify
-// failed" on stderr - distinct from a completed review that found error findings.
-test("unusable schema aborts: exit 2 and 'verify failed' on stderr", () => {
-  const addon = path.join(ROOT, "tests", "addons", "clean");
-  const r = run([addon, "--schema-zip", "/no/such/schema.zip"]);
+// A pipeline hard-fail the review could not run through (here a missing add-on; an
+// unusable schema or a failed schema download take the same path) exits 2 and
+// states "verify failed" on stderr - distinct from a completed review that found
+// error findings.
+test("a pipeline hard-fail aborts: exit 2 and 'verify failed' on stderr", () => {
+  const r = run(["/no/such/addon.xpi", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 2);
   assert.match(r.stderr, /verify failed/);
 });
@@ -118,7 +130,7 @@ test("unknown --checks-only id errors to stderr and exits 2", () => {
 // (0 = clean, 1 = has error-severity findings).
 test("reviewing a fixture renders to stdout with a severity-based exit", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
-  const r = run([addon, "--schema-zip", SCHEMA, "--report-format", "json"]);
+  const r = run([addon, ...OFFLINE_FLAGS, "--report-format", "json"]);
   assert.ok([0, 1].includes(r.code));
   const json = JSON.parse(r.stdout);
   assert.equal(json.meta.action, "review");
@@ -128,7 +140,7 @@ test("reviewing a fixture renders to stdout with a severity-based exit", () => {
 // The ESLint code-sanity check is opt-in: it runs only when --eslint is passed.
 test("--eslint gates the code-sanity check", () => {
   const addon = path.join(ROOT, "tests", "addons", "all-checks");
-  const base = [addon, "--schema-zip", SCHEMA, "--report-format", "json"];
+  const base = [addon, ...OFFLINE_FLAGS, "--report-format", "json"];
   const off = JSON.parse(run(base).stdout);
   assert.ok(!off.meta.checksRun.includes("code-sanity")); // default: not run
   const on = JSON.parse(run([...base, "--eslint"]).stdout);
@@ -141,7 +153,7 @@ test("--eslint gates the code-sanity check", () => {
 // raises the by-hand reminder when none was produced.
 test("both unused-permission checks always run", () => {
   const addon = path.join(ROOT, "tests", "addons", "all-checks");
-  const base = [addon, "--schema-zip", SCHEMA, "--report-format", "json"];
+  const base = [addon, ...OFFLINE_FLAGS, "--report-format", "json"];
   const off = JSON.parse(run(base).stdout);
   assert.ok(off.meta.checksRun.includes("unused-permission"));
   assert.ok(off.meta.checksRun.includes("unused-permission-manual"));
@@ -156,8 +168,7 @@ test("JSON output is fully silent on stderr, even with --verbose", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const r = run([
     addon,
-    "--schema-zip",
-    SCHEMA,
+    ...OFFLINE_FLAGS,
     "--report-format",
     "json",
     "--verbose",
@@ -173,7 +184,7 @@ test("--report-out tees the report to stdout and copies it to the file", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-cli-"));
   const out = path.join(dir, "report.txt");
-  const r = run([addon, "--schema-zip", SCHEMA, "--report-out", out]);
+  const r = run([addon, ...OFFLINE_FLAGS, "--report-out", out]);
   assert.ok([0, 1].includes(r.code));
   assert.match(r.stdout, /── Summary ──/); // report is on stdout, not hidden
   assert.equal(fs.readFileSync(out, "utf8"), r.stdout); // file == screen
@@ -188,8 +199,7 @@ test("JSON + --report-out writes a plain JSON file", () => {
   const out = path.join(dir, "report.json");
   const r = run([
     addon,
-    "--schema-zip",
-    SCHEMA,
+    ...OFFLINE_FLAGS,
     "--report-format",
     "json",
     "--report-out",
@@ -211,7 +221,7 @@ test("--full-summary without a token prints a skip notice, no add-on section", (
   delete env.LLM_API_KEY;
   const r = spawnSync(
     process.execPath,
-    [REVIEW, addon, "--schema-zip", SCHEMA, "--full-summary"],
+    [REVIEW, addon, ...OFFLINE_FLAGS, "--full-summary"],
     { encoding: "utf8", env }
   );
   assert.ok([0, 1].includes(r.status));
@@ -227,7 +237,7 @@ test("--llm-enabled without a token errors to stderr and exits 2", () => {
   delete env.LLM_API_KEY;
   const r = spawnSync(
     process.execPath,
-    [REVIEW, addon, "--schema-zip", SCHEMA, "--llm-enabled"],
+    [REVIEW, addon, ...OFFLINE_FLAGS, "--llm-enabled"],
     { encoding: "utf8", env }
   );
   assert.equal(r.status, 2);
@@ -241,7 +251,7 @@ test("--llm-enabled with an unknown LLM_API_TYPE errors and exits 2", () => {
   const env = { ...process.env, LLM_API_KEY: "sk-test", LLM_API_TYPE: "bogus" };
   const r = spawnSync(
     process.execPath,
-    [REVIEW, addon, "--schema-zip", SCHEMA, "--llm-enabled"],
+    [REVIEW, addon, ...OFFLINE_FLAGS, "--llm-enabled"],
     { encoding: "utf8", env }
   );
   assert.equal(r.status, 2);
@@ -348,7 +358,7 @@ test("a bare LLM_API_KEY does not enable the LLM without an opt-in", () => {
   const env = { ...process.env, LLM_API_KEY: "sk-not-used" };
   const r = spawnSync(
     process.execPath,
-    [REVIEW, addon, "--schema-zip", SCHEMA, "--full-summary"],
+    [REVIEW, addon, ...OFFLINE_FLAGS, "--full-summary"],
     { encoding: "utf8", env }
   );
   assert.ok([0, 1].includes(r.status));
@@ -364,7 +374,7 @@ test("--diff-summary without --diff-to or a token prints a skip notice", () => {
   delete env.LLM_API_KEY;
   const r = spawnSync(
     process.execPath,
-    [REVIEW, addon, "--schema-zip", SCHEMA, "--diff-summary"],
+    [REVIEW, addon, ...OFFLINE_FLAGS, "--diff-summary"],
     { encoding: "utf8", env }
   );
   assert.ok([0, 1].includes(r.status));

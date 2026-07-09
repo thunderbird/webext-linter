@@ -6,12 +6,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { runPipeline } from "../../src/pipeline.js";
+import { fixtureCacheOpts } from "../seed-caches.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const SCHEMA_FIXTURE = path.join(here, "..", "schema-fixture");
+// A cache pre-seeded from the fixtures, so the pipeline's schema / experiments /
+// library-hash fetches all hit disk - these runs stay offline.
+const OFFLINE = fixtureCacheOpts();
 
 function tmpAddon(files) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-"));
@@ -38,7 +39,7 @@ test("review: read-only; line numbers match the submitted source", async () => {
 
   const result = await runPipeline({
     addonPath: src,
-    schemaZip: SCHEMA_FIXTURE,
+    ...OFFLINE,
   });
 
   const finding = result.findings.find(
@@ -80,7 +81,7 @@ test("invalid Experiment: only the reject check runs, nothing else", async () =>
 
   const result = await runPipeline({
     addonPath: src,
-    schemaZip: SCHEMA_FIXTURE,
+    ...OFFLINE,
   });
 
   assert.deepEqual(
@@ -107,7 +108,7 @@ test("allowed Experiment: normal review runs, no reject", async () => {
 
   const result = await runPipeline({
     addonPath: src,
-    schemaZip: SCHEMA_FIXTURE,
+    ...OFFLINE,
     allowExperiments: true,
   });
 

@@ -3,8 +3,8 @@
 // identification hash DB (Mozilla dispensary's hashes.txt, fetched at runtime),
 // Mozilla publishes no machine-readable block DB - the policy lives in the
 // addons-linter source - so it is hand-curated in assets/library-blocks.yaml and kept
-// in sync manually. This module loads that file (or the --lib-mozilla-block-db
-// override) and matches a (name, version) against it.
+// in sync manually. This module loads that shipped file and matches a
+// (name, version) against it.
 //
 // The vendor audit (src/vendor/verify.js auditNpm) consults matchLibraryBlock BEFORE
 // each OSV query: a banned version is recorded and SKIPS the OSV request (it is
@@ -42,20 +42,14 @@ const DEFAULT_LIBRARY_BLOCKS = path.resolve(
 );
 
 /**
- * Read the block-policy file to text: the --lib-mozilla-block-db override when given
- * (must exist - a bad path is a hard error, like resolveLibraryHashes), else the
- * shipped assets/library-blocks.yaml. No network/cache: it is a versioned asset.
- * @param {{source?: string}} [opts]
+ * Read the block-policy file to text: the shipped assets/library-blocks.yaml. No
+ * network/cache: it is a versioned asset read straight from disk.
  * @returns {Promise<{text: string, source: string}>}
  */
-export async function resolveLibraryBlocks({ source } = {}) {
-  const file = source ? path.resolve(source) : DEFAULT_LIBRARY_BLOCKS;
-  if (source && !fs.existsSync(file)) {
-    throw new Error(`--lib-mozilla-block-db not found: ${file}`);
-  }
+export async function resolveLibraryBlocks() {
   return {
-    text: fs.readFileSync(file, "utf8"),
-    source: source ? `local:${file}` : "default",
+    text: fs.readFileSync(DEFAULT_LIBRARY_BLOCKS, "utf8"),
+    source: "default",
   };
 }
 

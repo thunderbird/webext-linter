@@ -107,11 +107,8 @@ import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
 /**
  * @typedef {object} PipelineOpts
  * @property {string} addonPath
- * @property {string} [schemaZip]
  * @property {string} [schemaCache]
  * @property {boolean} [schemaForceRefresh]
- * @property {string} [experimentsZip]  Local allowed-experiments zip/dir (skips
- *   network).
  * @property {string} [experimentsCache]  Where to cache the fetched experiments
  *   zip.
  * @property {boolean} [experimentsForceRefresh]  Re-fetch the allow-list.
@@ -138,8 +135,6 @@ import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
  *   readable source, having no reachability tree there). Optional in general, but
  *   REQUIRED when allowExperiments is set in SCA mode (the CLI enforces this) -
  *   without it, Experiment code cannot be told apart from WebExtension code.
- * @property {string} [libraryHashes]  Local known-library hashes.txt to use
- *   instead of fetching (offline/CI/tests; the golden harness injects a fixture).
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
  * @property {boolean} [libraryHashesForceRefresh]  Re-fetch the library hashes.
  * @property {boolean} [cdnLookup]  Identify an unrecognized bundled library (minified,
@@ -394,7 +389,6 @@ export async function runPipeline(opts) {
     branch: schemaBranch,
     channel: schemaChannel,
   } = await resolveReviewSchema({
-    schemaZip: opts.schemaZip,
     cacheDir: opts.schemaCache ?? DEFAULT_CACHE,
     forceRefresh: opts.schemaForceRefresh ?? false,
     manifest: xpiAddon.manifest,
@@ -423,12 +417,11 @@ export async function runPipeline(opts) {
   let preParsedJsSources;
 
   if (!invalidExperiment) {
-    // 1b. The known-library hash DB the classifier matches bytes against (fetch +
-    // cache, or the --lib-mozilla-hash-db override; the golden harness injects a
-    // fixture so offline runs are deterministic). Both modes classify.
+    // 1b. The known-library hash DB the classifier matches bytes against (fetched
+    // and cached; a pre-seeded cache keeps offline runs deterministic). Both modes
+    // classify.
     setupStep("Fetching library hashes");
     const { text: libraryHashesText } = await resolveLibraryHashes({
-      source: opts.libraryHashes,
       cacheDir: opts.libraryHashesCache,
       refresh: opts.libraryHashesForceRefresh,
     });
@@ -447,14 +440,12 @@ export async function runPipeline(opts) {
       budget: llmBudget,
     });
 
-    // The Mozilla add-on policy blocklist (curated assets/library-blocks.yaml, or the
-    // --lib-mozilla-block-db override): a shipped asset read from disk (fast, no
-    // network, so no Setup feed line). Passed to the vendor audit, which consults it
-    // before each OSV query (auditNpm) - a banned library is recorded and skips the
-    // request. Not applied to SCA devDependencies (never shipped).
-    const { text: libraryBlocksText } = await resolveLibraryBlocks({
-      source: opts.libraryBlocks,
-    });
+    // The Mozilla add-on policy blocklist (curated assets/library-blocks.yaml): a
+    // shipped asset read from disk (fast, no network, so no Setup feed line). Passed
+    // to the vendor audit, which consults it before each OSV query (auditNpm) - a
+    // banned library is recorded and skips the request. Not applied to SCA
+    // devDependencies (never shipped).
+    const { text: libraryBlocksText } = await resolveLibraryBlocks();
     const libraryBlocks = parseLibraryBlocks(libraryBlocksText);
 
     if (mode === "sca") {
@@ -813,8 +804,7 @@ async function identifyBundledLibraries(
  * @param {import("./schema/index.js").SchemaIndex} [resolved.schema]
  * @param {string} [resolved.schemaSource]
  * @param {string} [resolved.schemaBranch]
- * @param {string|null} [resolved.schemaChannel]  The auto-detected channel, or null
- *   for --schema-zip.
+ * @param {string} [resolved.schemaChannel]  The auto-detected schema channel.
  * @param {import("./addon/sources.js").JsSource[]} [resolved.preParsedJsSources]  The
  *   review sources the extraction pass already parsed (parse-first); absent for a
  *   rejected Experiment, where buildRunContext parses.
@@ -1158,35 +1148,25 @@ export function peekBranchMajor(cacheDir, branch) {
 }
 
 /**
- * Resolve which schema to review against, downloading if needed. A local
- * --schema-zip is used verbatim (no auto-detection). Otherwise the channel is
+ * Resolve which schema to review against, downloading if needed. The channel is
  * auto-detected from the add-on's version range (see selectSchemaChannel): the
  * cache is first brought to the full canonical set (all channels × both manifest
  * versions, re-downloading a missing OR corrupt branch), then the add-on's
  * manifest_version + strict_max_version pick the branch to load.
  *
  * @param {object} params
- * @param {string} [params.schemaZip]   Explicit local schema (bypass).
  * @param {string} params.cacheDir      Schema cache directory.
  * @param {boolean} params.forceRefresh Re-download the whole canonical set.
  * @param {import("./addon/load.js").Manifest} params.manifest  Shipped manifest.
  * @param {(label: string) => void} [params.setupStep]  Setup-feed narrator.
- * @returns {Promise<{zipPath: string, source: string, branch: string|null,
- *   channel: string|null}>}
+ * @returns {Promise<{zipPath: string, source: string, branch: string, channel: string}>}
  */
 export async function resolveReviewSchema({
-  schemaZip,
   cacheDir,
   forceRefresh,
   manifest,
   setupStep = () => {},
 }) {
-  if (schemaZip) {
-    setupStep("Fetching review schemas (local)");
-    const { zipPath, source } = await resolveSchemaZip({ schemaZip });
-    return { zipPath, source, branch: null, channel: null };
-  }
-
   const mv = detectManifestVersion(manifest);
   // The detected manifest version's channel anchors. A channel is a candidate only
   // if its cached zip is present AND carries a readable version stamp - a
@@ -1226,7 +1206,7 @@ export async function resolveReviewSchema({
     ).map((c) => branchName(c, mv.version));
     throw new Error(
       `Schema cache unusable: no readable version stamp for ${bad.join(", ")} even after refresh. ` +
-        "Pass --schema-zip <path> to review against a local schema."
+        "Clear the schema cache and re-run (check network access to the schema source)."
     );
   }
 

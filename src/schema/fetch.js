@@ -1,15 +1,14 @@
-// Obtains the annotated-schema set as local zip files. Either:
-//   - returns the user-supplied --schema-zip path as-is, or
-//   - downloads the requested branch from GitHub (codeload) into the cache dir.
+// Obtains the annotated-schema set as local zip files: downloads the requested
+// branch from GitHub (codeload) into the cache dir, or reuses the cached copy.
 //
 // We deliberately use the codeload zip endpoint (one request for the whole
 // branch) instead of fetching each raw file individually.
 //
 // Belongs here: the branch namespace (channels × manifest versions, the canonical
 // SIX-branch set the cache must hold) and the network + on-disk cache IO that
-// resolves a schema source to a local zip path - branch -> codeload URL, atomic
+// resolves a schema branch to a local zip path - branch -> codeload URL, atomic
 // download-into-cache, cache-completeness checks, whole-set (re)download, and
-// reuse of a cached or user-supplied zip.
+// reuse of a cached zip.
 //
 // Does NOT belong here: reading or parsing the schema files out of that zip
 // (src/schema/load.js), merging fragments (src/schema/merge.js), or any query
@@ -73,10 +72,10 @@ export function hasAllCachedSchemas(cacheDir) {
  * (Re)download the whole canonical branch set into the cache. Used both to
  * populate an empty/partial cache and to service --schema-force-refresh, so the
  * six branches are always fetched together (same train).
- * @param {{cacheDir?: string}} opts
+ * @param {{cacheDir: string}} opts
  * @returns {Promise<void>}
  */
-export async function refreshAllSchemas({ cacheDir = ".schema-cache" } = {}) {
+export async function refreshAllSchemas({ cacheDir }) {
   for (const branch of allSchemaBranches()) {
     await resolveSchemaZip({ branch, cacheDir, refresh: true });
   }
@@ -92,32 +91,18 @@ function codeloadUrl(branch) {
 
 /**
  * @typedef {object} ResolveSchemaZipOpts
- * @property {string} [schemaZip]  Explicit local zip path; skips network access.
- * @property {string} [branch]     Branch to download (default "release-mv2").
- * @property {string} [cacheDir]   Where to store downloaded zips.
+ * @property {string} branch       Branch to download.
+ * @property {string} cacheDir     Where to store downloaded zips.
  * @property {boolean} [refresh]   Re-download even if a cached copy exists.
  */
 
 /**
- * Resolve a schema source to a local zip path, downloading if needed.
+ * Resolve a schema branch to a local cached zip path, downloading if needed.
  *
  * @param {ResolveSchemaZipOpts} opts
  * @returns {Promise<{zipPath: string, source: string}>}
  */
-export async function resolveSchemaZip({
-  schemaZip,
-  branch = "release-mv2",
-  cacheDir = ".schema-cache",
-  refresh = false,
-} = {}) {
-  if (schemaZip) {
-    const resolved = path.resolve(schemaZip);
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`--schema-zip not found: ${resolved}`);
-    }
-    return { zipPath: resolved, source: `local:${resolved}` };
-  }
-
+export async function resolveSchemaZip({ branch, cacheDir, refresh = false }) {
   fs.mkdirSync(cacheDir, { recursive: true });
   const cached = cachedZipPath(cacheDir, branch);
 

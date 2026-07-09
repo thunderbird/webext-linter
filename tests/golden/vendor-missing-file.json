@@ -4,9 +4,9 @@
     "addon": "<root>/tests/addons/vendor-missing-file",
     "addonKind": "dir",
     "reviewed": true,
-    "schemaSource": "local:<root>/tests/schema-fixture",
-    "schemaBranch": null,
-    "schemaChannel": null,
+    "schemaSource": "cache:release-mv3",
+    "schemaBranch": "release-mv3",
+    "schemaChannel": "release",
     "applicationVersion": "128.0",
     "manifestVersion": 3,
     "checksRun": [

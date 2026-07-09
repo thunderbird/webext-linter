@@ -2,9 +2,8 @@
 // text and parses it into a sha256 -> {name, version} map. The library classifier
 // (src/checks/lib/bundled.js) identifies a bundled third-party library by the raw
 // SHA-256 of its bytes against this map - a true content lookup, not a name/UMD
-// guess. Either:
-//   - reads the user-supplied --lib-mozilla-hash-db path as-is (offline/tests), or
-//   - downloads the upstream hashes.txt into the cache dir (reused next run).
+// guess. It downloads the upstream hashes.txt into the cache dir (reused next
+// run; a pre-seeded cache keeps offline runs deterministic).
 //
 // Belongs here: the fetch/cache IO and the line parser. Does NOT belong here: the
 // raw hashing of add-on files (src/normalize/hash.js rawSha256) or the library
@@ -17,50 +16,43 @@ import { debug } from "../../util/log.js";
 import { LIBRARY_HASHES_URL, LIBRARY_HASHES_CACHE } from "../../config.js";
 
 /**
+ * @param {string} cacheDir  The library-hashes cache directory.
+ * @returns {string} Path of the cached hashes file.
+ */
+export function cachedHashesPath(cacheDir) {
+  return path.join(cacheDir, "dispensary-hashes.txt");
+}
+
+/**
  * @typedef {object} ResolveLibraryHashesOpts
- * @property {string} [source]    Explicit local hashes.txt path; skips network.
- * @property {string} [url]       Upstream hashes.txt URL (default from config).
  * @property {string} [cacheDir]  Where to cache the downloaded file.
  * @property {boolean} [refresh]  Re-download even if a cached copy exists.
  */
 
 /**
  * Resolve the library-hashes source to text, downloading + caching if needed -
- * the same override/cache/fetch shape as resolveSchemaZip / resolveExperimentsZip.
- * Cache-first: a previously downloaded copy is reused without a request, so only a
- * first-ever run with no network (and no --lib-mozilla-hash-db override) reaches the
- * fetch. Throws on a download failure rather than degrading to an empty DB: a
- * partial library DB would silently change the review (a known library would go
- * unrecognized and be scanned as authored), so - like the schema and experiments
- * sources - an unavailable DB is a hard, fixable error (supply --lib-mozilla-hash-db
- * for an offline copy), never a quietly different verdict.
+ * the same cache/fetch shape as resolveSchemaZip / resolveExperimentsZip.
+ * Cache-first: a previously downloaded (or pre-seeded) copy is reused without a
+ * request, so only a first-ever run with no network reaches the fetch. Throws on a
+ * download failure rather than degrading to an empty DB: a partial library DB would
+ * silently change the review (a known library would go unrecognized and be scanned
+ * as authored), so - like the schema and experiments sources - an unavailable DB is
+ * a hard, fixable error, never a quietly different verdict.
  * @param {ResolveLibraryHashesOpts} opts
  * @returns {Promise<{text: string, source: string}>}
  */
 export async function resolveLibraryHashes({
-  source,
-  url = LIBRARY_HASHES_URL,
   cacheDir = LIBRARY_HASHES_CACHE,
   refresh = false,
 } = {}) {
-  if (source) {
-    const resolved = path.resolve(source);
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`--lib-mozilla-hash-db not found: ${resolved}`);
-    }
-    return {
-      text: fs.readFileSync(resolved, "utf8"),
-      source: `local:${resolved}`,
-    };
-  }
-
   fs.mkdirSync(cacheDir, { recursive: true });
-  const cached = path.join(cacheDir, "dispensary-hashes.txt");
+  const cached = cachedHashesPath(cacheDir);
   if (fs.existsSync(cached) && !refresh) {
     debug(`Using cached library hashes: ${cached}`);
     return { text: fs.readFileSync(cached, "utf8"), source: "cache" };
   }
 
+  const url = LIBRARY_HASHES_URL;
   debug(`Downloading library hashes from ${url} ...`);
   const res = await fetch(url);
   if (!res.ok) {

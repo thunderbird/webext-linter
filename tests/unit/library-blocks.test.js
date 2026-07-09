@@ -98,20 +98,13 @@ test("matchLibraryBlock: banned takes precedence over unadvised (below both)", (
   assert.equal(matchLibraryBlock(blocks, "lib", "3.0.0"), null);
 });
 
-// ---- resolveLibraryBlocks (the shipped asset + the override) ----
+// ---- resolveLibraryBlocks (the shipped asset) ----
 
 test("resolveLibraryBlocks reads the shipped default asset", async () => {
-  const { text, source } = await resolveLibraryBlocks({});
+  const { text, source } = await resolveLibraryBlocks();
   assert.equal(source, "default");
   const blocks = parseLibraryBlocks(text);
   assert.ok(blocks.has("jquery") && blocks.has("angular"));
-});
-
-test("resolveLibraryBlocks throws on a missing --lib-mozilla-block-db path", async () => {
-  await assert.rejects(
-    resolveLibraryBlocks({ source: "/no/such/library-blocks.yaml" }),
-    /not found/
-  );
 });
 
 // ---- the banned-library check (pure reader of addon.vendor.blocked) ----

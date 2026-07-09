@@ -1,6 +1,6 @@
 // Unit tests for the known-library hash DB module: parsing dispensary's
-// hashes.txt into a sha256 -> {name, version} map, and the local-override branch
-// of the resolver (no network).
+// hashes.txt into a sha256 -> {name, version} map, and the cache-read branch of
+// the resolver (a pre-seeded cache, no network).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -52,21 +52,16 @@ test("parseLibraryHashes lowercases the hash key", () => {
   assert.ok(map.has("a".repeat(64)));
 });
 
-test("resolveLibraryHashes reads a local override without touching the network", async () => {
+test("resolveLibraryHashes reads a pre-seeded cache without touching the network", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-"));
-  const file = path.join(dir, "hashes.txt");
-  fs.writeFileSync(file, `${H} lib.1.0.0.lib.js\n`);
-  const { text, source } = await resolveLibraryHashes({ source: file });
-  assert.match(text, /lib\.1\.0\.0/);
-  assert.match(source, /^local:/);
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-test("resolveLibraryHashes throws a clear error for a missing override", async () => {
-  await assert.rejects(
-    resolveLibraryHashes({ source: "/no/such/hashes.txt" }),
-    /--lib-mozilla-hash-db not found/
+  fs.writeFileSync(
+    path.join(dir, "dispensary-hashes.txt"),
+    `${H} lib.1.0.0.lib.js\n`
   );
+  const { text, source } = await resolveLibraryHashes({ cacheDir: dir });
+  assert.match(text, /lib\.1\.0\.0/);
+  assert.equal(source, "cache");
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("npmNameForLibrary maps dispensary aliases and passes others through", () => {

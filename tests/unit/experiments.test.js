@@ -6,6 +6,7 @@ import { withManifest } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,6 +26,7 @@ import { loadSchemaFiles } from "../../src/schema/load.js";
 import experimentOverridesApi from "../../src/checks/rules/experiment-overrides-api.js";
 import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.js";
 import experimentModified from "../../src/checks/rules/experiment-modified.js";
+import { seedFixtureCache } from "../seed-caches.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const EXPERIMENTS_FIXTURE = path.join(here, "..", "experiments-fixture");
@@ -218,7 +220,9 @@ test("loadAllowList collects file hashes and upstream API namespaces", () => {
 
 // ---- verifyExperiments ----
 const addon = (files) => ({ manifest: DEMO_MANIFEST, files });
-const opts = { experimentsZip: EXPERIMENTS_FIXTURE };
+// The allow-list read from a pre-seeded cache (built from the experiments fixture),
+// so verifyExperiments resolves it offline.
+const opts = { experimentsCache: seedFixtureCache() };
 const status0 = (res) => res.groups[0]?.status;
 
 test("verifyExperiments: pristine bundle is recognised and fully matched", async () => {
@@ -284,21 +288,42 @@ test("verifyExperiments: an unknown API name -> unsupported", async () => {
   assert.equal(status0(res), "unsupported");
 });
 
-test("verifyExperiments: no locatable experiment files -> not pristine, no fetch", async () => {
-  const res = await verifyExperiments(
-    { manifest: { experiment_apis: { myapi: {} } }, files: new Map() },
-    { experimentsZip: "/does/not/exist" } // would throw if it tried to fetch
-  );
-  assert.equal(res.pristine, false);
+// Run `fn` with a global fetch that throws, proving a code path resolves nothing
+// over the network (an empty cache dir forces a fetch if resolution is attempted).
+async function withoutNetwork(fn) {
+  const emptyCache = fs.mkdtempSync(path.join(os.tmpdir(), "exp-nonet-"));
+  const orig = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("network attempted");
+  };
+  try {
+    return await fn(emptyCache);
+  } finally {
+    globalThis.fetch = orig;
+    fs.rmSync(emptyCache, { recursive: true, force: true });
+  }
+}
+
+test("verifyExperiments: no locatable experiment files -> not pristine, allow-list never resolved", async () => {
+  // With no locatable experiment files, the allow-list is never resolved: fetch would
+  // throw here if it were, so a plain pristine=false proves the short-circuit.
+  await withoutNetwork(async (experimentsCache) => {
+    const res = await verifyExperiments(
+      { manifest: { experiment_apis: { myapi: {} } }, files: new Map() },
+      { experimentsCache }
+    );
+    assert.equal(res.pristine, false);
+  });
 });
 
-test("verifyExperiments: an unfetchable allow-list throws (hard fail)", async () => {
-  await assert.rejects(
-    () =>
-      verifyExperiments(addon(demoFiles()), {
-        experimentsZip: "/no/such/repo",
-      }),
-    /experiments-zip not found/
+test("verifyExperiments: an unfetchable allow-list is a hard fail (throws)", async () => {
+  // Files to verify but an empty cache and no network -> resolveExperimentsZip's
+  // download fails, and verifyExperiments propagates it (never a review verdict).
+  await withoutNetwork((experimentsCache) =>
+    assert.rejects(
+      () => verifyExperiments(addon(demoFiles()), { experimentsCache }),
+      /network attempted|Failed to download/
+    )
   );
 });
 

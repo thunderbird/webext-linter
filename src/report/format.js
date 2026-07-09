@@ -53,7 +53,7 @@ const SEV_COLOR = {
  * @property {boolean} reviewed
  * @property {string} [schemaBranch]
  * @property {string} [schemaSource]
- * @property {string|null} [schemaChannel]  Channel used (null for --schema-zip).
+ * @property {string} [schemaChannel]  The auto-detected schema channel used.
  * @property {string} [applicationVersion]
  * @property {number} [manifestVersion]
  * @property {string[]} [checksRun]  Ids of the checks that ran.
@@ -153,10 +153,9 @@ export function formatSummary(review) {
  * @returns {string[]}
  */
 export function headerLines(meta) {
-  const schema = meta.schemaBranch || meta.schemaSource;
   return [
     `Reviewing ${meta.addon}`,
-    `schema ${schema} · Thunderbird ${meta.applicationVersion ?? "?"}` +
+    `schema ${meta.schemaBranch} · Thunderbird ${meta.applicationVersion ?? "?"}` +
       (meta.manifestVersion != null
         ? ` · manifest_version ${meta.manifestVersion}`
         : ""),

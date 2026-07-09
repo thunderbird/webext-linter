@@ -120,7 +120,7 @@ const HELP_COL = 32;
  * Format one option row for the help screen: the flag left-aligned in the fixed
  * column, its description wrapped to 80 columns with continuation lines hanging
  * under the description.
- * @param {string} flag  The flag and its argument, e.g. "--schema-zip <path>".
+ * @param {string} flag  The flag and its argument, e.g. "--schema-cache <dir>".
  * @param {string} desc  The description prose.
  * @returns {string}
  */
@@ -197,10 +197,6 @@ function resolveLlm(values) {
 export function helpText() {
   const schema = [
     [
-      "--schema-zip <path>",
-      "Use a local schema zip (or directory) instead of downloading.",
-    ],
-    [
       "--schema-cache <dir>",
       `Where downloaded schema zips are cached (default: ${DEFAULT_CACHE}).`,
     ],
@@ -212,20 +208,12 @@ export function helpText() {
 
   const libraryId = [
     [
-      "--lib-mozilla-hash-db <path>",
-      "Use a local copy of Mozilla's known-library hash database (the addons-linter 'dispensary' hashes.txt, used to identify a bundled library by exact content hash) instead of fetching it (offline runs).",
-    ],
-    [
       "--lib-mozilla-hash-db-cache <dir>",
       `Where the fetched library hashes are cached (default: ${LIBRARY_HASHES_CACHE}).`,
     ],
     [
       "--lib-mozilla-hash-db-refresh",
       "Re-download the library hashes even if a cached copy exists.",
-    ],
-    [
-      "--lib-mozilla-block-db <path>",
-      "Use a local copy of the banned/unadvised library policy (the library versions Mozilla's add-on policy disallows or discourages) instead of the built-in list. A shipped file, not fetched - no cache/refresh.",
     ],
     [
       "--lib-cdn-lookup <true|false>",
@@ -238,10 +226,6 @@ export function helpText() {
   ];
 
   const draftApis = [
-    [
-      "--experiments-zip <path>",
-      "Use a local copy of the Thunderbird Draft-API repo (the allowed-experiments list; zip or directory) instead of downloading.",
-    ],
     [
       "--experiments-cache <dir>",
       `Where the fetched allowed-experiments zip is cached (default: ${EXPERIMENTS_CACHE}).`,
@@ -383,16 +367,12 @@ export function helpText() {
 }
 
 const OPTIONS = {
-  "schema-zip": { type: "string" },
   "schema-cache": { type: "string" },
   "schema-force-refresh": { type: "boolean" },
-  "lib-mozilla-hash-db": { type: "string" },
   "lib-mozilla-hash-db-cache": { type: "string" },
   "lib-mozilla-hash-db-refresh": { type: "boolean" },
-  "lib-mozilla-block-db": { type: "string" },
   "lib-cdn-lookup": { type: "string" },
   "lib-cdn-lookup-cache": { type: "string" },
-  "experiments-zip": { type: "string" },
   "experiments-cache": { type: "string" },
   "experiments-force-refresh": { type: "boolean" },
   "checks-only": { type: "string" },
@@ -648,18 +628,14 @@ export async function main(argv) {
 function pipelineOptsFromValues(values) {
   const llm = resolveLlm(values);
   return {
-    schemaZip: values["schema-zip"],
     schemaCache: values["schema-cache"] || DEFAULT_CACHE,
     schemaForceRefresh: values["schema-force-refresh"],
-    libraryHashes: values["lib-mozilla-hash-db"],
     libraryHashesCache:
       values["lib-mozilla-hash-db-cache"] || LIBRARY_HASHES_CACHE,
     libraryHashesForceRefresh: values["lib-mozilla-hash-db-refresh"],
-    libraryBlocks: values["lib-mozilla-block-db"],
     // --lib-cdn-lookup true|false (default true); only an explicit "false" disables.
     cdnLookup: values["lib-cdn-lookup"] !== "false",
     cdnLookupCache: values["lib-cdn-lookup-cache"] || CDN_LOOKUP_CACHE,
-    experimentsZip: values["experiments-zip"],
     experimentsCache: values["experiments-cache"] || EXPERIMENTS_CACHE,
     experimentsForceRefresh: values["experiments-force-refresh"],
     checksOnly: splitList(values["checks-only"]),

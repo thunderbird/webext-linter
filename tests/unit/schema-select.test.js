@@ -233,20 +233,6 @@ test("resolveReviewSchema: strict_max 140.* mv3 → esr (backport case), offline
   }
 });
 
-test("resolveReviewSchema: --schema-zip bypasses auto-detection (channel null)", async () => {
-  let steps = 0;
-  const r = await resolveReviewSchema({
-    schemaZip: SCHEMA_FIXTURE,
-    cacheDir: path.join(os.tmpdir(), "does-not-exist"),
-    forceRefresh: false,
-    manifest: {},
-    setupStep: () => steps++,
-  });
-  assert.equal(r.channel, null);
-  assert.equal(r.branch, null);
-  assert.equal(steps, 1);
-});
-
 // A missing or corrupt cached zip yields null, so the channel drops out of the
 // candidate set instead of throwing - the resolver then re-downloads to self-heal.
 test("peekBranchMajor: missing / corrupt zip → null, never throws", () => {
