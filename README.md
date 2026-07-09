@@ -22,11 +22,10 @@ key is supplied. See the LLM checks under Review checks below.
 npm install
 ```
 
-Run via `npm` (the `--` separator stops npm from eating the parameters):
+Show all options:
 
 ```sh
 npm run help
-npm run verify -- <xpi|folder> [options]
 ```
 
 Run the `node` script directly:
@@ -34,6 +33,17 @@ Run the `node` script directly:
 ```sh
 node verify.js <xpi|folder> [options]
 ```
+
+Or install it as a command and run it from anywhere:
+
+```sh
+npm install -g .    # from a clone of this repo
+webext-linter <xpi|folder> [options]
+```
+
+For development, use `npm link` instead of `npm install -g .` so the command
+tracks your working copy. Once the package is published to npm,
+`npm install -g webext-linter` and `npx webext-linter` work as well.
 
 The schema review picks the matching schema **automatically** from the add-on's
 own manifest — no channel flag. Two dimensions:
@@ -48,15 +58,11 @@ own manifest — no channel flag. Two dimensions:
   no cap, or a cap that matches no cached train, it falls back to **release**; the
   `version_added` checks still flag genuinely unsupported APIs.
 
-To compare the channels' versions the cache holds the full set (every channel ×
-both manifest versions), fetched together so their versions stay on one train.
-
 The options, grouped as in `--help`:
 
 **Cache:** the schema, the library-hash DB and the allowed-experiments list are each
 downloaded once and reused; the CDN lookup cache fills incrementally as a best-effort
-side-channel (it backs the optional `--cdn-lib-lookup`, so an offline run without it
-simply finds no match).
+side-channel.
 
 | Option | Description |
 | --- | --- |
@@ -66,19 +72,8 @@ simply finds no match).
 | `--cache-cdn-lookup-dir <dir>` | Where the jsDelivr CDN hash-lookup results are cached — best-effort, backing the optional `--cdn-lib-lookup` (default `.lib-cdn-lookup-cache`). |
 | `--cache-experiments-dir <dir>` | Where the fetched allowed-experiments zip (the Thunderbird Draft-API list feeding the Experiment checks, e.g. `experiment-modified`) is cached (default `.experiments-cache`). |
 
-The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `banned-library`) is curated by hand from Mozilla's [addons-linter third-party library docs](https://github.com/mozilla/addons-linter/blob/master/docs/third-party-libraries.md), since Mozilla ships no machine-readable list — monitor that page and update the file when the policy changes.
-
-**Offline / air-gapped runs:** the schema, the library-hash database, and the
-allowed-experiments list are the networked inputs a review *hard-requires* (an
-unavailable one is a fatal error), and each is cache-first. On a machine with network
-access, run the review once to populate those three cache directories, then copy them
-to the offline host and point `--cache-schema-dir` / `--cache-hash-db-dir` /
-`--cache-experiments-dir` at them; `--cache-clear` forces a fresh re-fetch of
-everything. The remaining network calls degrade gracefully offline, so their caches
-need not be copied: the jsDelivr CDN lookup finds no match (or disable it with
-`--cdn-lib-lookup false`), and an SCA dependency audit's OSV/registry queries fall
-back to manual review.
-(Pre-seeding the caches is exactly what the test suite does; see `tests/seed-caches.js`.)
+The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `banned-library`) is curated by hand from Mozilla's [addons-linter third-party library docs](https://github.com/mozilla/addons-linter/blob/master/docs/third-party-libraries.md), since Mozilla ships no machine-readable list; that page
+is monitored and upstream changes are ported manually.
 
 **Check selection:**
 
