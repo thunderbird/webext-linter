@@ -22,10 +22,15 @@
   "author": "John Bieling <john@thunderbird.net>",
   "type": "module",
   "main": "src/cli.js",
+  "bin": {
+    "webext-linter": "verify.js"
+  },
   "files": [
     "src",
     "verify.js",
     "assets/registry.yaml",
+    "assets/library-blocks.yaml",
+    "assets/schema-annotations",
     "README.md",
     "LICENSE"
   ],

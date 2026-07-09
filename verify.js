@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // Belongs here: the thin process entry point - call cli.main(argv), then exit
 // with its code (and exit 2 on a thrown failure).
 //
