@@ -34,7 +34,7 @@
 
 import { finding } from "../../report/finding.js";
 import { wrap } from "./untrusted.js";
-import { parseVersion, cmpVersion, strictMinVersion } from "./util.js";
+import { versionInBounds } from "./util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../registry.js").LoadedCheck} LoadedCheck */
@@ -174,37 +174,6 @@ function assemblePermissionPrompt(registry, manifest, permissions) {
     .filter(Boolean)
     .join("\n");
   return { prompt, grounded };
-}
-
-/**
- * Whether the add-on's strict_min_version falls within an INCLUSIVE [min, max]
- * Thunderbird version range (each bound optional), compared at the BOUND's own
- * precision - so a bound of "153" denotes the whole 153.* series: 153, 153.0 and
- * 153.9 all satisfy min "153" AND max "153". Adjacent major bounds therefore
- * partition the version line with no gap (the tabs variants pivot on min 154 / max
- * 153, meeting at the D308076 major boundary). An absent or unparsable
- * strict_min_version counts as oldest: it fails any min but satisfies any max.
- * @param {?object} manifest
- * @param {?string} min  Inclusive lower bound, or null.
- * @param {?string} max  Inclusive upper bound, or null.
- * @returns {boolean}
- */
-function versionInBounds(manifest, min, max) {
-  const v = parseVersion(strictMinVersion(manifest));
-  const minV = min ? parseVersion(min) : null;
-  const maxV = max ? parseVersion(max) : null;
-  // Truncate v to each bound's component count before comparing, so "153" covers
-  // every 153.* point release rather than only the exact "153". The min/max guards
-  // are deliberately asymmetric for an unparsable/absent v (which counts as oldest):
-  // min FAILS on a null v - the `!(v && ...)` makes a null v fall through to false;
-  // max SATISFIES on a null v - the leading `v &&` short-circuits it to pass.
-  if (minV && !(v && cmpVersion(v.slice(0, minV.length), minV) >= 0)) {
-    return false;
-  }
-  if (maxV && v && cmpVersion(v.slice(0, maxV.length), maxV) > 0) {
-    return false;
-  }
-  return true;
 }
 
 /**

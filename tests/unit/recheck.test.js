@@ -203,16 +203,18 @@ test("buildRecheckSections composes a labeled section per consumer", () => {
   };
   const ctx = {
     recheck: new Map([
-      ["unused-permission", [handed("tabs", 4), handed("storage", 5)]],
+      ["unused-permission-recheck", [handed("tabs", 4), handed("storage", 5)]],
     ]),
   };
   const { rubric, items } = buildRecheckSections(ctx, registry, "NONCE");
-  assert.ok(rubric.includes("recheck: unused-permission"));
-  assert.ok(rubric.includes("RUBRIC for unused-permission"));
-  assert.ok(rubric.includes('check="unused-permission"'));
+  assert.ok(rubric.includes("recheck: unused-permission-recheck"));
+  assert.ok(rubric.includes("RUBRIC for unused-permission-recheck"));
+  assert.ok(rubric.includes('check="unused-permission-recheck"'));
   // Item keys are in the wrapped, id-tagged user data, not the rubric.
   assert.ok(
-    items.includes('[[[BEGIN RECHECK-ITEMS NONCE id="unused-permission"]]]')
+    items.includes(
+      '[[[BEGIN RECHECK-ITEMS NONCE id="unused-permission-recheck"]]]'
+    )
   );
   assert.ok(items.includes("- tabs"));
   assert.ok(items.includes("- storage"));
@@ -288,17 +290,27 @@ test("buildRecheckSections skips a consumer with no summary-prompt", () => {
 });
 
 // ---- the runChecks divert ----
-// The unused-permission producer declares one manual item per unused permission.
-// When ctx.recheckActive, runChecks asks registry.rechecks(consumer, item) per item:
-// a permission the registry has a rubric prompt for goes to ctx.recheck (the LLM
-// re-judges it); one it has no prompt for (function-gated) stays manual. When
-// inactive, all stay in manual review and ctx.recheck is never created.
+// The unused-permission producer declares one manual item per unused permission
+// it could not decide deterministically. When ctx.recheckActive, runChecks asks
+// registry.rechecks(consumer, item) per item: a permission the registry has a
+// rubric prompt for goes to ctx.recheck (the LLM re-judges it); one it has no
+// prompt for (function-gated) stays manual. When inactive, all stay in manual
+// review and ctx.recheck is never created. The jsSource keeps the tabs tokens
+// PRESENT (a real tabs.query({url}) call), so tabs escalates rather than being
+// decided deterministically - the divert is what these tests exercise.
 const producerCtx = () => {
   const manifest = {
     manifest_version: 3,
     permissions: ["tabs", "storage"],
   };
   return {
+    jsSources: [
+      {
+        file: "bg.js",
+        code: 'browser.tabs.query({ url: "https://x/*" });',
+        lineOffset: 0,
+      },
+    ],
     addon: {
       manifest,
       files: new Map([
@@ -315,7 +327,7 @@ test("runChecks hands only permissions with a rubric prompt to the recheck; the 
   const registry = loadRegistry();
   const ctx = { ...producerCtx(), recheckActive: true };
   const out = await runChecks(withManifest(ctx), registry, {
-    only: ["unused-permission-manual"],
+    only: ["unused-permission"],
   });
   // "tabs" has a permission-prompt -> handed to the recheck consumer; "storage" has
   // none -> stays in manual review even though recheck is active.
@@ -324,7 +336,7 @@ test("runChecks hands only permissions with a rubric prompt to the recheck; the 
     ["storage"]
   );
   assert.deepEqual(
-    ctx.recheck.get("unused-permission").map((m) => m.item),
+    ctx.recheck.get("unused-permission-recheck").map((m) => m.item),
     ["tabs"]
   );
 });
@@ -333,7 +345,7 @@ test("runChecks leaves a producer's manual items in manual review when inactive"
   const registry = loadRegistry();
   const ctx = { ...producerCtx(), recheckActive: false };
   const out = await runChecks(withManifest(ctx), registry, {
-    only: ["unused-permission-manual"],
+    only: ["unused-permission"],
   });
   assert.deepEqual(out.manualItems.map((m) => m.item).sort(), [
     "storage",
@@ -346,21 +358,23 @@ test("runChecks leaves a producer's manual items in manual review when inactive"
 // only permissions it has a prompt for; any other consumer takes every item.
 test("registry.rechecks gates permission items by whether a prompt exists", () => {
   const registry = loadRegistry();
-  assert.equal(registry.rechecks("unused-permission", { item: "tabs" }), true);
   assert.equal(
-    registry.rechecks("unused-permission", { item: "storage" }),
+    registry.rechecks("unused-permission-recheck", { item: "tabs" }),
+    true
+  );
+  assert.equal(
+    registry.rechecks("unused-permission-recheck", { item: "storage" }),
     false
   );
   // unlimitedStorage now has a prompt (no longer hand-exempt) -> handed to the recheck.
   assert.equal(
-    registry.rechecks("unused-permission", { item: "unlimitedStorage" }),
+    registry.rechecks("unused-permission-recheck", {
+      item: "unlimitedStorage",
+    }),
     true
   );
   // A consumer without `permission-recheck` (here the producer entry) takes all items.
-  assert.equal(
-    registry.rechecks("unused-permission-manual", { item: "x" }),
-    true
-  );
+  assert.equal(registry.rechecks("unused-permission", { item: "x" }), true);
 });
 
 // The registry is the single source of truth for which permissions the recheck can
@@ -436,7 +450,7 @@ test("loadChecks rejects a post-summary-recheck that declares input", async () =
     "post-summary-rechecks": [
       {
         title: "X",
-        check: "unused-permission",
+        check: "unused-permission-recheck",
         input: "source",
         "permission-recheck": true,
       },
@@ -504,6 +518,76 @@ test("permissionPrompts coerces a numeric version bound to a string", () => {
   assert.strictEqual(reg.permissionPrompts()[0].minStrictVersion, "154");
 });
 
+// The optional `tokens` list (the code-level spellings of a prompt's justifying
+// usages) is surfaced per entry; an entry without tokens yields [] - the
+// producer's "deterministically undecidable" marker (unlimitedStorage: quota/
+// OPFS use is not token-detectable).
+test("permissionPrompts surfaces the optional usage tokens", () => {
+  const entries = loadRegistry().permissionPrompts();
+  const compose = entries.find((e) => e.permissions.includes("compose"));
+  assert.deepEqual(compose.tokens, [
+    "compose_scripts",
+    "executeScript",
+    "insertCSS",
+    "attachments",
+  ]);
+  const unlimited = entries.find((e) =>
+    e.permissions.includes("unlimitedStorage")
+  );
+  assert.deepEqual(unlimited.tokens, []);
+});
+
+// A producer declaring a post-summary-recheck gets its consumer's data attached
+// at load (check.recheck): the consumer's entry always, the permission-prompts
+// list (tokens included) only for a permission-recheck consumer - the producer's
+// source for deterministic verdicts. Consumers themselves carry none.
+test("loadChecks attaches the linked consumer's data to a producer", async () => {
+  const loaded = await loadChecks(loadRegistry());
+  const producer = loaded.find((c) => c.id === "unused-permission");
+  assert.equal(producer.postSummaryRecheck, "unused-permission-recheck");
+  assert.ok(producer.recheckData.permissionPrompts.length > 0);
+  // Deliberately narrow: the token entries only - no prompt prose, no consumer
+  // entry - so a producer has no window into its consumer's wording.
+  for (const e of producer.recheckData.permissionPrompts) {
+    assert.ok(!("prompt" in e), "prompt text must be stripped");
+    assert.ok(Array.isArray(e.tokens));
+  }
+  const files = loaded.find((c) => c.id === "unused-files");
+  assert.equal(files.recheckData, undefined); // static-rubric consumer
+  const consumer = loaded.find((c) => c.id === "unused-permission-recheck");
+  assert.equal(consumer.recheckData, undefined);
+});
+
+// Token hygiene: a stray empty/null YAML item must not become the token "null"
+// (String(null) is truthy), which would match almost any code and silently
+// disable the entry's deterministic verdict.
+test("permissionPrompts drops null/empty token items before stringifying", () => {
+  const reg = new Registry({
+    "permission-prompts": [
+      { permissions: "tabs", prompt: "tabs", tokens: [null, "", "query", 42] },
+    ],
+  });
+  assert.deepEqual(reg.permissionPrompts()[0].tokens, ["query", "42"]);
+});
+
+// Self-grounding guard: token matching (case-sensitive, word boundary) includes
+// the manifest's own permissions array, so a token that matches a minimal
+// manifest declaring ONLY the entry's own permissions would ground itself and
+// render the entry silently inert.
+test("no entry's token matches its own permission declaration", () => {
+  for (const e of loadRegistry().permissionPrompts()) {
+    const minimal = JSON.stringify({ permissions: e.permissions });
+    for (const t of e.tokens) {
+      assert.ok(
+        !new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(
+          minimal
+        ),
+        `token "${t}" self-grounds on ${JSON.stringify(e.permissions)}`
+      );
+    }
+  }
+});
+
 // ---- permission-recheck assembly (buildRecheckSections) ----
 // A permission-recheck consumer assembles its rubric per review from the framing +
 // the permission-prompts for exactly the permissions handed over, and picks the tabs
@@ -518,7 +602,7 @@ const permRubric = (perms, strictMin) => {
     manifest,
     recheck: new Map([
       [
-        "unused-permission",
+        "unused-permission-recheck",
         perms.map((p) => ({ item: p, file: "manifest.json" })),
       ],
     ]),
@@ -623,7 +707,11 @@ test("assembly yields no rubric for a permission with no prompt (it falls to man
 test("assembly drops a handed permission no version-matching prompt grounds", () => {
   const reg = new Registry({
     "deterministic-checks": [
-      { title: "U", check: "unused-permission", "permission-recheck": true },
+      {
+        title: "U",
+        check: "unused-permission-recheck",
+        "permission-recheck": true,
+      },
     ],
     "permission-prompt-framing": { preamble: "PRE.", closing: "CLOSE." },
     "permission-prompts": [
@@ -645,7 +733,7 @@ test("assembly drops a handed permission no version-matching prompt grounds", ()
     },
     recheck: new Map([
       [
-        "unused-permission",
+        "unused-permission-recheck",
         [
           { item: "future", file: "manifest.json" },
           { item: "tabs", file: "manifest.json" },
@@ -659,7 +747,7 @@ test("assembly drops a handed permission no version-matching prompt grounds", ()
   assert.doesNotMatch(rubric, /FUTURE/);
   // ...and the dropped permission is not lost: the model never saw it (not in items),
   // so it has no verdict and resolveRecheck routes it to manual review.
-  const resolved = resolveRecheck(ctx, { id: "unused-permission" });
+  const resolved = resolveRecheck(ctx, { id: "unused-permission-recheck" });
   assert.ok(
     resolved.escalations.some((e) => e.item === "future"),
     "the dropped permission must fall to manual review"

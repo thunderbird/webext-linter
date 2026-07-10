@@ -1,26 +1,29 @@
-// The post-summary recheck consumer for declared permissions. The producer
-// (unused-permission-manual) hands over every declared named permission a reachable
-// API call does not provably require; the divert (registry.rechecks) keeps only the
-// ones the registry has a rubric prompt for and the rest stay manual. When
-// --llm-review runs, the kept items are appended to the add-on summary under a
-// rubric the assembler builds from the permission-prompt-framing + permission-prompts
-// sections (choosing the tabs variant by the add-on's strict_min_version). The model
-// returns a verdict per permission, and this check maps each: pass -> justified
-// (drop), fail -> a warning finding ("{{item}} appears unused"), unsure or no verdict
-// -> manual review. The model's per-permission reason rides along as data.reason.
+// Producer of the declared permissions that warrant a closer look: every named
+// permission a reachable API call does not provably require. A permission whose
+// linked recheck data (check.recheckData.permissionPrompts) declares usage `tokens`
+// that appear nowhere in the add-on's live code (comments excluded) or manifest
+// is deterministically unused - a warning finding, with or without --llm-review
+// (the deterministic path stands down when the scan is blind - see
+// enumerateUnusedPermissions). Every other such permission is scheduled as a
+// manual-review escalation; when --llm-review
+// is on, the orchestrator hands the ones the registry has a rubric prompt for to
+// the `unused-permission-recheck` consumer to be re-judged with whole-add-on
+// context, and the rest stay manual (the divert applies registry.rechecks - see
+// src/checks/registry.js and src/checks/lib/recheck.js).
 //
-// It makes no decision of its own: the mapping is the shared resolveRecheck
-// (src/checks/lib/recheck.js), driven by ctx.recheck (the handed-over items) and
-// ctx.recheckVerdicts (the summary's verdicts). It runs in the post-summary phase
-// because it is named as unused-permission-manual's post-summary-recheck target
-// (the orchestrator infers the phase from that reference). With no summary nothing
-// is handed over, so it emits nothing and the producer's reminder stands.
+// Version handling (D308076: before Thunderbird 154, filtering a tabs.query by
+// url/title needs "tabs" even for the add-on's own pages) lives in the registry,
+// not here: the version-bounded "tabs" permission-prompts entries in
+// assets/registry.yaml, selected by the add-on's strict_min_version (the recheck
+// assembler and the token matcher share versionInBounds). So this one producer
+// serves every add-on regardless of version.
 //
-// Belongs here: only the delegation. Does NOT belong here: enumerating the
-// permissions (-> unused-permission-manual), the wording (-> assets/registry.yaml),
-// or the verdict mapping (-> src/checks/lib/recheck.js).
+// Belongs here: only the wiring. The enumeration, token matching and
+// deterministic verdicts are enumerateUnusedPermissions
+// (src/checks/lib/permissions.js); the tokens and wording are
+// assets/registry.yaml; re-judging is the consumer via src/checks/lib/recheck.js.
 
-import { resolveRecheck } from "../lib/recheck.js";
+import { enumerateUnusedPermissions } from "../lib/permissions.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../registry.js").LoadedCheck} LoadedCheck */
@@ -29,9 +32,10 @@ export default {
   /**
    * @param {RunContext} ctx
    * @param {LoadedCheck} check
-   * @returns {{findings: object[], escalations: object[]}}
+   * @returns {{findings: {item: string, file: string, loc: ?object}[],
+   *   escalations: {item: string, file: string, loc: ?object}[]}}
    */
   run(ctx, check) {
-    return resolveRecheck(ctx, check);
+    return enumerateUnusedPermissions(ctx, check?.recheckData);
   },
 };

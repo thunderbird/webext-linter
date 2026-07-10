@@ -205,15 +205,15 @@ test("renderManualItems fills a data slot from the ref's data", () => {
   assert.ok(!item.instructions.includes("{{reason}}"));
 });
 
-// The unused-permission recheck consumer deliberately renders item-free and
+// The unused-permission-recheck recheck consumer deliberately renders item-free and
 // reason-free on BOTH verdict paths, so its entries collapse like the producer's
 // manual reminder: fail findings share one identical message (groupByMessage
 // merges them into a single numbered entry) and the permissions surface on the
 // locus lines via listItem; the model's reason never reaches the report body.
-test("unused-permission findings share one reason-free message and collapse", () => {
+test("unused-permission-recheck findings share one reason-free message and collapse", () => {
   const findings = [
     {
-      ruleId: "unused-permission",
+      ruleId: "unused-permission-recheck",
       item: "compose",
       file: "manifest.json",
       loc: { line: 17 },
@@ -221,7 +221,7 @@ test("unused-permission findings share one reason-free message and collapse", ()
       data: { reason: "no compose-tab injection found" },
     },
     {
-      ruleId: "unused-permission",
+      ruleId: "unused-permission-recheck",
       item: "tabs",
       file: "manifest.json",
       loc: { line: 25 },
@@ -239,11 +239,11 @@ test("unused-permission findings share one reason-free message and collapse", ()
   assert.ok(!findings[0].message.includes("{{"));
 });
 
-test("an unsure unused-permission ref renders reason-free and item-listed", () => {
+test("an unsure unused-permission-recheck ref renders reason-free and item-listed", () => {
   const [m] = renderManualItems(
     [
       {
-        ruleId: "unused-permission",
+        ruleId: "unused-permission-recheck",
         item: "tabs",
         file: "manifest.json",
         loc: { line: 25 },
@@ -259,13 +259,13 @@ test("an unsure unused-permission ref renders reason-free and item-listed", () =
   assert.ok(!m.instructions.includes("{{"));
 });
 
-// A manual ref whose instructions are item-free (e.g. unused-permission-manual)
+// A manual ref whose instructions are item-free (e.g. unused-permission)
 // carries listItem=true + its locus, so the report lists "file:line - item".
 test("renderManualItems sets listItem + locus for an item-free instructions ref", () => {
   const [m] = renderManualItems(
     [
       {
-        ruleId: "unused-permission-manual",
+        ruleId: "unused-permission",
         item: "tabs",
         file: "manifest.json",
         loc: { line: 3 },

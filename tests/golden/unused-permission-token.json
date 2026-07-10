@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/unknown-api",
+    "addon": "<root>/tests/addons/unused-permission-token",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
@@ -91,37 +91,24 @@
     ]
   },
   "summary": {
-    "error": 2,
-    "warning": 0,
+    "error": 0,
+    "warning": 1,
     "info": 0,
     "byRule": {
-      "unknown-api": 2
+      "unused-permission": 1
     }
   },
   "findings": [
     {
-      "ruleId": "unknown-api",
-      "severity": "error",
-      "file": "background.js",
+      "ruleId": "unused-permission",
+      "severity": "warning",
+      "file": "manifest.json",
       "loc": {
-        "line": 3,
-        "column": 8
+        "line": 6
       },
-      "item": "browser.contextMenus",
+      "item": "compose",
       "hint": null,
-      "message": "The following WebExtension APIs are not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
-    },
-    {
-      "ruleId": "unknown-api",
-      "severity": "error",
-      "file": "background.js",
-      "loc": {
-        "line": 5,
-        "column": 8
-      },
-      "item": "browser.messages.frobnicate",
-      "hint": null,
-      "message": "The following WebExtension APIs are not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it."
     }
   ]
 }

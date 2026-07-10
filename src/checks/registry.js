@@ -121,6 +121,11 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {string} [postSummaryRecheck]  Id of a post-summary recheck consumer
  *   this check hands its manual items to when the add-on summary runs (see
  *   runChecks and src/checks/lib/recheck.js).
+ * @property {?{permissionPrompts: object[]}} [recheckData]
+ *   The linked consumer's data for a producer that declares postSummaryRecheck:
+ *   for a permission-recheck consumer, the permission-prompts token entries
+ *   ({permissions, tokens, version bounds} - prompt text stripped) that feed the
+ *   producer's deterministic verdicts (see recheckDataFor).
  * @property {Function} run
  */
 
@@ -399,10 +404,13 @@ export class Registry {
 
   /**
    * The per-permission-group recheck prompts (top-level `permission-prompts` list),
-   * with the comma-separated `permissions` parsed to an array and the optional
-   * inclusive Thunderbird version bounds surfaced.
-   * @returns {{permissions: string[], prompt: string, minStrictVersion: ?string,
-   *   maxStrictVersion: ?string}[]}
+   * with the comma-separated `permissions` parsed to an array, the optional
+   * inclusive Thunderbird version bounds surfaced, and the optional usage `tokens`
+   * (code-level spellings of the prompt's justifying usages; an entry without
+   * tokens is deterministically undecidable - the unused-permission producer then
+   * always escalates its permissions).
+   * @returns {{permissions: string[], prompt: string, tokens: string[],
+   *   minStrictVersion: ?string, maxStrictVersion: ?string}[]}
    */
   permissionPrompts() {
     return (this.doc["permission-prompts"] || [])
@@ -413,6 +421,12 @@ export class Registry {
           .map((p) => p.trim())
           .filter(Boolean),
         prompt: e.prompt,
+        // Filter BEFORE stringifying: String(null) is the truthy "null", which
+        // would match almost any code and silently disable the entry's
+        // deterministic verdict.
+        tokens: Array.isArray(e.tokens)
+          ? e.tokens.filter((t) => t != null && t !== "").map((t) => String(t))
+          : [],
         // Coerce to string so an unquoted numeric bound (min_strict_version: 154)
         // still parses - a bare YAML number would otherwise slip past parseVersion
         // and silently void the bound (see versionInBounds).
@@ -639,10 +653,47 @@ export async function loadChecks(registry, { only, skip } = {}) {
         typeof entry["post-summary-recheck"] === "string"
           ? entry["post-summary-recheck"]
           : undefined,
+      // A producer's window into its linked consumer's data - for a
+      // permission-recheck consumer, the permission-prompts token entries, so
+      // the producer renders deterministic verdicts from the same data that
+      // grounds the LLM recheck. Generic by name (a future producer/consumer
+      // pair may attach a different shape here); the producer version-filters
+      // at run time (versionInBounds) with the reviewed manifest.
+      recheckData: recheckDataFor(registry, entry),
       run,
     });
   }
   return checks;
+}
+
+/**
+ * The linked post-summary-recheck consumer's data for a producer entry, or
+ * undefined when the entry declares none. Deliberately narrow: only what a
+ * producer's deterministic verdicts need (the token entries, prompt text
+ * stripped - wording stays the report layer's business), so a check has no
+ * window into its consumer's prose or severity.
+ * @param {Registry} registry
+ * @param {object} entry  The producer's registry entry.
+ * @returns {?{permissionPrompts: object[]}}
+ */
+function recheckDataFor(registry, entry) {
+  const target = entry["post-summary-recheck"];
+  if (typeof target !== "string" || !target) {
+    return undefined;
+  }
+  if (!registry.checkEntry(target)?.["permission-recheck"]) {
+    return undefined; // a static-rubric consumer feeds no producer data
+  }
+  return {
+    permissionPrompts: registry
+      .permissionPrompts()
+      .map(({ permissions, tokens, minStrictVersion, maxStrictVersion }) => ({
+        permissions,
+        tokens,
+        minStrictVersion,
+        maxStrictVersion,
+      })),
+  };
 }
 
 // The verdicts a deterministic check may narrate to the feed via ctx.note:
@@ -887,8 +938,8 @@ export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
  * Run one loaded check and return its findings + manual refs, stamping each
  * finding with the check's id and severity. This is the per-check body of
  * runChecks, extracted so a check can also be run on its own (the
- * unused-permission check runs after the add-on summary, outside the loop - see
- * src/pipeline.js). Identical behavior either way: an LLM check's candidates go
+ * unused-permission-recheck consumer runs after the add-on summary, outside the
+ * loop - see src/pipeline.js). Identical behavior either way: an LLM check's candidates go
  * through escalation.js, a deterministic check's escalations route to manual
  * review, and a thrown check becomes a single "check-failed" finding so the rest
  * still run.

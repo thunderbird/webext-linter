@@ -60,6 +60,8 @@ import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
  * @property {object} [asyncOnMessage]  scanAsyncOnMessage (async-onmessage) - authored.
  * @property {Set<string>} [webApiPerms]  scanWebApiCalls grounded permissions
  *   (against ALL web_api signatures; the consumer intersects with declared) - authored.
+ * @property {string} [codeText]  scanCodeText comment-free code-text atoms, joined,
+ *   for the unused-permission token-presence test - authored (non-authored raw).
  */
 
 /**

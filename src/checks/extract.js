@@ -36,6 +36,7 @@ import { scanWebApiCalls, webApiSignatures } from "../parse/web-api-calls.js";
 import { scanLocalImports } from "../parse/local-imports.js";
 import { scanLoaderRefs } from "../parse/loader-files.js";
 import { scanExperimentInjectedRefs } from "../parse/core-loaders.js";
+import { scanCodeText } from "../parse/code-tokens.js";
 import { firstModuleSyntax } from "./lib/module-syntax.js";
 
 /** @typedef {import("../addon/sources.js").JsSource} JsSource */
@@ -119,6 +120,11 @@ export function runExtractionPass(
         parsed
       );
       extracted.webApiPerms = scanWebApiCalls(src.code, webApiSigs, parsed);
+      // The code-text atoms (identifiers/strings/templates, comments excluded)
+      // for a textual token-presence test - the unused-permission scan. Authored
+      // only: a non-authored bundle is searched raw (see permissions.js), where
+      // including comments only pushes toward escalation, the safe direction.
+      extracted.codeText = scanCodeText(src.code, parsed).text;
     }
     src.extracted = extracted;
     // The AST (`parsed`) goes out of scope with this iteration; src.extracted holds
@@ -205,3 +211,10 @@ export const moduleSyntaxOf = (src) => {
   const { ast } = parseJs(src.code, parseHint(src));
   return ast ? firstModuleSyntax(ast, src.lineOffset) : null;
 };
+/** @param {JsSource} src  The text a token-presence test should search: the
+ *   comment-free code-text atoms for an AUTHORED source (precomputed), or the raw
+ *   source for a non-authored bundle / a source the pass never ran on. It does
+ *   NOT re-parse for the raw case - a token in a non-authored comment can only
+ *   push toward escalation (the safe direction), not worth an extra parse of a
+ *   possibly multi-MB bundle. */
+export const codeTextOf = (src) => src.extracted?.codeText ?? src.code;

@@ -82,7 +82,7 @@ test("coerceReview normalizes the report_addon_review input", () => {
       summary: "S",
       recheck: [
         {
-          check: "unused-permission",
+          check: "unused-permission-recheck",
           item: "tabs",
           verdict: "fail",
           reason: "r",
@@ -93,7 +93,7 @@ test("coerceReview normalizes the report_addon_review input", () => {
       summary: "S",
       recheck: [
         {
-          check: "unused-permission",
+          check: "unused-permission-recheck",
           item: "tabs",
           verdict: "fail",
           reason: "r",

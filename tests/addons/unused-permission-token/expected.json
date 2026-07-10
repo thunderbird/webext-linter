@@ -1,0 +1,6 @@
+{
+  "_comment": "compose is ungrounded and its usage tokens (compose_scripts, executeScript, insertCSS) appear nowhere in the LIVE code or manifest - the executeScript/insertCSS mentions in bg.js sit in comments, which the token scan blanks - so the producer reports it deterministically unused. messagesRead and accountsRead are used via messages.list.",
+  "expect": {
+    "unused-permission": ["manifest.json:6"]
+  }
+}

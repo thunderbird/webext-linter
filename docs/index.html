@@ -48,7 +48,7 @@
         { id: "async-onmessage", group: "Deterministic checks", title: "Async listener in runtime.onMessage()", severity: "warning" },
         { id: "code-sanity", group: "Deterministic checks", title: "JavaScript code errors", severity: "info" },
         { id: "minimize-host-permissions", group: "Deterministic checks", title: "Minimize host permissions", severity: "info" },
-        { id: "unused-permission-manual", group: "Deterministic checks", title: "Possibly unused permissions", severity: "manual" },
+        { id: "unused-permission", group: "Deterministic checks", title: "Possibly unused permissions", severity: "warning" },
         { id: "missing-library", group: "Deterministic checks", title: "Missing third-party library reference", severity: "info" },
         { id: "find-lib-on-cdn", group: "Deterministic checks", title: "Library identified on a CDN", severity: "info" },
         { id: "minified-code", group: "Deterministic checks", title: "Minified code cannot be reviewed", severity: "error" },
@@ -113,7 +113,7 @@
         { id: "data-exfiltration", group: "LLM checks", title: "User-data exfiltration", severity: "error" },
         { id: "disguised-transmission", group: "LLM checks", title: "Disguised data transmission", severity: "error" },
         // Post-summary rechecks (recheck consumers, re-judged by the --llm-review summary)
-        { id: "unused-permission", group: "Post-summary rechecks", title: "Unused permission", severity: "warning" },
+        { id: "unused-permission-recheck", group: "Post-summary rechecks", title: "Unused permission", severity: "warning" },
         { id: "missing-english-localization-recheck", group: "Post-summary rechecks", title: "Missing English localization", severity: "warning" },
         { id: "unused-files-recheck", group: "Post-summary rechecks", title: "Unused, hidden or duplicate files or folders", severity: "error" },
         { id: "minimize-web-accessible-resources-recheck", group: "Post-summary rechecks", title: "Minimize web_accessible_resources", severity: "warning" },

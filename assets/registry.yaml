@@ -193,14 +193,21 @@ deterministic-checks:
 
 # Producer of the declared permissions worth a closer look: every declared NAMED
 # permission a reachable API call does not provably require (host patterns are
-# Minimize host permissions' concern). Runs in the main loop and schedules each as
-# a manual-review case; same-bodied cases auto-group into the one reminder here.
-# When --llm-review runs, it hands them to its Unused permission recheck consumer
-# (post-summary-recheck) instead, to be re-judged against the whole add-on.
+# Minimize host permissions' concern). Runs in the main loop. A permission whose
+# prompt entries (see permission-prompts) declare usage `tokens` that appear
+# NOWHERE in the add-on's live code (comments excluded) or manifest is
+# deterministically unused - a warning finding, with or without --llm-review
+# (the deterministic path stands down when the scan is blind: an SCA review or
+# unresolved dynamic API surface). Every other case is scheduled as a
+# manual-review escalation; same-bodied cases auto-group into the one reminder
+# here. When --llm-review runs, the escalations are handed to the Unused
+# permission recheck consumer (post-summary-recheck) instead, to be re-judged
+# against the whole add-on.
 - title: Possibly unused permissions
-  check: unused-permission-manual
+  severity: warning
+  check: unused-permission
   input: source
-  post-summary-recheck: unused-permission
+  post-summary-recheck: unused-permission-recheck
   response: |-
     One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
   instructions: |-
@@ -854,6 +861,24 @@ deterministic-checks:
 # `permissions`
 # list must appear in that entry's `prompt` (a test enforces this - an ungrounded
 # permission just reintroduces guessing).
+# An entry may declare `tokens`: the code-level spellings (API property names,
+# manifest keys, literal strings) of every usage its prompt names as justifying.
+# The unused-permission producer scans the add-on's live code (comments excluded)
+# and manifest for them: a permission whose version-matched entries declare tokens
+# and whose tokens ALL appear nowhere is deterministically unused - a warning
+# finding without any model involvement. An entry WITHOUT tokens (unlimitedStorage:
+# quota/OPFS use is not token-detectable) is deterministically undecidable and its
+# permissions always escalate.
+# Token matching is CASE-SENSITIVE and on WORD BOUNDARIES (\btoken\b) over each
+# source's code atoms and the manifest serialized as JSON (key names and values,
+# including the permissions array itself - a test enforces that no token matches
+# its own entry's permission declaration, or the declaration would self-ground and
+# the entry would be silently inert). A token must therefore be a whole
+# identifier / key / string word: `folder` matches a bare `.folder` read but not
+# `displayedFolder`, so EVERY justifying spelling the schema gates on the
+# permission - including each camelCase gated PROPERTY name - is listed
+# explicitly. A missed spelling turns a used permission into a false "unused"
+# finding, while an extra spelling merely widens escalation, so list generously.
 permission-prompt-framing:
   preamble: |-
     Each listed item is a permission this add-on declares in its manifest that
@@ -873,6 +898,24 @@ permission-prompt-framing:
 
 permission-prompts:
   - permissions: accountsRead
+    # Every name the schema gates on accountsRead, listed explicitly: tokens match
+    # on word boundaries, so a broad `folder` would NOT catch the camelCase
+    # spellings (additionalFccFolder, displayedFolder, ...). Derived from the
+    # schema's <permission>accountsRead</permission> property/parameter annotations.
+    tokens:
+      - folder
+      - folderId
+      - additionalFccFolder
+      - additionalFccFolderId
+      - displayedFolder
+      - displayedFolderId
+      - selectedFolder
+      - selectedFolders
+      - overrideDefaultFcc
+      - overrideDefaultFccFolder
+      - overrideDefaultFccFolderId
+      - identityId
+      - selectedAccount
     prompt: |-
       "accountsRead" is justified by reading, setting, or filtering by a folder or
       account identity: a message header's folder; a composed message's identityId,
@@ -881,21 +924,35 @@ permission-prompts:
       displayedFolder or selectedFolders a menus context click or show reports; or
       limiting messages.query to a folder with folderId.
   - permissions: management
+    tokens:
+      - extensionId
     prompt: |-
       "management" is justified by reading the extensionId of a space, or filtering
       spaces.query by extensionId.
   - permissions: messagesRead
+    # `attachments` covers the messagesRead-gated attachments property a menus
+    # OnClickData/OnShowData reports.
+    tokens:
+      - relatedMessageId
+      - onAfterSend
+      - onAfterSave
+      - selectedMessages
+      - attachments
     prompt: |-
       "messagesRead" is justified by reading a composed message's relatedMessageId
       (the original message of a reply, forward, draft or template), the message
       copies passed to compose.onAfterSend or onAfterSave, or the selectedMessages
       a menus context click reports.
   - permissions: cookies
+    tokens:
+      - cookieStoreId
     prompt: |-
       "cookies" is justified by opening a tab or window in a specific container by
       passing cookieStoreId to tabs.create, windows.create, spaces.create or
       spaces.update (reading cookieStoreId needs no permission).
   - permissions: webRequestBlocking
+    tokens:
+      - blocking
     # The example event `onAfterSendHeaders` below is DELIBERATELY fictional (real ones are
     # onBeforeSendHeaders / onSendHeaders / onBeforeRequest / ...): it forces the model to
     # match the PATTERN (a webRequest.on* addListener with "blocking" in an array arg) and
@@ -916,6 +973,13 @@ permission-prompts:
       fail only when the add-on performs no persistent storage at all.
   - permissions: tabs, activeTab
     min_strict_version: "154"
+    tokens:
+      - query
+      - url
+      - title
+      - favIconUrl
+      - overrideContext
+      - onUpdated
     prompt: |-
       The tabs methods (tabs.query, tabs.create, tabs.update, tabs.remove, tabs.sendMessage,
       the tabs events) need NO permission by themselves. Reading a tab's privileged url,
@@ -930,6 +994,13 @@ permission-prompts:
       A broad host permission like "<all_urls>" usually makes "tabs" redundant for reads.
   - permissions: tabs, activeTab
     max_strict_version: "153"
+    tokens:
+      - query
+      - url
+      - title
+      - favIconUrl
+      - overrideContext
+      - onUpdated
     prompt: |-
       The tabs methods (tabs.query, tabs.create, tabs.update, tabs.remove, tabs.sendMessage,
       the tabs events) need NO permission by themselves. Reading a tab's privileged url
@@ -942,12 +1013,22 @@ permission-prompts:
       by a urls filter on tabs.onUpdated.
       A broad host permission like "<all_urls>" usually makes "tabs" redundant for reads.
   - permissions: activeTab
+    tokens:
+      - executeScript
+      - insertCSS
     prompt: |-
       The "activeTab" permission is justified, if a script or CSS is injected into an active
       CONTENT tab (a web page) by ANY of the following methods: tabs.executeScript, tabs.insertCSS,
       scripting.executeScript or scripting.insertCSS. A host permission matching the tab's url
       (e.g. "<all_urls>") is the alternative and makes "activeTab" redundant.
   - permissions: compose
+    # `attachments` covers the compose-gated attachments property a menus
+    # OnClickData/OnShowData reports.
+    tokens:
+      - compose_scripts
+      - executeScript
+      - insertCSS
+      - attachments
     prompt: |-
       The "compose" permission is REQUIRED, if a script or CSS is injected into a
       COMPOSE tab by ANY of the following methods: the compose_scripts manifest key,
@@ -955,6 +1036,10 @@ permission-prompts:
       Note: The static "compose_scripts" manifest key requires the "compose" permission, do not
       ignore this instruction.
   - permissions: messagesModify
+    tokens:
+      - message_display_scripts
+      - executeScript
+      - insertCSS
     prompt: |-
       The "messagesModify" permission is REQUIRED, if a script or CSS is injected into a
       MESSAGE-DISPLAY tab by ANY of the following methods: the message_display_scripts manifest
@@ -962,6 +1047,10 @@ permission-prompts:
       Note: The static "message_display_scripts" manifest key requires the "messagesModify"
       permission, do not ignore this instruction.
   - permissions: scripting
+    tokens:
+      - message_display_scripts
+      - executeScript
+      - insertCSS
     prompt: |-
       In an MV3 add-on, the "scripting" permission is REQUIRED, if a script or CSS is
       injected into a MESSAGE-DISPLAY tab by ANY of the following methods: the
@@ -1194,7 +1283,7 @@ post-summary-rechecks:
 # model's per-permission reasons appear only in the AI summary bullets.
 - title: Unused permission
   severity: warning
-  check: unused-permission
+  check: unused-permission-recheck
   permission-recheck: true
   response: |-
     One or more declared permissions are unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If a permission is in fact used, please specify which part of your add-on stops working if it is removed.

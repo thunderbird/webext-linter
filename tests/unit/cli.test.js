@@ -210,16 +210,16 @@ test("--eslint gates the code-sanity check", () => {
   assert.ok(on.meta.checksRun.includes("code-sanity")); // --eslint: runs
 });
 
-// The two unused-permission checks always run (after the add-on summary) and read
+// The two unused-permission-recheck checks always run (after the add-on summary) and read
 // the checks memory, so both are in checksRun even in a plain (no-LLM) review:
-// `unused-permission` evaluates a produced list, `unused-permission-manual` raises
+// `unused-permission-recheck` evaluates a produced list, `unused-permission` raises
 // the by-hand reminder when none was produced.
-test("both unused-permission checks always run", () => {
+test("both unused-permission-recheck checks always run", () => {
   const addon = path.join(ROOT, "tests", "addons", "all-checks");
   const base = [addon, ...OFFLINE_FLAGS, "--report-format", "json"];
   const off = JSON.parse(run(base).stdout);
+  assert.ok(off.meta.checksRun.includes("unused-permission-recheck"));
   assert.ok(off.meta.checksRun.includes("unused-permission"));
-  assert.ok(off.meta.checksRun.includes("unused-permission-manual"));
 });
 
 // JSON is a machine contract: stdout is the document, stderr is silent - even

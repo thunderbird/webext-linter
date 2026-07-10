@@ -49,8 +49,8 @@ import defaultLocaleUnused from "../../src/checks/rules/default-locale-unused.js
 import addonIconMissing from "../../src/checks/rules/addon-icon-missing.js";
 import unrecognizedManifestKey from "../../src/checks/rules/unrecognized-manifest-key.js";
 import backgroundModule from "../../src/checks/rules/background-module.js";
-import unusedPermission from "../../src/checks/rules/unused-permission.js";
-import unusedPermissionManual from "../../src/checks/rules/unused-permission-manual.js";
+import unusedPermissionRecheck from "../../src/checks/rules/unused-permission-recheck.js";
+import unusedPermissionProducer from "../../src/checks/rules/unused-permission.js";
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
 import { parseApiUsage } from "../../src/parse/api-usage.js";
 import { getPermissionAnalysis } from "../../src/checks/lib/permissions.js";
@@ -71,6 +71,7 @@ import strictMinVersionApi from "../../src/checks/rules/strict-min-version-api.j
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex, SchemaIndex } from "../../src/schema/index.js";
 import { collectJsSources } from "../../src/addon/sources.js";
+import { runExtractionPass } from "../../src/checks/extract.js";
 import { parseVendorManifest } from "../../src/normalize/vendor.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -845,7 +846,7 @@ test("recheckConsumersByCorpus partitions consumers by their producer's input", 
   // source-anchored (producer input: source)
   assert.ok(source.has("data-exfiltration-recheck"));
   assert.ok(source.has("disguised-transmission-recheck"));
-  assert.ok(source.has("unused-permission"));
+  assert.ok(source.has("unused-permission-recheck"));
   // XPI-anchored (producer input: xpi)
   assert.ok(xpi.has("unused-files-recheck"));
   assert.ok(xpi.has("minimize-web-accessible-resources-recheck"));
@@ -1087,13 +1088,13 @@ test("manual checks have unique, doc-backed check ids distinct from rule ids", (
   assert.ok(manualTitles.length > 0);
 });
 
-// ---- unused-permission-manual (producer of permissions to vet) ----
+// ---- unused-permission (producer of permissions to vet) ----
 // It always enumerates the declared NAMED permissions a reachable API call does
 // not provably require, one escalation each (anchored to the manifest line); host
 // match patterns are skipped. When --llm-review runs the orchestrator hands
-// these to the unused-permission recheck consumer; otherwise they auto-group into
+// these to the unused-permission-recheck recheck consumer; otherwise they auto-group into
 // the by-hand reminder.
-test("unused-permission-manual lists the unprovable declared named permissions", () => {
+test("unused-permission lists the unprovable declared named permissions", () => {
   const manifest = {
     permissions: ["tabs", "https://example.com/*"],
     optional_permissions: ["storage"],
@@ -1112,7 +1113,7 @@ test("unused-permission-manual lists the unprovable declared named permissions",
     // still escalated for the reviewer (the host match pattern is skipped).
     apiUsages: [],
   };
-  const out = unusedPermissionManual.run(withManifest(ctx));
+  const out = unusedPermissionProducer.run(withManifest(ctx));
   assert.equal(out.findings.length, 0);
   assert.deepEqual(out.escalations.map((e) => e.item).sort(), [
     "storage",
@@ -1121,11 +1122,297 @@ test("unused-permission-manual lists the unprovable declared named permissions",
   assert.ok(out.escalations.every((e) => e.file === "manifest.json"));
 });
 
+// The producer's deterministic verdict: a permission whose linked prompt entries
+// (check.recheck.permissionPrompts) declare usage tokens that appear nowhere in
+// the LIVE code (comments excluded) or manifest is unused - a finding, never an
+// escalation. Everything the tokens cannot decide keeps escalating: a found
+// token, an entry without tokens (unlimitedStorage), or no entry at all.
+// Shaped exactly like production LoadedCheck.recheckData (recheckDataFor):
+// token entries only, no consumer entry or prose.
+const PERMISSION_TOKEN_RECHECK = {
+  permissionPrompts: [
+    {
+      permissions: ["compose"],
+      tokens: ["compose_scripts", "executeScript", "insertCSS"],
+      minStrictVersion: null,
+      maxStrictVersion: null,
+    },
+    {
+      permissions: ["cookies"],
+      tokens: ["cookieStoreId"],
+      minStrictVersion: null,
+      maxStrictVersion: null,
+    },
+    {
+      permissions: ["unlimitedStorage"],
+      tokens: [],
+      minStrictVersion: null,
+      maxStrictVersion: null,
+    },
+  ],
+};
+
+test("unused-permission decides token-absent permissions deterministically", () => {
+  const manifest = {
+    manifest_version: 2,
+    permissions: ["compose", "cookies", "storage", "unlimitedStorage"],
+    background: { scripts: ["bg.js"] },
+  };
+  // The only executeScript mention is a comment - it must not ground "compose";
+  // the cookieStoreId in live code grounds "cookies". Extraction populates
+  // codeText (the comment-free atoms) on the authored source, as in production.
+  const code = [
+    "// tabs.executeScript(1, { file: 'x.js' }) would need a permission",
+    "browser.tabs.create({ url: 'a.html', cookieStoreId: store });",
+  ].join("\n");
+  const jsSources = [{ file: "bg.js", code, lineOffset: 0 }];
+  runExtractionPass(jsSources, { schema });
+  const ctx = {
+    schema,
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+        ["bg.js", Buffer.from(code)],
+      ]),
+    },
+    jsSources,
+    apiUsages: [],
+  };
+  const out = unusedPermissionProducer.run(withManifest(ctx), {
+    recheckData: PERMISSION_TOKEN_RECHECK,
+  });
+  assert.deepEqual(
+    out.findings.map((f) => f.item),
+    ["compose"]
+  );
+  assert.deepEqual(out.escalations.map((e) => e.item).sort(), [
+    "cookies",
+    "storage",
+    "unlimitedStorage",
+  ]);
+});
+
+// A manifest-key token (compose_scripts) grounds from the manifest itself - the
+// permission then escalates for the semantic judgment instead of being declared
+// unused.
+test("unused-permission grounds a manifest-key token from the manifest", () => {
+  const manifest = {
+    manifest_version: 2,
+    permissions: ["compose"],
+    compose_scripts: [{ js: ["c.js"] }],
+  };
+  const ctx = {
+    schema,
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+      ]),
+    },
+    apiUsages: [],
+  };
+  const out = unusedPermissionProducer.run(withManifest(ctx), {
+    recheckData: PERMISSION_TOKEN_RECHECK,
+  });
+  assert.equal(out.findings.length, 0);
+  assert.deepEqual(
+    out.escalations.map((e) => e.item),
+    ["compose"]
+  );
+});
+
+// The deterministic path disables itself whenever the scan cannot see every
+// usage: unresolved API surface (apiUsage limitations / dynamic member tails
+// could spell a gated call without its token) and SCA mode (build-time
+// dependencies are invisible in the source corpus). Everything escalates then.
+test("unused-permission escalates instead of deciding when the scan is blind", () => {
+  const manifest = {
+    manifest_version: 2,
+    permissions: ["compose"],
+  };
+  const base = () => ({
+    schema,
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+      ]),
+    },
+    apiUsages: [],
+  });
+  // Decidable baseline: tokens absent -> finding.
+  const decided = unusedPermissionProducer.run(withManifest(base()), {
+    recheckData: PERMISSION_TOKEN_RECHECK,
+  });
+  assert.equal(decided.findings.length, 1);
+  // A dynamic member tail (browser.tabs[m]) -> blind -> escalate.
+  const dynamic = base();
+  dynamic.apiUsages = [
+    {
+      file: "bg.js",
+      usages: [{ segments: ["tabs"], dynamicTail: true, line: 1, column: 0 }],
+      limitations: [],
+    },
+  ];
+  const dyn = unusedPermissionProducer.run(withManifest(dynamic), {
+    recheckData: PERMISSION_TOKEN_RECHECK,
+  });
+  assert.equal(dyn.findings.length, 0);
+  assert.deepEqual(
+    dyn.escalations.map((e) => e.item),
+    ["compose"]
+  );
+  // An unresolved-alias limitation -> blind -> escalate.
+  const limited = base();
+  limited.apiUsages = [
+    {
+      file: "bg.js",
+      usages: [],
+      limitations: [{ line: 1, column: 0, reason: "aliased/destructured" }],
+    },
+  ];
+  assert.equal(
+    unusedPermissionProducer.run(withManifest(limited), {
+      recheckData: PERMISSION_TOKEN_RECHECK,
+    }).findings.length,
+    0
+  );
+  // SCA mode -> the source corpus cannot prove the shipped add-on -> escalate.
+  const sca = base();
+  sca.mode = "sca";
+  assert.equal(
+    unusedPermissionProducer.run(withManifest(sca), {
+      recheckData: PERMISSION_TOKEN_RECHECK,
+    }).findings.length,
+    0
+  );
+});
+
+// A matched entry WITHOUT tokens declares its usages token-undetectable, so it
+// poisons its permissions to undecidable even when another matched entry
+// contributes tokens for the same permission. A version-EXCLUDED token-less
+// entry does not apply and must NOT poison.
+test("unused-permission: a version-excluded token-less entry does not poison", () => {
+  const manifest = {
+    manifest_version: 2,
+    permissions: ["compose"],
+    browser_specific_settings: { gecko: { strict_min_version: "128.0" } },
+  };
+  const ctx = {
+    schema,
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+      ]),
+    },
+    apiUsages: [],
+  };
+  const recheckData = {
+    permissionPrompts: [
+      ...PERMISSION_TOKEN_RECHECK.permissionPrompts,
+      // Applies only from 154 on - out of bounds for this add-on, so its
+      // token-lessness is irrelevant and compose stays decidable.
+      {
+        permissions: ["compose"],
+        tokens: [],
+        minStrictVersion: "154",
+        maxStrictVersion: null,
+      },
+    ],
+  };
+  const out = unusedPermissionProducer.run(withManifest(ctx), { recheckData });
+  assert.deepEqual(
+    out.findings.map((f) => f.item),
+    ["compose"]
+  );
+});
+
+test("unused-permission: a token-less entry poisons its permissions", () => {
+  const manifest = { manifest_version: 2, permissions: ["compose"] };
+  const ctx = {
+    schema,
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+      ]),
+    },
+    apiUsages: [],
+  };
+  const recheck = {
+    permissionPrompts: [
+      ...PERMISSION_TOKEN_RECHECK.permissionPrompts,
+      {
+        permissions: ["compose"],
+        tokens: [],
+        minStrictVersion: null,
+        maxStrictVersion: null,
+      },
+    ],
+  };
+  const out = unusedPermissionProducer.run(withManifest(ctx), {
+    recheckData: recheck,
+  });
+  assert.equal(out.findings.length, 0);
+  assert.deepEqual(
+    out.escalations.map((e) => e.item),
+    ["compose"]
+  );
+});
+
+// The token lists are version-bound like the prompts they ride on: an entry
+// whose bounds exclude the add-on's strict_min_version contributes no tokens,
+// so the permission stays undecidable and escalates.
+test("unused-permission selects token lists by strict_min_version", () => {
+  const recheck = {
+    permissionPrompts: [
+      {
+        permissions: ["compose"],
+        tokens: ["executeScript"],
+        minStrictVersion: "154",
+        maxStrictVersion: null,
+      },
+    ],
+  };
+  const run = (strictMin) => {
+    const manifest = {
+      manifest_version: 2,
+      permissions: ["compose"],
+      browser_specific_settings: { gecko: { strict_min_version: strictMin } },
+    };
+    const ctx = {
+      schema,
+      addon: {
+        manifest,
+        files: new Map([
+          ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+        ]),
+      },
+      apiUsages: [],
+    };
+    return unusedPermissionProducer.run(withManifest(ctx), {
+      recheckData: recheck,
+    });
+  };
+  // In bounds: the tokens apply, executeScript is absent -> deterministic.
+  assert.deepEqual(
+    run("154.0").findings.map((f) => f.item),
+    ["compose"]
+  );
+  // Out of bounds: no matching entry -> undecidable -> escalates.
+  assert.deepEqual(
+    run("128.0").escalations.map((e) => e.item),
+    ["compose"]
+  );
+});
+
 // The deterministic analysis is authoritative: a permission a reachable API call
 // provably requires (here messagesRead, via messages.get) is dropped here, so it
 // never reaches the reviewer or the recheck consumer. Only the unprovable rest
 // (messagesUpdate) is escalated.
-test("unused-permission-manual drops permissions proved used by static analysis", () => {
+test("unused-permission drops permissions proved used by static analysis", () => {
   const manifest = {
     manifest_version: 3,
     permissions: ["messagesRead", "messagesUpdate"],
@@ -1150,7 +1437,7 @@ test("unused-permission-manual drops permissions proved used by static analysis"
       },
     ],
   };
-  const out = unusedPermissionManual.run(withManifest(ctx));
+  const out = unusedPermissionProducer.run(withManifest(ctx));
   assert.deepEqual(
     out.escalations.map((e) => e.item),
     ["messagesUpdate"] // messagesRead is gated out (provably used)
@@ -1167,7 +1454,7 @@ test("unused-permission-manual drops permissions proved used by static analysis"
 // so neither is flagged unused. This is the credit path the shim/wrapper fix relies on
 // (the parser resolving a captured-namespace call to these segments is covered in
 // api-usage.test.js; here it is driven from the already-resolved segments).
-test("unused-permission-manual credits function-level permissions (archive/delete)", () => {
+test("unused-permission credits function-level permissions (archive/delete)", () => {
   const manifest = {
     manifest_version: 3,
     permissions: ["messagesRead", "messagesMove", "messagesDelete"],
@@ -1193,7 +1480,7 @@ test("unused-permission-manual credits function-level permissions (archive/delet
       },
     ],
   });
-  const out = unusedPermissionManual.run(ctx);
+  const out = unusedPermissionProducer.run(ctx);
   // archive -> messagesMove, delete -> messagesDelete, both -> messagesRead: none left.
   assert.deepEqual(
     out.escalations.map((e) => e.item),
@@ -1208,7 +1495,7 @@ test("unused-permission-manual credits function-level permissions (archive/delet
 // used by static analysis. It is no longer hand-exempt: it escalates like any other
 // not-provably-used permission, to be re-judged by the LLM recheck (the registry
 // grounds it on whether the add-on persists data) or reviewed by hand.
-test("unused-permission-manual escalates unlimitedStorage (gates no API)", () => {
+test("unused-permission escalates unlimitedStorage (gates no API)", () => {
   const manifest = {
     permissions: ["unlimitedStorage", "tabs"],
     browser_specific_settings: { gecko: { strict_min_version: "154" } },
@@ -1225,7 +1512,7 @@ test("unused-permission-manual escalates unlimitedStorage (gates no API)", () =>
     },
     apiUsages: [],
   };
-  const out = unusedPermissionManual.run(withManifest(ctx));
+  const out = unusedPermissionProducer.run(withManifest(ctx));
   // Both escalate now; nothing is hand-exempt.
   assert.deepEqual(
     out.escalations.map((e) => e.item),
@@ -1240,33 +1527,33 @@ test("unused-permission-manual escalates unlimitedStorage (gates no API)", () =>
   );
 });
 
-// ---- unused-permission (recheck consumer) ----
+// ---- unused-permission-recheck (recheck consumer) ----
 // Given the items handed to it (ctx.recheck) and the summary's verdicts
 // (ctx.addon.recheck), it maps each: fail -> a warning finding carrying the reason
 // on the permission's manifest line, pass -> dropped, unsure -> a manual-review
 // escalation. The mapping itself is resolveRecheck (see recheck.test.js); this
 // confirms the module is wired to it.
-test("unused-permission maps the summary's recheck verdicts to findings + escalations", () => {
-  const check = { id: "unused-permission" };
+test("unused-permission-recheck maps the summary's recheck verdicts to findings + escalations", () => {
+  const check = { id: "unused-permission-recheck" };
   const ctx = {
     recheck: new Map([
       [
-        "unused-permission",
+        "unused-permission-recheck",
         [
           {
-            ruleId: "unused-permission-manual",
+            ruleId: "unused-permission",
             item: "tabs",
             file: "manifest.json",
             loc: { line: 4 },
           },
           {
-            ruleId: "unused-permission-manual",
+            ruleId: "unused-permission",
             item: "downloads",
             file: "manifest.json",
             loc: { line: 5 },
           },
           {
-            ruleId: "unused-permission-manual",
+            ruleId: "unused-permission",
             item: "storage",
             file: "manifest.json",
             loc: { line: 6 },
@@ -1277,19 +1564,19 @@ test("unused-permission maps the summary's recheck verdicts to findings + escala
     addon: {
       recheck: [
         {
-          check: "unused-permission",
+          check: "unused-permission-recheck",
           item: "tabs",
           verdict: "fail",
           reason: "no tab property read",
         },
         {
-          check: "unused-permission",
+          check: "unused-permission-recheck",
           item: "downloads",
           verdict: "unsure",
           reason: "cannot tell",
         },
         {
-          check: "unused-permission",
+          check: "unused-permission-recheck",
           item: "storage",
           verdict: "pass",
           reason: "used by storage.local",
@@ -1297,7 +1584,7 @@ test("unused-permission maps the summary's recheck verdicts to findings + escala
       ],
     },
   };
-  const out = unusedPermission.run(withManifest(ctx), check);
+  const out = unusedPermissionRecheck.run(withManifest(ctx), check);
   assert.equal(out.findings.length, 1);
   assert.equal(out.findings[0].item, "tabs"); // fail -> finding
   assert.equal(out.findings[0].data.reason, "no tab property read");
@@ -1309,9 +1596,11 @@ test("unused-permission maps the summary's recheck verdicts to findings + escala
   assert.equal(out.escalations[0].data.reason, "cannot tell");
 });
 
-test("unused-permission is a no-op with nothing handed over", () => {
+test("unused-permission-recheck is a no-op with nothing handed over", () => {
   assert.deepEqual(
-    unusedPermission.run(withManifest({}), { id: "unused-permission" }),
+    unusedPermissionRecheck.run(withManifest({}), {
+      id: "unused-permission-recheck",
+    }),
     {
       findings: [],
       escalations: [],
@@ -1907,7 +2196,7 @@ test("usedPermissions tracks reachable requirements, not dead-file ones", () => 
 
 // The no-LLM checklist drops a declared permission a reachable call provably
 // needs (messages.get -> messagesRead), escalating only the unproven ones.
-test("unused-permission-manual omits permissions a reachable call requires", () => {
+test("unused-permission omits permissions a reachable call requires", () => {
   const manifest = {
     permissions: ["messagesRead", "tabs"],
     background: { scripts: ["bg.js"] },
@@ -1924,7 +2213,7 @@ test("unused-permission-manual omits permissions a reachable call requires", () 
     },
     apiUsages: [{ file: "bg.js", usages: GET_USAGE }],
   };
-  const out = unusedPermissionManual.run(withManifest(ctx));
+  const out = unusedPermissionProducer.run(withManifest(ctx));
   // messagesRead is proven used -> not escalated; tabs has no proven need -> kept.
   assert.deepEqual(
     out.escalations.map((e) => e.item),
@@ -1932,7 +2221,7 @@ test("unused-permission-manual omits permissions a reachable call requires", () 
   );
 });
 
-// ---- unused-permission-manual is version-agnostic (D308076) ----
+// ---- unused-permission is version-agnostic (D308076) ----
 // The single producer enumerates unused permissions regardless of strict_min_version.
 // The version-specific tabs wording (D308076) moved to the registry's version-bounded
 // tabs permission-prompts, selected at recheck-assembly time (see recheck.test.js).
@@ -1959,10 +2248,10 @@ const permProducerCtx = (strictMin) => {
   };
 };
 
-test("unused-permission-manual enumerates regardless of strict_min_version", () => {
+test("unused-permission enumerates regardless of strict_min_version", () => {
   for (const min of ["154", "200", "153.9", "128", undefined, "abc", "≤59"]) {
     assert.deepEqual(
-      unusedPermissionManual
+      unusedPermissionProducer
         .run(withManifest(permProducerCtx(min)))
         .escalations.map((e) => e.item),
       ["tabs"],
@@ -2540,11 +2829,11 @@ test("loadChecks rejects a dangling or prompt-less post-summary-recheck target",
 test("loadChecks classifies a summary-prompt check as post-summary", async () => {
   const checks = await loadChecks(loadRegistry());
   assert.equal(
-    checks.find((c) => c.id === "unused-permission")?.phase,
+    checks.find((c) => c.id === "unused-permission-recheck")?.phase,
     "post-summary"
   );
   assert.equal(
-    checks.find((c) => c.id === "unused-permission-manual")?.phase,
+    checks.find((c) => c.id === "unused-permission")?.phase,
     undefined
   );
 });

@@ -78,13 +78,20 @@ test("callReview forces the review function and coerces", async () => {
   const client = fakeClient(() =>
     toolCall("report_addon_review", {
       summary: "S",
-      recheck: [{ check: "unused-permission", item: "tabs", verdict: "fail" }],
+      recheck: [
+        { check: "unused-permission-recheck", item: "tabs", verdict: "fail" },
+      ],
     })
   );
   const out = await callReview({ token: "t", model: "m", prompt: "x", client });
   assert.equal(out.summary, "S");
   assert.deepEqual(out.recheck, [
-    { check: "unused-permission", item: "tabs", verdict: "fail", reason: "" },
+    {
+      check: "unused-permission-recheck",
+      item: "tabs",
+      verdict: "fail",
+      reason: "",
+    },
   ]);
 });
 

@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Unused permission token",
+  "version": "1.0",
+  "description": "Declares compose without any injection usage; the tokens decide deterministically.",
+  "permissions": ["compose", "messagesRead", "accountsRead"],
+  "background": { "scripts": ["bg.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

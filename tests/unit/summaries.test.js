@@ -268,7 +268,7 @@ test("buildAddonSummarizer sends prompt+add-on and returns the structured review
     summary: "The add-on logs on startup.",
     recheck: [
       {
-        check: "unused-permission",
+        check: "unused-permission-recheck",
         item: "tabs",
         verdict: "fail",
         reason: "no tab property is read",

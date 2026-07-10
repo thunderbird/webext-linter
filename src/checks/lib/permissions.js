@@ -6,11 +6,25 @@
 // Severity comes from each owning registry entry (missing-permission /
 // missing-manifest-key), stamped by runChecks.
 //
-// We do NOT report declared-but-unused permissions: a permission can be needed
-// only to read a permission-gated property of returned data (e.g. accountsRead
-// for a message header's folder), which a static scan cannot confirm, so any
-// "unused" verdict would be unsound. The optional --llm-review LLM pass
-// assesses unused permissions advisorily instead.
+// A declared-but-unused permission is reported deterministically ONLY when it is
+// provable: a permission can be needed just to read a permission-gated property
+// of returned data (e.g. accountsRead for a message header's folder), which the
+// schema-driven scan cannot confirm - but when the registry's permission-prompts
+// entry names that permission's justifying usages as `tokens` and none of them
+// occurs anywhere in the live code or manifest, "unused" is sound as long as the
+// scan can see every usage: an SCA review (build-time dependencies invisible in
+// the source corpus), a source that failed to parse, or any unresolved API
+// surface (apiUsage limitations / dynamic tails, which could spell a gated call
+// without its token) disables the deterministic path. Accepted residual gap: a
+// COMPUTED property name - built at runtime and never a literal token
+// substring - defeats both signals at once, whichever side of an API call it
+// sits on: a gated property READ off returned data (msg["fol"+"der"]) is not an
+// API usage the chain-walker sees, and a gated property WRITE into an outgoing
+// argument object (opts[key] = v; browser.tabs.create(opts)) is equally
+// invisible to it, since the walker resolves member chains rooted at the API
+// object, not arbitrary object-literal keys. A token read from a runtime data
+// file is the same class of gap. Everything undecided escalates; the optional
+// --llm-review pass assesses those advisorily.
 //
 // The schema expresses "this API needs a manifest key" via pseudo-permissions
 // of the form "manifest:<key>" (e.g. browserAction needs "manifest:action" OR
@@ -19,8 +33,10 @@
 //
 // Belongs here: analyzePermissions (memoized via getPermissionAnalysis), the
 // missing diff the rules consume, returning structured findings
-// (file/loc/item/data) only, plus the Web/DOM-API grounding that proves the
-// permissions the browser.* schema cannot gate (clipboard/geolocation) used.
+// (file/loc/item/data) only, the Web/DOM-API grounding that proves the
+// permissions the browser.* schema cannot gate (clipboard/geolocation) used,
+// and enumerateUnusedPermissions with its live-code token scan (the
+// unused-permission producer's deterministic verdicts).
 //
 // Does NOT belong here: the rules' wiring and any severity or text - that lives
 // in the missing-permission / missing-manifest-key rules under
@@ -30,11 +46,16 @@
 // call match itself - src/parse/web-api-calls.js. Match-pattern helpers - lib/util.js.
 
 import { finding } from "../../report/finding.js";
-import { asArray, isMatchPattern, manifestPathLine } from "./util.js";
+import {
+  asArray,
+  isMatchPattern,
+  manifestPathLine,
+  versionInBounds,
+} from "./util.js";
 import { resolveApiUsages } from "./api-resolution.js";
 import { buildReachability } from "./reachability.js";
 import { webApiSignatures } from "../../parse/web-api-calls.js";
-import { webApiPermsOf } from "../extract.js";
+import { webApiPermsOf, codeTextOf } from "../extract.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../addon/load.js").Manifest} Manifest */
@@ -58,7 +79,7 @@ const GATED_KINDS = new Set(["function", "event", "property", "namespace"]);
  *   call provably requires (so the add-on is definitely using them), plus the
  *   Web/DOM-API permissions grounded from navigator.* calls (see
  *   groundWebApiPermissions) that the browser.* schema cannot gate. The
- *   unused-permission-manual check drops these from its by-hand checklist. Only
+ *   unused-permission check drops these from its by-hand checklist. Only
  *   ever proves a permission USED - a permission absent here may still be needed
  *   via a gated property a static scan cannot see (see the file header).
  * @property {{requirements: PermNote[], manifestKeys: PermNote[]}} notes  Feed
@@ -230,20 +251,58 @@ function groundWebApiPermissions(ctx, declaredNamed) {
 /**
  * Enumerate the declared named permissions that warrant a closer look: every one
  * a reachable API call does NOT provably require, anchored to its manifest.json
- * line, as manual-review escalations. A permission a reachable call provably
- * requires (usedPermissions) is justified and dropped; every other declared
- * permission escalates, to be re-judged by the LLM recheck when the registry has a
- * prompt for it (see registry.rechecks) or reviewed by hand otherwise. Host match
- * patterns are minimize-host-permissions' concern and are skipped. Backs the
- * unused-permission-manual producer.
+ * line. A permission a reachable call provably requires (usedPermissions) is
+ * justified and dropped. A permission whose (version-matched) permission-prompts
+ * entries declare usage `tokens` that appear NOWHERE in the add-on's live code
+ * (comments excluded) or manifest is deterministically unused - a finding, with
+ * or without --llm-review (see the blindness guard below for when this path
+ * stands down). Every other permission escalates as a manual-review case, to be
+ * re-judged by the LLM recheck when the registry has a prompt for it (see
+ * registry.rechecks) or reviewed by hand otherwise. Host match patterns are
+ * minimize-host-permissions' concern and are skipped. Backs the unused-permission
+ * producer.
  * @param {RunContext} ctx
- * @returns {{findings: [], escalations:
+ * @param {?{permissionPrompts?: object[]}} [recheckData]  The producer's linked
+ *   consumer data (LoadedCheck.recheckData): the permission-prompts entries
+ *   carrying the usage tokens. Absent/empty -> no deterministic verdicts,
+ *   escalate all.
+ * @returns {{findings: {item: string, file: string, loc: ?object}[], escalations:
  *   {item: string, file: string, loc: ?object}[]}}
  */
-export function enumerateUnusedPermissions(ctx) {
+export function enumerateUnusedPermissions(ctx, recheckData) {
   const used = getPermissionAnalysis(ctx).usedPermissions;
+  // The deterministic verdict claims "nothing this permission gates can be in
+  // use" - only tenable when the scan can actually see every usage. Cases where
+  // it cannot, so every permission escalates instead:
+  //  - an SCA review scans the SOURCE corpus, but the shipped XPI may exercise
+  //    the permission through dependencies materialized at build time;
+  //  - a source that failed to PARSE (apiUsage.parseError) yields no usages and
+  //    no limitations - indistinguishable from a clean empty file unless this
+  //    checks for it explicitly;
+  //  - unresolved API surface (a computed/dynamic member chain, a destructured
+  //    alias - the apiUsage limitations) could spell a gated call without its
+  //    token appearing anywhere;
+  //  - an ABSENT ctx.apiUsages is a view with no visibility into the source's
+  //    API surface (the sibling-ctx marker) - maximally blind, so it fails
+  //    closed rather than reading as fully sighted.
+  const decidable =
+    ctx.mode !== "sca" &&
+    Array.isArray(ctx.apiUsages) &&
+    !ctx.apiUsages.some(
+      (u) =>
+        u.parseError ||
+        u.limitations?.length ||
+        u.usages?.some((x) => x.dynamicTail)
+    );
+  const tokensFor = decidable
+    ? permissionTokens(ctx.manifest, recheckData?.permissionPrompts)
+    : new Map();
+  // One scan over the live code + manifest for the union of every permission's
+  // tokens; each permission then reads its own subset.
+  const present = presentTokens(ctx, new Set([...tokensFor.values()].flat()));
   const m = ctx.manifest ?? {};
   const seen = new Set();
+  const findings = [];
   const escalations = [];
   for (const key of ["permissions", "optional_permissions"]) {
     asArray(m[key]).forEach((p, i) => {
@@ -255,18 +314,111 @@ export function enumerateUnusedPermissions(ctx) {
       const loc = line ? { line } : null;
       if (used.has(p)) {
         // A reachable call provably requires it, so it is justified - not a manual
-        // case. Every other declared permission escalates below.
+        // case. Every other declared permission is judged below.
         ctx.note?.("manifest.json", loc, p, "pass");
         return;
       }
-      // Every unused permission escalates the same way. Whether it can be re-judged
-      // by the LLM (the registry has a rubric prompt for it) or stays manual-only is
-      // decided later, at the divert, by registry.rechecks - the check does not know.
+      // Deterministically unused: the permission's prompt entries name its
+      // justifying usages as tokens, and not one of them occurs anywhere in the
+      // live code or manifest - nothing the permission gates can be in use.
+      const tokens = tokensFor.get(p);
+      if (tokens?.length && !tokens.some((t) => present.has(t))) {
+        ctx.note?.("manifest.json", loc, p, "fail");
+        findings.push(finding({ item: p, file: "manifest.json", loc }));
+        return;
+      }
+      // Everything else escalates the same way (a token was found, the entry
+      // declares no tokens, or the permission has no prompt entry). Whether it is
+      // re-judged by the LLM or stays manual-only is decided later, at the divert,
+      // by registry.rechecks - the check does not know.
       ctx.note?.("manifest.json", loc, p, "unsure");
       escalations.push({ item: p, file: "manifest.json", loc });
     });
   }
-  return { findings: [], escalations };
+  return { findings, escalations };
+}
+
+/**
+ * Map each permission to the union of the usage tokens of every prompt entry that
+ * names it and matches the add-on's strict_min_version. A permission missing from
+ * the map (no entry) or mapped to [] is deterministically undecidable and must
+ * escalate - and a matched entry WITHOUT tokens (unlimitedStorage) poisons its
+ * permissions to [] even when another entry contributes tokens, because that
+ * entry's usages are declared token-undetectable.
+ * @param {?object} manifest
+ * @param {?object[]} prompts  LoadedCheck.recheck.permissionPrompts.
+ * @returns {Map<string, string[]>}
+ */
+function permissionTokens(manifest, prompts) {
+  const map = new Map();
+  const poisoned = new Set();
+  for (const e of prompts ?? []) {
+    if (!versionInBounds(manifest, e.minStrictVersion, e.maxStrictVersion)) {
+      continue;
+    }
+    for (const p of e.permissions) {
+      if (!e.tokens?.length) {
+        poisoned.add(p);
+      }
+      map.set(p, [...new Set([...(map.get(p) ?? []), ...(e.tokens ?? [])])]);
+    }
+  }
+  for (const p of poisoned) {
+    map.set(p, []);
+  }
+  return map;
+}
+
+/**
+ * The subset of `tokens` that occur in the add-on's code or manifest. Every
+ * jsSource counts - authored AND non-authored, since a library exercising a
+ * permission counts (deciding "unused" stays conservative) - searched via
+ * codeTextOf: an authored source's comment-free code-text atoms (so a token in a
+ * developer's comment does NOT ground the permission), or a non-authored bundle's
+ * raw text (a token in its comments only pushes toward escalation, the safe
+ * direction). String literals deliberately count (dynamic access spells the token
+ * in a string). The manifest is searched as JSON (no comments there), so
+ * manifest-key tokens (compose_scripts) ground too.
+ *
+ * A token matches on WORD BOUNDARIES (case-sensitive): it must be a whole
+ * identifier / key / string word, not a coincidental substring of a longer name -
+ * so `folder` does not match `displayedFolder` or a variable `targetFolder`, and
+ * `url` does not match `homepage_url`. Every justifying spelling is therefore
+ * listed explicitly in the registry rather than caught by a broad substring.
+ * @param {RunContext} ctx
+ * @param {Set<string>} tokens
+ * @returns {Set<string>}
+ */
+function presentTokens(ctx, tokens) {
+  const present = new Set();
+  if (!tokens.size) {
+    return present;
+  }
+  const patterns = new Map(
+    [...tokens].map((t) => [t, new RegExp(`\\b${escapeRegExp(t)}\\b`)])
+  );
+  const texts = (function* () {
+    yield JSON.stringify(ctx.manifest ?? {});
+    for (const src of ctx.jsSources ?? []) {
+      yield codeTextOf(src);
+    }
+  })();
+  for (const text of texts) {
+    for (const [t, re] of patterns) {
+      if (!present.has(t) && re.test(text)) {
+        present.add(t);
+      }
+    }
+    if (present.size === tokens.size) {
+      break;
+    }
+  }
+  return present;
+}
+
+/** @param {string} s  Escape a string for literal use inside a RegExp. */
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
