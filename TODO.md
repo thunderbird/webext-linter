@@ -6,7 +6,6 @@
 - [Unused-files pre-flight backstop (anchored templates + content type)](#unused-files-pre-flight-backstop-anchored-templates--content-type)
 - [Re-evaluate fully schema-driven manifest file-ref extraction](#re-evaluate-fully-schema-driven-manifest-file-ref-extraction)
 
-
 # Improve schema files to remove special hardcoded cases
 
 The `BRIDGE` map in `src/parse/loader-files.js`: file-loading APIs whose path
