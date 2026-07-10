@@ -22,11 +22,14 @@
         call provably needs is dropped — whether a WebExtension API call requires
         it, or (for permissions the schema gates on a Web/DOM API instead of a
         <code>browser.*</code> member, like clipboard and geolocation) a matching
-        <code>navigator.*</code> call proves it used. A permission whose
-        registry prompt entries declare usage <code>tokens</code> (the code-level
-        spellings of its justifying usages, e.g. <code>compose_scripts</code>,
-        <code>executeScript</code>, <code>insertCSS</code> for
-        <code>compose</code>) that appear nowhere in the add-on's live code
+        <code>navigator.*</code> call proves it used, or (for a permission a
+        script-injection manifest key implies — a declared
+        <code>compose_scripts</code> requires <code>compose</code>,
+        <code>message_display_scripts</code> requires <code>messagesModify</code>)
+        the declared key proves it used. A permission whose registry prompt
+        entries declare usage <code>tokens</code> (the code-level spellings of its
+        justifying usages, e.g. <code>executeScript</code>, <code>insertCSS</code>
+        for <code>compose</code>) that appear nowhere in the add-on's live code
         (comments excluded) or manifest is deterministically unused — a warning
         finding, with or without <code>--llm-review</code>. The deterministic
         path stands down whenever the scan is blind: an SCA review (build-time
@@ -53,7 +56,7 @@ flowchart TD
   A["The add-on manifest"] --> P["Each declared named permission<br/>(required + optional)"]
   P --> H{"Is it a host match pattern?"}
   H -- yes --> OK([no finding — host check's concern])
-  H -- no --> U{"Provably required by a<br/>reachable API call?"}
+  H -- no --> U{"Provably required by a reachable API call,<br/>a navigator.* Web/DOM call, or a declared<br/>script-injection manifest key?"}
   U -- yes --> OK2([no finding — justified])
   U -- no --> T{"Prompt entry declares usage tokens,<br/>and none occur in the live code<br/>(comments excluded) or manifest?"}
   T -- yes --> WARN(["warning finding — deterministically<br/>unused, the model is never asked"])

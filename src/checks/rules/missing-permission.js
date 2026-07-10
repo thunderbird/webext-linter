@@ -1,4 +1,6 @@
-// A permission required by a called API but not declared in the manifest.
+// A permission required but not declared in the manifest - required by a called
+// API, or implied by a script-injection manifest key (compose_scripts -> compose,
+// message_display_scripts -> messagesModify).
 //
 // Belongs here: selecting the `missingPermissions` slice of the shared
 // permission analysis and emitting it as this check's findings. The "API needs a

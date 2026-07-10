@@ -1,0 +1,26 @@
+[
+  {
+    "namespace": "manifest",
+    "types": [
+      {
+        "$extend": "WebExtensionManifest",
+        "properties": {
+          "compose_scripts": {
+            "annotations": [
+              { "additional_properties": { "required_permissions": ["compose"] } }
+            ]
+          },
+          "message_display_scripts": {
+            "annotations": [
+              {
+                "additional_properties": {
+                  "required_permissions": ["messagesModify"]
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+]

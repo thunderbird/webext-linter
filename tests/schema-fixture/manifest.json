@@ -28,7 +28,22 @@
           "options_ui": { "type": "object" },
           "action": { "type": "object" },
           "content_scripts": { "type": "array" },
-          "message_display_scripts": { "type": "array" },
+          "compose_scripts": {
+            "type": "array",
+            "annotations": [
+              { "additional_properties": { "required_permissions": ["compose"] } }
+            ]
+          },
+          "message_display_scripts": {
+            "type": "array",
+            "annotations": [
+              {
+                "additional_properties": {
+                  "required_permissions": ["messagesModify"]
+                }
+              }
+            ]
+          },
           "experiment_apis": { "type": "object" }
         }
       },
@@ -48,7 +63,8 @@
               "clipboardWrite",
               "geolocation",
               "nativeMessaging",
-              "notifications"
+              "notifications",
+              "messagesModify"
             ]
           }
         ]

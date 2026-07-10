@@ -97,6 +97,151 @@ test("lands on the type itself when the type carries the enum", () => {
   );
 });
 
+// A required_permissions annotation on a manifest-key property (the overlay's
+// second job): a $extend block (no id) is matched by $extend, and the fragment's
+// annotations are APPENDED onto the loaded property - its existing version_added
+// is preserved, not clobbered.
+const reqPerms = (perms) => ({
+  additional_properties: { required_permissions: perms },
+});
+
+test("appends a required_permissions annotation onto a $extend-matched manifest key", () => {
+  const f = {
+    "extensionScripts.json": [
+      {
+        namespace: "manifest",
+        types: [
+          {
+            $extend: "WebExtensionManifest",
+            properties: {
+              compose_scripts: {
+                type: "array",
+                annotations: [{ version_added: "151" }],
+              },
+              message_display_scripts: { type: "array" },
+            },
+          },
+        ],
+      },
+    ],
+  };
+  applySchemaAnnotations(f, {
+    "extensionScripts.json": [
+      {
+        namespace: "manifest",
+        types: [
+          {
+            $extend: "WebExtensionManifest",
+            properties: {
+              compose_scripts: { annotations: [reqPerms(["compose"])] },
+              message_display_scripts: {
+                annotations: [reqPerms(["messagesModify"])],
+              },
+            },
+          },
+        ],
+      },
+    ],
+  });
+  const props = f["extensionScripts.json"][0].types[0].properties;
+  // existing version_added preserved, required_permissions appended
+  assert.deepEqual(props.compose_scripts.annotations, [
+    { version_added: "151" },
+    reqPerms(["compose"]),
+  ]);
+  assert.deepEqual(props.message_display_scripts.annotations, [
+    reqPerms(["messagesModify"]),
+  ]);
+});
+
+// An id-less $extend fragment must NOT fall through to the first id-less loaded
+// type: a fragment for WebExtensionManifest leaves an OptionalPermission $extend
+// block (also id-less) untouched.
+test("an id-less $extend fragment does not leak onto a different $extend block", () => {
+  const f = {
+    "extensionScripts.json": [
+      {
+        namespace: "manifest",
+        types: [
+          { $extend: "OptionalPermission", choices: [] },
+          {
+            $extend: "WebExtensionManifest",
+            properties: { compose_scripts: { type: "array" } },
+          },
+        ],
+      },
+    ],
+  };
+  applySchemaAnnotations(f, {
+    "extensionScripts.json": [
+      {
+        namespace: "manifest",
+        types: [
+          {
+            $extend: "WebExtensionManifest",
+            properties: {
+              compose_scripts: { annotations: [reqPerms(["compose"])] },
+            },
+          },
+        ],
+      },
+    ],
+  });
+  const [optPerm, webExt] = f["extensionScripts.json"][0].types;
+  assert.deepEqual(optPerm, { $extend: "OptionalPermission", choices: [] });
+  assert.deepEqual(webExt.properties.compose_scripts.annotations, [
+    reqPerms(["compose"]),
+  ]);
+});
+
+// A schema may split one $extend target across several blocks; the overlay's single
+// combined fragment must patch each property onto whichever block declares it, not
+// just the first matched block.
+test("patches a property across multiple $extend blocks of the same target", () => {
+  const f = {
+    "extensionScripts.json": [
+      {
+        namespace: "manifest",
+        types: [
+          {
+            $extend: "WebExtensionManifest",
+            properties: { compose_scripts: { type: "array" } },
+          },
+          {
+            $extend: "WebExtensionManifest",
+            properties: { message_display_scripts: { type: "array" } },
+          },
+        ],
+      },
+    ],
+  };
+  applySchemaAnnotations(f, {
+    "extensionScripts.json": [
+      {
+        namespace: "manifest",
+        types: [
+          {
+            $extend: "WebExtensionManifest",
+            properties: {
+              compose_scripts: { annotations: [reqPerms(["compose"])] },
+              message_display_scripts: {
+                annotations: [reqPerms(["messagesModify"])],
+              },
+            },
+          },
+        ],
+      },
+    ],
+  });
+  const [b1, b2] = f["extensionScripts.json"][0].types;
+  assert.deepEqual(b1.properties.compose_scripts.annotations, [
+    reqPerms(["compose"]),
+  ]);
+  assert.deepEqual(b2.properties.message_display_scripts.annotations, [
+    reqPerms(["messagesModify"]),
+  ]);
+});
+
 // A fragment value/namespace/type not present in the schema is a no-op.
 test("is a no-op for an absent namespace, type, or value", () => {
   const f = files();

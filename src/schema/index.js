@@ -18,9 +18,10 @@
 //
 // Belongs here: the SchemaIndex query API the rest of the app consults -
 // resolveApi/resolveRef, requiredPermissions, validPermissions,
-// permissionWebApis, validManifestKeys, manifestVersionMajor, fileLoaderMethods,
-// and the static annotation helpers (versionAdded, deprecation, isUnsupported,
-// docUrl). It consumes the parsed files and calls merge.js to build its registries.
+// permissionWebApis, validManifestKeys, manifestKeyPermissions,
+// manifestVersionMajor, fileLoaderMethods, and the static annotation helpers
+// (versionAdded, deprecation, isUnsupported, docUrl). It consumes the parsed
+// files and calls merge.js to build its registries.
 //
 // Does NOT belong here: the merge algorithm itself (src/schema/merge.js),
 // fetching or reading files (src/schema/fetch.js and src/schema/load.js), ajv
@@ -203,6 +204,7 @@ export class SchemaIndex {
     );
     this.permissionWebApis = this._collectPermissionWebApis();
     this.validManifestKeys = this._collectManifestKeys();
+    this.manifestKeyPermissions = this._collectManifestKeyPermissions();
     this.manifestVersionMajor = this._detectManifestVersion();
     this.fileLoaderMethods = this._collectFileLoaderMethods();
 
@@ -389,6 +391,41 @@ export class SchemaIndex {
       }
     }
     return keys;
+  }
+
+  /**
+   * Manifest keys that require a permission, read from a `required_permissions`
+   * annotation on the key's property (e.g. compose_scripts -> compose,
+   * message_display_scripts -> messagesModify). This is the script-injection
+   * channel the browser.* API gate never covers - Gecko does not enforce the
+   * requirement, but the annotation records it and the unused/missing-permission
+   * grounding consumes it. The annotation lives under
+   * `annotations[].additional_properties.required_permissions`; a key with no such
+   * annotation never appears here.
+   * @returns {Map<string, string[]>}  Manifest key -> required permission names.
+   */
+  _collectManifestKeyPermissions() {
+    const out = new Map();
+    for (const name of MANIFEST_KEY_TYPES) {
+      const type = this.globalTypes.get(`manifest.${name}`);
+      for (const [key, prop] of Object.entries(type?.properties || {})) {
+        const perms = [];
+        for (const a of prop?.annotations ?? []) {
+          const req = a?.additional_properties?.required_permissions;
+          if (Array.isArray(req)) {
+            for (const p of req) {
+              if (typeof p === "string" && !perms.includes(p)) {
+                perms.push(p);
+              }
+            }
+          }
+        }
+        if (perms.length) {
+          out.set(key, perms);
+        }
+      }
+    }
+    return out;
   }
 
   _detectManifestVersion() {

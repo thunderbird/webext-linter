@@ -1193,10 +1193,11 @@ test("unused-permission decides token-absent permissions deterministically", () 
   ]);
 });
 
-// A manifest-key token (compose_scripts) grounds from the manifest itself - the
-// permission then escalates for the semantic judgment instead of being declared
-// unused.
-test("unused-permission grounds a manifest-key token from the manifest", () => {
+// The compose_scripts manifest key requires compose (the schema's native
+// permissions field on the key). Declaring the key grounds compose as USED, so it
+// is dropped outright - neither a deterministic-unused finding nor a manual
+// escalation. This is the schema-driven grounding, not the token pre-flight.
+test("unused-permission grounds compose from the compose_scripts manifest key", () => {
   const manifest = {
     manifest_version: 2,
     permissions: ["compose"],
@@ -1216,10 +1217,7 @@ test("unused-permission grounds a manifest-key token from the manifest", () => {
     recheckData: PERMISSION_TOKEN_RECHECK,
   });
   assert.equal(out.findings.length, 0);
-  assert.deepEqual(
-    out.escalations.map((e) => e.item),
-    ["compose"]
-  );
+  assert.deepEqual(out.escalations, []);
 });
 
 // The deterministic path disables itself whenever the scan cannot see every

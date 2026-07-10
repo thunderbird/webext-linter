@@ -1,0 +1,6 @@
+{
+  "_comment": "compose_scripts requires compose (line 6, declared) so compose is grounded as used - no unused-permission and no missing-permission for it. message_display_scripts requires messagesModify (line 9), which is NOT declared, so it is a missing-permission anchored to the manifest key.",
+  "expect": {
+    "missing-permission": ["manifest.json:9"]
+  }
+}

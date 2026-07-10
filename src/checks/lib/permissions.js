@@ -1,6 +1,8 @@
 // Shared permission analysis for the missing-permission and missing-manifest-key
-// checks. Cross-checks the permissions required by the APIs an add-on calls
-// against what its manifest declares:
+// checks. Cross-checks the permissions an add-on requires - via the APIs it calls
+// AND via a manifest key that implies one (compose_scripts -> compose,
+// message_display_scripts -> messagesModify, from the key's `required_permissions`
+// annotation) - against what its manifest declares:
 //   - missingPermissions: a required permission that is not declared,
 //   - missingManifestKeys: an API that needs a manifest key not declared.
 // Severity comes from each owning registry entry (missing-permission /
@@ -35,8 +37,10 @@
 // missing diff the rules consume, returning structured findings
 // (file/loc/item/data) only, the Web/DOM-API grounding that proves the
 // permissions the browser.* schema cannot gate (clipboard/geolocation) used,
-// and enumerateUnusedPermissions with its live-code token scan (the
-// unused-permission producer's deterministic verdicts).
+// the manifest-key grounding that proves a script-injection key's implied
+// permission used (and missing when undeclared), and enumerateUnusedPermissions
+// with its live-code token scan (the unused-permission producer's deterministic
+// verdicts).
 //
 // Does NOT belong here: the rules' wiring and any severity or text - that lives
 // in the missing-permission / missing-manifest-key rules under
@@ -78,10 +82,12 @@ const GATED_KINDS = new Set(["function", "event", "property", "namespace"]);
  * @property {Set<string>} usedPermissions  Named permissions a reachable API
  *   call provably requires (so the add-on is definitely using them), plus the
  *   Web/DOM-API permissions grounded from navigator.* calls (see
- *   groundWebApiPermissions) that the browser.* schema cannot gate. The
- *   unused-permission check drops these from its by-hand checklist. Only
- *   ever proves a permission USED - a permission absent here may still be needed
- *   via a gated property a static scan cannot see (see the file header).
+ *   groundWebApiPermissions) that the browser.* schema cannot gate, plus a
+ *   script-injection manifest key's implied permission (compose_scripts,
+ *   message_display_scripts). The unused-permission check drops these from its
+ *   by-hand checklist. Only ever proves a permission USED - a permission absent
+ *   here may still be needed via a gated property a static scan cannot see (see
+ *   the file header).
  * @property {{requirements: PermNote[], manifestKeys: PermNote[]}} notes  Feed
  *   records, one list per owning rule.
  */
@@ -162,6 +168,35 @@ export function analyzePermissions(ctx) {
   // genuinely-used one); they never enter missingPermissions above.
   for (const perm of groundWebApiPermissions(ctx, declared.named)) {
     usedPermissions.add(perm);
+  }
+
+  // A manifest key can require a permission the browser.* API gate never covers
+  // (compose_scripts -> compose, message_display_scripts -> messagesModify), in
+  // any manifest version - the key's required_permissions annotation records it.
+  // When the key is declared the permission is provably in use; if it is also
+  // undeclared, it is missing. Anchored to the manifest key, not a call site.
+  for (const [key, perms] of schema.manifestKeyPermissions ?? []) {
+    if (!manifestKeys.has(key)) {
+      continue;
+    }
+    const line = manifestPathLine(ctx, key);
+    const loc = line ? { line } : null;
+    for (const perm of perms) {
+      usedPermissions.add(perm);
+      const declaredHere = declared.named.has(perm);
+      requirements.push({
+        file: "manifest.json",
+        loc,
+        item: `manifest key "${key}" needs '${perm}'`,
+        verdict: declaredHere ? "pass" : "fail",
+      });
+      if (!declaredHere && !missingReported.has(perm)) {
+        missingReported.add(perm);
+        missingPermissions.push(
+          finding({ file: "manifest.json", loc, item: perm })
+        );
+      }
+    }
   }
 
   // Manifest-key requirements: at least one of the named keys must be declared.

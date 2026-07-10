@@ -1,6 +1,7 @@
 {
-  "_comment": "content.js and assets/content.css (message_display_scripts) plus icon.png are reachable manifest entry points seeded by the generic manifest walk, so they are NOT flagged. Only the unreachable/ tree has no entry point.",
+  "_comment": "content.js and assets/content.css (message_display_scripts) plus icon.png are reachable manifest entry points seeded by the generic manifest walk, so they are NOT flagged. Only the unreachable/ tree has no entry point. The message_display_scripts key (line 7) requires messagesModify, which this add-on does not declare, so it is a missing-permission anchored to the key.",
   "expect": {
-    "unused-files": ["unreachable/"]
+    "unused-files": ["unreachable/"],
+    "missing-permission": ["manifest.json:7"]
   }
 }

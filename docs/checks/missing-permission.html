@@ -15,10 +15,14 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        An add-on calls an API that requires a named permission, but that
-        permission is not declared in the manifest. The shared permission
-        analysis matches each reachable API call to the permission the schema
-        says it needs, and flags the ones the manifest does not request.
+        An add-on requires a named permission but does not declare it in the
+        manifest. A permission is required either because a reachable API call
+        needs it, or because the add-on declares a script-injection manifest key
+        that implies it — a declared <code>compose_scripts</code> key requires
+        <code>compose</code>, and <code>message_display_scripts</code> requires
+        <code>messagesModify</code>. The shared permission analysis matches each
+        reachable API call, and each such declared key, to the permission the
+        schema says it needs, and flags the ones the manifest does not request.
       </p>
       <p>
         The check only ever proves a permission is <em>required</em>. It never
@@ -33,9 +37,12 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["An API call in reachable code"] --> B{"Does the schema say it requires<br/>a named permission?"}
+  A["A reachable API call"] --> B{"Does the schema say it requires<br/>a named permission?"}
+  K["A declared compose_scripts /<br/>message_display_scripts key"] --> KB{"Does the schema record an<br/>implied permission for the key?"}
   B -- no --> OK([no finding])
+  KB -- no --> OK
   B -- yes --> C{"Is that permission declared<br/>in the manifest?"}
+  KB -- yes --> C
   C -- yes --> OK
   C -- no --> ERR([ERROR: missing permission])
 

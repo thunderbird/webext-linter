@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Manifest key permission",
+  "version": "1.0",
+  "description": "compose_scripts implies compose (declared -> grounded); message_display_scripts implies messagesModify (undeclared -> missing).",
+  "permissions": ["compose"],
+  "background": { "scripts": ["bg.js"] },
+  "compose_scripts": [{ "js": ["compose.js"] }],
+  "message_display_scripts": [{ "js": ["display.js"] }],
+  "icons": { "16": "icon.png" }
+}

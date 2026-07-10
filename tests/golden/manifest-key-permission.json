@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/message-display-scripts",
+    "addon": "<root>/tests/addons/manifest-key-permission",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
@@ -91,12 +91,11 @@
     ]
   },
   "summary": {
-    "error": 2,
+    "error": 1,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "missing-permission": 1,
-      "unused-files": 1
+      "missing-permission": 1
     }
   },
   "findings": [
@@ -105,20 +104,11 @@
       "severity": "error",
       "file": "manifest.json",
       "loc": {
-        "line": 7
+        "line": 9
       },
       "item": "messagesModify",
       "hint": null,
       "message": "\"messagesModify\" permission is required here, but is not declared in the manifest. Add it to the requested permissions."
-    },
-    {
-      "ruleId": "unused-files",
-      "severity": "error",
-      "file": "unreachable/",
-      "loc": null,
-      "item": null,
-      "hint": null,
-      "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     }
   ]
 }
