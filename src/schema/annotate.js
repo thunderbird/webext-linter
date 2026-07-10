@@ -10,11 +10,12 @@
 //     compose, message_display_scripts -> messagesModify) ->
 //     SchemaIndex.manifestKeyPermissions.
 //
-// The merge OVERWRITES enum-value annotations (an existing one is replaced) but
-// APPENDS a fragment property's `annotations` onto the loaded property's (other
-// property keys are assigned). This is the deliberate difference from merge.js
-// (whose arrays append unique) - a local fragment wins over any same-named entry
-// the published schema may later carry, until the fragment is removed.
+// The merge OVERWRITES an enum-value annotation (an existing one is replaced), and
+// APPENDS a fragment's `annotations` onto a loaded property or member, deduping
+// identical entries (other property keys are assigned). Deduping keeps it
+// idempotent: re-applying, or the published schema later shipping the identical
+// annotation, does not duplicate it - so the fragment can be removed cleanly once
+// upstream carries the same entry.
 //
 // Belongs here: loadSchemaAnnotations (locate + read the bundled fragments) and
 // applySchemaAnnotations (the in-place overwrite merge). Does NOT belong here: the
@@ -59,7 +60,44 @@ export function applySchemaAnnotations(files, annotations) {
       const dstNs = target.find((n) => n.namespace === srcNs.namespace);
       if (dstNs) {
         applyTypes(dstNs, srcNs);
+        applyMembers(dstNs, srcNs);
       }
+    }
+  }
+}
+
+/**
+ * Append a fragment's function/event `annotations` onto the matching loaded member
+ * (by name) - how the overlay delivers a `note` on an API member the published
+ * schema lacks (e.g. a version-bounded tabs.query note a {{note:tabs.query}} prompt
+ * references). Only patches a member the loaded namespace already declares.
+ * @param {SchemaNode} dstNs  Loaded namespace object (mutated).
+ * @param {SchemaNode} srcNs  Fragment namespace object.
+ */
+function applyMembers(dstNs, srcNs) {
+  for (const kind of ["functions", "events"]) {
+    for (const srcM of srcNs[kind] ?? []) {
+      const dstM = (dstNs[kind] ?? []).find((m) => m.name === srcM.name);
+      if (dstM && Array.isArray(srcM.annotations)) {
+        appendAnnotations(dstM, srcM.annotations);
+      }
+    }
+  }
+}
+
+/**
+ * Append `extra` annotations onto a loaded node's `annotations`, skipping any that
+ * are already present (deep-equal). Idempotent, so re-applying - or an identical
+ * annotation the published schema later ships - never duplicates.
+ * @param {SchemaNode} node  Loaded property/member node (mutated).
+ * @param {SchemaNode[]} extra  Fragment annotations to add.
+ */
+function appendAnnotations(node, extra) {
+  node.annotations ??= [];
+  for (const a of extra) {
+    const canon = JSON.stringify(a);
+    if (!node.annotations.some((e) => JSON.stringify(e) === canon)) {
+      node.annotations.push(a);
     }
   }
 }
@@ -99,7 +137,7 @@ function applyTypes(dstNs, srcNs) {
         }
         for (const [k, v] of Object.entries(srcProp)) {
           if (k === "annotations" && Array.isArray(v)) {
-            dstProp.annotations = [...(dstProp.annotations ?? []), ...v];
+            appendAnnotations(dstProp, v);
           } else {
             dstProp[k] = v;
           }

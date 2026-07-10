@@ -309,12 +309,13 @@ export function cmpVersion(a, b) {
  * Thunderbird version range (each bound optional), compared at the BOUND's own
  * precision - so a bound of "153" denotes the whole 153.* series: 153, 153.0 and
  * 153.9 all satisfy min "153" AND max "153". Adjacent major bounds therefore
- * partition the version line with no gap (the tabs permission-prompts variants
- * pivot on min 154 / max 153, meeting at the D308076 major boundary). An absent
- * or unparsable strict_min_version counts as oldest: it fails any min but
- * satisfies any max. Shared by the recheck rubric assembler and the
- * unused-permission producer's token selection - both filter the same
- * permission-prompts entries.
+ * partition the version line with no gap (the tabs.query member notes pivot on
+ * min 154 / max 153, meeting at the 154 boundary, pulled into the recheck rubric
+ * version-matched via {{note:tabs.query}}). An absent or unparsable
+ * strict_min_version counts as oldest: it fails any min but satisfies any max.
+ * Shared by the manifest-key permission grounding, the recheck rubric assembler
+ * (its permission-prompts filter and its {{note}} resolver), and the
+ * unused-permission producer's token selection.
  * @param {?object} manifest
  * @param {?string} min  Inclusive lower bound, or null.
  * @param {?string} max  Inclusive upper bound, or null.

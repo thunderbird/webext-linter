@@ -108,7 +108,7 @@ export function buildRecheckSections(ctx, registry, nonce, consumers) {
     let prompt;
     let itemKeys = keys;
     if (entry?.["permission-recheck"]) {
-      const assembled = assemblePermissionPrompt(registry, ctx.manifest, keys);
+      const assembled = assemblePermissionPrompt(registry, ctx, keys);
       prompt = assembled.prompt;
       // Only ask the model about permissions the rubric actually grounds. A handed
       // permission whose sole prompt is version-filtered out is not grounded here, so
@@ -145,35 +145,58 @@ export function buildRecheckSections(ctx, registry, nonce, consumers) {
 /**
  * Assemble the unused-permission recheck rubric for the permissions being rechecked:
  * the shared framing wraps only the permission-prompts entries that cover one of the
- * requested `permissions` and whose version bounds fit the add-on's strict_min_version
- * (so the tabs variant matches D308076), deduped in registry order. Returns the rubric
- * AND the set of permissions it actually grounds: a requested permission whose only
- * entry is version-filtered out is not in `grounded`, so the caller must drop it from
- * the items sent to the model - it falls to manual via resolveRecheck rather than being
- * judged with no grounding. `prompt` is "" when no entry matches at all.
+ * requested `permissions` and whose version bounds fit the add-on's strict_min_version,
+ * deduped in registry order. A prompt's `{{note:<member>}}` placeholder is replaced
+ * with the version-matched `note` annotation(s) on that schema member (the
+ * dual-purpose doc/review notes). Returns the rubric AND the set of permissions it
+ * actually grounds: a requested permission whose only entry is version-filtered out
+ * is not in `grounded`, so the caller drops it from the items sent to the model.
+ * `prompt` is "" when no entry matches at all.
  * @param {import("../registry.js").Registry} registry
- * @param {?object} manifest  The add-on manifest (for the strict_min_version bounds).
+ * @param {import("../registry.js").RunContext} ctx  For the manifest (version
+ *   bounds) and the schema (member notes).
  * @param {string[]} permissions  The permissions handed to this recheck.
  * @returns {{prompt: string, grounded: Set<string>}}
  */
-function assemblePermissionPrompt(registry, manifest, permissions) {
+function assemblePermissionPrompt(registry, ctx, permissions) {
   const want = new Set(permissions);
   const entries = registry
     .permissionPrompts()
     .filter(
       (e) =>
         e.permissions.some((p) => want.has(p)) &&
-        versionInBounds(manifest, e.minStrictVersion, e.maxStrictVersion)
+        versionInBounds(ctx.manifest, e.minStrictVersion, e.maxStrictVersion)
     );
   const grounded = new Set(entries.flatMap((e) => e.permissions));
   if (!entries.length) {
     return { prompt: "", grounded };
   }
   const { preamble, closing } = registry.permissionPromptFraming();
-  const prompt = [preamble, ...entries.map((e) => e.prompt), closing]
+  const prompt = [
+    preamble,
+    ...entries.map((e) => resolveNotes(e.prompt, ctx)),
+    closing,
+  ]
     .filter(Boolean)
     .join("\n");
   return { prompt, grounded };
+}
+
+// Replace each `{{note:<ns>.<member>}}` in a prompt with the version-matched `note`
+// annotation(s) on that schema member (joined). A member with no note, or none in
+// version bounds, resolves to empty.
+function resolveNotes(text, ctx) {
+  return text.replace(/\{\{note:([\w.]+)\}\}/g, (_, path) => {
+    const matched = [];
+    for (const n of ctx.schema?.memberNotes?.(path) ?? []) {
+      if (
+        versionInBounds(ctx.manifest, n.minStrictVersion, n.maxStrictVersion)
+      ) {
+        matched.push(n.note);
+      }
+    }
+    return matched.join(" ");
+  });
 }
 
 /**

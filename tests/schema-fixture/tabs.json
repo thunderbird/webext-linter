@@ -13,6 +13,12 @@
             }
           }
         ]
+      },
+      {
+        "name": "query",
+        "parameters": [
+          { "name": "queryInfo", "type": "object", "properties": {} }
+        ]
       }
     ]
   }

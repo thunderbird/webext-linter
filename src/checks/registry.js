@@ -111,11 +111,11 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   keys off it to forbid an `input`, derive phase "post-summary", and require a rubric.
  * @property {boolean} [diff]  Diff-mode gate: true = run only with a --diff-to
  *   baseline, false = run only WITHOUT one (new submissions), omitted = always.
- * @property {"post-summary"|"invalid-experiment"} [phase]  Run profile, picked
- *   by runChecks: omitted = the main loop of a normal review; "post-summary" =
- *   after the AI add-on summary (reads its output); "invalid-experiment" = only
- *   when the add-on is an invalid Experiment, in which case it is the ONLY phase
- *   that runs (see runChecks).
+ * @property {"post-summary"|"invalid-experiment"} [phase]  Run profile, picked by
+ *   runChecks: omitted = the main loop of a normal review; "post-summary" = after
+ *   the AI add-on summary (reads its output, LLM-gated); "invalid-experiment" =
+ *   only when the add-on is an invalid Experiment, in which case it is the ONLY
+ *   phase that runs (see runChecks).
  * @property {string} [prompt]  LLM rubric for an ambiguous case (llm checks).
  * @property {string} [instructions]  Manual-review message (llm checks).
  * @property {string} [postSummaryRecheck]  Id of a post-summary recheck consumer

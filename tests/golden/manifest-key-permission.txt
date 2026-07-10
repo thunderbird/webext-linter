@@ -5,6 +5,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) "messagesModify" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
  - manifest.json:9
 
+2) "scripting" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
+ - manifest.json:9
+
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
@@ -77,4 +80,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 warning(s), 0 info, 10 manual review step(s)
+2 error(s), 0 warning(s), 0 info, 10 manual review step(s)

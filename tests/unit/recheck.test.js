@@ -19,6 +19,23 @@ import {
   loadRegistry,
   Registry,
 } from "../../src/checks/registry.js";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { buildSchemaIndex } from "../../src/schema/index.js";
+import { loadSchemaFiles } from "../../src/schema/load.js";
+import {
+  loadSchemaAnnotations,
+  applySchemaAnnotations,
+} from "../../src/schema/annotate.js";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+// The offline fixture schema with the bundled overlay applied (so tabs.query
+// carries its version-bounded notes, message keys their required_permissions).
+function fixtureSchema() {
+  const loaded = loadSchemaFiles(path.join(here, "..", "schema-fixture"));
+  applySchemaAnnotations(loaded.files, loadSchemaAnnotations());
+  return buildSchemaIndex(loaded);
+}
 
 // A handed-over manual item, as the producer's escalation became (manualRef).
 const handed = (item, line) => ({
@@ -221,6 +238,35 @@ test("buildRecheckSections composes a labeled section per consumer", () => {
   // The bullet instruction is in the rubric, labeled with the consumer's title.
   assert.ok(rubric.includes("add a separate bullet point"));
   assert.ok(rubric.includes('labeled "Unused permission"'));
+});
+
+// A permission prompt's {{note:<member>}} placeholder resolves to the version-matched
+// `note` annotation(s) on that schema member. The tabs prompt references
+// {{note:tabs.query}}, whose two notes pivot on the 154 own-page exemption.
+test("a permission prompt's {{note}} resolves version-matched", () => {
+  const registry = loadRegistry();
+  const schema = fixtureSchema();
+  const build = (strict_min_version) => {
+    const ctx = {
+      schema,
+      manifest: {
+        permissions: ["tabs"],
+        browser_specific_settings: { gecko: { strict_min_version } },
+      },
+      recheck: new Map([["unused-permission-recheck", [handed("tabs", 1)]]]),
+    };
+    return { ctx, ...buildRecheckSections(ctx, registry, "N") };
+  };
+  // 154+: the own-page-exemption note; NOT the pre-154 phrasing.
+  const post = build("154.0");
+  assert.ok(post.rubric.includes("Since Thunderbird 154 the add-on's OWN"));
+  assert.ok(
+    !post.rubric.includes("even the add-on's OWN moz-extension:// url")
+  );
+  // Below 154: the other note, and not the 154 exemption.
+  const pre = build("128.0");
+  assert.ok(pre.rubric.includes("even the add-on's OWN moz-extension:// url"));
+  assert.ok(!pre.rubric.includes("Since Thunderbird 154"));
 });
 
 // The SCA split runs one summary per corpus; each passes a `consumers` set so its prompt
@@ -592,6 +638,7 @@ test("no entry's token matches its own permission declaration", () => {
 // A permission-recheck consumer assembles its rubric per review from the framing +
 // the permission-prompts for exactly the permissions handed over, and picks the tabs
 // variant by the add-on's strict_min_version (D308076).
+const RUBRIC_SCHEMA = fixtureSchema();
 const permRubric = (perms, strictMin) => {
   const manifest = strictMin
     ? {
@@ -599,6 +646,7 @@ const permRubric = (perms, strictMin) => {
       }
     : {};
   const ctx = {
+    schema: RUBRIC_SCHEMA,
     manifest,
     recheck: new Map([
       [
@@ -640,39 +688,42 @@ test("assembly grounds webRequestBlocking on the blocking string inside an array
   assert.match(wrb, /\barray\b/); // the array argument, not a standalone "blocking" arg
 });
 
-test("assembly selects the tabs variant by strict_min_version", () => {
+// The single tabs entry references {{note:tabs.query}}; the version-dependent
+// 154 own-page exemption now lives in that member's two bounded notes, resolved by
+// the add-on's strict_min_version.
+test("the tabs {{note}} resolves the 154 variant by strict_min_version", () => {
   for (const min of ["154", "154.0", "200"]) {
     const post = permRubric(["tabs"], min);
-    assert.match(post, /Since Thunderbird 154/, `min=${min}`); // fixed
+    assert.match(post, /Since Thunderbird 154/, `min=${min}`); // post-154 note
     assert.doesNotMatch(
       post,
-      /as justified whenever the code calls tabs.query/,
+      /even the add-on's OWN moz-extension/,
       `min=${min}`
     );
   }
   // Everything below 154 - including 153.x point releases, unset and unparsable -
-  // gets the pre-D308076 wording (the [154, ) / ( , 154) variants must partition
-  // the version line with no gap: a 153.9 add-on must not fall through to no rubric).
+  // gets the pre-154 note (the max-153 / min-154 notes must partition the version
+  // line with no gap: a 153.9 add-on must not fall through to no note).
   for (const min of ["153.9", "153.5", "153", "128", undefined, "abc"]) {
     const pre = permRubric(["tabs"], min);
     assert.match(
       pre,
-      /as justified whenever the code calls tabs.query/,
+      /even the add-on's OWN moz-extension/,
       `min=${String(min)}`
     );
     assert.doesNotMatch(pre, /Since Thunderbird 154/, `min=${min}`);
   }
 });
 
-// The version-bounded tabs variants must tile the version line: for EVERY
-// strict_min_version, the tabs recheck gets exactly one grounding - never none (a
-// gap sends tabs to the LLM ungrounded) and never both.
-test("the tabs variants partition every strict_min_version (no gap, no overlap)", () => {
+// The tabs.query notes must tile the version line: for EVERY strict_min_version,
+// exactly one resolves - never none (a gap leaves the tabs prompt without the
+// version-specific guidance) and never both.
+test("the tabs.query notes partition every strict_min_version (no gap, no overlap)", () => {
   const wordings = (min) => {
     const r = permRubric(["tabs"], min);
     return [
       /Since Thunderbird 154/.test(r), // post
-      /as justified whenever the code calls tabs.query/.test(r), // pre
+      /even the add-on's OWN moz-extension/.test(r), // pre
     ].filter(Boolean).length;
   };
   for (const min of [

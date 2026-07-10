@@ -1193,10 +1193,11 @@ test("unused-permission decides token-absent permissions deterministically", () 
   ]);
 });
 
-// The compose_scripts manifest key requires compose (the schema's native
-// permissions field on the key). Declaring the key grounds compose as USED, so it
-// is dropped outright - neither a deterministic-unused finding nor a manual
-// escalation. This is the schema-driven grounding, not the token pre-flight.
+// The compose_scripts manifest key requires compose (the required_permissions
+// annotation the local extensionScripts.json overlay adds to the key). Declaring
+// the key grounds compose as USED, so it is dropped outright - neither a
+// deterministic-unused finding nor a manual escalation. This is the schema-driven
+// grounding, not the token pre-flight.
 test("unused-permission grounds compose from the compose_scripts manifest key", () => {
   const manifest = {
     manifest_version: 2,
@@ -1218,6 +1219,40 @@ test("unused-permission grounds compose from the compose_scripts manifest key", 
   });
   assert.equal(out.findings.length, 0);
   assert.deepEqual(out.escalations, []);
+});
+
+// message_display_scripts requires messagesModify always, plus scripting before
+// Thunderbird 154 (a version-bounded required_permissions entry). The grounding
+// version-filters by the add-on's strict_min_version, so the scripting requirement
+// only applies below 154.
+test("message_display_scripts version-filters scripting on the 154 boundary", () => {
+  const run = (strict_min_version) => {
+    const manifest = {
+      manifest_version: 3,
+      permissions: [],
+      message_display_scripts: [{ js: ["c.js"] }],
+      browser_specific_settings: { gecko: { strict_min_version } },
+    };
+    const ctx = withManifest({
+      schema,
+      addon: {
+        manifest,
+        files: new Map([
+          ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+        ]),
+      },
+      apiUsages: [],
+    });
+    return missingPermission.run(ctx).map((f) => f.item);
+  };
+  // Before 154: both messagesModify AND scripting are required (undeclared -> missing).
+  const pre = run("128.0");
+  assert.ok(pre.includes("messagesModify"));
+  assert.ok(pre.includes("scripting"));
+  // 154+: only messagesModify is required; scripting is out of bounds.
+  const post = run("154.0");
+  assert.ok(post.includes("messagesModify"));
+  assert.ok(!post.includes("scripting"));
 });
 
 // The deterministic path disables itself whenever the scan cannot see every

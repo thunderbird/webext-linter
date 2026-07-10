@@ -394,34 +394,50 @@ export class SchemaIndex {
   }
 
   /**
-   * Manifest keys that require a permission, read from a `required_permissions`
-   * annotation on the key's property (e.g. compose_scripts -> compose,
-   * message_display_scripts -> messagesModify). This is the script-injection
-   * channel the browser.* API gate never covers - Gecko does not enforce the
-   * requirement, but the annotation records it and the unused/missing-permission
-   * grounding consumes it. The annotation lives under
-   * `annotations[].additional_properties.required_permissions`; a key with no such
-   * annotation never appears here.
-   * @returns {Map<string, string[]>}  Manifest key -> required permission names.
+   * @typedef {object} RequiredPermissionEntry  One `required_permissions`
+   *   annotation on a manifest-key property, with its optional strict-version
+   *   bound (so a version-dependent requirement is several entries the grounding
+   *   version-filters).
+   * @property {string[]} permissions  The permissions this entry requires.
+   * @property {?string} minStrictVersion  Inclusive lower Thunderbird bound, or null.
+   * @property {?string} maxStrictVersion  Inclusive upper Thunderbird bound, or null.
+   */
+
+  /**
+   * Manifest keys that require a permission, read from `required_permissions`
+   * annotations on the key's property (e.g. compose_scripts -> compose,
+   * message_display_scripts -> messagesModify [+ scripting before 154]). This is
+   * the script-injection channel the browser.* API gate never covers - Gecko does
+   * not enforce it, but the annotation records it and the grounding consumes it.
+   * Each annotation object becomes ONE entry, carrying its own
+   * `min_strict_version`/`max_strict_version` bound (so a version-dependent
+   * requirement is several entries); the grounding version-filters them. A key with
+   * no such annotation never appears here.
+   * @returns {Map<string, RequiredPermissionEntry[]>}  Manifest key -> entries.
    */
   _collectManifestKeyPermissions() {
     const out = new Map();
     for (const name of MANIFEST_KEY_TYPES) {
       const type = this.globalTypes.get(`manifest.${name}`);
       for (const [key, prop] of Object.entries(type?.properties || {})) {
-        const perms = [];
+        const entries = [];
         for (const a of prop?.annotations ?? []) {
           const req = a?.additional_properties?.required_permissions;
-          if (Array.isArray(req)) {
-            for (const p of req) {
-              if (typeof p === "string" && !perms.includes(p)) {
-                perms.push(p);
-              }
-            }
+          if (!Array.isArray(req)) {
+            continue;
           }
+          const permissions = req.filter((p) => typeof p === "string");
+          if (!permissions.length) {
+            continue;
+          }
+          entries.push({
+            permissions,
+            minStrictVersion: a.min_strict_version ?? null,
+            maxStrictVersion: a.max_strict_version ?? null,
+          });
         }
-        if (perms.length) {
-          out.set(key, perms);
+        if (entries.length) {
+          out.set(key, entries);
         }
       }
     }
@@ -655,6 +671,25 @@ export class SchemaIndex {
       perms.add(p);
     }
     return [...perms];
+  }
+
+  /**
+   * The `note` annotations on a resolved API member (e.g. "tabs.query"), each with
+   * its optional strict-version bound - the dual-purpose doc/review notes a
+   * `{{note:<member>}}` recheck-prompt placeholder pulls in (version-filtered by the
+   * caller). Empty when the member or its notes are absent.
+   * @param {string} path  Dotted member path after the browser/messenger root.
+   * @returns {{note: string, minStrictVersion: ?string, maxStrictVersion: ?string}[]}
+   */
+  memberNotes(path) {
+    const res = this.resolveApi(path.split("."));
+    return (res?.def?.annotations ?? [])
+      .filter((a) => a && typeof a.note === "string")
+      .map((a) => ({
+        note: a.note,
+        minStrictVersion: a.min_strict_version ?? null,
+        maxStrictVersion: a.max_strict_version ?? null,
+      }));
   }
 
   // ---- Annotation helpers.

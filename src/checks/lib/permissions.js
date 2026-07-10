@@ -171,30 +171,43 @@ export function analyzePermissions(ctx) {
   }
 
   // A manifest key can require a permission the browser.* API gate never covers
-  // (compose_scripts -> compose, message_display_scripts -> messagesModify), in
-  // any manifest version - the key's required_permissions annotation records it.
-  // When the key is declared the permission is provably in use; if it is also
-  // undeclared, it is missing. Anchored to the manifest key, not a call site.
-  for (const [key, perms] of schema.manifestKeyPermissions ?? []) {
+  // (compose_scripts -> compose, message_display_scripts -> messagesModify [+
+  // scripting before Thunderbird 154]) - the key's required_permissions annotation
+  // records it as one or more entries, each with an optional strict-version bound.
+  // For a declared key, an entry that is IN version bounds contributes its
+  // permissions (grounded used, flagged missing when undeclared); an out-of-bounds
+  // entry is skipped. Anchored to the manifest key, not a call site.
+  for (const [key, entries] of schema.manifestKeyPermissions ?? []) {
     if (!manifestKeys.has(key)) {
       continue;
     }
     const line = manifestPathLine(ctx, key);
     const loc = line ? { line } : null;
-    for (const perm of perms) {
-      usedPermissions.add(perm);
-      const declaredHere = declared.named.has(perm);
-      requirements.push({
-        file: "manifest.json",
-        loc,
-        item: `manifest key "${key}" needs '${perm}'`,
-        verdict: declaredHere ? "pass" : "fail",
-      });
-      if (!declaredHere && !missingReported.has(perm)) {
-        missingReported.add(perm);
-        missingPermissions.push(
-          finding({ file: "manifest.json", loc, item: perm })
-        );
+    for (const entry of entries) {
+      if (
+        !versionInBounds(
+          ctx.manifest,
+          entry.minStrictVersion,
+          entry.maxStrictVersion
+        )
+      ) {
+        continue;
+      }
+      for (const perm of entry.permissions) {
+        usedPermissions.add(perm);
+        const declaredHere = declared.named.has(perm);
+        requirements.push({
+          file: "manifest.json",
+          loc,
+          item: `manifest key "${key}" needs '${perm}'`,
+          verdict: declaredHere ? "pass" : "fail",
+        });
+        if (!declaredHere && !missingReported.has(perm)) {
+          missingReported.add(perm);
+          missingPermissions.push(
+            finding({ file: "manifest.json", loc, item: perm })
+          );
+        }
       }
     }
   }

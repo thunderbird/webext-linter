@@ -79,18 +79,26 @@ test("manifest keys include $extend additions (compose_action)", () => {
   assert.ok(!schema.validManifestKeys.has("weirdTopLevelKey"));
 });
 
-// A manifest key whose property carries a `required_permissions` annotation
-// requires that permission (compose_scripts -> compose,
-// message_display_scripts -> messagesModify). Keys without one - including the
-// array-typed `permissions` property itself - never enter the map.
-test("manifestKeyPermissions reads the required_permissions annotation", () => {
+// A manifest key whose property carries `required_permissions` annotations
+// requires those permissions - one entry per annotation object, each with its own
+// strict-version bound (message_display_scripts also needs scripting before 154).
+// Keys without one - including the array-typed `permissions` property - are absent.
+test("manifestKeyPermissions reads required_permissions annotations with bounds", () => {
   assert.deepEqual(schema.manifestKeyPermissions.get("compose_scripts"), [
-    "compose",
+    {
+      permissions: ["compose"],
+      minStrictVersion: null,
+      maxStrictVersion: null,
+    },
   ]);
-  assert.deepEqual(
-    schema.manifestKeyPermissions.get("message_display_scripts"),
-    ["messagesModify"]
-  );
+  const md = schema.manifestKeyPermissions.get("message_display_scripts");
+  assert.deepEqual(md[0], {
+    permissions: ["messagesModify"],
+    minStrictVersion: null,
+    maxStrictVersion: null,
+  });
+  assert.deepEqual(md[1].permissions, ["scripting"]);
+  assert.equal(md[1].maxStrictVersion, "153");
   assert.ok(!schema.manifestKeyPermissions.has("permissions"));
   assert.ok(!schema.manifestKeyPermissions.has("content_scripts"));
 });
@@ -124,16 +132,20 @@ test("the bundled extensionScripts overlay grounds manifest-key permissions end-
   });
   // Baseline: the schema declares the keys but no permission annotation.
   assert.equal(new SchemaIndex(files()).manifestKeyPermissions.size, 0);
-  // With the real bundled overlay applied, the required_permissions annotation lands.
+  // With the real bundled overlay applied, the required_permissions annotations land.
   const patched = files();
   applySchemaAnnotations(patched, loadSchemaAnnotations());
   const idx = new SchemaIndex(patched);
-  assert.deepEqual(idx.manifestKeyPermissions.get("compose_scripts"), [
-    "compose",
-  ]);
-  assert.deepEqual(idx.manifestKeyPermissions.get("message_display_scripts"), [
-    "messagesModify",
-  ]);
+  assert.deepEqual(
+    idx.manifestKeyPermissions.get("compose_scripts").map((e) => e.permissions),
+    [["compose"]]
+  );
+  const md = idx.manifestKeyPermissions.get("message_display_scripts");
+  assert.deepEqual(
+    md.map((e) => e.permissions),
+    [["messagesModify"], ["scripting"]]
+  );
+  assert.equal(md[1].maxStrictVersion, "153");
 });
 
 // A simple namespace.member path resolves to a function result carrying the

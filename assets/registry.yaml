@@ -854,10 +854,11 @@ deterministic-checks:
 # entry may carry min_strict_version / max_strict_version (an INCLUSIVE bound on the
 # add-on's strict_min_version, compared at the bound's own precision - so "153" covers
 # the whole 153.* series; adjacent major bounds partition with no gap; an unset version
-# is treated as oldest): the two "tabs, activeTab" entries pivot on the 153/154 boundary
-# (post = min 154, pre = max 153) to pick the D308076 variant - before Thunderbird 154,
-# filtering tabs.query by url/title needs "tabs" even for the add-on's own pages; at/after
-# 154 it does not. Every name in a
+# is treated as oldest). No entry currently sets a bound; the tabs/activeTab version
+# pivot instead lives in the `tabs.query` schema-annotation notes, pulled in version-
+# matched via the {{note:tabs.query}} placeholder in the single tabs entry's prompt -
+# before Thunderbird 154, filtering tabs.query by url/title needs "tabs" even for the
+# add-on's own pages; at/after 154 it does not. Every name in a
 # `permissions`
 # list must appear in that entry's `prompt` (a test enforces this - an ungrounded
 # permission just reintroduces guessing).
@@ -971,8 +972,10 @@ permission-prompts:
       storage.local, IndexedDB, the Cache API, or the Origin Private File System.
       Verdict pass when the current code stores data through any of these; verdict
       fail only when the add-on performs no persistent storage at all.
+  # The Thunderbird-154 own-page exemption is version-dependent, so it lives as two
+  # bounded `note` annotations on tabs.query (assets/schema-annotations/tabs.json) and
+  # is pulled in version-matched via {{note:tabs.query}} - one entry, no version bound.
   - permissions: tabs, activeTab
-    min_strict_version: "154"
     tokens:
       - query
       - url
@@ -985,32 +988,8 @@ permission-prompts:
       the tabs events) need NO permission by themselves. Reading a tab's privileged url,
       title, or favIconUrl - or filtering tabs.query by them - needs "tabs" (any tab),
       a host permission matching the tab's url (matching tabs only), or "activeTab"
-      (for the active tab).  Since Thunderbird 154 the add-on's OWN moz-extension:// pages
-      are exempt: reading or filtering by their url/title/favIconUrl needs no permission,
-      so if "tabs" would be justified ONLY by such an own-page read, it is unused - say so
-      in your reason, noting that since 154 "tabs" is no longer needed for the add-on's own
-      pages. The "tabs" permission is also required by a tabId passed to menus.overrideContext
-      and by a urls filter on tabs.onUpdated.
-      A broad host permission like "<all_urls>" usually makes "tabs" redundant for reads.
-  - permissions: tabs, activeTab
-    max_strict_version: "153"
-    tokens:
-      - query
-      - url
-      - title
-      - favIconUrl
-      - overrideContext
-      - onUpdated
-    prompt: |-
-      The tabs methods (tabs.query, tabs.create, tabs.update, tabs.remove, tabs.sendMessage,
-      the tabs events) need NO permission by themselves. Reading a tab's privileged url
-      (even the add-on's OWN moz-extension:// url), title, or favIconUrl - or filtering
-      tabs.query by them - needs "tabs" (any tab), a host permission matching the tab's url
-      (matching tabs only), or "activeTab" (for the active tab). So treat "tabs" or "activeTab"
-      as justified whenever the code calls tabs.query with a url or title filter anywhere.
-      Mark them fail only when it makes no such tabs.query({url}) or tabs.query({title}) call.
-      The "tabs" permission is also required by a tabId passed to menus.overrideContext and
-      by a urls filter on tabs.onUpdated.
+      (for the active tab). {{note:tabs.query}} The "tabs" permission is also required by a
+      tabId passed to menus.overrideContext and by a urls filter on tabs.onUpdated.
       A broad host permission like "<all_urls>" usually makes "tabs" redundant for reads.
   - permissions: activeTab
     tokens:

@@ -91,11 +91,11 @@
     ]
   },
   "summary": {
-    "error": 1,
+    "error": 2,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "missing-permission": 1
+      "missing-permission": 2
     }
   },
   "findings": [
@@ -109,6 +109,17 @@
       "item": "messagesModify",
       "hint": null,
       "message": "\"messagesModify\" permission is required here, but is not declared in the manifest. Add it to the requested permissions."
+    },
+    {
+      "ruleId": "missing-permission",
+      "severity": "error",
+      "file": "manifest.json",
+      "loc": {
+        "line": 9
+      },
+      "item": "scripting",
+      "hint": null,
+      "message": "\"scripting\" permission is required here, but is not declared in the manifest. Add it to the requested permissions."
     }
   ]
 }

@@ -1,6 +1,6 @@
 {
-  "_comment": "compose_scripts requires compose (line 6, declared) so compose is grounded as used - no unused-permission and no missing-permission for it. message_display_scripts requires messagesModify (line 9), which is NOT declared, so it is a missing-permission anchored to the manifest key.",
+  "_comment": "compose_scripts requires compose (line 6, declared) so compose is grounded - no finding for it. message_display_scripts (line 9) requires messagesModify always AND scripting before Thunderbird 154; this add-on sets no strict_min_version (treated as oldest, so <154 applies), so BOTH are required and undeclared -> two missing-permission findings at line 9.",
   "expect": {
-    "missing-permission": ["manifest.json:9"]
+    "missing-permission": ["manifest.json:9", "manifest.json:9"]
   }
 }
