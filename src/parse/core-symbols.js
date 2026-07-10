@@ -3,38 +3,21 @@
 // name shadowed by a local binding or import is the developer's own symbol, not
 // ours, so only unbound references count. One hit per distinct symbol name.
 //
-// Belongs here: the core-symbol list and extracting its global references from an
-// AST, as raw per-file input for the core-symbol-in-webext check.
+// Belongs here: extracting the core-symbol global references from an AST, as raw
+// per-file input for the core-symbol-in-webext check. The symbol list itself is a
+// hand-curated Thunderbird fact loaded from assets/webext-facts.yaml (re-exported
+// here as the single import point).
 //
-// Does NOT belong here: the WebExtension vs Experiment partition or the
-// non-authored skip that decides WHICH files to scan (-> the check +
-// src/checks/lib/reachability.js / bundled.js), authored wording / severity (->
-// assets/registry.yaml). Babel access goes through src/parse/ast.js.
+// Does NOT belong here: the core-symbol list values (-> assets/webext-facts.yaml),
+// the WebExtension vs Experiment partition or the non-authored skip that decides
+// WHICH files to scan (-> the check + src/checks/lib/reachability.js / bundled.js),
+// authored wording / severity (-> assets/registry.yaml). Babel access goes through
+// src/parse/ast.js.
 
 import { parseJs, traverse, nodeLoc } from "./ast.js";
+import { CORE_SYMBOLS } from "./webext-facts.js";
 
-// Privileged globals a WebExtension sandbox never provides. The short Components
-// shortcuts (Cc/Ci/Cu/Cr/Cm) and the Extension* Experiment base globals are
-// included; all are matched only as GLOBAL references (a shadowing local binding
-// or import of the same name is exempt).
-export const CORE_SYMBOLS = new Set([
-  "Services",
-  "Components",
-  "Cc",
-  "Ci",
-  "Cu",
-  "Cr",
-  "Cm",
-  "ChromeUtils",
-  "XPCOMUtils",
-  "ctypes",
-  "IOUtils",
-  "PathUtils",
-  "ChromeWorker",
-  "ExtensionCommon",
-  "ExtensionAPI",
-  "ExtensionParent",
-]);
+export { CORE_SYMBOLS };
 
 /**
  * @param {string} code  JavaScript source text.

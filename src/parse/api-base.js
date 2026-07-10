@@ -18,11 +18,13 @@
 // most once per parse and dies with the AST, so the extraction pass's
 // one-AST-at-a-time peak-memory contract is preserved.
 //
-// Belongs here: the API_ROOTS set, alias resolution back to a real root
-// (aliasTarget), the per-AST chain-base index (apiBasesOf), and callee-chain
-// resolution through it (calleeApiPath). Scope: the WebExtension API roots
-// ONLY - widening the root set silently changes what every consumer indexes,
-// so a new root family is a deliberate design decision, not an in-place edit.
+// Belongs here: the API_ROOTS seam (the value is loaded from
+// assets/webext-facts.yaml, re-exported here as the single import point), alias
+// resolution back to a real root (aliasTarget), the per-AST chain-base index
+// (apiBasesOf), and callee-chain resolution through it (calleeApiPath). Scope:
+// the WebExtension API roots ONLY - widening the root set silently changes what
+// every consumer indexes, so a new root family is a deliberate design decision,
+// not an in-place edit.
 // Does NOT belong here: usage extraction and its limitations reporting (->
 // src/parse/api-usage.js), file-path extraction (-> src/parse/loader-files.js),
 // web-API receiver aliasing (navigator.* etc. -> src/parse/web-api-calls.js),
@@ -30,8 +32,9 @@
 // src/parse/ast.js.
 
 import { traverse } from "./ast.js";
+import { API_ROOTS } from "./webext-facts.js";
 
-export const API_ROOTS = new Set(["browser", "messenger", "chrome"]);
+export { API_ROOTS };
 
 /** @typedef {object} BabelPath A @babel/traverse NodePath object. */
 /** @typedef {object} AstNode A Babel AST node. */

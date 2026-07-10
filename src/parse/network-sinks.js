@@ -21,6 +21,7 @@
 import { parseJs, traverse, nodeLoc } from "./ast.js";
 import { classifyUrl, isLoopback } from "../scan/url.js";
 import { apiBasesOf } from "./api-base.js";
+import { DATA_APIS } from "./webext-facts.js";
 
 /** @typedef {import("@babel/types").Node} AstNode */
 
@@ -44,20 +45,6 @@ const HTTP_METHODS = new Set([
   "PATCH",
   "HEAD",
   "OPTIONS",
-]);
-
-// WebExtension namespaces holding user data: a call to one inside a sink's
-// argument is direct evidence the payload carries user data.
-const DATA_APIS = new Set([
-  "messages",
-  "messageDisplay",
-  "compose",
-  "contacts",
-  "addressBooks",
-  "accounts",
-  "identities",
-  "folders",
-  "mailTabs",
 ]);
 
 /**

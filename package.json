@@ -30,6 +30,7 @@
     "verify.js",
     "assets/registry.yaml",
     "assets/library-blocks.yaml",
+    "assets/webext-facts.yaml",
     "assets/schema-annotations",
     "README.md",
     "LICENSE"

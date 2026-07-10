@@ -11,16 +11,19 @@
 //     non-path literal (a match glob, a property name) is never mistaken for a
 //     file, so the result is safe to assert "file not bundled" on.
 //   - BRIDGE (temporary): a handful of loaders the schema does not yet mark -
-//     their path is typed as a plain string / generic "url" - are extracted by a
-//     small hardcoded spec. Each entry is removed once the schema tags that
-//     method's path parameter with a relativeUrl format: the method then falls
-//     to the schema-directed branch and the bridge entry is dead. See BRIDGE.
+//     their path is typed as a plain string / generic "url" - are extracted from
+//     a small hand-curated spec table (the BRIDGE + ROOT_RELATIVE_FILE_METHODS
+//     data lives in assets/webext-facts.yaml). Each entry is removed once the
+//     schema tags that method's path parameter with a relativeUrl format: the
+//     method then falls to the schema-directed branch and the bridge entry is
+//     dead. See assets/webext-facts.yaml and TODO.md.
 //
 // Belongs here: extracting the local file paths referenced by file-loading API
 // calls, both schema-directed and via the temporary BRIDGE scaffolding.
 //
-// Does NOT belong here: the file-loader marking and rel-url type tags it walks
-// - those come from the schema (src/schema/index.js). Resolving paths and
+// Does NOT belong here: the BRIDGE / ROOT_RELATIVE_FILE_METHODS values (->
+// assets/webext-facts.yaml), the file-loader marking and rel-url type tags it
+// walks - those come from the schema (src/schema/index.js). Resolving paths and
 // building the reachability graph is src/checks/lib/reachability.js. Verdicts
 // (bundled, reachable) are src/checks/rules/*. A script's own import/require
 // references are src/parse/local-imports.js. Babel access goes through
@@ -28,63 +31,11 @@
 
 import { apiBasesOf, calleeApiPath } from "./api-base.js";
 import { parseJs, traverse, staticPathOf } from "./ast.js";
+import { BRIDGE, ROOT_RELATIVE_FILE_METHODS } from "./webext-facts.js";
 import { REL_URL_FORMATS } from "../schema/index.js";
 
 /** @typedef {import("@babel/types").Node} AstNode */
 /** @typedef {import("../schema/index.js").SchemaNode} SchemaNode */
-
-// Loaders the schema cannot yet mark (their path is a plain string / generic
-// "url", not a relativeUrl format). TEMPORARY: delete an entry once the schema
-// tags that method's path parameter - it is then derived (fileLoaderMethods) and
-// handled by the schema-directed branch, leaving this entry dead. Each spec says
-// where the path sits: `arg0` (the positional first argument) and/or option
-// keys holding a string (`stringKeys`) or string array (`arrayKeys`), looked up
-// in any object argument. `mv` restricts an entry to one manifest version, for
-// methods that exist only there (verified against the cached release-mv2 and
-// release-mv3 schemas): MV3 renamed browserAction -> action and replaced
-// tabs.executeScript/insertCSS/removeCSS with scripting.*. Thunderbird has no
-// pageAction or sidebarAction namespace, so neither appears here.
-const BRIDGE = new Map([
-  // runtime.getURL("path") - a root-relative resource URL (both versions).
-  ["runtime.getURL", { arg0: true }],
-  // tabs.executeScript|insertCSS|removeCSS {file}/{files}: MV2 only (MV3 uses
-  // the scripting.* equivalents below).
-  ["tabs.executeScript", { stringKeys: ["file"], arrayKeys: ["files"], mv: 2 }],
-  ["tabs.insertCSS", { stringKeys: ["file"], arrayKeys: ["files"], mv: 2 }],
-  ["tabs.removeCSS", { stringKeys: ["file"], arrayKeys: ["files"], mv: 2 }],
-  ["scripting.executeScript", { stringKeys: ["file"], arrayKeys: ["files"] }],
-  ["scripting.insertCSS", { stringKeys: ["file"], arrayKeys: ["files"] }],
-  ["scripting.removeCSS", { stringKeys: ["file"], arrayKeys: ["files"] }],
-  // tabs.create({url}) - a packaged page (or a remote url; callers drop remote).
-  ["tabs.create", { stringKeys: ["url"] }],
-  // <action>.setPopup({popup}): the default action is browserAction in MV2,
-  // renamed to action in MV3 (compose/messageDisplay action exist in both).
-  ["browserAction.setPopup", { stringKeys: ["popup"], mv: 2 }],
-  ["action.setPopup", { stringKeys: ["popup"], mv: 3 }],
-  ["composeAction.setPopup", { stringKeys: ["popup"] }],
-  ["messageDisplayAction.setPopup", { stringKeys: ["popup"] }],
-]);
-
-// Root-relative loaders: their path resolves against the extension ROOT (".."
-// clamped at root), like a manifest path. Empirically confirmed for
-// runtime.getURL; documented for scripting.* (MDN: "files" are relative to the
-// extension's root directory). EVERY OTHER file loader resolves against the
-// CALLING DOCUMENT - the HTML page hosting the script, not the extension root and
-// not the script's own module URL - so a relative path there is page-relative
-// (base:"page"); the resolver walks the script's host-page directories.
-//   - menus.create {icons}, <action>.setIcon/setPopup, tabs.create/windows.create
-//     {url}, and the MV2 tabs.executeScript/insertCSS/removeCSS {file} (MDN: in
-//     Firefox a non-root-relative `file` resolves against the current page URL)
-//     are all page-relative.
-//   - A leading-"/" path is still root-relative for every loader (resolveInDir
-//     handles it), and a scheme URL is dropped upstream - both independent of
-//     this base.
-const ROOT_RELATIVE_FILE_METHODS = new Set([
-  "runtime.getURL",
-  "scripting.executeScript",
-  "scripting.insertCSS",
-  "scripting.removeCSS",
-]);
 
 /**
  * Scan JS for file paths passed to file-loading API calls.
@@ -156,7 +107,14 @@ export function scanLoaderRefs(
       }
       const args = path.node.arguments;
       // Derive the resolution base from the method name, independent of which
-      // extraction branch (schema-directed or bridge) handles the call.
+      // extraction branch (schema-directed or bridge) handles the call. A
+      // root-relative loader (getURL, scripting.*) resolves its path against the
+      // extension ROOT (".." clamped), like a manifest path; EVERY other loader
+      // resolves against the CALLING DOCUMENT - the host page - so a relative
+      // path there is page-relative (base:"page"), which the resolver walks
+      // against the script's host-page directories. (A leading-"/" path is still
+      // root-relative for every loader, and a scheme URL is dropped upstream -
+      // both independent of this base.)
       currentBase = ROOT_RELATIVE_FILE_METHODS.has(dotted) ? "root" : "page";
       if (loaders?.has(dotted) && canWalk) {
         const params = schema.resolveApi(dotted.split(".")).def?.parameters;
