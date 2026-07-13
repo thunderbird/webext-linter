@@ -3,12 +3,24 @@
 // manifest. Keeping the whole add-on in memory (paths -> Buffer) lets every
 // check read files without caring how the add-on was packaged.
 //
+// It also PARTITIONS a submitted SCA archive into the two artifacts a source-code
+// review reads. loadScaAddon takes the review-source subtree (--sca-source);
+// selectScaBuildFiles takes its COMPLEMENT - the archive minus that subtree, minus
+// the Experiment subtree (--sca-exp-source), minus node_modules - as the build
+// candidates. Two halves of ONE split: same archive, same --sca-* path semantics
+// (scaRootRelative), so they live together and cannot drift apart. The split is a
+// projection of the archive ALREADY in memory (loadAddon read it once); despite the
+// "load" in loadScaAddon, neither half reads the disk again.
+//
 // Belongs here: unpacking the submission into the Addon model (files map +
-// manifest parse + manifestError), the Manifest typedef, and the load-time path
-// safety guards. Loading/parsing the package only (the tool never writes back).
+// manifest parse + manifestError), the SCA archive partition above, the Manifest
+// typedef, and the load-time path safety guards. Loading/parsing the package only
+// (the tool never writes back).
 //
 // Does NOT belong here: reviewing the add-on - all verdicts live in the checks
-// (src/checks/*). Enumerating which JS sources to scan is src/addon/sources.js.
+// (src/checks/*). Which of the build candidates the build actually RUNS is a
+// collection policy, seeded from package.json (-> src/build/corpus.js
+// selectBuildCorpus). Enumerating which JS sources to scan is src/addon/sources.js.
 // Parsing CSS/HTML/CSP content is src/scan/*. Schema files load via
 // src/schema/load.js.
 
@@ -251,7 +263,7 @@ export function scaExpSourceRelative(scaExpSource, scaSource, scaRoot) {
  * orchestrator resolves it - see src/checks/context.js); nothing reviews the source
  * manifest, so it is left untouched here.
  * @param {Addon} archive  The scaRoot archive, loaded ONCE by the caller (loadAddon)
- *   and shared with loadScaBuildFiles - so the source tree is not read twice.
+ *   and shared with selectScaBuildFiles - so the source tree is not read twice.
  * @param {string} scaSource  The add-on code root, relative to scaRoot or an
  *   absolute path (e.g. "src", "addon", or "/abs/path/to/root/addon").
  * @param {string} scaRoot  Path to the source archive root (for the path math).
@@ -288,9 +300,11 @@ export function loadScaAddon(archive, scaSource, scaRoot) {
 }
 
 /**
- * Load the BUILD files of a source code archive: EVERY file in the scaRoot archive
- * EXCEPT the review source (scaSource), the Experiment source (scaExpSource), and
- * dotfiles/dotfolders (at any depth, except .npmrc). node_modules never appears here -
+ * SELECT the BUILD files of a source code archive - the COMPLEMENT of loadScaAddon over
+ * the same, already-loaded archive (nothing is read from disk here): EVERY file in the
+ * scaRoot archive EXCEPT the review source (scaSource), the Experiment source
+ * (scaExpSource), and dotfiles/dotfolders (at any depth, except .npmrc). node_modules
+ * never appears here -
  * loadAddon skips it at load (its contents are never read); its directories are passed
  * through as `nodeModules` for the committed-node-modules check. This is the tooling
  * that BUILDS the add-on - build scripts, bundler configs, Makefiles, package.json/lock,
@@ -319,7 +333,7 @@ export function loadScaAddon(archive, scaSource, scaRoot) {
  *   inside scaSource, so this is defensive).
  * @returns {{files: Map<string, Buffer>, nodeModules: string[], archives: string[]}}
  */
-export function loadScaBuildFiles(archive, scaSource, scaRoot, scaExpSource) {
+export function selectScaBuildFiles(archive, scaSource, scaRoot, scaExpSource) {
   const files = new Map();
   const src = scaRootRelative(scaSource, scaRoot, "--sca-source");
   // Nested layout: exclude the review-source subtree (it is the add-on, not the build).

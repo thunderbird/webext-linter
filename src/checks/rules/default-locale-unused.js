@@ -6,14 +6,14 @@
 //
 // Belongs here: the declared-default_locale / absent-_locales verdict and
 // locating the default_locale line. Does NOT belong here: the _locales scan (->
-// getLocales in src/checks/lib/locales.js, memoized and shared with
+// getLocales in src/lib/locales.js, memoized and shared with
 // default-locale-missing), finding a manifest key's line (-> manifestTokenLine
-// in src/checks/lib/util.js), authored wording (-> assets/registry.yaml), and
+// in src/lib/util.js), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 
 import { finding } from "../../report/finding.js";
-import { getLocales } from "../lib/locales.js";
-import { manifestTokenLine } from "../lib/util.js";
+import { getLocales } from "../../lib/locales.js";
+import { manifestTokenLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 

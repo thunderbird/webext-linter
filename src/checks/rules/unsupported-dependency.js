@@ -14,7 +14,7 @@
 // src/vendor/resolve.js) and the registry wording.
 
 import { finding } from "../../report/finding.js";
-import { manifestTokenLine } from "../lib/util.js";
+import { manifestTokenLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 

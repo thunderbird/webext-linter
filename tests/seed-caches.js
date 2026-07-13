@@ -12,7 +12,7 @@ import AdmZip from "adm-zip";
 
 import { allSchemaBranches, cachedZipPath } from "../src/schema/fetch.js";
 import { cachedExperimentsPath } from "../src/experiments/fetch.js";
-import { cachedHashesPath } from "../src/checks/lib/library-hashes.js";
+import { cachedHashesPath } from "../src/lib/library-hashes.js";
 import { EXPERIMENTS_BRANCH } from "../src/config.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));

@@ -13,11 +13,11 @@
 //
 // Belongs here: collecting the remote hosts and escalating one manual-review
 // case naming them. Does NOT belong here: the sink scan (-> src/parse/
-// network-sinks.js, aggregated by src/checks/lib/outbound-sinks.js), the
+// network-sinks.js, aggregated by src/lib/outbound-sinks.js), the
 // deterministic->manual routing (-> src/checks/registry.js + escalation.js), and
 // the authored instructions (-> assets/registry.yaml).
 
-import { getOutboundSinks } from "../lib/outbound-sinks.js";
+import { getOutboundSinks } from "../../lib/outbound-sinks.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../escalation.js").Escalation} Escalation */

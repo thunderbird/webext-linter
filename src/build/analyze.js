@@ -19,7 +19,7 @@
 // registry), or the low-level transport (-> src/llm/provider.js).
 
 import { selectBuildCorpus } from "./corpus.js";
-import { newNonce, framing, wrapFile } from "../checks/lib/untrusted.js";
+import { newNonce, framing, wrapFile } from "../lib/untrusted.js";
 import { getProvider } from "../llm/provider.js";
 import { progress, FEED, llmErrorText } from "../util/log.js";
 import { red } from "../util/color.js";

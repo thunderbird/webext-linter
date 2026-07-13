@@ -12,10 +12,10 @@
 // candidate, or clean, the per-site candidate set, and the per-F aggregation.
 // Does NOT belong here: parsing the entry list and the broad/over-broad
 // predicates (warResourceList, expandResourcePattern, isOverBroadResource) ->
-// src/checks/lib/web-accessible-resources.js. The web-reachability graph and
-// mention/loader-site lookups -> src/checks/lib/reachability.js + util.js. The
+// src/lib/web-accessible-resources.js. The web-reachability graph and
+// mention/loader-site lookups -> src/lib/reachability.js + util.js. The
 // model transport -> src/checks/llm-client.js. The resolve pattern ->
-// src/checks/lib/verdict-resolve.js. Authored wording -> assets/registry.yaml.
+// src/lib/verdict-resolve.js. Authored wording -> assets/registry.yaml.
 // Severity -> that registry entry, stamped by runChecks. Report formatting ->
 // src/report/format.js.
 
@@ -25,14 +25,14 @@ import {
   loaderTrace,
   loaderSites,
   manifestTokenLine,
-} from "../lib/util.js";
-import { aggregateGroups } from "../lib/verdict-resolve.js";
-import { buildReachability } from "../lib/reachability.js";
+} from "../../lib/util.js";
+import { aggregateGroups } from "../../lib/verdict-resolve.js";
+import { buildReachability } from "../../lib/reachability.js";
 import {
   warResourceList,
   expandResourcePattern,
   isOverBroadResource,
-} from "../lib/web-accessible-resources.js";
+} from "../../lib/web-accessible-resources.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 

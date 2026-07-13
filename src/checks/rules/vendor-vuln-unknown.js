@@ -17,7 +17,7 @@
 // verify.js), or the wording (-> the registry).
 
 import { finding } from "../../report/finding.js";
-import { lineContaining } from "../lib/util.js";
+import { lineContaining } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 

@@ -16,7 +16,7 @@
 // stamped by src/checks/registry.js).
 
 import { finding } from "../../report/finding.js";
-import { isExperiment, manifestTokenLine } from "../lib/util.js";
+import { isExperiment, manifestTokenLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {

@@ -12,7 +12,7 @@ import {
   hasUnreviewableCode,
   isMinifiedFirstParty,
   isObfuscatedFirstParty,
-} from "../../src/checks/lib/bundled.js";
+} from "../../src/lib/bundled.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
 import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";

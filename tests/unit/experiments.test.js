@@ -15,7 +15,7 @@ import {
   experimentApiNamespaces,
   experimentManifestKeys,
   experimentGroups,
-} from "../../src/checks/lib/experiments.js";
+} from "../../src/lib/experiments.js";
 import {
   verifyExperiments,
   loadAllowList,

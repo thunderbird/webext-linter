@@ -15,7 +15,7 @@ import {
   verifyScaDependencies,
   auditIdentifiedLibraries,
 } from "../../src/vendor/verify.js";
-import { parseLibraryBlocks } from "../../src/checks/lib/library-blocks.js";
+import { parseLibraryBlocks } from "../../src/lib/library-blocks.js";
 import unpinnedDependency from "../../src/checks/rules/unpinned-dependency.js";
 import unpinnedVendorSource from "../../src/checks/rules/unpinned-vendor-source.js";
 import vendorModified from "../../src/checks/rules/vendor-modified.js";
@@ -24,7 +24,7 @@ import missingVendorFile from "../../src/checks/rules/missing-vendor-file.js";
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 import vendorVulnUnknown from "../../src/checks/rules/vendor-vuln-unknown.js";
 import vendorUnparseable from "../../src/checks/rules/vendor-unparseable.js";
-import { applyNotPopularVendor } from "../../src/checks/lib/bundled.js";
+import { applyNotPopularVendor } from "../../src/lib/bundled.js";
 import { normalizedSha256 } from "../../src/normalize/hash.js";
 import { makeTgz } from "./tarball-fixture.js";
 

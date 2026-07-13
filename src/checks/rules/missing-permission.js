@@ -8,12 +8,12 @@
 //
 // Does NOT belong here: the analysis itself - matching API usages to required
 // permissions and manifest keys (-> getPermissionAnalysis in
-// src/checks/lib/permissions.js, shared with missing-manifest-key.js). The
+// src/lib/permissions.js, shared with missing-manifest-key.js). The
 // required-permission schema data it consumes (-> src/schema/index.js). Authored
 // wording (-> assets/registry.yaml). Severity (-> the missing-permission
 // registry entry, stamped by src/checks/registry.js).
 
-import { getPermissionAnalysis } from "../lib/permissions.js";
+import { getPermissionAnalysis } from "../../lib/permissions.js";
 
 export default {
   run(ctx) {

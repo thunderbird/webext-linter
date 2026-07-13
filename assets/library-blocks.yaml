@@ -15,7 +15,7 @@
 # Each entry is keyed by the library's npm package name (the same namespace the OSV
 # audit uses; a dispensary alias like "angularjs" is normalised to "angular" before
 # lookup). A version strictly below `banned_below` is banned (error); one below
-# `unadvised_below` is unadvised (warning). Consumed by src/checks/lib/library-blocks.js.
+# `unadvised_below` is unadvised (warning). Consumed by src/lib/library-blocks.js.
 
 - name: jquery
   banned_below: "3.0.0"

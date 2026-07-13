@@ -24,7 +24,7 @@ import { MAX_FILES_PER_BATCH } from "../config.js";
 import { debug, progress, FEED, llmErrorText } from "../util/log.js";
 import { red } from "../util/color.js";
 import { sortKeys } from "../util/json.js";
-import { nonceFor, wrap, wrapFile, framing } from "./lib/untrusted.js";
+import { nonceFor, wrap, wrapFile, framing } from "../lib/untrusted.js";
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
 /** @typedef {import("../llm/schema.js").LlmResult} LlmResult */

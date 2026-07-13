@@ -9,7 +9,7 @@
 //
 // Belongs here: collecting the code-text atoms from a parsed AST. Does NOT belong
 // here: deciding what to search for - that is the consumer's (e.g. the
-// unused-permission token scan in src/checks/lib/permissions.js). Babel access
+// unused-permission token scan in src/lib/permissions.js). Babel access
 // goes through src/parse/ast.js.
 
 import { parseJs, traverse } from "./ast.js";

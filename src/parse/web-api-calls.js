@@ -14,7 +14,7 @@
 // Does NOT belong here: the signatures themselves (-> the schema's `web_api`
 // annotation, read via SchemaIndex.permissionWebApis), the reachability scoping
 // that picks which files to scan, and the unused verdict (both ->
-// src/checks/lib/permissions.js, groundWebApiPermissions). Babel -> src/parse/ast.js.
+// src/lib/permissions.js, groundWebApiPermissions). Babel -> src/parse/ast.js.
 
 import { parseJs, traverse } from "./ast.js";
 

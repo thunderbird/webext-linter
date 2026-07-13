@@ -8,19 +8,23 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import rule from "../../src/checks/rules/background-page-module.js";
-import { withManifest } from "./manifest-ctx.js";
+import { withManifest, parsedSources } from "./manifest-ctx.js";
 
 const addon = (files, manifest) => ({
   manifest,
   files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
 });
 
-// Run the rule with a minimal ctx (no ctx.jsSources, so the rule parses the
-// referenced files itself - exercising the fallback path).
-const run = (files, manifest) =>
-  rule
-    .run(withManifest({ addon: addon(files, manifest) }))
+// Run the rule as production does: the extraction pass parses every JS source and stores its
+// module-syntax loc, which the check reads via moduleSyntaxOf. A check never parses, so a
+// <script src> target absent from the corpus (a non-JS suffix) is simply not a classic .js
+// script here - unrecognized-file-type reports it instead.
+const run = (files, manifest) => {
+  const a = addon(files, manifest);
+  return rule
+    .run(withManifest({ addon: a, jsSources: parsedSources(a) }))
     .map((f) => `${f.file}:${f.loc?.line}`);
+};
 
 // background.html lines: 1 doctype, 2 head, 3 background.js (module, no type ->
 // FAIL), 4 ok.js (module, type=module -> ok), 5 classic.js (no module -> ok),

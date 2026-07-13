@@ -10,7 +10,7 @@
 //
 // Does NOT belong here: the core-symbol list values (-> assets/webext-facts.yaml),
 // the WebExtension vs Experiment partition or the non-authored skip that decides
-// WHICH files to scan (-> the check + src/checks/lib/reachability.js / bundled.js),
+// WHICH files to scan (-> the check + src/lib/reachability.js / bundled.js),
 // authored wording / severity (-> assets/registry.yaml). Babel access goes through
 // src/parse/ast.js.
 

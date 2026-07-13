@@ -41,12 +41,18 @@ export const traverse = _traverse.default || _traverse;
 function pluginsFor(hint) {
   const base = ["topLevelAwait"];
   switch (hint ? extname(hint) : "") {
+    // .cts / .mts are TypeScript's explicit CJS / ESM variants - they carry types exactly
+    // like .ts, so they need the typescript plugin (without it a type annotation is a parse
+    // error). JSX is .tsx only, so these do not get it, mirroring .ts.
     case ".ts":
+    case ".cts":
+    case ".mts":
       return [...base, "typescript"];
     case ".tsx":
       return [...base, "typescript", "jsx"];
     case ".jsx":
     case ".js":
+    case ".cjs":
     case ".mjs":
     case ".jsm":
     case ".es":

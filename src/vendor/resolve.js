@@ -24,7 +24,7 @@ import { lockedVersion } from "./locks.js";
 import { getProvider } from "../llm/provider.js";
 import { progress, FEED, llmErrorText } from "../util/log.js";
 import { red } from "../util/color.js";
-import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
+import { newNonce, wrap, framing } from "../lib/untrusted.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /** @typedef {import("../normalize/vendor.js").VendorEntry} VendorEntry */
@@ -436,7 +436,7 @@ async function llmExtract({
 }) {
   // The VENDOR file is free-form, attacker-controlled text - the highest-risk
   // injection vector. Trusted instructions go in system; the file is wrapped in
-  // nonce markers as user data (see src/checks/lib/untrusted.js).
+  // nonce markers as user data (see src/lib/untrusted.js).
   const nonce = newNonce();
   const reply = await callText({
     token,

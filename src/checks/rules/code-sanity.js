@@ -10,7 +10,7 @@
 // Belongs here: owning the enabled ESLint rule set and globals, running the
 // in-memory Linter per authored source, and emitting a finding per message.
 // Does NOT belong here: the non-authored skip-list this relies on to avoid
-// linting vendored/minified code (-> src/checks/lib/bundled.js), library and
+// linting vendored/minified code (-> src/lib/bundled.js), library and
 // minified/obfuscated detection (-> bundled-files.js, minified-code.js and
 // obfuscated-code.js),
 // authored wording (-> assets/registry.yaml - here the lint ruleId and message
@@ -19,7 +19,7 @@
 
 import { Linter } from "eslint";
 import { finding } from "../../report/finding.js";
-import { nonAuthoredJs } from "../lib/bundled.js";
+import { nonAuthoredJs } from "../../lib/bundled.js";
 
 const linter = new Linter({ configType: "flat" });
 

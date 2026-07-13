@@ -212,24 +212,32 @@ minified/obfuscated build.
 
 ## Review checks
 
-A review has three kinds of check, all declared in
-[assets/registry.yaml](assets/registry.yaml):
+Every check is declared in [assets/registry.yaml](assets/registry.yaml), and the
+section it lives in **is** its phase: the orchestrator looks up the phases it runs,
+in order. A section it never asks for is inert.
 
-- **Deterministic** - decided entirely in code, no LLM, offline apart from the
-  one-time vendor source fetch. A few are gated by review mode
-  (`diff: true`/`false`).
-- **LLM** - a deterministic pre-flight always runs offline, only the ambiguous
-  residue is delegated to an LLM (when an API key is supplied) or routed to
-  manual review.
-- **Manual** - checks the tool can't make itself, surfaced as a todo list.
+- **`invalid-experiment-phase`** - the single reject check. An Experiment bundling an
+  unsupported API draft (without `--allow-experiments`) is rejected outright, and this
+  phase runs ALONE - no other check, no LLM, no manual reminders.
+- **`deterministic-phase`** - decided entirely in code, no LLM, offline apart from the
+  one-time vendor source fetch. A few are gated by review mode (`diff: true`/`false`,
+  `sca: true`/`false`).
+- **`llm-phase`** - a deterministic pre-flight always runs offline; only the ambiguous
+  residue is delegated to an LLM (when an API key is supplied) or routed to manual
+  review.
+- **`post-summary-phase`** - the `--llm-review` recheck **consumers**, which re-judge a
+  producer's escalated items with the whole add-on in view. They run after the AI
+  summary, which is what they read; a consumer inherits the mechanism of its producer.
+- **`manual-checks`** - checks the tool can't make itself, surfaced as a todo list. Not
+  a phase: the orchestrator never asks for this section.
 
-The `--llm-review` recheck **consumers** (which re-judge a producer's escalated
-items with the whole add-on in view) live in a dedicated `post-summary-rechecks:`
-section; a consumer inherits the mechanism of its producer.
+The full flow - setup, the stores it computes, the orchestrator, and how one check of
+each phase runs - is described in
+[docs/check-flow.html](docs/check-flow.html) ("The review pipeline").
 
 ### Deterministic checks
 
-Each `deterministic-checks` entry links to a module in
+Each `deterministic-phase` entry links to a module in
 [src/checks/rules/](src/checks/rules/) and supplies the severity for its
 findings. A deterministic check either decides each case as a finding or
 escalates it straight to manual review (e.g. `vendor-unverified`,

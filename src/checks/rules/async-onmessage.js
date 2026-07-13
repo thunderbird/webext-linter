@@ -8,13 +8,13 @@
 //
 // Does NOT belong here: matching the onMessage.addListener call shape and the
 // async check (-> src/parse/async-onmessage.js), the non-authored skip-list (->
-// src/checks/lib/bundled.js), authored wording (-> assets/registry.yaml),
+// src/lib/bundled.js), authored wording (-> assets/registry.yaml),
 // severity (-> that registry entry, stamped by src/checks/registry.js), and
 // report formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
 import { asyncOnMessageOf } from "../extract.js";
-import { nonAuthoredJs } from "../lib/bundled.js";
+import { nonAuthoredJs } from "../../lib/bundled.js";
 
 export default {
   run(ctx) {

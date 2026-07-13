@@ -37,6 +37,25 @@ test(".mjs and .js enable JSX (React authored in .js)", () => {
   clean("const el = <span/>; export default el;", "a.js");
 });
 
+// .cts / .mts are TypeScript (its explicit CJS / ESM variants), so they must get the
+// typescript plugin exactly like .ts - they are in JS_EXTENSIONS, so a real one enters the
+// corpus, and without the plugin a type annotation would parse-error, mis-flag the file
+// unparsable, and leave its content unscanned.
+test(".cts and .mts parse TypeScript type syntax", () => {
+  clean(
+    "const x: number = 5;\nexport const f = (a: string): string => a;",
+    "m.cts"
+  );
+  clean("interface I { a: string }\nexport const x: I = { a: 'y' };", "m.mts");
+});
+
+// .cjs is CommonJS - it needs no TS plugin, but it IS in JS_EXTENSIONS, so require/exports
+// and JSX must parse (it joins the .js group).
+test(".cjs parses CommonJS and JSX", () => {
+  clean("const p = require('p');\nmodule.exports.x = 1;", "a.cjs");
+  clean("module.exports = <div/>;", "a.cjs");
+});
+
 test("no hint keeps the plain-JS base set (plain JS still parses)", () => {
   clean("const a = 1 < 2 > 0;\nexport default a;");
 });

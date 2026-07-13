@@ -9,7 +9,7 @@
 // and dedup of repeated hits. A deprecated finding carries the schema's own
 // deprecation message as its hint (the actionable migration note), not a link
 // to the deprecated item. Does NOT belong here: resolving usage against the
-// schema over the WebExtension tree (-> src/checks/lib/api-resolution.js),
+// schema over the WebExtension tree (-> src/lib/api-resolution.js),
 // extracting browser.* usage (-> src/parse/api-usage.js), reading schema
 // annotations (deprecation -> src/schema/index.js). Flagging an API added after
 // the supported version range - the strict-min/strict-max-version-api checks; an
@@ -19,7 +19,7 @@
 
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
-import { resolveApiUsages } from "../lib/api-resolution.js";
+import { resolveApiUsages } from "../../lib/api-resolution.js";
 
 export default {
   run(ctx) {

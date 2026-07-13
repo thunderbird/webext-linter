@@ -12,8 +12,8 @@
 // (-> assets/registry.yaml), or the deterministic->manual routing (registry.js +
 // escalation.js).
 
-import { isExperiment } from "../lib/util.js";
-import { unknownApis } from "../lib/api-resolution.js";
+import { isExperiment } from "../../lib/util.js";
+import { unknownApis } from "../../lib/api-resolution.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../escalation.js").Escalation} Escalation */

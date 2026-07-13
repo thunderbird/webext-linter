@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { collapseUnused } from "../../src/checks/lib/unused-folders.js";
+import { collapseUnused } from "../../src/lib/unused-folders.js";
 
 test("a fully-unused nested tree collapses to its top-most folder", () => {
   const all = [

@@ -1,7 +1,7 @@
 // Unit tests for scanWebApiCalls - the AST match that grounds a Web/DOM-API
 // permission from a navigator.* call. The signatures mirror the schema's `web_api`
 // annotation; the reachability scoping and schema wiring (groundWebApiPermissions
-// in src/checks/lib/permissions.js) are covered via the golden harness.
+// in src/lib/permissions.js) are covered via the golden harness.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

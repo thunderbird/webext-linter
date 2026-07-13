@@ -9,7 +9,7 @@ import path from "node:path";
 import {
   loadAddon,
   loadScaAddon,
-  loadScaBuildFiles,
+  selectScaBuildFiles,
   scaRootRelative,
   scaExpSourceRelative,
 } from "../../src/addon/load.js";
@@ -108,12 +108,12 @@ test("loadScaAddon partitions scaSource, keeps root package.json + the source's 
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// loadScaBuildFiles is the COMPLEMENT of loadScaAddon: the archive minus the review
+// selectScaBuildFiles is the COMPLEMENT of loadScaAddon: the archive minus the review
 // source (scaSource), the Experiment source (scaExpSource), node_modules, and
 // dotfiles/dotfolders - the build scripts / config the review otherwise drops. Keys
 // keep their real archive paths (unstripped); the root package.json/lock stay, and a
 // plain .npmrc is kept (the one dotfile exception the build-tooling checks read).
-test("loadScaBuildFiles returns the build files outside scaSource + scaExpSource", () => {
+test("selectScaBuildFiles returns the build files outside scaSource + scaExpSource", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scab-"));
   fs.mkdirSync(path.join(root, "src", "experiment"), { recursive: true });
   fs.mkdirSync(path.join(root, "scripts"));
@@ -144,7 +144,7 @@ test("loadScaBuildFiles returns the build files outside scaSource + scaExpSource
   );
   fs.writeFileSync(path.join(root, "src", "node_modules", "pkg.js"), "1;\n");
 
-  const { files, nodeModules } = loadScaBuildFiles(
+  const { files, nodeModules } = selectScaBuildFiles(
     loadAddon(root),
     "src",
     root,
@@ -179,14 +179,14 @@ test("loadScaBuildFiles returns the build files outside scaSource + scaExpSource
 // A flat layout: scaSource IS the archive root, so there is no source subtree to
 // exclude - every file becomes a build candidate, and selectBuildCorpus (called by
 // analyzeBuild) still traces the build off the root package.json.
-test("loadScaBuildFiles with scaSource at the archive root keeps the root as build candidates", () => {
+test("selectScaBuildFiles with scaSource at the archive root keeps the root as build candidates", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scab0-"));
   fs.writeFileSync(
     path.join(root, "package.json"),
     '{"scripts":{"build":"x"}}'
   );
   fs.writeFileSync(path.join(root, "background.js"), "1;\n");
-  const { files } = loadScaBuildFiles(loadAddon(root), ".", root, "");
+  const { files } = selectScaBuildFiles(loadAddon(root), ".", root, "");
   assert.ok(
     files.has("package.json"),
     "the root package.json is a build candidate"

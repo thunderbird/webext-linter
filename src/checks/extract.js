@@ -4,24 +4,32 @@
 // summary instead of re-traversing (or, once the AST is dropped, re-parsing). The
 // AST itself is never retained, so peak memory is a single AST.
 //
-// api-usage, the load-graph refs (localImports / loaderRefs), and the module-syntax
-// loc are extracted on EVERY source; the content results (remote-js, network-sinks,
-// ...) only on the developer's own code - a vendored / library / minified / obfuscated bundle is
-// non-authored (addon.bundled.nonAuthored) and every content consumer skips it, so
-// a multi-MB bundle is never content-scanned. The pass and the consumers read that
-// same nonAuthored Set: the pass to decide what to precompute, each consumer to
-// decide what to read, so the two never disagree.
+// api-usage, the Web/DOM API grounding, the load-graph refs (localImports / loaderRefs)
+// and the module-syntax loc are extracted on EVERY source - because a permission is USED,
+// and a file IS loaded, whoever wrote the code (a vendored library's navigator.clipboard
+// call grounds clipboardWrite too). The CONTENT results (remote-js, network-sinks, unsafe-
+// HTML, ...) run only on the developer's own code - a vendored / library / minified /
+// obfuscated bundle is non-authored (addon.bundled.nonAuthored), so those scanners skip it
+// and it is never scanned for the reviewer-facing content findings. The pass and those
+// consumers read that same nonAuthored Set: the pass to decide what to precompute, each
+// consumer to decide what to read, so the two never disagree.
 //
-// The `xOf(src)` accessors are the ONE seam a consumer uses to read a result: each
-// returns src.extracted's precomputed value, or recomputes for a source the pass
-// never ran on (the shipped view, and hand-built unit contexts). This keeps the
-// reuse-or-recompute decision - and each scanner's argument list - in a single
-// place rather than repeated at every call site.
+// Two passes, because the two artifacts are read differently. runExtractionPass is the
+// artifact UNDER REVIEW. runShippedExtractionPass is the SHIPPED XPI when it is not the
+// review target (an SCA review), where the built add-on is only ever walked as a LOAD
+// GRAPH - so it extracts that alone.
+//
+// The `xOf(src)` accessors are the ONE seam a consumer uses to read a result, and they
+// are PURE READS. A CHECK NEVER PARSES: a source that reaches a check without having been
+// through a pass is a wiring bug in setup, and the accessor throws rather than quietly
+// parsing it - which would put an AST in the check's call stack and break both the
+// single-AST memory bound and the "two checks asking the same question always agree"
+// guarantee.
 //
 // Belongs here: orchestrating the per-source parse + the per-concern extractors,
 // and the read accessors. Does NOT belong here: the extractors themselves (each
 // stays a pure per-concern scanner under src/parse/*) or the non-authored skip set
-// (-> src/checks/lib/bundled.js). Babel access goes through src/parse/ast.js.
+// (-> src/lib/bundled.js). Babel access goes through src/parse/ast.js.
 
 import { parseJs } from "../parse/ast.js";
 import { parseApiUsage } from "../parse/api-usage.js";
@@ -37,7 +45,7 @@ import { scanLocalImports } from "../parse/local-imports.js";
 import { scanLoaderRefs } from "../parse/loader-files.js";
 import { scanExperimentInjectedRefs } from "../parse/core-loaders.js";
 import { scanCodeText } from "../parse/code-tokens.js";
-import { firstModuleSyntax } from "./lib/module-syntax.js";
+import { firstModuleSyntax } from "../lib/module-syntax.js";
 
 /** @typedef {import("../addon/sources.js").JsSource} JsSource */
 
@@ -47,8 +55,55 @@ import { firstModuleSyntax } from "./lib/module-syntax.js";
 const parseHint = (src) => src.parseAs ?? src.file;
 
 /**
- * Parse each source once and store its per-file extraction results on
- * `src.extracted`; the AST is dropped with each iteration.
+ * The LOAD-GRAPH facts, extracted from an AST the caller already holds: the refs
+ * reachability follows (local imports, the schema's loader calls, and an Experiment's
+ * injected file refs) plus the first ES-module statement's loc (the two input:xpi module
+ * checks read it via moduleSyntaxOf). Every artifact needs these, whatever its role - the
+ * review target is walked for them, and so is the SHIPPED XPI, which in an SCA review is
+ * ONLY ever walked as a load graph.
+ * @param {JsSource} src
+ * @param {object} parsed  The AST the caller parsed; it drops it after this returns.
+ * @param {object} opts
+ * @returns {object} The `src.extracted` seed.
+ */
+function extractLoadGraph(
+  src,
+  parsed,
+  { schema, mvMajor, experimentNamespaces }
+) {
+  const extracted = {
+    localImports: scanLocalImports(src.code, src.lineOffset, parsed),
+    loaderRefs: scanLoaderRefs(
+      src.code,
+      src.lineOffset,
+      schema,
+      mvMajor,
+      parsed
+    ),
+    // The first ES module statement's loc (null if none) - the two input:xpi module
+    // checks read it via moduleSyntaxOf so they need not re-parse a background script.
+    moduleSyntaxLoc: parsed.ast
+      ? firstModuleSyntax(parsed.ast, src.lineOffset)
+      : null,
+  };
+  // Experiment-injected file refs (browser.<ns>.…("path")) - every source, only
+  // for an Experiment add-on; reachability seeds .html Experiment params from these.
+  if (experimentNamespaces) {
+    extracted.experimentRefs = scanExperimentInjectedRefs(
+      src.code,
+      experimentNamespaces,
+      src.lineOffset,
+      parsed
+    );
+  }
+  return extracted;
+}
+
+/**
+ * The FULL pass, for the artifact UNDER REVIEW. Parse each source once and store its
+ * per-file extraction results on `src.extracted`; the AST is dropped with each iteration.
+ * On top of the load graph it extracts api-usage from every source, and runs the content
+ * scanners over the AUTHORED remainder.
  * @param {JsSource[]} jsSources
  * @param {object} [opts]
  * @param {import("../schema/index.js").SchemaIndex} [opts.schema]  For the web_api
@@ -57,53 +112,35 @@ const parseHint = (src) => src.parseAs ?? src.file;
  * @param {Set<string>} [opts.nonAuthored]  Files a content scanner would skip
  *   (vendored / library / minified / obfuscated / experiment-trusted) -
  *   addon.bundled.nonAuthored, the same Set the consumers read.
- * @param {boolean} [opts.invalidExperiment]  A rejected Experiment runs only the
- *   reject check; nothing reads its content extraction.
  * @param {Set<string>} [opts.experimentNamespaces]  The add-on's Experiment API
  *   namespaces (null for a non-Experiment); present -> extract the injected file
  *   refs on every source, so reachability reads them instead of re-parsing.
  */
 export function runExtractionPass(
   jsSources,
-  { schema, nonAuthored, invalidExperiment, experimentNamespaces } = {}
+  { schema, nonAuthored, experimentNamespaces } = {}
 ) {
   const webApiSigs = webApiSignatures(schema);
   const mvMajor = schema?.manifestVersionMajor ?? null;
   for (const src of jsSources) {
     const parsed = parseJs(src.code, parseHint(src));
-    // Every source: api-usage (its consumers read ctx.apiUsages) and the load-graph
-    // refs (reachability follows a non-authored file's own loaders too).
-    const extracted = {
-      apiUsage: parseApiUsage(src.code, src.lineOffset, parsed),
-      localImports: scanLocalImports(src.code, src.lineOffset, parsed),
-      loaderRefs: scanLoaderRefs(
-        src.code,
-        src.lineOffset,
-        schema,
-        mvMajor,
-        parsed
-      ),
-      // The first ES module statement's loc (null if none) - the two input:xpi module
-      // checks read it via moduleSyntaxOf so they need not re-parse a background script.
-      moduleSyntaxLoc: parsed.ast
-        ? firstModuleSyntax(parsed.ast, src.lineOffset)
-        : null,
-    };
-    // Experiment-injected file refs (browser.<ns>.…("path")) - every source, only
-    // for an Experiment add-on; reachability seeds .html Experiment params from these.
-    if (experimentNamespaces) {
-      extracted.experimentRefs = scanExperimentInjectedRefs(
-        src.code,
-        experimentNamespaces,
-        src.lineOffset,
-        parsed
-      );
-    }
+    const extracted = extractLoadGraph(src, parsed, {
+      schema,
+      mvMajor,
+      experimentNamespaces,
+    });
+    // Every source: api-usage (its consumers read ctx.apiUsages), and the Web/DOM API
+    // grounding. webApiPerms is EVERY source, not just the authored ones: a permission is
+    // used if the shipped code calls its API, and a vendored library calling
+    // navigator.clipboard grounds clipboardWrite just as the developer's own file would.
+    // Scanned against ALL web_api signatures; groundWebApiPermissions keeps the declared.
+    extracted.apiUsage = parseApiUsage(src.code, src.lineOffset, parsed);
+    extracted.webApiPerms = scanWebApiCalls(src.code, webApiSigs, parsed);
     // Content extractors: only the developer's own code. A bundle / library /
     // obfuscated file is non-authored (obfuscated files are added to nonAuthored by
     // classifyFiles, which runs before this pass), so every content consumer
     // skips it (nonAuthoredJs).
-    if (!invalidExperiment && !nonAuthored?.has(src.file)) {
+    if (!nonAuthored?.has(src.file)) {
       extracted.remoteJs = scanRemoteJs(src.code, src.lineOffset, parsed);
       extracted.networkSinks = scanNetworkSinks(
         src.code,
@@ -119,7 +156,6 @@ export function runExtractionPass(
         src.lineOffset,
         parsed
       );
-      extracted.webApiPerms = scanWebApiCalls(src.code, webApiSigs, parsed);
       // The code-text atoms (identifiers/strings/templates, comments excluded)
       // for a textual token-presence test - the unused-permission scan. Authored
       // only: a non-authored bundle is searched raw (see permissions.js), where
@@ -132,89 +168,84 @@ export function runExtractionPass(
   }
 }
 
-// Read accessors: the precomputed result, or a recompute for a source the pass did
-// not run on (the shipped view and hand-built unit contexts). Content accessors are
-// only ever called for authored sources (the consumer skips non-authored first);
-// the every-source accessors (apiUsage / localImports / loaderRefs) apply to all.
+/**
+ * The LIGHT pass, for the SHIPPED XPI when it is NOT the review target (an SCA review).
+ * There, the built add-on is only ever walked as a LOAD GRAPH - reachability (unused-files,
+ * minimize-web-accessible-resources, bundled-files) and the two background-module checks.
+ * No content scanner and no api-usage consumer reads it: in SCA the code under review is the
+ * readable SOURCE. So parse each source once, keep the load graph, drop the AST.
+ *
+ * It takes no `nonAuthored`, because it runs no content scanner there is anything to gate.
+ * @param {JsSource[]} jsSources
+ * @param {object} [opts]
+ * @param {import("../schema/index.js").SchemaIndex} [opts.schema]  For the loader-ref walk.
+ * @param {Set<string>} [opts.experimentNamespaces]  The XPI's Experiment API namespaces
+ *   (null for a non-Experiment).
+ */
+export function runShippedExtractionPass(
+  jsSources,
+  { schema, experimentNamespaces } = {}
+) {
+  const mvMajor = schema?.manifestVersionMajor ?? null;
+  for (const src of jsSources) {
+    const parsed = parseJs(src.code, parseHint(src));
+    src.extracted = extractLoadGraph(src, parsed, {
+      schema,
+      mvMajor,
+      experimentNamespaces,
+    });
+  }
+}
+
+/**
+ * The per-file results an extraction pass stored on a source. A CHECK IS A PURE READER: it
+ * never parses, so a source that reaches a check without having been through a pass is a
+ * wiring bug in setup, not something to paper over by parsing here. Fail loudly instead.
+ *
+ * A field being ABSENT is a different thing, and legitimate: the content fields exist only
+ * for AUTHORED sources (a consumer skips the non-authored ones first), and the shipped view
+ * carries the load graph alone.
+ * @param {JsSource} src
+ * @returns {object}
+ */
+const resultsOf = (src) => {
+  if (!src.extracted) {
+    throw new Error(
+      `${src.file}: read before the extraction pass ran - a check is a pure reader, it never parses`
+    );
+  }
+  return src.extracted;
+};
 
 /** @param {JsSource} src */
-export const apiUsageOf = (src) =>
-  src.extracted?.apiUsage ??
-  parseApiUsage(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
+export const apiUsageOf = (src) => resultsOf(src).apiUsage;
 /** @param {JsSource} src */
-export const remoteJsOf = (src) =>
-  src.extracted?.remoteJs ??
-  scanRemoteJs(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
+export const remoteJsOf = (src) => resultsOf(src).remoteJs;
 /** @param {JsSource} src */
-export const networkSinksOf = (src) =>
-  src.extracted?.networkSinks ??
-  scanNetworkSinks(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
+export const networkSinksOf = (src) => resultsOf(src).networkSinks;
 /** @param {JsSource} src */
-export const unsafeHtmlOf = (src) =>
-  src.extracted?.unsafeHtml ??
-  scanUnsafeHtml(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
+export const unsafeHtmlOf = (src) => resultsOf(src).unsafeHtml;
 /** @param {JsSource} src */
-export const coreSymbolsOf = (src) =>
-  src.extracted?.coreSymbols ??
-  scanCoreSymbols(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
+export const coreSymbolsOf = (src) => resultsOf(src).coreSymbols;
 /** @param {JsSource} src */
-export const syncXhrOf = (src) =>
-  src.extracted?.syncXhr ??
-  scanSyncXhr(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
+export const syncXhrOf = (src) => resultsOf(src).syncXhr;
 /** @param {JsSource} src */
-export const debuggerStmtOf = (src) =>
-  src.extracted?.debuggerStmt ??
-  scanDebugger(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
+export const debuggerStmtOf = (src) => resultsOf(src).debuggerStmt;
 /** @param {JsSource} src */
-export const asyncOnMessageOf = (src) =>
-  src.extracted?.asyncOnMessage ??
-  scanAsyncOnMessage(
-    src.code,
-    src.lineOffset,
-    parseJs(src.code, parseHint(src))
-  );
-/** @param {JsSource} src @param {object[]} signatures */
-export const webApiPermsOf = (src, signatures) =>
-  src.extracted?.webApiPerms ??
-  scanWebApiCalls(src.code, signatures, parseJs(src.code, parseHint(src)));
+export const asyncOnMessageOf = (src) => resultsOf(src).asyncOnMessage;
 /** @param {JsSource} src */
-export const localImportsOf = (src) =>
-  src.extracted?.localImports ??
-  scanLocalImports(src.code, src.lineOffset, parseJs(src.code, parseHint(src)));
-/** @param {JsSource} src @param {import("../schema/index.js").SchemaIndex} [schema] */
-export const loaderRefsOf = (src, schema) =>
-  src.extracted?.loaderRefs ??
-  scanLoaderRefs(
-    src.code,
-    src.lineOffset,
-    schema,
-    schema?.manifestVersionMajor,
-    parseJs(src.code, parseHint(src))
-  );
-/** @param {JsSource} src @param {Set<string>} namespaces  The same namespaces the
- *   pass precomputed with (the review ctx's), so a precomputed hit is correct. */
-export const experimentRefsOf = (src, namespaces) =>
-  src.extracted?.experimentRefs ??
-  scanExperimentInjectedRefs(
-    src.code,
-    namespaces,
-    src.lineOffset,
-    parseJs(src.code, parseHint(src))
-  );
+export const webApiPermsOf = (src) => resultsOf(src).webApiPerms;
+/** @param {JsSource} src */
+export const localImportsOf = (src) => resultsOf(src).localImports;
+/** @param {JsSource} src */
+export const loaderRefsOf = (src) => resultsOf(src).loaderRefs;
+/** @param {JsSource} src */
+export const experimentRefsOf = (src) => resultsOf(src).experimentRefs;
 /** @param {JsSource} src  The loc of the first ES module statement (import/export), or
- *   null if none - precomputed on the shared parse (every source), recomputed for a
- *   source the pass never ran on (the SCA shipped view). */
-export const moduleSyntaxOf = (src) => {
-  if (src.extracted && "moduleSyntaxLoc" in src.extracted) {
-    return src.extracted.moduleSyntaxLoc;
-  }
-  const { ast } = parseJs(src.code, parseHint(src));
-  return ast ? firstModuleSyntax(ast, src.lineOffset) : null;
-};
-/** @param {JsSource} src  The text a token-presence test should search: the
- *   comment-free code-text atoms for an AUTHORED source (precomputed), or the raw
- *   source for a non-authored bundle / a source the pass never ran on. It does
- *   NOT re-parse for the raw case - a token in a non-authored comment can only
- *   push toward escalation (the safe direction), not worth an extra parse of a
- *   possibly multi-MB bundle. */
-export const codeTextOf = (src) => src.extracted?.codeText ?? src.code;
+ *   null if none. */
+export const moduleSyntaxOf = (src) => resultsOf(src).moduleSyntaxLoc;
+/** @param {JsSource} src  The text a token-presence test should search: the comment-free
+ *   code-text atoms for an AUTHORED source, or the raw source for a non-authored bundle
+ *   (which the pass does not scan) - where including comments only pushes toward
+ *   escalation, the safe direction. */
+export const codeTextOf = (src) => resultsOf(src).codeText ?? src.code;

@@ -1,5 +1,5 @@
 // Reports a bundled third-party library that the Mozilla hash DB did not recognize
-// but whose exact bytes were found on the jsDelivr CDN (src/checks/lib/cdn-lookup.js,
+// but whose exact bytes were found on the jsDelivr CDN (src/lib/cdn-lookup.js,
 // run in the pipeline before this check). A CDN match is promoted into the vendored
 // family - tagged `library` with a `libraryId` and a `cdn` source URL - so it is
 // excluded from minified-code and OSV-audited like a hash-DB library; this check is
@@ -15,13 +15,13 @@
 // with its libraryId, hinting its jsDelivr source URL) per such file.
 //
 // Does NOT belong here: the CDN lookup and the tag promotion (->
-// src/checks/lib/cdn-lookup.js), the Mozilla-hash library verdict (->
+// src/lib/cdn-lookup.js), the Mozilla-hash library verdict (->
 // missing-library.js), the minified-without-library verdict (-> minified-code.js),
 // authored wording (-> assets/registry.yaml), severity (-> that registry entry,
 // stamped by src/checks/registry.js), and report formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
-import { classifyAddonJs } from "../lib/bundled.js";
+import { classifyAddonJs } from "../../lib/bundled.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {

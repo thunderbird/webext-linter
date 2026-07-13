@@ -11,7 +11,7 @@ import {
   resolveLibraryBlocks,
   parseLibraryBlocks,
   matchLibraryBlock,
-} from "../../src/checks/lib/library-blocks.js";
+} from "../../src/lib/library-blocks.js";
 import bannedLibrary from "../../src/checks/rules/banned-library.js";
 
 // ---- parseLibraryBlocks ----

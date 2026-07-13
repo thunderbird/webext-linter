@@ -2,6 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { parsed } from "./manifest-ctx.js";
 
 import { scanUnsafeHtml } from "../../src/parse/unsafe-html.js";
 import unsafeHtml from "../../src/checks/rules/unsafe-html.js";
@@ -64,7 +65,9 @@ test("unsafe-html notes each sink site (verdict fail)", () => {
   const code = "el.innerHTML = userInput;";
   const ctx = {
     addon: { files: new Map([["render.js", Buffer.from(code)]]), manifest: {} },
-    jsSources: [{ file: "render.js", code, lineOffset: 0, inline: false }],
+    jsSources: parsed([
+      { file: "render.js", code, lineOffset: 0, inline: false },
+    ]),
   };
   const notes = [];
   ctx.note = (file, loc, item, verdict) => notes.push({ file, item, verdict });

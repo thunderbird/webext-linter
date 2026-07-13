@@ -21,9 +21,9 @@ import { scanHtmlRemoteRefs, scanHtmlInlineCssRefs } from "../../scan/html.js";
 import { scanCssRemoteRefs } from "../../scan/css.js";
 import { remoteJsOf } from "../extract.js";
 import { analyzeCsp } from "../../scan/csp.js";
-import { nonAuthoredJs } from "../lib/bundled.js";
-import { dedupe, scheme, trunc } from "../lib/util.js";
-import { perCandidateResolve } from "../lib/verdict-resolve.js";
+import { nonAuthoredJs } from "../../lib/bundled.js";
+import { dedupe, scheme, trunc } from "../../lib/util.js";
+import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 import { finding } from "../../report/finding.js";
 import { extname, HTML_EXTENSIONS } from "../../util/files.js";
 

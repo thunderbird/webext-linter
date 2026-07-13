@@ -350,10 +350,10 @@ const withReview = (findings, verdictIntros) => ({
   verdictIntros,
 });
 
-// The tally is split out of the body so the CLI can print it last (after the
-// "Summary of add-on" / "Summary of changes" sections). formatReviewBody is the
-// report without the tally; formatSummary is just the tally; together they
-// reproduce formatText, so the no-LLM output is unchanged.
+// formatReviewBody is the report without the tally; formatSummary is just the
+// tally. For a no-LLM review they concatenate back to formatText (formatText
+// additionally inserts the advisory "Summary of add-on"/"Summary of changes"
+// sections between the two when --llm-review produced them).
 test("formatReviewBody / formatSummary split the report and round-trip", () => {
   const r = {
     findings: [mkFinding("info", "an info finding", "manifest.json", null)],

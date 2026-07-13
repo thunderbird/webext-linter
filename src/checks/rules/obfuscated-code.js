@@ -2,7 +2,7 @@
 // cannot be reviewed as-is. Flags such a JS file - that is NOT a recognized
 // third-party library (those are missing-library's job) - so the reviewer can
 // require the original source. Obfuscation is recognized structurally, by the AST
-// shape of a known obfuscator family (see src/checks/lib/obfuscation.js); it cannot
+// shape of a known obfuscator family (see src/lib/obfuscation.js); it cannot
 // catch every obfuscator (high precision, partial recall). A file that is merely
 // minified (not obfuscated) is minified-code's job; a file that is both is reported
 // here, since obfuscation is the stronger signal.
@@ -18,7 +18,7 @@
 // formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
-import { classifyAddonJs, isObfuscatedFirstParty } from "../lib/bundled.js";
+import { classifyAddonJs, isObfuscatedFirstParty } from "../../lib/bundled.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {

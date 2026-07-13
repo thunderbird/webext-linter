@@ -9,7 +9,7 @@
 // here: the deterministic->manual routing (registry.js + escalation.js) or the
 // authored instructions/response (assets/registry.yaml).
 
-import { isExperiment } from "../lib/util.js";
+import { isExperiment } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../escalation.js").Escalation} Escalation */

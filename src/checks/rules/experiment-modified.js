@@ -12,7 +12,7 @@
 // severity (that registry entry).
 
 import { finding } from "../../report/finding.js";
-import { isExperiment } from "../lib/util.js";
+import { isExperiment } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {

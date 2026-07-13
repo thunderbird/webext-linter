@@ -2,13 +2,13 @@
 // rejected - allowed via --allow-experiments or a pristine upstream copy) must
 // pin a strict_max_version. Experiments call internal APIs that change between
 // major Thunderbird versions, so without a maximum they break silently on
-// upgrade. This is a default-phase check, so it runs only when the experiment is
-// valid (an invalid one short-circuits to experiment-not-allowed). Silent for
+// upgrade. This is a deterministic-phase check, so it runs only when the experiment
+// is valid (an invalid one short-circuits to the invalid-experiment phase). Silent for
 // non-Experiments and for Experiments that already declare a max.
 //
 // Belongs here: flagging an allowed Experiment that omits strict_max_version.
 // Does NOT belong here: detecting Experiment status or reading the max version
-// (-> isExperiment and strictMaxVersion in src/checks/lib/util.js). Rejecting
+// (-> isExperiment and strictMaxVersion in src/lib/util.js). Rejecting
 // experiments when they are NOT allowed (-> experiment-not-allowed.js).
 // Flagging a strict_max_version on a non-Experiment (->
 // non-experiment-strict-max-version.js). Authored wording (->
@@ -16,7 +16,7 @@
 // registry entry, stamped by src/checks/registry.js).
 
 import { finding } from "../../report/finding.js";
-import { isExperiment, strictMaxVersion } from "../lib/util.js";
+import { isExperiment, strictMaxVersion } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {

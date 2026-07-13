@@ -100,7 +100,7 @@ A permission that gates neither an API nor a property - `unlimitedStorage`, whic
 raises the storage quota - falls outside this tracing (there is no gate to look up). It is
 justified by the add-on actually persisting data at runtime, which the type checker cannot
 weigh, so it stays LLM-judged. Its former hand-coded `NO_API_GATE` exemption in
-`src/checks/lib/permissions.js` has been removed in favour of a `permission-prompts` entry
+`src/lib/permissions.js` has been removed in favour of a `permission-prompts` entry
 - the same LLM interim as the property-gated permissions.
 
 # Unused-files pre-flight backstop (anchored templates + content type)
@@ -128,8 +128,8 @@ about the cases we truly cannot decide deterministically.
   it always stays a candidate.
 - Files: the loader scanners (src/parse/loader-files.js,
   src/parse/local-imports.js) extract the template,
-  src/checks/lib/reachability.js carries the richer dynamicLoaderSites shape,
-  src/checks/lib/util.js gains the canLoad matcher and a loadableAs content
+  src/lib/reachability.js carries the richer dynamicLoaderSites shape,
+  src/lib/util.js gains the canLoad matcher and a loadableAs content
   helper, and src/checks/rules/unused-files.js orphans a file that no site can
   load.
 - Variable-indirected loaders. The done work resolves an inline getURL of a
@@ -148,8 +148,8 @@ about the cases we truly cannot decide deterministically.
 # Re-evaluate fully schema-driven manifest file-ref extraction
 
 Reachability now seeds from a generic manifest string-walk (every string outside
-experiment_apis, resolve-gated) in src/checks/lib/manifest-refs.js
-(manifestStringRefs) + src/checks/lib/reachability.js. It is simple and
+experiment_apis, resolve-gated) in src/lib/manifest-refs.js
+(manifestStringRefs) + src/lib/reachability.js. It is simple and
 schema-independent, but it is not schema-*driven*: it cannot distinguish a file
 reference from a coincidental path-like string, and bundled-files still relies on
 the hardcoded manifestFileRefs() list.

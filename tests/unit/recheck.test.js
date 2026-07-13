@@ -1,4 +1,4 @@
-// The post-summary recheck mechanism (src/checks/lib/recheck.js + the runChecks
+// The post-summary recheck mechanism (src/lib/recheck.js + the runChecks
 // divert): producers hand their manual items to a recheck consumer when the full
 // summary runs, the summary re-judges them, and resolveRecheck maps each verdict
 // back to a finding / drop / manual item. Covers the verdict mapping, the guard
@@ -9,10 +9,7 @@ import { withManifest } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  resolveRecheck,
-  buildRecheckSections,
-} from "../../src/checks/lib/recheck.js";
+import { resolveRecheck, buildRecheckSections } from "../../src/lib/recheck.js";
 import {
   runChecks,
   loadChecks,
@@ -371,9 +368,10 @@ const producerCtx = () => {
 
 test("runChecks hands only permissions with a rubric prompt to the recheck; the rest stay manual", async () => {
   const registry = loadRegistry();
-  const ctx = { ...producerCtx(), recheckActive: true };
+  const ctx = { ...producerCtx() };
   const out = await runChecks(withManifest(ctx), registry, {
     only: ["unused-permission"],
+    recheckActive: true,
   });
   // "tabs" has a permission-prompt -> handed to the recheck consumer; "storage" has
   // none -> stays in manual review even though recheck is active.
@@ -389,9 +387,10 @@ test("runChecks hands only permissions with a rubric prompt to the recheck; the 
 
 test("runChecks leaves a producer's manual items in manual review when inactive", async () => {
   const registry = loadRegistry();
-  const ctx = { ...producerCtx(), recheckActive: false };
+  const ctx = { ...producerCtx() };
   const out = await runChecks(withManifest(ctx), registry, {
     only: ["unused-permission"],
+    recheckActive: false,
   });
   assert.deepEqual(out.manualItems.map((m) => m.item).sort(), [
     "storage",
@@ -470,30 +469,33 @@ test("checkInputs labels a recheck consumer by the corpus it acts on, not its in
   assert.equal(inputs.get("unused-files"), "xpi");
 });
 
-// The recheck consumers live in their own post-summary-rechecks section: tagged kind
-// "post-summary-recheck", they declare NO input (they run on the main ctx and are
-// labelled by their producer's corpus), and load with phase "post-summary".
-test("post-summary-recheck consumers are section-tagged, input-free, and post-summary", async () => {
+// The recheck consumers live in the post-summary-phase section - which IS their phase.
+// They declare NO input (they run on the main ctx and are labelled by their producer's
+// corpus), and load with phase "post-summary".
+test("post-summary-phase consumers are input-free and carry that phase", async () => {
   const reg = loadRegistry();
   const { xpi, source } = reg.recheckConsumersByCorpus();
   const consumers = [...xpi, ...source];
   assert.ok(consumers.length >= 6, "expected the recheck consumers");
   for (const id of consumers) {
-    assert.equal(reg.checkEntry(id)?.kind, "post-summary-recheck", id);
+    assert.equal(reg.checkEntry(id)?.phase, "post-summary", id);
   }
-  const loaded = await loadChecks(reg);
+  // A check's phase IS the list it loads into, so "is a post-summary consumer" means
+  // "is in the post-summary bucket" - there is no phase field to check.
+  const byPhase = await loadChecks(reg);
+  const postSummary = byPhase.get("post-summary");
   for (const id of consumers) {
-    const c = loaded.find((x) => x.id === id);
+    const c = postSummary.find((x) => x.id === id);
+    assert.ok(c, `${id} loads into the post-summary phase`);
     assert.equal(c.input, undefined, `${id} input`);
-    assert.equal(c.phase, "post-summary", `${id} phase`);
   }
 });
 
-// A post-summary-rechecks entry must NOT declare `input` (its corpus is derived from its
+// A post-summary-phase entry must NOT declare `input` (its corpus is derived from its
 // producer); declaring one is a config error caught at load.
 test("loadChecks rejects a post-summary-recheck that declares input", async () => {
   const reg = new Registry({
-    "post-summary-rechecks": [
+    "post-summary-phase": [
       {
         title: "X",
         check: "unused-permission-recheck",
@@ -505,13 +507,13 @@ test("loadChecks rejects a post-summary-recheck that declares input", async () =
   await assert.rejects(loadChecks(reg), /must not declare/);
 });
 
-// A recheck rubric (summary-prompt / permission-recheck) and post-summary-rechecks section
-// membership must be in lock-step: phase is derived from the section, so a rubric-bearing
+// A recheck rubric (summary-prompt / permission-recheck) and post-summary-phase section
+// membership must be in lock-step: the phase IS the section, so a rubric-bearing
 // consumer left in another section would silently get no post-summary phase and never be
 // re-judged. loadChecks rejects either half of the mismatch.
-test("loadChecks requires a recheck rubric to live in (and only in) the post-summary-rechecks section", async () => {
+test("loadChecks requires a recheck rubric to live in (and only in) the post-summary-phase section", async () => {
   const stray = new Registry({
-    "llm-checks": [
+    "llm-phase": [
       {
         title: "S",
         check: "unused-files-recheck",
@@ -522,10 +524,10 @@ test("loadChecks requires a recheck rubric to live in (and only in) the post-sum
   });
   await assert.rejects(
     loadChecks(stray),
-    /not in the post-summary-rechecks section/
+    /not in the post-summary-phase section/
   );
   const bare = new Registry({
-    "post-summary-rechecks": [{ title: "B", check: "unused-files-recheck" }],
+    "post-summary-phase": [{ title: "B", check: "unused-files-recheck" }],
   });
   await assert.rejects(loadChecks(bare), /carries no recheck rubric/);
 });
@@ -536,7 +538,7 @@ test("loadChecks requires a recheck rubric to live in (and only in) the post-sum
 test("loadChecks rejects a non-source/xpi producer that declares a post-summary-recheck", async () => {
   const producer = (input) =>
     new Registry({
-      "deterministic-checks": [
+      "deterministic-phase": [
         {
           title: "P",
           check: "unused-files",
@@ -544,7 +546,7 @@ test("loadChecks rejects a non-source/xpi producer that declares a post-summary-
           "post-summary-recheck": "unused-files-recheck",
         },
       ],
-      "post-summary-rechecks": [
+      "post-summary-phase": [
         { title: "C", check: "unused-files-recheck", "summary-prompt": "x" },
       ],
     });
@@ -588,7 +590,7 @@ test("permissionPrompts surfaces the optional usage tokens", () => {
 // list (tokens included) only for a permission-recheck consumer - the producer's
 // source for deterministic verdicts. Consumers themselves carry none.
 test("loadChecks attaches the linked consumer's data to a producer", async () => {
-  const loaded = await loadChecks(loadRegistry());
+  const loaded = [...(await loadChecks(loadRegistry())).values()].flat();
   const producer = loaded.find((c) => c.id === "unused-permission");
   assert.equal(producer.postSummaryRecheck, "unused-permission-recheck");
   assert.ok(producer.recheckData.permissionPrompts.length > 0);
@@ -757,7 +759,7 @@ test("assembly yields no rubric for a permission with no prompt (it falls to man
 // list only the permissions the assembled rubric actually grounds.
 test("assembly drops a handed permission no version-matching prompt grounds", () => {
   const reg = new Registry({
-    "deterministic-checks": [
+    "deterministic-phase": [
       {
         title: "U",
         check: "unused-permission-recheck",

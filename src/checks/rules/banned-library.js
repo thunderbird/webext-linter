@@ -12,11 +12,11 @@
 //
 // Belongs here: choosing the blocked set and mapping it to findings (the severity:auto
 // status mapping). Does NOT belong here: the policy match + file loading (->
-// src/checks/lib/library-blocks.js), the OSV audit (-> src/vendor/verify.js), and the
+// src/lib/library-blocks.js), the OSV audit (-> src/vendor/verify.js), and the
 // wording (-> assets/registry.yaml).
 
 import { finding, SEVERITY } from "../../report/finding.js";
-import { manifestTokenLine, lineContaining } from "../lib/util.js";
+import { manifestTokenLine, lineContaining } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 

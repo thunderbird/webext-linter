@@ -9,10 +9,10 @@
 // unused-files' own manual items stand.
 //
 // Belongs here: only the delegation. Does NOT belong here: the reachability/loader
-// analysis (-> unused-files + src/checks/lib/reachability.js), the wording (->
-// assets/registry.yaml), or the verdict mapping (-> src/checks/lib/recheck.js).
+// analysis (-> unused-files + src/lib/reachability.js), the wording (->
+// assets/registry.yaml), or the verdict mapping (-> src/lib/recheck.js).
 
-import { resolveRecheck } from "../lib/recheck.js";
+import { resolveRecheck } from "../../lib/recheck.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../registry.js").LoadedCheck} LoadedCheck */

@@ -109,7 +109,7 @@ test("SCA e2e: a flat layout (--sca-source == --sca-root) is accepted and fully 
         ),
         "the root source file is reviewed by the code checks"
       );
-      // The build review works flat: loadScaBuildFiles fed the corpus off the root
+      // The build review works flat: selectScaBuildFiles fed the corpus off the root
       // package.json, so the root yarn.lock is an Unsupported build tool reject.
       assert.ok(
         has(findings, "unsupported-build-tool", (f) => /yarn/.test(f.message)),
@@ -341,7 +341,7 @@ test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-au
 });
 
 // Regression: the --sca-root tree is read ONCE and the archive is shared by the review
-// loader (loadScaAddon) and the build-corpus loader (loadScaBuildFiles), so it is not
+// loader (loadScaAddon) and the build-corpus loader (selectScaBuildFiles), so it is not
 // walked (nor its symlinks warned) twice. Before the dedupe each loader called
 // loadAddon(scaRoot), reading the root twice.
 test("SCA: the --sca-root archive is read once, not twice", async () => {
@@ -780,7 +780,7 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
 
 // The build files (everything in --sca-root outside --sca-source) are reviewed by the setup
 // build analysis (analyzeBuild) + the deterministic undeclared-build-source check. This proves
-// the pipeline wires loadScaBuildFiles -> addon.buildFiles.buildReview -> buildCtx (ctx.addon) ->
+// the pipeline wires selectScaBuildFiles -> addon.buildFiles.buildReview -> buildCtx (ctx.addon) ->
 // the check: with NO LLM token analyzeBuild stores analyzed:false and the check escalates the
 // build to Extended manual review (graceful offline degradation).
 test("SCA e2e: a build script outside the source is reviewed by undeclared-build-source", async () => {

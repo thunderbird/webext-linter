@@ -13,7 +13,7 @@ import {
   buildAddonSummarizer,
 } from "../../src/checks/summaries.js";
 import { loadRegistry } from "../../src/checks/registry.js";
-import { classifyBundled } from "../../src/checks/lib/bundled.js";
+import { classifyBundled } from "../../src/lib/bundled.js";
 import { parseVendorManifest } from "../../src/normalize/vendor.js";
 
 /** Build an Addon-shaped object from a {path: contents} map. */

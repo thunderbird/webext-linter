@@ -1,6 +1,6 @@
 // Unit tests for the remote-code scanners and check.
 
-import { withManifest } from "./manifest-ctx.js";
+import { withManifest, parsed } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -16,7 +16,7 @@ import evalCall from "../../src/checks/rules/eval-call.js";
 import cspUnsafeEval from "../../src/checks/rules/csp-unsafe-eval.js";
 import cspUnsafeInline from "../../src/checks/rules/csp-unsafe-inline.js";
 import remoteEval from "../../src/checks/rules/remote-eval.js";
-import { getEvalScan } from "../../src/checks/lib/eval-scan.js";
+import { getEvalScan } from "../../src/lib/eval-scan.js";
 import { formatNote } from "../../src/checks/registry.js";
 
 // ---- url classifier ----
@@ -354,7 +354,11 @@ function fakeCtx(files, manifest) {
       jsSources.push({ file, code: v, lineOffset: 0, inline: false });
     }
   }
-  return { addon: { files: map, manifest }, jsSources, options: {} };
+  return {
+    addon: { files: map, manifest },
+    jsSources: parsed(jsSources),
+    options: {},
+  };
 }
 
 // A manifest CSP with 'unsafe-eval' and 'unsafe-inline' yields two findings

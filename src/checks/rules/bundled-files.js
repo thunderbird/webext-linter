@@ -11,7 +11,7 @@
 // packaged-file candidates (relative/root-relative, no scheme), and emitting a
 // finding for each that is absent from the package.
 //
-// Does NOT belong here: extracting manifest file refs (-> src/checks/lib/
+// Does NOT belong here: extracting manifest file refs (-> src/lib/
 // manifest-refs.js), extracting loader-API file refs (->
 // src/parse/loader-files. js), URL classification (-> src/scan/url.js), the
 // remote-source verdict (-> remote-script.js), authored wording (->
@@ -20,16 +20,16 @@
 
 import { finding } from "../../report/finding.js";
 import { loaderRefsOf } from "../extract.js";
-import { buildReachability } from "../lib/reachability.js";
+import { buildReachability } from "../../lib/reachability.js";
 import { classifyUrl } from "../../scan/url.js";
 import {
   manifestFileRefs,
   normalizeRef,
   resolveRef,
   resolveRefStatus,
-} from "../lib/manifest-refs.js";
-import { scriptHostDirs, resolvePageRelative } from "../lib/script-hosts.js";
-import { manifestTokenLine } from "../lib/util.js";
+} from "../../lib/manifest-refs.js";
+import { scriptHostDirs, resolvePageRelative } from "../../lib/script-hosts.js";
+import { manifestTokenLine } from "../../lib/util.js";
 
 // A reference is a packaged-file candidate (so a missing target is an error)
 // only when it is a relative / root-relative path with no URI scheme. This
@@ -95,7 +95,7 @@ export default {
       if (!isLive(src.file)) {
         continue;
       }
-      const { refs } = loaderRefsOf(src, ctx.schema);
+      const { refs } = loaderRefsOf(src);
       for (const ref of refs) {
         if (!isPackagedPathRef(ref.path)) {
           continue;

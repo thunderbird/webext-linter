@@ -8,11 +8,11 @@
 //
 // Belongs here: choosing the prod/vendored vulnerability set. Does NOT belong
 // here: the vulnerability->finding mapping incl. the severity:auto band mapping
-// (-> src/checks/lib/vuln-findings.js), the OSV query/parse (-> src/vendor/verify.js),
+// (-> src/lib/vuln-findings.js), the OSV query/parse (-> src/vendor/verify.js),
 // the pinned-version resolution (-> src/vendor/resolve.js + src/vendor/locks.js),
 // and the wording (-> assets/registry.yaml).
 
-import { vulnFindings } from "../lib/vuln-findings.js";
+import { vulnFindings } from "../../lib/vuln-findings.js";
 
 export default {
   /**

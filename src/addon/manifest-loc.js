@@ -8,7 +8,7 @@
 // Belongs here: building the position index from the raw manifest text and
 // resolving a JSON path to its 1-based line. Does NOT belong here: deciding which
 // path a finding refers to (that is each check's job, via manifestPathLine in
-// src/checks/lib/util.js), or the substring fallback for unique keys
+// src/lib/util.js), or the substring fallback for unique keys
 // (manifestTokenLine).
 
 import { parseTree, findNodeAtLocation } from "jsonc-parser";

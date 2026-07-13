@@ -15,11 +15,9 @@
 // (-> assets/registry.yaml), and severity (-> that registry entry).
 
 import { finding } from "../../report/finding.js";
-import { parseJs } from "../../parse/ast.js";
 import { moduleSyntaxOf } from "../extract.js";
 import { eachElement } from "../../scan/html-parse.js";
-import { usesModuleSyntax } from "../lib/module-syntax.js";
-import { normalizeRef, resolveRef } from "../lib/manifest-refs.js";
+import { normalizeRef, resolveRef } from "../../lib/manifest-refs.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -46,8 +44,10 @@ export default {
     }
 
     // The page's external scripts are .js files the pass already parsed; read the
-    // precomputed module-syntax verdict (moduleSyntaxOf), falling back to parsing the
-    // bytes for a target the pass never saw.
+    // precomputed module-syntax verdict (moduleSyntaxOf). A CHECK NEVER PARSES: a <script src>
+    // target NOT in the corpus is a non-JS suffix executed as code - unrecognized-file-type
+    // reports that (more usefully than a module-syntax nuance), so here it is simply not a
+    // classic .js script to flag.
     const sources = new Map((ctx.jsSources ?? []).map((s) => [s.file, s]));
     const out = [];
     eachElement(buf.toString("utf8"), (el) => {
@@ -65,7 +65,7 @@ export default {
       if (!target) {
         return; // remote or unresolved src - not our concern
       }
-      if (!targetUsesModuleSyntax(sources, target, addon.files)) {
+      if (!targetUsesModuleSyntax(sources, target)) {
         return; // a classic script - fine without type="module"
       }
       const loc = { line: el.line };
@@ -77,23 +77,15 @@ export default {
 };
 
 /**
- * Does a packaged JS file use ES module syntax? For a known jsSource, read the
- * precomputed moduleSyntaxOf verdict (no re-parse); for a page-referenced target the
- * pass never saw, parse its bytes. False when the file is absent or unparsable.
+ * Does a packaged JS file use ES module syntax? Read the precomputed moduleSyntaxOf verdict
+ * for a source the extraction pass saw (every JS-corpus file). A target NOT in the corpus is
+ * not JS-parseable (a non-JS suffix) - it is not a classic .js script this check governs, and
+ * unrecognized-file-type reports it instead; the check never parses to answer here.
  * @param {Map<string, object>} sources  ctx.jsSources keyed by file.
  * @param {string} file  Add-on-relative path.
- * @param {Map<string, Buffer>} files  The add-on file map.
  * @returns {boolean}
  */
-function targetUsesModuleSyntax(sources, file, files) {
+function targetUsesModuleSyntax(sources, file) {
   const src = sources.get(file);
-  if (src) {
-    return Boolean(moduleSyntaxOf(src));
-  }
-  const buf = files.get(file);
-  if (!buf) {
-    return false;
-  }
-  const { ast } = parseJs(buf.toString("utf8"), file);
-  return ast ? usesModuleSyntax(ast) : false;
+  return src ? Boolean(moduleSyntaxOf(src)) : false;
 }

@@ -12,21 +12,27 @@
 // plus the machine-readable recheck verdicts, via the forced report_addon_review
 // tool), since the post-summary recheck consumers map those verdicts to Issues.
 //
-// Belongs here: buildDiffText / buildAddonText (the deterministic payloads) and
-// the two summarizer builders. Does NOT belong here: the prompt text ->
-// assets/registry.yaml (via registry.prompt). The transport -> the provider
-// adapters (callText / callReview, selected by src/llm/provider.js) through
-// src/checks/llm-client.js (summarize / reviewAddon). The unused-file set ->
-// derived from review findings in src/pipeline.js. Displaying the summaries ->
-// src/cli.js. Composing the recheck sections and mapping verdicts to Issues ->
-// src/checks/lib/recheck.js. File classification -> src/checks/lib/bundled.js and
-// src/util/files.js.
+// Belongs here: buildDiffText / buildAddonText (the deterministic payloads), the two
+// summarizer builders, AND the runner half that drives them - generateSummary /
+// generateAddonSummary (one model call each, budget-capped, narrated to the feed) and
+// resolveRecheckSummaries, the whole --llm-review summary interleave the orchestrator
+// (runChecks) invokes between the llm and post-summary phases: the XPI single-pass /
+// SCA two-pass add-on review that populates ctx.recheckVerdicts, plus the diff summary.
+// Does NOT belong here: the prompt text -> assets/registry.yaml (via registry.prompt).
+// The transport -> the provider adapters (callText / callReview, selected by
+// src/llm/provider.js) through src/checks/llm-client.js (summarize / reviewAddon).
+// Displaying the summaries -> src/cli.js. Composing the recheck sections and mapping
+// verdicts to Issues -> src/lib/recheck.js. File classification ->
+// src/lib/bundled.js and src/util/files.js.
 
 import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
 import { canonicalJson } from "../util/json.js";
-import { nonAuthoredJs } from "./lib/bundled.js";
-import { buildRecheckSections } from "./lib/recheck.js";
-import { nonceFor, wrap, wrapFile, framing } from "./lib/untrusted.js";
+import { progress, FEED, llmErrorText } from "../util/log.js";
+import { red } from "../util/color.js";
+import { humanSize } from "../util/text.js";
+import { nonAuthoredJs } from "../lib/bundled.js";
+import { buildRecheckSections } from "../lib/recheck.js";
+import { nonceFor, wrap, wrapFile, framing } from "../lib/untrusted.js";
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
 /** @typedef {import("./registry.js").Registry} Registry */
@@ -347,4 +353,183 @@ export function buildAddonSummarizer(
     system: `${framing(nonce)}\n\n${prompt}${rubric ? `\n\n${rubric}` : ""}`,
     user: items ? `${text}\n\n${items}` : text,
   });
+}
+
+/** @typedef {import("../pipeline.js").GeneratedSummary} GeneratedSummary */
+
+/**
+ * Generate one advisory prose summary at the tail of the activity feed: narrate
+ * `LLM: Generating <label> (<size>) ...` so the reviewer sees what is being
+ * waited on, then run the deferred model call. Returns { bytes, text } (text
+ * null on an LLM error), or undefined when there is nothing to summarize (no
+ * token, no diff, ...). The caller prints the prose after the report.
+ * @param {DeferredSummary|null} deferred
+ * @param {string} label  Names the summary in the feed, e.g. "diff summary".
+ * @param {import("../llm/budget.js").LlmBudget} [budget]  Run-wide request cap.
+ * @returns {Promise<GeneratedSummary|undefined>}
+ */
+async function generateSummary(deferred, label, budget) {
+  if (!deferred) {
+    return undefined;
+  }
+  if (budget && !(await budget.consume())) {
+    return undefined; // run-wide request cap reached
+  }
+  progress(
+    `LLM: Generating ${label} (${humanSize(deferred.bytes)}) ...`,
+    FEED.STEP
+  );
+  try {
+    return { bytes: deferred.bytes, text: await deferred.run() };
+  } catch (err) {
+    // An advisory summary must never abort the review. Report the failure at
+    // this step (visible without --verbose) and carry the reason to the report.
+    const reason = llmErrorText(err);
+    progress(red(`LLM: ${label} failed - ${reason}`), FEED.STEP);
+    return { bytes: deferred.bytes, text: null, error: reason };
+  }
+}
+
+/** The recheck verdicts from a summary pass that belong to `allowed` consumers. */
+const keepVerdicts = (verdicts, allowed) =>
+  (verdicts ?? []).filter((v) => v && allowed.has(v.check));
+
+/**
+ * Generate one --llm-review add-on review pass over a chosen corpus and return its
+ * prose plus its recheck verdicts (resolveRecheckSummaries merges the verdicts onto
+ * ctx.recheckVerdicts for the post-summary consumers). In SCA it runs twice - a
+ * behavioral pass over the source and a packaging pass over the built XPI - each
+ * carrying only its corpus's recheck consumers (opts.consumers) and its own framing
+ * (opts.promptId). Undefined when there is nothing to summarize (no token / no prompt /
+ * budget spent); `{ text: null, error }` on an LLM failure; otherwise `{ bytes, text,
+ * verdicts }` where a defined `verdicts` (possibly empty) means the model returned a
+ * review - the clean signal that analysis happened.
+ * @param {RunContext} ctx
+ * @param {Registry} registry
+ * @param {import("../llm/budget.js").LlmBudget} [budget]  Run-wide request cap.
+ * @param {{unused?: Set<string>, summaryAddon?: object, promptId?: string,
+ *   consumers?: ?Set<string>, label?: string}} [opts]
+ * @returns {Promise<(GeneratedSummary & {verdicts?: object[]})|undefined>}
+ */
+async function generateAddonSummary(ctx, registry, budget, opts = {}) {
+  const { label = "add-on", ...summarizerOpts } = opts;
+  const deferred = buildAddonSummarizer(ctx, registry, summarizerOpts);
+  if (!deferred) {
+    return undefined;
+  }
+  if (budget && !(await budget.consume())) {
+    return undefined; // run-wide request cap reached
+  }
+  progress(
+    `LLM: Generating ${label} summary (${humanSize(deferred.bytes)}) ...`,
+    FEED.STEP
+  );
+  let review;
+  try {
+    review = await deferred.run();
+  } catch (err) {
+    const reason = llmErrorText(err);
+    progress(red(`LLM: ${label} summary failed - ${reason}`), FEED.STEP);
+    return { bytes: deferred.bytes, text: null, error: reason };
+  }
+  return {
+    bytes: deferred.bytes,
+    text: review?.summary ?? null,
+    verdicts: review?.recheck,
+  };
+}
+
+/**
+ * The --llm-review summary interleave, run by the orchestrator (runChecks) between the
+ * llm and post-summary phases: the add-on review that RE-JUDGES the recheck items handed
+ * to it (ctx.recheck) - merging the verdicts onto ctx.recheckVerdicts for the post-summary
+ * consumers that run next - plus the advisory diff summary. It runs after the checks because
+ * it excludes files the review found unreachable (unused-files), a product of reachability
+ * that exists only now. Inert without ctx.llm (and so for an invalid Experiment, which has
+ * none). The prose results are printed after the report by src/cli.js.
+ * @param {RunContext} ctx
+ * @param {Registry} registry
+ * @param {import("../llm/budget.js").LlmBudget} [budget]  Run-wide request cap.
+ * @param {Record<string, RunContext>} siblings  Per-artifact contexts; siblings.xpi is the
+ *   SHIPPED view (the packaging pass's corpus and the diff baseline comparison).
+ * @param {object[]} findings  The issues so far (for the unused-files exclusion set).
+ * @returns {Promise<{summarizeAddon: (GeneratedSummary|undefined),
+ *   summarize: (GeneratedSummary|undefined)}>}
+ */
+export async function resolveRecheckSummaries(
+  ctx,
+  registry,
+  budget,
+  siblings,
+  findings
+) {
+  const shippedCtx = siblings.xpi;
+  let summarizeAddon;
+  if (ctx.llm) {
+    // unused-files runs over the built XPI (input: xpi), so its paths are the XPI's.
+    const unusedFiles = new Set(
+      findings.filter((f) => f.ruleId === "unused-files").map((f) => f.file)
+    );
+    if (ctx.mode === "sca") {
+      // SCA: one summary per corpus. The behavioral pass over the readable SOURCE is the
+      // displayed "Summary of add-on" and re-judges the source-anchored rechecks; the
+      // packaging pass over the built XPI is recheck-only (its prose is discarded). Each
+      // pass carries only its corpus's consumers, and its verdicts are filtered to those
+      // consumers before they merge, so neither can resolve the other's items. The source
+      // pass excludes no `unused` files - those XPI paths do not apply to the source corpus.
+      const { source, xpi } = registry.recheckConsumersByCorpus();
+      summarizeAddon = await generateAddonSummary(ctx, registry, budget, {
+        summaryAddon: ctx.addon,
+        consumers: source,
+        label: "source",
+      });
+      const verdicts = [];
+      let ran = false;
+      if (summarizeAddon && !summarizeAddon.error) {
+        ran = true;
+        verdicts.push(...keepVerdicts(summarizeAddon.verdicts, source));
+      }
+      // The packaging pass runs only when an XPI-anchored recheck actually escalated -
+      // otherwise it has nothing to judge over the (often near-empty) built corpus.
+      const hasXpiItems = [...(ctx.recheck ?? new Map()).keys()].some((id) =>
+        xpi.has(id)
+      );
+      if (hasXpiItems) {
+        const packaging = await generateAddonSummary(ctx, registry, budget, {
+          unused: unusedFiles,
+          summaryAddon: shippedCtx.addon,
+          consumers: xpi,
+          promptId: "shipped-package-summary",
+          label: "packaging",
+        });
+        if (packaging && !packaging.error) {
+          ran = true;
+          verdicts.push(...keepVerdicts(packaging.verdicts, xpi));
+        }
+      }
+      if (ran) {
+        ctx.recheckVerdicts = verdicts;
+      }
+    } else {
+      // XPI review: one all-in-one summary over the single artifact (the review target),
+      // carrying every recheck consumer.
+      summarizeAddon = await generateAddonSummary(ctx, registry, budget, {
+        unused: unusedFiles,
+        summaryAddon: ctx.addon,
+      });
+      if (summarizeAddon && !summarizeAddon.error) {
+        ctx.recheckVerdicts = summarizeAddon.verdicts;
+      }
+    }
+  }
+  let summarize;
+  // ctx.previous is the loaded --diff-to baseline (null without it).
+  if (ctx.llm && ctx.previous) {
+    summarize = await generateSummary(
+      buildSummarizer(ctx, registry, shippedCtx),
+      "diff summary",
+      budget
+    );
+  }
+  return { summarizeAddon, summarize };
 }

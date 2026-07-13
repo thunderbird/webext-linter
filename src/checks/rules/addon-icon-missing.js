@@ -13,7 +13,7 @@
 // src/checks/registry.js).
 
 import { finding } from "../../report/finding.js";
-import { asObject } from "../lib/util.js";
+import { asObject } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 

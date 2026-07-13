@@ -10,10 +10,10 @@
 // target; with no summary nothing is handed over and the producer's items stand.
 //
 // Belongs here: only the delegation. Does NOT belong here: the outbound-sink
-// analysis (-> data-exfiltration + src/checks/lib/outbound-sinks.js), the wording
-// (-> assets/registry.yaml), or the verdict mapping (-> src/checks/lib/recheck.js).
+// analysis (-> data-exfiltration + src/lib/outbound-sinks.js), the wording
+// (-> assets/registry.yaml), or the verdict mapping (-> src/lib/recheck.js).
 
-import { resolveRecheck } from "../lib/recheck.js";
+import { resolveRecheck } from "../../lib/recheck.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../registry.js").LoadedCheck} LoadedCheck */

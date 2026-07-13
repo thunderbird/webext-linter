@@ -12,7 +12,7 @@
 //
 // Belongs here: the allow-list (file hashes + API namespaces) and the per-group
 // status. Does NOT belong here: fetching the zip (src/experiments/fetch.js),
-// manifest parsing (src/checks/lib/experiments.js), the relax/abort wiring
+// manifest parsing (src/lib/experiments.js), the relax/abort wiring
 // (src/pipeline.js), or the shadowing reason (experiment-not-allowed, which has
 // the schema).
 
@@ -23,8 +23,8 @@ import JSON5 from "json5";
 
 import { debug } from "../util/log.js";
 import { EXPERIMENTS_CACHE } from "../config.js";
-import { manifestTokenLine } from "../checks/lib/util.js";
-import { experimentGroups } from "../checks/lib/experiments.js";
+import { manifestTokenLine } from "../lib/util.js";
+import { experimentGroups } from "../lib/experiments.js";
 import { resolveExperimentsZip } from "./fetch.js";
 import { normalizedSha256 } from "../normalize/hash.js";
 

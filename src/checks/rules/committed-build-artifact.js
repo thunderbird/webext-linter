@@ -6,7 +6,7 @@
 //
 // The archive paths are recorded at load (addon.archives): loadAddon walks the WHOLE
 // --sca-root before the source/build split, so an archive is caught wherever it sits - in
-// the review source, the build tree, anywhere. loadScaBuildFiles passes the list onto the
+// the review source, the build tree, anywhere. selectScaBuildFiles passes the list onto the
 // input: build addon (like nodeModules). This check turns each recorded path into a finding.
 //
 // Belongs here: mapping a recorded archive path to a finding. Does NOT belong here:

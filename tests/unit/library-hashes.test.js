@@ -12,7 +12,7 @@ import {
   parseLibraryHashes,
   resolveLibraryHashes,
   npmNameForLibrary,
-} from "../../src/checks/lib/library-hashes.js";
+} from "../../src/lib/library-hashes.js";
 
 const H = "a".repeat(64); // a syntactically valid (if fake) sha256
 

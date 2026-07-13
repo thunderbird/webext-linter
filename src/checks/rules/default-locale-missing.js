@@ -4,12 +4,12 @@
 // default-locale-unused.js.
 //
 // Belongs here: the present-_locales / absent-default_locale verdict. Does NOT
-// belong here: the _locales scan (-> getLocales in src/checks/lib/locales.js,
+// belong here: the _locales scan (-> getLocales in src/lib/locales.js,
 // memoized and shared with default-locale-unused), authored wording (->
 // assets/registry.yaml), and severity (-> that registry entry).
 
 import { finding } from "../../report/finding.js";
-import { getLocales } from "../lib/locales.js";
+import { getLocales } from "../../lib/locales.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 

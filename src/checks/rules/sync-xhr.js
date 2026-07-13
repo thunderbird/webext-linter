@@ -4,13 +4,13 @@
 // Belongs here: skipping non-authored code, then narrating each explicit-async
 // open() site (sync = fail, async = pass) and emitting a finding for the sync ones.
 // Does NOT belong here: the `.open(...)` AST match (-> src/parse/sync-xhr.js), the
-// non-authored skip-list (-> src/checks/lib/bundled.js), authored wording (->
+// non-authored skip-list (-> src/lib/bundled.js), authored wording (->
 // assets/registry.yaml), severity (-> that registry entry, stamped by
 // src/checks/registry.js), and report formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
 import { syncXhrOf } from "../extract.js";
-import { nonAuthoredJs } from "../lib/bundled.js";
+import { nonAuthoredJs } from "../../lib/bundled.js";
 
 export default {
   run(ctx) {

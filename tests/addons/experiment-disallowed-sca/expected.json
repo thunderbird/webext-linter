@@ -1,0 +1,6 @@
+{
+  "_comment": "An SCA submission whose SHIPPED XPI bundles an unsupported Experiment, with experiments off. invalidExperiment pins mode=xpi, so Phase 2 never reads the source archive and the review target is the XPI: only experiment-not-allowed runs. What pins that is meta.addon in the golden - it must be the xpi/ path, never src/. (The src/ tree also carries an eval() and a debugger statement as belt-and-braces; note they are suppressed by the phase short-circuit alone, so they would NOT catch a regression of the mode pin on their own.)",
+  "expect": {
+    "experiment-not-allowed": ["manifest.json:5"]
+  }
+}

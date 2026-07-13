@@ -14,13 +14,13 @@
 // finding. Does NOT belong here: the AST module-syntax query (-> shared
 // lib/module-syntax.js, firstModuleSyntax), the parse (-> the extraction pass, read
 // via the moduleSyntaxOf accessor in src/checks/extract.js), path normalization
-// (-> normalizeRef in src/checks/lib/manifest-refs.js), authored wording
+// (-> normalizeRef in src/lib/manifest-refs.js), authored wording
 // (-> assets/registry.yaml), and severity (-> that entry).
 
 import { finding } from "../../report/finding.js";
 import { moduleSyntaxOf } from "../extract.js";
-import { normalizeRef } from "../lib/manifest-refs.js";
-import { asArray } from "../lib/util.js";
+import { normalizeRef } from "../../lib/manifest-refs.js";
+import { asArray } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 

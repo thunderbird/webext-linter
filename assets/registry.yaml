@@ -1,8 +1,31 @@
 # Note: Responses should not contain line breaks, as they can be copied into the
 #       response window on ATN, which will reflow them. Line breaks will create
 #       ugly-looking response messages sent to the developer.
+#
+# The check-bearing sections below ARE the phases: a check's phase IS the section it
+# lives in, so no entry declares one. The orchestrator (runChecks) knows this closed set
+# and looks up the phases it wants, in the order it runs them - invalid-experiment (which
+# short-circuits the whole review), then deterministic, then llm, then post-summary (run
+# by the pipeline after the AI add-on summary). A section it never asks for is inert, so
+# every other top-level section here (permission-prompts, manual-checks, messages, ...) is
+# simply not a phase.
 
-deterministic-checks:
+# The reject phase: when the add-on is an invalid Experiment, this is the ONLY phase that
+# runs - no other check, no LLM, no summaries, no manual list.
+invalid-experiment-phase:
+# Aborts the review of an Experiment that uses an UNSUPPORTED experiment (an
+# unknown API draft, or one shadowing a built-in). A recognised but modified draft
+# does NOT land here; it is reviewed normally and flagged by experiment-modified.
+# The per-experiment reason is appended to each location line.
+- title: Experiment APIs not accepted
+  severity: error
+  check: experiment-not-allowed
+  input: source
+  response: |-
+    We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). The following cannot be accepted:
+    Read more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews
+
+deterministic-phase:
 # Flags a privileged core global (Services, ChromeUtils, Components/Cc/Ci/Cu, ...)
 # referenced in pure WebExtension code, where the sandbox does not provide it. The
 # Experiment dependency tree (and its mixed/unsure files) is exempt.
@@ -138,6 +161,15 @@ deterministic-checks:
   response: |-
     The following referenced file(s) are not bundled with the add-on, or the path may be wrongly specified. Please include every referenced file in the package, and check that the used paths are correct.
 
+# Flags a packaged file the add-on loads (manifest reference or <script src>) whose file type
+# is not recognized, so no check could review it - the backstop for the JS-corpus suffix set.
+- title: Unrecognized referenced file type
+  severity: error
+  check: unrecognized-file-type
+  input: xpi
+  response: |-
+    The following packaged file(s) are referenced by the add-on ({{referrer}}) but have a file type the review tools do not recognize, so they could not be classified or reviewed. The browser still loads them. Please give each a standard extension for its content (for example a .js script), or confirm what the file is and why it is shipped. If this is a build artifact your packaging step emitted, review what your build produces.
+
 # Flags synchronous XMLHttpRequest (open(..., false)), which blocks the UI thread.
 - title: Synchronous XMLHttpRequests
   severity: error
@@ -179,6 +211,7 @@ deterministic-checks:
   severity: info
   check: code-sanity
   input: source
+  eslint: true
   response: |-
     Static analysis flagged a likely code error: {{item}}
 
@@ -323,20 +356,6 @@ deterministic-checks:
   input: source
   response: |-
     Limited static-analysis coverage: could not be parsed, so API checks were skipped ({{detail}})
-
-# Aborts the review of an Experiment that uses an UNSUPPORTED experiment (an
-# unknown API draft, or one shadowing a built-in). phase: invalid-experiment - the
-# orchestrator runs ONLY this check (and nothing else, no LLM). A recognised but
-# modified draft does NOT land here; it is reviewed normally and flagged by
-# experiment-modified. The per-experiment reason is appended to each location line.
-- title: Experiment APIs not accepted
-  severity: error
-  check: experiment-not-allowed
-  input: source
-  phase: invalid-experiment
-  response: |-
-    We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). The following cannot be accepted:
-    Read more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews
 
 # Flags a recognised published Experiment draft that is bundled modified or
 # outdated (it would be accepted if it were the unmodified latest upstream copy).
@@ -1041,7 +1060,7 @@ permission-prompts:
 # case) and an `instructions` (the message printed when the case is routed to
 # manual review instead - no token, the LLM is unsure, or it errored). A
 # confident LLM "fail" emits a normal finding rendered from `response`.
-llm-checks:
+llm-phase:
 # LLM check: functions/events added after the declared strict_min_version. The
 # deterministic pre-flight (strict-min-version-api.js) emits an UNGUARDED too-new
 # call as a finding directly; a call carrying a guard signal (optional chaining, a
@@ -1249,7 +1268,7 @@ llm-checks:
 # `post-summary-recheck:` above. It is re-judged by the --llm-review add-on summary
 # (phase post-summary), always runs on the main ctx - so it declares no `input` - and
 # is labelled by its producer's corpus (see labelInputFor). Its run() is resolveRecheck.
-post-summary-rechecks:
+post-summary-phase:
 # The recheck consumer for the permissions handed over above. `permission-recheck`
 # makes the --llm-review pass assemble a rubric from the permission-prompt-framing
 # and permission-prompts sections, including only the sections for the permissions

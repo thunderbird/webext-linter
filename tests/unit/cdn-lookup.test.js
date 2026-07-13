@@ -10,11 +10,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { classifyBundled } from "../../src/checks/lib/bundled.js";
-import {
-  resolveCdnLibraries,
-  cdnUrl,
-} from "../../src/checks/lib/cdn-lookup.js";
+import { classifyBundled } from "../../src/lib/bundled.js";
+import { resolveCdnLibraries, cdnUrl } from "../../src/lib/cdn-lookup.js";
 import findLibOnCdn from "../../src/checks/rules/find-lib-on-cdn.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";

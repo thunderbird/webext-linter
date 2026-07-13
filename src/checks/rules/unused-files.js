@@ -13,18 +13,18 @@
 // Belongs here: the ALLOW / JUNK name lists, classifying each packaged file as a
 // finding / candidate / clean against reachability, the per-site candidate set,
 // and the per-F aggregation in resolve. Does NOT belong here: the reachability
-// graph, dynamic-loader sites, and mention lookups -> src/checks/lib/
+// graph, dynamic-loader sites, and mention lookups -> src/lib/
 // reachability.js. The non-authored (library / minified / bundled) classification
-// -> nonAuthoredJs in src/checks/lib/bundled.js. The model
+// -> nonAuthoredJs in src/lib/bundled.js. The model
 // transport (batched verdicts) -> src/checks/llm-client.js. The LLM-or-manual
 // orchestration -> src/checks/escalation.js. Authored wording ->
 // assets/registry.yaml. Severity -> that registry entry, stamped by runChecks.
 
 import { finding } from "../../report/finding.js";
 import { ARCHIVE_EXTENSIONS, extname } from "../../util/files.js";
-import { nonAuthoredJs } from "../lib/bundled.js";
-import { buildReachability } from "../lib/reachability.js";
-import { aggregateGroups } from "../lib/verdict-resolve.js";
+import { nonAuthoredJs } from "../../lib/bundled.js";
+import { buildReachability } from "../../lib/reachability.js";
+import { aggregateGroups } from "../../lib/verdict-resolve.js";
 import {
   referrerSupported,
   loaderSites,
@@ -32,10 +32,10 @@ import {
   isDocMetadataFile,
   isExperiment,
   DEPENDENCY_FILE_RE,
-} from "../lib/util.js";
+} from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
-/** @typedef {import("../lib/reachability.js").Reachability} Reachability */
+/** @typedef {import("../../lib/reachability.js").Reachability} Reachability */
 
 // Never flag: dependency manifests / lock files, the manifest, and locale message
 // catalogs. Documentation / project metadata (license, readme, and the like) is

@@ -10,7 +10,7 @@
 // api-coverage registry entry, stamped by src/checks/registry.js).
 
 import { finding } from "../../report/finding.js";
-import { buildReachability } from "../lib/reachability.js";
+import { buildReachability } from "../../lib/reachability.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 

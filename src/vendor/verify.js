@@ -36,11 +36,11 @@ import { classifySource } from "./sources.js";
 import { tarballHashes } from "./tarball.js";
 import { zipHashesUnder } from "./archive.js";
 import { isVendored } from "./resolve.js";
-import { npmNameForLibrary } from "../checks/lib/library-hashes.js";
-import { matchLibraryBlock } from "../checks/lib/library-blocks.js";
+import { npmNameForLibrary } from "../lib/library-hashes.js";
+import { matchLibraryBlock } from "../lib/library-blocks.js";
 import { normalizedSha256 } from "../normalize/hash.js";
 import { getProvider } from "../llm/provider.js";
-import { newNonce, wrap, framing } from "../checks/lib/untrusted.js";
+import { newNonce, wrap, framing } from "../lib/untrusted.js";
 import {
   VENDOR_NPM_MIN_DOWNLOADS,
   VENDOR_GITHUB_MIN_STARS,
@@ -175,7 +175,7 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}, blocks) {
     );
   }
   // A `not-popular` outcome is reconciled into addon.bundled.untrusted later, by
-  // applyNotPopularVendor (src/checks/lib/bundled.js), because addon.bundled is
+  // applyNotPopularVendor (src/lib/bundled.js), because addon.bundled is
   // built AFTER this step in the pipeline. It stays in vendor.results until then.
 }
 
@@ -610,7 +610,7 @@ function indexBySri(listing) {
  * corresponds to. The reply is UNTRUSTED and only a hint - auditGithub re-proves
  * it by hash before any audit. The repo/ref/file/source describing the library
  * are wrapped in nonce markers as USER data, with the trusted rubric in the
- * SYSTEM prompt (src/checks/lib/untrusted.js), exactly like resolveVendor's parse
+ * SYSTEM prompt (src/lib/untrusted.js), exactly like resolveVendor's parse
  * fallback.
  * @param {VendorEntry} entry @param {VendorSource} src @param {VendorLlm} llm
  * @returns {Promise<?{name: string, version: ?string}>}
@@ -939,7 +939,7 @@ function metaFiles(node, out = []) {
  * is accepted by provenance regardless of stars and without a popularity lookup.
  * A lookup error counts as "not popular" (the case then goes to manual review).
  * Shared by verifyVendor's per-source checks (VENDOR / package.json) and the CDN
- * identifier (src/checks/lib/cdn-lookup.js), so all identification paths gate on
+ * identifier (src/lib/cdn-lookup.js), so all identification paths gate on
  * the same bar. `src` need only carry {kind, pkg} (npm) or {kind, repo} (github).
  * @param {VendorSource} src @param {VendorNet} net
  * @returns {Promise<boolean>}

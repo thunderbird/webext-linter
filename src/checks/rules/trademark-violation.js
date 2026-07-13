@@ -15,7 +15,7 @@
 // registry.js). Report formatting -> src/report/format.js.
 
 import { finding } from "../../report/finding.js";
-import { manifestTokenLine } from "../lib/util.js";
+import { manifestTokenLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../addon/load.js").Addon} Addon */

@@ -1,0 +1,10 @@
+{
+  "_comment": "bg.weird (background.scripts, manifest walk) and logic.data + mod.txt (<script src> walk) are loaded but not reviewed as code -> unrecognized-file-type flags all three. The <script> walk classifies against JS_EXTENSIONS (a <script src> is CODE whatever the suffix), so mod.txt - a recognized resource type - is still flagged because it is executed as a script. icon.png (a manifest icon, recognized) is NOT flagged. input:xpi -> file-level findings.",
+  "expect": {
+    "unrecognized-file-type": [
+      "bg.weird",
+      "logic.data",
+      "mod.txt"
+    ]
+  }
+}

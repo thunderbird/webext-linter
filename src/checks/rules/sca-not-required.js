@@ -6,7 +6,7 @@
 // minified/obfuscated the SCA is kept and this never fires.
 //
 // Belongs here: mapping the pipeline's ctx.scaNotRequired flag to a finding. Does NOT belong
-// here: the reviewability decision (-> src/pipeline.js + src/checks/lib/bundled.js
+// here: the reviewability decision (-> src/pipeline.js + src/lib/bundled.js
 // hasUnreviewableCode) or the wording (-> assets/registry.yaml).
 
 import { finding } from "../../report/finding.js";

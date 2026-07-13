@@ -11,9 +11,9 @@
 //
 // Belongs here: only the delegation. Does NOT belong here: the language detection
 // (-> missing-english-localization), the wording (-> assets/registry.yaml), or the
-// verdict mapping (-> src/checks/lib/recheck.js).
+// verdict mapping (-> src/lib/recheck.js).
 
-import { resolveRecheck } from "../lib/recheck.js";
+import { resolveRecheck } from "../../lib/recheck.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../registry.js").LoadedCheck} LoadedCheck */

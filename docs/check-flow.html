@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Shown inside the index.html content iframe: links must drive the whole
+         window (the docs shell + its hash nav), not navigate within the iframe. -->
+    <base target="_top" />
+    <title>The review pipeline</title>
+    <link rel="stylesheet" href="assets/style.css" />
+    <style>
+      dl.glossary dt {
+        font-weight: 600;
+        margin-top: 0.9em;
+      }
+      dl.glossary dd {
+        margin: 0.15em 0 0 0;
+      }
+      table.phases {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1em 0;
+      }
+      table.phases th,
+      table.phases td {
+        border: 1px solid #d6dae0;
+        padding: 0.5em 0.7em;
+        text-align: left;
+        vertical-align: top;
+        font-size: 0.95em;
+      }
+      table.phases th {
+        background: #f2f4f7;
+      }
+      .example {
+        border-left: 3px solid #9aa3ad;
+        padding: 0.3em 0 0.3em 1em;
+        margin: 1.2em 0;
+      }
+      .example h3 {
+        margin: 0 0 0.3em 0;
+      }
+      code {
+        background: #f2f4f7;
+        padding: 0.05em 0.3em;
+        border-radius: 3px;
+      }
+      /* Mermaid stamps max-width:<intrinsic>px inline on each SVG, so a graph only ever
+         SHRINKS to its container - a small one renders at natural size with slack around
+         it, and the graphs on this page end up at different widths. Override the inline
+         cap (hence !important) so every one scales to the full column. */
+      .flow .mermaid svg {
+        max-width: 100% !important;
+        width: 100%;
+        height: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>The review pipeline</h1>
+        <div class="check-id">architecture · src/pipeline.js</div>
+      </header>
+
+      <p class="lead">
+        One review is one call to <code>runPipeline()</code> — the pipeline
+        (<code>src/pipeline.js</code>), and the tool's core: opts in, a Review out. A
+        submitted add-on goes in; findings and manual-review notes come out. It loads and
+        resolves the add-on, builds the run context, then hands off to the orchestrator,
+        which runs the checks. Everything below happens inside that single call.
+      </p>
+
+      <h2>Setup</h2>
+      <p>
+        Nothing is checked until the add-on is loaded, classified, resolved and parsed.
+        That is the pipeline's first job, and it does every expensive thing exactly once.
+        The amber boxes are the ones that matter most: they <strong>resolve the review
+        state</strong> — <code>invalidExperiment</code>, the <code>mode</code> (with
+        <code>scaNotRequired</code>), <code>llmVerified</code>, and the <strong>review
+        target</strong>. Everything after them, and every check, keys off those. The mode is
+        where a submitted source archive can be thrown away; <code>llmVerified</code> is the
+        one place this run decides it may call the model, and every later decision reads the
+        answer off <code>ctx.llm</code> rather than asking again. After Phase&nbsp;4,
+        <code>runPipeline()</code>&rsquo;s Phase&nbsp;5 runs the review &mdash; a single
+        <code>runChecks()</code> call, detailed in <em>The orchestrator</em> below &mdash; then
+        finalizes the <code>Review</code> for the report.
+      </p>
+      <div class="flow">
+        <pre class="mermaid">
+---
+title: cli.js — main execution flow
+config:
+  layout: dagre
+  themeVariables:
+    fontSize: "20px"
+  flowchart:
+    subGraphTitleMargin:
+      top: 8
+      bottom: 8
+---
+flowchart TB
+  SUB(["called from src/cli.js —<br/>a built XPI / folder (+ a source archive, --sca-root)"]) --> LOAD
+
+  subgraph P1 ["runPipeline() · Phase 1 — load & resolve mode, experiments, LLM"]
+    LOAD["Reading add-on<br/>loadAddon(XPI)"] --> LDQ{{"the archive reads, and fits the size cap?"}}
+    LDQ -- no --> P1F((("THROW<br/>exit 2")))
+    LDQ -- yes --> SCH["Fetching review schemas<br/>resolveReviewSchema()<br/>pick the channel from manifest_version +<br/>strict_max_version, fetch it, index it"]
+
+    SCH --> SCQ{{"fetched, and every schema file parses?"}}
+    SCQ -- no --> P1F
+    SCQ -- yes --> EQ{{"declares experiment_apis?"}}
+
+    EQ -- yes --> EXP["Verifying bundled experiments<br/>verifyExperiments()"]
+    EQ -- no --> LQ
+    EXP --> EXFQ{{"any bundled experiment<br/>files to verify?"}}
+    EXFQ -- yes --> EXQ{{"the upstream allow-list fetched?"}}
+    EXQ -- no --> P1F
+    EXQ -- yes --> IQ{{"an UNSUPPORTED Experiment,<br/>and --allow-experiments is off?"}}
+    EXFQ -- "no — file-less declaration → unsupported" --> IQ
+    IQ -- yes --> SETINV["invalidExperiment = true<br/>mode = xpi"]
+    IQ -- no --> LQ
+
+    LQ{{"--llm-review?"}}
+    LQ -- yes --> PRE["Checking the LLM<br/>validateLlmConfig() + checkModelAvailable()"]
+    LQ -- no --> NSQ
+    PRE --> CQ{{"config valid, and the model reachable?"}}
+    CQ -- no --> P1F
+    CQ -- yes --> LOK["llmVerified = true"]
+    LOK --> NSQ
+
+    NSQ{{"an Experiment?"}}
+    NSQ -- yes --> XNS["register the Experiment API namespaces<br/>into the schema, so its calls resolve"]
+    NSQ -- no --> HASH
+    XNS --> HASH
+
+    HASH["Fetching library hashes<br/>resolveLibraryHashes()"] --> SQ{{"--sca-root given?"}}
+    SQ -- no --> MX2["mode = xpi"]
+    SQ -- yes --> CLS["Classifying the built add-on<br/>classifyBundled(XPI)"]
+    CLS --> DQ{{"is the shipped XPI's OWN first-party code<br/>minified / obfuscated?<br/>hasUnreviewableCode()"}}
+    DQ -- "yes — the source IS needed" --> KEEP["mode = sca"]
+    DQ -- "no — the source adds nothing" --> DOWN["mode = xpi<br/>scaNotRequired = true"]
+  end
+
+  SETINV --> MODE
+  MX2 --> MODE
+  KEEP --> MODE
+  DOWN --> MODE
+
+  subgraph P2 ["runPipeline() · Phase 2 — resolve the REVIEW TARGET"]
+    MODE{{"mode?"}}
+    MODE -- sca --> LSRC["load the source archive → loadScaAddon()<br/>addon.experiments = xpiAddon.experiments"]
+    LSRC --> LSQ{{"--sca-source resolves within --sca-root,<br/>and matches files?"}}
+    LSQ -- yes --> SETSRC["addon = the readable source"]
+    LSQ -- no --> P2F((("THROW<br/>exit 2")))
+    MODE -- xpi --> SETXPI["addon = the shipped XPI"]
+  end
+
+  SETSRC --> Q2
+  SETXPI --> Q2
+
+  subgraph P3 ["runPipeline() · Phase 3 — vendor / library / build setup"]
+    Q2{{"invalidExperiment?"}}
+    Q2 -- no --> RV["resolveVendor() — the declared dependency manifest<br/>resolveLibraryBlocks() — the banned-library list"]
+    RV --> M2{{"mode?"}}
+
+    M2 -- sca --> SCA1["Auditing source dependencies<br/>verifyScaDependencies() — the source's package.json"]
+    M2 -- xpi --> XPI1["Verifying vendored libraries<br/>verifyVendor() — the committed copies"]
+
+    SCA1 --> CE
+    XPI1 --> CE["classifyReview() — the REVIEW TARGET<br/>classifyFiles + assembleBundled<br/>library hash · minified geometry · obfuscation · vendored"]
+
+    CE --> IBL["identifyBundledLibraries() — the REVIEW TARGET<br/>applyNotPopularVendor()<br/>Identifying libraries on a CDN → resolveCdnLibraries()<br/>Auditing libraries → auditIdentifiedLibraries()<br/>FINALIZES the authored / non-authored split — it both ADDS<br/>and REMOVES, so the parse must come after it"]
+
+    IBL --> EXR["Parsing add-on sources → extractReview()<br/>the REVIEW TARGET, with the FINAL skip set<br/>parse each source ONCE, drop the AST<br/>content extraction on the authored remainder"]
+
+    EXR --> M3{{"mode?"}}
+    M3 -- sca --> SCA2["Identifying built-add-on libraries on a CDN → resolveCdnLibraries(XPI)"]
+    SCA2 --> SXP["Parsing the built add-on → runShippedExtractionPass(XPI)<br/>the shipped view is only ever walked as a LOAD GRAPH:<br/>localImports · loaderRefs · experimentRefs · moduleSyntaxLoc<br/>no content scan, no api-usage — in SCA the reviewed code is the SOURCE<br/>parse each source ONCE, drop the AST"]
+    SXP --> SCB["selectScaBuildFiles()<br/>Analyzing the build → analyzeBuild()"]
+  end
+
+  Q2 -- yes --> CTX
+  M3 -- xpi --> CTX
+  SCB --> CTX
+
+  subgraph P4 ["runPipeline() · Phase 4 — build the RunContext"]
+    CTX["buildRunContext()<br/>--diff-to: also loadAddon(the prior version) → ctx.previous"] --> IEQ{{"invalidExperiment?"}}
+    IEQ -- yes --> NOSRC["ctx.jsSources = [ ]<br/>ctx.apiUsages = [ ]"]
+    NOSRC --> SIB
+
+    IEQ -- no --> SRCQ{{"were the parsed sources handed over?"}}
+    SRCQ -- yes --> SRC["ctx.jsSources = the sources Phase 3 parsed<br/>ctx.apiUsages = their extracted api-usage"]
+    SRCQ -- no --> P4F((("THROW<br/>exit 2")))
+
+    SRC --> QL{{"llmVerified?"}}
+    QL -- yes --> LLMC["ctx.llm = the verified LLM client"]
+    QL -- no --> SIB
+    LLMC --> SIB
+    SIB["build the sibling ctxs<br/>buildShippedCtx() · buildScaBuildCtx() · buildManifestCtx()"] --> SIBQ{{"in SCA: were the shipped XPI's<br/>sources parsed?"}}
+    SIBQ -- yes --> SIBS["siblings = { xpi, build, manifest }"]
+    SIBQ -- no --> P4F
+  end
+
+  subgraph P5 ["runPipeline() · Phase 5 — run the review, then render the findings"]
+    RAQ{{"ctx.llm attached?"}}
+    RAQ -- yes --> RAT["recheckActive = true"]
+    RAQ -- no --> RAF["recheckActive = false"]
+    RAT --> RCBOX
+    RAF --> RCBOX
+    RCBOX[["runChecks() — runs all four phases<br/>detailed under The orchestrator below"]] --> META["merge findings + assemble meta<br/>manual-review list = invalidExperiment ? [ ]<br/>: renderManualItems(manualItems) + registry.manualChecks(diff-gated on ctx.previous)"]
+    META --> RFIND["renderFindings()<br/>fill each finding's message from its registry response"]
+  end
+
+  SIBS --> RAQ
+
+  RFIND --> FMT
+
+  FMT["src/cli.js: formatReview(review, format)<br/>calls src/report/format.js — renders text or json"] --> WRITE["write the report to stdout"]
+  WRITE --> ROUT{{"--report-out given?"}}
+  ROUT -- yes --> SAVE["save a plain copy:<br/>feed + report"]
+  ROUT -- no --> EXITQ
+  SAVE --> EXITQ
+  EXITQ{{"any errors?"}}
+  EXITQ -- yes --> EXIT1((("FAIL<br/>exit 1")))
+  EXITQ -- no --> EXIT0((("PASS<br/>exit 0")))
+
+  classDef setup fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
+  classDef orch fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
+  classDef state fill:#fdf3e0,stroke:#b07d2b,color:#6b4a12;
+  classDef fail fill:#fdecea,stroke:#c0392b,color:#7b241c;
+  classDef module fill:#f3eefb,stroke:#7c4dbc,color:#3d2a5c,stroke-dasharray:5 3;
+  classDef pass fill:#e9f7ec,stroke:#2e8b57,color:#1c5334;
+  classDef producer fill:#fce4ec,stroke:#ad1457,color:#7a1338;
+  class LOAD,EXP,XNS,HASH,CLS,SCA2,SXP,SCB,PRE,CTX,LSRC,SIB,META,RFIND setup;
+  class SCH,RV,SCA1,CE,IBL,EXR,XPI1 producer;
+  class SETINV,LOK,MX2,KEEP,DOWN,SETSRC,SETXPI,NOSRC,SRC,LLMC,SIBS,RAT,RAF state;
+  class P1F,P2F,P4F,EXIT1 fail;
+  class SUB,FMT,WRITE,SAVE orch;
+  class EXIT0 pass;
+  class RCBOX module;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>The SCA&nbsp;→&nbsp;XPI downgrade.</strong>
+        A source archive is only worth reviewing when the shipped XPI cannot be. So
+        <code>resolveReviewMode()</code> classifies the built XPI and decides from its own
+        code alone: if the first-party code is not minified or obfuscated, the source adds
+        nothing. The review is downgraded to a plain XPI review, the source archive is
+        never read, and <code>sca-not-required</code> reports it. An invalid Experiment
+        skips the classification entirely, so it is never downgraded.
+      </div>
+      <p>
+        The invalid-Experiment path is not an early exit — it runs on to the orchestrator,
+        which reviews the shipped XPI with the single reject check. It only <em>skips
+        work</em>, and it skips it in one step: setting <code>invalidExperiment</code> also
+        pins the mode, and everything after it is bypassed — the LLM (both the pre-flight and
+        the client, even with a token set), the library hashes, the classification, the whole
+        vendor block, and the parse. Not one line of the add-on's code is read: the reject
+        check judges from the manifest, the experiment classification and the schema alone, so
+        <code>ctx.jsSources</code> is empty. Only two things still run: the schema, which is
+        resolved <em>before</em> the decision because the check resolves API paths through it,
+        and the run context itself.
+      </p>
+
+      <h2>The stores</h2>
+      <p>
+        What setup leaves behind is a set of shared <strong>stores</strong>. The diagram reads
+        left to right in four columns: the <strong>producer</strong> step, the <strong>store</strong>
+        it builds, the <strong>access layer</strong>, and the <strong>checks</strong>.
+        A <strong>store</strong> (solid) is raw and <em>eager</em> — built once during setup
+        (<code>ctx.schema</code>, <code>addon.vendor</code>/<code>bundled</code>, the per-source
+        <code>src.extracted.*</code> fields), whether or not anything reads it. A
+        <strong>cache</strong> (dashed) is a <em>derived, lazy</em> view — <code>apiResolution</code>,
+        <code>permissionAnalysis</code>, <code>outboundSinks</code>, <code>evalScan</code>,
+        <code>locales</code>, and the <code>reachability</code> graph — computed from stores on the
+        first read that needs it, then memoized (so a cache nobody reads is never built). The lazy
+        caches never re-parse: they derive from the precomputed <code>src.extracted</code> stores
+        (a check reading before the extraction pass ran throws "a check is a pure reader, it never
+        parses"). The small unlabeled circles are <strong>relays</strong> — pure layout: a store a
+        check reads directly still passes through the access column so every check lines up in the
+        last one. Solid arrows are "produces / derives from"; dashed are "read by". (A couple of
+        cache→cache inputs, shown as <code>+&nbsp;…</code> notes on the cache, are kept out of the
+        arrows so nothing jumps a column.)
+      </p>
+      <div class="flow">
+        <pre class="mermaid">
+---
+title: store & cache generators
+---
+flowchart LR
+  %% ===== COL 1: producers =====
+  RS["resolveReviewSchema()"] --> s_schema
+  RV["resolveVendor() → verifyVendor()<br/>(SCA: verifyScaDependencies)"] --> s_vendor
+  CB2["classifyFiles() → assembleBundled()"] --> s_bundled
+  IBL2["identifyBundledLibraries()<br/>CDN + not-popular-vendor — FINALIZES the<br/>authored / non-authored split (ADDS + REMOVES)"] --> s_bundled
+  PARSE2["parse each source ONCE<br/>runExtractionPass() — drops the AST"] --> s_apiusage
+  PARSE2 --> s_webapiperms
+  PARSE2 --> s_loaderrefs
+  PARSE2 --> s_localimports
+  PARSE2 --> s_modulesyntax
+  PARSE2 --> s_experimentrefs
+  CONTENT2["content extraction<br/>authored sources only"] --> s_sinks
+  CONTENT2 --> s_remotejs
+  CONTENT2 --> s_codetext
+  CONTENT2 --> s_unsafehtml
+  CONTENT2 --> s_syncxhr
+  CONTENT2 --> s_debugger
+  CONTENT2 --> s_asyncmsg
+  CONTENT2 --> s_coresym
+  LOCP["loadAddon()<br/>the add-on's packaged files"] --> s_localefiles
+
+  %% ===== COL 2: stores (cylinders) =====
+  s_schema[("ctx.schema")]
+  s_vendor[("addon.vendor")]
+  s_bundled[("addon.bundled")]
+  s_apiusage[("src.extracted<br/>apiUsage")]
+  s_webapiperms[("src.extracted<br/>webApiPerms")]
+  s_loaderrefs[("src.extracted<br/>loaderRefs")]
+  s_localimports[("src.extracted<br/>localImports")]
+  s_modulesyntax[("src.extracted<br/>moduleSyntaxLoc")]
+  s_experimentrefs[("src.extracted<br/>experimentRefs")]
+  s_sinks[("src.extracted<br/>networkSinks")]
+  s_remotejs[("src.extracted<br/>remoteJs")]
+  s_codetext[("src.extracted<br/>codeText")]
+  s_unsafehtml[("src.extracted<br/>unsafeHtml")]
+  s_syncxhr[("src.extracted<br/>syncXhr")]
+  s_debugger[("src.extracted<br/>debuggerStmt")]
+  s_asyncmsg[("src.extracted<br/>asyncOnMessage")]
+  s_coresym[("src.extracted<br/>coreSymbols")]
+  s_localefiles[("_locales/*.json")]
+
+  %% ===== COL 3a: caches (derived; dashed cylinders). solid = derives from =====
+  s_schema --> s_apiresolution("apiResolution<br/>resolveApiUsages")
+  s_apiusage --> s_apiresolution
+  s_webapiperms --> s_permanalysis("permissionAnalysis<br/>analyzePermissions<br/>+ apiResolution")
+  s_codetext --> s_permanalysis
+  s_sinks --> s_outboundsinks("outboundSinks<br/>getOutboundSinks")
+  s_remotejs --> s_evalscan("evalScan<br/>getEvalScan<br/>+ reachability, manifest CSP")
+  s_localefiles --> s_locales("locales<br/>getLocales")
+  s_loaderrefs --> s_reachability("reachability<br/>buildReachability")
+  s_localimports --> s_reachability
+  s_experimentrefs --> s_reachability
+
+  %% ===== COL 3b: blind relays — a store read directly by checks passes through one =====
+  s_apiusage --> r_apiusage(( ))
+  s_modulesyntax --> r_modsyntax(( ))
+  s_remotejs --> r_remotejs(( ))
+  s_unsafehtml --> r_unsafehtml(( ))
+  s_syncxhr --> r_syncxhr(( ))
+  s_debugger --> r_debugger(( ))
+  s_asyncmsg --> r_asyncmsg(( ))
+  s_coresym --> r_coresym(( ))
+  s_vendor --> r_vendor(( ))
+  s_bundled --> r_bundled(( ))
+
+  %% ===== COL 4: checks (dashed = read by) =====
+  s_apiresolution -.-> k_unknown_api["unknown-api"]
+  s_apiresolution -.-> k_deprecated_api["deprecated-api"]
+  s_apiresolution -.-> k_smin["strict-min-version-api"]
+  s_apiresolution -.-> k_smax["strict-max-version-api"]
+  s_apiresolution -.-> k_exp_unknown_api["experiment-unknown-api"]
+
+  s_permanalysis -.-> k_missing_perm["missing-permission"]
+  s_permanalysis -.-> k_unused_perm["unused-permission"]
+  s_permanalysis -.-> k_missing_key["missing-manifest-key"]
+
+  s_outboundsinks -.-> k_exfil["data-exfiltration"]
+  s_outboundsinks -.-> k_disguised["disguised-transmission"]
+  s_outboundsinks -.-> k_cleartext["cleartext-transmission"]
+  s_outboundsinks -.-> k_privacy["privacy-policy"]
+  s_outboundsinks -.-> k_disg_nav["disguised-navigation"]
+  s_outboundsinks -.-> k_disg_win["disguised-window"]
+  s_outboundsinks -.-> k_disg_style["disguised-stylesheet"]
+  s_outboundsinks -.-> k_disg_res["disguised-resource"]
+
+  s_evalscan -.-> k_eval_call["eval-call"]
+  s_evalscan -.-> k_fn_ctor["function-constructor"]
+  s_evalscan -.-> k_string_timer["string-timer"]
+  s_evalscan -.-> k_remote_eval["remote-eval"]
+  s_evalscan -.-> k_csp_eval["csp-unsafe-eval"]
+  s_evalscan -.-> k_csp_inline["csp-unsafe-inline"]
+
+  s_locales -.-> k_loc_missing["default-locale-missing"]
+  s_locales -.-> k_loc_unused["default-locale-unused"]
+
+  s_reachability -.-> k_unused_files["unused-files"]
+  s_reachability -.-> k_bundled_files["bundled-files"]
+  s_reachability -.-> k_war["minimize-web-accessible-resources"]
+
+  r_apiusage -.-> k_api_coverage["api-coverage"]
+  r_apiusage -.-> k_unparsable["unparsable-file"]
+  r_modsyntax -.-> k_bg_module["background-module"]
+  r_modsyntax -.-> k_bg_page_module["background-page-module"]
+  r_remotejs -.-> k_remote_script["remote-script"]
+  r_unsafehtml -.-> k_unsafe_html["unsafe-html"]
+  r_syncxhr -.-> k_sync_xhr["sync-xhr"]
+  r_debugger -.-> k_debugger_stmt["debugger-statement"]
+  r_asyncmsg -.-> k_async_onmsg["async-onmessage"]
+  r_coresym -.-> k_core_symbol["core-symbol-in-webext"]
+  r_vendor -.-> k_vendor_mod["vendor-modified"]
+  r_vendor -.-> k_vendor_vuln["vendor-vulnerable"]
+  r_vendor -.-> k_unpinned_dep["unpinned-dependency"]
+  r_vendor -.-> k_banned_lib["banned-library"]
+  r_bundled -.-> k_minified["minified-code"]
+  r_bundled -.-> k_obfuscated["obfuscated-code"]
+  r_bundled -.-> k_untrusted_lib["untrusted-library"]
+  r_bundled -.-> k_cdn["find-lib-on-cdn"]
+  r_bundled -.-> k_code_sanity["code-sanity"]
+
+  classDef producer fill:#fce4ec,stroke:#ad1457,color:#7a1338;
+  classDef store fill:#fdf3e0,stroke:#b07d2b,color:#6b4a12;
+  classDef cache fill:#eceef1,stroke:#5b626b,color:#3a3f45,stroke-dasharray:4 3;
+  classDef relay fill:#eceef1,stroke:#9aa3ad,color:#9aa3ad;
+  classDef check fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class RS,RV,CB2,IBL2,PARSE2,CONTENT2,LOCP producer;
+  class s_schema,s_vendor,s_bundled,s_apiusage,s_webapiperms,s_loaderrefs,s_localimports,s_modulesyntax,s_experimentrefs,s_sinks,s_remotejs,s_codetext,s_unsafehtml,s_syncxhr,s_debugger,s_asyncmsg,s_coresym,s_localefiles store;
+  class s_apiresolution,s_permanalysis,s_outboundsinks,s_evalscan,s_locales,s_reachability cache;
+  class r_apiusage,r_modsyntax,r_remotejs,r_unsafehtml,r_syncxhr,r_debugger,r_asyncmsg,r_coresym,r_vendor,r_bundled relay;
+  class k_unknown_api,k_deprecated_api,k_smin,k_smax,k_exp_unknown_api,k_api_coverage,k_unparsable,k_missing_perm,k_unused_perm,k_missing_key,k_eval_call,k_fn_ctor,k_string_timer,k_remote_eval,k_csp_eval,k_csp_inline,k_loc_missing,k_loc_unused,k_vendor_mod,k_vendor_vuln,k_unpinned_dep,k_banned_lib,k_minified,k_obfuscated,k_untrusted_lib,k_cdn,k_code_sanity,k_exfil,k_disguised,k_cleartext,k_privacy,k_disg_nav,k_disg_win,k_disg_style,k_disg_res,k_remote_script,k_unused_files,k_bundled_files,k_war,k_unsafe_html,k_sync_xhr,k_debugger_stmt,k_async_onmsg,k_core_symbol,k_bg_module,k_bg_page_module check;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>A check is a pure reader.</strong>
+        It never parses, never fetches, never mutates. So two checks asking the same
+        question always agree, and peak memory stays at a single AST, regardless of how
+        much code the add-on ships.
+      </div>
+      <table class="phases">
+        <thead>
+          <tr>
+            <th>store</th>
+            <th>built by</th>
+            <th>what it holds</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>addon.vendor</code></td>
+            <td><code>resolveVendor()</code> → <code>verifyVendor()</code></td>
+            <td>
+              The declared third-party libraries, resolved to their sources and
+              verified over the network, plus the vulnerability audit. The vendor
+              checks are pure readers of it.
+            </td>
+          </tr>
+          <tr>
+            <td><code>addon.bundled</code></td>
+            <td>
+              <code>classifyFiles()</code> → <code>assembleBundled()</code>, finalized by
+              <code>identifyBundledLibraries()</code>
+            </td>
+            <td>
+              The per-file classification (authored / library / minified / obfuscated
+              / vendored) and the <code>nonAuthored</code> skip set that every content
+              scanner honours. <code>identifyBundledLibraries()</code> (the CDN +
+              not-popular-vendor reconciliation) <strong>finalizes</strong> the split — it
+              both adds and removes — which is why the parse runs after it.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>src.extracted</code><br />(per <code>ctx.jsSources</code> entry)
+            </td>
+            <td><code>runExtractionPass()</code></td>
+            <td>
+              Each source is parsed <strong>once</strong>; the small per-file results
+              (API usage, loader refs, network sinks, remote-code refs, the comment-free
+              code text …) are stored and <strong>the AST is dropped</strong>. This is
+              why no check ever re-parses.
+            </td>
+          </tr>
+          <tr>
+            <td><code>ctx.schema</code></td>
+            <td><code>resolveReviewSchema()</code></td>
+            <td>
+              The <code>SchemaIndex</code> for the selected channel, with any
+              Experiment namespaces registered into it, plus the local annotation
+              overlay.
+            </td>
+          </tr>
+          <tr>
+            <td>the lazy ctx caches</td>
+            <td>memoized on first read</td>
+            <td>
+              <code>permissionAnalysis</code>, <code>apiResolution</code>,
+              <code>evalScan</code>, <code>outboundSinks</code>, <code>locales</code> … —
+              derived on demand by whichever check asks first <strong>from the precomputed
+              stores</strong> (no re-parse), then shared with the rest.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        Which stores a check may reach is not open either. <code>routeCtx</code> hands it
+        the <code>ctx</code> for its declared <code>input</code> (source / xpi / build /
+        manifest), so it reads exactly one artifact and cannot reach another's. In an SCA
+        review those artifacts are distinct (the readable source, the shipped XPI, the build
+        files, the manifest); in an XPI review they collapse onto the one built add-on.
+      </p>
+
+      <h2>The orchestrator</h2>
+      <p>
+        With the stores in place <code>runChecks()</code> takes over. A check's
+        <strong>phase</strong> is simply the <code>registry.yaml</code> section it lives in
+        — never declared on the entry, so the two cannot disagree. The orchestrator looks up
+        the phases it wants, in the order it runs them, which makes any section it never
+        asks for inert.
+      </p>
+      <table class="phases">
+        <thead>
+          <tr>
+            <th>phase (= section)</th>
+            <th>when it runs</th>
+            <th>run by</th>
+            <th>example check</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>invalid-experiment-phase</code></td>
+            <td>
+              ONLY when the add-on is an invalid Experiment
+              (<code>ctx.invalidExperiment</code>) — and then it is the
+              <em>only</em> phase that runs at all: the whole rest of the review is
+              skipped.
+            </td>
+            <td><code>runChecks</code></td>
+            <td><code>experiment-not-allowed</code></td>
+          </tr>
+          <tr>
+            <td><code>deterministic-phase</code></td>
+            <td>First phase of a normal review.</td>
+            <td><code>runChecks</code></td>
+            <td><code>missing-permission</code></td>
+          </tr>
+          <tr>
+            <td><code>llm-phase</code></td>
+            <td>Straight after the deterministic phase.</td>
+            <td><code>runChecks</code></td>
+            <td><code>strict-min-version-api</code></td>
+          </tr>
+          <tr>
+            <td><code>post-summary-phase</code></td>
+            <td>
+              Last, after the add-on-summary interleave has filled
+              <code>ctx.recheckVerdicts</code> &mdash; still inside
+              <code>runChecks</code>.
+            </td>
+            <td><code>runChecks</code></td>
+            <td><code>unused-permission-recheck</code> (+ 5 more)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        <code>runChecks()</code> (<code>src/checks/registry.js</code>) runs the whole review:
+        the deterministic and llm phases in its main loop, then the add-on-summary interleave
+        (<code>resolveRecheckSummaries()</code> in <code>src/checks/summaries.js</code>) that
+        fills <code>ctx.recheckVerdicts</code>, then the post-summary phase that reads them, and
+        finally the unused-folder collapse. It returns the finished findings, manual items and
+        summaries; <code>runPipeline()</code>&rsquo;s Phase&nbsp;5 (<code>src/pipeline.js</code>)
+        just calls it and assembles the <code>Review</code>. Every check, in every phase, goes
+        through the same per-check runner, <code>runOneCheck()</code>. The two diagrams below
+        expand the <code>runChecks()</code> box from the pipeline diagram above — its
+        orchestration, then the phase-runner loop each check runs through.
+      </p>
+      <div class="flow">
+        <pre class="mermaid">
+---
+title: runChecks()
+---
+flowchart TB
+  IN(["called by runPipeline() · Phase 5 with<br/>ctx · registry · opts (only · skip · eslint · budget · recheckActive) · siblings"]) --> LC["loadChecks()<br/>one list per phase section · the --eslint gate drops code-sanity before import (eslintEligible)"]
+  LC --> GATE["select each phase's eligible checks<br/>diff gate reads ctx.previous · sca gate reads ctx.mode"]
+  GATE --> QIE{{"ctx.invalidExperiment?"}}
+
+  QIE -- yes --> RIE[["run the invalid-experiment-phase"]]
+  QIE -- no --> RDET[["run the deterministic-phase"]]
+  RDET --> RLLM[["run the llm-phase"]]
+
+  RIE --> SUMS
+  RLLM --> SUMS
+  SUMS["resolveRecheckSummaries()<br/>src/checks/summaries.js<br/>excludes the unused-files it found from the XPI summary corpus"] --> QSUM{{"ctx.llm attached?"}}
+
+  QSUM -- no --> DLOOP
+  QSUM -- yes --> QMODE{{"mode?"}}
+
+  QMODE -- xpi --> SUM1["AI add-on summary — the displayed 'Summary of add-on'<br/>generateAddonSummary(XPI) → ctx.llm.reviewAddon()"]
+  QMODE -- sca --> SUM2["AI summary over the SOURCE — the displayed 'Summary of add-on'<br/>(source corpus: no unused-files exclusion)<br/>generateAddonSummary(SCA) → ctx.llm.reviewAddon()"]
+  SUM2 --> QXPI{{"did an XPI-anchored<br/>recheck escalate?"}}
+  QXPI -- yes --> SUM3["packaging summary over the shipped XPI — VERDICT-ONLY (prose discarded)<br/>generateAddonSummary(XPI) → ctx.llm.reviewAddon()"]
+  QXPI -- no --> SETV
+  SUM3 --> SETV
+  SUM1 --> SETV
+
+  SETV["ctx.recheckVerdicts = one verdict per handed item<br/>(set only if a summary pass ran without error; each SCA pass's<br/>verdicts filtered to its corpus's consumers — keepVerdicts)"] --> QDIFF{{"--diff-to given?"}}
+  QDIFF -- yes --> SUMD["summary of changes<br/>advisory only, no verdicts"]
+  QDIFF -- no --> DLOOP
+  SUMD --> DLOOP
+
+  DLOOP[["run the post-summary-phase"]] --> COLL1["collapseUnusedFolders(findings)<br/>src/lib/unused-folders.js"]
+  COLL1 --> COLL2["collapseUnusedFolders(manualItems)<br/>src/lib/unused-folders.js"]
+  COLL2 --> RET(["return findings · manualItems · checksRun<br/>summarizeAddon · summarize → runPipeline() · Phase 5"])
+
+  classDef work fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
+  classDef state fill:#fdf3e0,stroke:#b07d2b,color:#6b4a12;
+  classDef term fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
+  classDef module fill:#f3eefb,stroke:#7c4dbc,color:#3d2a5c,stroke-dasharray:5 3;
+  class LC,GATE,SUMS,SUM1,SUM2,SUM3,SUMD,COLL1,COLL2 work;
+  class RIE,RDET,RLLM,DLOOP module;
+  class SETV state;
+  class IN,RET term;
+        </pre>
+      </div>
+
+      <p>
+        The <strong>phase runner</strong> is <code>runChecks()</code>&rsquo; main loop
+        (<code>src/checks/registry.js</code>): it walks a phase&rsquo;s gated checks in order,
+        routes each to its input&rsquo;s <code>ctx</code> (<code>routeCtx</code>), runs it through
+        <code>runOneCheck()</code>, and collects the results — findings onto the returned list,
+        manual items either straight to manual review or, for a <code>post-summary-recheck</code>
+        producer, diverted into <code>ctx.recheck</code> for the AI summary to re-judge.
+        <code>runOneCheck()</code> decides what to do with a check purely from the
+        <strong>shape its <code>run()</code> returned</strong> — never its phase; a check that
+        throws becomes a single <code>check-failed</code> finding so the rest still run; and only
+        the orchestrator routes anything to manual review. This loop is also where the
+        <strong>lazy caches</strong> are computed: the first check to read a store&rsquo;s lazy
+        cache (<code>permissionAnalysis</code>, <code>apiResolution</code>,
+        <code>outboundSinks</code>, <code>evalScan</code>, <code>locales</code>) computes it
+        inside its <code>run()</code>, memoized on <code>ctx.addon</code> for every later check.
+      </p>
+      <div class="flow">
+        <pre class="mermaid">
+---
+title: phase runner — the main loop that runs a phase's checks
+---
+flowchart TB
+  IN(["a phase's gated checks<br/>deterministic + llm (or invalid-experiment only)"]) --> HEAD
+
+  HEAD{{"more checks<br/>in the list?"}}
+  HEAD -- no --> DONE(["return<br/>findings · manualItems · ctx.recheck"])
+  HEAD -- "yes · next check [i/total]" --> ROUTE["routeCtx(check, ctx, siblings)<br/>the ctx for the check's declared input"]
+
+  ROUTE --> RUN["runOneCheck(checkCtx, check) → check.run()"]
+  RUN -. throws .-> CF["one check-failed finding<br/>(so the remaining checks still run)"]
+  RUN -. "first read of a store's lazy cache<br/>→ compute + memoize on ctx.addon" .-> LZ["the lazy caches are computed here, inside run():<br/>permissionAnalysis · apiResolution ·<br/>outboundSinks · evalScan · locales"]
+  RUN --> DIR["direct findings = the returned Finding[]<br/>(or result.findings) — ALWAYS collected"]
+  RUN --> QLANE{{"the result ALSO carries an<br/>llm step or escalations?"}}
+  QLANE -- "llm: { candidates, resolve }" --> QT{{"ctx.llm attached, and the run-wide<br/>LLM budget allows another call?"}}
+  QT -- yes --> EV["ctx.llm.evaluate()<br/>one verdict per candidate"]
+  QT -- no --> UN["verdict = unsure for every candidate<br/>(no token, or the budget is spent)"]
+  EV --> RES["the check's resolve(verdicts)<br/>+ findings · + manual items"]
+  UN --> RES
+  QLANE -- "escalations (deterministic)" --> ME["manualEscalations()<br/>manual items only — never the model"]
+  QLANE -- "neither (plain Finding[])" --> STAMP
+
+  DIR --> STAMP["stamp the produced findings<br/>ruleId + severity (auto → the check sets it)"]
+  RES --> STAMP
+  STAMP --> PUSHF["findings.push(out.findings)"]
+  CF --> PUSHF
+  RES -. "+ manual items (unstamped)" .-> QDIV
+  ME -. "manual items (unstamped)" .-> QDIV
+  PUSHF --> QDIV{{"check.postSummaryRecheck<br/>&& recheckActive<br/>&& out.manualItems.length?"}}
+  QDIV -- no --> PUSHM["manualItems.push(out.manualItems)<br/>→ manual review"]
+  QDIV -- "yes · per manual item" --> QRUB{{"registry.rechecks(consumer, item)?<br/>a rubric for it?"}}
+  QRUB -- no --> PUSHM
+  QRUB -- yes --> HELD["ctx.recheck[consumer].push(item)<br/>held for the AI summary to re-judge"]
+
+  PUSHM --> NEXT
+  HELD --> NEXT
+  NEXT(["next check"]) --> HEAD
+
+  classDef work fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
+  classDef state fill:#fdf3e0,stroke:#b07d2b,color:#6b4a12;
+  classDef term fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  classDef fail fill:#fdecea,stroke:#c0392b,color:#7b241c;
+  classDef cache fill:#eceef1,stroke:#5b626b,color:#3a3f45,stroke-dasharray:4 3;
+  class ROUTE,RUN,DIR,ME,EV,RES,STAMP,PUSHF work;
+  class UN,HELD state;
+  class IN,DONE,NEXT term;
+  class PUSHM manual;
+  class CF fail;
+  class LZ cache;
+        </pre>
+      </div>
+
+      <h2>Interpreting the model's answer</h2>
+      <p>
+        There are two seams for deciding what the model's response <em>means</em>, and they
+        are not symmetric.
+      </p>
+      <ul>
+        <li>
+          An <strong>llm-phase check</strong> returns a <code>resolve</code> closure from
+          its own <code>run()</code>, so it fully owns the interpretation of its output.
+        </li>
+        <li>
+          A <strong>post-summary consumer</strong> has no such hook. All six delegate to the
+          shared <code>resolveRecheck()</code>, which reads only the handed items and their
+          verdicts and applies one uniform mapping. A consumer cannot post-process its own
+          verdicts — it cannot, for instance, verify the evidence a <code>pass</code>
+          claims.
+        </li>
+      </ul>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/registry.js</code>
+        (<code>PHASE_SECTIONS</code>, <code>loadChecks</code>,
+        <code>runChecks</code> — which runs all four phases plus the collapse —
+        <code>runOneCheck</code>), <code>src/checks/summaries.js</code>
+        (<code>resolveRecheckSummaries</code>, <code>generateAddonSummary</code> — the
+        summary interleave), <code>src/checks/escalation.js</code>
+        (<code>runLlmCheck</code>, <code>manualEscalations</code>),
+        <code>src/lib/recheck.js</code> (<code>buildRecheckSections</code>,
+        <code>resolveRecheck</code>), <code>src/lib/unused-folders.js</code>
+        (<code>collapseUnusedFolders</code>), <code>src/pipeline.js</code>
+        (<code>runPipeline</code> — Phase&nbsp;5 calls <code>runChecks</code> and assembles the
+        <code>Review</code>), and the phase sections of <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

@@ -25,6 +25,7 @@
       "unrecognized-manifest-key",
       "mistyped-manifest-value",
       "bundled-files",
+      "unrecognized-file-type",
       "sync-xhr",
       "unsafe-html",
       "debugger-statement",

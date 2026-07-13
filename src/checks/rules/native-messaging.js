@@ -9,11 +9,11 @@
 //
 // Belongs here: escalating one manual-review case when the permission is
 // declared. Does NOT belong here: the permission parsing (-> declaredPermissions
-// in src/checks/lib/permissions.js), the deterministic->manual routing (->
+// in src/lib/permissions.js), the deterministic->manual routing (->
 // src/checks/registry.js + escalation.js), and the authored instructions (->
 // assets/registry.yaml).
 
-import { declaredPermissions } from "../lib/permissions.js";
+import { declaredPermissions } from "../../lib/permissions.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../escalation.js").Escalation} Escalation */

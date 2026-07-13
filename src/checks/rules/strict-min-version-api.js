@@ -25,16 +25,16 @@
 //
 // Belongs here: the version_added vs strict_min comparison, the guard partition, and
 // per-api dedup. Does NOT belong here: resolving usage against the schema over the
-// WebExtension tree (-> src/checks/lib/api-resolution.js), extracting browser.* usage
+// WebExtension tree (-> src/lib/api-resolution.js), extracting browser.* usage
 // and its guard signal (src/parse/api-usage.js via ctx.apiUsages), reading schema
 // annotations (SchemaIndex), the verdict mapping (lib/verdict-resolve.js), or the
 // wording / severity (assets/registry.yaml).
 
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
-import { strictMinVersion, parseVersion, cmpVersion } from "../lib/util.js";
-import { resolveApiUsages } from "../lib/api-resolution.js";
-import { perCandidateResolve } from "../lib/verdict-resolve.js";
+import { strictMinVersion, parseVersion, cmpVersion } from "../../lib/util.js";
+import { resolveApiUsages } from "../../lib/api-resolution.js";
+import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 
 export default {
   /**

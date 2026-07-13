@@ -12,8 +12,8 @@
 // severity (-> that registry entry).
 
 import { finding } from "../../report/finding.js";
-import { asObject, manifestTokenLine } from "../lib/util.js";
-import { experimentManifestKeys } from "../lib/experiments.js";
+import { asObject, manifestTokenLine } from "../../lib/util.js";
+import { experimentManifestKeys } from "../../lib/experiments.js";
 
 export default {
   run(ctx) {

@@ -17,6 +17,7 @@
 import { SEVERITY, sortFindings, countByRule, hasErrors } from "./finding.js";
 import { artifactLabel } from "./artifact.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
+import { wrapText } from "../util/text.js";
 import { MAX_ENTRIES_PER_CATEGORY } from "../config.js";
 
 /** @param {string} s @returns {string} */
@@ -59,8 +60,6 @@ const SEV_COLOR = {
  * @property {string[]} [checksRun]  Ids of the checks that ran.
  * @property {boolean} [llmReviewed]  The review ran with the LLM (--llm-review)
  *   active, so the "run this yourself" pointer notes the option was used.
- * @property {string} [reviewUrl]  ATN reviewer review-page URL, appended to the
- *   Manual review section. Text reports only; dropped from JSON.
  * @property {import("./finding.js").ManualItem[]} [manualReview]  The
  *   manual-review to-do list, each item tagged with `extended`. The report
  *   splits it into an "Extended manual review" section (items that escalated -
@@ -76,8 +75,12 @@ const SEV_COLOR = {
  */
 export function formatText(review) {
   const manual = review.meta.manualReview ?? [];
+  // The complete text report: the body, then the advisory LLM summaries (present only with
+  // --llm-review), then the verdict tally LAST. The summaries sit before the tally so the
+  // verdict closes the report. JSON drops the summaries (formatJson), so they live here.
   const lines = [
     ...reviewBodyLines(review),
+    ...summarySectionLines(review),
     ...summaryLines(review.findings, manual.length),
   ];
   // The "Reviewing …" header is now printed live before the review
@@ -87,6 +90,34 @@ export function formatText(review) {
     lines.shift();
   }
   return lines.join("\n");
+}
+
+/**
+ * The advisory "Summary of add-on" / "Summary of changes" sections, each a
+ * `── <title> ──` block over the model's prose (wrapped, 2-space indent), or an
+ * "unavailable" note when the call failed. Empty ([]) unless --llm-review produced one -
+ * so a non-LLM report is unchanged. Text-only; JSON omits these.
+ * @param {ReviewResult} review
+ * @returns {string[]}
+ */
+function summarySectionLines(review) {
+  const out = [];
+  for (const [title, s] of [
+    ["Summary of add-on", review.summarizeAddon],
+    ["Summary of changes", review.summarize],
+  ]) {
+    if (!s) {
+      continue;
+    }
+    const body =
+      s.text != null
+        ? wrapText(s.text, "  ").join("\n")
+        : s.error
+          ? `  (summary unavailable - ${s.error})`
+          : "  (summary unavailable)";
+    out.push(...section(title), "", body);
+  }
+  return out;
 }
 
 /**
@@ -125,7 +156,6 @@ function reviewBodyLines(review) {
     ),
     ...manualSection(extended, "Extended manual review", brightCyan, labelOf),
     ...manualSection(standard, "Standard manual review", blue, labelOf),
-    ...manualTail(meta.reviewUrl, manual.length),
   ];
 }
 
@@ -411,20 +441,6 @@ function manualSection(items, title, accent = blue, labelOf) {
 }
 
 /**
- * The closing pointer to the ATN review page, printed once after the manual
- * sections - but only when there is manual work and the URL resolved.
- * @param {string} [reviewUrl]  ATN reviewer review-page URL, or undefined.
- * @param {number} manualCount  Total manual items across both sections.
- * @returns {string[]}
- */
-function manualTail(reviewUrl, manualCount) {
-  if (!reviewUrl || manualCount === 0) {
-    return [];
-  }
-  return ["", blue("Complete this review on ATN:"), blue(reviewUrl)];
-}
-
-/**
  * Summary: issue counts by severity plus the manual-review step count.
  * @param {import("./finding.js").Finding[]} issues
  * @param {number} manualCount
@@ -447,15 +463,10 @@ function summaryLines(issues, manualCount) {
  * @returns {string}
  */
 export function formatJson(review) {
-  // The manual-review to-do list, the reviewer URL, and the llmReviewed pointer
-  // flag are human-only, not machine-verifiable, so they are dropped from JSON
-  // (ATN consumes this for auto-verification). findings are already issues only.
-  const {
-    manualReview: _omitted,
-    reviewUrl: _url,
-    llmReviewed: _llm,
-    ...meta
-  } = review.meta;
+  // The manual-review to-do list and the llmReviewed pointer flag are human-only, not
+  // machine-verifiable, so they are dropped from JSON (ATN consumes this for
+  // auto-verification). findings are already issues only.
+  const { manualReview: _omitted, llmReviewed: _llm, ...meta } = review.meta;
   const issues = review.findings;
   // `data` (template-resolution input, baked into `message`) and `listItem` (a
   // text-layout flag) are internal, so they are dropped from the machine output.

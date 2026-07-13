@@ -9,10 +9,10 @@
 //
 // Belongs here: choosing the dev vulnerability set. Does NOT belong here: the
 // vulnerability->finding mapping incl. the severity:auto band mapping
-// (-> src/checks/lib/vuln-findings.js), the OSV query (-> src/vendor/verify.js), and
+// (-> src/lib/vuln-findings.js), the OSV query (-> src/vendor/verify.js), and
 // the wording (-> assets/registry.yaml).
 
-import { vulnFindings } from "../lib/vuln-findings.js";
+import { vulnFindings } from "../../lib/vuln-findings.js";
 
 export default {
   /**

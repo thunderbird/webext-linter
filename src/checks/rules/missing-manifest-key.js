@@ -6,11 +6,11 @@
 // permission analysis and emitting it as this check's findings.
 //
 // Does NOT belong here: the analysis itself (-> getPermissionAnalysis in
-// src/checks/lib/permissions.js, shared with missing-permission.js). Authored
+// src/lib/permissions.js, shared with missing-permission.js). Authored
 // wording (-> assets/registry.yaml). Severity (-> the missing-manifest-key
 // registry entry, stamped by src/checks/registry.js).
 
-import { getPermissionAnalysis } from "../lib/permissions.js";
+import { getPermissionAnalysis } from "../../lib/permissions.js";
 
 export default {
   run(ctx) {

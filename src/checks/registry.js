@@ -1,8 +1,11 @@
-// registry.yaml is the check registry. Every `deterministic-checks`,
-// `llm-checks`, or `post-summary-rechecks` entry that carries a `check:` field
-// links to a module in ./rules/ that implements that test. This loader reads the
-// yaml, imports the linked module for each (selected) entry, runs it, and stamps
-// each returned finding with the entry's id (the check filename stem) and its severity.
+// registry.yaml is the check registry. Its check-bearing sections ARE the phases -
+// `invalid-experiment-phase`, `deterministic-phase`, `llm-phase`, `post-summary-phase`
+// (PHASE_SECTIONS) - so a check's phase IS the section it lives in, and no entry declares
+// one. Every entry there that carries a `check:` field links to a module in ./rules/ that
+// implements that test. This loader reads the yaml, imports the linked module for each
+// (selected) entry, runs it, and stamps each returned finding with the entry's id (the
+// check filename stem) and its severity. runChecks names the phases it runs, in order, so
+// a section it never asks for is inert.
 //
 // A check is a pure detector: it decides verdicts and emits findings carrying
 // only `file`/`loc`/`item`/`hint` - never prose. The registry entry is the
@@ -30,7 +33,7 @@
 // that runs checks, resolves escalations, and stamps id + severity. Does NOT
 // belong here: building the ctx, which is src/checks/context.js. The per-case
 // escalation policy - src/checks/escalation.js. Any check's detection logic - a
-// module under src/checks/rules/* (shared analysis in src/checks/lib/*).
+// module under src/checks/rules/* (shared analysis in src/lib/*).
 // Resolving a ruleId to user text and laying out the report -
 // src/report/responses.js and src/report/format.js.
 
@@ -44,6 +47,8 @@ import { artifactLabel } from "../report/artifact.js";
 import { progress, debug, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
 import { runLlmCheck, manualEscalations } from "./escalation.js";
+import { resolveRecheckSummaries } from "./summaries.js";
+import { collapseUnusedFolders } from "../lib/unused-folders.js";
 
 /** @typedef {import("../report/finding.js").Severity} Severity */
 
@@ -73,6 +78,20 @@ const VALID_CHECK_SEVERITIES = new Set([...CONCRETE_SEVERITIES, AUTO_SEVERITY]);
 // context, so the check reads one artifact and has no way to reach another (see
 // buildShippedCtx / buildScaBuildCtx / buildManifestCtx).
 const VALID_CHECK_INPUTS = new Set(["source", "xpi", "build", "manifest"]);
+
+// The check-bearing yaml sections ARE the phases: a check's phase IS the section it
+// lives in, so the two can never disagree and no entry declares a phase of its own.
+// This is a CLOSED SET - the orchestrator (runChecks) looks up the phases it wants, in
+// the order it runs them, so a section it never asks for is inert: adding an
+// unrecognized section to registry.yaml changes nothing. The yaml's other top-level
+// sections (permission-prompts, messages, manual-checks, ...) are exactly that - never
+// asked for here, and so not phases.
+const PHASE_SECTIONS = Object.freeze({
+  "invalid-experiment": "invalid-experiment-phase",
+  deterministic: "deterministic-phase",
+  llm: "llm-phase",
+  "post-summary": "post-summary-phase",
+});
 
 /**
  * Whether `s` is a concrete finding severity (error/warning/info) - i.e. a value
@@ -105,22 +124,13 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {"source"|"xpi"|"build"|"manifest"} labelInput  The artifact this check's OUTPUT is
  *   labelled as ([XPI]/[SCA]) - the corpus it acts on. Equals `input` for a normal check;
  *   for a recheck consumer it is the producer's corpus (see Registry.labelInputFor).
- * @property {"deterministic"|"llm"|"post-summary-recheck"} kind  Which registry section
- *   it came from. "deterministic"/"llm" is provenance only (never read for control flow -
- *   dispatch is by run() return shape). "post-summary-recheck" is BEHAVIORAL: loadChecks
- *   keys off it to forbid an `input`, derive phase "post-summary", and require a rubric.
  * @property {boolean} [diff]  Diff-mode gate: true = run only with a --diff-to
  *   baseline, false = run only WITHOUT one (new submissions), omitted = always.
- * @property {"post-summary"|"invalid-experiment"} [phase]  Run profile, picked by
- *   runChecks: omitted = the main loop of a normal review; "post-summary" = after
- *   the AI add-on summary (reads its output, LLM-gated); "invalid-experiment" =
- *   only when the add-on is an invalid Experiment, in which case it is the ONLY
- *   phase that runs (see runChecks).
  * @property {string} [prompt]  LLM rubric for an ambiguous case (llm checks).
  * @property {string} [instructions]  Manual-review message (llm checks).
  * @property {string} [postSummaryRecheck]  Id of a post-summary recheck consumer
  *   this check hands its manual items to when the add-on summary runs (see
- *   runChecks and src/checks/lib/recheck.js).
+ *   runChecks and src/lib/recheck.js).
  * @property {?{permissionPrompts: object[]}} [recheckData]
  *   The linked consumer's data for a producer that declares postSummaryRecheck:
  *   for a permission-recheck consumer, the permission-prompts token entries
@@ -131,7 +141,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
 
 /**
  * The shared context passed to every check's run(ctx, check). Built once per
- * review (cli.js reviewAddon) and read by the rule modules.
+ * review (built in runPipeline Phase 4) and read by the rule modules.
  * @typedef {object} RunContext
  * @property {object} addon  The routed artifact's INTRINSIC view (reviewView in
  *   context.js): its files plus the lazy file-derived caches (bundled, vendor,
@@ -155,8 +165,10 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   computed from the SHIPPED XPI. Shipped-authoritative and shared like the manifest,
  *   so the experiment checks read ctx.experiments, not ctx.addon.experiments. Null for
  *   a non-Experiment add-on.
- * @property {{llmReview?: boolean, llmApiKey?: string, llmApiUrl?: string,
- *   llmApiType?: string, allowExperiments?: boolean}} options
+ * @property {{allowExperiments?: boolean,
+ *   libraryHashes?: Map<string, {name: string, version: string}>}} options  The only run
+ *   options a check reads (experiment-not-allowed, the lazy bundled classifier). The LLM
+ *   credentials are NOT here - a check reaches the model only through ctx.llm.
  * @property {import("../addon/load.js").Addon|null} [previous]  Diff baseline.
  * @property {"xpi"|"sca"} [mode]  Review mode: "xpi" (a built add-on, default) or
  *   "sca" (a source code archive). Gates checks via scaEligible.
@@ -180,9 +192,6 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   this plain XPI review because the shipped XPI is directly reviewable; the
  *   sca-not-required check reads this to report the redundant source submission.
  * @property {{evaluate: Function}} [llm]  LLM client, present only with a token.
- * @property {boolean} [recheckActive]  Set by reviewAddon when the add-on summary
- *   will run: checks with a `post-summary-recheck` hand their manual items to the
- *   summary to re-judge, instead of straight to manual review.
  * @property {object[]} [recheckVerdicts]  The add-on summary's recheck verdicts
  *   (set by the pipeline after the summary runs); resolveRecheck reads them to settle
  *   the handed-over items. Review-level data, so it is a ctx field, not on ctx.addon.
@@ -214,31 +223,27 @@ export class Registry {
   }
 
   /**
-   * Check entries (deterministic + llm) that link to a rule module, each tagged
-   * with its `kind`. An llm entry additionally carries a `prompt` (LLM rubric)
-   * and `instructions` (manual-review message).
-   * @returns {object[]}  Each: { check, title, severity, kind, prompt?,
+   * Every check entry that links to a rule module, each tagged with the `phase` it
+   * runs in - which IS the section it came from (PHASE_SECTIONS). An llm-phase entry
+   * additionally carries a `prompt` (LLM rubric) and `instructions` (manual-review
+   * message); a post-summary-phase entry carries a recheck rubric and declares no
+   * `input` (it runs on the main ctx, labelled by its producer's corpus).
+   * @returns {object[]}  Each: { check, title, severity, phase, prompt?,
    *   instructions?, response? }.
    */
   checkEntries() {
     /**
      * @param {object[]} [list]  Raw entries from one registry section.
-     * @param {"deterministic"|"llm"|"post-summary-recheck"} kind
+     * @param {string} phase  The phase that section IS.
      * @returns {object[]}
      */
-    const tag = (list, kind) =>
+    const tag = (list, phase) =>
       (list || [])
         .filter((e) => e && typeof e.check === "string" && e.check)
-        .map((e) => ({ ...e, kind }));
-    return [
-      ...tag(this.doc["deterministic-checks"], "deterministic"),
-      ...tag(this.doc["llm-checks"], "llm"),
-      // Recheck consumers live in their own section: they are re-judged by the
-      // add-on summary (phase post-summary), always run on the main ctx, and are
-      // labelled by their producer's corpus - so they declare no `input`. The
-      // `kind` tag is the section-membership signal loadChecks keys off.
-      ...tag(this.doc["post-summary-rechecks"], "post-summary-recheck"),
-    ];
+        .map((e) => ({ ...e, phase }));
+    return Object.entries(PHASE_SECTIONS).flatMap(([phase, section]) =>
+      tag(this.doc[section], phase)
+    );
   }
 
   /**
@@ -253,7 +258,7 @@ export class Registry {
   }
 
   /**
-   * Ids of every linked check, across both sections (for --checks help).
+   * Ids of every linked check, across every phase section (for --checks help).
    * @returns {string[]}
    */
   checkIds() {
@@ -504,25 +509,95 @@ export class Registry {
 }
 
 /**
- * Parse registry.yaml once into a Registry.
+ * Parse registry.yaml once into a Registry, asserting every phase section is there.
+ *
+ * The phase sections ARE the control flow: runChecks looks each one up BY NAME and runs
+ * whatever it finds. So a renamed or misspelled section does not fail loudly - it yields an
+ * empty phase, and the review silently runs without every llm check, or without every
+ * recheck consumer (whose producers would still divert items into ctx.recheck, to be
+ * dropped). Nothing downstream can tell that apart from "this phase has no checks". Assert
+ * the closed set here instead, so a broken registry aborts the review - the same contract
+ * loadChecks already applies to a `check:` that names a missing module.
+ *
+ * Only the SHIPPED registry is asserted (see assertRequiredPhaseSections). A caller naming
+ * its own file (the unit tests) is deliberately exercising one section in isolation, and a
+ * partial doc is the point there.
  * @param {string} [registryPath]
  * @returns {Registry}
  */
+/**
+ * Assert every phase in PHASE_SECTIONS has a non-empty section in the parsed registry `doc`.
+ * A required section that is missing or empty (a yaml defect - a rename, a bad edit) would
+ * leave that phase with no checks, and nothing downstream can tell "no checks" from "the
+ * section vanished" - so the whole phase would be dropped from every review, silently. This
+ * turns that into a loud abort. loadRegistry applies it to the SHIPPED registry only;
+ * exported so the guard can be tested directly against a synthetic doc.
+ * @param {Record<string, unknown>} doc  The parsed registry document.
+ * @param {string} registryPath  For the error message.
+ */
+export function assertRequiredPhaseSections(doc, registryPath) {
+  for (const section of Object.values(PHASE_SECTIONS)) {
+    const list = doc[section];
+    if (!Array.isArray(list) || list.length === 0) {
+      throw new Error(
+        `Registry ${registryPath}: the phase section "${section}" is missing or empty. ` +
+          "Every phase in PHASE_SECTIONS must declare its checks - an absent section " +
+          "would silently drop that whole phase from every review."
+      );
+    }
+  }
+}
+
 export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
-  return new Registry(YAML.parse(fs.readFileSync(registryPath, "utf8")) || {});
+  const registry = new Registry(
+    YAML.parse(fs.readFileSync(registryPath, "utf8")) || {}
+  );
+  // Only the SHIPPED registry: a unit test naming its own file deliberately declares one
+  // section in isolation, so the all-phases-present rule must not apply to it.
+  if (registryPath === DEFAULT_REGISTRY) {
+    assertRequiredPhaseSections(registry.doc, registryPath);
+  }
+  // ONE rule module = ONE entry = ONE phase. A check's id IS its module's filename stem, so a
+  // second entry naming the same module is not a second check - it is the same check declared
+  // twice. It would run once per entry, and worse, the id -> entry index (a Map, keyed by that
+  // stem, and the only way a finding - which carries just a ruleId - reaches its severity and
+  // response text) would resolve to the LAST declaration: a duplicate can silently restamp a
+  // real check's `error` as `info`. Applies to every registry, not just the shipped one: a
+  // duplicate is a mistake in any of them.
+  const seen = new Set();
+  for (const entry of registry.checkEntries()) {
+    const id = stem(entry.check);
+    if (seen.has(id)) {
+      throw new Error(
+        `Registry ${registryPath}: the check "${id}" is declared more than once. One rule ` +
+          "module is one entry in one phase - a second declaration runs it again, and the " +
+          "id -> entry lookup that stamps every finding's severity and response would " +
+          "silently resolve to the last one."
+      );
+    }
+    seen.add(id);
+  }
+  return registry;
 }
 
 /**
- * Load and filter the check modules named by the registry. A `check:` that names
- * a missing module, or a module without a `run` export, throws hard - a broken
- * registry should abort the review, not silently drop a check.
+ * Load and filter the check modules named by the registry, GROUPED BY PHASE - a check's
+ * phase is which list it lands in (its registry section), so no LoadedCheck carries one.
+ * Every phase in PHASE_SECTIONS gets a list (loadRegistry has already asserted that none of
+ * their sections is missing or empty; a list can still come out empty here once the
+ * diff/sca gates and --checks/--skip have been applied). A `check:` that names a missing
+ * module, or a module without a `run` export, throws hard - a broken registry should abort
+ * the review, not silently drop a check.
  * @param {Registry} registry
  * @param {object} [opts]
  * @param {string[]} [opts.only]  If set, only these ids load.
  * @param {string[]} [opts.skip]  These ids are excluded.
- * @returns {Promise<LoadedCheck[]>}
+ * @param {boolean} [opts.eslint]  The `--eslint` flag: an `eslint: true` check (code-sanity)
+ *   loads only when set (eslintEligible). Gated here, before the import, so the eslint
+ *   dependency is not pulled in when the check will not run.
+ * @returns {Promise<Map<string, LoadedCheck[]>>}  Phase -> its checks, in registry order.
  */
-export async function loadChecks(registry, { only, skip } = {}) {
+export async function loadChecks(registry, { only, skip, eslint } = {}) {
   const onlySet = only?.length ? new Set(only) : null;
   const skipSet = skip?.length ? new Set(skip) : null;
   // A `post-summary-recheck: X` producer must name a real check X that carries the
@@ -562,30 +637,39 @@ export async function loadChecks(registry, { only, skip } = {}) {
       );
     }
   }
-  // A recheck consumer is defined by section membership (post-summary-rechecks): that
-  // is what drives its phase and forbids an `input` below. Keep the rubric in lock-step
-  // - a check carries a recheck rubric (summary-prompt / permission-recheck) IFF it
-  // lives in that section - so phase, the divert, and validation can never disagree (a
-  // rubric-bearing consumer left in deterministic-/llm-checks would otherwise get no
-  // post-summary phase and never be re-judged).
+  // A recheck consumer is defined by its phase - i.e. by living in the
+  // post-summary-phase section, which is also what forbids an `input` below. Keep the
+  // rubric in lock-step - a check carries a recheck rubric (summary-prompt /
+  // permission-recheck) IFF it is in that phase - so the phase, the divert, and
+  // validation can never disagree (a rubric-bearing consumer left in another phase
+  // would otherwise never be re-judged).
   for (const e of registry.checkEntries()) {
     const hasRubric = !!(e["summary-prompt"] || e["permission-recheck"]);
-    const inSection = e.kind === "post-summary-recheck";
+    const inSection = e.phase === "post-summary";
     if (hasRubric !== inSection) {
       throw new Error(
         hasRubric
-          ? `"${e.title}" carries a recheck rubric (summary-prompt/permission-recheck) but is not in the post-summary-rechecks section`
-          : `"${e.title}" is in the post-summary-rechecks section but carries no recheck rubric (summary-prompt/permission-recheck)`
+          ? `"${e.title}" carries a recheck rubric (summary-prompt/permission-recheck) but is not in the post-summary-phase section`
+          : `"${e.title}" is in the post-summary-phase section but carries no recheck rubric (summary-prompt/permission-recheck)`
       );
     }
   }
-  const checks = [];
+  // Keyed by phase, in the order PHASE_SECTIONS declares them - a check's phase is
+  // WHICH LIST it is in, so nothing needs to carry one. Every phase gets a list (empty
+  // when its section is absent), so the orchestrator can look any of them up blindly.
+  const byPhase = new Map(Object.keys(PHASE_SECTIONS).map((p) => [p, []]));
   for (const entry of registry.checkEntries()) {
     const id = stem(entry.check);
     if (onlySet && !onlySet.has(id)) {
       continue;
     }
     if (skipSet && skipSet.has(id)) {
+      continue;
+    }
+    // The `--eslint` opt-in gate, applied HERE (unlike diff/sca, which gate in runChecks
+    // after the import): code-sanity top-level imports the eslint dependency, so skipping it
+    // before the import below avoids loading eslint when it will not run.
+    if (!eslintEligible(entry, Boolean(eslint))) {
       continue;
     }
     // `check:` is the check id; the module is rules/<id>.js (a stray trailing
@@ -608,11 +692,11 @@ export async function loadChecks(registry, { only, skip } = {}) {
           `(expected one of: ${[...VALID_CHECK_SEVERITIES].join(", ")})`
       );
     }
-    // A post-summary-recheck consumer (its own section) always runs on the main ctx
-    // and is labelled by its producer's corpus - so it declares no `input`, and doing
-    // so would be misleading. Every OTHER check must declare a valid `input`, which
-    // drives runOneCheck's artifact routing (no silent default to fall through to).
-    const isRecheck = entry.kind === "post-summary-recheck";
+    // A post-summary-phase consumer always runs on the main ctx and is labelled by its
+    // producer's corpus - so it declares no `input`, and doing so would be misleading.
+    // Every OTHER check must declare a valid `input`, which drives runOneCheck's
+    // artifact routing (no silent default to fall through to).
+    const isRecheck = entry.phase === "post-summary";
     const input = entry.input;
     if (isRecheck && input !== undefined) {
       throw new Error(
@@ -630,23 +714,31 @@ export async function loadChecks(registry, { only, skip } = {}) {
           "manifest = the shipped manifest only)."
       );
     }
-    checks.push({
+    // An `input: build` check reads the SCA build corpus, which exists ONLY in an SCA review -
+    // so it MUST carry `sca: true`. Without it the check also runs in an XPI review, where the
+    // build sibling is undefined and routeCtx (`siblings[input] ?? ctx`) would silently route
+    // it to the REVIEW TARGET - the wrong artifact, no error. The `sca: true` gate is the only
+    // thing keeping every build check out of XPI mode; assert it rather than trust the yaml.
+    if (input === "build" && entry.sca !== true) {
+      throw new Error(
+        `rules/${id}.js declares \`input: build\` but not \`sca: true\`. The build corpus ` +
+          "exists only in an SCA review; without the gate it would run in an XPI review and " +
+          "routeCtx would silently route it to the review target instead."
+      );
+    }
+    byPhase.get(entry.phase).push({
       id,
       title: entry.title,
       severity,
-      // undefined for a post-summary-recheck (routes to the main ctx); its output is
-      // labelled by labelInput (the producer's corpus), not this.
+      // undefined for a post-summary-phase consumer (routes to the main ctx); its output
+      // is labelled by labelInput (the producer's corpus), not this.
       input,
       // The artifact this check's output is labelled as (the corpus it acts on) -
       // equals `input` for every check except a recheck consumer, which runs on the
       // main ctx but acts on its producer's corpus. See labelInputFor.
       labelInput: registry.labelInputFor(id),
-      kind: entry.kind,
       diff: typeof entry.diff === "boolean" ? entry.diff : undefined,
       sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
-      // A recheck consumer (post-summary-rechecks section) is re-judged by the add-on
-      // summary, so it must run AFTER it (an explicit `phase` still wins).
-      phase: entry.phase ?? (isRecheck ? "post-summary" : undefined),
       prompt: entry.prompt,
       instructions: entry.instructions,
       postSummaryRecheck:
@@ -663,7 +755,7 @@ export async function loadChecks(registry, { only, skip } = {}) {
       run,
     });
   }
-  return checks;
+  return byPhase;
 }
 
 /**
@@ -777,6 +869,22 @@ function scaEligible(entry, inScaMode) {
 }
 
 /**
+ * Whether a registry entry runs given the `--eslint` flag, per its `eslint` field
+ * (mirrors diffEligible): `eslint: true` is opt-in - it runs only with `--eslint` - and an
+ * omitted `eslint` runs always. Unlike the diff/sca gates this is applied in loadChecks
+ * (BEFORE the module import), because the sole `eslint: true` check (code-sanity) top-level
+ * imports the heavy `eslint` dependency: gating it here skips that import when it will not run.
+ * @param {{eslint?: boolean}} entry @param {boolean} inEslintMode
+ * @returns {boolean}
+ */
+function eslintEligible(entry, inEslintMode) {
+  if (entry.eslint === true) {
+    return inEslintMode;
+  }
+  return true;
+}
+
+/**
  * The ctx a check runs on: the sibling for its declared `input` artifact, else the main
  * review ctx. The ONE place artifact routing is decided - shared by runChecks (the main
  * loop) and the pipeline's deferred post-summary loop, so the two can never drift. An
@@ -792,6 +900,33 @@ export function routeCtx(check, ctx, siblings) {
 }
 
 /**
+ * The ctx whose artifact a RULE'S OUTPUT belongs to - the corpus its findings' file paths
+ * live in. The ONE answer to that question, and NOT the same one routeCtx gives.
+ *
+ * routeCtx answers "which ctx does this check RUN on?" (its declared `input`). This answers
+ * "which artifact does its output DESCRIBE?" - `registry.labelInputFor`, the same resolution
+ * the report's [XPI]/[SCA] labelling uses, so the two can never disagree about a finding.
+ * The pair differs for a post-summary recheck CONSUMER: it declares no `input` at all (the
+ * loader forbids one) because `input` merely routes it onto the main ctx to read ctx.recheck,
+ * while the items it re-judges belong to its PRODUCER's artifact. Route such a consumer with
+ * routeCtx and you get the review target - the readable source in SCA - for items whose paths
+ * are the built XPI's.
+ *
+ * Anything post-processing a check's OUTPUT (the pipeline's folder collapse, the report's
+ * labels) must resolve its artifact through here, never through `ctx.addon`: once findings
+ * come back as a flat list carrying only a ruleId, the check -> artifact binding routeCtx
+ * enforced is gone, and this is the only way to recover it.
+ * @param {Registry} registry
+ * @param {string} ruleId
+ * @param {RunContext} ctx
+ * @param {Record<string, RunContext>} siblings
+ * @returns {RunContext}
+ */
+export function ctxForRule(registry, ruleId, ctx, siblings) {
+  return siblings[registry.labelInputFor(ruleId)] ?? ctx;
+}
+
+/**
  * Run the selected checks. A check returns its verdicts as findings, and may
  * also return `escalations` (cases it could not settle), which this orchestrator
  * - the sole authority on manual review - resolves an llm check's via
@@ -803,18 +938,25 @@ export function routeCtx(check, ctx, siblings) {
  * @param {RunContext} ctx  The review-target check context (ctx.addon = the
  *   reviewed artifact; the XPI in an XPI review, the readable source in SCA).
  * @param {Registry} registry
- * @param {{only?: string[], skip?: string[]}} [opts]
+ * @param {{only?: string[], skip?: string[], eslint?: boolean,
+ *   budget?: import("../llm/budget.js").LlmBudget, recheckActive?: boolean}} [opts]
+ *   `only`/`skip`/`eslint` thread to loadChecks (the `--eslint` opt-in gates code-sanity);
+ *   `budget` is the run-wide LLM request cap, threaded to the add-on-summary interleave;
+ *   `recheckActive` is whether the add-on summary will run to re-judge post-summary-recheck
+ *   items (the pipeline passes `Boolean(ctx.llm)`).
  * @param {Record<string, RunContext>} [siblings]  The sibling artifact contexts,
  *   keyed by the `input` value that routes to each (built by the pipeline):
  *   `xpi` = buildShippedCtx (the shipped XPI), `build` = buildScaBuildCtx (the SCA
  *   build files), `manifest` = buildManifestCtx (the shipped manifest, no file corpus).
  *   A check's `input` selects its ctx here via routeCtx; an absent sibling (or an
  *   `input: source`/undefined check) falls back to `ctx`. Omitted = every check runs over ctx.
- * @returns {Promise<{findings: object[], checks: object[], deferred: object[],
- *   total: number, manualItems: {ruleId: string, item: ?string,
- *   kind: string}[]}>}  `checks` ran in this loop; `deferred` are the
- *   post-summary checks for the caller to run next (continuing the [i/total]
- *   numbering); `total` is the whole-review check count.
+ * @returns {Promise<{findings: object[],
+ *   manualItems: {ruleId: string, item: ?string, kind: string}[],
+ *   checksRun: object[],
+ *   summarizeAddon: (import("../pipeline.js").GeneratedSummary|undefined),
+ *   summarize: (import("../pipeline.js").GeneratedSummary|undefined)}>}  The finished
+ *   review: every finding and manual item across all four phases, the checks that ran (for
+ *   meta.checksRun), and the advisory add-on / diff summaries the caller prints.
  */
 export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
   // Two gates pick which checks run. The `diff` gate (a registry field) keys off
@@ -822,14 +964,9 @@ export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
   // baseline (ctx.previous), `diff: false` is new-submission only (the same gate
   // also applies to manual-checks entries - see diffEligible/manualChecks, used
   // by the new-submission-only "Forked add-on" reminder), an omitted `diff` runs
-  // in both. The `phase` gate then picks the review PROFILE: an invalid
-  // Experiment (ctx.invalidExperiment - Experiment APIs with --allow-experiments
-  // off) runs ONLY the `phase: invalid-experiment` reject check and nothing
-  // else. A normal review runs the default-phase checks in this loop and returns
-  // the `phase: post-summary` checks as `deferred` for the caller to run after
-  // the AI add-on summary. A filtered-out check never runs and never appears in
-  // the feed or meta.checksRun.
-  const loaded = await loadChecks(registry, opts);
+  // in both. A gated-out check never runs and never appears in the feed or
+  // meta.checksRun.
+  const byPhase = await loadChecks(registry, opts);
   const inDiffMode = Boolean(ctx.previous);
   // The `sca` gate keys off the review mode (ctx.mode): SCA mode reviews a
   // source-code submission's readable source + its declared deps, so the
@@ -837,18 +974,30 @@ export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
   // source-dependency audit (`sca: true`) is added; XPI mode (the default) is
   // the inverse. An omitted `sca` runs in both.
   const inScaMode = ctx.mode === "sca";
-  const eligible = loaded.filter(
-    (c) => diffEligible(c, inDiffMode) && scaEligible(c, inScaMode)
-  );
+  // The orchestrator NAMES the phases it runs, in the order it runs them - a check's
+  // phase is simply which list it is in, so a phase never asked for here does not run
+  // (that is what makes an unrecognized registry section inert). An invalid Experiment
+  // short-circuits the whole review to the reject phase and nothing else; a normal
+  // review runs the deterministic phase, then the llm phase, then the add-on-summary
+  // interleave (which fills ctx.recheckVerdicts), then the post-summary phase. The two
+  // gates above apply within each phase.
+  const inPhase = (phase) =>
+    (byPhase.get(phase) ?? []).filter(
+      (c) => diffEligible(c, inDiffMode) && scaEligible(c, inScaMode)
+    );
   const checks = ctx.invalidExperiment
-    ? eligible.filter((c) => c.phase === "invalid-experiment")
-    : eligible.filter((c) => !c.phase);
-  const deferred = ctx.invalidExperiment
-    ? []
-    : eligible.filter((c) => c.phase === "post-summary");
-  // The whole-review count, so [i/total] is continuous across this loop AND the
-  // caller's deferred post-summary checks (they carry on from checks.length).
+    ? inPhase("invalid-experiment")
+    : [...inPhase("deterministic"), ...inPhase("llm")];
+  const deferred = ctx.invalidExperiment ? [] : inPhase("post-summary");
+  // The whole-review count, so [i/total] is continuous across the main loop AND the
+  // post-summary checks below (they carry on from checks.length).
   const total = checks.length + deferred.length;
+  // Whether the add-on summary will run to re-judge recheck items: a check with a
+  // `post-summary-recheck` hands its manual items to that summary (below) instead of
+  // straight to manual review only when this is set. The pipeline passes `Boolean(ctx.llm)`
+  // (false offline / the golden harness, so those items go straight to manual review); a
+  // unit test passes it directly to exercise the divert in isolation.
+  const recheckActive = Boolean(opts.recheckActive);
   const findings = [];
   const manualItems = [];
   // Let checks narrate the file:line sites they investigated (network loads,
@@ -902,15 +1051,11 @@ export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
     findings.push(...out.findings);
     // A check with `post-summary-recheck: R` hands its manual items to the
     // recheck consumer R, but only when the add-on summary will actually run to
-    // re-judge them (ctx.recheckActive). Otherwise they go straight to manual
+    // re-judge them (recheckActive). Otherwise they go straight to manual
     // review - as do all no-summary paths, including the golden harness. In SCA the
     // summary runs once per corpus (recheckConsumersByCorpus), so a producer's items
     // always reach the summary of the artifact they are anchored to - no hold-back.
-    if (
-      check.postSummaryRecheck &&
-      ctx.recheckActive &&
-      out.manualItems.length
-    ) {
+    if (check.postSummaryRecheck && recheckActive && out.manualItems.length) {
       // The registry decides per item whether this consumer can re-judge it: a
       // permission-recheck consumer takes only the permissions it has a rubric prompt
       // for (registry.rechecks); the rest stay manual. Other rechecks take every item.
@@ -928,10 +1073,53 @@ export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
       manualItems.push(...out.manualItems);
     }
   }
-  // Close the live activity list with a blank line, so it is separated from the
-  // report that follows. A no-op when progress is disabled.
+  // Close the main-loop activity list with a blank line, so it is separated from the
+  // add-on-summary interleave and post-summary checks below. A no-op when progress is off.
   progress("");
-  return { findings, checks, deferred, total, manualItems };
+
+  // The add-on-summary interleave, between the llm and post-summary phases: it re-judges
+  // the recheck items diverted above (ctx.recheck) and fills ctx.recheckVerdicts, which the
+  // post-summary consumers read. Inert without ctx.llm. It runs now, not earlier, because it
+  // excludes files the review found unreachable (unused-files), a product of the checks above.
+  const { summarizeAddon, summarize } = await resolveRecheckSummaries(
+    ctx,
+    registry,
+    opts.budget,
+    siblings,
+    findings
+  );
+
+  // The post-summary phase: the recheck consumers, run now that the add-on summary has
+  // filled ctx.recheckVerdicts, through the SAME per-check path as the main loop (routeCtx +
+  // runOneCheck stamp id/severity and route escalations to manual review). Numbering
+  // continues from the main loop so the feed reads [1/total] .. [total/total]. Empty for an
+  // invalid Experiment.
+  const checksRun = [...checks];
+  for (const [j, check] of deferred.entries()) {
+    const checkCtx = routeCtx(check, ctx, siblings);
+    const out = await runOneCheck(
+      checkCtx,
+      check,
+      `[${checks.length + j + 1}/${total}]`
+    );
+    findings.push(...out.findings);
+    manualItems.push(...out.manualItems);
+    checksRun.push(check);
+  }
+
+  // Condense the unused-files report: when every packaged file under a folder is unused,
+  // collapse it to the top-most such folder. Output-only, after every check has scanned every
+  // file. Applied separately to findings and manual escalations so certainty is not mixed. It
+  // is handed a RESOLVER (filesOfRule), not a file list: ctxForRule is the one answer to which
+  // artifact a rule's OUTPUT describes (the same resolution the report's [XPI]/[SCA] label
+  // uses), so nothing here picks an artifact and none can be picked wrongly.
+  const filesOfRule = (ruleId) => [
+    ...ctxForRule(registry, ruleId, ctx, siblings).addon.files.keys(),
+  ];
+  collapseUnusedFolders(findings, filesOfRule);
+  collapseUnusedFolders(manualItems, filesOfRule);
+
+  return { findings, manualItems, checksRun, summarizeAddon, summarize };
 }
 
 /**

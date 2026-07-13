@@ -10,7 +10,7 @@
 // strict_max_version (canonicalized to ignore key order).
 //
 // Does NOT belong here: reading the max version (-> strictMaxVersion in src/
-// checks/lib/util.js) or canonicalizing JSON (-> canonicalJson in src/util/
+// lib/util.js) or canonicalizing JSON (-> canonicalJson in src/util/
 // json.js). Judging a max version on its own, with no baseline (-> non-
 // experiment-strict-max-version.js and experiment-missing-strict-max-version.
 // js). Authored wording (-> assets/registry.yaml). Severity (-> the
@@ -18,7 +18,7 @@
 // registry.js).
 
 import { finding } from "../../report/finding.js";
-import { strictMaxVersion, manifestTokenLine } from "../lib/util.js";
+import { strictMaxVersion, manifestTokenLine } from "../../lib/util.js";
 import { canonicalJson } from "../../util/json.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */

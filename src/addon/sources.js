@@ -31,16 +31,19 @@ import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
  *   parse mode picked from `file`; set for a Vue <script> block, whose mode comes
  *   from its `lang` attribute rather than the ".vue" path.
  * @property {ExtractedResults} [extracted]  The per-file extraction results, set
- *   by the extraction pass (src/checks/extract.js) and read through its xOf()
- *   accessors. Absent on a source the pass never ran (the shipped view, hand-built
- *   unit contexts), where the accessors recompute instead.
+ *   by an extraction pass (src/checks/extract.js) and read through its xOf()
+ *   accessors. A CHECK NEVER PARSES: the accessors THROW on a source no pass ran, rather
+ *   than recompute. The full pass (runExtractionPass, the review target) sets every field
+ *   below; the light pass (runShippedExtractionPass, the SCA built XPI - walked only as a
+ *   load graph) sets just localImports / loaderRefs / experimentRefs / moduleSyntaxLoc.
  */
 
 /**
- * @typedef {object} ExtractedResults  The per-source results the extraction pass
+ * @typedef {object} ExtractedResults  The per-source results the full extraction pass
  *   hangs on src.extracted (having dropped the AST). Whether a source is AUTHORED
  *   is visible in the shape: the every-source fields are always present; the
  *   content fields only when authored (a non-authored bundle / library is skipped).
+ *   The light shipped pass sets only the load-graph subset (see JsSource.extracted).
  * @property {import("../parse/api-usage.js").ApiUsageResult} apiUsage  WebExtension
  *   API usage (ctx.apiUsages is derived from it; its parseError feeds unparsable-file)
  *   - every source.
@@ -59,7 +62,8 @@ import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
  * @property {object} [debuggerStmt]  scanDebugger (debugger-statement) - authored.
  * @property {object} [asyncOnMessage]  scanAsyncOnMessage (async-onmessage) - authored.
  * @property {Set<string>} [webApiPerms]  scanWebApiCalls grounded permissions
- *   (against ALL web_api signatures; the consumer intersects with declared) - authored.
+ *   (against ALL web_api signatures; the consumer intersects with declared) - EVERY source
+ *   (a vendored library's navigator.* call grounds the permission just as authored code does).
  * @property {string} [codeText]  scanCodeText comment-free code-text atoms, joined,
  *   for the unused-permission token-presence test - authored (non-authored raw).
  */

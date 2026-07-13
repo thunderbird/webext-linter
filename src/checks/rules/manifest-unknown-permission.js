@@ -4,11 +4,11 @@
 //
 // Belongs here: validating each declared permission value against the schema.
 // Does NOT belong here: the schema's permission sets (-> src/schema/index.js),
-// match-pattern detection (-> src/checks/lib/util.js), authored wording (->
+// match-pattern detection (-> src/lib/util.js), authored wording (->
 // assets/registry.yaml), and severity (-> that registry entry).
 
 import { finding } from "../../report/finding.js";
-import { asArray, isMatchPattern, manifestPathLine } from "../lib/util.js";
+import { asArray, isMatchPattern, manifestPathLine } from "../../lib/util.js";
 
 export default {
   run(ctx) {

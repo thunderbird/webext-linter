@@ -24,7 +24,7 @@
 // Does NOT belong here: the BRIDGE / ROOT_RELATIVE_FILE_METHODS values (->
 // assets/webext-facts.yaml), the file-loader marking and rel-url type tags it
 // walks - those come from the schema (src/schema/index.js). Resolving paths and
-// building the reachability graph is src/checks/lib/reachability.js. Verdicts
+// building the reachability graph is src/lib/reachability.js. Verdicts
 // (bundled, reachable) are src/checks/rules/*. A script's own import/require
 // references are src/parse/local-imports.js. Babel access goes through
 // src/parse/ast.js.

@@ -11,7 +11,7 @@
 // resolving the store (-> src/vendor/resolve.js) and the registry wording.
 
 import { finding } from "../../report/finding.js";
-import { lineContaining } from "../lib/util.js";
+import { lineContaining } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 

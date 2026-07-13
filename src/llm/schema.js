@@ -73,7 +73,7 @@ export const LLM_VERDICTS = new Set(["fail", "pass", "unsure"]);
 // plus `recheck` - one verdict per item handed to a post-summary recheck consumer
 // (unused permissions, unused files, ...) so it can be re-judged with whole-add-on
 // context. Each consumer maps its own verdicts to Issues / manual-review notes -
-// see src/checks/lib/recheck.js. `recheck` is omitted when nothing was handed
+// see src/lib/recheck.js. `recheck` is omitted when nothing was handed
 // over, so it is not required.
 export const ADDON_REVIEW_SCHEMA = {
   type: "object",

@@ -14,7 +14,7 @@
 // src/build/corpus.js), or the wording (-> assets/registry.yaml).
 
 import { finding } from "../../report/finding.js";
-import { manifestTokenLine } from "../lib/util.js";
+import { manifestTokenLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 

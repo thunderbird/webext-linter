@@ -14,7 +14,7 @@
 // does not; a guarded unknown namespace still does), and picking the item string
 // (root.first-segment for an unknown namespace, else the full path).
 // Does NOT belong here: resolving usage against the schema over the WebExtension
-// tree - that is the shared src/checks/lib/api-resolution.js (resolveApiUsages).
+// tree - that is the shared src/lib/api-resolution.js (resolveApiUsages).
 // Extracting browser.* usage from source - src/parse/api-usage.js. Walking the
 // schema (isUnsupported, docUrl) - src/schema/index.js. Authored wording ->
 // assets/registry.yaml. Severity -> that registry entry, stamped by runChecks
@@ -22,7 +22,7 @@
 
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
-import { resolveApiUsages } from "../lib/api-resolution.js";
+import { resolveApiUsages } from "../../lib/api-resolution.js";
 
 export default {
   run(ctx) {

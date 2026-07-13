@@ -7,14 +7,14 @@
 // Belongs here: turning resource-load covert sinks into findings. Does NOT
 // belong here: the sink scan and the shared exfil gate (-> src/parse/
 // network-sinks.js + getOutboundSinks/isStrongCovertExfil in
-// src/checks/lib/outbound-sinks.js, shared with the other disguised-* and
+// src/lib/outbound-sinks.js, shared with the other disguised-* and
 // data-exfiltration checks), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 
 import {
   getOutboundSinks,
   isStrongCovertExfil,
-} from "../lib/outbound-sinks.js";
+} from "../../lib/outbound-sinks.js";
 import { finding } from "../../report/finding.js";
 
 const TYPES = new Set(["element-src", "set-attribute"]);

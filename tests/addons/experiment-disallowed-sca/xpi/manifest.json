@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "Experiment Disallowed SCA",
+  "version": "1.0",
+  "experiment_apis": { "myapi": {} },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

@@ -1,4 +1,4 @@
-// The untrusted-content wrapper (src/checks/lib/untrusted.js): a per-review nonce,
+// The untrusted-content wrapper (src/lib/untrusted.js): a per-review nonce,
 // the wrap/strip helpers that delimit add-on data and neutralize a forged closing
 // marker, and the framing that names the boundary for the model.
 
@@ -11,7 +11,7 @@ import {
   wrap,
   wrapFile,
   framing,
-} from "../../src/checks/lib/untrusted.js";
+} from "../../src/lib/untrusted.js";
 
 // nonceFor mints a 16-hex nonce and memoizes it per ctx (stable within a review, so
 // the prompt cache stays warm), while a fresh ctx gets a different one.

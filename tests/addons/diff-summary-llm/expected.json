@@ -1,0 +1,7 @@
+{
+  "_comment": "A clean minimal add-on reviewed with --llm-review (via llm.js) against a --diff-to baseline (tests/diff-baselines/diff-summary-llm), so the report adds the LLM 'Summary of changes' (ctx.llm.summarize) and the 'Summary of add-on'. No findings; the golden locks the summary rendering.",
+  "options": {
+    "--diff-to": "tests/diff-baselines/diff-summary-llm"
+  },
+  "expect": {}
+}

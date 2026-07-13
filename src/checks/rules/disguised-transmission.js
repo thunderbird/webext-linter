@@ -11,13 +11,16 @@
 //
 // Belongs here: the candidate per weak covert sink and the verdict mapping. Does
 // NOT belong here: the sink scan (-> src/parse/network-sinks.js, aggregated by
-// getOutboundSinks/isWeakCovertExfil in src/checks/lib/outbound-sinks.js), the
+// getOutboundSinks/isWeakCovertExfil in src/lib/outbound-sinks.js), the
 // hard-error strong case (-> the disguised-*.js checks), the model transport (->
-// src/checks/llm-client.js), the resolve pattern (-> src/checks/lib/
+// src/checks/llm-client.js), the resolve pattern (-> src/lib/
 // verdict-resolve.js), and authored wording (-> assets/registry.yaml).
 
-import { getOutboundSinks, isWeakCovertExfil } from "../lib/outbound-sinks.js";
-import { perCandidateResolve } from "../lib/verdict-resolve.js";
+import {
+  getOutboundSinks,
+  isWeakCovertExfil,
+} from "../../lib/outbound-sinks.js";
+import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 

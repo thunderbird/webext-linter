@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildManifestLoc } from "../../src/addon/manifest-loc.js";
-import { manifestTokenLine } from "../../src/checks/lib/util.js";
+import { manifestTokenLine } from "../../src/lib/util.js";
 import minimizeHostPermissions from "../../src/checks/rules/minimize-host-permissions.js";
 
 // A manifest where "<all_urls>" is JSON-escaped AND appears twice: once in a

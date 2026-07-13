@@ -1,6 +1,6 @@
 // Unit tests for the new deterministic rule modules and the yaml-driven loader.
 
-import { withManifest } from "./manifest-ctx.js";
+import { withManifest, parsedSources, parsed } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -51,21 +51,24 @@ import unrecognizedManifestKey from "../../src/checks/rules/unrecognized-manifes
 import backgroundModule from "../../src/checks/rules/background-module.js";
 import unusedPermissionRecheck from "../../src/checks/rules/unused-permission-recheck.js";
 import unusedPermissionProducer from "../../src/checks/rules/unused-permission.js";
+import unrecognizedFileType from "../../src/checks/rules/unrecognized-file-type.js";
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
 import { parseApiUsage } from "../../src/parse/api-usage.js";
-import { getPermissionAnalysis } from "../../src/checks/lib/permissions.js";
+import { getPermissionAnalysis } from "../../src/lib/permissions.js";
 import {
   loadChecks,
   loadRegistry,
   runOneCheck,
   runChecks,
+  assertRequiredPhaseSections,
 } from "../../src/checks/registry.js";
 import { finding, SEVERITY } from "../../src/report/finding.js";
+
+// loadChecks groups its result by phase (a check's phase IS the list it lands in).
+// Flatten it when a test cares about the checks themselves, not which phase they run in.
+const allChecks = (byPhase) => [...byPhase.values()].flat();
 import unknownApi from "../../src/checks/rules/unknown-api.js";
-import {
-  resolveApiUsages,
-  unknownApis,
-} from "../../src/checks/lib/api-resolution.js";
+import { resolveApiUsages, unknownApis } from "../../src/lib/api-resolution.js";
 import strictMaxVersionApi from "../../src/checks/rules/strict-max-version-api.js";
 import strictMinVersionApi from "../../src/checks/rules/strict-min-version-api.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
@@ -80,7 +83,7 @@ const schema = buildSchemaIndex(
 );
 
 const jsCtx = (code, manifest = {}) => ({
-  jsSources: [{ file: "f.js", code, lineOffset: 0, inline: false }],
+  jsSources: parsed([{ file: "f.js", code, lineOffset: 0, inline: false }]),
   addon: { files: new Map(), manifest },
   options: {},
 });
@@ -183,7 +186,7 @@ test("sync-xhr / debugger / async-onmessage skip non-authored code", () => {
     `browser.runtime.onMessage.addListener(async (m) => {});\n`;
   const code = body + "var a = 1;\n".repeat(200); // >1KB so it is classified
   const ctxFor = (file, lib = false) => ({
-    jsSources: [{ file, code, lineOffset: 0 }],
+    jsSources: parsed([{ file, code, lineOffset: 0 }]),
     addon: { files: new Map([[file, Buffer.from(code)]]), manifest: {} },
     options: lib
       ? {
@@ -256,7 +259,7 @@ test("code-sanity flags an empty block, not an empty function body", () => {
 test("code-sanity skips non-authored code, lints authored code", () => {
   const redecl = "var a = 1;\n".repeat(200); // ~2KB, trips no-redeclare, short lines
   const ctxFor = (file, lib = false) => ({
-    jsSources: [{ file, code: redecl, lineOffset: 0 }],
+    jsSources: parsed([{ file, code: redecl, lineOffset: 0 }]),
     addon: { files: new Map([[file, Buffer.from(redecl)]]), manifest: {} },
     options: lib
       ? {
@@ -584,9 +587,25 @@ test("strict-max-version-bump-only fires only on a pure version+strict_max bump"
 // The diff gate: the registry marks this a diff check (diff: true), so the
 // orchestrator runs it only with a --diff-to baseline (see runChecks).
 test("strict-max-version-bump-only is registered as a diff check", async () => {
-  const checks = await loadChecks(loadRegistry());
+  const checks = allChecks(await loadChecks(loadRegistry()));
   const c = checks.find((x) => x.id === "strict-max-version-bump-only");
   assert.equal(c?.diff, true);
+});
+
+// The eslint gate (eslintEligible): code-sanity is eslint:true, so it loads ONLY with the
+// --eslint flag. Gated in loadChecks, before the import, so the eslint dependency is not
+// pulled in when the check will not run.
+test("code-sanity is gated by the --eslint flag", async () => {
+  const off = allChecks(await loadChecks(loadRegistry()));
+  assert.equal(
+    off.some((c) => c.id === "code-sanity"),
+    false
+  );
+  const on = allChecks(await loadChecks(loadRegistry(), { eslint: true }));
+  assert.equal(
+    on.some((c) => c.id === "code-sanity"),
+    true
+  );
 });
 
 // The SCA mode gate (scaEligible, mirrors the diff gate): the XPI bundled/vendor
@@ -594,7 +613,7 @@ test("strict-max-version-bump-only is registered as a diff check", async () => {
 // dependency audit is sca:true (XPI-only-skipped), and a code check is untagged
 // (runs in both, the orchestrator just switches the review SOURCE).
 test("checks carry the sca mode tag (false=XPI-only, true=SCA-only, undefined=both)", async () => {
-  const checks = await loadChecks(loadRegistry());
+  const checks = allChecks(await loadChecks(loadRegistry()));
   const sca = (id) => checks.find((x) => x.id === id)?.sca;
   // minified-code runs in BOTH modes: a minified file is non-authored and rejected
   // whether it ships in a built XPI or sits in a source-code submission's source.
@@ -626,18 +645,19 @@ test("checks carry the sca mode tag (false=XPI-only, true=SCA-only, undefined=bo
 // pinned to exactly the structure checks. A new or flipped check trips this test
 // rather than silently reading the wrong artifact.
 test("every non-recheck check declares a valid input (rechecks declare none); the input:xpi set is exactly the pinned structure checks", async () => {
-  const checks = await loadChecks(loadRegistry());
-  for (const c of checks) {
-    if (c.kind === "post-summary-recheck") {
-      // A recheck consumer declares NO input - it runs on the main ctx and is
-      // labelled by its producer's corpus (see labelInputFor). Its input is undefined.
-      assert.equal(
-        c.input,
-        undefined,
-        `recheck "${c.id}" must not declare an input`
-      );
-      continue;
-    }
+  const byPhase = await loadChecks(loadRegistry());
+  const checks = allChecks(byPhase);
+  // A post-summary-phase consumer declares NO input - it runs on the main ctx and is
+  // labelled by its producer's corpus (see labelInputFor). Its input is undefined.
+  const rechecks = new Set(byPhase.get("post-summary"));
+  for (const c of rechecks) {
+    assert.equal(
+      c.input,
+      undefined,
+      `recheck "${c.id}" must not declare an input`
+    );
+  }
+  for (const c of checks.filter((x) => !rechecks.has(x))) {
     assert.ok(
       c.input === "source" ||
         c.input === "xpi" ||
@@ -686,6 +706,7 @@ test("every non-recheck check declares a valid input (rechecks declare none); th
     "missing-english-localization",
     "strict-max-version-bump-only",
     "trademark-violation",
+    "unrecognized-file-type",
     "unrecognized-manifest-key",
     "unused-files",
   ]);
@@ -727,12 +748,14 @@ test("an input:xpi LLM check adjudicates over its routed (XPI) addon", async () 
     }),
     manifest,
   };
-  const [check] = await loadChecks(loadRegistry(), { only: ["unused-files"] });
+  const [check] = allChecks(
+    await loadChecks(loadRegistry(), { only: ["unused-files"] })
+  );
   let seenAddon;
   // The orchestrator routes an `input: xpi` check to a ctx whose addon is the XPI.
   const ctx = {
     addon: xpi,
-    jsSources: collectJsSources(xpi),
+    jsSources: parsedSources(xpi, { schema }),
     schema,
     mode: "sca",
     options: {},
@@ -872,20 +895,24 @@ test("SCA diverts a source-anchored recheck to the summary", async () => {
   };
   const ctx = withManifest({
     addon,
-    jsSources: collectJsSources(addon),
+    jsSources: parsedSources(addon, { schema }),
     schema,
     mode: "sca",
-    recheckActive: true,
     options: {},
     // The per-site adjudication returns unsure, so the site becomes a manual item the
     // divert then routes.
     llm: {
       evaluate: async (req) =>
         new Map(req.candidates.map((c) => [c.id, { verdict: "unsure" }])),
+      // runChecks now also runs the add-on summary; benign stubs keep it from erroring
+      // (the divert this test asserts on happens in the main loop, before the summary).
+      reviewAddon: async () => ({ summary: "", recheck: [] }),
+      summarize: async () => "",
     },
   });
   const out = await runChecks(ctx, loadRegistry(), {
     only: ["data-exfiltration"],
+    recheckActive: true,
   });
   // Diverted to the summary (source corpus), not left in manual review.
   assert.ok(
@@ -2372,7 +2399,7 @@ test("core-symbol-in-webext flags global core symbols, not locals/imports/proper
   const run = (code) =>
     coreSymbolInWebext.run(
       withManifest({
-        jsSources: [{ file: "bg.js", code, lineOffset: 0 }],
+        jsSources: parsed([{ file: "bg.js", code, lineOffset: 0 }]),
         addon: {
           manifest: { manifest_version: 3, background: { scripts: ["bg.js"] } },
           files: new Map([["bg.js", Buffer.from(code)]]),
@@ -2804,7 +2831,8 @@ test("missing-english-localization: franc over hardcoded text", () => {
 // module with a run() function plus id/title, and ids stay in sync with checkIds.
 test("every check entry (both sections) resolves to a runnable module", async () => {
   const registry = loadRegistry();
-  const checks = await loadChecks(registry);
+  // { eslint: true } so the eslint-gated code-sanity loads too - every entry must resolve.
+  const checks = allChecks(await loadChecks(registry, { eslint: true }));
   const ids = registry.checkIds();
   assert.equal(checks.length, ids.length);
   assert.ok(checks.length >= 10);
@@ -2823,7 +2851,7 @@ test("loadChecks throws hard when a check: names a missing module", async () => 
   const tmp = path.join(os.tmpdir(), `bad-registry-${process.pid}.yaml`);
   fs.writeFileSync(
     tmp,
-    "deterministic-checks:\n- title: Bogus\n  check: __does_not_exist__.js\n"
+    "deterministic-phase:\n- title: Bogus\n  check: __does_not_exist__.js\n"
   );
   try {
     await assert.rejects(() => loadChecks(loadRegistry(tmp)), /not found/);
@@ -2841,12 +2869,12 @@ test("loadChecks rejects a dangling or prompt-less post-summary-recheck target",
   try {
     // Target names no check at all.
     write(
-      "deterministic-checks:\n- title: P\n  check: producer-x\n  post-summary-recheck: nope\n"
+      "deterministic-phase:\n- title: P\n  check: producer-x\n  post-summary-recheck: nope\n"
     );
     await assert.rejects(() => loadChecks(loadRegistry(tmp)), /is not a check/);
     // Target is a real check, but it carries no summary-prompt.
     write(
-      "deterministic-checks:\n" +
+      "deterministic-phase:\n" +
         "- title: P\n  check: producer-x\n  post-summary-recheck: consumer-x\n" +
         "- title: C\n  check: consumer-x\n"
     );
@@ -2856,18 +2884,90 @@ test("loadChecks rejects a dangling or prompt-less post-summary-recheck target",
   }
 });
 
-// A check carrying a summary-prompt is classified post-summary without an explicit
-// phase (it is re-judged by the add-on summary, which runs then); a producer
-// (post-summary-recheck but no summary-prompt) stays in the main loop.
-test("loadChecks classifies a summary-prompt check as post-summary", async () => {
-  const checks = await loadChecks(loadRegistry());
-  assert.equal(
-    checks.find((c) => c.id === "unused-permission-recheck")?.phase,
-    "post-summary"
+// A check's phase IS the section it came from - never declared per entry. The recheck
+// consumer lives in post-summary-phase; its producer (which declares a
+// post-summary-recheck but carries no rubric) stays in the deterministic phase; and the
+// reject check lives in the invalid-experiment phase.
+test("a check's phase is the section it came from", async () => {
+  const byPhase = await loadChecks(loadRegistry());
+  const idsIn = (phase) => byPhase.get(phase).map((c) => c.id);
+  assert.ok(idsIn("post-summary").includes("unused-permission-recheck"));
+  assert.ok(idsIn("deterministic").includes("unused-permission"));
+  assert.ok(idsIn("invalid-experiment").includes("experiment-not-allowed"));
+  // ...and the reject check is in NO other phase - it only runs when short-circuiting.
+  assert.ok(!idsIn("deterministic").includes("experiment-not-allowed"));
+});
+
+// ONE rule module = ONE entry = ONE phase. A check's id IS its module's filename stem, so a
+// second entry naming the same module is the SAME check declared twice: it runs once per
+// entry, and the id -> entry Map (how every finding reaches its severity and response) keeps
+// only the LAST - so a duplicate can silently restamp a real check's severity.
+test("loadRegistry rejects a check declared in two phases", () => {
+  const tmp = path.join(os.tmpdir(), `dup-registry-${process.pid}.yaml`);
+  fs.writeFileSync(
+    tmp,
+    "deterministic-phase:\n" +
+      "- title: Sync XHR\n  severity: warning\n  check: sync-xhr\n  input: source\n" +
+      "llm-phase:\n" +
+      "- title: Sync XHR again\n  severity: info\n  check: sync-xhr\n  input: source\n"
   );
-  assert.equal(
-    checks.find((c) => c.id === "unused-permission")?.phase,
-    undefined
+  try {
+    assert.throws(
+      () => loadRegistry(tmp),
+      /"sync-xhr" is declared more than once/
+    );
+  } finally {
+    fs.rmSync(tmp);
+  }
+});
+
+// The phase sections ARE the control flow: runChecks looks each one up BY NAME. So renaming
+// or misspelling one in registry.yaml would not fail loudly - it would yield an empty phase,
+// and the review would silently run without every llm check, or without every recheck
+// consumer. loadRegistry asserts the shipped registry declares all four; this pins that no
+// phase can quietly become empty (a typo makes loadRegistry throw, and this test fail).
+test("every phase of the shipped registry is declared and populated", async () => {
+  const byPhase = await loadChecks(loadRegistry());
+  for (const phase of [
+    "invalid-experiment",
+    "deterministic",
+    "llm",
+    "post-summary",
+  ]) {
+    assert.ok(
+      (byPhase.get(phase) ?? []).length > 0,
+      `phase "${phase}" loaded no checks - its registry.yaml section is missing or renamed`
+    );
+  }
+});
+
+// The guard behind the above: a required phase section that is missing or empty in the yaml
+// (a rename, a bad edit) is a defect that would silently drop that whole phase from every
+// review. assertRequiredPhaseSections turns it into a loud abort. Tested directly, because in
+// loadRegistry it runs for the SHIPPED registry only (a partial test yaml must not trip it).
+test("assertRequiredPhaseSections rejects a missing or empty required phase section", () => {
+  const full = {
+    "invalid-experiment-phase": [{ check: "experiment-not-allowed" }],
+    "deterministic-phase": [{ check: "sync-xhr" }],
+    "llm-phase": [{ check: "data-exfiltration" }],
+    "post-summary-phase": [{ check: "unused-files-recheck" }],
+  };
+  // The complete set is accepted.
+  assert.doesNotThrow(() => assertRequiredPhaseSections(full, "ok.yaml"));
+  // A section removed entirely (a rename) throws, naming the missing one.
+  const { "llm-phase": _dropped, ...missing } = full;
+  assert.throws(
+    () => assertRequiredPhaseSections(missing, "x.yaml"),
+    /phase section "llm-phase" is missing or empty/
+  );
+  // A section present but empty throws too.
+  assert.throws(
+    () =>
+      assertRequiredPhaseSections(
+        { ...full, "deterministic-phase": [] },
+        "x.yaml"
+      ),
+    /phase section "deterministic-phase" is missing or empty/
   );
 });
 
@@ -2878,10 +2978,10 @@ test("loadChecks accepts severity: auto", async () => {
   const tmp = path.join(os.tmpdir(), `auto-registry-${process.pid}.yaml`);
   fs.writeFileSync(
     tmp,
-    "deterministic-checks:\n- title: Ok\n  severity: auto\n  check: sync-xhr.js\n  input: source\n"
+    "deterministic-phase:\n- title: Ok\n  severity: auto\n  check: sync-xhr.js\n  input: source\n"
   );
   try {
-    const checks = await loadChecks(loadRegistry(tmp));
+    const checks = allChecks(await loadChecks(loadRegistry(tmp)));
     assert.equal(checks[0].severity, "auto");
   } finally {
     fs.rmSync(tmp);
@@ -2896,7 +2996,7 @@ test("loadChecks rejects a check with no valid input", async () => {
   // Valid severity so the input check (which runs after severity) is what fires.
   fs.writeFileSync(
     tmp,
-    "deterministic-checks:\n- title: NoInput\n  severity: error\n  check: sync-xhr.js\n"
+    "deterministic-phase:\n- title: NoInput\n  severity: error\n  check: sync-xhr.js\n"
   );
   try {
     await assert.rejects(
@@ -2906,7 +3006,7 @@ test("loadChecks rejects a check with no valid input", async () => {
     // An out-of-set value is rejected too.
     fs.writeFileSync(
       tmp,
-      "deterministic-checks:\n- title: BadInput\n  severity: error\n  check: sync-xhr.js\n  input: bogus\n"
+      "deterministic-phase:\n- title: BadInput\n  severity: error\n  check: sync-xhr.js\n  input: bogus\n"
     );
     await assert.rejects(
       () => loadChecks(loadRegistry(tmp)),
@@ -2917,11 +3017,40 @@ test("loadChecks rejects a check with no valid input", async () => {
   }
 });
 
+// An `input: build` check reads the SCA-only build corpus, so it MUST be `sca: true` - else it
+// runs in an XPI review too, where the build sibling is undefined and routeCtx silently routes
+// it to the review target. The gate is the only guard, so loadChecks asserts it.
+test("loadChecks rejects an input:build check that is not sca:true", async () => {
+  const tmp = path.join(
+    os.tmpdir(),
+    `build-nosca-registry-${process.pid}.yaml`
+  );
+  fs.writeFileSync(
+    tmp,
+    "deterministic-phase:\n- title: Build\n  severity: error\n  check: sync-xhr.js\n  input: build\n"
+  );
+  try {
+    await assert.rejects(
+      () => loadChecks(loadRegistry(tmp)),
+      /`input: build` but not `sca: true`/
+    );
+    // With the gate, it loads.
+    fs.writeFileSync(
+      tmp,
+      "deterministic-phase:\n- title: Build\n  severity: error\n  check: sync-xhr.js\n  input: build\n  sca: true\n"
+    );
+    const checks = allChecks(await loadChecks(loadRegistry(tmp)));
+    assert.equal(checks[0].input, "build");
+  } finally {
+    fs.rmSync(tmp);
+  }
+});
+
 test("loadChecks rejects an invalid severity token", async () => {
   const tmp = path.join(os.tmpdir(), `bad-sev-registry-${process.pid}.yaml`);
   fs.writeFileSync(
     tmp,
-    "deterministic-checks:\n- title: Bad\n  severity: nope\n  check: sync-xhr.js\n"
+    "deterministic-phase:\n- title: Bad\n  severity: nope\n  check: sync-xhr.js\n"
   );
   try {
     await assert.rejects(
@@ -3321,4 +3450,96 @@ test("background-module flags module syntax without type: module", () => {
   );
   assert.equal(n("console.log(1);", { scripts: ["f.js"] }), 0);
   assert.equal(n('import x from "./y.js";', { scripts: ["other.js"] }), 0);
+});
+
+// unrecognized-file-type: the backstop for the JS-corpus suffix list. reachability's
+// manifest walk and <script> walk record any LIVE referenced packaged file whose suffix is
+// not in RECOGNIZED_EXTS (a file the browser loads but no check could classify); the check
+// reports them. input: xpi. A helper builds a routed-to-the-artifact ctx with reachability
+// inputs (files + shipped manifest + parsed sources).
+const reachCtx = (files, manifest) => {
+  const addon = {
+    files: new Map(
+      Object.entries({
+        "manifest.json": JSON.stringify(manifest),
+        ...files,
+      }).map(([k, v]) => [k, Buffer.from(v)])
+    ),
+    manifest,
+  };
+  return withManifest({
+    addon,
+    jsSources: parsedSources(addon),
+    mode: "xpi",
+    options: {},
+  });
+};
+const urtFiles = (ctx) =>
+  unrecognizedFileType
+    .run(ctx)
+    .map((f) => f.file)
+    .sort();
+
+test("unrecognized-file-type flags a manifest-declared script with an unknown suffix", () => {
+  const ctx = reachCtx(
+    { "bg.weird": "globalThis.x = 1;" },
+    { manifest_version: 3, background: { scripts: ["bg.weird"] } }
+  );
+  assert.deepEqual(urtFiles(ctx), ["bg.weird"]);
+});
+
+// The <script> walk classifies against JS_EXTENSIONS, not RECOGNIZED_EXTS: a <script src>
+// loads its target AS CODE whatever the extension, so BOTH an unrecognized suffix (.weird)
+// and a recognized-but-non-JS suffix (.txt executed as a script) are flagged - the latter is
+// exactly the evasion of hiding JS behind a resource extension.
+test("unrecognized-file-type flags a <script src> that is not JS (unknown OR recognized-non-JS)", () => {
+  const ctx = reachCtx(
+    {
+      "bg.js": "globalThis.x = 1;",
+      "page.html":
+        '<html><body><script src="logic.data"></script><script src="mod.txt"></script><script src="ok.js"></script></body></html>',
+      "logic.data": "globalThis.y = 2;",
+      "mod.txt": "export const b = 2;",
+      "ok.js": "globalThis.z = 3;",
+    },
+    {
+      manifest_version: 3,
+      background: { scripts: ["bg.js"] },
+      // page.html is a live entry point (an options page), so its <script src> runs.
+      options_ui: { page: "page.html" },
+    }
+  );
+  // logic.data + mod.txt flagged (loaded as code, not JS); ok.js is JS, not flagged.
+  assert.deepEqual(urtFiles(ctx), ["logic.data", "mod.txt"]);
+});
+
+test("unrecognized-file-type does NOT flag recognized resource types", () => {
+  const ctx = reachCtx(
+    {
+      "bg.js": "globalThis.x = 1;",
+      "icon.png": "PNG",
+      "_locales/en/messages.json": "{}",
+      "font.woff2": "FONT",
+    },
+    {
+      manifest_version: 3,
+      default_locale: "en",
+      background: { scripts: ["bg.js"] },
+      icons: { 48: "icon.png" },
+    }
+  );
+  assert.deepEqual(urtFiles(ctx), []);
+});
+
+test("unrecognized-file-type does NOT flag a script in a DEAD (unreachable) page", () => {
+  // dead.html is referenced by nothing, so it never loads - its <script src> never runs.
+  const ctx = reachCtx(
+    {
+      "bg.js": "globalThis.x = 1;",
+      "dead.html": '<html><body><script src="x.data"></script></body></html>',
+      "x.data": "globalThis.y = 2;",
+    },
+    { manifest_version: 3, background: { scripts: ["bg.js"] } }
+  );
+  assert.deepEqual(urtFiles(ctx), []);
 });

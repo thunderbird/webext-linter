@@ -5,13 +5,13 @@
 //
 // Belongs here: turning navigation covert sinks into findings. Does NOT belong
 // here: the sink scan and the shared exfil gate (-> getOutboundSinks/
-// isStrongCovertExfil in src/checks/lib/outbound-sinks.js), authored wording (->
+// isStrongCovertExfil in src/lib/outbound-sinks.js), authored wording (->
 // assets/registry.yaml), and severity (-> that registry entry).
 
 import {
   getOutboundSinks,
   isStrongCovertExfil,
-} from "../lib/outbound-sinks.js";
+} from "../../lib/outbound-sinks.js";
 import { finding } from "../../report/finding.js";
 
 export default {

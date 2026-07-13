@@ -5,7 +5,7 @@
 // Belongs here: scanning the required host lists for broad patterns (<all_urls>
 // or a "*" host, per isBroadHost) and emitting one finding per distinct match.
 // Does NOT belong here: deciding whether a match pattern is broad (->
-// isBroadHost in src/checks/lib/util.js). Validating that a host pattern is
+// isBroadHost in src/lib/util.js). Validating that a host pattern is
 // well-formed or known (-> manifest-unknown-permission.js). Authored wording (->
 // assets/registry.yaml). Severity (-> the minimize-host-permissions registry
 // entry, stamped by src/checks/registry.js).
@@ -16,7 +16,7 @@ import {
   isBroadHost,
   isMatchPattern,
   manifestPathLine,
-} from "../lib/util.js";
+} from "../../lib/util.js";
 
 export default {
   run(ctx) {

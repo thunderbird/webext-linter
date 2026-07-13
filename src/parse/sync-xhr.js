@@ -5,7 +5,7 @@
 //
 // Belongs here: matching the `.open(...)` shape and reporting the async flag.
 // Does NOT belong here: the non-authored skip that decides WHICH files to scan
-// (-> src/checks/lib/bundled.js), authored wording / severity (->
+// (-> src/lib/bundled.js), authored wording / severity (->
 // assets/registry.yaml). Babel access goes through src/parse/ast.js.
 
 import { parseJs, traverse, nodeLoc } from "./ast.js";

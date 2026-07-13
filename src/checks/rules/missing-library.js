@@ -12,15 +12,15 @@
 // (named with its libraryId) per such file.
 //
 // Does NOT belong here: the hash lookup and the VENDOR.md exclusion (->
-// src/checks/lib/bundled.js, classifyAddonJs; the DB itself ->
-// src/checks/lib/library-hashes.js), the minified-without-library verdict (->
+// src/lib/bundled.js, classifyAddonJs; the DB itself ->
+// src/lib/library-hashes.js), the minified-without-library verdict (->
 // minified-code.js) and the obfuscated-without-library verdict (->
 // obfuscated-code.js), authored wording (-> assets/registry.yaml), severity (->
 // that registry entry, stamped by src/checks/registry.js), and report formatting
 // (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
-import { classifyAddonJs } from "../lib/bundled.js";
+import { classifyAddonJs } from "../../lib/bundled.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {

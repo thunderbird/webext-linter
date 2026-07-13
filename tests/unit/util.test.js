@@ -1,30 +1,10 @@
-// Unit tests for small shared helpers: src/checks/lib/util.js and src/util/log.js.
+// Unit tests for small shared helpers: src/lib/util.js and src/util/log.js.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  llmReview,
-  parseVersion,
-  cmpVersion,
-} from "../../src/checks/lib/util.js";
+import { parseVersion, cmpVersion } from "../../src/lib/util.js";
 import { llmErrorText } from "../../src/util/log.js";
-
-// The LLM is enabled ONLY by ctx.options.llmReview (set from --llm-review),
-// fully decoupled from the credentials - a keyless provider (Ollama) has no key
-// yet is still enabled, and a stray key never enables it.
-test("llmReview is driven solely by options.llmReview", () => {
-  assert.equal(llmReview({ options: { llmReview: true } }), true);
-  assert.equal(llmReview({ options: { llmReview: false } }), false);
-  assert.equal(llmReview({ options: {} }), false);
-  assert.equal(llmReview({}), false);
-  // A key present without the flag does NOT enable; the flag without a key does.
-  assert.equal(llmReview({ options: { llmApiKey: "sk-x" } }), false);
-  assert.equal(
-    llmReview({ options: { llmReview: true, llmApiKey: undefined } }),
-    true
-  );
-});
 
 // A failed LLM step reports this one-liner (in the feed and the summary notice):
 // the HTTP status when the SDK error carries one (e.g. 400 for an over-long

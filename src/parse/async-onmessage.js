@@ -6,7 +6,7 @@
 // Belongs here: matching the onMessage.addListener call shape and reporting
 // whether the listener is async. Does NOT belong here: API-root and alias
 // resolution (-> src/parse/api-base.js), the non-authored skip that decides
-// WHICH files to scan (-> src/checks/lib/bundled.js), authored wording /
+// WHICH files to scan (-> src/lib/bundled.js), authored wording /
 // severity (-> assets/registry.yaml). Babel access goes through
 // src/parse/ast.js.
 

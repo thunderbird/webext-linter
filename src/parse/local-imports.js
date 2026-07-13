@@ -10,7 +10,7 @@
 // ES/CommonJS loaders, as raw reference-graph input.
 //
 // Does NOT belong here: resolving those paths against the package or building
-// the reachability graph - that lives in src/checks/lib/reachability.js.
+// the reachability graph - that lives in src/lib/reachability.js.
 // File-loading API calls (executeScript, getURL, setPopup, ...) are
 // src/parse/loader-files.js. Remote/embedded sources are
 // src/checks/rules/remote-script.js (fed by src/parse/remote-js.js). Babel

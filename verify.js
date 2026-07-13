@@ -4,7 +4,7 @@
 //
 // Does NOT belong here: argv parsing, validation, and report routing (those
 // live in cli.js main). The schema review itself lives in pipeline.js
-// runPipeline and reviewAddon.
+// runPipeline.
 import { main } from "./src/cli.js";
 
 main(process.argv.slice(2)).then(

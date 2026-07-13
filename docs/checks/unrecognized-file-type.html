@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unrecognized referenced file type</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Unrecognized referenced file type
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">unrecognized-file-type</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A packaged file the add-on loads &mdash; declared in the manifest, or
+        pulled in by a <code>&lt;script src&gt;</code> in a live page &mdash;
+        whose file type the review tools do not recognize. The browser still
+        loads it, but no check could classify or review it, so it went
+        unreviewed.
+      </p>
+      <p>
+        The set of files the tool parses as code is a suffix guess
+        (<code>JS_EXTENSIONS</code>). Where that guess is narrower than what the
+        browser actually executes &mdash; a script shipped under an unusual
+        extension &mdash; the file would silently escape every code check. This
+        check is the backstop: instead of trying to enumerate every possible
+        code extension, it flags anything the add-on <em>references</em> whose
+        suffix is in no recognized type at all. An un-enumerated suffix stops
+        being a silent gap and becomes a loud finding a reviewer must resolve.
+      </p>
+      <p>
+        Detection happens where reachability already resolves references: the
+        manifest walk (role-blind &mdash; any declared file with an unrecognized
+        suffix) and the <code>&lt;script&gt;</code> walk (a script target with an
+        unrecognized suffix). Only files that are actually reachable are
+        reported; a reference in dead code never runs. The check reads the built
+        XPI (<code>input: xpi</code>), so in a source-code submission it can
+        surface a file the developer&rsquo;s packaging step emitted.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A packaged file referenced by the manifest<br/>or a &lt;script src&gt;"] --> L{"Is the referrer live<br/>(actually loaded)?"}
+  L -- no --> S([skip — dead reference])
+  L -- yes --> R{"Is the suffix a recognized<br/>file type? (RECOGNIZED_EXTS)"}
+  R -- yes --> OK([no finding])
+  R -- no --> ERR([ERROR: the browser loads a file<br/>no check could review])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told which packaged file has an unrecognized type and
+        where it is referenced, and asked to give it a standard extension for
+        its content (for example a <code>.js</code> script), or to confirm what
+        the file is and why it ships. If it is a build artifact, the developer is
+        asked to review what their packaging step produces.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/unrecognized-file-type.js</code>
+        (reading <code>RECOGNIZED_EXTS</code> from
+        <code>src/util/files.js</code> and <code>unrecognizedRefs</code> from
+        <code>src/lib/reachability.js</code>) and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

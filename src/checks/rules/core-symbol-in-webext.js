@@ -11,14 +11,14 @@
 // Belongs here: restricting to the pure WebExtension tree and emitting one finding
 // per core-symbol hit. Does NOT belong here: the core-symbol list and the global-
 // reference AST match (-> src/parse/core-symbols.js), the WebExtension vs Experiment
-// partition (-> src/checks/lib/reachability.js, pureWebExtensionReachable), the
-// non-authored skip-list (-> src/checks/lib/bundled.js), authored wording / severity
+// partition (-> src/lib/reachability.js, pureWebExtensionReachable), the
+// non-authored skip-list (-> src/lib/bundled.js), authored wording / severity
 // (-> assets/registry.yaml), report formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
 import { coreSymbolsOf } from "../extract.js";
-import { nonAuthoredJs } from "../lib/bundled.js";
-import { buildReachability } from "../lib/reachability.js";
+import { nonAuthoredJs } from "../../lib/bundled.js";
+import { buildReachability } from "../../lib/reachability.js";
 
 export default {
   run(ctx) {

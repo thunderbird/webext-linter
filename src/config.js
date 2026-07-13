@@ -25,7 +25,7 @@ export const EXPERIMENTS_CACHE = ".experiments-cache";
  * The upstream known-library hash database: Mozilla dispensary's generated
  * hashes.txt (one "<sha256> <name>.<version>.<file>" line per library release).
  * Fetched and cached so the library classifier can identify a bundled library by
- * the raw SHA-256 of its bytes. See src/checks/lib/library-hashes.js.
+ * the raw SHA-256 of its bytes. See src/lib/library-hashes.js.
  */
 export const LIBRARY_HASHES_URL =
   "https://raw.githubusercontent.com/mozilla/dispensary/master/src/hashes.txt";
@@ -43,7 +43,7 @@ export const LIBRARY_HASHES_CACHE = ".lib-mozilla-hash-db-cache";
  * returns `{type, name, version, file}` for a file whose exact bytes are published
  * on the CDN, or 404 when nothing matches. A second-tier library identifier (after
  * the Mozilla hash DB above) for bundled files that DB does not list. See
- * src/checks/lib/cdn-lookup.js.
+ * src/lib/cdn-lookup.js.
  */
 export const CDN_LOOKUP_URL = "https://data.jsdelivr.com/v1/lookup/hash/";
 
@@ -56,7 +56,7 @@ export const CDN_LOOKUP_CACHE = ".lib-cdn-lookup-cache";
  * are typically small, so this targets likely libraries and avoids a CDN lookup (and a
  * content fingerprint) for every authored file. 16 KB comfortably clears a typical
  * authored module while catching un-minified library builds (pdf.mjs is ~810 KB). A
- * MINIFIED file is always eligible regardless of size. See src/checks/lib/cdn-lookup.js.
+ * MINIFIED file is always eligible regardless of size. See src/lib/cdn-lookup.js.
  */
 export const CDN_LOOKUP_READABLE_MIN_BYTES = 16384;
 
@@ -121,7 +121,7 @@ export const MAX_ENTRIES_PER_CATEGORY = 25;
 /**
  * Whether the reference graph (reachability) skips "non-authored" JS - library,
  * minified, obfuscated, or VENDOR.md-declared files (see nonAuthoredJs in
- * src/checks/lib/bundled.js) - when extracting outgoing edges.
+ * src/lib/bundled.js) - when extracting outgoing edges.
  *
  * FALSE (default): reachability parses EVERY file for edges. The source-level
  * finding scanners (the eval checks, unsafe-html, remote-script, code-sanity)

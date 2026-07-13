@@ -11,7 +11,7 @@
 // data.reason.
 //
 // It makes no decision of its own: the mapping is the shared resolveRecheck
-// (src/checks/lib/recheck.js), driven by ctx.recheck (the handed-over items) and
+// (src/lib/recheck.js), driven by ctx.recheck (the handed-over items) and
 // ctx.recheckVerdicts (the summary's verdicts). It runs in the post-summary phase
 // because it is named as unused-permission's post-summary-recheck target
 // (the orchestrator infers the phase from that reference). With no summary nothing
@@ -20,9 +20,9 @@
 // Belongs here: only the delegation. Does NOT belong here: enumerating the
 // permissions and the deterministic token verdicts (-> unused-permission), the
 // wording and tokens (-> assets/registry.yaml), or the verdict mapping
-// (-> src/checks/lib/recheck.js).
+// (-> src/lib/recheck.js).
 
-import { resolveRecheck } from "../lib/recheck.js";
+import { resolveRecheck } from "../../lib/recheck.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../registry.js").LoadedCheck} LoadedCheck */

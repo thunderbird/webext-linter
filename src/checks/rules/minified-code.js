@@ -10,14 +10,14 @@
 // obfuscated) AND not a library, and emitting one finding per such file.
 //
 // Does NOT belong here: the classification heuristics themselves (->
-// src/checks/lib/bundled.js, classifyAddonJs), the library-signal verdict and
+// src/lib/bundled.js, classifyAddonJs), the library-signal verdict and
 // its finding (-> missing-library.js), the obfuscated verdict (->
 // obfuscated-code.js), authored wording (-> assets/registry.yaml), severity (->
 // that registry entry, stamped by src/checks/registry.js), and report
 // formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
-import { classifyAddonJs, isMinifiedFirstParty } from "../lib/bundled.js";
+import { classifyAddonJs, isMinifiedFirstParty } from "../../lib/bundled.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {

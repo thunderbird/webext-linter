@@ -18,7 +18,7 @@
 // resolution, and the per-AST base index (-> src/parse/api-base.js). Deciding
 // whether a usage needs a permission, is covered by the manifest, or is
 // otherwise allowed - those verdicts live in the checks (src/checks/rules/* and
-// src/checks/lib/permissions.js). User-facing wording lives in
+// src/lib/permissions.js). User-facing wording lives in
 // assets/registry.yaml. Babel access goes through src/parse/ast.js.
 
 import { parseJs, traverse } from "./ast.js";

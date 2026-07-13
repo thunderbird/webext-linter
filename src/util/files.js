@@ -9,16 +9,23 @@
 // archive - that is src/addon/load.js for the add-on and src/schema/load.js for
 // schemas.
 
-/** Extensions treated as JavaScript source, including TypeScript and JSX
- *  authored source a source code archive ships (the parser strips types;
- *  see src/parse/ast.js). A compiled XPI contains none of these. */
+/** Extensions treated as JavaScript source: the ESM/CJS variants (Gecko loads a
+ *  background.scripts entry by PATH, so a .cjs script is executable code and must be
+ *  parsed and content-scanned like any .js), plus the TypeScript and JSX authored source
+ *  a source code archive ships (the parser strips types; see src/parse/ast.js). This set is
+ *  the corpus filter (collectJsSources), so a suffix missing here means the file is never
+ *  parsed by ANY check - be inclusive: an over-inclusive guess costs one parse, an
+ *  under-inclusive one silently skips review. A compiled XPI contains few of these. */
 export const JS_EXTENSIONS = new Set([
   ".js",
+  ".cjs",
   ".mjs",
   ".jsm",
   ".es",
   ".es6",
   ".ts",
+  ".cts",
+  ".mts",
   ".tsx",
   ".jsx",
 ]);
@@ -42,6 +49,53 @@ export const ARCHIVE_EXTENSIONS = new Set([
   ".tar",
   ".tgz",
   ".gz",
+]);
+
+/** Every file extension the tool RECOGNIZES as a legitimate add-on file - code it reviews
+ *  (JS/CSS/HTML/.vue) plus the ordinary web resources an add-on ships. It is the backstop
+ *  for the unrecognized-file-type check: a packaged file REFERENCED by the manifest or a
+ *  <script> tag whose suffix is NOT in here is a file the browser loads but the tool cannot
+ *  classify - a silent review gap turned into a loud finding. Kept GENERIC (plain web file
+ *  types) on purpose: this carries NO Thunderbird/manifest-key/schema knowledge. Widen it
+ *  when a legitimate common type is missing; add a JS suffix to JS_EXTENSIONS instead (so the
+ *  file is actually parsed, not merely recognized). */
+export const RECOGNIZED_EXTS = new Set([
+  ...JS_EXTENSIONS,
+  ...CSS_EXTENSIONS,
+  ...HTML_EXTENSIONS,
+  ".vue",
+  // Images
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".svg",
+  ".webp",
+  ".avif",
+  ".ico",
+  ".bmp",
+  // Fonts
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".otf",
+  ".eot",
+  // Data / text
+  ".json",
+  ".txt",
+  ".md",
+  ".csv",
+  ".xml",
+  ".yaml",
+  ".yml",
+  ".map",
+  ".wasm",
+  // Media
+  ".mp3",
+  ".mp4",
+  ".ogg",
+  ".wav",
+  ".webm",
 ]);
 
 /**

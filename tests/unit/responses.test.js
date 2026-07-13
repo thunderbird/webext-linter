@@ -180,7 +180,7 @@ test("a recheck consumer's XPI-corpus manual item labels [XPI] end-to-end", () =
 // placeholder rides on.
 test("renderManualItems fills a data slot from the ref's data", () => {
   const reg = new Registry({
-    "deterministic-checks": [
+    "deterministic-phase": [
       {
         title: "Data slot",
         check: "data-slot",

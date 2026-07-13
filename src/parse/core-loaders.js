@@ -4,7 +4,7 @@
 //
 // Belongs here: extracting those raw references (scanExperimentInjectedRefs). Does NOT
 // belong here: deciding which files exist / building the graph (->
-// src/checks/lib/reachability.js), or the WebExtension loaders (->
+// src/lib/reachability.js), or the WebExtension loaders (->
 // src/parse/local-imports.js, loader-files.js). Babel access goes through ast.js.
 
 import { classifyUrl } from "../scan/url.js";

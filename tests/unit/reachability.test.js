@@ -6,28 +6,34 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { buildReachability } from "../../src/checks/lib/reachability.js";
-import { manifestStringRefs } from "../../src/checks/lib/manifest-refs.js";
+import { buildReachability } from "../../src/lib/reachability.js";
+import { manifestStringRefs } from "../../src/lib/manifest-refs.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex } from "../../src/schema/index.js";
 import unusedFiles from "../../src/checks/rules/unused-files.js";
 import minimizeWar from "../../src/checks/rules/minimize-web-accessible-resources.js";
-import { loaderTrace } from "../../src/checks/lib/util.js";
-import { withManifest } from "./manifest-ctx.js";
+import { loaderTrace } from "../../src/lib/util.js";
+import { withManifest, parsedSources } from "./manifest-ctx.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixtureSchema = buildSchemaIndex(
   loadSchemaFiles(path.join(here, "..", "schema-fixture"))
 );
 
-// Build a review ctx from a {path: content} map + manifest object.
-function ctxFrom(files, manifest) {
+// Build a review ctx from a {path: content} map + manifest object. The schema goes in HERE,
+// not onto the ctx afterwards: the extraction pass type-walks the schema-derived loaders
+// against it, and a check only ever reads what the pass already extracted.
+function ctxFrom(files, manifest, schema) {
   const addon = {
     files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
     manifest,
   };
-  return withManifest({ addon, jsSources: collectJsSources(addon) });
+  return withManifest({
+    addon,
+    jsSources: parsedSources(addon, { schema }),
+    schema,
+  });
 }
 
 // The graph follows manifest seeds, JS imports/getURL, and HTML/CSS references
@@ -258,7 +264,7 @@ test("SCA: reachability over the built XPI describes the XPI", () => {
   const reach = buildReachability(
     withManifest({
       addon: xpi,
-      jsSources: collectJsSources(xpi),
+      jsSources: parsedSources(xpi),
       mode: "sca",
     })
   );
@@ -293,8 +299,7 @@ test("reachability finds files registered via a schema-derived loader", () => {
     "bg.js": `messenger.messageDisplayScripts.register({ js: [{ file: "inject.js" }] });`,
     "inject.js": `console.log(1);`,
   };
-  const ctx = ctxFrom(files, manifest);
-  ctx.schema = fixtureSchema;
+  const ctx = ctxFrom(files, manifest, fixtureSchema);
   assert.ok(buildReachability(ctx).reachable.has("inject.js"));
 });
 
@@ -308,8 +313,7 @@ test("reachability follows schema-derived and bridge loader APIs", () => {
     "inject.js": `console.log(1);`,
     "page.html": "<html></html>",
   };
-  const ctx = ctxFrom(files, manifest);
-  ctx.schema = fixtureSchema;
+  const ctx = ctxFrom(files, manifest, fixtureSchema);
   const reach = buildReachability(ctx);
   assert.ok(reach.reachable.has("inject.js")); // schema-derived register
   assert.ok(reach.reachable.has("page.html")); // bridge tabs.create

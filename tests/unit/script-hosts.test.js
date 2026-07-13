@@ -4,13 +4,13 @@
 // {icons}, ...), and resolving such a path against them (".." clamped at root).
 
 import { test } from "node:test";
-import { withManifest } from "./manifest-ctx.js";
+import { withManifest, parsedSources } from "./manifest-ctx.js";
 import assert from "node:assert/strict";
 
 import {
   scriptHostDirs,
   resolvePageRelative,
-} from "../../src/checks/lib/script-hosts.js";
+} from "../../src/lib/script-hosts.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 
 // Build a review ctx from a {path: content} map + manifest object.
@@ -19,7 +19,7 @@ function ctxFrom(files, manifest) {
     files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
     manifest,
   };
-  return withManifest({ addon, jsSources: collectJsSources(addon) });
+  return withManifest({ addon, jsSources: parsedSources(addon) });
 }
 
 const dirs = (map, file) => [...(map.get(file) ?? [])];

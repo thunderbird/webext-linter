@@ -10,13 +10,13 @@
 // hit with the sink name as the item so the reviewer knows what to inspect.
 // Does NOT belong here: the AST scan that finds sink writes and the empty-clear
 // filter (-> src/parse/unsafe-html.js), the non-authored skip-list
-// (-> src/checks/lib/bundled.js), authored wording (-> assets/registry.yaml),
+// (-> src/lib/bundled.js), authored wording (-> assets/registry.yaml),
 // severity (-> that registry entry, stamped by src/checks/registry.js), and
 // report formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
 import { unsafeHtmlOf } from "../extract.js";
-import { nonAuthoredJs } from "../lib/bundled.js";
+import { nonAuthoredJs } from "../../lib/bundled.js";
 
 export default {
   run(ctx) {

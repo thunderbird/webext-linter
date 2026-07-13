@@ -2,7 +2,7 @@
 // schema-directed / bridge "referenced file not bundled" detection.
 
 import { test } from "node:test";
-import { withManifest } from "./manifest-ctx.js";
+import { withManifest, parsed } from "./manifest-ctx.js";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +11,7 @@ import bundledFiles from "../../src/checks/rules/bundled-files.js";
 import {
   resolveInDirStatus,
   resolveRefStatus,
-} from "../../src/checks/lib/manifest-refs.js";
+} from "../../src/lib/manifest-refs.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex } from "../../src/schema/index.js";
 
@@ -37,8 +37,12 @@ function ctxWithJs(code, files = {}) {
     { manifest_version: 3, background: { scripts: ["bg.js"] } },
     { "bg.js": code, ...files }
   );
-  ctx.jsSources = [{ file: "bg.js", code, lineOffset: 0 }];
+  // The schema first: the pass below type-walks the derived loaders against it, and it must
+  // be the SAME schema the check then reads off the ctx.
   ctx.schema = fixtureSchema;
+  ctx.jsSources = parsed([{ file: "bg.js", code, lineOffset: 0 }], {
+    schema: ctx.schema,
+  });
   return ctx;
 }
 
@@ -162,18 +166,20 @@ test("executeScript {file} is checked against the host page (root for background
     "src/background.js": call,
     "message-unescape.js": "", // at root, where the host page resolves it
   });
-  present.jsSources = [
-    { file: "src/background.js", code: call, lineOffset: 0 },
-  ];
+  present.jsSources = parsed(
+    [{ file: "src/background.js", code: call, lineOffset: 0 }],
+    { schema: present.schema }
+  );
   assert.equal(bundledFiles.run(present).length, 0); // resolves to root message-unescape.js
 
   const missing = ctxWith(manifest, {
     "src/background.js": call,
     "src/message-unescape.js": "", // only next to the script, not at root
   });
-  missing.jsSources = [
-    { file: "src/background.js", code: call, lineOffset: 0 },
-  ];
+  missing.jsSources = parsed(
+    [{ file: "src/background.js", code: call, lineOffset: 0 }],
+    { schema: missing.schema }
+  );
   const out = bundledFiles.run(missing);
   assert.equal(out.length, 1);
   assert.match(out[0].item, /message-unescape\.js/);
@@ -243,7 +249,10 @@ test("tabs.create {url} resolves against the script's dir (subdir climbs out)", 
     "options/options.js": call,
     "target/target.html": "",
   });
-  ctx.jsSources = [{ file: "options/options.js", code: call, lineOffset: 0 }];
+  ctx.jsSources = parsed(
+    [{ file: "options/options.js", code: call, lineOffset: 0 }],
+    { schema: ctx.schema }
+  );
   assert.equal(bundledFiles.run(ctx).length, 0); // options/../target/target.html
 });
 
@@ -260,7 +269,10 @@ test("background.scripts: a climbing tabs.create url clamps to a bundled file - 
     "background/bg.mjs": call,
     "assistant/assistant.html": "",
   });
-  ctx.jsSources = [{ file: "background/bg.mjs", code: call, lineOffset: 0 }];
+  ctx.jsSources = parsed(
+    [{ file: "background/bg.mjs", code: call, lineOffset: 0 }],
+    { schema: ctx.schema }
+  );
   assert.equal(bundledFiles.run(ctx).length, 0); // clamps to assistant/assistant.html
 });
 
@@ -275,25 +287,31 @@ test("tabs.create {url} with a leading .. clamps at root", () => {
     "bg.js": `browser.tabs.create({ url: "../target/target.html" });`,
     "target/target.html": "",
   });
-  present.jsSources = [
-    {
-      file: "bg.js",
-      code: present.addon.files.get("bg.js").toString(),
-      lineOffset: 0,
-    },
-  ];
+  present.jsSources = parsed(
+    [
+      {
+        file: "bg.js",
+        code: present.addon.files.get("bg.js").toString(),
+        lineOffset: 0,
+      },
+    ],
+    { schema: present.schema }
+  );
   assert.equal(bundledFiles.run(present).length, 0); // clamps to target/target.html
 
   const missing = ctxWith(manifest, {
     "bg.js": `browser.tabs.create({ url: "../nope/missing.html" });`,
   });
-  missing.jsSources = [
-    {
-      file: "bg.js",
-      code: missing.addon.files.get("bg.js").toString(),
-      lineOffset: 0,
-    },
-  ];
+  missing.jsSources = parsed(
+    [
+      {
+        file: "bg.js",
+        code: missing.addon.files.get("bg.js").toString(),
+        lineOffset: 0,
+      },
+    ],
+    { schema: missing.schema }
+  );
   const out = bundledFiles.run(missing);
   assert.equal(out.length, 1);
   assert.match(out[0].item, /missing\.html/);
@@ -308,7 +326,10 @@ test("loader refs in a non-live (orphan) script are skipped", () => {
 
   // Orphan: no manifest entry and no page loads it -> not live -> skipped.
   const orphan = ctxWith({ manifest_version: 2 }, { "orphan.js": call });
-  orphan.jsSources = [{ file: "orphan.js", code: call, lineOffset: 0 }];
+  orphan.jsSources = parsed(
+    [{ file: "orphan.js", code: call, lineOffset: 0 }],
+    { schema: orphan.schema }
+  );
   assert.equal(bundledFiles.run(orphan).length, 0);
 
   // Live: declared as the background script -> checked -> the missing url flagged.
@@ -316,7 +337,9 @@ test("loader refs in a non-live (orphan) script are skipped", () => {
     { manifest_version: 2, background: { scripts: ["bg.js"] } },
     { "bg.js": call }
   );
-  live.jsSources = [{ file: "bg.js", code: call, lineOffset: 0 }];
+  live.jsSources = parsed([{ file: "bg.js", code: call, lineOffset: 0 }], {
+    schema: live.schema,
+  });
   const out = bundledFiles.run(live);
   assert.equal(out.length, 1);
   assert.match(out[0].item, /missing\.html/);

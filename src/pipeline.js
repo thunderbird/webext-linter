@@ -6,7 +6,7 @@
 // and I/O are the front-end's job. The tool is read-only: it never modifies or
 // repacks the submission.
 //
-// Belongs here: the stage orchestration (runPipeline, reviewAddon) and the
+// Belongs here: the stage orchestration (runPipeline) and the
 // pipeline-level schema-selection helpers (resolveReviewSchema,
 // selectSchemaChannel, detectManifestVersion).
 //
@@ -36,16 +36,10 @@ import {
 import {
   loadAddon,
   loadScaAddon,
-  loadScaBuildFiles,
+  selectScaBuildFiles,
   scaExpSourceRelative,
 } from "./addon/load.js";
-import { resolveReviewUrl } from "./addon/atn.js";
-import {
-  runChecks,
-  runOneCheck,
-  routeCtx,
-  loadRegistry,
-} from "./checks/registry.js";
+import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
 import {
   buildRunContext,
@@ -53,7 +47,6 @@ import {
   buildScaBuildCtx,
   buildManifestCtx,
 } from "./checks/context.js";
-import { buildSummarizer, buildAddonSummarizer } from "./checks/summaries.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
 import { headerLines } from "./report/format.js";
 import { resolveVendor } from "./vendor/resolve.js";
@@ -69,30 +62,26 @@ import {
   assembleBundled,
   applyNotPopularVendor,
   hasUnreviewableCode,
-} from "./checks/lib/bundled.js";
+} from "./lib/bundled.js";
 import { collectJsSources } from "./addon/sources.js";
-import { runExtractionPass } from "./checks/extract.js";
-import { resolveCdnLibraries } from "./checks/lib/cdn-lookup.js";
+import {
+  runExtractionPass,
+  runShippedExtractionPass,
+} from "./checks/extract.js";
+import { resolveCdnLibraries } from "./lib/cdn-lookup.js";
 import {
   resolveLibraryHashes,
   parseLibraryHashes,
-} from "./checks/lib/library-hashes.js";
+} from "./lib/library-hashes.js";
 import {
   resolveLibraryBlocks,
   parseLibraryBlocks,
-} from "./checks/lib/library-blocks.js";
-import { collapseUnused } from "./checks/lib/unused-folders.js";
-import {
-  isExperiment,
-  parseVersion,
-  strictMaxVersion,
-} from "./checks/lib/util.js";
-import { experimentApiNamespaces } from "./checks/lib/experiments.js";
+} from "./lib/library-blocks.js";
+import { isExperiment, parseVersion, strictMaxVersion } from "./lib/util.js";
+import { experimentApiNamespaces } from "./lib/experiments.js";
 import { verifyExperiments } from "./experiments/verify.js";
 import { createLlmBudget } from "./llm/budget.js";
-import { debug, progress, warn, FEED, llmErrorText } from "./util/log.js";
-import { red } from "./util/color.js";
-import { humanSize } from "./util/text.js";
+import { debug, progress, warn, FEED } from "./util/log.js";
 import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
 
 /** @typedef {import("./report/finding.js").Finding} Finding */
@@ -141,8 +130,6 @@ import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
  *   (offline/privacy).
  * @property {string} [cdnLookupCache]  Where to cache the CDN hash-lookup results.
  * @property {string} [diffTo]  Path to the previous published version.
- * @property {boolean} [reviewUrl]  Look up the ATN reviewer review-page URL and
- *   put it on meta.reviewUrl - set for text reports, off for JSON/the harness.
  * @property {boolean} [llmReview]  The sole LLM on-switch (--llm-review).
  * @property {string} [llmApiKey]  Real API key, or undefined (a keyless
  *   provider).
@@ -152,6 +139,12 @@ import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
  * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
  *   network transport for vendor verification (the test harness injects an
  *   offline one); defaults to the real fetch.
+ * @property {{callVerdicts?: Function, callText?: Function, callReview?: Function}}
+ *   [llmTransport]  Injectable model transports (else the provider's own), threaded to
+ *   the review client and the setup-time model calls (resolveVendor / verifyVendor /
+ *   analyzeBuild). The LLM counterpart of vendorNet: the offline test harness injects
+ *   deterministic fakes so an --llm-review run makes no network request; production
+ *   never sets it, so every site defaults to the real provider.
  * @property {import("./addon/load.js").Addon} [addon]  Pre-loaded add-on (the
  *   test harness injects one to drop its expected.json sidecar).
  * @property {import("./checks/registry.js").Registry} [registry]  Parsed
@@ -203,7 +196,7 @@ export async function runPipeline(opts) {
   // --sca-source may name a nested subfolder OR the archive root itself (a flat
   // layout: manifest.json at the root, with the build tooling intermingled). The root
   // case (scaRootRelative resolves ".", an absolute root, or a literal match all to "")
-  // is handled throughout: loadScaAddon reviews every file, and loadScaBuildFiles still
+  // is handled throughout: loadScaAddon reviews every file, and selectScaBuildFiles still
   // traces the build off the root package.json (there is no source subtree to exclude).
   // --sca-root alone switches to SCA mode; --sca-source is optional and defaults to "."
   // (the whole root reviewed as the source - the common flat-layout case).
@@ -243,7 +236,7 @@ export async function runPipeline(opts) {
   // is downgraded to an XPI review (below) likewise under-runs the SCA-sized total by the
   // few SCA-only steps it then skips - the same accepted inexactness, no re-sizing.
   const setupTotal =
-    (preliminaryMode === "sca" ? 10 : 7) +
+    (preliminaryMode === "sca" ? 11 : 7) +
     (opts.llmReview ? 1 : 0) +
     (isExp ? 1 : 0);
   let setupDone = 0;
@@ -271,6 +264,27 @@ export async function runPipeline(opts) {
   let scaArchive;
   let scaSource;
   let scaExpSource;
+
+  // 1b. The review schema: fetched, annotated, indexed. It is resolved from the SHIPPED
+  // XPI's manifest alone (manifest_version + strict_max_version pick the channel), so it
+  // depends on neither the Experiment classification nor the review mode - which is why it
+  // runs before both, as the one piece of setup EVERY path needs. The extraction pass reads
+  // its web_api / loader signatures and the review runs against it; a rejected Experiment
+  // needs it too - the reject check resolves Experiment API paths through it (to spot one
+  // shadowing a built-in) and meta reads schema.applicationVersion.
+  const {
+    zipPath: schemaZipPath,
+    source: schemaSource,
+    branch: schemaBranch,
+    channel: schemaChannel,
+  } = await resolveReviewSchema({
+    cacheDir: opts.schemaCache ?? DEFAULT_CACHE,
+    manifest: xpiAddon.manifest,
+    setupStep,
+  });
+  const schemaFiles = loadSchemaFiles(schemaZipPath);
+  applySchemaAnnotations(schemaFiles.files, loadSchemaAnnotations());
+  const schema = buildSchemaIndex(schemaFiles);
 
   // Classify every Experiment add-on against the upstream drafts
   // (github.com/thunderbird/webext-experiments), regardless of
@@ -322,75 +336,80 @@ export async function runPipeline(opts) {
     confirmMore: opts.confirmMore,
   });
 
-  // The LLM pre-flight: shown in the Setup feed with the chosen type + model,
-  // and a HARD FAIL on a bad config. Runs whenever --llm-review, regardless of
-  // whether this run will actually use the LLM (a rejected Experiment included)
-  // - if you ask for the LLM, its config must be usable. A throw here is
-  // surfaced by main()'s catch as a stderr message + exit 2.
-  if (opts.llmReview) {
-    setupStep(`Checking the LLM (${opts.llmApiType}, ${opts.llmModel})`);
-    const configError = validateLlmConfig(opts.llmApiType, {
-      apiKey: opts.llmApiKey,
-    });
-    if (configError) {
-      throw new Error(configError);
-    }
-    const availabilityError = await checkModelAvailable(opts.llmApiType, {
-      model: opts.llmModel,
-      token: opts.llmApiKey,
-      baseURL: opts.llmApiUrl,
-    });
-    if (availabilityError) {
-      throw new Error(availabilityError);
-    }
-  }
-
-  // Resolve the review schema up front: the extraction pass (run per-review below) needs
-  // the web_api / loader schema, and reviewAddon reviews against it. A rejected Experiment fetches
-  // it too (reviewAddon still runs the reject check and reads schema.applicationVersion).
-  const {
-    zipPath: schemaZipPath,
-    source: schemaSource,
-    branch: schemaBranch,
-    channel: schemaChannel,
-  } = await resolveReviewSchema({
-    cacheDir: opts.schemaCache ?? DEFAULT_CACHE,
-    manifest: xpiAddon.manifest,
-    setupStep,
-  });
-  const schemaFiles = loadSchemaFiles(schemaZipPath);
-  applySchemaAnnotations(schemaFiles.files, loadSchemaAnnotations());
-  const schema = buildSchemaIndex(schemaFiles);
-  // A valid Experiment's declared APIs are part of its platform: register their base
-  // namespaces so the developer's calls into them (e.g. browser.calendar.*) resolve
-  // instead of tripping unknown-api. Registered from the XPI (in SCA the experiment
-  // schema/scripts live in the built XPI, so the manifest's paths resolve there).
-  if (!invalidExperiment && isExperiment(xpiAddon.manifest)) {
-    schema.registerExperimentNamespaces(
-      experimentApiNamespaces(xpiAddon.manifest, xpiAddon.files)
-    );
-  }
-
-  // The known-library hash DB the bundled classifier matches files against. Stays
-  // an empty Map for a rejected Experiment (the block below, which classifies, is
-  // skipped) so nothing is ever recognized.
-  let libraryHashes = new Map();
-  // Set true below when a submitted SCA is downgraded to a plain XPI review because the
-  // shipped XPI is directly reviewable (stays false for a rejected Experiment, which skips
-  // the classify block). Read by the sca-not-required check via reviewAddon -> ctx.
+  // The review target: the SHIPPED XPI unless an SCA survives the downgrade below. Pinned to
+  // `xpi` for a rejected Experiment, whose rejection is decided entirely from the shipped XPI's
+  // bundled experiments - reviewing the readable source would be pointless, so Phase 2 never
+  // reads the source archive at all.
+  let mode = "xpi";
+  // Set below when a submitted SCA is downgraded to a plain XPI review because the shipped XPI
+  // is directly reviewable. Read by the sca-not-required check via ctx.
   let scaNotRequired = false;
-  // The parse-first review sources: classifyAndExtractReview runs the extraction pass
-  // and returns them for reviewAddon to reuse. Stays undefined for a rejected Experiment
-  // (which skips the classify block below), so buildRunContext parses there instead.
+  // The known-library hash DB the bundled classifier matches files against. An empty Map
+  // recognizes nothing.
+  let libraryHashes = new Map();
+  // The parse-first review sources: extractReview (Phase 3) runs the extraction pass and
+  // returns them for Phase 4 to hand to buildRunContext, which never parses for itself.
+  // Stays unset for a rejected Experiment (Phase 3 is skipped), whose one check reads no code -
+  // so it reviews with an empty ctx.jsSources.
   let preParsedJsSources;
+  // The SHIPPED XPI's sources, parsed as a LOAD GRAPH in the SCA tail below. Only SCA needs
+  // them: in an XPI review the built add-on IS the review target, so buildShippedCtx returns
+  // the review ctx unchanged and its already-parsed sources with it.
+  let shippedJsSources;
+  // The XPI's Experiment API namespaces (null for a non-Experiment). Computed ONCE when
+  // registered below, then reused by the shipped extraction pass - it reads/parses each bundled
+  // experiment schema.json, so it is not free to recompute.
+  let xpiExperimentNamespaces = null;
+  // MAY THIS RUN CALL THE MODEL? Asked exactly once, here, because this is the only place that
+  // can answer it: --llm-review requests the model, the pre-flight below proves the config can
+  // actually serve one, and a rejected Experiment calls none at all (this is set inside that
+  // gate). Phase 4 turns it into ctx.llm - the verified client - and everything downstream reads
+  // THAT. Nothing re-derives the answer from --llm-review and invalidExperiment again.
+  let llmVerified = false;
 
-  // Phase 1 tail: fetch the hash DB and, when an SCA was submitted, classify the shipped
-  // XPI to RESOLVE the effective mode. A rejected Experiment skips this (nothing is
-  // classified, so it is never downgraded - `mode` stays `preliminaryMode`).
-  let mode = preliminaryMode;
+  // The rest of setup serves a REVIEWABLE add-on, and is skipped WHOLESALE for a rejected
+  // Experiment: it runs only the invalid-experiment phase against the shipped XPI - no model
+  // call, no libraries to recognize, no mode to resolve - so none of this would be read.
   if (!invalidExperiment) {
-    // 1b. The known-library hash DB the classifier matches bytes against (fetched
-    // and cached; a pre-seeded cache keeps offline runs deterministic). Both modes classify.
+    // The LLM pre-flight: shown in the Setup feed with the chosen type + model, and a HARD FAIL
+    // on a bad config - a review that WILL call the model must not get halfway in and then
+    // discover the token is wrong. A throw here is surfaced by main()'s catch as a stderr
+    // message + exit 2. It sits inside the gate because a rejected Experiment calls no model
+    // at all, so its config is never used and a bad one must not sink the rejection.
+    if (opts.llmReview) {
+      setupStep(`Checking the LLM (${opts.llmApiType}, ${opts.llmModel})`);
+      const configError = validateLlmConfig(opts.llmApiType, {
+        apiKey: opts.llmApiKey,
+      });
+      if (configError) {
+        throw new Error(configError);
+      }
+      const availabilityError = await checkModelAvailable(opts.llmApiType, {
+        model: opts.llmModel,
+        token: opts.llmApiKey,
+        baseURL: opts.llmApiUrl,
+      });
+      if (availabilityError) {
+        throw new Error(availabilityError);
+      }
+      // Requested, and proven usable.
+      llmVerified = true;
+    }
+
+    // A valid Experiment's declared APIs are part of its platform: register their base
+    // namespaces so the developer's calls into them (e.g. browser.calendar.*) resolve
+    // instead of tripping unknown-api. Registered from the XPI (in SCA the experiment
+    // schema/scripts live in the built XPI, so the manifest's paths resolve there).
+    if (isExp) {
+      xpiExperimentNamespaces = experimentApiNamespaces(
+        xpiAddon.manifest,
+        xpiAddon.files
+      );
+      schema.registerExperimentNamespaces(xpiExperimentNamespaces);
+    }
+
+    // The known-library hash DB the classifier matches bytes against (fetched and cached; a
+    // pre-seeded cache keeps offline runs deterministic). Both modes classify.
     setupStep("Fetching library hashes");
     const { text: libraryHashesText } = await resolveLibraryHashes({
       cacheDir: opts.libraryHashesCache,
@@ -402,6 +421,7 @@ export async function runPipeline(opts) {
     // ships minified/obfuscated first-party code - so the SCA source content is irrelevant.
     // A directly-reviewable XPI downgrades to a plain XPI review (which still runs
     // minified-code and the rest against the XPI); sca-not-required reports it.
+    mode = preliminaryMode;
     if (opts.scaRoot) {
       setupStep("Classifying the built add-on");
       const bundled = classifyBundled(xpiAddon, { libraryHashes });
@@ -423,7 +443,7 @@ export async function runPipeline(opts) {
   // touches it). The review target `addon`, `scaSource`, `scaExpSource`, the experiment
   // mirror, and `meta` all follow the resolved mode.
   if (mode === "sca") {
-    // Read the whole --sca-root archive ONCE (shared with loadScaBuildFiles below); the
+    // Read the whole --sca-root archive ONCE (shared with selectScaBuildFiles below); the
     // review addon is the source subtree carrying the XPI's manifest.
     scaSource = opts.scaSource || ".";
     scaArchive = loadAddon(opts.scaRoot);
@@ -457,7 +477,6 @@ export async function runPipeline(opts) {
   } else {
     // XPI review (native, or a downgraded false SCA): the review target IS the .xpi.
     addon = xpiAddon;
-    scaSource = opts.scaSource;
     scaExpSource = undefined;
   }
   const meta = {
@@ -474,19 +493,25 @@ export async function runPipeline(opts) {
     );
   }
 
-  // Phase 3: resolve the dependency manifest and run the mode-specific vendor / library /
-  // build setup. Skipped for a rejected Experiment (only the reject check runs).
+  // Phase 3: the vendor / library / build setup. Three steps run on the REVIEW TARGET, in
+  // this order: check its DECLARED dependencies, classify + extract it, then identify its
+  // UNDECLARED libraries. Only the first is mode-specific, because a source archive and an
+  // XPI declare dependencies differently. A submitted SCA then adds a tail for the two
+  // artifacts that are NOT the review target: the shipped XPI (whose bundled store the
+  // input:xpi checks read) and the build corpus.
+  // Skipped for a rejected Experiment (only the reject check runs).
   if (!invalidExperiment) {
     // 1c. Resolve the dependency manifest ONCE (package.json deps + any VENDOR
     // declarations), so the review's checks share one immutable store.
     addon.vendor = await resolveVendor({
       addon,
       parsePrompt: registry.prompt("vendor-parse"),
-      enabled: opts.llmReview,
+      enabled: llmVerified,
       token: opts.llmApiKey,
       model: opts.llmModel,
       url: opts.llmApiUrl,
       type: opts.llmApiType,
+      callText: opts.llmTransport?.callText,
       budget: llmBudget,
     });
 
@@ -498,6 +523,8 @@ export async function runPipeline(opts) {
     const { text: libraryBlocksText } = await resolveLibraryBlocks();
     const libraryBlocks = parseLibraryBlocks(libraryBlocksText);
 
+    // 1d. Check the DECLARED dependencies of the review target. Both modes ask about the
+    // same artifact, but the two declare differently, so the question is not the same one.
     if (mode === "sca") {
       // SCA: the source archive's package.json declares the dependencies - audit each for
       // popularity (non-popular -> reject) and OSV. The readable source may ALSO vendor a
@@ -506,24 +533,62 @@ export async function runPipeline(opts) {
       // the source vendors stays non-authored and is rejected.
       setupStep("Auditing source dependencies");
       await verifyScaDependencies(addon, opts.vendorNet, libraryBlocks);
-      preParsedJsSources = classifyAndExtractReview(addon, {
-        schema,
-        libraryHashes,
-        xpiAddon,
-        setupStep,
-      });
-      // Identify + OSV-audit any third-party library VENDORED into the readable source (a
-      // committed copy the Mozilla hash DB missed): a jsDelivr content-hash match plus OSV,
-      // deduped against the declared-dependency audit above. Corrects the authored /
-      // non-authored split the content checks and the source summary read.
-      await identifyBundledLibraries(addon, {
-        net: opts.vendorNet,
-        cacheDir: opts.cdnLookupCache,
-        cdnEnabled: opts.cdnLookup !== false,
-        blocks: libraryBlocks,
-        setupStep,
-        scope: "source",
-      });
+    } else {
+      // XPI: no package.json - the add-on ships COMMITTED COPIES, declared in VENDOR.md.
+      // Verify the resolved declarations over the network ONCE - fetch, compare
+      // (EOL-tolerant), popularity, and the package.json<->file matching. An offline
+      // transport (the golden harness) makes no request. The LLM params drive the
+      // github->npm resolution fallback; the run-wide budget is shared.
+      setupStep("Verifying vendored libraries");
+      await verifyVendor(
+        addon,
+        opts.vendorNet,
+        {
+          enabled: llmVerified,
+          resolvePrompt: registry.prompt("vendor-npm-resolve"),
+          token: opts.llmApiKey,
+          model: opts.llmModel,
+          url: opts.llmApiUrl,
+          type: opts.llmApiType,
+          callText: opts.llmTransport?.callText,
+          budget: llmBudget,
+        },
+        libraryBlocks
+      );
+    }
+
+    // 1e. Classify the REVIEW TARGET's files (library hash, minified geometry, obfuscation),
+    // seeding addon.bundled and its non-authored set. The review target is whatever Phase 2
+    // resolved, so this is one step in both modes. It runs AFTER the declaration check above,
+    // so the declared vendored set is final (verifyVendor DISCOVERS further vendored files by
+    // hash and adds them to vendor.set, which classifyFiles reads).
+    classifyReview(addon, { libraryHashes });
+
+    // 1f. Identify + OSV-audit the UNDECLARED third-party libraries the declaration check
+    // cannot see: a committed copy the Mozilla hash DB missed, matched by jsDelivr content
+    // hash, then reconciled against the declared audit above. One step in both modes - it runs
+    // on the review target, and `scope` only names it in the Setup feed.
+    //
+    // This FINALIZES the authored / non-authored split: it adds to the skip set (an identified
+    // library) and removes from it (applyNotPopularVendor: a readable vendored library whose
+    // package is not popular is reviewed as the developer's own code). So it must precede the
+    // parse below, which gates content extraction on that set.
+    await identifyBundledLibraries(addon, {
+      net: opts.vendorNet,
+      cacheDir: opts.cdnLookupCache,
+      cdnEnabled: opts.cdnLookup !== false,
+      blocks: libraryBlocks,
+      setupStep,
+      scope: mode === "sca" ? "source" : "bundled",
+    });
+
+    // 1g. Parse the REVIEW TARGET - once, with the FINAL skip set (see extractReview).
+    preParsedJsSources = extractReview(addon, { schema, xpiAddon, setupStep });
+
+    // 1h. SCA only: cover the two artifacts that are NOT the review target. In XPI mode the
+    // review target IS the shipped XPI (1f already identified it) and there is no build
+    // corpus, so both of these collapse away.
+    if (mode === "sca") {
       // The BUILT XPI was already classified above (the sca-not-required decision) into
       // xpiAddon.bundled - the packaging summary + the input:xpi checks read it, and their
       // skip set is that classification's non-authored set, so the XPI's minified/library
@@ -539,10 +604,27 @@ export async function runPipeline(opts) {
         cacheDir: opts.cdnLookupCache,
         enabled: opts.cdnLookup !== false,
       });
+      // Parse the SHIPPED XPI. In an XPI review the built add-on IS the review target, and
+      // the pass above already parsed it. Here it is a SECOND artifact that nothing had
+      // parsed - so each of its `input: xpi` checks (unused-files,
+      // minimize-web-accessible-resources, bundled-files, the two background-module ones)
+      // would have had to parse it itself, at check time. A check is a pure reader, so setup
+      // parses it once, here.
+      //
+      // The LIGHT pass: in SCA the code under review is the readable SOURCE, so the built
+      // add-on is only ever walked as a LOAD GRAPH. No content scanner and no api-usage
+      // consumer reads this artifact, so none is run over it.
+      setupStep("Parsing the built add-on");
+      shippedJsSources = collectJsSources(xpiAddon);
+      runShippedExtractionPass(shippedJsSources, {
+        schema,
+        // Reuse the set registered in Phase 1 (same manifest + files); null for a non-Experiment.
+        experimentNamespaces: xpiExperimentNamespaces,
+      });
       // The BUILD files (archive minus the review source + Experiment source) - the
       // build scripts/config the review otherwise drops. buildScaBuildCtx wraps these
       // as the `input: build` check's ctx.addon; they never merge into the review addon.
-      addon.buildFiles = loadScaBuildFiles(
+      addon.buildFiles = selectScaBuildFiles(
         scaArchive,
         scaSource,
         opts.scaRoot,
@@ -555,81 +637,145 @@ export async function runPipeline(opts) {
       addon.buildFiles.buildReview = await analyzeBuild({
         build: addon.buildFiles,
         analysisPrompt: registry.prompt("build-analysis"),
-        enabled: opts.llmReview,
+        enabled: llmVerified,
         token: opts.llmApiKey,
         model: opts.llmModel,
         url: opts.llmApiUrl,
         type: opts.llmApiType,
+        callText: opts.llmTransport?.callText,
         budget: llmBudget,
-      });
-    } else {
-      // XPI: the full vendored-library pipeline.
-      // 1d. Verify the resolved declarations over the network ONCE - fetch,
-      // compare (EOL-tolerant), popularity, and the package.json<->file matching.
-      // An offline transport (the golden harness) makes no request. The LLM params
-      // drive the github->npm resolution fallback; the run-wide budget is shared.
-      setupStep("Verifying vendored libraries");
-      await verifyVendor(
-        addon,
-        opts.vendorNet,
-        {
-          enabled: opts.llmReview,
-          resolvePrompt: registry.prompt("vendor-npm-resolve"),
-          token: opts.llmApiKey,
-          model: opts.llmModel,
-          url: opts.llmApiUrl,
-          type: opts.llmApiType,
-          budget: llmBudget,
-        },
-        libraryBlocks
-      );
-
-      // 1e. Classify the bundled (undeclared third-party) JS per file (library hash,
-      // minified geometry, obfuscation), then the extraction pass (content scanners
-      // over the authored remainder), then assemble addon.bundled. Runs after
-      // verifyVendor so the vendored skip set is final, and before cdn-lookup, which
-      // reads the final tag.obfuscated.
-      preParsedJsSources = classifyAndExtractReview(addon, {
-        schema,
-        libraryHashes,
-        xpiAddon,
-        setupStep,
-      });
-
-      // 1e-half..1f. Reconcile the not-popular declared libraries, then CDN-identify and
-      // OSV-audit the undeclared bundles (Mozilla-hash + jsDelivr matches), so an undeclared
-      // vulnerable/not-popular library is caught like a declared dependency. See
-      // identifyBundledLibraries.
-      await identifyBundledLibraries(addon, {
-        net: opts.vendorNet,
-        cacheDir: opts.cdnLookupCache,
-        cdnEnabled: opts.cdnLookup !== false,
-        blocks: libraryBlocks,
-        setupStep,
       });
     }
   }
 
-  // 2. Schema review. reviewAddon also generates the advisory AI summaries at
-  // the tail of the activity feed (the add-on summary's recheck verdicts feed the
-  // post-summary recheck consumers, which run there too), so they come back here.
-  const result = await reviewAddon(addon, opts, registry, invalidExperiment, {
-    budget: llmBudget,
-    setupStep,
-    libraryHashes,
-    mode,
+  // 2. Schema review. runChecks (called inline below, Phase 5) also generates the advisory
+  // AI summaries at the tail of the activity feed (the add-on summary's recheck verdicts feed
+  // the post-summary recheck consumers, which run there too).
+  // Phase 4: build the RunContext the checks read - the last step of setup. The checks
+  // layer assembles its own context (sources, API usage, diff baseline, LLM client); the
+  // pipeline only resolves the inputs. Its sibling contexts are built here too, so every
+  // artifact a check may be routed to exists before the first check runs.
+  //
+  // Nothing is parsed here: a reviewable add-on had its sources parsed in Phase 3 and hands
+  // them over as preParsedJsSources, and a rejected Experiment parses none at all - its one
+  // check reads no code.
+  const ctx = buildRunContext({
+    addon,
+    // The built XPI - authoritative for the manifest (ctx.manifest). xpiAddon === addon
+    // in XPI mode; in SCA it is the shipped artifact while addon is the readable source.
     xpiAddon,
-    scaExpSource,
-    scaNotRequired,
     schema,
+    // Only what a check reads. The LLM credentials go as params (below), not on the
+    // check-facing options - the secret token must not sit on ctx.options.
+    options: {
+      allowExperiments: opts.allowExperiments,
+      libraryHashes,
+    },
+    diffTo: opts.diffTo,
+    llmModel: opts.llmModel,
+    llmApiKey: opts.llmApiKey,
+    llmApiType: opts.llmApiType,
+    llmApiUrl: opts.llmApiUrl,
+    llmTransport: opts.llmTransport,
+    systemIntro: registry.prompt("system-intro"),
+    // Phase 1's verdict on whether this run may call the model. The SOLE gate on attaching
+    // ctx.llm - buildRunContext does not re-ask --llm-review, and does not consult
+    // invalidExperiment for it.
+    llmVerified,
+    invalidExperiment,
+    mode,
+    // SCA: the Experiment folder as a source-relative path (runPipeline re-based it
+    // from the scaRoot-relative --sca-exp-source flag), excluded from the WebExtension
+    // code checks. Undefined in XPI mode.
+    scaExpSource,
+    // A submitted SCA was downgraded to this XPI review because the shipped XPI is
+    // directly reviewable; the sca-not-required check reads this to report it.
+    scaNotRequired,
+    budget: llmBudget,
+    // Phase 3 parsed the review sources (parse-first); buildRunContext assembles from them
+    // and never parses. Absent for a rejected Experiment, whose one check reads no code, so
+    // it gets an empty ctx.jsSources.
+    preParsedJsSources,
+  });
+
+  // The orchestrator holds the review-target `ctx` plus its sibling contexts (below,
+  // gathered into `siblings`): shippedCtx (the built XPI - the `input: xpi` checks
+  // resolve declared paths against it, the diff + packaging summaries describe it),
+  // buildCtx (the SCA build files), and manifestCtx (the shipped manifest, no file
+  // corpus). Each check is routed to exactly one by its `input` (see routeCtx); a check
+  // cannot derive one from another, so it only ever sees the artifact it was routed to.
+  // In an XPI review shippedCtx IS ctx (buildShippedCtx returns it unchanged when the
+  // XPI is the review target).
+  const shippedCtx = buildShippedCtx(ctx, xpiAddon, shippedJsSources);
+  // SCA: a sibling context whose addon is the build files (the archive minus the
+  // review source minus node_modules), so the `input: build` check
+  // (undeclared-build-source) reads them off ctx.addon via the same one-place
+  // `input` routing - no separate ctx field. Undefined in XPI mode, where no such check
+  // runs. `mode === "sca"` implies Phase 3 ran (a rejected Experiment is pinned to xpi),
+  // so addon.buildFiles is always loaded by here.
+  const buildCtx =
+    mode === "sca" ? buildScaBuildCtx(ctx, addon.buildFiles) : undefined;
+  // A sibling context with NO file corpus (empty ctx.addon.files), for `input: manifest`
+  // checks - they read only the shipped manifest (on ctx.manifest), so there is no
+  // artifact's files for them to reach. Both modes (the manifest exists in each).
+  const manifestCtx = buildManifestCtx(ctx);
+  // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). A
+  // check's `input` selects its ctx; anything else runs over the review-target ctx.
+  const siblings = { xpi: shippedCtx, build: buildCtx, manifest: manifestCtx };
+
+  // Phase 5: run the review, then finalize. runChecks orchestrates all four phases -
+  // deterministic, llm, the add-on-summary interleave (which fills ctx.recheckVerdicts), and
+  // post-summary - and returns the finished findings, manual items, the checks that ran, and
+  // the advisory summaries. Each throwing check is isolated so one failure can't abort all.
+  // The `--eslint` opt-in gates code-sanity inside loadChecks (eslintEligible).
+  progress(""); // close the Setup section before runChecks prints "── Activity ──"
+  const {
+    findings: reviewFindings,
+    manualItems,
+    checksRun,
+    summarizeAddon,
+    summarize,
+  } = await runChecks(
+    ctx,
+    registry,
+    {
+      only: opts.checksOnly,
+      skip: opts.checksSkip,
+      eslint: opts.eslint,
+      budget: llmBudget,
+      // Whether the add-on summary will run to re-judge post-summary-recheck items:
+      // the summary runs only with an LLM client attached.
+      recheckActive: Boolean(ctx.llm),
+    },
+    siblings
+  );
+  findings.push(...reviewFindings);
+
+  // The review-derived half of meta (the base half - action/addon/... - was set in Phase 1):
+  // the schema stamps, the checks that ran, the LLM-review flag, and the manual-review to-do
+  // list. Its `extended` items are the orchestrator's escalations (resolved to their registry
+  // text); the rest are the by-hand manual-checks entries, diff-gated like the checks (e.g.
+  // the new-submission-only "Forked add-on" reminder). An Experiment reject carries none.
+  Object.assign(meta, {
     schemaSource,
     schemaBranch,
     schemaChannel,
-    preParsedJsSources,
+    applicationVersion: ctx.schema.applicationVersion,
+    manifestVersion: ctx.manifest?.manifest_version ?? null,
+    checksRun: checksRun.map((c) => c.id),
+    llmReviewed: Boolean(ctx.llm),
+    manualReview: invalidExperiment
+      ? []
+      : [
+          ...renderManualItems(manualItems, registry).map((m) => ({
+            ...m,
+            extended: true,
+          })),
+          ...registry
+            .manualChecks(Boolean(ctx.previous))
+            .map((m) => ({ ...m, extended: false })),
+        ],
   });
-  findings.push(...result.findings);
-  Object.assign(meta, result.meta);
-  const { summarize, summarizeAddon } = result;
 
   // Surface the review header now - before the ATN review-page lookup below, a
   // network call that can stall the feed for seconds - so the reviewer sees what
@@ -642,16 +788,6 @@ export async function runPipeline(opts) {
     progress(line);
   }
   progress("");
-
-  // Text reports point the reviewer at the ATN review page, looked up by gecko
-  // id (addon/atn.js). Best-effort: null when it cannot be resolved, and the
-  // report omits the line. Gated to text runs by the caller, so the golden
-  // harness (which never sets it) makes no request and stays reproducible.
-  // Skipped for an outright Experiment reject (the URL only renders inside the
-  // omitted Manual review section anyway).
-  if (opts.reviewUrl && !invalidExperiment) {
-    meta.reviewUrl = await resolveReviewUrl({ manifest: xpiAddon.manifest });
-  }
 
   // Fill each finding's display message from its registry response (with the
   // {{item}} placeholder), so the Issues section reports the ready-to-send
@@ -679,108 +815,40 @@ export async function runPipeline(opts) {
 }
 
 /**
- * Generate one advisory prose summary at the tail of the activity feed: narrate
- * `LLM: Generating <label> (<size>) ...` so the reviewer sees what is being
- * waited on, then run the deferred model call. Returns { bytes, text } (text
- * null on an LLM error), or undefined when there is nothing to summarize (no
- * token, no diff, ...). The caller prints the prose after the report.
- * @param {import("./checks/summaries.js").DeferredSummary|null} deferred
- * @param {string} label  Names the summary in the feed, e.g. "diff summary".
- * @param {import("./llm/budget.js").LlmBudget} [budget]  Run-wide request cap.
- * @returns {Promise<GeneratedSummary|undefined>}
- */
-async function generateSummary(deferred, label, budget) {
-  if (!deferred) {
-    return undefined;
-  }
-  if (budget && !(await budget.consume())) {
-    return undefined; // run-wide request cap reached
-  }
-  progress(
-    `LLM: Generating ${label} (${humanSize(deferred.bytes)}) ...`,
-    FEED.STEP
-  );
-  try {
-    return { bytes: deferred.bytes, text: await deferred.run() };
-  } catch (err) {
-    // An advisory summary must never abort the review. Report the failure at
-    // this step (visible without --verbose) and carry the reason to the report.
-    const reason = llmErrorText(err);
-    progress(red(`LLM: ${label} failed - ${reason}`), FEED.STEP);
-    return { bytes: deferred.bytes, text: null, error: reason };
-  }
-}
-
-/** The recheck verdicts from a summary pass that belong to `allowed` consumers. */
-const keepVerdicts = (verdicts, allowed) =>
-  (verdicts ?? []).filter((v) => v && allowed.has(v.check));
-
-/**
- * Generate one --llm-review add-on review pass over a chosen corpus and return its
- * prose plus its recheck verdicts (the caller merges the verdicts onto
- * ctx.recheckVerdicts for the post-summary consumers). In SCA the pipeline runs two
- * passes - a behavioral one over the source and a packaging one over the built XPI - each
- * carrying only its corpus's recheck consumers (opts.consumers) and its own framing
- * (opts.promptId). Undefined when there is nothing to summarize (no token / no prompt /
- * budget spent); `{ text: null, error }` on an LLM failure; otherwise `{ bytes, text,
- * verdicts }` where a defined `verdicts` (possibly empty) means the model returned a
- * review - the clean signal that analysis happened.
- * @param {import("./checks/registry.js").RunContext} ctx
- * @param {import("./checks/registry.js").Registry} registry
- * @param {import("./llm/budget.js").LlmBudget} [budget]  Run-wide request cap.
- * @param {{unused?: Set<string>, summaryAddon?: object, promptId?: string,
- *   consumers?: ?Set<string>, label?: string}} [opts]
- * @returns {Promise<(GeneratedSummary & {verdicts?: object[]})|undefined>}
- */
-async function generateAddonSummary(ctx, registry, budget, opts = {}) {
-  const { label = "add-on", ...summarizerOpts } = opts;
-  const deferred = buildAddonSummarizer(ctx, registry, summarizerOpts);
-  if (!deferred) {
-    return undefined;
-  }
-  if (budget && !(await budget.consume())) {
-    return undefined; // run-wide request cap reached
-  }
-  progress(
-    `LLM: Generating ${label} summary (${humanSize(deferred.bytes)}) ...`,
-    FEED.STEP
-  );
-  let review;
-  try {
-    review = await deferred.run();
-  } catch (err) {
-    const reason = llmErrorText(err);
-    progress(red(`LLM: ${label} summary failed - ${reason}`), FEED.STEP);
-    return { bytes: deferred.bytes, text: null, error: reason };
-  }
-  return {
-    bytes: deferred.bytes,
-    text: review?.summary ?? null,
-    verdicts: review?.recheck,
-  };
-}
-
-/**
- * Per-file classification (classifyFiles) -> the single extraction pass -> assemble the
- * final addon.bundled, and return the parsed sources for buildRunContext to reuse. The
- * classification precedes both the extraction pass and cdn-lookup (which reads
- * tag.obfuscated), so obfuscated files are already in the non-authored skip set the pass
- * and consumers read.
+ * Per-file classification of the REVIEW TARGET (library hash / minified geometry /
+ * obfuscation, plus the vendored + experiment-trusted non-authored seed) -> addon.bundled.
+ * It runs before identifyBundledLibraries, which reads its tags (tag.obfuscated) and refines
+ * the result.
  * @param {import("./addon/load.js").Addon} addon
+ * @param {{libraryHashes: Map<string, {name: string, version: string}>}} deps
+ */
+function classifyReview(addon, { libraryHashes }) {
+  // Reuse the classification when the caller already has one (the SHIPPED XPI carries its own,
+  // computed in Phase 1 to resolve the mode); otherwise classify now.
+  addon.bundled =
+    addon.bundled ?? assembleBundled(classifyFiles(addon, { libraryHashes }));
+}
+
+/**
+ * The single extraction pass over the REVIEW TARGET: parse each source ONCE, extract every
+ * per-file result the checks read, drop the AST. Returns the parsed sources for Phase 4.
+ *
+ * It runs AFTER identifyBundledLibraries, and that ORDER IS THE POINT: that step FINALIZES
+ * addon.bundled.nonAuthored - the skip set this pass gates content extraction on - and it moves
+ * the line in BOTH directions. The CDN lookup ADDS a file (a library the Mozilla hash DB
+ * missed), and applyNotPopularVendor REMOVES one: a READABLE vendored library whose package
+ * turns out not to be popular is reviewed as the developer's OWN code.
+ *
+ * That removal is what forces the order. A file dropped from the skip set after the pass would
+ * be authored but never content-scanned - and since a check is a pure reader, it would find
+ * nothing there. The library's network sinks, eval and unsafe-HTML would all be invisible.
+ * @param {import("./addon/load.js").Addon} addon  The review target, already classified.
  * @param {{schema: object,
- *   libraryHashes: Map<string, {name: string, version: string}>,
  *   xpiAddon: import("./addon/load.js").Addon,
- *   setupStep: (label: string) => void}} ctx
+ *   setupStep: (label: string) => void}} deps
  * @returns {import("./addon/sources.js").JsSource[]}  The parsed review sources.
  */
-function classifyAndExtractReview(
-  addon,
-  { schema, libraryHashes, xpiAddon, setupStep }
-) {
-  // Reuse the classification if the caller already computed it (a false SCA classified the
-  // XPI in Phase 1 to resolve the mode); otherwise classify now. Same result either way.
-  const bundled =
-    addon.bundled ?? assembleBundled(classifyFiles(addon, { libraryHashes }));
+function extractReview(addon, { schema, xpiAddon, setupStep }) {
   const jsSources = collectJsSources(addon);
   const experimentNamespaces = isExperiment(xpiAddon.manifest)
     ? experimentApiNamespaces(xpiAddon.manifest, addon.files)
@@ -788,11 +856,9 @@ function classifyAndExtractReview(
   setupStep("Parsing add-on sources");
   runExtractionPass(jsSources, {
     schema,
-    nonAuthored: bundled.nonAuthored,
-    invalidExperiment: false,
+    nonAuthored: addon.bundled.nonAuthored,
     experimentNamespaces,
   });
-  addon.bundled = bundled;
   return jsSources;
 }
 
@@ -809,377 +875,17 @@ function classifyAndExtractReview(
  * @param {import("./addon/load.js").Addon} addon
  * @param {{net?: object, cacheDir?: string, cdnEnabled?: boolean,
  *   blocks?: Map<string, object>, setupStep?: (label: string) => void,
- *   scope?: string}} opts  `scope` names the artifact in the narration (default "bundled").
+ *   scope?: string}} opts  `scope` names the artifact in the Setup feed ("source"/"bundled"); both call sites pass it.
  */
 async function identifyBundledLibraries(
   addon,
-  {
-    net,
-    cacheDir,
-    cdnEnabled = true,
-    blocks,
-    setupStep = () => {},
-    scope = "bundled",
-  }
+  { net, cacheDir, cdnEnabled = true, blocks, setupStep = () => {}, scope }
 ) {
   applyNotPopularVendor(addon);
   setupStep(`Identifying ${scope} libraries on a CDN`);
   await resolveCdnLibraries(addon, { net, cacheDir, enabled: cdnEnabled });
   setupStep(`Auditing ${scope} libraries`);
   await auditIdentifiedLibraries(addon, net, blocks);
-}
-
-/**
- * The schema-review half of the pipeline, operating on an already-loaded add-on.
- *
- * @param {import("./addon/load.js").Addon} addon
- * @param {PipelineOpts} opts
- * @param {import("./checks/registry.js").Registry} registry
- * @param {boolean} [invalidExperiment]  Reject-only mode: run just the
- *   experiment-not-allowed check, with no LLM, summaries, or manual reminders.
- * @param {object} resolved  The review inputs runPipeline resolved up front, grouped
- *   to keep this signature small:
- * @param {import("../llm/budget.js").LlmBudget} [resolved.budget]
- * @param {(label: string) => void} [resolved.setupStep]  Emits the next numbered
- *   "Setup" feed line; runPipeline owns the section's running count.
- * @param {Map<string, {name: string, version: string}>} [resolved.libraryHashes]  The
- *   known-library hash DB runPipeline resolved, carried onto ctx.options so the lazy
- *   getBundled path matches the pre-step's classification (real runs use the memoized
- *   addon.bundled, so this is only the no-pre-step fallback).
- * @param {"xpi"|"sca"} [resolved.mode]
- * @param {import("./addon/load.js").Addon} [resolved.xpiAddon]  The built XPI (the
- *   shipped artifact); === addon in XPI mode.
- * @param {string} [resolved.scaExpSource]  SCA Experiment folder (source-relative).
- * @param {import("./schema/index.js").SchemaIndex} [resolved.schema]
- * @param {string} [resolved.schemaSource]
- * @param {string} [resolved.schemaBranch]
- * @param {string} [resolved.schemaChannel]  The auto-detected schema channel.
- * @param {import("./addon/sources.js").JsSource[]} [resolved.preParsedJsSources]  The
- *   review sources the extraction pass already parsed (parse-first); absent for a
- *   rejected Experiment, where buildRunContext parses.
- * @returns {Promise<{findings: Finding[], meta: ReviewMeta,
- *   ctx: import("./checks/registry.js").RunContext}>}
- */
-async function reviewAddon(addon, opts, registry, invalidExperiment, resolved) {
-  const {
-    budget,
-    setupStep = () => {},
-    libraryHashes = new Map(),
-    mode = "xpi",
-    xpiAddon = addon,
-    scaExpSource,
-    scaNotRequired = false,
-    schema,
-    schemaSource,
-    schemaBranch,
-    schemaChannel,
-    preParsedJsSources,
-  } = resolved;
-  const {
-    checksOnly,
-    checksSkip,
-    eslint,
-    llmReview,
-    llmApiKey,
-    llmApiUrl,
-    llmApiType,
-    allowExperiments,
-    diffTo,
-  } = opts;
-
-  // schema + schemaSource (and the Experiment-namespace registration) are resolved by
-  // runPipeline up front, because the extraction pass (run there per-review) needs the
-  // schema. For a reviewed
-  // addon runPipeline already ran the pass and passes its parsed sources in as
-  // preParsedJsSources (reused below); a rejected Experiment has no pre-step, so
-  // buildRunContext parses here (narrated).
-  if (!preParsedJsSources) {
-    setupStep("Parsing add-on sources");
-  }
-  // The checks layer assembles its own context (sources, API usage, diff
-  // baseline, LLM client) - the pipeline only resolves the schema.
-  const ctx = buildRunContext({
-    addon,
-    // The built XPI - authoritative for the manifest (ctx.manifest). xpiAddon === addon
-    // in XPI mode; in SCA it is the shipped artifact while addon is the readable source.
-    xpiAddon,
-    schema,
-    options: {
-      llmReview,
-      llmApiKey,
-      llmApiUrl,
-      llmApiType,
-      allowExperiments,
-      libraryHashes,
-    },
-    diffTo,
-    llmModel: opts.llmModel,
-    systemIntro: registry.prompt("system-intro"),
-    invalidExperiment,
-    mode,
-    // SCA: the Experiment folder as a source-relative path (runPipeline re-based it
-    // from the scaRoot-relative --sca-exp-source flag), excluded from the WebExtension
-    // code checks. Undefined in XPI mode.
-    scaExpSource,
-    // A submitted SCA was downgraded to this XPI review because the shipped XPI is
-    // directly reviewable; the sca-not-required check reads this to report it.
-    scaNotRequired,
-    budget,
-    // runPipeline parsed the review sources up front (parse-first) and passed them in;
-    // reuse them here. Absent for a rejected Experiment, where buildRunContext parses.
-    preParsedJsSources,
-  });
-
-  // The orchestrator holds the review-target `ctx` plus its sibling contexts (below,
-  // gathered into `siblings`): shippedCtx (the built XPI - the `input: xpi` checks
-  // resolve declared paths against it, the diff + packaging summaries describe it),
-  // buildCtx (the SCA build files), and manifestCtx (the shipped manifest, no file
-  // corpus). Each check is routed to exactly one by its `input` (see routeCtx); a check
-  // cannot derive one from another, so it only ever sees the artifact it was routed to.
-  // In an XPI review shippedCtx IS ctx (buildShippedCtx returns it unchanged when the
-  // XPI is the review target).
-  const shippedCtx = buildShippedCtx(ctx, xpiAddon);
-  // SCA: a sibling context whose addon is the build files (the archive minus the
-  // review source minus node_modules), so the `input: build` check
-  // (undeclared-build-source) reads them off ctx.addon via the same one-place
-  // `input` routing - no separate ctx field. Always a build context in SCA mode - an
-  // empty one when an invalid Experiment's reject-only profile skipped loading the
-  // files - so an `input: build` check reads a build artifact (never the review
-  // source) and cleanly skips on empty. Undefined in XPI mode, where no such check runs.
-  const buildCtx =
-    mode === "sca"
-      ? buildScaBuildCtx(ctx, addon.buildFiles ?? { files: new Map() })
-      : undefined;
-  // A sibling context with NO file corpus (empty ctx.addon.files), for `input: manifest`
-  // checks - they read only the shipped manifest (on ctx.manifest), so there is no
-  // artifact's files for them to reach. Both modes (the manifest exists in each).
-  const manifestCtx = buildManifestCtx(ctx);
-  // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). A
-  // check's `input` selects its ctx; anything else runs over the review-target ctx.
-  const siblings = { xpi: shippedCtx, build: buildCtx, manifest: manifestCtx };
-
-  // The registry.yaml file drives which checks run, by `phase`: runChecks runs
-  // the default-phase checks in its loop now and returns the post-summary checks
-  // marked `phase: post-summary` (the unused-permission recheck consumers, which
-  // read the add-on summary's result) as `deferred` to run after the summary below.
-  // An invalid Experiment runs only its reject check (runChecks picks the
-  // profile from ctx.invalidExperiment). The orchestrator returns issues-only
-  // findings plus the manual refs it produced (escalations with no token /
-  // unsure / error). Each throwing check is isolated so one failure can't abort
-  // all. The ESLint code-sanity check is opt-in: without --eslint it is excluded
-  // here.
-  const baseSkip = eslint
-    ? (checksSkip ?? [])
-    : [...(checksSkip ?? []), "code-sanity"];
-  // When the add-on summary will run, a check that declares a
-  // `post-summary-recheck` hands its manual items to that recheck consumer to be
-  // re-judged with whole-add-on context (runChecks diverts them - except any a
-  // producer marked manual-only; the summary judges them; the consumer resolves
-  // them - see src/checks/lib/recheck.js).
-  // Without the LLM review (no ctx.llm) this is false, so those items go straight
-  // to manual review.
-  ctx.recheckActive = !invalidExperiment && Boolean(ctx.llm);
-  progress(""); // close the Setup section before runChecks prints "── Activity ──"
-  const { findings, checks, manualItems, deferred, total } = await runChecks(
-    ctx,
-    registry,
-    { only: checksOnly, skip: baseSkip },
-    siblings
-  );
-
-  // Advisory AI summaries, generated at the tail of the activity feed (a
-  // `LLM: Generating ...` line shows what is being waited on). The prose is
-  // printed after the report by the caller (src/cli.js). The add-on summary runs
-  // first to match that display order, and because it re-judges the recheck items
-  // handed to it (ctx.recheck) - merging the verdicts onto ctx.recheckVerdicts for
-  // the post-summary recheck consumers below. It excludes files the review found
-  // unreachable - that set is a product of reachability (unused-files), so it
-  // exists only now, which is why the summary runs after the checks.
-  let summarizeAddon;
-  if (!invalidExperiment && llmReview) {
-    // unused-files runs over the built XPI (input: xpi), so its paths are the XPI's.
-    const unusedFiles = new Set(
-      findings.filter((f) => f.ruleId === "unused-files").map((f) => f.file)
-    );
-    if (mode === "sca") {
-      // SCA: one summary per corpus. The behavioral pass over the readable SOURCE is the
-      // displayed "Summary of add-on" and re-judges the source-anchored rechecks; the
-      // packaging pass over the built XPI is recheck-only (its prose is discarded). Each
-      // pass carries only its corpus's consumers, and its verdicts are filtered to those
-      // consumers before they merge, so neither can resolve the other's items. The source
-      // pass excludes no `unused` files - those XPI paths do not apply to the source corpus.
-      const { source, xpi } = registry.recheckConsumersByCorpus();
-      summarizeAddon = await generateAddonSummary(ctx, registry, budget, {
-        summaryAddon: ctx.addon,
-        consumers: source,
-        label: "source",
-      });
-      const verdicts = [];
-      let ran = false;
-      if (summarizeAddon && !summarizeAddon.error) {
-        ran = true;
-        verdicts.push(...keepVerdicts(summarizeAddon.verdicts, source));
-      }
-      // The packaging pass runs only when an XPI-anchored recheck actually escalated -
-      // otherwise it has nothing to judge over the (often near-empty) built corpus.
-      const hasXpiItems = [...(ctx.recheck ?? new Map()).keys()].some((id) =>
-        xpi.has(id)
-      );
-      if (hasXpiItems) {
-        const packaging = await generateAddonSummary(ctx, registry, budget, {
-          unused: unusedFiles,
-          summaryAddon: shippedCtx.addon,
-          consumers: xpi,
-          promptId: "shipped-package-summary",
-          label: "packaging",
-        });
-        if (packaging && !packaging.error) {
-          ran = true;
-          verdicts.push(...keepVerdicts(packaging.verdicts, xpi));
-        }
-      }
-      if (ran) {
-        ctx.recheckVerdicts = verdicts;
-      }
-    } else {
-      // XPI review: one all-in-one summary over the single artifact (the review target),
-      // carrying every recheck consumer.
-      summarizeAddon = await generateAddonSummary(ctx, registry, budget, {
-        unused: unusedFiles,
-        summaryAddon: ctx.addon,
-      });
-      if (summarizeAddon && !summarizeAddon.error) {
-        ctx.recheckVerdicts = summarizeAddon.verdicts;
-      }
-    }
-  }
-  let summarize;
-  if (!invalidExperiment && llmReview && diffTo) {
-    summarize = await generateSummary(
-      buildSummarizer(ctx, registry, shippedCtx),
-      "diff summary",
-      budget
-    );
-  }
-
-  // The post-summary checks (phase: post-summary, incl. the recheck consumers),
-  // run now that the add-on summary has populated ctx.recheckVerdicts, through the
-  // identical per-check path as the loop - runOneCheck stamps id/severity and
-  // routes escalations to manual review. They honor --checks/--skip (already
-  // applied by loadChecks). Numbering continues from the main loop so the feed
-  // reads [1/total] .. [total/total]. This list is empty for an invalid Experiment.
-  const ran = [...checks];
-  for (const [j, check] of deferred.entries()) {
-    // Route via the SAME helper as the main loop (registry.routeCtx), so the two can
-    // never drift. The post-summary rechecks declare no `input`, so they run on the main
-    // ctx (where ctx.recheck lives) and are labelled by their producer's corpus.
-    const checkCtx = routeCtx(check, ctx, siblings);
-    const out = await runOneCheck(
-      checkCtx,
-      check,
-      `[${checks.length + j + 1}/${total}]`
-    );
-    findings.push(...out.findings);
-    manualItems.push(...out.manualItems);
-    ran.push(check);
-  }
-
-  // Condense the unused-files report: when every packaged file under a folder is
-  // unused, collapse it to the top-most such folder (recursively). Output-only -
-  // it runs after every check has scanned every file, so other rules still
-  // report each nested file at its exact path. Applied separately to the
-  // findings (clear orphans/junk) and the manual escalations (ambiguous), so
-  // certainty is not mixed (a folder split across both buckets collapses in
-  // neither).
-  const allFiles = [...addon.files.keys()];
-  collapseUnusedFolders(findings, allFiles);
-  collapseUnusedFolders(manualItems, allFiles);
-
-  return {
-    findings,
-    // The built run context is returned for any post-review use by the caller.
-    ctx,
-    // The advisory summaries, generated above (each undefined unless its flag +
-    // a token warrant it). The caller prints their prose after the report.
-    summarize,
-    summarizeAddon,
-    meta: {
-      schemaSource,
-      schemaBranch,
-      schemaChannel,
-      applicationVersion: schema.applicationVersion,
-      manifestVersion: xpiAddon.manifest?.manifest_version ?? null,
-      checksRun: ran.map((c) => c.id),
-      // True when the LLM review was active (--llm-review): the model re-judged
-      // escalated items and produced the add-on summary, so the report notes it.
-      llmReviewed: Boolean(ctx.llm),
-      // One manual-review list, tagged by origin so the report can split it into
-      // two sections: `extended` items are checks that escalated (the
-      // orchestrator's refs, resolved to their registry text). The rest are the
-      // by-hand `manual-checks` entries (Standard), diff-gated like the checks
-      // (e.g. the new-submission-only "Forked add-on" reminder). An outright
-      // Experiment reject prints only the reject finding, so it carries none.
-      manualReview: invalidExperiment
-        ? []
-        : [
-            ...renderManualItems(manualItems, registry).map((m) => ({
-              ...m,
-              extended: true,
-            })),
-            ...registry
-              .manualChecks(Boolean(ctx.previous))
-              .map((m) => ({ ...m, extended: false })),
-          ],
-    },
-  };
-}
-
-/**
- * Rewrite the unused-files entries (findings OR manual refs) in `entries`,
- * in place, collapsing fully-unused folders to a single top-most folder entry
- * (see collapseUnused). Only acts when at least one folder forms, so the common
- * "nothing collapses" case leaves the array untouched (no reordering). The first
- * unused-files entry serves as the template, so the collapsed entries keep its
- * `ruleId` + `severity` (findings) / `ruleId` + `kind` (manual refs). Each new
- * entry sets `file` to the collapsed path and clears `loc`/`item`.
- * @param {Array<{ruleId?: string, file?: ?string}>} entries
- * @param {string[]} allFiles  Every packaged file path (the denominator).
- */
-function collapseUnusedFolders(entries, allFiles) {
-  const idx = [];
-  for (let i = 0; i < entries.length; i++) {
-    if (entries[i].ruleId === "unused-files" && entries[i].file) {
-      idx.push(i);
-    }
-  }
-  if (!idx.length) {
-    return;
-  }
-  const collapsed = collapseUnused(
-    idx.map((i) => entries[i].file),
-    allFiles
-  );
-  if (!collapsed.some((p) => p.endsWith("/"))) {
-    return; // no folder formed - leave the per-file entries (and their order) as-is
-  }
-  const base = entries[idx[0]];
-  const replacements = collapsed.map((file) => ({
-    ...base,
-    file,
-    loc: null,
-    item: null,
-  }));
-  const drop = new Set(idx);
-  const rebuilt = [];
-  for (let i = 0; i < entries.length; i++) {
-    if (i === idx[0]) {
-      rebuilt.push(...replacements); // collapsed group takes the first match's slot
-    }
-    if (!drop.has(i)) {
-      rebuilt.push(entries[i]);
-    }
-  }
-  entries.splice(0, entries.length, ...rebuilt);
 }
 
 /**
@@ -1332,7 +1038,7 @@ export function selectSchemaChannel({ candidates, strictMax }) {
  * Experiment (which is never downgraded).
  *
  * @param {object} opts  Pipeline opts; only `opts.scaRoot` is read here.
- * @param {?import("./checks/lib/bundled.js").Bundled} bundled  classifyBundled(xpiAddon).
+ * @param {?import("./lib/bundled.js").Bundled} bundled  classifyBundled(xpiAddon).
  * @returns {{mode: "xpi"|"sca", scaNotRequired: boolean}}
  */
 export function resolveReviewMode(opts, bundled) {

@@ -9,10 +9,10 @@
 //
 // Belongs here: turning each overt cleartext remote sink into a finding. Does
 // NOT belong here: the sink scan (-> src/parse/network-sinks.js, aggregated once
-// by src/checks/lib/outbound-sinks.js), and authored wording (-> the response in
+// by src/lib/outbound-sinks.js), and authored wording (-> the response in
 // assets/registry.yaml), severity (-> that registry entry).
 
-import { getOutboundSinks } from "../lib/outbound-sinks.js";
+import { getOutboundSinks } from "../../lib/outbound-sinks.js";
 import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */

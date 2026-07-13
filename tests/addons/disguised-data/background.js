@@ -1,5 +1,5 @@
 // This add-on intentionally triggers the disguised covert-exfil checks, to cover
-// the strong/weak split (see src/checks/lib/outbound-sinks.js).
+// the strong/weak split (see src/lib/outbound-sinks.js).
 
 // STRONG: a user-data API call sits inside a resource-load URL. The payload is
 // provably user data, so this is a hard disguised-resource error.

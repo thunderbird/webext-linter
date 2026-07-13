@@ -29,11 +29,7 @@ import {
   DEFAULT_LLM_TYPE,
 } from "./llm/provider.js";
 import { hasErrors } from "./report/finding.js";
-import {
-  formatReview,
-  formatReviewBody,
-  formatSummary,
-} from "./report/format.js";
+import { formatReview } from "./report/format.js";
 import {
   DEFAULT_CACHE,
   EXPERIMENTS_CACHE,
@@ -133,31 +129,6 @@ function optionLine(flag, desc) {
   }
   lines[0] = lead.padEnd(HELP_COL) + lines[0].slice(HELP_COL);
   return lines.join("\n");
-}
-
-/**
- * Render one advisory LLM summary after the review report: a "── title ──"
- * header, a status line naming the LLM and the transmitted payload size, then
- * (once the deferred call returns) the model's wrapped prose - or a short note
- * if it could not be produced. The summary was already generated during the
- * activity feed (see src/pipeline.js). This only prints its prose. Writes to
- * stdout and returns the whole block so the caller can also copy it into a
- * --report-out file.
- * @param {object} section
- * @param {string} section.title  Section heading, e.g. "Summary of add-on".
- * @param {import("./pipeline.js").GeneratedSummary} section.summary
- * @returns {string}
- */
-function summarySection({ title, summary }) {
-  const body =
-    summary.text != null
-      ? wrapText(summary.text, "  ").join("\n")
-      : summary.error
-        ? `  (summary unavailable - ${summary.error})`
-        : "  (summary unavailable)";
-  const block = `\n── ${title} ──\n\n${body}\n`;
-  process.stdout.write(block);
-  return block;
 }
 
 /**
@@ -510,8 +481,6 @@ export async function main(argv) {
     result = await runPipeline({
       addonPath: positionals[0],
       ...opts,
-      // The reviewer review-page URL is a text-report extra (JSON omits it).
-      reviewUrl: format === "text",
       confirmMore: interactive ? confirmMoreLlmRequests : undefined,
       registry,
     });
@@ -523,60 +492,17 @@ export async function main(argv) {
     return 2;
   }
 
-  // The report body (Issues + manual sections) lands first. The advisory LLM
-  // summaries (text only) were already generated during the activity feed. Their
-  // prose prints next, and the review tally (── Summary ──) prints LAST so the
-  // verdict closes the report after the add-on and change summaries.
-  let rendered;
-  let summaryBlock = "";
-  if (format === "text") {
-    rendered = formatReviewBody(result);
-    process.stdout.write(rendered + "\n");
-    // Add-on overview first, then the change delta. Both were generated during
-    // the activity feed (src/pipeline.js). Here we only print their prose.
-    if (result.summarizeAddon) {
-      summaryBlock += summarySection({
-        title: "Summary of add-on",
-        summary: result.summarizeAddon,
-      });
-    }
-    if (result.summarize) {
-      summaryBlock += summarySection({
-        title: "Summary of changes",
-        summary: result.summarize,
-      });
-    }
-    // The review tally closes the report, after the advisory summaries above.
-    const reviewSummary = formatSummary(result) + "\n";
-    process.stdout.write(reviewSummary);
-    summaryBlock += reviewSummary;
-    // Nudge toward --llm-review only when it would actually help: it would have
-    // re-judged the escalated (`extended`) manual items with full-add-on context.
-    // Gate strictly on that count - with no unsure items a re-run gains nothing,
-    // so we never push the user to spend tokens for nothing.
-    const unsureCount = (result.meta.manualReview ?? []).filter(
-      (m) => m.extended
-    ).length;
-    if (!values["llm-review"] && unsureCount > 0) {
-      const note =
-        "\n  (tip: re-run with --llm-review to have the AI " +
-        `re-check the ${unsureCount} unsure item(s) above with full-add-on ` +
-        "context, instead of leaving them for manual review.)\n";
-      process.stdout.write(note);
-      summaryBlock += note;
-    }
-  } else {
-    rendered = formatReview(result, format);
-    process.stdout.write(rendered + "\n");
-  }
+  // The full report comes from the report layer: formatReview assembles the body, the advisory
+  // LLM summaries (text only), and the verdict tally LAST, in the shipped order. The CLI just
+  // writes it.
+  const rendered = formatReview(result, format);
+  process.stdout.write(rendered + "\n");
 
-  // --report-out saves a carbon copy of stdout: the captured feed, the report,
-  // and the summaries. JSON captures nothing and has no summaries, so the file
-  // is just the document. Color codes are stripped so the saved file is plain
-  // even when the screen was colored.
+  // --report-out saves a carbon copy of stdout: the captured feed and the full report. Color
+  // codes are stripped so the saved file is plain even when the screen was colored.
   const reportOut = values["report-out"];
   if (reportOut) {
-    const copy = stripColor(getCapture() + rendered + "\n" + summaryBlock);
+    const copy = stripColor(getCapture() + rendered + "\n");
     fs.writeFileSync(path.resolve(reportOut), copy);
   }
 

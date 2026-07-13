@@ -9,7 +9,7 @@
 // is on, the orchestrator hands the ones the registry has a rubric prompt for to
 // the `unused-permission-recheck` consumer to be re-judged with whole-add-on
 // context, and the rest stay manual (the divert applies registry.rechecks - see
-// src/checks/registry.js and src/checks/lib/recheck.js).
+// src/checks/registry.js and src/lib/recheck.js).
 //
 // Version handling (D308076: before Thunderbird 154, filtering a tabs.query by
 // url/title needs "tabs" even for the add-on's own pages) lives in the registry,
@@ -20,10 +20,10 @@
 //
 // Belongs here: only the wiring. The enumeration, token matching and
 // deterministic verdicts are enumerateUnusedPermissions
-// (src/checks/lib/permissions.js); the tokens and wording are
-// assets/registry.yaml; re-judging is the consumer via src/checks/lib/recheck.js.
+// (src/lib/permissions.js); the tokens and wording are
+// assets/registry.yaml; re-judging is the consumer via src/lib/recheck.js.
 
-import { enumerateUnusedPermissions } from "../lib/permissions.js";
+import { enumerateUnusedPermissions } from "../../lib/permissions.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../registry.js").LoadedCheck} LoadedCheck */

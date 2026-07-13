@@ -1,4 +1,4 @@
-// Unit tests for the obfuscation seam (src/checks/lib/obfuscation.js): isObfuscated
+// Unit tests for the obfuscation seam (src/lib/obfuscation.js): isObfuscated
 // returns true only for the AST STRUCTURE of a recognized obfuscator family, and false
 // for readable code, plain-minified-but-clean code, and unparseable input. This is the
 // property that keeps legitimate libraries (readable pdf.js, minified JSZip) from being
@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { isObfuscated } from "../../src/checks/lib/obfuscation.js";
+import { isObfuscated } from "../../src/lib/obfuscation.js";
 
 test("recognizes array-replacement obfuscation (string array via an accessor)", () => {
   const obf =

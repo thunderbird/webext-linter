@@ -44,7 +44,7 @@ Adds a `required_permissions` annotation
 which the `browser.*` API gate never covers (`compose_scripts` → `compose`,
 `message_display_scripts` → `messagesModify`). `SchemaIndex.manifestKeyPermissions`
 (see `_collectManifestKeyPermissions`) reads it; the missing-/unused-permission
-grounding (`analyzePermissions` in `src/checks/lib/permissions.js`) grounds a
+grounding (`analyzePermissions` in `src/lib/permissions.js`) grounds a
 declared key's permission as used and flags an undeclared one as missing.
 
 An entry may carry a `min_strict_version`/`max_strict_version` bound, so a
@@ -57,4 +57,4 @@ Adds `note` annotations onto API members (e.g. `tabs.query`), each with an optio
 `min_strict_version`/`max_strict_version` bound. These are dual-purpose (API docs +
 review): a recheck prompt references one with a `{{note:<ns>.<member>}}` placeholder,
 which resolves to the version-matched note(s) (`SchemaIndex.memberNotes`, resolved in
-`src/checks/lib/recheck.js`).
+`src/lib/recheck.js`).

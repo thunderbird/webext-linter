@@ -14,13 +14,13 @@
 //
 // Belongs here: the candidate per overt remote sink (file:line + the consent
 // corpus) and the 1:1 verdict mapping. Does NOT belong here: the sink scan (->
-// src/parse/network-sinks.js, aggregated by src/checks/lib/outbound-sinks.js),
+// src/parse/network-sinks.js, aggregated by src/lib/outbound-sinks.js),
 // the model transport (-> src/checks/llm-client.js), the resolve pattern (->
-// src/checks/lib/verdict-resolve.js), and authored wording (-> registry).
+// src/lib/verdict-resolve.js), and authored wording (-> registry).
 
-import { getOutboundSinks } from "../lib/outbound-sinks.js";
-import { normalizeRef } from "../lib/manifest-refs.js";
-import { perCandidateResolve } from "../lib/verdict-resolve.js";
+import { getOutboundSinks } from "../../lib/outbound-sinks.js";
+import { normalizeRef } from "../../lib/manifest-refs.js";
+import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
