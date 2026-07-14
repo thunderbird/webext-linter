@@ -262,14 +262,14 @@ flowchart TB
         orchestrator, which reviews the shipped XPI with the single reject
         check. It only <em>skips work</em>, and it skips it in one step: setting
         <code>invalidExperiment</code> also pins the mode, and everything after
-        it is bypassed — the LLM (both the pre-flight and the client, even with
-        a token set), the library hashes, the classification, the whole vendor
-        block, and the parse. Not one line of the add-on's code is read: the
-        reject check judges from the manifest, the experiment classification and
-        the schema alone, so <code>ctx.jsSources</code> is empty. Only two
-        things still run: the schema, which is resolved <em>before</em> the
-        decision because the check resolves API paths through it, and the run
-        context itself.
+        it is bypassed — the LLM (both the pre-flight and the client, even when
+        <code>--llm-review</code> is given), the library hashes, the
+        classification, the whole vendor block, and the parse. Not one line of
+        the add-on's code is read: the reject check judges from the manifest,
+        the experiment classification and the schema alone, so
+        <code>ctx.jsSources</code> is empty. Only two things still run: the
+        schema, which is resolved <em>before</em> the decision because the check
+        resolves API paths through it, and the run context itself.
       </p>
 
       <h2>The stores</h2>
@@ -316,7 +316,7 @@ flowchart LR
   PARSE2 --> s_experimentrefs
   CONTENT2["content extraction<br/>authored sources only"] --> s_sinks
   CONTENT2 --> s_remotejs
-  CONTENT2 --> s_codetext
+  CONTENT2 --> s_codeatoms
   CONTENT2 --> s_unsafehtml
   CONTENT2 --> s_syncxhr
   CONTENT2 --> s_debugger
@@ -336,7 +336,7 @@ flowchart LR
   s_experimentrefs[("src.extracted<br/>experimentRefs")]
   s_sinks[("src.extracted<br/>networkSinks")]
   s_remotejs[("src.extracted<br/>remoteJs")]
-  s_codetext[("src.extracted<br/>codeText")]
+  s_codeatoms[("src.extracted<br/>codeAtoms")]
   s_unsafehtml[("src.extracted<br/>unsafeHtml")]
   s_syncxhr[("src.extracted<br/>syncXhr")]
   s_debugger[("src.extracted<br/>debuggerStmt")]
@@ -348,7 +348,6 @@ flowchart LR
   s_schema --> s_apiresolution("apiResolution<br/>resolveApiUsages")
   s_apiusage --> s_apiresolution
   s_webapiperms --> s_permanalysis("permissionAnalysis<br/>analyzePermissions<br/>+ apiResolution")
-  s_codetext --> s_permanalysis
   s_sinks --> s_outboundsinks("outboundSinks<br/>getOutboundSinks")
   s_remotejs --> s_evalscan("evalScan<br/>getEvalScan<br/>+ reachability, manifest CSP")
   s_localefiles --> s_locales("locales<br/>getLocales")
@@ -358,6 +357,7 @@ flowchart LR
 
   %% ===== COL 3b: blind relays — a store read directly by checks passes through one =====
   s_apiusage --> r_apiusage(( ))
+  s_codeatoms --> r_codeatoms(( ))
   s_modulesyntax --> r_modsyntax(( ))
   s_remotejs --> r_remotejs(( ))
   s_unsafehtml --> r_unsafehtml(( ))
@@ -378,6 +378,7 @@ flowchart LR
   s_permanalysis -.-> k_missing_perm["missing-permission"]
   s_permanalysis -.-> k_unused_perm["unused-permission"]
   s_permanalysis -.-> k_missing_key["missing-manifest-key"]
+  r_codeatoms -. locateTokens .-> k_unused_perm
 
   s_outboundsinks -.-> k_exfil["data-exfiltration"]
   s_outboundsinks -.-> k_disguised["disguised-transmission"]
@@ -428,9 +429,9 @@ flowchart LR
   classDef relay fill:#eceef1,stroke:#9aa3ad,color:#9aa3ad;
   classDef check fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   class RS,RV,CB2,IBL2,PARSE2,CONTENT2,LOCP producer;
-  class s_schema,s_vendor,s_bundled,s_apiusage,s_webapiperms,s_loaderrefs,s_localimports,s_modulesyntax,s_experimentrefs,s_sinks,s_remotejs,s_codetext,s_unsafehtml,s_syncxhr,s_debugger,s_asyncmsg,s_coresym,s_localefiles store;
+  class s_schema,s_vendor,s_bundled,s_apiusage,s_webapiperms,s_loaderrefs,s_localimports,s_modulesyntax,s_experimentrefs,s_sinks,s_remotejs,s_codeatoms,s_unsafehtml,s_syncxhr,s_debugger,s_asyncmsg,s_coresym,s_localefiles store;
   class s_apiresolution,s_permanalysis,s_outboundsinks,s_evalscan,s_locales,s_reachability cache;
-  class r_apiusage,r_modsyntax,r_remotejs,r_unsafehtml,r_syncxhr,r_debugger,r_asyncmsg,r_coresym,r_vendor,r_bundled relay;
+  class r_apiusage,r_codeatoms,r_modsyntax,r_remotejs,r_unsafehtml,r_syncxhr,r_debugger,r_asyncmsg,r_coresym,r_vendor,r_bundled relay;
   class k_unknown_api,k_deprecated_api,k_smin,k_smax,k_exp_unknown_api,k_api_coverage,k_unparsable,k_missing_perm,k_unused_perm,k_missing_key,k_eval_call,k_fn_ctor,k_string_timer,k_remote_eval,k_csp_eval,k_csp_inline,k_loc_missing,k_loc_unused,k_vendor_mod,k_vendor_vuln,k_unpinned_dep,k_banned_lib,k_minified,k_obfuscated,k_untrusted_lib,k_cdn,k_code_sanity,k_exfil,k_disguised,k_cleartext,k_privacy,k_disg_nav,k_disg_win,k_disg_style,k_disg_res,k_remote_script,k_unused_files,k_bundled_files,k_war,k_unsafe_html,k_sync_xhr,k_debugger_stmt,k_async_onmsg,k_core_symbol,k_bg_module,k_bg_page_module check;
         </pre>
       </div>
@@ -485,7 +486,7 @@ flowchart LR
             <td>
               Each source is parsed <strong>once</strong>; the small per-file
               results (API usage, loader refs, network sinks, remote-code refs,
-              the comment-free code text …) are stored and
+              the comment-free code atoms …) are stored and
               <strong>the AST is dropped</strong>. This is why no check ever
               re-parses.
             </td>
@@ -628,8 +629,10 @@ flowchart LR
         the add-on-summary interleave (<code>resolveRecheckSummaries()</code> in
         <code>src/checks/summaries.js</code>) that fills
         <code>ctx.recheckVerdicts</code>, then the post-summary phase that reads
-        them, and finally the unused-folder collapse. It returns the finished
-        findings, manual items and summaries; <code>runPipeline()</code>&rsquo;s
+        them, then the unused-folder collapse, and finally the per-site recheck
+        verdict rows the report prints. It returns the finished findings, manual
+        items, the checks that ran, the summaries and those rows
+        (<code>recheckVerdictRows</code>); <code>runPipeline()</code>&rsquo;s
         Phase&nbsp;5 (<code>src/pipeline.js</code>) just calls it and assembles
         the <code>Review</code>. Every check, in every phase, goes through the
         same per-check runner, <code>runOneCheck()</code>. The two diagrams
@@ -675,14 +678,15 @@ flowchart TB
 
   DLOOP[["run the post-summary-phase"]] --> COLL1["collapseUnusedFolders(findings)<br/>src/lib/unused-folders.js"]
   COLL1 --> COLL2["collapseUnusedFolders(manualItems)<br/>src/lib/unused-folders.js"]
-  COLL2 --> RET(["return findings · manualItems · checksRun<br/>summarizeAddon · summarize → runPipeline() · Phase 5"])
+  COLL2 --> RVR["buildRecheckVerdictReport()<br/>src/lib/recheck.js — the per-site verdict rows the report prints"]
+  RVR --> RET(["return findings · manualItems · checksRun<br/>summarizeAddon · summarize · recheckVerdictRows<br/>→ runPipeline() · Phase 5"])
 
   classDef work fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
   classDef state fill:#fdf3e0,stroke:#b07d2b,color:#6b4a12;
   classDef term fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
   classDef module fill:#f3eefb,stroke:#7c4dbc,color:#3d2a5c,stroke-dasharray:5 3;
   classDef llm fill:#d3f0ec,stroke:#0f766e,color:#0b3d38;
-  class LC,GATE,SUMS,COLL1,COLL2 work;
+  class LC,GATE,SUMS,COLL1,COLL2,RVR work;
   class SUM1,SUM2,SUM3,SUMD llm;
   class RIE,RDET,RLLM,DLOOP module;
   class SETV state;
@@ -730,7 +734,7 @@ flowchart TB
   RUN --> QLANE{{"the result ALSO carries an<br/>llm step or escalations?"}}
   QLANE -- "llm: { candidates, resolve }" --> QT{{"ctx.llm attached, and the run-wide<br/>LLM budget allows another call?"}}
   QT -- yes --> EV[/"ctx.llm.evaluate()<br/>one verdict per candidate"/]
-  QT -- no --> UN["verdict = unsure for every candidate<br/>(no token, or the budget is spent)"]
+  QT -- no --> UN["verdict = unsure for every candidate<br/>(no LLM configured, or the budget is spent)"]
   EV --> RES["the check's resolve(verdicts)<br/>+ findings · + manual items"]
   UN --> RES
   QLANE -- "escalations (deterministic)" --> ME["manualEscalations()<br/>manual items only — never the model"]
@@ -844,16 +848,24 @@ flowchart LR
 
       <p>
         The text report surfaces the model&rsquo;s structured answer: below the
-        &ldquo;Summary of add-on&rdquo; prose it prints every recheck verdict
-        (both SCA passes) as
+        &ldquo;Summary of add-on&rdquo; prose it prints a
+        <code>Recheck verdicts:</code> list holding every recheck verdict (both
+        SCA passes), one bullet per candidate site —
         <code
-          >* &lt;check&gt; - file:line - &lt;subject&gt; - &lt;verdict&gt;</code
+          >* &lt;check&gt; - [LABEL] file:line - &lt;subject&gt; -
+          &lt;verdict&gt;</code
         >
-        with the real source line beneath — the <code>subject</code> being the
-        permission for the permission recheck, or a per-site descriptor
-        otherwise. <code>buildRecheckVerdictReport</code> assembles these rows
-        in <code>runChecks</code> (where each consumer&rsquo;s corpus is in
-        scope, so the source line is read from the right artifact — and a
+        with the real source line beneath it, indented behind an
+        <code>-&gt;</code> arrow. <code>&lt;check&gt;</code> is the consumer's
+        title, <code>[LABEL]</code> the artifact prefix
+        (<code>[XPI]</code>/<code>[SCA]</code>, a no-op in a plain XPI review),
+        and <code>&lt;subject&gt;</code> the permission for the permission
+        recheck, or a per-site descriptor otherwise. A handed site the model
+        returned no verdict for still appears, as <code>unsure</code>. No model
+        reason is printed here — the reasons live in the prose summary above.
+        <code>buildRecheckVerdictReport</code> assembles these rows in
+        <code>runChecks</code> (where each consumer&rsquo;s corpus is in scope,
+        so the source line is read from the right artifact — and a
         <code>manifest.json</code> line from <code>ctx.manifestText</code>, the
         shipped manifest); the renderer only prints them.
       </p>

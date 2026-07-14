@@ -501,18 +501,13 @@ function refersTo(line, tokenRe, fromFile, target, files) {
  * @returns {(file: string) => {file: string, line: number}[]}
  */
 function makeMentions(files) {
-  // manifest.json is structured config, not a code loader - a path appearing
-  // there is a declaration (handled by the seeds), not a "reference", so it must
-  // not make every declared resource look mentioned. Documentation files are
-  // excluded for the same reason (a README image link is not a runtime load).
+  // Documentation files are not code: a README image link is not a runtime load, so
+  // it must not make a declared resource look mentioned. (The manifest is not here
+  // to exclude - the loader keeps it out of the corpus entirely, see addon/load.js.)
   /** @type {Map<string, string[]>} */
   const lines = new Map();
   for (const [file, buf] of files) {
-    if (
-      file !== "manifest.json" &&
-      !isDocFile(file) &&
-      TEXT_EXTS.has(extname(file))
-    ) {
+    if (!isDocFile(file) && TEXT_EXTS.has(extname(file))) {
       lines.set(file, buf.toString("utf8").split("\n"));
     }
   }

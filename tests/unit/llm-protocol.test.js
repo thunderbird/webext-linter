@@ -43,6 +43,7 @@ test("callVerdicts forces the structured result tool", async () => {
 
   const result = await callVerdicts({
     token: "test-token",
+    type: "claude",
     model: "test-model",
     system: [{ type: "text", text: "sys" }],
     criterion: "the rubric",
@@ -86,6 +87,7 @@ test("callVerdicts throws when no tool_use block is returned", async () => {
     () =>
       callVerdicts({
         token: "test-token",
+        type: "claude",
         system: [],
         criterion: "c",
         client: fakeClient,
@@ -113,6 +115,7 @@ test("callText sends a free-form request and returns the text", async () => {
   };
   const out = await callText({
     token: "test-token",
+    type: "claude",
     model: "test-model",
     prompt: "summarize this",
     client: fakeClient,

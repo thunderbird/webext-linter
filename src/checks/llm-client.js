@@ -1,4 +1,4 @@
-// The LLM client placed on `ctx.llm` when an Anthropic token is set - the
+// The LLM client placed on `ctx.llm` when an LLM provider is configured - the
 // per-review half of the LLM stack, and pure transport. It builds the
 // prompt-cached add-on context shared across the review's calls and exposes
 // `evaluate(criterion)`, which returns the structured three-way verdict for one

@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { debug } from "../util/log.js";
+import { writeFileAtomic } from "../util/atomic.js";
 import { LIBRARY_HASHES_URL, LIBRARY_HASHES_CACHE } from "../config.js";
 
 /**
@@ -59,16 +60,8 @@ export async function resolveLibraryHashes({
     );
   }
   const text = await res.text();
-  // Atomic write, so an interrupted download is not reused as a truncated cache.
-  const tmp = `${cached}.${process.pid}.tmp`;
-  try {
-    fs.writeFileSync(tmp, text);
-    fs.renameSync(tmp, cached);
-  } finally {
-    if (fs.existsSync(tmp)) {
-      fs.rmSync(tmp, { force: true });
-    }
-  }
+  // Atomic, so an interrupted download is not reused as a truncated cache.
+  writeFileAtomic(cached, text);
   debug(`Wrote ${text.length} bytes to ${cached}`);
   return { text, source: "download" };
 }

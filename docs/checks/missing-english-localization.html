@@ -30,7 +30,12 @@
         packaged HTML page — with a language-detection library. Confident English
         passes and confident non-English is a finding. When there is too little
         text to trust, or English nearly ties the top language, the call is too
-        close to make automatically and is escalated to manual review.
+        close to make automatically and is escalated. Under
+        <code>--llm-review</code> that escalation is handed to the
+        <code>missing-english-localization-recheck</code> consumer, which has a
+        model re-read all of the user-facing text and resolves it to a finding, a
+        drop, or manual review; without <code>--llm-review</code> it goes straight
+        to manual review.
       </p>
 
       <h2>Decision flow</h2>
@@ -46,7 +51,7 @@ flowchart TD
   C -- no --> E{"Is there any hardcoded<br/>user-facing text?"}
   E -- no --> OK
   E -- yes --> F{"Too little text, or the<br/>language cannot be told?"}
-  F -- yes --> MAN([escalate to manual review])
+  F -- yes --> MAN(["escalate — re-judged by the<br/>missing-english-localization-recheck<br/>consumer under --llm-review,<br/>else manual review"])
   F -- no --> G{"Is the detected language<br/>English?"}
   G -- yes --> OK
   G -- no --> H{"Does English nearly tie<br/>the top language?"}

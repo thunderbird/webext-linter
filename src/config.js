@@ -60,12 +60,20 @@ export const CDN_LOOKUP_CACHE = ".lib-cdn-lookup-cache";
  */
 export const CDN_LOOKUP_READABLE_MIN_BYTES = 16384;
 
-// The model knowledge is NOT here: it lives in assets/llm/<LLM_API_TYPE>.yaml,
-// read by src/llm/settings.js - which model a run defaults to, how many requests
-// it may make, and, per model, the endpoint and the request parameters (the
-// output-token cap among them). It sits in an asset rather than in this file
-// because the linter also WRITES it: when a server rejects a request shape, the
-// OpenAI adapter negotiates a working one and records what worked.
+// The model knowledge is NOT here: it lives in assets/llm/<LLM_API_TYPE>.yaml, read
+// by src/llm/settings.js - which model a run defaults to, how many requests it may
+// make, and, per model, the endpoint and the request parameters (the output-token
+// cap among them). It is a hand-curated asset rather than constants here because a
+// reviewer must be able to point the tool at a new model without touching code.
+
+/**
+ * Directory where the LLM adapters cache what they negotiated with a server: the
+ * endpoint and parameter name a model actually accepted, when the shipped table
+ * guessed wrong (see src/llm/negotiated.js). Unlike the caches above it takes no
+ * --cache-*-dir flag - it is read by the adapters, which are handed a token and a
+ * model, not the pipeline's options - but --cache-clear wipes it with the rest.
+ */
+export const LLM_MODEL_CACHE = ".llm-model-cache";
 
 /**
  * Max distinct add-on files an LLM check sends in one batched request. A check
@@ -171,9 +179,3 @@ export const ADDON_MAX_UNPACKED_BYTES = 128 * 1024 * 1024;
  * data and more. Best-effort: a failed lookup just skips (no finding).
  */
 export const VENDOR_OSV_API = "https://api.osv.dev/v1/query";
-
-/**
- * Timeout for the ATN API lookup that resolves an add-on's listing slug (for the
- * reviewer review-page URL printed in the text report's Manual review section).
- */
-export const ATN_FETCH_TIMEOUT_MS = 10000;

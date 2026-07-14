@@ -35,6 +35,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { debug } from "../util/log.js";
+import { writeFileAtomic } from "../util/atomic.js";
 import { rawSha256 } from "../normalize/hash.js";
 import { defaultNet, isPopular } from "../vendor/verify.js";
 import { markUntrusted } from "./bundled.js";
@@ -236,23 +237,13 @@ function loadCache(cacheDir) {
 }
 
 /**
- * Persist the cache atomically (temp + rename), like library-hashes.js. Best-effort:
- * a write failure is non-fatal (the lookups just aren't cached for next run).
+ * Persist the cache. Best-effort: a write failure is non-fatal (the lookups just
+ * aren't cached for next run).
  * @param {string} cacheDir @param {Record<string, CdnHit|null>} cache
  */
 function saveCache(cacheDir, cache) {
   try {
-    fs.mkdirSync(cacheDir, { recursive: true });
-    const file = cacheFile(cacheDir);
-    const tmp = `${file}.${process.pid}.tmp`;
-    try {
-      fs.writeFileSync(tmp, JSON.stringify(cache));
-      fs.renameSync(tmp, file);
-    } finally {
-      if (fs.existsSync(tmp)) {
-        fs.rmSync(tmp, { force: true });
-      }
-    }
+    writeFileAtomic(cacheFile(cacheDir), JSON.stringify(cache));
   } catch (err) {
     debug(`Could not write CDN lookup cache: ${err.message}`);
   }

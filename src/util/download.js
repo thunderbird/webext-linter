@@ -3,9 +3,8 @@
 // download-into-cache. Each fetcher keeps its own cache-path and error wording;
 // only the URL shape and the truncation-safe write are shared here.
 
-import fs from "node:fs";
-
 import { debug } from "./log.js";
+import { writeFileAtomic } from "./atomic.js";
 
 /**
  * The codeload zip URL for a whole GitHub branch (one request for the tree).
@@ -33,14 +32,6 @@ export async function downloadToCache(url, dest, describeError) {
     throw new Error(describeError(res));
   }
   const buf = Buffer.from(await res.arrayBuffer());
-  const tmp = `${dest}.${process.pid}.tmp`;
-  try {
-    fs.writeFileSync(tmp, buf);
-    fs.renameSync(tmp, dest);
-  } finally {
-    if (fs.existsSync(tmp)) {
-      fs.rmSync(tmp, { force: true });
-    }
-  }
+  writeFileAtomic(dest, buf);
   debug(`Wrote ${buf.length} bytes to ${dest}`);
 }

@@ -35,6 +35,7 @@ import {
   EXPERIMENTS_CACHE,
   LIBRARY_HASHES_CACHE,
   CDN_LOOKUP_CACHE,
+  LLM_MODEL_CACHE,
 } from "./config.js";
 import {
   info,
@@ -146,16 +147,19 @@ function optionLine(flag, desc) {
  */
 function resolveLlm(values) {
   const wants = values["llm-review"] === true;
+  if (!wants) {
+    // Nothing is resolved for a run that will not call a model: reading the model
+    // table (defaultModelFor) would make a hand-editing typo in assets/llm sink a
+    // deterministic review that never wanted an LLM at all.
+    return { wants };
+  }
   const apiType = (process.env.LLM_API_TYPE || DEFAULT_LLM_TYPE).toLowerCase();
-  const apiKey = process.env.LLM_API_KEY || undefined;
-  const apiUrl = process.env.LLM_API_URL || defaultBaseUrlFor(apiType);
-  const model = process.env.LLM_API_MODEL || defaultModelFor(apiType);
   return {
     wants,
-    apiKey: wants ? apiKey : undefined,
-    apiUrl: wants ? apiUrl : undefined,
-    apiType: wants ? apiType : undefined,
-    model: wants ? model : undefined,
+    apiType,
+    apiKey: process.env.LLM_API_KEY || undefined,
+    apiUrl: process.env.LLM_API_URL || defaultBaseUrlFor(apiType),
+    model: process.env.LLM_API_MODEL || defaultModelFor(apiType),
   };
 }
 
@@ -462,22 +466,27 @@ export async function main(argv) {
   const interactive =
     format === "text" && Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
-  const opts = pipelineOptsFromValues(values);
-  // --cache-clear: wipe every cache dir up front so the resolvers re-fetch each
-  // source from scratch during this review, exactly as on a first run. Lists every
-  // cache dir opt - a new cache added to pipelineOptsFromValues must be added here
-  // too, or --cache-clear would silently skip it.
-  if (values["cache-clear"]) {
-    clearCaches([
-      opts.schemaCache,
-      opts.libraryHashesCache,
-      opts.cdnLookupCache,
-      opts.experimentsCache,
-    ]);
-  }
-
   let result;
   try {
+    // Reading the options can fail the same way the review can - an LLM_API_MODEL
+    // whose model table does not parse is a bad config, not a bad add-on - so it is
+    // inside the catch below and reported like one, rather than as a stack trace
+    // from verify.js's last-resort handler.
+    const opts = pipelineOptsFromValues(values);
+    // --cache-clear: wipe every cache dir up front so the resolvers re-fetch each
+    // source from scratch during this review, exactly as on a first run. Lists every
+    // cache dir opt - a new cache added to pipelineOptsFromValues must be added here
+    // too, or --cache-clear would silently skip it. LLM_MODEL_CACHE is named
+    // directly: it is the one cache with no --cache-*-dir flag (see src/config.js).
+    if (values["cache-clear"]) {
+      clearCaches([
+        opts.schemaCache,
+        opts.libraryHashesCache,
+        opts.cdnLookupCache,
+        opts.experimentsCache,
+        LLM_MODEL_CACHE,
+      ]);
+    }
     result = await runPipeline({
       addonPath: positionals[0],
       ...opts,

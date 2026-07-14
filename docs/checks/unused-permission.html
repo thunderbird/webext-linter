@@ -28,15 +28,49 @@
         <code>message_display_scripts</code> requires <code>messagesModify</code>)
         the declared key proves it used. A permission whose registry prompt
         entries declare usage <code>tokens</code> (the code-level spellings of its
-        justifying usages, e.g. <code>executeScript</code>, <code>insertCSS</code>
-        for <code>compose</code>) that appear nowhere in the add-on's live code
-        (comments excluded) or manifest is deterministically unused — a warning
-        finding, with or without <code>--llm-review</code>. The deterministic
-        path stands down whenever the scan is blind: an SCA review (build-time
-        dependencies are invisible in the source corpus) or unresolved dynamic
-        API surface (computed member chains, unresolvable aliases). Every
-        remaining permission escalates for human review. Host match patterns are
-        out of scope here — they belong to the minimize-host-permissions check.
+        justifying usages — the injection calls <code>tabs.executeScript</code> and
+        <code>scripting.executeScript</code> for <code>compose</code>, the property
+        name <code>cookieStoreId</code> for <code>cookies</code>) that appear
+        nowhere in the add-on's live code (comments excluded) or manifest is
+        deterministically unused — a warning finding, with or without
+        <code>--llm-review</code>. Every remaining permission escalates for human
+        review. Host match patterns are out of scope here — they belong to the
+        minimize-host-permissions check.
+      </p>
+      <p>
+        <strong>The blindness guard.</strong> A deterministic &ldquo;unused&rdquo;
+        finding claims that nothing the permission gates can be in use, which only
+        holds while the scan can see every usage — so a token found nowhere really
+        means nowhere. Four conditions make the scan blind, and each one stands the
+        deterministic path down (the permission escalates instead):
+      </p>
+      <ul>
+        <li>
+          an <strong>SCA review</strong> — it scans the readable source, but the
+          shipped add-on may exercise the permission through a dependency that only
+          materializes at build time;
+        </li>
+        <li>
+          a source that <strong>failed to parse</strong> — it yields no API usages
+          and no limitations, which is indistinguishable from a clean, empty file
+          unless it is checked for explicitly;
+        </li>
+        <li>
+          <strong>unresolved API surface</strong> — a computed or dynamic member
+          chain, or a destructured alias, could spell a gated call without its token
+          appearing anywhere;
+        </li>
+        <li>
+          <strong>no API-usage view at all</strong> — a context with no visibility
+          into the source's API surface is maximally blind, so it fails closed
+          rather than reading as fully sighted.
+        </li>
+      </ul>
+      <p>
+        The guard gates only the <em>finding</em>. Token <em>presence</em> is always
+        trustworthy — a located occurrence is a real site — so the occurrences are
+        collected in every mode, and the recheck judges them the same way whether or
+        not the scan was decidable.
       </p>
       <p>
         Under <code>--llm-review</code>, the escalated permissions the
@@ -58,9 +92,11 @@ flowchart TD
   H -- yes --> OK([no finding — host check's concern])
   H -- no --> U{"Provably required by a reachable API call,<br/>a navigator.* Web/DOM call, or a declared<br/>script-injection manifest key?"}
   U -- yes --> OK2([no finding — justified])
-  U -- no --> T{"Prompt entry declares usage tokens,<br/>and none occur in the live code<br/>(comments excluded) or manifest?"}
+  U -- no --> D{"Can the scan see every usage?<br/>not an SCA review · every source parsed ·<br/>no unresolved dynamic API surface ·<br/>an API-usage view is present"}
+  D -- no --> G{"Does the registry have a recheck<br/>prompt for this permission?"}
+  D -- yes --> T{"Prompt entry declares usage tokens,<br/>and none occur in the live code<br/>(comments excluded) or manifest?"}
   T -- yes --> WARN(["warning finding — deterministically<br/>unused, the model is never asked"])
-  T -- no --> G{"Does the registry have a recheck<br/>prompt for this permission?"}
+  T -- no --> G
   G -- yes --> ESC(["handed to the unused-permission-recheck<br/>consumer under --llm-review,<br/>else a manual-review reminder"])
   G -- no --> MAN(["manual-review reminder only<br/>— never sent to the model"])
 

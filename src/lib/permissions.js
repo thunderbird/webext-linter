@@ -100,7 +100,7 @@ const GATED_KINDS = new Set(["function", "event", "property", "namespace"]);
  * @param {RunContext} ctx  The shared check context.
  * @returns {PermissionAnalysis}
  */
-export function analyzePermissions(ctx) {
+function analyzePermissions(ctx) {
   const { schema } = ctx;
   const missingPermissions = [];
   const missingManifestKeys = [];

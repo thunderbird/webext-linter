@@ -1588,8 +1588,8 @@ verdict-intros:
 #                   verdicts whose structured shape (the forced result tool) lives
 #                   in src/llm/schema.js (RESULT_SCHEMA).
 #   change-summary: the AI "Summary of changes" prompt. The orchestrator emits it
-#                   only with --diff-to under --llm-review (which needs an
-#                   Anthropic token); the model’s prose is shown verbatim as an
+#                   only with --diff-to under --llm-review (which needs a configured
+#                   LLM provider); the model’s prose is shown verbatim as an
 #                   advisory aid (not a finding).
 #   add-on-summary: the AI "Summary of add-on" prompt. Emitted only with
 #                   --llm-review and a token; via the forced report_addon_review

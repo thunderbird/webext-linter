@@ -272,7 +272,7 @@ export function experimentGroups(manifest) {
     const refs = entryRefs(def);
     const apiPaths = entryApiPaths(key, def);
     const root = entryRoot(refs);
-    const groupKey = root || ` ${refless++}`; // ref-less entries stay separate
+    const groupKey = root || `\u0000${refless++}`; // ref-less entries stay separate
     let g = byKey.get(groupKey);
     if (!g) {
       g = { root, name: "", apiNamespaces: new Set(), entries: [] };

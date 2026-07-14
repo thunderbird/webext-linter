@@ -4,15 +4,15 @@
 // are the shared JSON schema, then run through the same coercers in schema.js, so
 // callers get an identical typed result.
 //
-// It speaks TWO OpenAI endpoints. chat/completions is the default and the only
-// one a local OpenAI-compatible server (ollama, reached via baseURL) understands;
-// responses is the only one that serves the codex models. Which one a model wants
-// - and which token parameter it accepts - comes from assets/llm/<type>.yaml via
+// It speaks TWO OpenAI endpoints. chat/completions is the default and the only one
+// a local OpenAI-compatible server (ollama, reached via baseURL) understands;
+// responses is the only one that serves the codex models. Which one a model wants -
+// and which token parameter it accepts - comes from assets/llm/<type>.yaml via
 // settings.js. OpenAI publishes no way to ASK (its /v1/models says nothing about
 // endpoints or parameters), so that table is a starting guess: when the server
-// rejects the shape, negotiate() repairs it from the rejection itself and hands
-// the working shape to learnModel(), which writes it back to the file. A repair
-// therefore costs one round-trip, once, and never a failed review.
+// rejects the shape, negotiate() repairs it from the rejection itself, and once the
+// answer has been READ the repair is cached by negotiated.js. A repair therefore
+// costs one round-trip, once per server and model, and never a failed review.
 //
 //   - the openai SDK is imported lazily (only when a token is present),
 //   - the Anthropic-style `system` text-block array is flattened to one string
@@ -21,12 +21,14 @@
 //
 // Belongs here: the OpenAI request/response shapes, the lazy SDK import, and the
 // repair rules that turn an API rejection into a working request. Does NOT belong
-// here: the model table itself (-> settings.js + assets/llm/*.yaml), the schemas +
-// coercion (-> schema.js), the provider selection (-> src/llm/provider.js), or any
-// model-facing prompt (-> the registry).
+// here: the model table (-> settings.js + assets/llm/*.yaml), where a negotiated
+// shape is stored (-> negotiated.js), the schemas + coercion (-> schema.js), the
+// provider selection (-> src/llm/provider.js), or any model-facing prompt (-> the
+// registry).
 
 import { lazyImportSdk, collectModels } from "./sdk.js";
-import { modelSettings, learnModel } from "./settings.js";
+import { modelSettings, shippedSettings } from "./settings.js";
+import { learn } from "./negotiated.js";
 import {
   RESULT_TOOL,
   REVIEW_TOOL,
@@ -102,7 +104,7 @@ export async function callVerdicts({
   criterion,
   client,
 }) {
-  const { res, endpoint } = await negotiate({
+  const { res, endpoint, commit } = await negotiate({
     client: await clientFor(token, baseURL, client),
     type,
     model,
@@ -115,7 +117,9 @@ export async function callVerdicts({
       schema: RESULT_SCHEMA,
     },
   });
-  return coerceResult(callArgs(res, endpoint, RESULT_TOOL));
+  const result = coerceResult(callArgs(res, endpoint, RESULT_TOOL));
+  commit();
+  return result;
 }
 
 /** @see import("./anthropic.js").callText */
@@ -128,7 +132,7 @@ export async function callText({
   prompt,
   client,
 }) {
-  const { res, endpoint } = await negotiate({
+  const { res, endpoint, commit } = await negotiate({
     client: await clientFor(token, baseURL, client),
     type,
     model,
@@ -136,7 +140,9 @@ export async function callText({
     system,
     prompt,
   });
-  return textOf(res, endpoint);
+  const text = textOf(res, endpoint);
+  commit();
+  return text;
 }
 
 /** @see import("./anthropic.js").callReview */
@@ -149,7 +155,7 @@ export async function callReview({
   prompt,
   client,
 }) {
-  const { res, endpoint } = await negotiate({
+  const { res, endpoint, commit } = await negotiate({
     client: await clientFor(token, baseURL, client),
     type,
     model,
@@ -164,7 +170,9 @@ export async function callReview({
       schema: ADDON_REVIEW_SCHEMA,
     },
   });
-  return coerceReview(callArgs(res, endpoint, REVIEW_TOOL));
+  const review = coerceReview(callArgs(res, endpoint, REVIEW_TOOL));
+  commit();
+  return review;
 }
 
 /**
@@ -174,15 +182,16 @@ export async function callReview({
  *   response is read (a chat completion and a response object share no shape).
  */
 /**
- * Send the request the model's settings describe and, when the server rejects
- * that shape in a way we know how to repair, fix the settings and send it again.
- * A repair that worked is written back to the asset file, so this run pays the
- * probe and no later run does.
+ * Send the request the model's settings describe and, when the server rejects that
+ * shape in a way we know how to repair, fix the settings and send it again.
  *
  * Only the API call is inside the try: a response we cannot READ is a different
  * failure (the model ignored the tool) and must not be retried with a new shape.
+ * For the same reason a repair is not RECORDED here - a shape the server accepted
+ * can still have produced an unusable answer. The caller commits it once it has
+ * read the response, so nothing that never worked is cached for the next run.
  * @param {object} params
- * @param {OpenAI} params.client @param {string} [params.type]
+ * @param {OpenAI} params.client @param {string} params.type
  * @param {string} [params.model] @param {string} [params.baseURL]
  * @param {Array<object>|string} [params.system] @param {string} params.prompt
  * @param {ForcedTool} [params.tool]
@@ -202,24 +211,29 @@ async function negotiate({
   const tried = new Set();
   let repaired = false;
   for (;;) {
-    const endpoint = endpointFor(settings, client);
-    tried.add(shapeOf(settings, client));
+    const endpoint = endpointOf(settings);
+    tried.add(shapeOf(settings));
     try {
       const res = await send(
         client,
         endpoint,
         bodyFor(settings, endpoint, req)
       );
-      if (repaired) {
-        learnModel(type, baseURL, model, settings);
-      }
-      return { res, endpoint };
+      return {
+        res,
+        endpoint,
+        commit: () => {
+          if (repaired) {
+            learn(type, baseURL, model, deltaOf(type, model, settings));
+          }
+        },
+      };
     } catch (err) {
       // Repair only what the server told us how to repair. Everything else - a
       // bad token, a rate limit, a dead local server, a network error - is the
       // caller's to report, and must reach it unchanged. Re-sending a shape we
       // already tried would loop, so that ends the attempt too.
-      if (!repair(settings, err) || tried.has(shapeOf(settings, client))) {
+      if (!repair(settings, err) || tried.has(shapeOf(settings))) {
         throw err;
       }
       repaired = true;
@@ -228,27 +242,39 @@ async function negotiate({
 }
 
 /**
- * The request shape the settings currently describe: the endpoint plus the token
- * parameter, which is everything a repair can change.
- * @param {ModelSettings} settings @param {OpenAI} client @returns {string}
+ * What the negotiation learned, as a delta from the TABLE - never a copy of the
+ * resolved settings, so a cap the reviewer later raises in the table still applies
+ * to a model whose parameter NAME was once learned.
+ * @param {string} type @param {string} [model] @param {ModelSettings} settings
+ * @returns {import("./negotiated.js").Negotiated}
  */
-function shapeOf(settings, client) {
-  return `${endpointFor(settings, client)} ${tokenKey(settings) ?? ""}`;
+function deltaOf(type, model, settings) {
+  const shipped = shippedSettings(type, model);
+  const from = tokenKey(shipped);
+  const to = tokenKey(settings);
+  return {
+    ...(settings.endpoint ? { endpoint: settings.endpoint } : {}),
+    ...(from && to && from !== to ? { rename: { from, to } } : {}),
+  };
 }
 
 /**
- * The endpoint to call: the model's, unless the client cannot serve it. A client
- * with no `responses` resource is an OpenAI-compatible shim (or a test's fake),
- * and asking it for one would be a TypeError rather than an API error we could
- * repair - so degrade to the endpoint every such server has.
- * @param {ModelSettings} settings @param {OpenAI} client
- * @returns {string}
+ * The request shape the settings describe: the endpoint plus the token parameter,
+ * which together are everything a repair can change.
+ * @param {ModelSettings} settings @returns {string}
  */
-function endpointFor(settings, client) {
-  return settings.endpoint === "responses" &&
-    typeof client?.responses?.create === "function"
-    ? "responses"
-    : "chat";
+function shapeOf(settings) {
+  return `${endpointOf(settings)} ${tokenKey(settings) ?? ""}`;
+}
+
+/**
+ * The endpoint that serves this model. Anything the table does not call "responses"
+ * is chat - the endpoint every OpenAI-compatible server has, and the one a model
+ * with no endpoint of its own gets.
+ * @param {ModelSettings} settings @returns {string}
+ */
+function endpointOf(settings) {
+  return settings.endpoint === "responses" ? "responses" : "chat";
 }
 
 /**
@@ -423,7 +449,7 @@ function renameToken(settings, name) {
  * @returns {boolean}
  */
 function repair(settings, err) {
-  const endpoint = settings.endpoint === "responses" ? "responses" : "chat";
+  const endpoint = endpointOf(settings);
   const status = err?.status;
   const message = String(err?.message ?? "");
 

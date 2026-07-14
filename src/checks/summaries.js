@@ -1,5 +1,5 @@
 // The LLM-authored advisory summaries (post-review, text-only, gated on an
-// Anthropic token). Each reduces the add-on to a self-contained prompt and
+// LLM provider is configured). Each reduces the add-on to a self-contained prompt and
 // returns a DEFERRED { bytes, run } so the orchestrator can show the review
 // report first, print a status line with the transmitted size, then run the LLM
 // call. Neither is a check - they emit no finding and never affect the verdict.

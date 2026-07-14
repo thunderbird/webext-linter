@@ -12,8 +12,8 @@ JavaScript, TypeScript and Vue source and matching `browser.*` / `messenger.*` /
 schema files.
 
 Beyond the deterministic checks, a few review judgments that resist static
-analysis can optionally be delegated to an LLM (Claude or ChatGPT) when an API
-key is supplied. See the LLM checks under Review checks below.
+analysis can optionally be delegated to an LLM (Claude, ChatGPT, or a local
+Ollama model). See the LLM checks under Review checks below.
 
 
 ## Usage
@@ -66,7 +66,7 @@ side-channel.
 
 | Option | Description |
 | --- | --- |
-| `--cache-clear` | Delete every cache directory below before the review, so all fetched sources (schema, library-hash DB, CDN lookups, allowed-experiments) are re-downloaded from scratch — as on a first run. |
+| `--cache-clear` | Delete every cache directory below before the review, so all fetched sources (schema, library-hash DB, CDN lookups, allowed-experiments) are re-downloaded from scratch — as on a first run. It also wipes `.llm-model-cache/`, the one cache with no directory flag of its own (see [LLM configuration](#llm-configuration)). |
 | `--cache-schema-dir <dir>` | Where the downloaded schema zips are cached (default `.schema-cache`). |
 | `--cache-hash-db-dir <dir>` | Where the fetched library-hash database (the addons-linter "dispensary" `hashes.txt`, used by `missing-library` to identify a bundled library by its exact content hash) is cached (default `.lib-mozilla-hash-db-cache`). |
 | `--cache-cdn-lookup-dir <dir>` | Where the jsDelivr CDN hash-lookup results are cached — best-effort, backing the optional `--cdn-lib-lookup` (default `.lib-cdn-lookup-cache`). |
@@ -143,21 +143,34 @@ export LLM_API_TYPE=ollama
 node verify.js <xpi|folder> --llm-review
 ```
 
-Each provider has a default model (`claude-sonnet-4-6` for `claude`, `gpt-4.1`
-for `chatgpt`, `llama3.1` for `ollama`). Override it by setting `LLM_API_MODEL`,
-or list the available models with `--llm-list-models`.
+**The model table (`assets/llm/<type>.yaml`).** Everything the tool knows about a
+model lives in one hand-curated, read-only asset per `LLM_API_TYPE` —
+`assets/llm/claude.yaml`, `assets/llm/chatgpt.yaml`, `assets/llm/ollama.yaml`.
+Each holds a `default:` block (the model a run uses when `LLM_API_MODEL` is unset,
+and `maxRequests`, the number of model requests one run may make before pausing)
+and a `models:` list. A model entry is keyed by either `name:` (one exact model id)
+or `match:` (a regex over the id), and carries the `endpoint:` that serves it plus
+a `parameters:` map that is spread verbatim into the request body — the
+output-token cap among them, so a new knob is a YAML edit rather than a code
+change. (Anthropic serves every model from a single endpoint, so `claude.yaml`
+declares none.) A model resolves against the `name:` entries first, then the
+`match:` entries in file order, which makes the trailing `- match: .*` catch-all
+the last resort.
 
-**The model table (`assets/llm/<type>.yaml`).** One file per `LLM_API_TYPE` holds
-that provider's default model, its per-run request budget, and — per model — the
-endpoint that serves it and the parameters its requests carry (the output-token
-cap among them). This is what lets the OpenAI models that are *not* served by
-`/v1/chat/completions` work: a `gpt-5.1-codex-max` request goes to `/v1/responses`,
-and a reasoning model is sent `max_completion_tokens` rather than `max_tokens`.
-OpenAI publishes no way to ask a model which it wants, so the table is a starting
-guess: when the server rejects the shape, the adapter repairs it from the rejection
-itself, uses the working shape, and appends it to that file's `learned:` list — so
-the probe is paid once rather than once per run. A model the table has never seen
-falls back to the plain chat request every OpenAI-compatible server understands.
+That table is what lets the OpenAI models that are *not* served by
+`/v1/chat/completions` work: a `gpt-5.1-codex-max` request goes to `/v1/responses`
+with `max_output_tokens`, and a `gpt-5` / o-series reasoning model on chat is sent
+`max_completion_tokens` instead of `max_tokens`. OpenAI publishes no
+capability-discovery endpoint, so the table is a starting guess. When a server
+rejects a request shape, the OpenAI adapter repairs it from the rejection itself —
+renaming the token parameter, or moving the request to `/v1/responses` — and, once
+the answer has actually been read, caches the **delta** (the endpoint and the
+parameter rename, nothing else) in the gitignored `.llm-model-cache/` directory,
+keyed by base URL and model. The next run sends the working shape straight away,
+so the probe is paid once per server and model rather than once per run;
+`--cache-clear` wipes what was learned. The shipped YAML is never written to, so a
+hand edit still wins on everything the negotiation did not learn (a raised
+output-token cap, `maxRequests`).
 
 **Local model (Ollama).** With [Ollama](https://ollama.com) running, the checks
 talk to its OpenAI-compatible endpoint at `http://localhost:11434/v1` — no API
@@ -231,15 +244,20 @@ in order. A section it never asks for is inert.
 - **`invalid-experiment-phase`** - the single reject check. An Experiment bundling an
   unsupported API draft (without `--allow-experiments`) is rejected outright, and this
   phase runs ALONE - no other check, no LLM, no manual reminders.
-- **`deterministic-phase`** - decided entirely in code, no LLM, offline apart from the
-  one-time vendor source fetch. A few are gated by review mode (`diff: true`/`false`,
-  `sca: true`/`false`).
+- **`deterministic-phase`** - every case is decided in code, offline apart from the
+  one-time vendor source fetch: the check itself never calls the model. Deterministic
+  does not mean the phase is model-free, though - a check here may also escalate a
+  case it cannot settle, and two of them (`unused-permission`,
+  `missing-english-localization`) name a **recheck consumer** that re-judges those
+  escalations with the model under `--llm-review`. A few checks are gated by review
+  mode (`diff: true`/`false`, `sca: true`/`false`).
 - **`llm-phase`** - a deterministic pre-flight always runs offline; only the ambiguous
-  residue is delegated to an LLM (when an API key is supplied) or routed to manual
-  review.
+  residue is delegated to an LLM (when one is configured) or routed to manual review.
 - **`post-summary-phase`** - the `--llm-review` recheck **consumers**, which re-judge a
   producer's escalated items with the whole add-on in view. They run after the AI
-  summary, which is what they read; a consumer inherits the mechanism of its producer.
+  summary, which is what they read; a consumer is named by its producer's
+  `post-summary-recheck:` field, and the producer may sit in either the deterministic
+  or the llm phase.
 - **`manual-checks`** - checks the tool can't make itself, surfaced as a todo list. Not
   a phase: the orchestrator never asks for this section.
 
@@ -251,9 +269,13 @@ each phase runs - is described in
 
 Each `deterministic-phase` entry links to a module in
 [src/checks/rules/](src/checks/rules/) and supplies the severity for its
-findings. A deterministic check either decides each case as a finding or
-escalates it straight to manual review (e.g. `vendor-unverified`,
-`native-messaging`). The LLM checks escalate only their ambiguous residue.
+findings. A deterministic check decides each case in code - as a finding, or as an
+escalation of a case it cannot settle. An escalation goes straight to manual review
+(e.g. `vendor-unverified`, `native-messaging`), unless the check names a
+post-summary recheck consumer (`unused-permission`,
+`missing-english-localization`): under `--llm-review` those cases are re-judged by
+the model instead, and only then fall back to manual review. The LLM checks
+escalate only their ambiguous residue.
 
 | Check | What it flags |
 | --- | --- |
@@ -286,6 +308,7 @@ escalates it straight to manual review (e.g. `vendor-unverified`,
 | `manifest-unknown-permission` | A declared permission value that is neither a known permission, a data-collection permission, nor a match pattern (error). |
 | `manifest-version-mismatch` | `manifest_version` disagrees with the schema set being reviewed (error). |
 | `minimize-host-permissions` | Broad (`<all_urls>` / `*` host) permissions requested as required (info). |
+| `missing-english-localization` | User-facing text hardcoded in a non-English language while the add-on ships no English `_locales` (warning). Pre-flight: an English `_locales` directory (`en`, `en-US`, …) → pass; a `_locales` directory without one → a finding; no `_locales` at all → language-detect the visible HTML text plus the manifest name/description with `franc`, where a confident non-English verdict is the finding. Too little text, or a near-tie with English, escalates to the `missing-english-localization-recheck` consumer (under `--llm-review`), else to manual review. |
 | `missing-library` | A bundled JS or CSS file (not in the VENDOR file) whose content hash matches a known third-party library release, named as `name version` (info). Identified by a fetched known-library hash database (Mozilla dispensary's `hashes.txt`), so the match is byte-exact; a file the database doesn't recognize is left to `minified-code`/`obfuscated-code` or scanned as the developer's own code. An identified library is also audited for known vulnerabilities (`vendor-vulnerable`), so an undeclared vulnerable bundle is still caught. |
 | `missing-manifest-key` | A called API needs a manifest key (e.g. `action`) that is not declared (error). The manifest-key counterpart of `missing-permission`. |
 | `missing-permission` | A permission required but not declared (error) - required by a called API, or implied by a declared script-injection manifest key (`compose_scripts` → `compose`, `message_display_scripts` → `messagesModify`). An API needing a manifest key is `missing-manifest-key`. |
@@ -306,6 +329,7 @@ escalates it straight to manual review (e.g. `vendor-unverified`,
 | `unpinned-vendor-source` | A VENDOR-declared file whose (trusted-host) source is not pinned to an immutable version/tag/commit, so its bytes can't be verified (error). |
 | `unrecognized-manifest-key` | A top-level manifest key the schema does not define - Thunderbird ignores it (warning). |
 | `unsafe-html` | Any write to `innerHTML`/`outerHTML`/`srcdoc`/`insertAdjacentHTML`; only `Element.setHTML()` is sanctioned (an empty/null clear is exempt) (info). |
+| `unused-permission` | A declared named permission (required or optional) that no reachable call provably requires (warning) - host patterns are `minimize-host-permissions`' concern. A permission is dropped as justified when an API call, a `navigator.*` Web/DOM call, or a script-injection manifest key proves it in use. It is a finding when the registry's permission prompt names its justifying usages as `tokens` and not one of them occurs anywhere in the live code (comments excluded) or the manifest - decided with no model involved, and only while the scan can see every usage. Everything else escalates: under `--llm-review` to the `unused-permission-recheck` consumer, which judges the located token sites one by one, else to manual review. |
 | `vendor-modified` | A declared third-party file whose bytes don't match its pinned source (EOL-tolerant compare) - it appears modified from upstream (error). |
 | `vendor-unparseable` | A VENDOR file is present but no block pairs a library file with a source URL that points to a file, so nothing can be verified (error). |
 | `vendor-unverified` | Declarations that can't be settled automatically - an untrusted-host source, a library not confirmed widely used, or an unfetchable source - routed to manual review. |
@@ -315,24 +339,54 @@ escalates it straight to manual review (e.g. `vendor-unverified`,
 Each LLM check **always runs its deterministic pre-flight**, regardless if LLM support is enabled or not.
 Cases the pre-flight can settle become findings directly, and only the
 genuinely-ambiguous residue is escalated, per case. When LLM support is not enabled, unsure findings are added to the manual review queue. When LLM support *is* enabled
-(`--llm-review` with an `LLM_API_KEY`), each escalated case is sent to the model
-with the check's rubric and that case's evidence (e.g. the offending file's
+(`--llm-review`, with a configured provider), each escalated case is sent to the
+model with the check's rubric and that case's evidence (e.g. the offending file's
 source). The model returns a three-way verdict - **fail** / **pass** /
 **unsure** - so a confident result is final. Any **unsure** finding is routed to manual review.
 
-`--llm-review` then runs a second pass over those unsure items: the whole-add-on
-summary re-judges each one with full-add-on context (richer than the per-case
-evidence of the first pass), so many resolve to a confident **pass**/**fail**
-instead of staying on the manual-review list.
+Four of these checks (`unused-files`, `minimize-web-accessible-resources`,
+`data-exfiltration`, `disguised-transmission`) do not stop there: their unsure
+residue is handed to a post-summary recheck consumer (below), where the whole-add-on
+summary re-judges each item with full-add-on context - richer than the per-case
+evidence of the first pass - so many resolve to a confident **pass**/**fail**
+instead of staying on the manual-review list. The other three
+(`strict-min-version-api`, `remote-script`, `remote-eval`) name no consumer, so an
+unsure case there goes to manual review directly.
 
 | Check id (`check:`) | Pre-flight (always) + what the LLM judges |
 | --- | --- |
+| `strict-min-version-api` | Pre-flight: a call to a real, schema-resolved API added in a Thunderbird newer than the declared `strict_min_version`. An unguarded call is a finding straight away; a call carrying a guard signal (optional chaining, a `typeof`/existence test, a `getBrowserInfo` version gate) → the LLM judges, from the call's file, whether the guard really keeps it off the older versions. A non-existent API is `unknown-api`'s concern. |
 | `remote-eval` | Pre-flight: the statically-undecidable `fetch()->eval` pattern (scanned only outside the WebExtension tree, like the other dynamic-execution checks - WebExtension code is CSP-gated) → the LLM judges (given the offending file) whether the executed code is fetched remotely. The definite dynamic-execution cases are the deterministic `eval-call`/`function-constructor`/`string-timer`/`csp-unsafe-eval`/`csp-unsafe-inline` checks. |
 | `remote-script` | Pre-flight: remote `<script>`/`<link>`/`@import`/`url()`/media/imports/`importScripts`/runtime injection/WASM, and a CSP permitting a remote script source → a finding. Statically-undecidable cases (non-literal URLs, inline `data:`/`blob:` script sources) → the LLM judges whether the source is remote. |
 | `data-exfiltration` | Pre-flight: a normal transmission (`fetch`/XHR/WebSocket/EventSource/`sendBeacon`) to a remote/dynamic host → the LLM judges, given the file and the options page, whether user data is sent without an explicit opt-in. Covert channels are the separate `disguised-*` errors. |
-| `missing-english-localization` | Pre-flight: A `_locales` English directory (`en`, `en-US`, …) present → pass. A `_locales` directory but no English → a finding. No `_locales` directory → the LLM judges whether user-facing strings are hardcoded in a non-English language. |
+| `disguised-transmission` | Pre-flight: the weak residue of the covert channels - a resource URL, a stylesheet `url()`, a `window.open()`, or a page navigation to a remote host built from a runtime value, with no user-data API call in it → the LLM judges whether it really smuggles user data out through that channel or is just legitimate dynamic URL building. The strong cases (a user-data call in the URL) are the deterministic `disguised-*` errors. |
 | `minimize-web-accessible-resources` | Pre-flight: over-broad exposure (a resource pattern like `*`, or MV3 `matches` of `<all_urls>`/`*://*/*`) and concrete resources no content script/page loads → a finding. An ambiguous exposed resource (dynamic loaders, or name mentioned) → the LLM judges whether it is needlessly exposed. |
 | `unused-files` | Pre-flight: hidden/junk by name, and files reachable from no manifest entry point (a reference graph over imports/`getURL`/HTML/CSS plus schema-derived file-loading APIs) - a clearly-unreferenced file is a finding. An ambiguous file (string-mentioned, or the add-on uses dynamic loaders) → the LLM judges whether it is unused. License/README/VENDOR/`_locales` are exempt. |
+
+### Post-summary rechecks
+
+A **recheck consumer** is the second look. A producer check - deterministic or LLM -
+escalates the items it could not settle from its own narrow evidence and names a
+consumer in its `post-summary-recheck:` field. Under `--llm-review` those items are
+appended to the **"Summary of add-on"** pass, so the model re-judges them while
+reading the whole, line-numbered add-on; the consumer then resolves each verdict:
+**pass** → the item is dropped, **fail** → it becomes the consumer's finding, and
+**unsure** (or no verdict at all) → manual review. Without `--llm-review` no summary
+runs, nothing is handed over, and the producer's own escalation stands as a
+manual-review reminder.
+
+Each consumer is an ordinary check with its own id, severity and wording - so its
+findings read like any other, and `--checks-only`/`--checks-skip` name it like any
+other.
+
+| Consumer (`check:`) | Producer | What the summary re-judges |
+| --- | --- | --- |
+| `unused-permission-recheck` | `unused-permission` | Each declared permission the producer could neither prove used nor deterministically prove unused. A permission whose usage `tokens` were located is judged **per site** (`file:line`), the model deciding at each one whether the permission is actually exercised there; a permission with no locatable site (e.g. `unlimitedStorage`) gets a single holistic verdict. The sites are then aggregated back to the permission: any site passing justifies it, every site failing flags it as unused (warning), anything else is manual. |
+| `missing-english-localization-recheck` | `missing-english-localization` | The low-confidence language case (too little text, or a near-tie with English), re-judged by a model reading all of the add-on's user-facing text (warning). |
+| `unused-files-recheck` | `unused-files` | Each packaged file that is reachable from no entry point and that no single site resolved to a loader - now judged against the whole add-on, including runtime-built paths that plausibly resolve to it (error). |
+| `minimize-web-accessible-resources-recheck` | `minimize-web-accessible-resources` | Each `web_accessible_resources` entry no single referencing site could clear - now judged against the whole add-on: does anything *outside* the add-on (a content script, a web page, another extension) actually read it? (warning). |
+| `data-exfiltration-recheck` | `data-exfiltration` | Each transmission site the first pass could not clear - now with every settings page, background flag and stored preference in view, so an opt-in defined outside the options page is visible (error). |
+| `disguised-transmission-recheck` | `disguised-transmission` | Each covert-channel site the first pass could not clear - now judged against the whole add-on: user data smuggled out, or a legitimate dynamic URL? (error). |
 
 
 ### Manual checks

@@ -22,11 +22,8 @@
 // review. So only llm checks can defer to manual, and only the orchestrator
 // decides.
 //
-// The shared `ctx` passed to run() holds `addon` (files, manifest,
-// manifestError - see addon/load.js), `schema` (a SchemaIndex), `jsSources`
-// (see addon/sources.js), `apiUsages` (per-source parsed API usage), `options`
-// (CLI flags), and - when an Anthropic token is set - `ctx.llm`, the LLM client
-// whose `evaluate(criterion)` an LLM check calls.
+// The shared `ctx` passed to run() is the RunContext typedef below, which is the
+// one description of it: what a check may read, and from where.
 //
 // Belongs here: the Registry class (the queried view of registry.yaml), loading
 // and filtering rule modules, the RunContext type, and runChecks - the loop
@@ -1163,9 +1160,9 @@ export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
 /**
  * Run one loaded check and return its findings + manual refs, stamping each
  * finding with the check's id and severity. This is the per-check body of
- * runChecks, extracted so a check can also be run on its own (the
- * unused-permission-recheck consumer runs after the add-on summary, outside the
- * loop - see src/pipeline.js). Identical behavior either way: an LLM check's candidates go
+ * runChecks, extracted so a check can also be run on its own (a post-summary
+ * recheck consumer runs after the add-on summary, outside the loop - see
+ * runChecks below). Identical behavior either way: an LLM check's candidates go
  * through escalation.js, a deterministic check's escalations route to manual
  * review, and a thrown check becomes a single "check-failed" finding so the rest
  * still run.

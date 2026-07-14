@@ -15,5 +15,3 @@ models:
     endpoint: chat
     parameters:
       max_tokens: 8192
-
-learned: []

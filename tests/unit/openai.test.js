@@ -1,30 +1,36 @@
 // Deterministic tests for the OpenAI (ChatGPT) adapter: the request it builds on
 // each of its two endpoints (chat/completions and responses), the coercion of the
-// result, and the negotiation - when the server rejects a request shape, the
-// adapter must repair it from the rejection, remember the repair, and write it
-// back to the model table. Fake clients record the requests, so nothing reaches
-// the network and the openai SDK is never loaded; resetLlmSettings() points the
-// table at a tmp copy, so no test can rewrite the shipped assets/llm files.
+// result, and the negotiation - when the server rejects a request shape, the adapter
+// must repair it from the rejection, remember the repair for the rest of the run, and
+// cache it for the next one. The requests are built against the SHIPPED model table,
+// so what these tests assert is what a real run sends. Fake clients record them, so
+// nothing reaches the network and the openai SDK is never loaded, and the negotiated
+// cache is redirected to a temp dir so no test writes into the developer's own.
 
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-import YAML from "yaml";
-
 import { callVerdicts, callText, callReview } from "../../src/llm/openai.js";
-import { resetLlmSettings } from "../../src/llm/settings.js";
-import { copyLlmTable } from "./llm-table.js";
+import { isolateLlmCache } from "./llm-table.js";
 
-// A private copy of the shipped table per test: the negotiation WRITES to it.
-let dir;
+let cache;
 beforeEach(() => {
-  dir = copyLlmTable();
-  resetLlmSettings(dir);
+  cache = isolateLlmCache();
 });
 
-/** A chat-only client (no `responses` resource), like a local OpenAI-compatible server. */
+/** What the adapter cached about a model, or null. */
+function learned(type, baseURL, model) {
+  const file = path.join(cache, `${type}.json`);
+  if (!fs.existsSync(file)) {
+    return null;
+  }
+  const entries = JSON.parse(fs.readFileSync(file, "utf8"));
+  return entries[`${baseURL ?? ""}\u0000${model ?? ""}`] ?? null;
+}
+
+/** A chat-only client. */
 function fakeClient(onCreate) {
   return { chat: { completions: { create: async (r) => onCreate(r) } } };
 }
@@ -120,7 +126,7 @@ test("callVerdicts forces the report_verdicts function and coerces the result", 
     { role: "user", content: "the rubric" },
   ]);
   assert.equal(req.model, "gpt-4.1");
-  // The model's parameters, straight from assets/llm/chatgpt.yaml.
+  // The model's parameters, straight from its entry in assets/llm/chatgpt.yaml.
   assert.equal(req.max_tokens, 8192);
   assert.deepEqual(result.verdicts, COERCED);
 });
@@ -312,7 +318,7 @@ test("an unlisted model gets the table's catch-all: chat + max_tokens", async ()
   assert.equal(req.max_tokens, 8192);
 });
 
-test("a local ollama model is sent the same request as always: chat + max_tokens", async () => {
+test("a local ollama model gets the plain chat request, never the responses one", async () => {
   const client = bothClient({
     chat: () => toolCall("report_verdicts", VERDICTS),
     responses: () => assert.fail("a local server has no responses endpoint"),
@@ -410,7 +416,7 @@ test("a chat 404 that names the responses endpoint moves the model - and the cap
   );
 });
 
-test("a negotiated shape is written back to the model table", async () => {
+test("a negotiated shape is cached as a delta from the table, for that server only", async () => {
   const client = bothClient({
     chat: (r) => {
       if (r.max_tokens !== undefined) {
@@ -429,24 +435,59 @@ test("a negotiated shape is written back to the model table", async () => {
     criterion: "c",
     client,
   });
-  const file = YAML.parse(
-    fs.readFileSync(path.join(dir, "chatgpt.yaml"), "utf8")
-  );
-  assert.deepEqual(file.learned, [
-    {
-      name: "gpt-4.1",
-      baseURL: "https://proxy.example/v1",
-      endpoint: "chat",
-      maxRequests: 25,
-      parameters: { max_completion_tokens: 8192 },
+  // Only what was learned - the parameter's NAME. The cap's value and maxRequests
+  // keep coming from the table, so raising either there still takes effect.
+  assert.deepEqual(learned("chatgpt", "https://proxy.example/v1", "gpt-4.1"), {
+    endpoint: "chat",
+    rename: { from: "max_tokens", to: "max_completion_tokens" },
+  });
+  // And only against the server it was negotiated with.
+  assert.equal(learned("chatgpt", "", "gpt-4.1"), null);
+});
+
+test("a shape that the server accepted but that produced no answer is not cached", async () => {
+  const client = bothClient({
+    chat: (r) => {
+      if (r.max_tokens !== undefined) {
+        throw apiError(400, { param: "max_tokens", message: "Unsupported" });
+      }
+      // The repaired request is accepted - and the model then spends the whole cap
+      // reasoning and returns nothing we can read.
+      return {
+        choices: [{ message: { content: "" }, finish_reason: "length" }],
+      };
     },
-  ]);
-  // A run that needed no repair writes nothing.
-  assert.equal(
-    YAML.parse(fs.readFileSync(path.join(dir, "ollama.yaml"), "utf8")).learned
-      .length,
-    0
+    responses: () => assert.fail("not an endpoint problem"),
+  });
+  await assert.rejects(
+    () =>
+      callVerdicts({
+        token: "t",
+        type: "chatgpt",
+        model: "gpt-4.1",
+        system: [],
+        criterion: "c",
+        client,
+      }),
+    /output-token limit/
   );
+  // Nothing is learned from a shape that never produced an answer: caching it would
+  // pin the failure for every later run, and shadow the very cap the error asks the
+  // reviewer to raise.
+  assert.equal(learned("chatgpt", "", "gpt-4.1"), null);
+});
+
+test("a run that needs no repair caches nothing", async () => {
+  const client = fakeClient(() => toolCall("report_verdicts", VERDICTS));
+  await callVerdicts({
+    token: "t",
+    type: "chatgpt",
+    model: "gpt-4.1",
+    system: [],
+    criterion: "c",
+    client,
+  });
+  assert.equal(fs.existsSync(path.join(cache, "chatgpt.json")), false);
 });
 
 test("a rejected max_completion_tokens is renamed back (an older or local server)", async () => {

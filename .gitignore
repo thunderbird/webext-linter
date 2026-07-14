@@ -5,6 +5,7 @@ logs/
 .experiments-cache/
 .lib-mozilla-hash-db-cache/
 .lib-cdn-lookup-cache/
+.llm-model-cache/
 *.tmp
 *.key
 run-nextpass.sh

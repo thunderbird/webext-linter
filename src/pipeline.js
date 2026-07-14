@@ -329,18 +329,14 @@ export async function runPipeline(opts) {
 
   const findings = [];
 
-  // Run-wide model-request cap, shared by every LLM site this run: the vendor
-  // parse, the LLM checks (each candidate batch is one request), and the
-  // summaries. The cap is the chosen model's own `maxRequests` (assets/llm), since
-  // a slower or dearer model is worth fewer calls. `confirmMore` (the interactive
-  // "run N more?" prompt) is supplied by the CLI. Without it (JSON, piped, tests)
-  // the run hard-stops at the cap and the remaining LLM work escalates to manual
-  // review. See src/llm/budget.js.
-  const llmBudget = createLlmBudget({
-    step: modelSettings(opts.llmApiType, opts.llmApiUrl, opts.llmModel)
-      .maxRequests,
-    confirmMore: opts.confirmMore,
-  });
+  // Run-wide model-request cap, shared by every LLM site this run: the vendor parse,
+  // the LLM checks (each candidate batch is one request), and the summaries. Built
+  // by the LLM pre-flight below, from the chosen model's own `maxRequests`
+  // (assets/llm) - a slower or dearer model is worth fewer calls. It stays null for
+  // a run that calls no model, and every site that consumes it is reached only when
+  // the model IS called (`enabled: llmVerified` / `ctx.llm`), so a null one is never
+  // consumed rather than quietly permitting requests. See src/llm/budget.js.
+  let llmBudget = null;
 
   // The review target: the SHIPPED XPI unless an SCA survives the downgrade below. Pinned to
   // `xpi` for a rejected Experiment, whose rejection is decided entirely from the shipped XPI's
@@ -398,7 +394,15 @@ export async function runPipeline(opts) {
       if (availabilityError) {
         throw new Error(availabilityError);
       }
-      // Requested, and proven usable.
+      // Requested, and proven usable. The request budget is the chosen model's, and
+      // is read only now - the config it is read for has just been validated, so a
+      // bogus type or an unlistable model is reported as itself rather than as a
+      // failure to find a model table.
+      llmBudget = createLlmBudget({
+        step: modelSettings(opts.llmApiType, opts.llmApiUrl, opts.llmModel)
+          .maxRequests,
+        confirmMore: opts.confirmMore,
+      });
       llmVerified = true;
     }
 

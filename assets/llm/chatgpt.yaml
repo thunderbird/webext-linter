@@ -7,17 +7,20 @@
 # body, so a new knob (temperature, reasoning, ...) is a YAML edit, no code.
 #
 # An entry is keyed by EITHER `name` (one exact model id) OR `match` (a regex
-# over the id), never both. A model resolves against `learned`, then the `name`
-# entries, then the `match` entries in file order - so the trailing catch-all is
-# the last resort for a model we know nothing about.
+# over the id), never both. A model resolves against the `name` entries, then the
+# `match` entries in file order - so the trailing catch-all is the last resort for
+# a model we know nothing about.
 #
 # The endpoint dictates which token parameter is legal:
 #   chat      -> max_tokens | max_completion_tokens
 #   responses -> max_output_tokens
 #
-# `learned` is written by the linter itself, after the server rejected a request
-# shape and the adapter negotiated a working one (see src/llm/openai.js). Delete
-# an entry there to force a fresh probe.
+# This table is a starting guess, and editing it here is how you change it: OpenAI
+# publishes no way to ASK which endpoint or parameter a model wants. When a server
+# rejects a request shape the adapter negotiates a working one and caches THAT (the
+# endpoint and the parameter's name, nothing else) under .llm-model-cache, never
+# here - so your edits keep winning on everything it did not learn, and
+# `--cache-clear` makes it forget what it did.
 
 default:
   model: gpt-4.1 # for its 1M-token context: add-ons can be large (gpt-4o's 128k overflowed)
@@ -48,5 +51,3 @@ models:
     endpoint: chat
     parameters:
       max_tokens: 8192
-
-learned: []

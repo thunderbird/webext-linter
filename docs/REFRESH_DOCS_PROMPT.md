@@ -42,8 +42,9 @@ that no longer exist.
    check's `title`, `severity` (`error` / `warning` / `info`), `check` (the
    kebab-case id), `response` (developer-facing message), and often a leading
    comment block describing intent. Some entries have no `severity` (manual /
-   producer checks) or special fields (`diff`, `summary-prompt`,
-   `permission-recheck`). The check-bearing sections ARE the phases — a check's phase
+   producer checks) or special fields (`input`, `diff`, `sca`, `eslint`,
+   `post-summary-recheck`, `summary-prompt`, `permission-recheck`). The
+   check-bearing sections ARE the phases — a check's phase
    IS the section it lives in, never a field on the entry: `invalid-experiment-phase`
    (the only phase that runs for an invalid Experiment), `deterministic-phase`,
    `llm-phase`, and `post-summary-phase` — the last holds every recheck CONSUMER (the
@@ -58,13 +59,22 @@ that no longer exist.
 3. `README.md` — overall framing (deterministic vs LLM vs manual checks, the
    `--llm-review` recheck mechanism, producer/consumer pairs), and the
    **Standard** vs **Source code archive (SCA)** review modes.
-4. `src/pipeline.js` — the review pipeline (`runPipeline`): the ground truth for
-   the review-pipeline page (`check-flow.html`). It shows the stage order
-   (load → resolve schema → experiment classification → vendor/library/build setup →
-   parse → build the run context → run checks → summaries → recheck → report) and the
+4. `src/pipeline.js` — the review pipeline (`runPipeline`): with
+   `src/checks/registry.js`, the ground truth for the review-pipeline page
+   (`check-flow.html`). It shows the setup stage order (Phase 1 load + resolve the
+   schema, the experiment classification and the LLM → Phase 2 resolve the review
+   target → Phase 3 vendor/library/build setup + parse → Phase 4 build the run
+   context → Phase 5 one `runChecks()` call, then render the report) and the
    `mode === "sca"` forks (the source /
    dependency / build / shipped-XPI / shipped-manifest split, routed via `routeCtx`
    through `buildShippedCtx` / `buildScaBuildCtx` / `buildManifestCtx`).
+5. `src/checks/registry.js` — the orchestrator (`runChecks`), which runs the whole
+   review inside that single Phase-5 call: the deterministic and llm phases in its
+   main loop, then the add-on-summary interleave (`resolveRecheckSummaries`, in
+   `src/checks/summaries.js`) that fills `ctx.recheckVerdicts`, then the
+   post-summary phase (the recheck consumers) that reads them. The summaries and the
+   recheck are NOT pipeline stages — do not draw them as such; the pipeline only
+   calls `runChecks` and assembles the `Review` from what it returns.
 
 ## Steps
 
@@ -97,8 +107,11 @@ that no longer exist.
    - checks with no `severity` (manual review) — use a neutral badge and let the
      flowchart terminate in an "escalate to manual review" node rather than an
      error/warning/info;
-   - producer / recheck pairs (e.g. `*-manual` → its consumer, or the
-     `--llm-review` rechecks) — describe the escalation and where it is
+   - producer / recheck pairs — a producer names its consumer in
+     `post-summary-recheck:`, and the consumer's id is the producer's id plus a
+     `-recheck` suffix (`unused-permission` → `unused-permission-recheck`). A
+     producer may be deterministic or an llm check; the consumer always lives in
+     `post-summary-phase`. On both pages describe the escalation and where it is
      re-judged;
    - LLM checks — make clear the final branch is a model judgement, and what the
      deterministic pre-flight narrows down before the model is asked.
