@@ -1,7 +1,7 @@
 {
-  "_comment": "Remote refs flagged by remote-script: a <script src> (page.html:4), an @import in an inline <style> (page.html:7), a url() in a style= attribute (page.html:11), and an @import in style.css (style.css:1). page.html/style.css are not referenced by the manifest or any code, so unused-files flags them too. bg.js also contains an eval(), but it is a WebExtension file, so eval-call does NOT flag it (a WebExtension sandbox cannot run eval without a permissive CSP, reported separately by csp-unsafe-*; the eval/Function/string-timer file checks are exercised outside the WebExtension tree by the eval-non-webext fixture).",
+  "_comment": "Remote refs flagged by remote-resources: a <script src> (page.html:4), an @import in an inline <style> (page.html:7), a url() in a style= attribute (page.html:11), and an @import in style.css (style.css:1). page.html/style.css are not referenced by the manifest or any code, so unused-files flags them too. bg.js also contains an eval(), but it is a WebExtension file, so eval-call does NOT flag it (a WebExtension sandbox cannot run eval without a permissive CSP, reported separately by csp-unsafe-*; the eval/Function/string-timer file checks are exercised outside the WebExtension tree by the eval-non-webext fixture).",
   "expect": {
-    "remote-script": ["page.html:4","page.html:7","page.html:11","style.css:1"],
+    "remote-resources": ["page.html:4","page.html:7","page.html:11","style.css:1"],
     "unused-files": ["page.html","style.css"]
   }
 }

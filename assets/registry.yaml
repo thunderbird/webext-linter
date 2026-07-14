@@ -1206,23 +1206,26 @@ llm-phase:
   response: |-
     One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise, remove these entries to reduce the add-on’s exposed surface.
 
-# LLM check: remote <script>/<link>/@import/importScripts/injection and CSP
-# sources that permit remote code.
-- title: Remote script injection
+# LLM check: remote resources - <script>/<link>/<iframe>/media in HTML,
+# @import/url() in CSS, import()/importScripts()/module imports, runtime <script>
+# injection, remote WASM, and a CSP that permits a remote source. The definite
+# remote loads are flagged deterministically; only the statically-undecidable
+# sources reach the model.
+- title: Remote resources
   severity: error
-  check: remote-script
+  check: remote-resources
   input: source
   prompt: |-
-    Each candidate is a site (file:line) that loads or injects script or code
-    from a source static analysis could not resolve to a bundled file. For each
-    candidate, determine whether the loaded code comes from a remote source
-    (verdict fail) rather than a packaged file (verdict pass). Use unsure when you
-    genuinely cannot tell.
+    Each candidate is a site (file:line) that loads or injects a resource -
+    script, style, frame, or media - from a source static analysis could not
+    resolve to a bundled file. For each candidate, determine whether the resource
+    comes from a remote source (verdict fail) rather than a packaged file (verdict
+    pass). Use unsure when you genuinely cannot tell.
   instructions: |-
-    This site loads code from a source static analysis cannot resolve. Confirm
-    by hand that it is bundled with the add-on and not fetched remotely.
+    This site loads a resource from a source static analysis cannot resolve.
+    Confirm by hand that it is bundled with the add-on and not fetched remotely.
   response: |-
-    Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed.
+    A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed.
 
 # LLM check: the statically-undecidable fetch().then(eval) case - is the executed
 # code remote? The definite eval/Function/timer/CSP cases are deterministic

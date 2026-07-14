@@ -11,7 +11,7 @@ import {
 } from "../../src/scan/html.js";
 import { scanCssRemoteRefs } from "../../src/scan/css.js";
 import { scanRemoteJs } from "../../src/parse/remote-js.js";
-import remoteScript from "../../src/checks/rules/remote-script.js";
+import remoteScript from "../../src/checks/rules/remote-resources.js";
 import evalCall from "../../src/checks/rules/eval-call.js";
 import cspUnsafeEval from "../../src/checks/rules/csp-unsafe-eval.js";
 import cspUnsafeInline from "../../src/checks/rules/csp-unsafe-inline.js";
@@ -112,9 +112,9 @@ test("inline CSS scan flags remote @import in <style> and url() in style=", () =
   assert.ok(!remote.some((r) => r.url.includes("local.png")));
 });
 
-// remote-script surfaces an inline-<style> remote @import as a finding, exactly
+// remote-resources surfaces an inline-<style> remote @import as a finding, exactly
 // like a remote ref in a standalone .css file.
-test("remote-script flags a remote @import inside an inline <style>", () => {
+test("remote-resources flags a remote @import inside an inline <style>", () => {
   const ctx = fakeCtx(
     {
       "page.html": `<head><style>@import url("https://cdn/f.css");</style></head>`,
@@ -411,7 +411,7 @@ test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval",
 
 // A remote host allowed in the CSP script-src directive is flagged with a
 // "remote script source" message, since it permits loading off-package code.
-test("remote-script flags a remote CSP script-src host", () => {
+test("remote-resources flags a remote CSP script-src host", () => {
   const { findings } = remoteScript.run(
     withManifest(
       fakeCtx(
@@ -426,7 +426,7 @@ test("remote-script flags a remote CSP script-src host", () => {
 
 // A clean fully-bundled add-on (local JS, no remote CSP or eval) produces zero
 // findings from both checks - the negative/no-false-positive baseline.
-test("remote-script + eval checks: no findings for a clean bundled add-on", () => {
+test("remote-resources + eval checks: no findings for a clean bundled add-on", () => {
   const ctx = fakeCtx(
     { "bg.js": "browser.runtime.onInstalled.addListener(() => {});\n" },
     { manifest_version: 3, name: "x", version: "1" }
@@ -464,7 +464,7 @@ test("eval checks note each dynamic-code site and the CSP, with verdicts", () =>
   );
 });
 
-test("remote-script notes remote (fail), local code (pass) and ambiguous (unsure)", () => {
+test("remote-resources notes remote (fail), local code (pass) and ambiguous (unsure)", () => {
   const ctx = fakeCtx(
     {
       "popup.html":

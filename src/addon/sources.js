@@ -54,7 +54,7 @@ import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
  *   statement loc, or null - every source (the two input:xpi module checks read it).
  * @property {object} [experimentRefs]  scanExperimentInjectedRefs refs - every
  *   source, but only for an Experiment add-on (absent otherwise).
- * @property {object} [remoteJs]  scanRemoteJs (eval-scan + remote-script) - authored.
+ * @property {object} [remoteJs]  scanRemoteJs (eval-scan + remote-resources) - authored.
  * @property {object} [networkSinks]  scanNetworkSinks (outbound-sinks) - authored.
  * @property {object} [unsafeHtml]  scanUnsafeHtml - authored.
  * @property {object} [coreSymbols]  scanCoreSymbols (core-symbol-in-webext) - authored.

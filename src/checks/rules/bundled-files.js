@@ -5,7 +5,7 @@
 //   - file-loading API calls: every packaged-file path the schema-directed +
 //     bridge extractor finds (register/setIcon/theme/menus, executeScript/
 //     insertCSS, getURL, tabs.create, *.setPopup, ...) - see loader-files.js.
-// Complements the remote-script check (which catches remote sources).
+// Complements the remote-resources check (which catches remote sources).
 //
 // Belongs here: gathering referenced paths from both sources, keeping only
 // packaged-file candidates (relative/root-relative, no scheme), and emitting a
@@ -14,7 +14,7 @@
 // Does NOT belong here: extracting manifest file refs (-> src/lib/
 // manifest-refs.js), extracting loader-API file refs (->
 // src/parse/loader-files. js), URL classification (-> src/scan/url.js), the
-// remote-source verdict (-> remote-script.js), authored wording (->
+// remote-source verdict (-> remote-resources.js), authored wording (->
 // assets/registry.yaml), severity (-> that registry entry, stamped by
 // src/checks/registry.js), and report formatting (-> src/report/format.js).
 

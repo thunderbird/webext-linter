@@ -105,7 +105,7 @@ export const MAX_ENTRIES_PER_CATEGORY = 25;
  * src/lib/bundled.js) - when extracting outgoing edges.
  *
  * FALSE (default): reachability parses EVERY file for edges. The source-level
- * finding scanners (the eval checks, unsafe-html, remote-script, code-sanity)
+ * finding scanners (the eval checks, unsafe-html, remote-resources, code-sanity)
  * still skip those files on purpose - a bundled library legitimately uses
  * eval/innerHTML/sync-XHR, so scanning its internals is noise, and minified or
  * obfuscated code is rejected and re-reviewed as original source anyway. But

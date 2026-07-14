@@ -80,7 +80,7 @@
       "strict-min-version-api",
       "unused-files",
       "minimize-web-accessible-resources",
-      "remote-script",
+      "remote-resources",
       "remote-eval",
       "data-exfiltration",
       "disguised-transmission",

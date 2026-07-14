@@ -12,7 +12,7 @@
     "unrecognized-manifest-key": ["manifest.json:11"],
     "bundled-files": ["manifest.json:9"],
     "sync-xhr": ["background.js:26"],
-    "remote-script": ["options.html:4","styles.css:1"],
+    "remote-resources": ["options.html:4","styles.css:1"],
     "unsafe-html": ["background.js:29"],
     "debugger-statement": ["background.js:32"],
     "async-onmessage": ["background.js:35"],

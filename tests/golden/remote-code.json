@@ -79,7 +79,7 @@
       "strict-min-version-api",
       "unused-files",
       "minimize-web-accessible-resources",
-      "remote-script",
+      "remote-resources",
       "remote-eval",
       "data-exfiltration",
       "disguised-transmission",
@@ -97,7 +97,7 @@
     "info": 0,
     "byRule": {
       "unused-files": 2,
-      "remote-script": 4
+      "remote-resources": 4
     }
   },
   "findings": [
@@ -111,7 +111,7 @@
       "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
     {
-      "ruleId": "remote-script",
+      "ruleId": "remote-resources",
       "severity": "error",
       "file": "page.html",
       "loc": {
@@ -120,10 +120,10 @@
       },
       "item": "https://cdn.example.com/lib.js",
       "hint": null,
-      "message": "Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed."
+      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed."
     },
     {
-      "ruleId": "remote-script",
+      "ruleId": "remote-resources",
       "severity": "error",
       "file": "page.html",
       "loc": {
@@ -132,10 +132,10 @@
       },
       "item": "https://cdn.example.com/fonts.css",
       "hint": null,
-      "message": "Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed."
+      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed."
     },
     {
-      "ruleId": "remote-script",
+      "ruleId": "remote-resources",
       "severity": "error",
       "file": "page.html",
       "loc": {
@@ -144,7 +144,7 @@
       },
       "item": "https://cdn.example.com/bg.png",
       "hint": null,
-      "message": "Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed."
+      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed."
     },
     {
       "ruleId": "unused-files",
@@ -156,7 +156,7 @@
       "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
     {
-      "ruleId": "remote-script",
+      "ruleId": "remote-resources",
       "severity": "error",
       "file": "style.css",
       "loc": {
@@ -165,7 +165,7 @@
       },
       "item": "https://cdn.example.com/theme.css",
       "hint": null,
-      "message": "Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed."
+      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed."
     }
   ]
 }

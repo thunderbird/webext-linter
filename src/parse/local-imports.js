@@ -2,7 +2,7 @@
 // `import`/`export ... from`, dynamic `import()`, `require()`, and
 // `importScripts()` - whose source is a local (non-remote) path. The
 // reachability analysis resolves these relative to the importing file. The
-// remote-script check owns the remote/embedded sources; this is its local
+// remote-resources check owns the remote/embedded sources; this is its local
 // complement. A non-literal source sets `hasDynamic` (a runtime-built module
 // path that can't be resolved statically).
 //
@@ -13,7 +13,7 @@
 // the reachability graph - that lives in src/lib/reachability.js.
 // File-loading API calls (executeScript, getURL, setPopup, ...) are
 // src/parse/loader-files.js. Remote/embedded sources are
-// src/checks/rules/remote-script.js (fed by src/parse/remote-js.js). Babel
+// src/checks/rules/remote-resources.js (fed by src/parse/remote-js.js). Babel
 // access goes through src/parse/ast.js.
 
 import { classifyUrl } from "../scan/url.js";
@@ -39,7 +39,7 @@ export function scanLocalImports(code, lineOffset = 0, parsed) {
   const add = (node) => {
     // A fully-static source path (a string, or a template/concat whose computed
     // part is only a ?query/#fragment) is a reference, not a dynamic import.
-    // Keep only local refs - remote/embedded sources are the remote-script
+    // Keep only local refs - remote/embedded sources are the remote-resources
     // check's concern, not a packaged-file edge.
     const path = staticPathOf(node);
     if (path != null) {

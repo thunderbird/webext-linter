@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { scanLocalImports } from "../../src/parse/local-imports.js";
 
 // Local relative sources of import / export-from / require / importScripts are
-// captured; remote sources are left to the remote-script check; a non-literal
+// captured; remote sources are left to the remote-resources check; a non-literal
 // source sets hasDynamic.
 test("scanLocalImports captures local loaders, drops remote, flags dynamic", () => {
   const code = [

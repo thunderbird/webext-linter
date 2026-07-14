@@ -54,7 +54,7 @@ import { isObfuscated } from "./obfuscation.js";
  *
  * `nonAuthored` is the VENDOR.md-declared third-party files plus any JS or CSS
  * tagged library / minified / obfuscated. The source-level finding scanners (the
- * eval checks, unsafe-html, remote-script, code-sanity) skip these to save time
+ * eval checks, unsafe-html, remote-resources, code-sanity) skip these to save time
  * and noise - minified or obfuscated code is forbidden anyway (minified-code,
  * obfuscated-code and missing-library reject it and request the original sources,
  * which are then reviewed), and vendored files are declared third-party. Reachability skips

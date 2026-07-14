@@ -6,7 +6,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
  - page.html
  - style.css
 
-2) Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed.
+2) A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed.
  - page.html:4 - https://cdn.example.com/lib.js
  - page.html:7 - https://cdn.example.com/fonts.css
  - page.html:11 - https://cdn.example.com/bg.png

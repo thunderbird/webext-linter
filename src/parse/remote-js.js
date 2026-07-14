@@ -11,7 +11,7 @@
 //
 // Does NOT belong here: the verdict, severity, and any LLM escalation - those
 // live in the eval checks (via src/lib/eval-scan.js) and
-// src/checks/rules/remote-script.js with src/checks/escalation.js. User-facing
+// src/checks/rules/remote-resources.js with src/checks/escalation.js. User-facing
 // wording lives in assets/registry.yaml. Babel access goes through
 // src/parse/ast.js.
 

@@ -103,7 +103,7 @@ export function scanHtmlRemoteRefs(html) {
  * Scan the CSS that lives INSIDE an HTML document - `<style>` blocks and
  * `style=` attributes - for the same `@import`/`url()` references
  * scanCssRemoteRefs finds in a .css file, with line numbers offset to the HTML
- * file. Lets the remote-script check treat inline CSS exactly like a stylesheet,
+ * file. Lets the remote-resources check treat inline CSS exactly like a stylesheet,
  * so a remote `@import` in a `<style>` block or a remote `url()` in a style
  * attribute is not missed. Returns the same CssRef shape as scanCssRemoteRefs.
  * @param {string} html  HTML source text.

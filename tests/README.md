@@ -87,7 +87,7 @@ format that only exists pre-build.
 | `manifest-key-wrong-version` | A wrong-MV manifest key (`browser_action` on MV3) → `missing-permission` + `unrecognized-manifest-entries`. |
 | `invalid-manifest` | `invalid-manifest` (a missing required key, a bad permission value) + `unrecognized-manifest-entries` (an unknown top-level key). |
 | `bundled-files` | `bundled-files`: a referenced file (`content_scripts`) isn't packaged. |
-| `remote-code` | `remote-script` (remote `<script src>` + remote `@import`) and `eval-usage`. |
+| `remote-code` | `remote-resources` (remote `<script src>` + remote `@import`) and `eval-usage`. |
 | `unsafe-html` | `unsafe-html`: every `innerHTML` write is flagged (static and dynamic alike); only an empty/null clear is exempt. |
 | `experiment-disallowed` | An Experiment (`experiment_apis`) reviewed with experiments off (default): `experiment-not-allowed` on the `experiment_apis` line. |
 | `experiment-allowed-no-strict-max` | An Experiment with no `strict_max_version`, reviewed with `"options": { "--allow-experiments": true }`: `experiment-missing-strict-max-version` (and `experiment-not-allowed` stays silent). |
@@ -122,7 +122,7 @@ job, covered by `escalation.test.js` with a stub `ctx.llm`).
 | `load.test.js` | Add-on directory loading - symlinks are skipped, real files kept. |
 | `loader-files.test.js` | The file-loader extractor (`scanLoaderRefs`) - schema-directed type walking for derived loaders, plus the bridge for `getURL`/`executeScript`/`insertCSS`/`tabs.create`/`setPopup`. |
 | `pipeline.test.js` | End-to-end `review` pipeline against the schema fixture (read-only: line numbers match the source, nothing written back). |
-| `remote-code.test.js` | The remote-code scanners and the `remote-script` / `eval-usage` checks. |
+| `remote-code.test.js` | The remote-code scanners and the `remote-resources` / `eval-usage` checks. |
 | `responses.test.js` | The report-assembly resolver - filling a finding's message from the registry `response` (by ruleId), system `messages`, and manual-item `instructions`, with `{{item}}` substitution. |
 | `rules.test.js` | The deterministic rule modules and the `Registry`-driven loader (`loadRegistry`, `loadChecks` - including its hard-throw on a missing module). |
 | `schema-index.test.js` | The `SchemaIndex` resolver (namespaces, `$extend` merge, permission/manifest-key sets) against the schema fixture. |

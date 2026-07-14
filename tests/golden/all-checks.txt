@@ -39,7 +39,7 @@ Read more: https://webextension-api.thunderbird.net/.
  - options.html
  - styles.css
 
-12) Resources are loaded from a remote source. Remote scripts and libraries are not allowed. Please bundle all resources with your add-on so they can be reviewed.
+12) A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed.
  - options.html:4 - https://cdn.example.com/remote.js
  - styles.css:1 - https://fonts.example.com/font.css
 
