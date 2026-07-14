@@ -436,6 +436,30 @@ export function scheme(url) {
 }
 
 /**
+ * Does a ref begin with an absolute-URL scheme (`http:`, `moz-extension:`, `data:`)?
+ * The whole-prefix test - distinct from scheme(), which extracts the scheme name.
+ */
+export const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
+
+/**
+ * Escape a string for literal use inside a RegExp.
+ * @param {string} s @returns {string}
+ */
+export function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * A regexp matching `token` as a whole word (case-sensitive) - the shared basis for
+ * grounding a usage token in code (permissions.presentTokens, citation.verifyCitation),
+ * so both settle a token by the same word-boundary rule.
+ * @param {string} token @returns {RegExp}
+ */
+export function wholeWordRe(token) {
+  return new RegExp(`\\b${escapeRegExp(token)}\\b`);
+}
+
+/**
  * Truncate a string for display.
  * @param {string} url
  * @param {number} [max]

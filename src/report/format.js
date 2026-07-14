@@ -14,7 +14,13 @@
 // src/checks/escalation.js. Reuse the shared sortKeys/canonicalJson helpers in
 // src/util/json.js rather than adding JSON utilities here.
 
-import { SEVERITY, sortFindings, countByRule, hasErrors } from "./finding.js";
+import {
+  SEVERITY,
+  SEVERITY_ORDER,
+  sortFindings,
+  countByRule,
+  hasErrors,
+} from "./finding.js";
 import { artifactLabel } from "./artifact.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
 import { wrapText } from "../util/text.js";
@@ -240,7 +246,7 @@ function issuesLines(
   if (issueHeadings) {
     let n = 0;
     let first = true;
-    for (const sev of [SEVERITY.ERROR, SEVERITY.WARNING, SEVERITY.INFO]) {
+    for (const sev of SEVERITY_ORDER) {
       const group = sortFindings(issues.filter((f) => f.severity === sev));
       if (group.length === 0) {
         continue;
@@ -326,17 +332,31 @@ function groupByMessage(findings) {
  * @param {(f: import("./finding.js").Finding) => string} [labelOf]  Artifact label.
  * @returns {string[]}
  */
+/**
+ * The display-capped locus lines for a group: ` - file:line` (with the artifact
+ * label and any per-locus hint), then an "(+N more)" marker when the count exceeds
+ * the per-category cap. Shared by the Issues entries and the manual-review sections.
+ * @param {object[]} items  Findings or manual items, each with file/loc(/hint).
+ * @param {(x: object) => string} [labelOf]  Artifact label prefix (SCA only).
+ * @returns {string[]}
+ */
+function renderLocusList(items, labelOf) {
+  const lines = [];
+  for (const x of items.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
+    lines.push(
+      ` - ${locationLine(x, labelOf?.(x))}${x.hint ? ` - ${x.hint}` : ""}`
+    );
+  }
+  if (items.length > MAX_ENTRIES_PER_CATEGORY) {
+    lines.push(excludedMarker(items.length - MAX_ENTRIES_PER_CATEGORY));
+  }
+  return lines;
+}
+
 function renderGroup(n, findings, labelOf) {
   const [first, ...rest] = findings[0].message.split("\n");
   const lines = [`${n}) ${first}`, ...rest];
-  for (const f of findings.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
-    lines.push(
-      ` - ${locationLine(f, labelOf?.(f))}${f.hint ? ` - ${f.hint}` : ""}`
-    );
-  }
-  if (findings.length > MAX_ENTRIES_PER_CATEGORY) {
-    lines.push(excludedMarker(findings.length - MAX_ENTRIES_PER_CATEGORY));
-  }
+  lines.push(...renderLocusList(findings, labelOf));
   // Tint the whole entry by severity (error red, warning yellow) - a no-op
   // unless the CLI enabled color. Each line is tinted on its own, so the color
   // resets per line and stripColor cleans the --report-out copy.
@@ -406,7 +426,7 @@ function manualSection(items, title, accent = blue, labelOf) {
   for (const [body, group] of byBody) {
     out.push("");
     // The reviewer-facing instructions (the section's accent, 80-col wrapped).
-    out.push(...wrapEntry(++n, body).map(accent));
+    out.push(...wrapText(`${++n}) ${body}`).map(accent));
     // The developer-facing response, if any: labelled "Suggested response:" and
     // printed in dim grey, flush-left at column 0 (verbatim, like the Issues
     // responses), sitting between the instructions and the locus list so it
@@ -424,18 +444,8 @@ function manualSection(items, title, accent = blue, labelOf) {
     // reminders have no file/item and render as the wrapped body alone. The
     // list is display-capped like Issues (see renderGroup). Tinted in the same
     // grey as the response (not the instructions' blue), so it reads as detail.
-    const where = [];
     const loci = group.filter((m) => m.file || (m.listItem && m.item));
-    for (const m of loci.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
-      // Append any per-locus hint after file:line, mirroring renderGroup.
-      where.push(
-        ` - ${locationLine(m, labelOf?.(m))}${m.hint ? ` - ${m.hint}` : ""}`
-      );
-    }
-    if (loci.length > MAX_ENTRIES_PER_CATEGORY) {
-      where.push(excludedMarker(loci.length - MAX_ENTRIES_PER_CATEGORY));
-    }
-    out.push(...where.map(grey));
+    out.push(...renderLocusList(loci, labelOf).map(grey));
   }
   return out;
 }
@@ -516,37 +526,6 @@ function locationLine(f, label = "") {
     return `${where} - ${item}`;
   }
   return where ?? item ?? "(add-on)";
-}
-
-/**
- * Render one numbered issue, wrapped at `width` columns with continuation lines
- * hanging-indented under the text (after the "N) " marker). A word longer
- * than the available width (e.g. a URL) is left on its own over-long line.
- *
- * @param {number} n  1-based issue number.
- * @param {string} body  "file:line - message" text.
- * @param {number} [width]
- * @returns {string[]}
- */
-function wrapEntry(n, body, width = 80) {
-  const firstPrefix = `${n}) `;
-  const contIndent = " ".repeat(firstPrefix.length);
-  const lines = [];
-  let cur = firstPrefix;
-  let started = false;
-  for (const word of body.split(/\s+/).filter(Boolean)) {
-    if (!started) {
-      cur += word;
-      started = true;
-    } else if (cur.length + 1 + word.length <= width) {
-      cur += ` ${word}`;
-    } else {
-      lines.push(cur);
-      cur = contIndent + word;
-    }
-  }
-  lines.push(cur);
-  return lines;
 }
 
 /**

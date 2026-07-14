@@ -21,7 +21,7 @@
 // src/lib/permissions.js). User-facing wording lives in
 // assets/registry.yaml. Babel access goes through src/parse/ast.js.
 
-import { parseJs, traverse } from "./ast.js";
+import { parseJs, traverse, nodeLoc } from "./ast.js";
 import { API_ROOTS, aliasTarget, apiBasesOf } from "./api-base.js";
 
 /** @typedef {object} BabelPath A @babel/traverse NodePath object. */
@@ -65,11 +65,7 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
 
   const usages = [];
   const limitations = [];
-  /** @param {object} node @returns {{line:number, column:number}} */
-  const loc = (node) => ({
-    line: (node.loc?.start.line ?? 1) + lineOffset,
-    column: node.loc?.start.column ?? 0,
-  });
+  const loc = (node) => nodeLoc(node, lineOffset);
 
   const bases = apiBasesOf(ast);
   traverse(ast, {

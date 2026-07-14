@@ -110,9 +110,14 @@ function fenced(out, h, s) {
  * @param {string} message  The full text sent to the model.
  * @returns {DeferredSummary}
  */
+// The UTF-8 byte size of a { system, user } model payload (narrated in the feed).
+function payloadBytes(system, user) {
+  return Buffer.byteLength(system, "utf8") + Buffer.byteLength(user, "utf8");
+}
+
 function deferredSummary(ctx, { system, user }) {
   return {
-    bytes: Buffer.byteLength(system, "utf8") + Buffer.byteLength(user, "utf8"),
+    bytes: payloadBytes(system, user),
     run: () => ctx.llm.summarize({ system, user }),
   };
 }
@@ -131,7 +136,7 @@ function deferredSummary(ctx, { system, user }) {
  */
 function deferredReview(ctx, { system, user }) {
   return {
-    bytes: Buffer.byteLength(system, "utf8") + Buffer.byteLength(user, "utf8"),
+    bytes: payloadBytes(system, user),
     run: () => ctx.llm.reviewAddon({ system, user }),
   };
 }

@@ -11,10 +11,10 @@ import { classifyUrl } from "../scan/url.js";
 import { parseJs, traverse, nodeLoc } from "./ast.js";
 import { basename } from "../util/files.js";
 import { apiBasesOf, calleeApiPath } from "./api-base.js";
+import { SCHEME_RE } from "../lib/util.js";
 
-// A URL scheme (resource:, chrome:, moz-extension:, ...). A scheme-bearing parameter
-// is matched by name; a relative path is resolved root-relative.
-const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
+// A scheme-bearing parameter (resource:, chrome:, moz-extension:, ...) is matched by
+// name (SCHEME_RE); a relative path is resolved root-relative.
 
 /**
  * Classify a string passed to an Experiment API as a packaged-file reference: a

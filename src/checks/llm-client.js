@@ -26,6 +26,15 @@ import { red } from "../util/color.js";
 import { sortKeys } from "../util/json.js";
 import { nonceFor, wrap, wrapFile, framing } from "../lib/untrusted.js";
 
+// The safe fallback verdict for a candidate the model did not settle: a batch that
+// errored, or an id missing from the response. A fresh object per call, so a consumer
+// that mutates a verdict record cannot bleed into another.
+const unsureVerdict = () => ({
+  verdict: "unsure",
+  reason: null,
+  additionalInformation: "",
+});
+
 /** @typedef {import("./registry.js").RunContext} RunContext */
 /** @typedef {import("../llm/schema.js").LlmResult} LlmResult */
 
@@ -164,11 +173,7 @@ export function createLlmClient({
             FEED.DETAIL
           );
           for (const c of batch) {
-            out.set(c.id, {
-              verdict: "unsure",
-              reason: null,
-              additionalInformation: "",
-            });
+            out.set(c.id, unsureVerdict());
           }
           continue;
         }
@@ -185,11 +190,7 @@ export function createLlmClient({
       }
       for (const c of list) {
         if (!out.has(c.id)) {
-          out.set(c.id, {
-            verdict: "unsure",
-            reason: null,
-            additionalInformation: "",
-          });
+          out.set(c.id, unsureVerdict());
         }
       }
       return out;

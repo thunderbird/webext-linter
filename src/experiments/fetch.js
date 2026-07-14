@@ -11,12 +11,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { debug } from "../util/log.js";
+import { codeloadZipUrl, downloadToCache } from "../util/download.js";
 import { EXPERIMENTS_REPO, EXPERIMENTS_BRANCH } from "../config.js";
-
-/** @param {string} branch @returns {string} Codeload zip URL for the branch. */
-function codeloadUrl(branch) {
-  return `https://codeload.github.com/${EXPERIMENTS_REPO}/zip/refs/heads/${encodeURIComponent(branch)}`;
-}
 
 /**
  * @param {string} cacheDir  The experiments cache directory.
@@ -53,26 +49,14 @@ export async function resolveExperimentsZip({
     return { zipPath: cached, source: `cache:${branch}` };
   }
 
-  const url = codeloadUrl(branch);
+  const url = codeloadZipUrl(EXPERIMENTS_REPO, branch);
   debug(`Downloading allowed experiments (${branch}) from ${url} ...`);
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(
+  await downloadToCache(
+    url,
+    cached,
+    (res) =>
       `Failed to download the allowed-experiments list "${branch}": HTTP ${res.status} ${res.statusText}. ` +
-        `Source: ${url}`
-    );
-  }
-  const buf = Buffer.from(await res.arrayBuffer());
-  // Write atomically so an interrupted download can't leave a truncated cache.
-  const tmp = `${cached}.${process.pid}.tmp`;
-  try {
-    fs.writeFileSync(tmp, buf);
-    fs.renameSync(tmp, cached);
-  } finally {
-    if (fs.existsSync(tmp)) {
-      fs.rmSync(tmp, { force: true });
-    }
-  }
-  debug(`Wrote ${buf.length} bytes to ${cached}`);
+      `Source: ${url}`
+  );
   return { zipPath: cached, source: `download:${branch}` };
 }

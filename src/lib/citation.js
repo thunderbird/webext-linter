@@ -29,25 +29,21 @@
 
 import { codeTextOf } from "../checks/extract.js";
 import { canonicalJson } from "../util/json.js";
+import { wholeWordRe } from "./util.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../llm/schema.js").RecheckUsage} RecheckUsage */
 
-/** @param {string} s  Escape a string for literal use inside a RegExp. */
-function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 /**
- * Does `token` occur in `text` as a whole word (case-sensitive)? The same
- * word-boundary test presentTokens uses, so a citation grounds a permission by
- * exactly the spellings the registry lists - `folder` does not match
- * `displayedFolder`.
+ * Does `token` occur in `text` as a whole word (case-sensitive)? Uses the shared
+ * wholeWordRe - the same word-boundary test presentTokens uses - so a citation
+ * grounds a permission by exactly the spellings the registry lists (`folder` does
+ * not match `displayedFolder`).
  * @param {string} token @param {string} text
  * @returns {boolean}
  */
 function wordPresent(token, text) {
-  return new RegExp(`\\b${escapeRegExp(token)}\\b`).test(text);
+  return wholeWordRe(token).test(text);
 }
 
 /**

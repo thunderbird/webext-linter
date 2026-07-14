@@ -18,7 +18,7 @@
 // and Babel access (-> src/parse/ast.js). Not yet covered: document.write, the
 // anchor ping attribute.
 
-import { parseJs, traverse, nodeLoc } from "./ast.js";
+import { parseJs, traverse, nodeLoc, memberPropName } from "./ast.js";
 import { classifyUrl, isLoopback } from "../scan/url.js";
 import { apiBasesOf } from "./api-base.js";
 import { DATA_APIS } from "./webext-facts.js";
@@ -213,25 +213,6 @@ function calleeName(callee) {
     return callee.name;
   }
   return memberPropName(callee);
-}
-
-/**
- * The accessed property name of a member expression - dot access (`el.src`) and
- * string-literal bracket access (`el["src"]`, a common obfuscation) - else null.
- * @param {AstNode} node
- * @returns {string|null}
- */
-function memberPropName(node) {
-  if (node?.type !== "MemberExpression") {
-    return null;
-  }
-  if (!node.computed && node.property?.type === "Identifier") {
-    return node.property.name;
-  }
-  if (node.computed && node.property?.type === "StringLiteral") {
-    return node.property.value;
-  }
-  return null;
 }
 
 /**

@@ -17,7 +17,7 @@
 // access goes through src/parse/ast.js.
 
 import { classifyUrl } from "../scan/url.js";
-import { parseJs, traverse, staticPathOf } from "./ast.js";
+import { parseJs, traverse, staticPathOf, nodeLoc } from "./ast.js";
 
 /**
  * @param {string} code  JavaScript source text.
@@ -41,15 +41,10 @@ export function scanLocalImports(code, lineOffset = 0, parsed) {
     // part is only a ?query/#fragment) is a reference, not a dynamic import.
     // Keep only local refs - remote/embedded sources are the remote-script
     // check's concern, not a packaged-file edge.
-    const path =
-      node?.type === "StringLiteral" ? node.value : staticPathOf(node);
+    const path = staticPathOf(node);
     if (path != null) {
       if (classifyUrl(path) === "local") {
-        refs.push({
-          path,
-          line: (node.loc?.start.line ?? 1) + lineOffset,
-          column: node.loc?.start.column ?? 0,
-        });
+        refs.push({ path, ...nodeLoc(node, lineOffset) });
       }
     } else if (node != null) {
       state.hasDynamic = true; // a non-literal module path

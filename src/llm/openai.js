@@ -15,6 +15,7 @@
 // (-> src/llm/provider.js), or any model-facing prompt (-> the registry).
 
 import { MAX_RESPONSE_TOKENS } from "../config.js";
+import { lazyImportSdk, collectModels } from "./sdk.js";
 import {
   RESULT_TOOL,
   REVIEW_TOOL,
@@ -43,7 +44,7 @@ async function clientFor(token, baseURL, client) {
   if (client) {
     return client;
   }
-  const OpenAI = await loadSdk();
+  const OpenAI = await lazyImportSdk("openai", "OpenAI");
   return new OpenAI({
     apiKey: token || KEYLESS_PLACEHOLDER,
     ...(baseURL ? { baseURL } : {}),
@@ -185,28 +186,9 @@ export async function callReview({
  */
 export async function listModels({ token, baseURL }) {
   const client = await clientFor(token, baseURL);
-  const models = [];
-  for await (const m of client.models.list()) {
-    models.push({
-      id: m.id,
-      displayName: "",
-      createdAt: m.created != null ? String(m.created) : "",
-    });
-  }
-  return models;
-}
-
-/**
- * Lazy-import the openai SDK, throwing an actionable error if it fails to load.
- * @returns {Promise<typeof import("openai").default>} SDK class.
- */
-async function loadSdk() {
-  try {
-    const mod = await import("openai");
-    return mod.default || mod.OpenAI || mod;
-  } catch (err) {
-    throw new Error(
-      `openai failed to load (try reinstalling with "npm install"): ${err.message}`
-    );
-  }
+  return collectModels(client, (m) => ({
+    id: m.id,
+    displayName: "",
+    createdAt: m.created != null ? String(m.created) : "",
+  }));
 }

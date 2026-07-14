@@ -25,6 +25,7 @@
 // guards like asArray - lib/util.js.
 
 import { asArray } from "./util.js";
+import { dirname } from "../util/files.js";
 
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
 
@@ -142,12 +143,7 @@ export function normalizeRef(p) {
  * @returns {string|null}
  */
 export function resolveRef(files, fromFile, raw) {
-  const dir =
-    fromFile == null
-      ? null
-      : fromFile.includes("/")
-        ? fromFile.slice(0, fromFile.lastIndexOf("/"))
-        : "";
+  const dir = fromFile == null ? null : dirname(fromFile);
   return resolveInDir(files, dir, raw);
 }
 
@@ -163,13 +159,21 @@ export function resolveRef(files, fromFile, raw) {
  * @param {string} raw
  * @returns {string|null}
  */
-export function resolveInDir(files, dir, raw) {
+/**
+ * Normalize `raw` against base directory `dir` and collapse `.`/`..` to a packaged
+ * key. Returns the collapsed key (null for an empty/blank reference) AND whether a
+ * ".." climbed above the package root - which resolveInDir clamps silently but
+ * resolveInDirStatus reports. `dir` null (or a leading "/" in raw) is root-relative.
+ * @param {string|null} dir @param {string} raw
+ * @returns {{key: string|null, escaped: boolean}}
+ */
+function normalizeRefInDir(dir, raw) {
   let p = String(raw ?? "")
     .replace(/\\/g, "/")
     .replace(/[?#].*$/, "")
     .trim();
   if (p === "") {
-    return null;
+    return { key: null, escaped: false };
   }
   if (p.startsWith("/") || dir == null) {
     p = p.replace(/^\/+/, "");
@@ -177,18 +181,27 @@ export function resolveInDir(files, dir, raw) {
     p = dir ? `${dir}/${p}` : p;
   }
   const parts = [];
+  let escaped = false;
   for (const seg of p.split("/")) {
     if (seg === "" || seg === ".") {
       continue;
     }
     if (seg === "..") {
-      parts.pop();
+      if (parts.length === 0) {
+        escaped = true; // climbed above the package root
+      } else {
+        parts.pop();
+      }
     } else {
       parts.push(seg);
     }
   }
-  const key = parts.join("/");
-  return files.has(key) ? key : null;
+  return { key: parts.join("/"), escaped };
+}
+
+export function resolveInDir(files, dir, raw) {
+  const { key } = normalizeRefInDir(dir, raw);
+  return key != null && files.has(key) ? key : null;
 }
 
 /**
@@ -216,38 +229,13 @@ export function resolveInDir(files, dir, raw) {
  * @returns {RefStatus}
  */
 export function resolveInDirStatus(files, dir, raw) {
-  let p = String(raw ?? "")
-    .replace(/\\/g, "/")
-    .replace(/[?#].*$/, "")
-    .trim();
-  if (p === "") {
+  const { key, escaped } = normalizeRefInDir(dir, raw);
+  if (key == null) {
     return { kind: "missing" };
-  }
-  if (p.startsWith("/") || dir == null) {
-    p = p.replace(/^\/+/, "");
-  } else {
-    p = dir ? `${dir}/${p}` : p;
-  }
-  const parts = [];
-  let escaped = false;
-  for (const seg of p.split("/")) {
-    if (seg === "" || seg === ".") {
-      continue;
-    }
-    if (seg === "..") {
-      if (parts.length === 0) {
-        escaped = true; // climbed above the package root
-      } else {
-        parts.pop();
-      }
-    } else {
-      parts.push(seg);
-    }
   }
   if (escaped) {
     return { kind: "escapes" };
   }
-  const key = parts.join("/");
   return files.has(key) ? { kind: "ok", key } : { kind: "missing" };
 }
 
@@ -261,11 +249,6 @@ export function resolveInDirStatus(files, dir, raw) {
  * @returns {RefStatus}
  */
 export function resolveRefStatus(files, fromFile, raw) {
-  const dir =
-    fromFile == null
-      ? null
-      : fromFile.includes("/")
-        ? fromFile.slice(0, fromFile.lastIndexOf("/"))
-        : "";
+  const dir = fromFile == null ? null : dirname(fromFile);
   return resolveInDirStatus(files, dir, raw);
 }

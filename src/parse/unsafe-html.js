@@ -16,7 +16,7 @@
 // .html files is a different subsystem (src/scan/html.js and
 // src/scan/html-parse.js). Babel access goes through src/parse/ast.js.
 
-import { parseJs, traverse, nodeLoc } from "./ast.js";
+import { parseJs, traverse, nodeLoc, memberPropName } from "./ast.js";
 
 /** @typedef {import("@babel/types").Node} AstNode */
 
@@ -65,26 +65,6 @@ export function scanUnsafeHtml(code, lineOffset = 0, parsed) {
     },
   });
   return { hits, parseError: null };
-}
-
-/**
- * The accessed property name of a member expression - both dot access
- * (`el.innerHTML`) and string-literal bracket access (`el["innerHTML"]`, a
- * common obfuscation) - or null if it is not a static property access.
- * @param {AstNode} node
- * @returns {string|null}
- */
-function memberPropName(node) {
-  if (node?.type !== "MemberExpression") {
-    return null;
-  }
-  if (!node.computed && node.property?.type === "Identifier") {
-    return node.property.name;
-  }
-  if (node.computed && node.property?.type === "StringLiteral") {
-    return node.property.value;
-  }
-  return null;
 }
 
 /**

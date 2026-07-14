@@ -14,6 +14,7 @@
 // itself, or any model-facing prompt (-> the registry).
 
 import { MAX_RESPONSE_TOKENS } from "../config.js";
+import { lazyImportSdk, collectModels } from "./sdk.js";
 import {
   RESULT_TOOL,
   REVIEW_TOOL,
@@ -40,7 +41,7 @@ async function clientFor(token, baseURL, client) {
   if (!token) {
     throw new Error("the LLM call requires an API token.");
   }
-  const Anthropic = await loadSdk();
+  const Anthropic = await lazyImportSdk("@anthropic-ai/sdk", "Anthropic");
   return new Anthropic({ apiKey: token, ...(baseURL ? { baseURL } : {}) });
 }
 
@@ -190,29 +191,9 @@ function toolInput(message, toolName) {
  */
 export async function listModels({ token, baseURL }) {
   const client = await clientFor(token, baseURL);
-  const models = [];
-  for await (const m of client.models.list()) {
-    models.push({
-      id: m.id,
-      displayName: m.display_name ?? "",
-      createdAt: m.created_at ?? "",
-    });
-  }
-  return models;
-}
-
-/**
- * Lazy-import the Anthropic SDK (a regular dependency), throwing an actionable
- * error if it fails to load (e.g. a broken install).
- * @returns {Promise<typeof import("@anthropic-ai/sdk").default>} SDK class.
- */
-async function loadSdk() {
-  try {
-    const mod = await import("@anthropic-ai/sdk");
-    return mod.default || mod.Anthropic || mod;
-  } catch (err) {
-    throw new Error(
-      `@anthropic-ai/sdk failed to load (try reinstalling with "npm install"): ${err.message}`
-    );
-  }
+  return collectModels(client, (m) => ({
+    id: m.id,
+    displayName: m.display_name ?? "",
+    createdAt: m.created_at ?? "",
+  }));
 }

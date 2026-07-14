@@ -56,6 +56,7 @@ import {
   isMatchPattern,
   manifestPathLine,
   versionInBounds,
+  wholeWordRe,
 } from "./util.js";
 import { resolveApiUsages } from "./api-resolution.js";
 import { buildReachability } from "./reachability.js";
@@ -460,9 +461,7 @@ function presentTokens(ctx, tokens) {
   if (!tokens.size) {
     return present;
   }
-  const patterns = new Map(
-    [...tokens].map((t) => [t, new RegExp(`\\b${escapeRegExp(t)}\\b`)])
-  );
+  const patterns = new Map([...tokens].map((t) => [t, wholeWordRe(t)]));
   const texts = (function* () {
     yield JSON.stringify(ctx.manifest ?? {});
     for (const src of ctx.jsSources ?? []) {
@@ -480,11 +479,6 @@ function presentTokens(ctx, tokens) {
     }
   }
   return present;
-}
-
-/** @param {string} s  Escape a string for literal use inside a RegExp. */
-function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**

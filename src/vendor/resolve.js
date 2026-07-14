@@ -25,6 +25,7 @@ import { getProvider } from "../llm/provider.js";
 import { progress, FEED, llmErrorText } from "../util/log.js";
 import { red } from "../util/color.js";
 import { newNonce, wrap, framing } from "../lib/untrusted.js";
+import { SCHEME_RE } from "../lib/util.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /** @typedef {import("../normalize/vendor.js").VendorEntry} VendorEntry */
@@ -394,7 +395,7 @@ function parseGithubSpec(spec) {
     return { repo, ref: ref || null };
   };
   // Bare "owner/repo" shorthand (npm reads this as GitHub): one slash, no scheme.
-  if (!/^[a-z][a-z0-9+.-]*:/i.test(s) && /^[\w.-]+\/[\w.-]+(?:#.*)?$/.test(s)) {
+  if (!SCHEME_RE.test(s) && /^[\w.-]+\/[\w.-]+(?:#.*)?$/.test(s)) {
     return split(s);
   }
   if (/^github:/i.test(s)) {

@@ -16,7 +16,7 @@
 // that picks which files to scan, and the unused verdict (both ->
 // src/lib/permissions.js, groundWebApiPermissions). Babel -> src/parse/ast.js.
 
-import { parseJs, traverse } from "./ast.js";
+import { parseJs, traverse, memberPropName } from "./ast.js";
 
 /** @typedef {import("@babel/types").Node} AstNode */
 
@@ -51,26 +51,6 @@ export function webApiSignatures(schema, declaredNamed) {
 }
 
 /**
- * The accessed property name of a member expression - dot access (`x.foo`) and
- * string-literal bracket access (`x["foo"]`) - else null. Mirrors the helper in
- * network-sinks.js/unsafe-html.js.
- * @param {AstNode} node
- * @returns {string|null}
- */
-function memberProp(node) {
-  if (node?.type !== "MemberExpression") {
-    return null;
-  }
-  if (!node.computed && node.property?.type === "Identifier") {
-    return node.property.name;
-  }
-  if (node.computed && node.property?.type === "StringLiteral") {
-    return node.property.value;
-  }
-  return null;
-}
-
-/**
  * Flatten a static member/identifier chain to a dotted path (e.g.
  * `navigator.clipboard`), using only dot or string-literal property names. Any
  * dynamic/computed link makes it unresolvable (null).
@@ -83,7 +63,7 @@ function flatten(node) {
   }
   if (node?.type === "MemberExpression") {
     const obj = flatten(node.object);
-    const prop = memberProp(node);
+    const prop = memberPropName(node);
     return obj && prop ? `${obj}.${prop}` : null;
   }
   return null;
@@ -140,7 +120,7 @@ export function scanWebApiCalls(code, signatures, parsed) {
   traverse(ast, {
     CallExpression(path) {
       const { callee } = path.node;
-      const method = memberProp(callee);
+      const method = memberPropName(callee);
       if (!method) {
         return;
       }

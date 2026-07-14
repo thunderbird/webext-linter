@@ -53,7 +53,7 @@ import {
   experimentRefsOf,
 } from "../checks/extract.js";
 import { nonAuthoredJs } from "./bundled.js";
-import { asArray, isExperiment, isDocFile } from "./util.js";
+import { asArray, isExperiment, isDocFile, escapeRegExp } from "./util.js";
 import {
   basename,
   extname,
@@ -455,15 +455,6 @@ function bfs(seeds, outEdges) {
     }
   }
   return reached;
-}
-
-/**
- * Escape a string for literal use inside a RegExp.
- * @param {string} s
- * @returns {string}
- */
-function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**

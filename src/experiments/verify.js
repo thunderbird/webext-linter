@@ -22,6 +22,7 @@ import AdmZip from "adm-zip";
 import JSON5 from "json5";
 
 import { debug } from "../util/log.js";
+import { stripBom } from "../util/json.js";
 import { EXPERIMENTS_CACHE } from "../config.js";
 import { manifestTokenLine } from "../lib/util.js";
 import { experimentGroups } from "../lib/experiments.js";
@@ -84,13 +85,9 @@ export function loadAllowList(src) {
  * @returns {void}
  */
 function collectNamespaces(buf, set) {
-  let text = buf.toString("utf8");
-  if (text.charCodeAt(0) === 0xfeff) {
-    text = text.slice(1);
-  }
   let data;
   try {
-    data = JSON5.parse(text);
+    data = JSON5.parse(stripBom(buf.toString("utf8")));
   } catch {
     return;
   }

@@ -31,7 +31,7 @@
 // permission/finding verdicts (-> src/checks/*). Babel access goes through
 // src/parse/ast.js.
 
-import { traverse } from "./ast.js";
+import { traverse, memberPropName } from "./ast.js";
 import { API_ROOTS } from "./webext-facts.js";
 
 export { API_ROOTS };
@@ -106,7 +106,7 @@ export function calleeApiPath(callee, bases) {
   const segments = [];
   let cur = callee;
   while (cur?.type === "MemberExpression") {
-    const key = memberName(cur);
+    const key = memberPropName(cur);
     if (key === null) {
       return null;
     }
@@ -170,7 +170,7 @@ export function aliasTarget(node, scope, seen) {
       if (!base) {
         return null;
       }
-      const key = memberName(node);
+      const key = memberPropName(node);
       return key === null
         ? null
         : { root: base.root, prefix: [...base.prefix, key] };
@@ -200,19 +200,6 @@ export function aliasTarget(node, scope, seen) {
     default:
       return null;
   }
-}
-
-/**
- * The static property name of a member expression (`x.foo` -> "foo",
- * `x["foo"]` -> "foo"), or null for a computed/dynamic property (`x[k]`).
- * @param {object} node  A MemberExpression / OptionalMemberExpression.
- * @returns {?string}
- */
-function memberName(node) {
-  if (node.computed) {
-    return node.property.type === "StringLiteral" ? node.property.value : null;
-  }
-  return node.property.type === "Identifier" ? node.property.name : null;
 }
 
 /**

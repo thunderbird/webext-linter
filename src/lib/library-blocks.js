@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 import YAML from "yaml";
 
-import { parseVersion, cmpVersion } from "./util.js";
+import { parseVersion, cmpVersion, asArray } from "./util.js";
 import { npmNameForLibrary } from "./library-hashes.js";
 
 /**
@@ -63,7 +63,7 @@ export async function resolveLibraryBlocks() {
 export function parseLibraryBlocks(text) {
   const map = new Map();
   const entries = YAML.parse(String(text));
-  for (const e of Array.isArray(entries) ? entries : []) {
+  for (const e of asArray(entries)) {
     if (!e || typeof e.name !== "string") {
       continue;
     }

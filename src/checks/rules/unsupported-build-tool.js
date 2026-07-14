@@ -17,6 +17,7 @@
 // (-> the registry).
 
 import { finding } from "../../report/finding.js";
+import { basename } from "../../util/files.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -62,15 +63,6 @@ export default {
     return [];
   },
 };
-
-/**
- * The last path segment of an archive-relative path.
- * @param {string} path
- * @returns {string}
- */
-function basename(path) {
-  return path.slice(path.lastIndexOf("/") + 1);
-}
 
 /**
  * The package manager named by package.json's "packageManager" field ("yarn@4.1.0" ->

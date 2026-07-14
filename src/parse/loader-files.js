@@ -30,7 +30,7 @@
 // src/parse/ast.js.
 
 import { apiBasesOf, calleeApiPath } from "./api-base.js";
-import { parseJs, traverse, staticPathOf } from "./ast.js";
+import { parseJs, traverse, staticPathOf, nodeLoc } from "./ast.js";
 import { BRIDGE, ROOT_RELATIVE_FILE_METHODS } from "./webext-facts.js";
 import { REL_URL_FORMATS } from "../schema/index.js";
 
@@ -82,11 +82,9 @@ export function scanLoaderRefs(
   const take = (node) => {
     // A fully-static file path (a string, or a template/concat whose computed
     // part is only a ?query/#fragment) is a reference, not a dynamic load.
-    const path =
-      node?.type === "StringLiteral" ? node.value : staticPathOf(node);
+    const path = staticPathOf(node);
     if (path != null) {
-      const line = (node.loc?.start.line ?? 1) + lineOffset;
-      const column = node.loc?.start.column ?? 0;
+      const { line, column } = nodeLoc(node, lineOffset);
       const key = `${line}:${column}:${path}`;
       if (!seenRef.has(key)) {
         seenRef.add(key);

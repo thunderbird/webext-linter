@@ -29,13 +29,7 @@ import {
   resolveRefStatus,
 } from "../../lib/manifest-refs.js";
 import { scriptHostDirs, resolvePageRelative } from "../../lib/script-hosts.js";
-import { manifestTokenLine } from "../../lib/util.js";
-
-// A reference is a packaged-file candidate (so a missing target is an error)
-// only when it is a relative / root-relative path with no URI scheme. This
-// drops remote urls and pseudo-schemes a loader may legitimately receive
-// (about:, moz-extension:, chrome:, resource:, mailto:, ...) and bare fragments.
-const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
+import { manifestTokenLine, SCHEME_RE } from "../../lib/util.js";
 
 export default {
   run(ctx) {

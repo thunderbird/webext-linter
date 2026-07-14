@@ -17,6 +17,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { debug } from "../util/log.js";
+import { codeloadZipUrl, downloadToCache } from "../util/download.js";
 
 const REPO = "thunderbird/webext-annotated-schemas";
 
@@ -83,14 +84,6 @@ export async function refreshAllSchemas({ cacheDir }) {
 }
 
 /**
- * @param {string} branch  Branch name to build a download URL for.
- * @returns {string} Codeload zip URL for the given branch.
- */
-function codeloadUrl(branch) {
-  return `https://codeload.github.com/${REPO}/zip/refs/heads/${encodeURIComponent(branch)}`;
-}
-
-/**
  * @typedef {object} ResolveSchemaZipOpts
  * @property {string} branch       Branch to download.
  * @property {string} cacheDir     Where to store downloaded zips.
@@ -112,30 +105,16 @@ export async function resolveSchemaZip({ branch, cacheDir, refresh = false }) {
     return { zipPath: cached, source: `cache:${branch}` };
   }
 
-  const url = codeloadUrl(branch);
+  const url = codeloadZipUrl(REPO, branch);
   // The on-screen narration is the "Setup" feed entry (src/pipeline.js); this line
   // logs only the URL detail, under --verbose.
   debug(`Downloading annotated schemas (${branch}) from ${url} ...`);
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(
+  await downloadToCache(
+    url,
+    cached,
+    (res) =>
       `Failed to download schema branch "${branch}": HTTP ${res.status} ${res.statusText}. ` +
-        `Expected one of the canonical branches: ${allSchemaBranches().join(", ")}.`
-    );
-  }
-  const buf = Buffer.from(await res.arrayBuffer());
-  // Write atomically: a truncated cache file (e.g. an interrupted download)
-  // would otherwise be reused on the next run and fail with an opaque unzip
-  // error. Write to a temp file, then rename it into place.
-  const tmp = `${cached}.${process.pid}.tmp`;
-  try {
-    fs.writeFileSync(tmp, buf);
-    fs.renameSync(tmp, cached);
-  } finally {
-    if (fs.existsSync(tmp)) {
-      fs.rmSync(tmp, { force: true });
-    }
-  }
-  debug(`Wrote ${buf.length} bytes to ${cached}`);
+      `Expected one of the canonical branches: ${allSchemaBranches().join(", ")}.`
+  );
   return { zipPath: cached, source: `download:${branch}` };
 }

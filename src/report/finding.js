@@ -25,8 +25,17 @@ export const SEVERITY = Object.freeze({
   INFO: "info",
 });
 
-// Severity ordering for sorting / "does this fail the run" decisions.
-const SEVERITY_RANK = { error: 0, warning: 1, info: 2 };
+// The one severity ordering (most severe first), for sorting, the report's Issues
+// sections, and "does this fail the run" decisions - so a new/reordered severity is
+// changed in exactly one place. SEVERITY_RANK is derived from it.
+export const SEVERITY_ORDER = Object.freeze([
+  SEVERITY.ERROR,
+  SEVERITY.WARNING,
+  SEVERITY.INFO,
+]);
+const SEVERITY_RANK = Object.fromEntries(
+  SEVERITY_ORDER.map((sev, i) => [sev, i])
+);
 
 /**
  * @typedef {object} FindingOpts  What a check supplies - locus + data, no prose.

@@ -38,7 +38,7 @@ import { zipHashesUnder } from "./archive.js";
 import { isVendored } from "./resolve.js";
 import { npmNameForLibrary } from "../lib/library-hashes.js";
 import { matchLibraryBlock } from "../lib/library-blocks.js";
-import { normalizedSha256 } from "../normalize/hash.js";
+import { normalizedSha256, eolNormalize } from "../normalize/hash.js";
 import { getProvider } from "../llm/provider.js";
 import { newNonce, wrap, framing } from "../lib/untrusted.js";
 import {
@@ -900,13 +900,6 @@ async function verifyPackage(pkg, addon, vendor, net) {
  */
 function eolEqual(a, b) {
   return eolNormalize(a) === eolNormalize(b);
-}
-
-/** @param {Buffer} buf @returns {string} */
-function eolNormalize(buf) {
-  return Buffer.isBuffer(buf)
-    ? buf.toString("latin1").replace(/\r\n?/g, "\n").replace(/\n+$/, "")
-    : "";
 }
 
 /**

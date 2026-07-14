@@ -19,6 +19,7 @@ import path from "node:path";
 import AdmZip from "adm-zip";
 import JSON5 from "json5";
 import { debug } from "../util/log.js";
+import { stripBom } from "../util/json.js";
 
 /** @typedef {import("./index.js").SchemaNode} SchemaNode */
 
@@ -109,12 +110,8 @@ export function loadSchemaFiles(source) {
  * @returns {SchemaNode[]} Parsed schema file (namespace objects).
  */
 function parse(name, text) {
-  // Strip a UTF-8 BOM if present, then parse with JSON5 for tolerance.
-  if (text.charCodeAt(0) === 0xfeff) {
-    text = text.slice(1);
-  }
   try {
-    return JSON5.parse(text);
+    return JSON5.parse(stripBom(text));
   } catch (err) {
     throw new Error(`Failed to parse schema file ${name}: ${err.message}`);
   }

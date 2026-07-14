@@ -102,6 +102,30 @@ export function nodeLoc(node, lineOffset = 0) {
 }
 
 /**
+ * The static property name of a (possibly optional) member expression:
+ * `x.foo` / `x?.foo` -> "foo", `x["foo"]` -> "foo", and null for anything
+ * computed/dynamic or a non-member node. The type guard is load-bearing -
+ * callers pass arbitrary nodes.
+ * @param {AstNode} node
+ * @returns {string|null}
+ */
+export function memberPropName(node) {
+  if (
+    node?.type !== "MemberExpression" &&
+    node?.type !== "OptionalMemberExpression"
+  ) {
+    return null;
+  }
+  if (!node.computed && node.property?.type === "Identifier") {
+    return node.property.name;
+  }
+  if (node.computed && node.property?.type === "StringLiteral") {
+    return node.property.value;
+  }
+  return null;
+}
+
+/**
  * The fully-static file path an argument node resolves to, or null if any part
  * of the *path* is computed. Beyond a plain string this catches two
  * runtime-built shapes whose file is still fixed, so they are references, not
@@ -109,7 +133,7 @@ export function nodeLoc(node, lineOffset = 0) {
  *   - a template literal with no interpolation (`"foo.js"` in backticks), and
  *   - a template or string concatenation whose computed part lands only in a
  *     `?query` or `#fragment` (e.g. `popup.html?id=${x}` -> popup.html).
- * StringLiteral is handled by callers and returns its value here too.
+ * A plain StringLiteral returns its value, so callers can pass any argument node.
  * @param {AstNode} node
  * @returns {string|null}
  */
