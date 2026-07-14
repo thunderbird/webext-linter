@@ -40,7 +40,8 @@
 // the manifest-key grounding that proves a script-injection key's implied
 // permission used (and missing when undeclared), and enumerateUnusedPermissions
 // with its live-code token scan (the unused-permission producer's deterministic
-// verdicts).
+// verdicts), and recheckTokenVocab (the accepted-token vocabulary per item a
+// citation-verifying recheck consumer checks a pass against).
 //
 // Does NOT belong here: the rules' wiring and any severity or text - that lives
 // in the missing-permission / missing-manifest-key rules under
@@ -415,6 +416,23 @@ function permissionTokens(manifest, prompts) {
     map.set(p, []);
   }
   return map;
+}
+
+/**
+ * The accepted-token vocabulary per handed item for a citation-verifying recheck
+ * consumer, keyed by the item key a citation is checked against. For a
+ * permission-recheck consumer that is the version-filtered usage tokens keyed by
+ * permission; a consumer carrying no permission-prompts data yields an empty map, so
+ * verifyCitation falls back to structural-only verification. Permission-aware by
+ * design: this is where the per-item vocabulary is assembled, so the verifier stays
+ * generic.
+ * @param {RunContext} ctx
+ * @param {LoadedCheck} check  The recheck consumer.
+ * @returns {Map<string, string[]>}
+ */
+export function recheckTokenVocab(ctx, check) {
+  const prompts = check?.recheckData?.permissionPrompts;
+  return prompts ? permissionTokens(ctx.manifest, prompts) : new Map();
 }
 
 /**

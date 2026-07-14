@@ -5,11 +5,12 @@
 // (only handed-over items can be touched), the summary-prompt composition, and the
 // orchestrator divert itself.
 
-import { withManifest } from "./manifest-ctx.js";
+import { withManifest, parsed } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { resolveRecheck, buildRecheckSections } from "../../src/lib/recheck.js";
+import { recheckTokenVocab } from "../../src/lib/permissions.js";
 import {
   runChecks,
   loadChecks,
@@ -115,6 +116,245 @@ test("resolveRecheck passes undefined labelInput when the check has none", () =>
   };
   resolveRecheck(withManifest(ctx), { id: "c" });
   assert.equal(noteCalls[0][4], undefined);
+});
+
+// ---- resolveRecheck: citation gating (require-citation consumers) ----
+// A ctx for a require-citation consumer: the handed permission ("compose"), the
+// summary's pass verdict (with cited usages), the corpus (manifest + one source), and
+// the permission-prompts vocabulary the consumer verifies a cited token against.
+const CITE_CHECK = {
+  id: "unused-permission-recheck",
+  requireCitation: true,
+  recheckData: {
+    permissionPrompts: [
+      {
+        permissions: ["compose"],
+        tokens: ["compose_scripts", "executeScript", "insertCSS"],
+        minStrictVersion: null,
+        maxStrictVersion: null,
+      },
+    ],
+  },
+};
+function citeCtx({ source, usages, manifest = { permissions: ["compose"] } }) {
+  const ctx = {
+    recheck: new Map([["unused-permission-recheck", [handed("compose", 3)]]]),
+    jsSources: parsed([
+      { file: "bg.js", code: source, lineOffset: 0, inline: false },
+    ]),
+    addon: {
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest), "utf8")],
+        ["bg.js", Buffer.from(source, "utf8")],
+      ]),
+      manifest,
+      recheck: [
+        {
+          check: "unused-permission-recheck",
+          item: "compose",
+          verdict: "pass",
+          reason: "used",
+          usages,
+        },
+      ],
+    },
+  };
+  return withManifest(ctx);
+}
+
+test("resolveRecheck drops a require-citation pass whose evidence verifies", () => {
+  const out = resolveRecheck(
+    citeCtx({
+      source: "tabs.executeScript(tabId);\n",
+      usages: [{ file: "bg.js", lines: "1", token: "executeScript" }],
+    }),
+    CITE_CHECK
+  );
+  assert.equal(out.findings.length, 0);
+  assert.equal(out.escalations.length, 0); // verified -> dropped, as a plain pass
+});
+
+test("resolveRecheck downgrades a require-citation pass whose evidence does not verify", () => {
+  const out = resolveRecheck(
+    citeCtx({
+      source: "const x = 1;\n", // executeScript is nowhere in the cited file
+      usages: [{ file: "bg.js", lines: "1", token: "executeScript" }],
+    }),
+    CITE_CHECK
+  );
+  assert.equal(out.findings.length, 0);
+  assert.deepEqual(
+    out.escalations.map((e) => e.item),
+    ["compose"] // unverifiable pass -> manual review
+  );
+  assert.match(out.escalations[0].data.reason, /cited evidence did not verify/);
+});
+
+test("resolveRecheck downgrades a require-citation pass that cites nothing", () => {
+  const out = resolveRecheck(
+    citeCtx({ source: "tabs.executeScript(tabId);\n", usages: undefined }),
+    CITE_CHECK
+  );
+  assert.deepEqual(
+    out.escalations.map((e) => e.item),
+    ["compose"] // a bare pass with no evidence still falls to manual
+  );
+});
+
+test("a consumer without require-citation plain-drops a pass, evidence or not", () => {
+  // Same unverifiable input, but the check does not opt in -> today's pass -> drop.
+  const out = resolveRecheck(
+    citeCtx({ source: "const x = 1;\n", usages: undefined }),
+    { id: "unused-permission-recheck" }
+  );
+  assert.equal(out.findings.length, 0);
+  assert.equal(out.escalations.length, 0);
+});
+
+// The corpus a citation is verified against is the PRODUCER's artifact (corpusCtx,
+// resolved by the caller via ctxForRule), NOT the main ctx the consumer runs on. This
+// is what lets an SCA xpi-anchored recheck cite the built XPI while running on source.
+test("resolveRecheck verifies a citation against corpusCtx, not the main ctx", () => {
+  const manifest = { permissions: ["compose"] };
+  const mfBuf = () => Buffer.from(JSON.stringify(manifest), "utf8");
+  const xpiCode = "tabs.executeScript(tabId);\n";
+  // The producer's corpus (an XPI-like ctx) holds the cited file.
+  const corpusCtx = withManifest({
+    addon: {
+      files: new Map([
+        ["manifest.json", mfBuf()],
+        ["bg.js", Buffer.from(xpiCode, "utf8")],
+      ]),
+      manifest,
+    },
+    jsSources: parsed([
+      { file: "bg.js", code: xpiCode, lineOffset: 0, inline: false },
+    ]),
+  });
+  // The main ctx carries the recheck data, but its OWN corpus lacks the cited file.
+  const ctx = withManifest({
+    recheck: new Map([["unused-permission-recheck", [handed("compose", 3)]]]),
+    jsSources: [],
+    addon: {
+      files: new Map([["manifest.json", mfBuf()]]),
+      manifest,
+      recheck: [
+        {
+          check: "unused-permission-recheck",
+          item: "compose",
+          verdict: "pass",
+          usages: [{ file: "bg.js", lines: "1", token: "executeScript" }],
+        },
+      ],
+    },
+  });
+  // Verified against the producer's corpus -> dropped.
+  const withCorpus = resolveRecheck(ctx, CITE_CHECK, corpusCtx);
+  assert.equal(withCorpus.findings.length, 0);
+  assert.equal(withCorpus.escalations.length, 0);
+  // Defaulting to the main ctx (which lacks bg.js) -> unverifiable -> manual.
+  const noCorpus = resolveRecheck(ctx, CITE_CHECK);
+  assert.deepEqual(
+    noCorpus.escalations.map((e) => e.item),
+    ["compose"]
+  );
+});
+
+// require-citation gates ONLY the pass arm: a fail is still a finding and an unsure is
+// still manual, no citation needed (the model does not cite a "not used" verdict).
+test("require-citation leaves fail and unsure verdicts unchanged", () => {
+  const manifest = { permissions: ["compose", "cookies"] };
+  const ctx = withManifest({
+    recheck: new Map([
+      [
+        "unused-permission-recheck",
+        [handed("compose", 3), handed("cookies", 4)],
+      ],
+    ]),
+    jsSources: [],
+    addon: {
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest), "utf8")],
+      ]),
+      manifest,
+      recheck: [
+        {
+          check: "unused-permission-recheck",
+          item: "compose",
+          verdict: "fail",
+        },
+        {
+          check: "unused-permission-recheck",
+          item: "cookies",
+          verdict: "unsure",
+        },
+      ],
+    },
+  });
+  const out = resolveRecheck(ctx, CITE_CHECK);
+  assert.deepEqual(
+    out.findings.map((f) => f.item),
+    ["compose"] // fail -> finding, never citation-gated
+  );
+  assert.deepEqual(
+    out.escalations.map((e) => e.item),
+    ["cookies"] // unsure -> manual
+  );
+});
+
+// A verified pass narrates the accepted location to the feed (citedLabel), so a
+// reviewer can spot-check it: `<item> — <file>:<lines> (<token>)`.
+test("a verified citation's feed note carries the cited file:line (token)", () => {
+  const notes = [];
+  const ctx = citeCtx({
+    source: "tabs.executeScript(tabId);\n",
+    usages: [{ file: "bg.js", lines: "1", token: "executeScript" }],
+  });
+  ctx.note = (...args) => notes.push(args);
+  const out = resolveRecheck(ctx, CITE_CHECK);
+  assert.equal(out.findings.length, 0); // verified -> dropped
+  const passNote = notes.find((n) => n[3] === "pass");
+  assert.ok(passNote, "a pass feed note fired");
+  assert.match(passNote[2], /compose — bg\.js:1 \(executeScript\)/);
+});
+
+// recheckTokenVocab assembles the per-permission accepted tokens from the consumer's
+// recheckData, version-filtered by the reviewed manifest: an entry whose version bounds
+// exclude the add-on contributes nothing (-> that permission verifies structurally only).
+test("recheckTokenVocab version-filters the accepted tokens", () => {
+  const manifest = { strict_min_version: "128.0" };
+  const ctx = withManifest({
+    addon: {
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest), "utf8")],
+      ]),
+      manifest,
+    },
+  });
+  const check = {
+    id: "unused-permission-recheck",
+    recheckData: {
+      permissionPrompts: [
+        {
+          permissions: ["cookies"],
+          tokens: ["cookieStoreId"],
+          minStrictVersion: null,
+          maxStrictVersion: null,
+        },
+        {
+          permissions: ["future"],
+          tokens: ["futureToken"],
+          minStrictVersion: "200.0", // newer than the add-on -> filtered out
+          maxStrictVersion: null,
+        },
+      ],
+    },
+  };
+  const vocab = recheckTokenVocab(ctx, check);
+  assert.deepEqual(vocab.get("cookies"), ["cookieStoreId"]);
+  assert.ok(!vocab.has("future"));
+  // No recheckData -> empty vocab (structural-only verification).
+  assert.equal(recheckTokenVocab(ctx, { id: "x" }).size, 0);
 });
 
 // The guard: resolveRecheck only consults verdicts for items it was actually
@@ -585,25 +825,28 @@ test("permissionPrompts surfaces the optional usage tokens", () => {
   assert.deepEqual(unlimited.tokens, []);
 });
 
-// A producer declaring a post-summary-recheck gets its consumer's data attached
-// at load (check.recheck): the consumer's entry always, the permission-prompts
-// list (tokens included) only for a permission-recheck consumer - the producer's
-// source for deterministic verdicts. Consumers themselves carry none.
-test("loadChecks attaches the linked consumer's data to a producer", async () => {
+// The permission-prompts token vocabulary is attached at load to BOTH ends of a
+// permission-recheck pair: the producer renders deterministic verdicts from it, and
+// the permission-recheck consumer verifies a pass's cited token against it. A
+// static-rubric pair carries none. In every case only the token entries are attached
+// (prompt prose stripped), so neither end sees the other's wording.
+test("loadChecks attaches the permission-prompts vocabulary to both ends", async () => {
   const loaded = [...(await loadChecks(loadRegistry())).values()].flat();
   const producer = loaded.find((c) => c.id === "unused-permission");
   assert.equal(producer.postSummaryRecheck, "unused-permission-recheck");
   assert.ok(producer.recheckData.permissionPrompts.length > 0);
-  // Deliberately narrow: the token entries only - no prompt prose, no consumer
-  // entry - so a producer has no window into its consumer's wording.
-  for (const e of producer.recheckData.permissionPrompts) {
-    assert.ok(!("prompt" in e), "prompt text must be stripped");
-    assert.ok(Array.isArray(e.tokens));
+  const consumer = loaded.find((c) => c.id === "unused-permission-recheck");
+  assert.ok(consumer.recheckData.permissionPrompts.length > 0);
+  // Deliberately narrow on both ends: the token entries only - no prompt prose - so
+  // neither end has a window into the other's wording.
+  for (const c of [producer, consumer]) {
+    for (const e of c.recheckData.permissionPrompts) {
+      assert.ok(!("prompt" in e), "prompt text must be stripped");
+      assert.ok(Array.isArray(e.tokens));
+    }
   }
   const files = loaded.find((c) => c.id === "unused-files");
   assert.equal(files.recheckData, undefined); // static-rubric consumer
-  const consumer = loaded.find((c) => c.id === "unused-permission-recheck");
-  assert.equal(consumer.recheckData, undefined);
 });
 
 // Token hygiene: a stray empty/null YAML item must not become the token "null"
@@ -815,13 +1058,20 @@ test("assembly drops a handed permission no version-matching prompt grounds", ()
 // per-permission test covers this, so a dropped framing would otherwise pass silently.
 test("the assembled rubric always carries the framing verdict scheme", () => {
   const rubric = permRubric(["cookies"], "154"); // framing wraps any single permission
-  assert.match(rubric, /verdict pass = justified/);
-  assert.match(rubric, /fail = unused/);
-  assert.match(rubric, /unsure = you genuinely cannot tell/);
+  // The verdict mechanics: fail = unused, unsure is the default, and a pass demands
+  // cited evidence (this is what the citation feature enforces downstream).
+  assert.match(rubric, /Return fail when the current code does not exercise/);
+  assert.match(rubric, /unsure is the\s+default/);
+  assert.match(rubric, /Return pass ONLY with cited evidence/);
+  assert.match(rubric, /"usages" field/);
   assert.match(rubric, /Ignore comments, TODOs/); // the judge-current-code-only rule
-  // The CLOSING half of the framing: a permission is grounded by the live code OR the
-  // manifest (so a manifest-key-only permission such as scripting is not judged unused),
-  // and the closing defines the negative verdict the per-permission prompts omit.
-  assert.match(rubric, /live code\s+or manifest/);
-  assert.match(rubric, /the permission is unused \(verdict fail\)/);
+  // The manifest-citation convention (for a manifest-key token such as compose_scripts)
+  // and the closing's cite-the-line instruction.
+  assert.match(rubric, /cite file "manifest\.json"/);
+  assert.match(rubric, /cite the line that proves any pass/);
+  // The per-entry accepted-token vocabulary the model must cite one of.
+  assert.match(
+    rubric,
+    /Accepted tokens \(cite the one that appears in the code\): cookieStoreId\./
+  );
 });

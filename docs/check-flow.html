@@ -495,11 +495,38 @@ flowchart LR
       </table>
 
       <p>
-        Which stores a check may reach is not open either. <code>routeCtx</code> hands it
-        the <code>ctx</code> for its declared <code>input</code> (source / xpi / build /
-        manifest), so it reads exactly one artifact and cannot reach another's. In an SCA
-        review those artifacts are distinct (the readable source, the shipped XPI, the build
-        files, the manifest); in an XPI review they collapse onto the one built add-on.
+        Which stores a check may reach is not open either. Every check declares an
+        <code>input</code>, and <code>routeCtx</code> — the single place routing is decided,
+        shared by the main loop and the deferred loop so they can never drift — hands it the
+        <code>ctx</code> for that <code>input</code>. It reads exactly one artifact and cannot
+        reach another's. What the <code>input</code> resolves to depends on the review mode:
+      </p>
+      <table class="phases">
+        <thead>
+          <tr>
+            <th><code>input</code></th>
+            <th>SCA review (readable source + built XPI)</th>
+            <th>XPI review (one artifact)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>source</code></td><td>the readable source (<code>ctx.addon</code>)</td><td>the built add-on (<code>ctx.addon</code>)</td></tr>
+          <tr><td><code>xpi</code></td><td>the built XPI (<code>siblings.xpi</code>)</td><td>the built add-on (<code>ctx.addon</code>)</td></tr>
+          <tr><td><code>build</code></td><td>the SCA build files (<code>siblings.build</code>)</td><td>&mdash; (SCA-only)</td></tr>
+          <tr><td><code>manifest</code></td><td>the shipped manifest (no file corpus)</td><td>the shipped manifest</td></tr>
+        </tbody>
+      </table>
+      <p>
+        In an XPI review there is one artifact, so <code>source</code> and <code>xpi</code>
+        both collapse onto <code>ctx</code>. The <strong>one exception</strong> to the table is
+        a <strong>post-summary recheck consumer</strong>: the loader forbids it an
+        <code>input</code>, so <code>routeCtx</code> leaves it on the main ctx — it needs
+        <code>ctx.recheck</code> / <code>ctx.recheckVerdicts</code> — even though the items it
+        re-judges belong to its <em>producer&rsquo;s</em> artifact. That producer corpus is
+        recovered separately by <code>ctxForRule</code> (via <code>labelInput</code>), the same
+        resolver the report&rsquo;s [XPI]/[SCA] labels and the folder-collapse use. It is also
+        the corpus a citation is verified against, so an SCA XPI-anchored recheck cites the
+        built XPI while still running on the source ctx.
       </p>
 
       <h2>The orchestrator</h2>
@@ -566,7 +593,10 @@ flowchart LR
         just calls it and assembles the <code>Review</code>. Every check, in every phase, goes
         through the same per-check runner, <code>runOneCheck()</code>. The two diagrams below
         expand the <code>runChecks()</code> box from the pipeline diagram above — its
-        orchestration, then the phase-runner loop each check runs through.
+        orchestration, then the phase-runner loop each check runs through. In both, a
+        <strong>teal parallelogram</strong> marks a direct model call
+        (<code>ctx.llm.evaluate</code> / <code>reviewAddon</code> / <code>summarize</code>) — the
+        points where an actual LLM prompt fires.
       </p>
       <div class="flow">
         <pre class="mermaid">
@@ -589,16 +619,16 @@ flowchart TB
   QSUM -- no --> DLOOP
   QSUM -- yes --> QMODE{{"mode?"}}
 
-  QMODE -- xpi --> SUM1["AI add-on summary — the displayed 'Summary of add-on'<br/>generateAddonSummary(XPI) → ctx.llm.reviewAddon()"]
-  QMODE -- sca --> SUM2["AI summary over the SOURCE — the displayed 'Summary of add-on'<br/>(source corpus: no unused-files exclusion)<br/>generateAddonSummary(SCA) → ctx.llm.reviewAddon()"]
+  QMODE -- xpi --> SUM1[/"AI add-on summary — the displayed 'Summary of add-on'<br/>generateAddonSummary(XPI) → ctx.llm.reviewAddon()"/]
+  QMODE -- sca --> SUM2[/"AI summary over the SOURCE — the displayed 'Summary of add-on'<br/>(source corpus: no unused-files exclusion)<br/>generateAddonSummary(SCA) → ctx.llm.reviewAddon()"/]
   SUM2 --> QXPI{{"did an XPI-anchored<br/>recheck escalate?"}}
-  QXPI -- yes --> SUM3["packaging summary over the shipped XPI — VERDICT-ONLY (prose discarded)<br/>generateAddonSummary(XPI) → ctx.llm.reviewAddon()"]
+  QXPI -- yes --> SUM3[/"packaging summary over the shipped XPI — VERDICT-ONLY (prose discarded)<br/>generateAddonSummary(XPI) → ctx.llm.reviewAddon()"/]
   QXPI -- no --> SETV
   SUM3 --> SETV
   SUM1 --> SETV
 
   SETV["ctx.recheckVerdicts = one verdict per handed item<br/>(set only if a summary pass ran without error; each SCA pass's<br/>verdicts filtered to its corpus's consumers — keepVerdicts)"] --> QDIFF{{"--diff-to given?"}}
-  QDIFF -- yes --> SUMD["summary of changes<br/>advisory only, no verdicts"]
+  QDIFF -- yes --> SUMD[/"summary of changes — advisory only, no verdicts<br/>ctx.llm.summarize()"/]
   QDIFF -- no --> DLOOP
   SUMD --> DLOOP
 
@@ -610,7 +640,9 @@ flowchart TB
   classDef state fill:#fdf3e0,stroke:#b07d2b,color:#6b4a12;
   classDef term fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
   classDef module fill:#f3eefb,stroke:#7c4dbc,color:#3d2a5c,stroke-dasharray:5 3;
-  class LC,GATE,SUMS,SUM1,SUM2,SUM3,SUMD,COLL1,COLL2 work;
+  classDef llm fill:#d3f0ec,stroke:#0f766e,color:#0b3d38;
+  class LC,GATE,SUMS,COLL1,COLL2 work;
+  class SUM1,SUM2,SUM3,SUMD llm;
   class RIE,RDET,RLLM,DLOOP module;
   class SETV state;
   class IN,RET term;
@@ -651,7 +683,7 @@ flowchart TB
   RUN --> DIR["direct findings = the returned Finding[]<br/>(or result.findings) — ALWAYS collected"]
   RUN --> QLANE{{"the result ALSO carries an<br/>llm step or escalations?"}}
   QLANE -- "llm: { candidates, resolve }" --> QT{{"ctx.llm attached, and the run-wide<br/>LLM budget allows another call?"}}
-  QT -- yes --> EV["ctx.llm.evaluate()<br/>one verdict per candidate"]
+  QT -- yes --> EV[/"ctx.llm.evaluate()<br/>one verdict per candidate"/]
   QT -- no --> UN["verdict = unsure for every candidate<br/>(no token, or the budget is spent)"]
   EV --> RES["the check's resolve(verdicts)<br/>+ findings · + manual items"]
   UN --> RES
@@ -680,7 +712,9 @@ flowchart TB
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
   classDef fail fill:#fdecea,stroke:#c0392b,color:#7b241c;
   classDef cache fill:#eceef1,stroke:#5b626b,color:#3a3f45,stroke-dasharray:4 3;
-  class ROUTE,RUN,DIR,ME,EV,RES,STAMP,PUSHF work;
+  classDef llm fill:#d3f0ec,stroke:#0f766e,color:#0b3d38;
+  class ROUTE,RUN,DIR,ME,RES,STAMP,PUSHF work;
+  class EV llm;
   class UN,HELD state;
   class IN,DONE,NEXT term;
   class PUSHM manual;
@@ -701,12 +735,53 @@ flowchart TB
         </li>
         <li>
           A <strong>post-summary consumer</strong> has no such hook. All six delegate to the
-          shared <code>resolveRecheck()</code>, which reads only the handed items and their
-          verdicts and applies one uniform mapping. A consumer cannot post-process its own
-          verdicts — it cannot, for instance, verify the evidence a <code>pass</code>
-          claims.
+          shared <code>resolveRecheck()</code>, which reads the handed items and their
+          verdicts and applies one uniform mapping. It is generic, but not blind: a consumer
+          that opts in with <code>require-citation</code> has each <code>pass</code> verified
+          against the numbered corpus (<code>verifyCitation</code>,
+          <code>src/lib/citation.js</code>) — an ungrounded pass (no evidence, an invalid
+          token, a token absent from or off the cited line) is downgraded to
+          <code>unsure&nbsp;→&nbsp;manual</code>, so a hallucinated &ldquo;it&rsquo;s
+          used&rdquo; cannot silently drop a real issue.
+          <code>unused-permission-recheck</code> is the first to require it.
         </li>
       </ul>
+
+      <p>
+        The evidence is what makes a <code>pass</code> auditable. The add-on-summary corpus
+        is line-numbered (<code>numberLines</code>), the framing tells the model a
+        <code>pass</code> is valid only with a cited <code>{file, line(s), token?}</code> in
+        the recheck entry&rsquo;s <code>usages</code>, and <code>resolveRecheck</code> checks
+        it against the real file (structural for every file; the token must also be an
+        accepted one, present in the file&rsquo;s comment-free code at the cited line). The
+        residual is honest: this catches an <em>ungrounded</em> pass, not a wrong judgment
+        about a real usage.
+      </p>
+      <div class="flow">
+        <pre class="mermaid">
+---
+title: resolveRecheck() — a handed item's verdict → outcome
+---
+flowchart LR
+  V{{"summary verdict<br/>for a handed item"}}
+  V -- fail --> FND["finding"]
+  V -- "unsure / no verdict" --> MAN["manual review"]
+  V -- pass --> RQ{{"consumer requires<br/>citation?"}}
+  RQ -- no --> DROP["drop (used)"]
+  RQ -- yes --> VC{{"verifyCitation():<br/>cited file+line (and token)<br/>real in the corpus?"}}
+  VC -- verified --> DROP
+  VC -- "unverifiable" --> MAN
+
+  classDef work fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
+  classDef term fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  classDef fail fill:#fdecea,stroke:#c0392b,color:#7b241c;
+  class V,RQ,VC work;
+  class DROP term;
+  class MAN manual;
+  class FND fail;
+        </pre>
+      </div>
 
       <p class="source-note">
         Source of truth: <code>src/checks/registry.js</code>
@@ -717,7 +792,9 @@ flowchart TB
         summary interleave), <code>src/checks/escalation.js</code>
         (<code>runLlmCheck</code>, <code>manualEscalations</code>),
         <code>src/lib/recheck.js</code> (<code>buildRecheckSections</code>,
-        <code>resolveRecheck</code>), <code>src/lib/unused-folders.js</code>
+        <code>resolveRecheck</code>), <code>src/lib/citation.js</code>
+        (<code>verifyCitation</code> — the cited-evidence check),
+        <code>src/lib/unused-folders.js</code>
         (<code>collapseUnusedFolders</code>), <code>src/pipeline.js</code>
         (<code>runPipeline</code> — Phase&nbsp;5 calls <code>runChecks</code> and assembles the
         <code>Review</code>), and the phase sections of <code>assets/registry.yaml</code>.

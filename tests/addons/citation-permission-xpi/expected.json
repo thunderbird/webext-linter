@@ -1,0 +1,6 @@
+{
+  "_comment": "XPI review exercising the require-citation gate end-to-end. Three permissions escalate to unused-permission-recheck; the --llm-review pass (llm.js) returns: messagesRead pass with a VALID citation (relatedMessageId at bg.js:6) -> verified -> dropped (absent below); accountsRead pass with a citation at the WRONG line -> unverifiable -> downgraded to manual review; compose fail -> the warning finding here. So the only finding is compose; the verified pass is gone and the bad pass fell to manual (both locked by the rendered golden).",
+  "expect": {
+    "unused-permission-recheck": ["manifest.json:6"]
+  }
+}

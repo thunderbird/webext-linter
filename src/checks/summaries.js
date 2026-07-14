@@ -32,7 +32,13 @@ import { red } from "../util/color.js";
 import { humanSize } from "../util/text.js";
 import { nonAuthoredJs } from "../lib/bundled.js";
 import { buildRecheckSections } from "../lib/recheck.js";
-import { nonceFor, wrap, wrapFile, framing } from "../lib/untrusted.js";
+import {
+  nonceFor,
+  wrap,
+  wrapFile,
+  numberLines,
+  framing,
+} from "../lib/untrusted.js";
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
 /** @typedef {import("./registry.js").Registry} Registry */
@@ -255,7 +261,12 @@ export function buildAddonText(
       ? nonAuthoredJs(ctx)
       : (summaryAddon.bundled?.nonAuthored ?? new Set());
   // Every block is untrusted add-on content, wrapped in nonce markers so the model
-  // treats it as data (file bodies stay verbatim - real newlines for line citation).
+  // treats it as data. File bodies are line-numbered (numberLines) so a recheck pass
+  // can cite a file:line the citation verifier then checks against the real file. Each
+  // pass numbers ITS OWN corpus (this summaryAddon - the source, or in SCA the shipped
+  // XPI for the packaging pass); a recheck consumer verifies against that same artifact,
+  // resolved by ctxForRule from its producer's input - so numbering and verification
+  // always key on the same corpus.
   const out = [wrap(nonce, "MANIFEST", canonicalJson(ctx.manifest ?? null))];
   for (const file of [...files.keys()].sort()) {
     if (
@@ -265,7 +276,7 @@ export function buildAddonText(
     ) {
       continue;
     }
-    out.push(wrapFile(nonce, file, fileText(file, files)));
+    out.push(wrapFile(nonce, file, numberLines(fileText(file, files))));
   }
   return out.join("\n");
 }

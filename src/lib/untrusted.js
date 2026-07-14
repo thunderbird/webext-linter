@@ -88,6 +88,23 @@ export function wrapFile(nonce, path, body) {
 }
 
 /**
+ * Prefix each line with its 1-based number ("N: line"), so the model can cite a
+ * line or range it can see and the citation verifier can check the same line in the
+ * real file. The numbers are the file's physical 1-based lines, so a caller must
+ * number the SAME text it wraps. Applied only at the add-on-summary corpus - the
+ * one place a recheck pass must cite evidence - never inside wrapFile, whose other
+ * callers stay unnumbered.
+ * @param {string} body
+ * @returns {string}
+ */
+export function numberLines(body) {
+  return String(body ?? "")
+    .split("\n")
+    .map((line, i) => `${i + 1}: ${line}`)
+    .join("\n");
+}
+
+/**
  * The trusted framing that defines the trust boundary for the model. Goes in the
  * system prompt (or the trusted head of a single-call prompt). The exact file count
  * is stated by each caller next to its data (it varies per call), not here, so this

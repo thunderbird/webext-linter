@@ -112,6 +112,37 @@ export const ADDON_REVIEW_SCHEMA = {
             type: "string",
             description: "One short sentence supporting the verdict.",
           },
+          usages: {
+            type: "array",
+            description:
+              "For a 'pass' verdict, the justifying usage(s) drawn from the " +
+              "numbered corpus: the file, the line or inclusive line-range that " +
+              'proves it (e.g. "42" or "40-45"), and - when the item lists ' +
+              "accepted tokens - the exact token appearing there. Omit for " +
+              "fail/unsure.",
+            items: {
+              type: "object",
+              properties: {
+                file: {
+                  type: "string",
+                  description: "The corpus file path the evidence is in.",
+                },
+                lines: {
+                  type: "string",
+                  description:
+                    "A single line number or an inclusive range from the " +
+                    'numbered corpus, e.g. "42" or "40-45".',
+                },
+                token: {
+                  type: "string",
+                  description:
+                    "The exact accepted token that appears at that location, " +
+                    "when the item lists a token vocabulary. Omit otherwise.",
+                },
+              },
+              required: ["file", "lines"],
+            },
+          },
         },
         required: ["check", "item", "verdict"],
       },
@@ -136,12 +167,23 @@ export const ADDON_REVIEW_SCHEMA = {
  */
 
 /**
+ * @typedef {object} RecheckUsage  A cited evidence location backing a `pass`.
+ * @property {string} file  The corpus file path the evidence is in.
+ * @property {string} lines  A line number or inclusive range from the numbered
+ *   corpus, e.g. "42" or "40-45".
+ * @property {string} [token]  The accepted token appearing there, when the item
+ *   lists a token vocabulary.
+ */
+
+/**
  * @typedef {object} RecheckVerdict  One re-judged item from the add-on summary.
  * @property {string} check  Id of the recheck consumer the item belongs to.
  * @property {string} item  The exact item text it was listed under.
  * @property {"fail"|"pass"|"unsure"} verdict  fail = issue present (finding),
  *   pass = absent (drop), unsure = a human reviews.
  * @property {string} reason  Short developer-facing why (may be "").
+ * @property {RecheckUsage[]} [usages]  For a `pass`, the cited justifying usage(s);
+ *   absent for fail/unsure or when the model cited nothing.
  */
 
 /**
@@ -172,10 +214,42 @@ export function coerceResult(input) {
 }
 
 /**
+ * Keep only well-formed cited usages ({file, lines} strings, optional token
+ * string), else drop the entry. Returns undefined when nothing survives, so the
+ * field is omitted rather than left as an empty array.
+ * @param {unknown} input
+ * @returns {RecheckUsage[]|undefined}
+ */
+function coerceUsages(input) {
+  if (!Array.isArray(input)) {
+    return undefined;
+  }
+  const usages = input
+    .filter(
+      (u) =>
+        u &&
+        typeof u === "object" &&
+        typeof u.file === "string" &&
+        u.file &&
+        typeof u.lines === "string" &&
+        u.lines
+    )
+    .map((u) => {
+      const usage = { file: u.file, lines: u.lines };
+      if (typeof u.token === "string" && u.token) {
+        usage.token = u.token;
+      }
+      return usage;
+    });
+  return usages.length ? usages : undefined;
+}
+
+/**
  * Defensively normalize a structured add-on-review result into an AddonReview: a
  * string summary (else ""), and a recheck list keeping each entry's check + item
- * verbatim, an unknown verdict coerced to the safe "unsure", and a string reason
- * (else ""). Entries missing a check or item string are dropped.
+ * verbatim, an unknown verdict coerced to the safe "unsure", a string reason
+ * (else ""), and any well-formed cited usages. Entries missing a check or item
+ * string are dropped.
  * @param {unknown} input
  * @returns {AddonReview}
  */
@@ -191,11 +265,18 @@ export function coerceReview(input) {
         r.check &&
         typeof r.item === "string"
     )
-    .map((r) => ({
-      check: r.check,
-      item: r.item,
-      verdict: LLM_VERDICTS.has(r.verdict) ? r.verdict : "unsure",
-      reason: typeof r.reason === "string" ? r.reason : "",
-    }));
+    .map((r) => {
+      const entry = {
+        check: r.check,
+        item: r.item,
+        verdict: LLM_VERDICTS.has(r.verdict) ? r.verdict : "unsure",
+        reason: typeof r.reason === "string" ? r.reason : "",
+      };
+      const usages = coerceUsages(r.usages);
+      if (usages) {
+        entry.usages = usages;
+      }
+      return entry;
+    });
   return { summary, recheck };
 }

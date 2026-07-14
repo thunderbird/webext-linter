@@ -1,0 +1,5 @@
+{
+  "name": "citation-permission-sca",
+  "version": "1.0.0",
+  "scripts": { "build": "web-ext build" }
+}

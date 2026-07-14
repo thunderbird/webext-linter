@@ -24,7 +24,7 @@ export default {
    * @param {LoadedCheck} check
    * @returns {{findings: object[], escalations: object[]}}
    */
-  run(ctx, check) {
-    return resolveRecheck(ctx, check);
+  run(ctx, check, corpusCtx) {
+    return resolveRecheck(ctx, check, corpusCtx);
   },
 };

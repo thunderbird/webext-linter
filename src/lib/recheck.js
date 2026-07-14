@@ -27,14 +27,18 @@
 // to this consumer, so the summary can neither invent items nor flip anything it
 // was not given.
 //
-// Belongs here: the prompt composition and the verdict->finding/manual mapping.
-// Does NOT belong here: diverting a producer's manual items (-> runChecks), the
-// summary transport and storing ctx.recheckVerdicts (-> src/checks/summaries.js),
-// or the recheck output schema (-> src/llm/schema.js).
+// Belongs here: the prompt composition and the verdict->finding/manual mapping,
+// including gating a pass on cited evidence for a require-citation consumer (the
+// adjudication itself is delegated to src/lib/citation.js). Does NOT belong here:
+// diverting a producer's manual items (-> runChecks), the summary transport and
+// storing ctx.recheckVerdicts (-> src/checks/summaries.js), or the recheck output
+// schema (-> src/llm/schema.js).
 
 import { finding } from "../report/finding.js";
 import { wrap } from "./untrusted.js";
 import { versionInBounds } from "./util.js";
+import { verifyCitation } from "./citation.js";
+import { recheckTokenVocab } from "./permissions.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../checks/registry.js").LoadedCheck} LoadedCheck */
@@ -174,12 +178,24 @@ function assemblePermissionPrompt(registry, ctx, permissions) {
   const { preamble, closing } = registry.permissionPromptFraming();
   const prompt = [
     preamble,
-    ...entries.map((e) => resolveNotes(e.prompt, ctx)),
+    ...entries.map((e) => renderPermissionEntry(e, ctx)),
     closing,
   ]
     .filter(Boolean)
     .join("\n");
   return { prompt, grounded };
+}
+
+// One permission entry as it appears in the rubric: its prose (schema-member notes
+// resolved) followed by the accepted tokens the model must cite one of for a pass, so
+// it knows the exact strings that ground the permission. An entry with no tokens
+// (unlimitedStorage - not token-detectable) renders prose only.
+function renderPermissionEntry(e, ctx) {
+  const body = resolveNotes(e.prompt, ctx);
+  if (!e.tokens?.length) {
+    return body;
+  }
+  return `${body}\nAccepted tokens (cite the one that appears in the code): ${e.tokens.join(", ")}.`;
 }
 
 // Replace each `{{note:<ns>.<member>}}` in a prompt with the version-matched `note`
@@ -200,16 +216,42 @@ function resolveNotes(text, ctx) {
 }
 
 /**
+ * The feed suffix for a verified pass: the item label plus the location the evidence
+ * was accepted at, `file:lines (token)` (token omitted for a structural-only pass),
+ * so a reviewer can spot-check the accepted pass at a line.
+ * @param {?string} label @param {import("../llm/schema.js").RecheckUsage} cited
+ * @returns {string}
+ */
+function citedLabel(label, cited) {
+  const loc = cited.token
+    ? `${cited.file}:${cited.lines} (${cited.token})`
+    : `${cited.file}:${cited.lines}`;
+  return label ? `${label} — ${loc}` : loc;
+}
+
+/**
  * The run() of a recheck consumer. Maps the summary's verdict for each handed-over
  * item to the ordinary check contract: pass -> drop, fail -> finding, unsure or
  * no verdict -> manual review (carrying the model's reason). Only items handed to
  * THIS consumer are consulted (the guard).
+ *
+ * A consumer that requires citation (check.requireCitation) accepts a `pass` only
+ * when its cited evidence verifies (verifyCitation) against the accepted-token
+ * vocabulary for the item; an ungrounded pass is downgraded to unsure -> manual, the
+ * safe direction, so a hallucinated "it's used" never silently drops a real issue.
+ *
+ * The verdicts and handed items live on the main ctx, but the citation is verified
+ * against `corpusCtx` - the PRODUCER's artifact (the same corpus the summary numbered
+ * and showed the model), resolved by the caller via ctxForRule. It equals `ctx` for a
+ * source-anchored recheck and in any XPI review; only an SCA xpi-anchored recheck
+ * differs. Callers that never cite may omit it.
  * @param {RunContext} ctx
  * @param {LoadedCheck} check  The recheck consumer (its id keys ctx.recheck).
+ * @param {RunContext} [corpusCtx]  The producer's corpus for citation; defaults to ctx.
  * @returns {{findings: object[], escalations: {item: ?string, hint: ?string,
  *   file: ?string, loc: ?object, data: object}[]}}
  */
-export function resolveRecheck(ctx, check) {
+export function resolveRecheck(ctx, check, corpusCtx = ctx) {
   const handed = ctx.recheck?.get(check.id) ?? [];
   if (!handed.length) {
     return { findings: [], escalations: [] };
@@ -222,12 +264,19 @@ export function resolveRecheck(ctx, check) {
       verdicts.set(v.item, v);
     }
   }
+  // The accepted-token vocabulary per item, assembled once, when this consumer
+  // verifies cited evidence. Read from the PRODUCER's corpus (corpusCtx) so the
+  // version-filtered tokens match the artifact a pass is cited against. Empty for an
+  // item with no vocabulary -> the citation is checked structurally only.
+  const vocab = check.requireCitation
+    ? recheckTokenVocab(corpusCtx, check)
+    : null;
   const findings = [];
   const escalations = [];
   for (const ref of handed) {
     const key = itemKey(ref);
     const v = key != null ? verdicts.get(key) : undefined;
-    const verdict = v?.verdict ?? "unsure";
+    let verdict = v?.verdict ?? "unsure";
     // The feed suffix after `file:line`: the item token, else a per-locus hint
     // (e.g. a transmission method). Never the file - that only repeated the locus.
     const label = ref.item ?? ref.hint ?? null;
@@ -236,11 +285,32 @@ export function resolveRecheck(ctx, check) {
     // when they re-judge XPI-corpus items. check.labelInput is set at load; it falls
     // back to the note's bound input when absent.
     const labelInput = check.labelInput;
+    // A pass this consumer requires to be cited: verify the evidence. A verified pass
+    // drops as usual; an unverifiable one becomes unsure and falls to manual below.
+    let citationReason = null;
+    if (verdict === "pass" && check.requireCitation) {
+      const cited = verifyCitation(v?.usages, vocab.get(key), corpusCtx);
+      if (cited) {
+        ctx.note?.(
+          ref.file,
+          ref.loc,
+          citedLabel(label, cited),
+          "pass",
+          labelInput
+        );
+        continue;
+      }
+      verdict = "unsure";
+      citationReason = "claimed used, but the cited evidence did not verify";
+    }
     if (verdict === "pass") {
       ctx.note?.(ref.file, ref.loc, label, "pass", labelInput);
       continue; // the summary confirmed it is used / justified - drop it
     }
-    const data = { ...(ref.data ?? {}), reason: v?.reason ?? "" };
+    const data = {
+      ...(ref.data ?? {}),
+      reason: citationReason ?? v?.reason ?? "",
+    };
     if (verdict === "fail") {
       ctx.note?.(ref.file, ref.loc, label, "fail", labelInput);
       findings.push(
