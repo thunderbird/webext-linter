@@ -14,21 +14,96 @@ import {
   isLlmType,
   LLM_TYPES,
 } from "../../src/llm/provider.js";
-import {
-  DEFAULT_MODEL_CLAUDE,
-  DEFAULT_MODEL_OPENAI,
-  DEFAULT_MODEL_OLLAMA,
-} from "../../src/config.js";
-import * as anthropic from "../../src/llm/anthropic.js";
-import * as openai from "../../src/llm/openai.js";
+import { defaultModel } from "../../src/llm/settings.js";
 
-test("getProvider selects the adapter by type, defaulting to claude", () => {
-  assert.equal(getProvider("claude").callVerdicts, anthropic.callVerdicts);
-  assert.equal(getProvider("chatgpt").callVerdicts, openai.callVerdicts);
+// The adapters are told apart by the client they drive: Anthropic sends
+// messages.create, OpenAI chat.completions.create. A fake serves one shape only,
+// so reaching the wrong adapter is a TypeError rather than a passing test.
+function anthropicClient(onCreate) {
+  return { messages: { create: async (r) => onCreate(r) } };
+}
+function openaiClient(onCreate) {
+  return { chat: { completions: { create: async (r) => onCreate(r) } } };
+}
+const VERDICT_REPLY = {
+  content: [
+    {
+      type: "tool_use",
+      name: "report_verdicts",
+      input: { verdicts: [{ id: "E1", verdict: "pass" }] },
+    },
+  ],
+};
+
+test("getProvider selects the adapter by type, defaulting to claude", async () => {
+  const call = (type, client) =>
+    getProvider(type).callVerdicts({
+      token: "t",
+      model: "m",
+      system: [],
+      criterion: "c",
+      client,
+    });
+  await call(
+    "claude",
+    anthropicClient(() => VERDICT_REPLY)
+  );
+  await call(
+    undefined,
+    anthropicClient(() => VERDICT_REPLY)
+  );
+  await call(
+    "chatgpt",
+    openaiClient(() => toolCall())
+  );
   // ollama is OpenAI-compatible, so it reuses the OpenAI adapter.
-  assert.equal(getProvider("ollama").callVerdicts, openai.callVerdicts);
-  assert.equal(getProvider(undefined).callVerdicts, anthropic.callVerdicts);
+  await call(
+    "ollama",
+    openaiClient(() => toolCall())
+  );
 });
+
+test("getProvider binds the type in, so the adapter reads that type's model table", async () => {
+  // gpt-5.1 is a chatgpt entry (max_completion_tokens); under ollama the same id
+  // is a stranger and gets that file's catch-all instead.
+  const seen = {};
+  for (const type of ["chatgpt", "ollama"]) {
+    await getProvider(type).callVerdicts({
+      token: "t",
+      model: "gpt-5.1",
+      system: [],
+      criterion: "c",
+      client: openaiClient((r) => {
+        seen[type] = r;
+        return toolCall();
+      }),
+    });
+  }
+  assert.equal(seen.chatgpt.max_completion_tokens, 32768);
+  assert.equal(seen.ollama.max_tokens, 8192);
+  assert.equal(seen.ollama.max_completion_tokens, undefined);
+});
+
+function toolCall() {
+  return {
+    choices: [
+      {
+        message: {
+          tool_calls: [
+            {
+              function: {
+                name: "report_verdicts",
+                arguments: JSON.stringify({
+                  verdicts: [{ id: "E1", verdict: "pass" }],
+                }),
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
 
 test("getProvider throws on an unknown type", () => {
   assert.throws(() => getProvider("bogus"), /unknown LLM_API_TYPE/);
@@ -41,11 +116,11 @@ test("isLlmType and LLM_TYPES cover claude, chatgpt, ollama", () => {
 });
 
 test("defaultModelFor returns the per-type default (claude when unknown/absent)", () => {
-  assert.equal(defaultModelFor("claude"), DEFAULT_MODEL_CLAUDE);
-  assert.equal(defaultModelFor("chatgpt"), DEFAULT_MODEL_OPENAI);
-  assert.equal(defaultModelFor("ollama"), DEFAULT_MODEL_OLLAMA);
-  assert.equal(defaultModelFor(undefined), DEFAULT_MODEL_CLAUDE);
-  assert.equal(defaultModelFor("bogus"), DEFAULT_MODEL_CLAUDE);
+  for (const type of LLM_TYPES) {
+    assert.equal(defaultModelFor(type), defaultModel(type));
+  }
+  assert.equal(defaultModelFor(undefined), defaultModel("claude"));
+  assert.equal(defaultModelFor("bogus"), defaultModel("claude"));
 });
 
 test("defaultBaseUrlFor is the local endpoint for ollama, undefined for cloud", () => {

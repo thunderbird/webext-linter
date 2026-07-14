@@ -81,8 +81,9 @@ import { isExperiment, parseVersion, strictMaxVersion } from "./lib/util.js";
 import { experimentApiNamespaces } from "./lib/experiments.js";
 import { verifyExperiments } from "./experiments/verify.js";
 import { createLlmBudget } from "./llm/budget.js";
+import { modelSettings } from "./llm/settings.js";
 import { debug, progress, warn, FEED } from "./util/log.js";
-import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
+import { DEFAULT_CACHE } from "./config.js";
 
 /** @typedef {import("./report/finding.js").Finding} Finding */
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
@@ -149,11 +150,11 @@ import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
  *   test harness injects one to drop its expected.json sidecar).
  * @property {import("./checks/registry.js").Registry} [registry]  Parsed
  *   registry threaded from the caller, parsed once here otherwise.
- * @property {(used: number) => boolean | Promise<boolean>} [confirmMore]  Asked
- *   when the run hits the LLM request cap (MAX_LLM_REQUESTS_PER_RUN): truthy
- *   runs that many more, falsy stops. The CLI supplies an interactive prompt
- *   only at a terminal. Omitted means hard-stop at the cap (see
- *   src/llm/budget.js).
+ * @property {(used: number, step: number) => boolean | Promise<boolean>}
+ *   [confirmMore]  Asked when the run hits the LLM request cap (the model's
+ *   `maxRequests` in assets/llm): truthy runs that many more, falsy stops. The CLI
+ *   supplies an interactive prompt only at a terminal. Omitted means hard-stop at
+ *   the cap (see src/llm/budget.js).
  */
 
 /**
@@ -330,12 +331,14 @@ export async function runPipeline(opts) {
 
   // Run-wide model-request cap, shared by every LLM site this run: the vendor
   // parse, the LLM checks (each candidate batch is one request), and the
-  // summaries. `confirmMore` (the interactive "run 25 more?" prompt) is supplied
-  // by the CLI. Without it (JSON, piped, tests) the run hard-stops at the cap
-  // and the remaining LLM work escalates to manual review. See
-  // src/llm/budget.js.
+  // summaries. The cap is the chosen model's own `maxRequests` (assets/llm), since
+  // a slower or dearer model is worth fewer calls. `confirmMore` (the interactive
+  // "run N more?" prompt) is supplied by the CLI. Without it (JSON, piped, tests)
+  // the run hard-stops at the cap and the remaining LLM work escalates to manual
+  // review. See src/llm/budget.js.
   const llmBudget = createLlmBudget({
-    step: MAX_LLM_REQUESTS_PER_RUN,
+    step: modelSettings(opts.llmApiType, opts.llmApiUrl, opts.llmModel)
+      .maxRequests,
     confirmMore: opts.confirmMore,
   });
 

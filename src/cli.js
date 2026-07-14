@@ -35,7 +35,6 @@ import {
   EXPERIMENTS_CACHE,
   LIBRARY_HASHES_CACHE,
   CDN_LOOKUP_CACHE,
-  MAX_LLM_REQUESTS_PER_RUN,
 } from "./config.js";
 import {
   info,
@@ -221,7 +220,7 @@ export function helpText() {
     ],
     [
       "LLM_API_MODEL",
-      "Model for the LLM checks (default: the provider's default).",
+      "Model for the LLM checks (default: the one named in assets/llm/<type>.yaml, which also holds each model's request settings).",
     ],
     [
       "LLM_API_URL",
@@ -335,9 +334,10 @@ const OPTIONS = {
  * for an interactive text run. A non-"y" answer (or EOF) stops, and the run's
  * remaining LLM work escalates to manual review.
  * @param {number} used  Requests already made this run.
- * @returns {Promise<boolean>}  Whether to allow MAX_LLM_REQUESTS_PER_RUN more.
+ * @param {number} step  How many more a yes grants (the model's maxRequests).
+ * @returns {Promise<boolean>}  Whether to allow `step` more.
  */
-async function confirmMoreLlmRequests(used) {
+async function confirmMoreLlmRequests(used, step) {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stderr,
@@ -345,7 +345,7 @@ async function confirmMoreLlmRequests(used) {
   try {
     const answer = await rl.question(
       `\nReached the LLM request limit (${used} requests this run). ` +
-        `Run ${MAX_LLM_REQUESTS_PER_RUN} more? [y/N] `
+        `Run ${step} more? [y/N] `
     );
     return /^y(es)?$/i.test(answer.trim());
   } finally {

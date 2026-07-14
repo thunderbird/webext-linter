@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { callVerdicts, callText } from "../../src/llm/anthropic.js";
 import { createLlmClient } from "../../src/checks/llm-client.js";
 import { loadRegistry } from "../../src/checks/registry.js";
-import { MAX_RESPONSE_TOKENS } from "../../src/config.js";
+import { modelSettings } from "../../src/llm/settings.js";
 import { withManifest } from "./manifest-ctx.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -61,7 +61,11 @@ test("callVerdicts forces the structured result tool", async () => {
   assert.ok(req.tools[0].input_schema.required.includes("verdicts"));
   // The rest of the request is wired through verbatim.
   assert.equal(req.model, "test-model");
-  assert.equal(req.max_tokens, MAX_RESPONSE_TOKENS);
+  // The request parameters are the model's own, from assets/llm/claude.yaml.
+  assert.equal(
+    req.max_tokens,
+    modelSettings("claude", undefined, "test-model").parameters.max_tokens
+  );
   assert.deepEqual(req.system, [{ type: "text", text: "sys" }]);
   assert.deepEqual(req.messages, [{ role: "user", content: "the rubric" }]);
   // And the structured result is coerced on the way out.

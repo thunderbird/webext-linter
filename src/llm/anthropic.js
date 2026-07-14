@@ -7,14 +7,20 @@
 //     deterministic-only run never loads it,
 //   - the token and add-on contents are never sent anywhere but the API.
 //
+// The model's request parameters (max_tokens, and anything else the model wants)
+// come from assets/llm/claude.yaml via settings.js and are spread into the body as
+// they stand. Anthropic serves every model from one endpoint under one parameter
+// name, so - unlike openai.js - there is nothing here to negotiate.
+//
 // Belongs here: the Anthropic request/response shape (callVerdicts / callText /
 // callReview / listModels) and the lazy SDK import. Does NOT belong here: the
-// schemas + coercion (-> schema.js), the per-review add-on context and transport
-// (-> src/checks/llm-client.js), the provider selection (-> src/llm/provider.js)
-// itself, or any model-facing prompt (-> the registry).
+// schemas + coercion (-> schema.js), the model table (-> settings.js), the
+// per-review add-on context and transport (-> src/checks/llm-client.js), the
+// provider selection (-> src/llm/provider.js) itself, or any model-facing prompt
+// (-> the registry).
 
-import { MAX_RESPONSE_TOKENS } from "../config.js";
 import { lazyImportSdk, collectModels } from "./sdk.js";
+import { modelSettings } from "./settings.js";
 import {
   RESULT_TOOL,
   REVIEW_TOOL,
@@ -46,29 +52,40 @@ async function clientFor(token, baseURL, client) {
 }
 
 /**
+ * The parameters the model's request body carries, from assets/llm/<type>.yaml.
+ * @param {string} [type]  The LLM_API_TYPE the adapter was bound to.
+ * @param {string} [baseURL] @param {string} [model]
+ * @returns {Record<string, *>}
+ */
+function parametersFor(type, baseURL, model) {
+  return modelSettings(type, baseURL, model).parameters ?? {};
+}
+
+/**
  * Evaluate one check criterion and return a structured verdict result.
  * @param {object} params
- * @param {string} params.token @param {string} [params.model]
- * @param {string} [params.baseURL]
+ * @param {string} params.token @param {string} [params.type]  The LLM_API_TYPE
+ *   (bound by getProvider), which selects the model table.
+ * @param {string} [params.model] @param {string} [params.baseURL]
  * @param {Array<object>|string} params.system  System prompt (text blocks; the
  *   last carries cache_control for the shared add-on context).
  * @param {string} params.criterion  The check's instruction/rubric.
- * @param {number} [params.maxTokens] @param {Anthropic} [params.client]
+ * @param {Anthropic} [params.client]
  * @returns {Promise<import("./schema.js").LlmResult>}
  */
 export async function callVerdicts({
   token,
+  type,
   model,
   baseURL,
   system,
   criterion,
-  maxTokens = MAX_RESPONSE_TOKENS,
   client,
 }) {
   client = await clientFor(token, baseURL, client);
   const message = await client.messages.create({
     model,
-    max_tokens: maxTokens,
+    ...parametersFor(type, baseURL, model),
     system,
     tools: [
       {
@@ -87,25 +104,26 @@ export async function callVerdicts({
  * Free-form text completion (no forced tool): used for the advisory change
  * summary. Returns the model's joined text blocks, trimmed.
  * @param {object} params
- * @param {string} params.token @param {string} [params.model]
+ * @param {string} params.token @param {string} [params.type]
+ * @param {string} [params.model]
  * @param {string} [params.baseURL] @param {Array<object>|string} [params.system]
- * @param {string} params.prompt @param {number} [params.maxTokens]
+ * @param {string} params.prompt
  * @param {Anthropic} [params.client]
  * @returns {Promise<string>}
  */
 export async function callText({
   token,
+  type,
   model,
   baseURL,
   system,
   prompt,
-  maxTokens = MAX_RESPONSE_TOKENS,
   client,
 }) {
   client = await clientFor(token, baseURL, client);
   const message = await client.messages.create({
     model,
-    max_tokens: maxTokens,
+    ...parametersFor(type, baseURL, model),
     ...(system ? { system } : {}),
     messages: [{ role: "user", content: prompt }],
   });
@@ -120,25 +138,26 @@ export async function callText({
  * The structured --llm-review review: a forced report_addon_review tool whose
  * input is { summary, recheck }.
  * @param {object} params
- * @param {string} params.token @param {string} [params.model]
+ * @param {string} params.token @param {string} [params.type]
+ * @param {string} [params.model]
  * @param {string} [params.baseURL] @param {Array<object>|string} [params.system]
- * @param {string} params.prompt @param {number} [params.maxTokens]
+ * @param {string} params.prompt
  * @param {Anthropic} [params.client]
  * @returns {Promise<import("./schema.js").AddonReview>}
  */
 export async function callReview({
   token,
+  type,
   model,
   baseURL,
   system,
   prompt,
-  maxTokens = MAX_RESPONSE_TOKENS,
   client,
 }) {
   client = await clientFor(token, baseURL, client);
   const message = await client.messages.create({
     model,
-    max_tokens: maxTokens,
+    ...parametersFor(type, baseURL, model),
     ...(system ? { system } : {}),
     tools: [
       {

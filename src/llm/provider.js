@@ -5,41 +5,45 @@
 // adapter (its endpoint is OpenAI-compatible), with a local default base URL and
 // no API key.
 //
+// getProvider BINDS the type into the adapter it hands back, because an adapter
+// needs to know which type it is serving to look its model up in the right
+// assets/llm/<type>.yaml - the OpenAI adapter serves both chatgpt and ollama. Call
+// sites therefore never carry the type themselves: they ask for the provider once
+// and call it with the token, model and base URL, as they always have.
+//
 // Belongs here: the type -> adapter map, every per-provider requirement (default
-// model, default base URL, whether a key is required, whether the model can be
-// verified up front), and the config/availability validators the CLI + pipeline
-// call. Does NOT belong here: the request shapes (-> the adapters), the schemas
-// (-> schema.js), or reading the env vars (-> src/cli.js).
+// base URL, whether a key is required, whether the model can be verified up
+// front), and the config/availability validators the CLI + pipeline call. Does NOT
+// belong here: the request shapes (-> the adapters), the per-model settings
+// (-> settings.js), the schemas (-> schema.js), or reading the env vars
+// (-> src/cli.js).
 
-import {
-  DEFAULT_MODEL_CLAUDE,
-  DEFAULT_MODEL_OPENAI,
-  DEFAULT_MODEL_OLLAMA,
-} from "../config.js";
 import * as anthropic from "./anthropic.js";
 import * as openai from "./openai.js";
+import { defaultModel } from "./settings.js";
 
 const PROVIDERS = {
   claude: {
     adapter: anthropic,
-    defaultModel: DEFAULT_MODEL_CLAUDE,
     requiresKey: true,
   },
   chatgpt: {
     adapter: openai,
-    defaultModel: DEFAULT_MODEL_OPENAI,
     requiresKey: true,
   },
   // Local, OpenAI-compatible. No key, a local default endpoint. The chosen
   // model must be pulled, which checkModelAvailable verifies up front.
   ollama: {
     adapter: openai,
-    defaultModel: DEFAULT_MODEL_OLLAMA,
     requiresKey: false,
     baseUrl: "http://localhost:11434/v1",
     checkModel: true,
   },
 };
+
+// The bound adapters, one per type: built on first use and reused, so a caller
+// that holds on to one keeps calling the same functions.
+const bound = new Map();
 
 /** The supported LLM_API_TYPE values. */
 export const LLM_TYPES = Object.keys(PROVIDERS);
@@ -56,8 +60,9 @@ export function isLlmType(type) {
 }
 
 /**
- * The provider adapter (callVerdicts / callText / callReview / listModels) for
- * an LLM_API_TYPE. Defaults to claude. Throws on an unknown type.
+ * The provider adapter (callVerdicts / callText / callReview / listModels) for an
+ * LLM_API_TYPE, with the type bound in so the adapter can find the model's
+ * settings. Defaults to claude. Throws on an unknown type.
  * @param {string} [type]
  * @returns {{callVerdicts: Function, callText: Function, callReview: Function,
  *   listModels: Function}}
@@ -69,16 +74,28 @@ export function getProvider(type = DEFAULT_LLM_TYPE) {
       `unknown LLM_API_TYPE "${type}" (expected one of: ${LLM_TYPES.join(", ")})`
     );
   }
-  return entry.adapter;
+  if (!bound.has(type)) {
+    const { adapter } = entry;
+    bound.set(type, {
+      callVerdicts: (args) => adapter.callVerdicts({ ...args, type }),
+      callText: (args) => adapter.callText({ ...args, type }),
+      callReview: (args) => adapter.callReview({ ...args, type }),
+      // Listing models needs no model, so nothing to bind.
+      listModels: adapter.listModels,
+    });
+  }
+  return bound.get(type);
 }
 
 /**
- * The default model for an LLM_API_TYPE (used when LLM_API_MODEL is not set).
+ * The default model for an LLM_API_TYPE (used when LLM_API_MODEL is not set), from
+ * that type's assets/llm file. An unknown type answers with the default type's,
+ * which is what validateLlmConfig then rejects by name.
  * @param {string} [type]
  * @returns {string}
  */
 export function defaultModelFor(type = DEFAULT_LLM_TYPE) {
-  return (PROVIDERS[type] ?? PROVIDERS[DEFAULT_LLM_TYPE]).defaultModel;
+  return defaultModel(isLlmType(type) ? type : DEFAULT_LLM_TYPE);
 }
 
 /**

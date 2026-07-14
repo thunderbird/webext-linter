@@ -60,26 +60,12 @@ export const CDN_LOOKUP_CACHE = ".lib-cdn-lookup-cache";
  */
 export const CDN_LOOKUP_READABLE_MIN_BYTES = 16384;
 
-/**
- * Default model per LLM_API_TYPE when LLM_API_MODEL is not set.
- * DEFAULT_MODEL_CLAUDE is the claude (Anthropic) default. DEFAULT_MODEL_OPENAI
- * is the chatgpt (OpenAI) one (gpt-4.1 for its 1M-token context, since add-ons
- * can be large, where gpt-4o's 128k overflowed). DEFAULT_MODEL_OLLAMA is the
- * ollama (local) one, a tool-capable model that must first be pulled by running
- * `ollama pull llama3.1`.
- */
-export const DEFAULT_MODEL_CLAUDE = "claude-sonnet-4-6";
-export const DEFAULT_MODEL_OPENAI = "gpt-4.1";
-export const DEFAULT_MODEL_OLLAMA = "llama3.1";
-
-/**
- * Cap on the tokens the model may generate in a reply (output, not input). The
- * Anthropic API requires max_tokens and returns a 400 when it exceeds a model's
- * output ceiling, so this cannot be omitted. 8192 is safe: it is within every
- * current Claude model's ceiling (never a 400) and large enough that our verdict
- * JSON and change/add-on summaries never truncate.
- */
-export const MAX_RESPONSE_TOKENS = 8192;
+// The model knowledge is NOT here: it lives in assets/llm/<LLM_API_TYPE>.yaml,
+// read by src/llm/settings.js - which model a run defaults to, how many requests
+// it may make, and, per model, the endpoint and the request parameters (the
+// output-token cap among them). It sits in an asset rather than in this file
+// because the linter also WRITES it: when a server rejects a request shape, the
+// OpenAI adapter negotiates a working one and records what worked.
 
 /**
  * Max distinct add-on files an LLM check sends in one batched request. A check
@@ -92,19 +78,6 @@ export const MAX_RESPONSE_TOKENS = 8192;
  * context window errors and its candidates fall back to manual review. Tunable.
  */
 export const MAX_FILES_PER_BATCH = 12;
-
-/**
- * Cap on the TOTAL model requests one run may make before pausing - across
- * every LLM check (each candidate batch is one request), the advisory
- * summaries, the vendor-parse fallback, and the SCA build analysis (analyzeBuild,
- * one setup request). MAX_FILES_PER_BATCH bounds a single
- * request. This bounds their count, so a pathological add-on cannot fan out into
- * thousands of calls. On reaching it the run asks (at an interactive terminal)
- * whether to run this many more, re-asking at every multiple. Non-interactively
- * it stops and the remaining LLM work escalates to manual review. Doubles as the
- * per-confirmation increment. See src/llm/budget.js. Tunable.
- */
-export const MAX_LLM_REQUESTS_PER_RUN = 25;
 
 /** Max characters of a truncated display label (e.g. a long URL). */
 export const DISPLAY_TRUNCATE_LENGTH = 80;

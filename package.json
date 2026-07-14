@@ -32,6 +32,7 @@
     "assets/library-blocks.yaml",
     "assets/webext-facts.yaml",
     "assets/schema-annotations",
+    "assets/llm",
     "README.md",
     "LICENSE"
   ],

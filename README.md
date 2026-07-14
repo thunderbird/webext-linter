@@ -125,7 +125,7 @@ The LLM checks are configured from the environment, and enabled via the `--llm-r
 | --- | --- |
 | `LLM_API_TYPE` | Provider: `claude` (default), `chatgpt`, or `ollama` (local). |
 | `LLM_API_KEY` | The provider API key. Required for `claude`/`chatgpt`, not used by `ollama`. |
-| `LLM_API_MODEL` | Model for the LLM checks (default: the provider's default). |
+| `LLM_API_MODEL` | Model for the LLM checks (default: the one named in `assets/llm/<type>.yaml`). |
 | `LLM_API_URL` | Override the provider's API base URL (e.g. a proxy, or a remote Ollama host). |
 
 ```sh
@@ -146,6 +146,18 @@ node verify.js <xpi|folder> --llm-review
 Each provider has a default model (`claude-sonnet-4-6` for `claude`, `gpt-4.1`
 for `chatgpt`, `llama3.1` for `ollama`). Override it by setting `LLM_API_MODEL`,
 or list the available models with `--llm-list-models`.
+
+**The model table (`assets/llm/<type>.yaml`).** One file per `LLM_API_TYPE` holds
+that provider's default model, its per-run request budget, and — per model — the
+endpoint that serves it and the parameters its requests carry (the output-token
+cap among them). This is what lets the OpenAI models that are *not* served by
+`/v1/chat/completions` work: a `gpt-5.1-codex-max` request goes to `/v1/responses`,
+and a reasoning model is sent `max_completion_tokens` rather than `max_tokens`.
+OpenAI publishes no way to ask a model which it wants, so the table is a starting
+guess: when the server rejects the shape, the adapter repairs it from the rejection
+itself, uses the working shape, and appends it to that file's `learned:` list — so
+the probe is paid once rather than once per run. A model the table has never seen
+falls back to the plain chat request every OpenAI-compatible server understands.
 
 **Local model (Ollama).** With [Ollama](https://ollama.com) running, the checks
 talk to its OpenAI-compatible endpoint at `http://localhost:11434/v1` — no API
