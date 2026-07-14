@@ -90,6 +90,16 @@ Because the original project is still active, your submission does not meet thes
   Per-occurrence recheck: three declared permissions judged at their token
   sites.
 
+  Recheck verdicts:
+  * Unused permission - bg.js:10 - accountsRead - unsure
+     -> function describe(msg, folder, details) {
+  * Unused permission - bg.js:11 - messagesRead - pass
+     -> const rel = msg.relatedMessageId;
+  * Unused permission - bg.js:12 - accountsRead - unsure
+     -> const box = folder.displayedFolder;
+  * Unused permission - bg.js:13 - compose - fail
+     -> messenger.scripting.executeScript(details);
+
 ── Summary ──
 
 0 error(s), 1 warning(s), 0 info, 11 manual review step(s)

@@ -164,6 +164,9 @@ import { DEFAULT_CACHE, MAX_LLM_REQUESTS_PER_RUN } from "./config.js";
  * @property {Record<string, string>} [verdictIntros]
  * @property {GeneratedSummary} [summarize]
  * @property {GeneratedSummary} [summarizeAddon]
+ * @property {{check: string, label: string, file: ?string, line: ?number,
+ *   subject: ?string, verdict: string, content: ?string}[]} [recheckVerdictRows]  The
+ *   per-site recheck rows shown under the add-on summary in the text report.
  */
 
 /**
@@ -735,6 +738,7 @@ export async function runPipeline(opts) {
     checksRun,
     summarizeAddon,
     summarize,
+    recheckVerdictRows,
   } = await runChecks(
     ctx,
     registry,
@@ -811,6 +815,10 @@ export async function runPipeline(opts) {
     // src/cli.js.
     summarize,
     summarizeAddon,
+    // The per-site recheck rows (both SCA passes), shown under the add-on summary in the
+    // text report. Empty unless candidates were handed to the summary; a handed site with
+    // no returned verdict still appears, defaulting to unsure.
+    recheckVerdictRows,
   };
 }
 

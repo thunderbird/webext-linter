@@ -65,26 +65,30 @@
 
       <p class="lead">
         One review is one call to <code>runPipeline()</code> — the pipeline
-        (<code>src/pipeline.js</code>), and the tool's core: opts in, a Review out. A
-        submitted add-on goes in; findings and manual-review notes come out. It loads and
-        resolves the add-on, builds the run context, then hands off to the orchestrator,
-        which runs the checks. Everything below happens inside that single call.
+        (<code>src/pipeline.js</code>), and the tool's core: opts in, a Review
+        out. A submitted add-on goes in; findings and manual-review notes come
+        out. It loads and resolves the add-on, builds the run context, then
+        hands off to the orchestrator, which runs the checks. Everything below
+        happens inside that single call.
       </p>
 
       <h2>Setup</h2>
       <p>
-        Nothing is checked until the add-on is loaded, classified, resolved and parsed.
-        That is the pipeline's first job, and it does every expensive thing exactly once.
-        The amber boxes are the ones that matter most: they <strong>resolve the review
-        state</strong> — <code>invalidExperiment</code>, the <code>mode</code> (with
-        <code>scaNotRequired</code>), <code>llmVerified</code>, and the <strong>review
-        target</strong>. Everything after them, and every check, keys off those. The mode is
-        where a submitted source archive can be thrown away; <code>llmVerified</code> is the
-        one place this run decides it may call the model, and every later decision reads the
-        answer off <code>ctx.llm</code> rather than asking again. After Phase&nbsp;4,
-        <code>runPipeline()</code>&rsquo;s Phase&nbsp;5 runs the review &mdash; a single
-        <code>runChecks()</code> call, detailed in <em>The orchestrator</em> below &mdash; then
-        finalizes the <code>Review</code> for the report.
+        Nothing is checked until the add-on is loaded, classified, resolved and
+        parsed. That is the pipeline's first job, and it does every expensive
+        thing exactly once. The amber boxes are the ones that matter most: they
+        <strong>resolve the review state</strong> —
+        <code>invalidExperiment</code>, the <code>mode</code> (with
+        <code>scaNotRequired</code>), <code>llmVerified</code>, and the
+        <strong>review target</strong>. Everything after them, and every check,
+        keys off those. The mode is where a submitted source archive can be
+        thrown away; <code>llmVerified</code> is the one place this run decides
+        it may call the model, and every later decision reads the answer off
+        <code>ctx.llm</code> rather than asking again. After Phase&nbsp;4,
+        <code>runPipeline()</code>&rsquo;s Phase&nbsp;5 runs the review &mdash;
+        a single <code>runChecks()</code> call, detailed in
+        <em>The orchestrator</em> below &mdash; then finalizes the
+        <code>Review</code> for the report.
       </p>
       <div class="flow">
         <pre class="mermaid">
@@ -244,45 +248,54 @@ flowchart TB
 
       <div class="outcome">
         <strong>The SCA&nbsp;→&nbsp;XPI downgrade.</strong>
-        A source archive is only worth reviewing when the shipped XPI cannot be. So
-        <code>resolveReviewMode()</code> classifies the built XPI and decides from its own
-        code alone: if the first-party code is not minified or obfuscated, the source adds
-        nothing. The review is downgraded to a plain XPI review, the source archive is
-        never read, and <code>sca-not-required</code> reports it. An invalid Experiment
-        skips the classification entirely, so it is never downgraded.
+        A source archive is only worth reviewing when the shipped XPI cannot be.
+        So
+        <code>resolveReviewMode()</code> classifies the built XPI and decides
+        from its own code alone: if the first-party code is not minified or
+        obfuscated, the source adds nothing. The review is downgraded to a plain
+        XPI review, the source archive is never read, and
+        <code>sca-not-required</code> reports it. An invalid Experiment skips
+        the classification entirely, so it is never downgraded.
       </div>
       <p>
-        The invalid-Experiment path is not an early exit — it runs on to the orchestrator,
-        which reviews the shipped XPI with the single reject check. It only <em>skips
-        work</em>, and it skips it in one step: setting <code>invalidExperiment</code> also
-        pins the mode, and everything after it is bypassed — the LLM (both the pre-flight and
-        the client, even with a token set), the library hashes, the classification, the whole
-        vendor block, and the parse. Not one line of the add-on's code is read: the reject
-        check judges from the manifest, the experiment classification and the schema alone, so
-        <code>ctx.jsSources</code> is empty. Only two things still run: the schema, which is
-        resolved <em>before</em> the decision because the check resolves API paths through it,
-        and the run context itself.
+        The invalid-Experiment path is not an early exit — it runs on to the
+        orchestrator, which reviews the shipped XPI with the single reject
+        check. It only <em>skips work</em>, and it skips it in one step: setting
+        <code>invalidExperiment</code> also pins the mode, and everything after
+        it is bypassed — the LLM (both the pre-flight and the client, even with
+        a token set), the library hashes, the classification, the whole vendor
+        block, and the parse. Not one line of the add-on's code is read: the
+        reject check judges from the manifest, the experiment classification and
+        the schema alone, so <code>ctx.jsSources</code> is empty. Only two
+        things still run: the schema, which is resolved <em>before</em> the
+        decision because the check resolves API paths through it, and the run
+        context itself.
       </p>
 
       <h2>The stores</h2>
       <p>
-        What setup leaves behind is a set of shared <strong>stores</strong>. The diagram reads
-        left to right in four columns: the <strong>producer</strong> step, the <strong>store</strong>
-        it builds, the <strong>access layer</strong>, and the <strong>checks</strong>.
-        A <strong>store</strong> (solid) is raw and <em>eager</em> — built once during setup
-        (<code>ctx.schema</code>, <code>addon.vendor</code>/<code>bundled</code>, the per-source
-        <code>src.extracted.*</code> fields), whether or not anything reads it. A
-        <strong>cache</strong> (dashed) is a <em>derived, lazy</em> view — <code>apiResolution</code>,
-        <code>permissionAnalysis</code>, <code>outboundSinks</code>, <code>evalScan</code>,
-        <code>locales</code>, and the <code>reachability</code> graph — computed from stores on the
-        first read that needs it, then memoized (so a cache nobody reads is never built). The lazy
-        caches never re-parse: they derive from the precomputed <code>src.extracted</code> stores
-        (a check reading before the extraction pass ran throws "a check is a pure reader, it never
-        parses"). The small unlabeled circles are <strong>relays</strong> — pure layout: a store a
-        check reads directly still passes through the access column so every check lines up in the
-        last one. Solid arrows are "produces / derives from"; dashed are "read by". (A couple of
-        cache→cache inputs, shown as <code>+&nbsp;…</code> notes on the cache, are kept out of the
-        arrows so nothing jumps a column.)
+        What setup leaves behind is a set of shared <strong>stores</strong>. The
+        diagram reads left to right in four columns: the
+        <strong>producer</strong> step, the <strong>store</strong> it builds,
+        the <strong>access layer</strong>, and the <strong>checks</strong>. A
+        <strong>store</strong> (solid) is raw and <em>eager</em> — built once
+        during setup (<code>ctx.schema</code>,
+        <code>addon.vendor</code>/<code>bundled</code>, the per-source
+        <code>src.extracted.*</code> fields), whether or not anything reads it.
+        A <strong>cache</strong> (dashed) is a <em>derived, lazy</em> view —
+        <code>apiResolution</code>, <code>permissionAnalysis</code>,
+        <code>outboundSinks</code>, <code>evalScan</code>, <code>locales</code>,
+        and the <code>reachability</code> graph — computed from stores on the
+        first read that needs it, then memoized (so a cache nobody reads is
+        never built). The lazy caches never re-parse: they derive from the
+        precomputed <code>src.extracted</code> stores (a check reading before
+        the extraction pass ran throws "a check is a pure reader, it never
+        parses"). The small unlabeled circles are <strong>relays</strong> — pure
+        layout: a store a check reads directly still passes through the access
+        column so every check lines up in the last one. Solid arrows are
+        "produces / derives from"; dashed are "read by". (A couple of
+        cache→cache inputs, shown as <code>+&nbsp;…</code> notes on the cache,
+        are kept out of the arrows so nothing jumps a column.)
       </p>
       <div class="flow">
         <pre class="mermaid">
@@ -424,9 +437,9 @@ flowchart LR
 
       <div class="outcome">
         <strong>A check is a pure reader.</strong>
-        It never parses, never fetches, never mutates. So two checks asking the same
-        question always agree, and peak memory stays at a single AST, regardless of how
-        much code the add-on ships.
+        It never parses, never fetches, never mutates. So two checks asking the
+        same question always agree, and peak memory stays at a single AST,
+        regardless of how much code the add-on ships.
       </div>
       <table class="phases">
         <thead>
@@ -442,34 +455,39 @@ flowchart LR
             <td><code>resolveVendor()</code> → <code>verifyVendor()</code></td>
             <td>
               The declared third-party libraries, resolved to their sources and
-              verified over the network, plus the vulnerability audit. The vendor
-              checks are pure readers of it.
+              verified over the network, plus the vulnerability audit. The
+              vendor checks are pure readers of it.
             </td>
           </tr>
           <tr>
             <td><code>addon.bundled</code></td>
             <td>
-              <code>classifyFiles()</code> → <code>assembleBundled()</code>, finalized by
+              <code>classifyFiles()</code> → <code>assembleBundled()</code>,
+              finalized by
               <code>identifyBundledLibraries()</code>
             </td>
             <td>
-              The per-file classification (authored / library / minified / obfuscated
-              / vendored) and the <code>nonAuthored</code> skip set that every content
-              scanner honours. <code>identifyBundledLibraries()</code> (the CDN +
-              not-popular-vendor reconciliation) <strong>finalizes</strong> the split — it
-              both adds and removes — which is why the parse runs after it.
+              The per-file classification (authored / library / minified /
+              obfuscated / vendored) and the <code>nonAuthored</code> skip set
+              that every content scanner honours.
+              <code>identifyBundledLibraries()</code> (the CDN +
+              not-popular-vendor reconciliation) <strong>finalizes</strong> the
+              split — it both adds and removes — which is why the parse runs
+              after it.
             </td>
           </tr>
           <tr>
             <td>
-              <code>src.extracted</code><br />(per <code>ctx.jsSources</code> entry)
+              <code>src.extracted</code><br />(per
+              <code>ctx.jsSources</code> entry)
             </td>
             <td><code>runExtractionPass()</code></td>
             <td>
-              Each source is parsed <strong>once</strong>; the small per-file results
-              (API usage, loader refs, network sinks, remote-code refs, the comment-free
-              code text …) are stored and <strong>the AST is dropped</strong>. This is
-              why no check ever re-parses.
+              Each source is parsed <strong>once</strong>; the small per-file
+              results (API usage, loader refs, network sinks, remote-code refs,
+              the comment-free code text …) are stored and
+              <strong>the AST is dropped</strong>. This is why no check ever
+              re-parses.
             </td>
           </tr>
           <tr>
@@ -477,8 +495,8 @@ flowchart LR
             <td><code>resolveReviewSchema()</code></td>
             <td>
               The <code>SchemaIndex</code> for the selected channel, with any
-              Experiment namespaces registered into it, plus the local annotation
-              overlay.
+              Experiment namespaces registered into it, plus the local
+              annotation overlay.
             </td>
           </tr>
           <tr>
@@ -486,20 +504,23 @@ flowchart LR
             <td>memoized on first read</td>
             <td>
               <code>permissionAnalysis</code>, <code>apiResolution</code>,
-              <code>evalScan</code>, <code>outboundSinks</code>, <code>locales</code> … —
-              derived on demand by whichever check asks first <strong>from the precomputed
-              stores</strong> (no re-parse), then shared with the rest.
+              <code>evalScan</code>, <code>outboundSinks</code>,
+              <code>locales</code> … — derived on demand by whichever check asks
+              first <strong>from the precomputed stores</strong> (no re-parse),
+              then shared with the rest.
             </td>
           </tr>
         </tbody>
       </table>
 
       <p>
-        Which stores a check may reach is not open either. Every check declares an
-        <code>input</code>, and <code>routeCtx</code> — the single place routing is decided,
-        shared by the main loop and the deferred loop so they can never drift — hands it the
-        <code>ctx</code> for that <code>input</code>. It reads exactly one artifact and cannot
-        reach another's. What the <code>input</code> resolves to depends on the review mode:
+        Which stores a check may reach is not open either. Every check declares
+        an
+        <code>input</code>, and <code>routeCtx</code> — the single place routing
+        is decided, shared by the main loop and the deferred loop so they can
+        never drift — hands it the <code>ctx</code> for that <code>input</code>.
+        It reads exactly one artifact and cannot reach another's. What the
+        <code>input</code> resolves to depends on the review mode:
       </p>
       <table class="phases">
         <thead>
@@ -510,32 +531,50 @@ flowchart LR
           </tr>
         </thead>
         <tbody>
-          <tr><td><code>source</code></td><td>the readable source (<code>ctx.addon</code>)</td><td>the built add-on (<code>ctx.addon</code>)</td></tr>
-          <tr><td><code>xpi</code></td><td>the built XPI (<code>siblings.xpi</code>)</td><td>the built add-on (<code>ctx.addon</code>)</td></tr>
-          <tr><td><code>build</code></td><td>the SCA build files (<code>siblings.build</code>)</td><td>&mdash; (SCA-only)</td></tr>
-          <tr><td><code>manifest</code></td><td>the shipped manifest (no file corpus)</td><td>the shipped manifest</td></tr>
+          <tr>
+            <td><code>source</code></td>
+            <td>the readable source (<code>ctx.addon</code>)</td>
+            <td>the built add-on (<code>ctx.addon</code>)</td>
+          </tr>
+          <tr>
+            <td><code>xpi</code></td>
+            <td>the built XPI (<code>siblings.xpi</code>)</td>
+            <td>the built add-on (<code>ctx.addon</code>)</td>
+          </tr>
+          <tr>
+            <td><code>build</code></td>
+            <td>the SCA build files (<code>siblings.build</code>)</td>
+            <td>&mdash; (SCA-only)</td>
+          </tr>
+          <tr>
+            <td><code>manifest</code></td>
+            <td>the shipped manifest (no file corpus)</td>
+            <td>the shipped manifest</td>
+          </tr>
         </tbody>
       </table>
       <p>
-        In an XPI review there is one artifact, so <code>source</code> and <code>xpi</code>
-        both collapse onto <code>ctx</code>. The <strong>one exception</strong> to the table is
-        a <strong>post-summary recheck consumer</strong>: the loader forbids it an
-        <code>input</code>, so <code>routeCtx</code> leaves it on the main ctx — it needs
-        <code>ctx.recheck</code> / <code>ctx.recheckVerdicts</code> — even though the items it
-        re-judges belong to its <em>producer&rsquo;s</em> artifact. Each handed item already
-        carries every locus it needs (the producer stamps them before diverting), so the
-        consumer reads no other artifact. The producer corpus is still recovered by
-        <code>ctxForRule</code> (via <code>labelInput</code>) for the report&rsquo;s
-        [XPI]/[SCA] labels and the folder-collapse.
+        In an XPI review there is one artifact, so <code>source</code> and
+        <code>xpi</code> both collapse onto <code>ctx</code>. The
+        <strong>one exception</strong> to the table is a
+        <strong>post-summary recheck consumer</strong>: the loader forbids it an
+        <code>input</code>, so <code>routeCtx</code> leaves it on the main ctx —
+        it needs <code>ctx.recheck</code> / <code>ctx.recheckVerdicts</code> —
+        even though the items it re-judges belong to its
+        <em>producer&rsquo;s</em> artifact. Each handed item already carries
+        every locus it needs (the producer stamps them before diverting), so the
+        consumer reads no other artifact. The producer corpus is still recovered
+        by <code>ctxForRule</code> (via <code>labelInput</code>) for the
+        report&rsquo;s [XPI]/[SCA] labels and the folder-collapse.
       </p>
 
       <h2>The orchestrator</h2>
       <p>
         With the stores in place <code>runChecks()</code> takes over. A check's
-        <strong>phase</strong> is simply the <code>registry.yaml</code> section it lives in
-        — never declared on the entry, so the two cannot disagree. The orchestrator looks up
-        the phases it wants, in the order it runs them, which makes any section it never
-        asks for inert.
+        <strong>phase</strong> is simply the <code>registry.yaml</code> section
+        it lives in — never declared on the entry, so the two cannot disagree.
+        The orchestrator looks up the phases it wants, in the order it runs
+        them, which makes any section it never asks for inert.
       </p>
       <table class="phases">
         <thead>
@@ -552,8 +591,8 @@ flowchart LR
             <td>
               ONLY when the add-on is an invalid Experiment
               (<code>ctx.invalidExperiment</code>) — and then it is the
-              <em>only</em> phase that runs at all: the whole rest of the review is
-              skipped.
+              <em>only</em> phase that runs at all: the whole rest of the review
+              is skipped.
             </td>
             <td><code>runChecks</code></td>
             <td><code>experiment-not-allowed</code></td>
@@ -584,19 +623,21 @@ flowchart LR
       </table>
 
       <p>
-        <code>runChecks()</code> (<code>src/checks/registry.js</code>) runs the whole review:
-        the deterministic and llm phases in its main loop, then the add-on-summary interleave
-        (<code>resolveRecheckSummaries()</code> in <code>src/checks/summaries.js</code>) that
-        fills <code>ctx.recheckVerdicts</code>, then the post-summary phase that reads them, and
-        finally the unused-folder collapse. It returns the finished findings, manual items and
-        summaries; <code>runPipeline()</code>&rsquo;s Phase&nbsp;5 (<code>src/pipeline.js</code>)
-        just calls it and assembles the <code>Review</code>. Every check, in every phase, goes
-        through the same per-check runner, <code>runOneCheck()</code>. The two diagrams below
-        expand the <code>runChecks()</code> box from the pipeline diagram above — its
-        orchestration, then the phase-runner loop each check runs through. In both, a
-        <strong>teal parallelogram</strong> marks a direct model call
-        (<code>ctx.llm.evaluate</code> / <code>reviewAddon</code> / <code>summarize</code>) — the
-        points where an actual LLM prompt fires.
+        <code>runChecks()</code> (<code>src/checks/registry.js</code>) runs the
+        whole review: the deterministic and llm phases in its main loop, then
+        the add-on-summary interleave (<code>resolveRecheckSummaries()</code> in
+        <code>src/checks/summaries.js</code>) that fills
+        <code>ctx.recheckVerdicts</code>, then the post-summary phase that reads
+        them, and finally the unused-folder collapse. It returns the finished
+        findings, manual items and summaries; <code>runPipeline()</code>&rsquo;s
+        Phase&nbsp;5 (<code>src/pipeline.js</code>) just calls it and assembles
+        the <code>Review</code>. Every check, in every phase, goes through the
+        same per-check runner, <code>runOneCheck()</code>. The two diagrams
+        below expand the <code>runChecks()</code> box from the pipeline diagram
+        above — its orchestration, then the phase-runner loop each check runs
+        through. In both, a <strong>teal parallelogram</strong> marks a direct
+        model call (<code>ctx.llm.evaluate</code> / <code>reviewAddon</code> /
+        <code>summarize</code>) — the points where an actual LLM prompt fires.
       </p>
       <div class="flow">
         <pre class="mermaid">
@@ -650,20 +691,25 @@ flowchart TB
       </div>
 
       <p>
-        The <strong>phase runner</strong> is <code>runChecks()</code>&rsquo; main loop
-        (<code>src/checks/registry.js</code>): it walks a phase&rsquo;s gated checks in order,
-        routes each to its input&rsquo;s <code>ctx</code> (<code>routeCtx</code>), runs it through
-        <code>runOneCheck()</code>, and collects the results — findings onto the returned list,
-        manual items either straight to manual review or, for a <code>post-summary-recheck</code>
-        producer, diverted into <code>ctx.recheck</code> for the AI summary to re-judge.
-        <code>runOneCheck()</code> decides what to do with a check purely from the
-        <strong>shape its <code>run()</code> returned</strong> — never its phase; a check that
-        throws becomes a single <code>check-failed</code> finding so the rest still run; and only
-        the orchestrator routes anything to manual review. This loop is also where the
-        <strong>lazy caches</strong> are computed: the first check to read a store&rsquo;s lazy
-        cache (<code>permissionAnalysis</code>, <code>apiResolution</code>,
-        <code>outboundSinks</code>, <code>evalScan</code>, <code>locales</code>) computes it
-        inside its <code>run()</code>, memoized on <code>ctx.addon</code> for every later check.
+        The <strong>phase runner</strong> is <code>runChecks()</code>&rsquo;
+        main loop (<code>src/checks/registry.js</code>): it walks a
+        phase&rsquo;s gated checks in order, routes each to its input&rsquo;s
+        <code>ctx</code> (<code>routeCtx</code>), runs it through
+        <code>runOneCheck()</code>, and collects the results — findings onto the
+        returned list, manual items either straight to manual review or, for a
+        <code>post-summary-recheck</code> producer, diverted into
+        <code>ctx.recheck</code> for the AI summary to re-judge.
+        <code>runOneCheck()</code> decides what to do with a check purely from
+        the <strong>shape its <code>run()</code> returned</strong> — never its
+        phase; a check that throws becomes a single
+        <code>check-failed</code> finding so the rest still run; and only the
+        orchestrator routes anything to manual review. This loop is also where
+        the <strong>lazy caches</strong> are computed: the first check to read a
+        store&rsquo;s lazy cache (<code>permissionAnalysis</code>,
+        <code>apiResolution</code>, <code>outboundSinks</code>,
+        <code>evalScan</code>, <code>locales</code>) computes it inside its
+        <code>run()</code>, memoized on <code>ctx.addon</code> for every later
+        check.
       </p>
       <div class="flow">
         <pre class="mermaid">
@@ -725,39 +771,91 @@ flowchart TB
 
       <h2>Interpreting the model's answer</h2>
       <p>
-        There are two seams for deciding what the model's response <em>means</em>, and they
-        are not symmetric.
+        There are two seams for deciding what the model's response
+        <em>means</em>, and they are not symmetric.
       </p>
       <ul>
         <li>
-          An <strong>llm-phase check</strong> returns a <code>resolve</code> closure from
-          its own <code>run()</code>, so it fully owns the interpretation of its output.
+          An <strong>llm-phase check</strong> returns a
+          <code>resolve</code> closure from its own <code>run()</code>, so it
+          fully owns the interpretation of its output.
         </li>
         <li>
-          A <strong>post-summary consumer</strong> has no such hook. Five delegate to the
-          shared <code>resolveRecheck()</code> — read the handed items and their verdicts,
-          apply one uniform mapping (<code>pass</code>&nbsp;→&nbsp;drop,
+          A <strong>post-summary consumer</strong> has no such hook. Five
+          delegate to the shared <code>resolveRecheck()</code> — read the handed
+          items and their verdicts, apply one uniform mapping
+          (<code>pass</code>&nbsp;→&nbsp;drop,
           <code>fail</code>&nbsp;→&nbsp;finding, else manual). The
           <code>unused-permission-recheck</code> consumer instead uses
           <code>resolvePermissionRecheck()</code>, because its items are judged
-          <strong>per token site</strong> and must be aggregated back up to the permission
-          (see below).
+          <strong>per token site</strong> and must be aggregated back up to the
+          permission (see below).
         </li>
       </ul>
 
       <p>
+        These two seams are not separate worlds — they form a
+        <strong>funnel</strong>. A direct llm-phase check judges its candidates
+        against a <em>focused</em> corpus (just the candidate&rsquo;s files,
+        batched) and settles the confident ones itself:
+        <code>fail</code>&nbsp;→&nbsp;finding,
+        <code>pass</code>&nbsp;→&nbsp;drop. Its
+        <strong><code>unsure</code> residue is not the end of the line</strong>
+        — those items are deferred to that check&rsquo;s
+        <strong>post-summary recheck</strong>, where the whole-add-on summary
+        re-judges them with the full, line-numbered add-on in view. So the cheap
+        focused pass settles the bulk, and only the genuinely ambiguous cases
+        pay for the whole-add-on look (this is the exact path a
+        permission&rsquo;s unsure token sites, and a data-exfiltration
+        sink&rsquo;s unsure verdict, both travel).
+      </p>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart LR
+  E{{"llm-phase evaluate()<br/>focused corpus"}}
+  E -- fail --> F["finding"]
+  E -- pass --> D["drop"]
+  E -- unsure --> R["post-summary recheck<br/>whole add-on in view"]
+  R --> RR["re-judged:<br/>drop / finding / manual"]
+
+  classDef work fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
+  classDef term fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
+  class E,R work;
+  class F,D,RR term;
+        </pre>
+      </div>
+
+      <p>
         The permission recheck is where the summary earns its keep. The
         <code>unused-permission</code> producer does not just decide whether a
-        permission&rsquo;s usage tokens are present — it records <em>where</em> each occurs.
-        Each token <strong>site</strong> (<code>file:line</code>) is handed to the summary as
-        its own item, and the model — seeing the full, line-numbered add-on — judges each:
-        is the permission exercised there? A token-less permission
-        (<code>unlimitedStorage</code>) has no site, so it gets one holistic verdict.
-        <code>resolvePermissionRecheck</code> then aggregates a permission&rsquo;s sites: any
-        <code>pass</code> drops it (justified), every <code>fail</code> flags it (unused),
-        anything else falls to manual. Because the orchestrator owns the sites, the model
-        only judges given lines — there is nothing to cite and nothing to hallucinate, and a
+        permission&rsquo;s usage tokens are present — it records
+        <em>where</em> each occurs. Each token
+        <strong>site</strong> (<code>file:line</code>) is handed to the summary
+        as its own item, and the model — seeing the full, line-numbered add-on —
+        judges each: is the permission exercised there? A token-less permission
+        (<code>unlimitedStorage</code>) has no site, so it gets one holistic
+        verdict. <code>resolvePermissionRecheck</code> then aggregates a
+        permission&rsquo;s sites: any <code>pass</code> drops it (justified),
+        every <code>fail</code> flags it (unused), anything else falls to
+        manual. Because the orchestrator owns the sites, the model only judges
+        given lines — there is nothing to cite and nothing to hallucinate, and a
         single site&rsquo;s verdict never decides the whole permission.
+      </p>
+
+      <p>
+        The text report surfaces the model&rsquo;s structured answer: below the
+        &ldquo;Summary of add-on&rdquo; prose it prints every recheck verdict
+        (both SCA passes) as
+        <code
+          >* &lt;check&gt; - file:line - &lt;subject&gt; - &lt;verdict&gt;</code
+        >
+        with the real source line beneath — the <code>subject</code> being the
+        permission for the permission recheck, or a per-site descriptor
+        otherwise. <code>buildRecheckVerdictReport</code> assembles these rows
+        in <code>runChecks</code> (where each consumer&rsquo;s corpus is in
+        scope, so the source line is read from the right artifact — and a
+        <code>manifest.json</code> line from <code>ctx.manifestText</code>, the
+        shipped manifest); the renderer only prints them.
       </p>
       <div class="flow">
         <pre class="mermaid">
@@ -782,21 +880,27 @@ flowchart LR
       </div>
 
       <p class="source-note">
-        Source of truth: <code>src/checks/registry.js</code>
-        (<code>PHASE_SECTIONS</code>, <code>loadChecks</code>,
-        <code>runChecks</code> — which runs all four phases plus the collapse —
-        <code>runOneCheck</code>), <code>src/checks/summaries.js</code>
-        (<code>resolveRecheckSummaries</code>, <code>generateAddonSummary</code> — the
-        summary interleave), <code>src/checks/escalation.js</code>
-        (<code>runLlmCheck</code>, <code>manualEscalations</code>),
+        Source of truth:
+        <code>src/checks/registry.js</code> (<code>PHASE_SECTIONS</code>,
+        <code>loadChecks</code>, <code>runChecks</code> — which runs all four
+        phases plus the collapse — <code>runOneCheck</code>),
+        <code>src/checks/summaries.js</code>
+        (<code>resolveRecheckSummaries</code>,
+        <code>generateAddonSummary</code> — the summary interleave),
+        <code>src/checks/escalation.js</code> (<code>runLlmCheck</code>,
+        <code>manualEscalations</code>),
         <code>src/lib/recheck.js</code> (<code>buildRecheckSections</code>,
-        <code>resolveRecheck</code>, <code>resolvePermissionRecheck</code>),
+        <code>resolveRecheck</code>, <code>resolvePermissionRecheck</code>,
+        <code>buildRecheckVerdictReport</code> — the per-verdict rows shown
+        under the summary, rendered by <code>src/report/format.js</code>),
         <code>src/lib/permissions.js</code>
-        (<code>enumerateUnusedPermissions</code>, <code>locateTokens</code> — the token
-        sites), <code>src/lib/unused-folders.js</code>
-        (<code>collapseUnusedFolders</code>), <code>src/pipeline.js</code>
-        (<code>runPipeline</code> — Phase&nbsp;5 calls <code>runChecks</code> and assembles the
-        <code>Review</code>), and the phase sections of <code>assets/registry.yaml</code>.
+        (<code>enumerateUnusedPermissions</code>, <code>locateTokens</code> —
+        the token sites),
+        <code>src/lib/unused-folders.js</code>
+        (<code>collapseUnusedFolders</code>),
+        <code>src/pipeline.js</code> (<code>runPipeline</code> — Phase&nbsp;5
+        calls <code>runChecks</code> and assembles the <code>Review</code>), and
+        the phase sections of <code>assets/registry.yaml</code>.
       </p>
     </main>
 

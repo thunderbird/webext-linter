@@ -67,6 +67,9 @@ Suggested response: The add-on listing page on ATN (addons.thunderbird.net) shou
 
   A minimal add-on that logs a message when installed.
 
+  Recheck verdicts:
+  * Missing English localization - manifest.json - unsure
+
 ── Summary of changes ──
 
   Summary of changes: background.js now logs a refreshed greeting; version

@@ -101,8 +101,9 @@ export function formatText(review) {
 /**
  * The advisory "Summary of add-on" / "Summary of changes" sections, each a
  * `── <title> ──` block over the model's prose (wrapped, 2-space indent), or an
- * "unavailable" note when the call failed. Empty ([]) unless --llm-review produced one -
- * so a non-LLM report is unchanged. Text-only; JSON omits these.
+ * "unavailable" note when the call failed. The per-verdict recheck list (recheckVerdictLines) is
+ * appended below the "Summary of add-on" prose. Empty ([]) unless --llm-review produced one - so a
+ * non-LLM report is unchanged. Text-only; JSON omits these.
  * @param {ReviewResult} review
  * @returns {string[]}
  */
@@ -122,8 +123,46 @@ function summarySectionLines(review) {
           ? `  (summary unavailable - ${s.error})`
           : "  (summary unavailable)";
     out.push(...section(title), "", body);
+    if (title === "Summary of add-on") {
+      out.push(...recheckVerdictLines(review));
+    }
   }
   return out;
+}
+
+/**
+ * The per-site recheck list, shown below the "Summary of add-on" prose: one bullet per candidate site
+ * handed to the summary, `* <check> - [LABEL] file:line - <subject> - <verdict>` with the real
+ * source line beneath, so a reviewer sees exactly what the model decided and where. Empty unless
+ * candidates were handed (review.recheckVerdictRows, precomputed in runChecks); a handed site with no
+ * returned verdict still appears, defaulting to unsure. The `[XPI]/[SCA]` label uses each row's own
+ * input + the review mode (a no-op in an XPI review). No model reason here - reasons live only in the
+ * prose summary above.
+ * @param {ReviewResult} review
+ * @returns {string[]}
+ */
+function recheckVerdictLines(review) {
+  const rows = review.recheckVerdictRows ?? [];
+  if (!rows.length) {
+    return [];
+  }
+  const lines = ["", "  Recheck verdicts:"];
+  for (const r of rows) {
+    const label = artifactLabel({
+      file: r.file,
+      input: r.label,
+      mode: review.mode,
+    });
+    const locus = r.file
+      ? `${label ? `[${label}] ` : ""}${r.file}${r.line != null ? `:${r.line}` : ""}`
+      : "(add-on)";
+    const subject = r.subject ? ` - ${r.subject}` : "";
+    lines.push(`  * ${r.check} - ${locus}${subject} - ${r.verdict}`);
+    if (r.content) {
+      lines.push(`     -> ${r.content}`);
+    }
+  }
+  return lines;
 }
 
 /**

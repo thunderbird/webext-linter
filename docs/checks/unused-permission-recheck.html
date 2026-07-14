@@ -15,39 +15,42 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        This is the post-summary recheck consumer for declared permissions. It does
-        not enumerate anything itself: the <code>unused-permission</code>
+        This is the post-summary recheck consumer for declared permissions. It
+        does not enumerate anything itself: the <code>unused-permission</code>
         producer hands it every declared permission it could neither prove used
-        nor deterministically prove unused (via the usage-token scan) and that the
-        registry has a recheck prompt for, and the whole-add-on summary pass
+        nor deterministically prove unused (via the usage-token scan) and that
+        the registry has a recheck prompt for, and the whole-add-on summary pass
         re-judges each one with full context.
       </p>
       <p>
-        Crucially, the producer does not just decide whether a permission&rsquo;s tokens
-        are <em>present</em> — it records <em>where</em> each occurs. A token-bearing
-        permission is handed over with its list of token <strong>sites</strong>
-        (<code>file:line</code>), and the summary judges <strong>each site</strong>:
-        seeing the full, line-numbered add-on, is the permission actually exercised
-        there? A token-less permission (such as <code>unlimitedStorage</code>, whose
+        Crucially, the producer does not just decide whether a
+        permission&rsquo;s tokens are <em>present</em> — it records
+        <em>where</em> each occurs. A token-bearing permission is handed over
+        with its list of token <strong>sites</strong> (<code>file:line</code>),
+        and the summary judges <strong>each site</strong>: seeing the full,
+        line-numbered add-on, is the permission actually exercised there? A
+        token-less permission (such as <code>unlimitedStorage</code>, whose
         quota use has no reliable token) has no site to point at, so it gets one
         <strong>holistic</strong> verdict over the whole add-on.
       </p>
       <p>
-        <code>resolvePermissionRecheck</code> then <strong>aggregates</strong> the site
-        verdicts per permission: if any site is exercised (<code>pass</code>) the
-        permission is justified and dropped; if every site is definitively not
-        (<code>fail</code>) it becomes a warning that the permission appears unused;
-        anything else — a mix, all unsure, or no verdict at all when the summary was
-        skipped or failed — routes the permission back to manual review. So one
-        site&rsquo;s answer never decides a whole permission alone, and a model that
-        points a permission at concrete lines cannot wave it through on a bare yes/no.
-        Because the orchestrator owns the sites, the model only judges them — there is
-        no citation to hallucinate. With no summary nothing is handed over, so this
-        check emits nothing and the producer&rsquo;s reminder stands instead. The rubric
-        it judges against is assembled per review from the registry&rsquo;s
-        <code>permission-prompts</code>, carrying only the sections for the permissions
-        in play and the <code>tabs</code> wording that matches the add-on&rsquo;s
-        <code>strict_min_version</code> (the D308076 fix).
+        <code>resolvePermissionRecheck</code> then
+        <strong>aggregates</strong> the site verdicts per permission: if any
+        site is exercised (<code>pass</code>) the permission is justified and
+        dropped; if every site is definitively not (<code>fail</code>) it
+        becomes a warning that the permission appears unused; anything else — a
+        mix, all unsure, or no verdict at all when the summary was skipped or
+        failed — routes the permission back to manual review. So one
+        site&rsquo;s answer never decides a whole permission alone, and a model
+        that points a permission at concrete lines cannot wave it through on a
+        bare yes/no. Because the orchestrator owns the sites, the model only
+        judges them — there is no citation to hallucinate. With no summary
+        nothing is handed over, so this check emits nothing and the
+        producer&rsquo;s reminder stands instead. The rubric it judges against
+        is assembled per review from the registry&rsquo;s
+        <code>permission-prompts</code>, carrying only the sections for the
+        permissions in play and the <code>tabs</code> wording that matches the
+        add-on&rsquo;s <code>strict_min_version</code> (the D308076 fix).
       </p>
 
       <h2>Decision flow</h2>
@@ -78,16 +81,30 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told that a specific permission appears to be unused, and is asked
-        to remove it or to say which part of the add-on stops working without it.
+        The add-on is told that a specific permission appears to be unused, and
+        is asked to remove it or to say which part of the add-on stops working
+        without it.
       </div>
 
+      <p>
+        The report also lists each site&rsquo;s verdict beneath the add-on
+        summary —
+        <code
+          >* Unused permission - file:line - &lt;permission&gt; -
+          &lt;verdict&gt;</code
+        >
+        with the source line — so a reviewer can see exactly how the model
+        judged every occurrence, not just the aggregated outcome.
+      </p>
+
       <p class="source-note">
-        Source of truth: <code>src/checks/rules/unused-permission-recheck.js</code> and
-        <code>resolvePermissionRecheck</code> (<code>src/lib/recheck.js</code>); the
-        token sites come from <code>enumerateUnusedPermissions</code> /
-        <code>locateTokens</code> (<code>src/lib/permissions.js</code>), and the rubric
-        from the <code>permission-prompts</code> in <code>assets/registry.yaml</code>.
+        Source of truth:
+        <code>src/checks/rules/unused-permission-recheck.js</code> and
+        <code>resolvePermissionRecheck</code> (<code>src/lib/recheck.js</code>);
+        the token sites come from <code>enumerateUnusedPermissions</code> /
+        <code>locateTokens</code> (<code>src/lib/permissions.js</code>), and the
+        rubric from the <code>permission-prompts</code> in
+        <code>assets/registry.yaml</code>.
       </p>
     </main>
 

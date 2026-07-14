@@ -584,3 +584,82 @@ test("run-it-yourself pointer reflects whether the LLM review ran", () => {
   );
   assert.equal(json.meta.llmReviewed, undefined);
 });
+
+// The recheck-verdict list: below the "Summary of add-on" prose, one bullet per verdict
+// (`* <check> - [LABEL] file:line - <subject> - <verdict>`) with the real source line beneath.
+// Subject present for permission verdicts, omitted when null. Shown whenever the summary
+// produced verdicts (no flag).
+function verdictReview() {
+  return {
+    findings: [],
+    mode: "sca",
+    meta: { action: "review", addon: "x", reviewed: true },
+    summarizeAddon: { text: "Prose overview of the add-on." },
+    recheckVerdictRows: [
+      {
+        check: "Unused permission",
+        label: "source",
+        file: "bg.js",
+        line: 3,
+        subject: "compose",
+        verdict: "pass",
+        content: "messenger.scripting.executeScript(t);",
+      },
+      {
+        check: "Unused files",
+        label: "xpi",
+        file: "lib/x.js",
+        line: 2,
+        subject: null,
+        verdict: "unsure",
+        content: "const UNUSED = 1;",
+      },
+      // A row with no content (unlocatable line) renders without the `->` line.
+      {
+        check: "Unused permission",
+        label: "source",
+        file: "gen.js",
+        line: 9,
+        subject: "tabs",
+        verdict: "unsure",
+        content: null,
+      },
+    ],
+  };
+}
+
+test("renders the recheck-verdict list under the add-on summary", () => {
+  const out = formatText(verdictReview());
+  const block = out.split("── Summary of add-on ──")[1];
+  assert.match(block, /Prose overview of the add-on\./);
+  assert.match(block, /Recheck verdicts:/);
+  // permission verdict: [SCA] (source input in an sca review), subject = the permission.
+  assert.match(
+    block,
+    /\* Unused permission - \[SCA\] bg\.js:3 - compose - pass/
+  );
+  assert.match(block, /-> messenger\.scripting\.executeScript\(t\);/);
+  // non-permission verdict: [XPI] (xpi input), no subject segment.
+  assert.match(block, /\* Unused files - \[XPI\] lib\/x\.js:2 - unsure/);
+  assert.match(block, /-> const UNUSED = 1;/);
+  // a null-content row: the bullet renders, no `->` line follows it.
+  assert.match(
+    block,
+    /\* Unused permission - \[SCA\] gen\.js:9 - tabs - unsure\n(?! *->)/
+  );
+});
+
+test("no verdicts adds nothing under the summary", () => {
+  const r = verdictReview();
+  r.recheckVerdictRows = [];
+  assert.match(formatText(r), /── Summary of add-on ──/); // the prose still shows
+  assert.doesNotMatch(formatText(r), /Recheck verdicts:/);
+});
+
+test("an XPI review omits the artifact label", () => {
+  const r = verdictReview();
+  r.mode = "xpi";
+  const block = formatText(r).split("── Summary of add-on ──")[1];
+  assert.match(block, /\* Unused permission - bg\.js:3 - compose - pass/); // no [SCA]
+  assert.doesNotMatch(block, /\[SCA\]|\[XPI\]/);
+});

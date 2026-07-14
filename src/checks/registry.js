@@ -48,6 +48,7 @@ import { progress, debug, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
 import { runLlmCheck, manualEscalations } from "./escalation.js";
 import { resolveRecheckSummaries } from "./summaries.js";
+import { buildRecheckVerdictReport } from "../lib/recheck.js";
 import { collapseUnusedFolders } from "../lib/unused-folders.js";
 
 /** @typedef {import("../report/finding.js").Severity} Severity */
@@ -1139,7 +1140,24 @@ export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
   collapseUnusedFolders(findings, filesOfRule);
   collapseUnusedFolders(manualItems, filesOfRule);
 
-  return { findings, manualItems, checksRun, summarizeAddon, summarize };
+  // The per-site rows shown under the report's add-on-summary section: every candidate site handed
+  // to the add-on summary (both SCA passes), resolved to its file:line + subject + source line.
+  // Built here where the corpus is in scope (the report layer cannot reach ctx); ctxForRule picks
+  // each consumer's own artifact, so a site's source line is read from the corpus it belongs to.
+  const recheckVerdictRows = buildRecheckVerdictReport(
+    ctx,
+    registry,
+    (ruleId) => ctxForRule(registry, ruleId, ctx, siblings).addon
+  );
+
+  return {
+    findings,
+    manualItems,
+    checksRun,
+    summarizeAddon,
+    summarize,
+    recheckVerdictRows,
+  };
 }
 
 /**

@@ -36,18 +36,21 @@
 // The guard: a resolve only ever consults verdicts for items actually handed to this
 // consumer, so the summary can neither invent items nor flip anything it was not given.
 //
-// Belongs here: the prompt composition and the verdict->finding/manual mapping. Does
-// NOT belong here: diverting a producer's manual items (-> runChecks), the summary
-// transport and storing ctx.recheckVerdicts (-> src/checks/summaries.js), locating
-// the token sites (-> src/lib/permissions.js), or the recheck output schema
+// Belongs here: the prompt composition, the verdict->finding/manual mapping, and the
+// verdict->display-row projection (buildRecheckVerdictReport, for the report's per-site
+// verdict list). Does NOT belong here: diverting a producer's manual items
+// (-> runChecks), the summary transport and storing ctx.recheckVerdicts
+// (-> src/checks/summaries.js), locating the token sites (-> src/lib/permissions.js),
+// rendering the display rows (-> src/report/format.js), or the recheck output schema
 // (-> src/llm/schema.js).
 
 import { finding } from "../report/finding.js";
 import { wrap } from "./untrusted.js";
-import { versionInBounds } from "./util.js";
+import { versionInBounds, trunc } from "./util.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../checks/registry.js").LoadedCheck} LoadedCheck */
+/** @typedef {import("../checks/registry.js").Registry} Registry */
 
 /**
  * The key that ties a handed-over manual item to the summary's verdict for it:
@@ -376,4 +379,131 @@ export function resolvePermissionRecheck(ctx, check) {
     }
   }
   return { findings, escalations };
+}
+
+/**
+ * The per-candidate display rows for the report's add-on-summary section: one row per item the
+ * recheck HANDED the model (both SCA passes), each showing the model's verdict for it - so a reviewer
+ * sees exactly what was asked and how it was judged. Driven by the handed items (ctx.recheck), NOT by
+ * what the model returned: a model that under-answers - or ignores the recheck section entirely and
+ * returns none - still gets a full table, with a missing verdict shown as `unsure` (exactly how
+ * resolveRecheck/resolvePermissionRecheck treat a no-verdict item -> manual). A model verdict for an
+ * item that was never handed is ignored (verdictsFor only reads handed keys). Precomputed here (not
+ * in the renderer) because it needs the add-on corpus and the handed items, which the report layer
+ * cannot reach.
+ *
+ * A handed item's candidate SITES and subject: a permission recheck's item carries its located token
+ * occurrences -> one site per occurrence (subject = the permission), or, with no located site, the
+ * item itself (holistic permission, subject = the permission); a non-permission consumer's item keys
+ * on itemKey(ref) -> ref.file / ref.loc (subject = ref.item ?? ref.hint, e.g. a transmission method).
+ * The source line is read from the consumer's OWN corpus (corpusForCheck), so a source-anchored item
+ * reads the source and an xpi-anchored one the XPI - EXCEPT a manifest.json locus, whose line is
+ * numbered against and labelled as the shipped manifest, so it is read from ctx.manifestText.
+ * @param {RunContext} ctx
+ * @param {Registry} registry
+ * @param {(checkId: string) => ({files?: Map<string, Buffer>}|null|undefined)} corpusForCheck  The
+ *   add-on whose files back a consumer's items (its producer's corpus).
+ * @returns {{check: string, label: string, file: ?string, line: ?number, subject: ?string,
+ *   verdict: string, content: ?string}[]}
+ */
+export function buildRecheckVerdictReport(ctx, registry, corpusForCheck) {
+  const rows = [];
+  for (const [checkId, handed] of ctx.recheck ?? new Map()) {
+    if (!handed?.length) {
+      continue;
+    }
+    const verdicts = verdictsFor(ctx, checkId);
+    const check = registry.checkEntry(checkId)?.title ?? checkId;
+    const label = registry.labelInputFor(checkId);
+    for (const ref of handed) {
+      for (const site of candidateSites(ref)) {
+        rows.push({
+          check,
+          label,
+          file: site.file,
+          line: site.line,
+          subject: site.subject,
+          // The model's verdict for this candidate, or `unsure` when it returned none - the same
+          // default resolveRecheck/resolvePermissionRecheck apply (a no-verdict item -> manual).
+          verdict: verdicts.get(site.key)?.verdict ?? "unsure",
+          // A manifest.json locus is line-numbered against the SHIPPED manifest (manifestPathLine
+          // reads ctx.manifestLoc = the XPI's) and its report label is forced to [XPI], so read the
+          // line from ctx.manifestText - not the producer's own corpus, whose source manifest may
+          // differ from the built one. Every other locus reads its own corpus.
+          content:
+            site.file === "manifest.json"
+              ? lineOfText(ctx.manifestText, site.line)
+              : sourceLine(
+                  corpusForCheck(checkId)?.files,
+                  site.file,
+                  site.line
+                ),
+        });
+      }
+    }
+  }
+  rows.sort(
+    (a, b) =>
+      a.check.localeCompare(b.check) ||
+      (a.file ?? "").localeCompare(b.file ?? "") ||
+      (a.line ?? 0) - (b.line ?? 0)
+  );
+  return rows;
+}
+
+/**
+ * The candidate sites of one handed item, each keyed by the string the summary's verdict is looked
+ * up by: a permission recheck's located token occurrences (per-site, keyed by occurrence id, subject
+ * = the permission), else the item itself (a holistic permission or a non-permission consumer, keyed
+ * by itemKey, subject = ref.item ?? ref.hint). Empty when the item has no key.
+ * @param {import("../checks/escalation.js").ManualRef} ref
+ * @returns {{key: string, file: ?string, line: ?number, subject: ?string}[]}
+ */
+function candidateSites(ref) {
+  const occ = ref.occurrences ?? [];
+  if (occ.length) {
+    return occ.map((o) => ({
+      key: o.id,
+      file: o.file,
+      line: o.line,
+      subject: ref.item ?? null,
+    }));
+  }
+  const key = itemKey(ref);
+  return key == null
+    ? []
+    : [
+        {
+          key,
+          file: ref.file ?? null,
+          line: ref.loc?.line ?? null,
+          subject: ref.item ?? ref.hint ?? null,
+        },
+      ];
+}
+
+/**
+ * The trimmed, truncated 1-based `line` of `text`, or null when the text is missing, the line is
+ * out of range, or the line is blank. Trimming also drops a trailing CR from CRLF files.
+ * @param {?string} text @param {?number} line @returns {?string}
+ */
+function lineOfText(text, line) {
+  if (text == null || line == null) {
+    return null;
+  }
+  const trimmed = String(text).split("\n")[line - 1]?.trim();
+  return trimmed ? trunc(trimmed) : null;
+}
+
+/**
+ * The trimmed, truncated source line at `file:line` from `files`, or null when unavailable (no
+ * corpus, no file, no line, or an out-of-range line).
+ * @param {?Map<string, Buffer>} files @param {?string} file @param {?number} line
+ * @returns {?string}
+ */
+function sourceLine(files, file, line) {
+  if (!files || !file) {
+    return null;
+  }
+  return lineOfText(files.get(file)?.toString("utf8"), line);
 }

