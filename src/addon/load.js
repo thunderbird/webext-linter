@@ -103,7 +103,11 @@ import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
  * @property {string} source                 Original path provided.
  * @property {"zip"|"dir"} kind
  * @property {Map<string, Buffer>} files  Add-on-relative path (posix "/")
- *   -> contents.
+ *   -> contents. The review corpus EXCLUDES manifest.json: assembleAddon lifts it
+ *   into manifest / manifestText / manifestLoc and drops the key, so a corpus lookup
+ *   can never return the manifest (in SCA it would be the source's pre-build one, not
+ *   the shipped manifest). Read the manifest through those fields. (The SCA `build`
+ *   corpus is selected separately and is not covered by this guarantee.)
  * @property {string[]} nodeModules  Posix paths of node_modules directories
  *   skipped at load (their contents are never read); empty when none. In SCA
  *   mode the committed-node-modules check rejects each.
@@ -116,6 +120,8 @@ import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
  *   The loader collects them; the pipeline narrates them under "Reading add-on",
  *   so a pre-banner sizing load prints nothing before the Setup banner.
  * @property {?Manifest} manifest  Parsed; null if missing/invalid.
+ * @property {string} manifestText  Raw manifest.json text ("" if none), lifted off
+ *   the corpus so checks read it here, not via files.get("manifest.json").
  * @property {string|null} manifestError     Parse error message, if any.
  * @property {?import("./manifest-loc.js").ManifestLoc} manifestLoc  Resolves a
  *   manifest JSON path to its source line; null when there is no manifest.
@@ -167,12 +173,14 @@ function assembleAddon(files, { source, kind }) {
     kind,
     files,
     manifest: null,
+    manifestText: "",
     manifestError: null,
     manifestLoc: null,
   };
   const manifestBuf = files.get("manifest.json");
   if (manifestBuf) {
-    let text = manifestBuf.toString("utf8");
+    addon.manifestText = manifestBuf.toString("utf8");
+    let text = addon.manifestText;
     if (text.charCodeAt(0) === 0xfeff) {
       text = text.slice(1);
     }
@@ -183,6 +191,9 @@ function assembleAddon(files, { source, kind }) {
       addon.manifestError = err.message;
     }
   }
+  // The manifest now lives on the addon (manifest / manifestText / manifestLoc); drop
+  // it from the corpus so nothing can read it back through files (see the Addon typedef).
+  files.delete("manifest.json");
   return addon;
 }
 

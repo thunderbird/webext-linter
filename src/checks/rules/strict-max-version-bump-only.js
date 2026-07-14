@@ -70,8 +70,9 @@ export default {
 };
 
 /**
- * True when both versions hold the same file paths and every file other than
- * manifest.json is byte-identical.
+ * True when both versions hold the same file paths and every file is byte-identical.
+ * The manifest is not in the corpus (the loader lifts it onto ctx), so it is compared
+ * separately by the caller - this decides whether everything ELSE is unchanged.
  * @param {Map<string, Buffer>} prev
  * @param {Map<string, Buffer>} cur
  * @returns {boolean}
@@ -81,9 +82,6 @@ function sameFilesExceptManifest(prev, cur) {
     return false;
   }
   for (const [path, buf] of cur) {
-    if (path === "manifest.json") {
-      continue;
-    }
     const before = prev.get(path);
     if (!before || !before.equals(buf)) {
       return false;

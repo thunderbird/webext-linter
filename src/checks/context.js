@@ -157,7 +157,7 @@ export function buildRunContext({
     manifest: shippedManifest,
     manifestError: xpiAddon?.manifestError ?? null,
     manifestLoc: xpiAddon?.manifestLoc ?? null,
-    manifestText: xpiAddon?.files?.get("manifest.json")?.toString("utf8") ?? "",
+    manifestText: xpiAddon?.manifestText ?? "",
     // The Experiment classification (verifyExperiments, computed from the shipped
     // XPI and attached to the review addon by the pipeline). Shipped-authoritative
     // and shared like the manifest, so the experiment checks read ctx.experiments,

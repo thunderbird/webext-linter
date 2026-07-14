@@ -37,11 +37,12 @@ import {
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../lib/reachability.js").Reachability} Reachability */
 
-// Never flag: dependency manifests / lock files, the manifest, and locale message
-// catalogs. Documentation / project metadata (license, readme, and the like) is
-// exempted separately by isDocMetadataFile (a doc-type file whose name contains a
-// known doc name).
-const ALLOW = [DEPENDENCY_FILE_RE, /^manifest\.json$/i, /^_locales\//];
+// Never flag: dependency manifests / lock files and locale message catalogs.
+// Documentation / project metadata (license, readme, and the like) is exempted
+// separately by isDocMetadataFile (a doc-type file whose name contains a known doc
+// name). The manifest needs no entry: it is not in the corpus (the loader lifts it
+// onto ctx), so it is never enumerated here.
+const ALLOW = [DEPENDENCY_FILE_RE, /^_locales\//];
 
 // Definite "should not ship" by name: OS/editor junk, source maps. Archives are handled
 // separately via ARCHIVE_EXTENSIONS (shared with the loader / committed-build-artifact).

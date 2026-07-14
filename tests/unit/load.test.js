@@ -63,11 +63,11 @@ test("directory load records a symlinked node_modules without following it", () 
 
 // A source code archive: the add-on code is at <root>/src, package.json/lock at
 // the root. loadScaAddon partitions the src subtree (prefix stripped) and brings the
-// root package.json along (for the dependency audit). The source corpus stays PURE -
-// its own manifest.json is kept, never overwritten. The authoritative (shipped)
-// manifest is the built XPI's, resolved separately into ctx.manifest (context.js);
-// loadScaAddon does not touch the source manifest.
-test("loadScaAddon partitions scaSource, keeps root package.json + the source's own manifest", () => {
+// root package.json along (for the dependency audit). The source's own manifest.json is
+// parsed (not overwritten by a root one) and, like any manifest, lifted off the corpus
+// onto the addon. The authoritative (shipped) manifest is the built XPI's, resolved
+// separately into ctx.manifest (context.js); loadScaAddon does not touch the source manifest.
+test("loadScaAddon partitions scaSource, keeps root package.json + parses the source's own manifest", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-sca-"));
   fs.mkdirSync(path.join(root, "src"));
   fs.writeFileSync(
@@ -90,13 +90,19 @@ test("loadScaAddon partitions scaSource, keeps root package.json + the source's 
   assert.ok(addon.files.has("background.js"), "src file, prefix stripped");
   assert.ok(!addon.files.has("src/background.js"), "prefix not retained");
   assert.ok(addon.files.has("package.json"), "root package.json brought along");
-  // Pure source: the source's own manifest.json is kept, not injected/overwritten.
+  // Pure source: the source's own manifest.json is parsed, not injected/overwritten.
   assert.equal(
     addon.manifest.name,
     "FROM-SOURCE",
     "source's own manifest kept"
   );
-  assert.equal(addon.files.get("manifest.json").toString(), srcManifest);
+  // The manifest is lifted off the corpus into manifestText and the key dropped, so a
+  // corpus lookup can never return the source's pre-build manifest.
+  assert.ok(
+    !addon.files.has("manifest.json"),
+    "manifest.json removed from corpus"
+  );
+  assert.equal(addon.manifestText, srcManifest);
 
   // --sca-source accepts an absolute path too: it resolves to the same subtree.
   const abs = loadScaAddon(archive, path.join(root, "src"), root);

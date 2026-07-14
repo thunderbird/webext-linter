@@ -47,17 +47,35 @@ export function parsed(jsSources, { schema, nonAuthored } = {}) {
   return jsSources;
 }
 
+// Mirror the loader (assembleAddon): lift manifest.json off a hand-built corpus onto the
+// addon (manifestText) and drop the key, so ctx.addon.files matches production - manifest-free.
+// Idempotent: reruns keep the stored text even though the key is already gone.
+function liftManifest(addon) {
+  if (addon.manifestText === undefined) {
+    addon.manifestText =
+      addon.files?.get?.("manifest.json")?.toString("utf8") ?? "";
+  }
+  addon.files?.delete?.("manifest.json");
+}
+
 /**
  * @param {object} ctx
  * @returns {object} the same ctx, with manifest/manifestError/manifestLoc/manifestText.
  */
 export function withManifest(ctx) {
   const addon = ctx?.addon ?? {};
-  const text = addon.files?.get?.("manifest.json")?.toString("utf8") ?? "";
+  liftManifest(addon);
   ctx.manifest = addon.manifest ?? null;
   ctx.manifestError = addon.manifestError ?? null;
-  ctx.manifestLoc = addon.manifestLoc ?? (text ? buildManifestLoc(text) : null);
-  ctx.manifestText = text;
+  ctx.manifestLoc =
+    addon.manifestLoc ??
+    (addon.manifestText ? buildManifestLoc(addon.manifestText) : null);
+  ctx.manifestText = addon.manifestText;
+  // The diff baseline also arrives manifest-free from the loader; mirror that so the diff
+  // checks compare manifest-free corpora and read the baseline manifest off ctx.previous.
+  if (ctx?.previous) {
+    liftManifest(ctx.previous);
+  }
   // Other shipped-authoritative fields the pipeline attaches to the review addon and
   // buildRunContext hoists onto ctx: the Experiment classification and the summary's
   // recheck verdicts. Mirror that hoist here for a hand-built ctx (don't clobber a

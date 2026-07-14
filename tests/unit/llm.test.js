@@ -9,7 +9,7 @@ import { createLlmBudget } from "../../src/llm/budget.js";
 import { MAX_FILES_PER_BATCH } from "../../src/config.js";
 
 function clientWith(files, callVerdicts) {
-  const map = new Map([["manifest.json", Buffer.from("{}")]]);
+  const map = new Map();
   for (const f of files) {
     map.set(f, Buffer.from(`// ${f}\n`));
   }
@@ -17,8 +17,10 @@ function clientWith(files, callVerdicts) {
     files: map,
     manifest: { manifest_version: 3, name: "x", version: "1" },
   };
+  // The manifest lives off the corpus (like production); ctx.manifestText sizes its
+  // inventory entry.
   const llm = createLlmClient({
-    ctx: { addon },
+    ctx: { addon, manifestText: "{}" },
     token: "t",
     systemIntro: "intro",
     callVerdicts,
@@ -61,12 +63,10 @@ test("createLlmClient forwards the url to the transports as baseURL", async () =
   const seen = {};
   const ctx = {
     addon: {
-      files: new Map([
-        ["manifest.json", Buffer.from("{}")],
-        ["a.js", Buffer.from("// a\n")],
-      ]),
+      files: new Map([["a.js", Buffer.from("// a\n")]]),
       manifest: { manifest_version: 3, name: "x", version: "1" },
     },
+    manifestText: "{}",
   };
   const llm = createLlmClient({
     ctx,
@@ -152,7 +152,7 @@ test("evaluate stops at the request budget; the rest are unsure", async () => {
   let calls = 0;
   // step:1 with no confirmMore -> one request, then a hard stop.
   const budget = createLlmBudget({ step: 1 });
-  const map = new Map([["manifest.json", Buffer.from("{}")]]);
+  const map = new Map();
   for (const f of files) {
     map.set(f, Buffer.from(`// ${f}\n`));
   }
@@ -161,6 +161,7 @@ test("evaluate stops at the request budget; the rest are unsure", async () => {
       files: map,
       manifest: { manifest_version: 3, name: "x", version: "1" },
     },
+    manifestText: "{}",
   };
   const llm = createLlmClient({
     ctx,

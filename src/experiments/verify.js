@@ -162,7 +162,7 @@ function walkDir(root) {
  */
 export async function verifyExperiments(addon, opts = {}) {
   const manifest = addon.manifest || {};
-  const text = addon.files.get("manifest.json")?.toString("utf8") ?? "";
+  const text = addon.manifestText ?? "";
   const groups = experimentGroups(manifest).map((g) => ({
     ...g,
     line: manifestTokenLine(text, g.entries[0]?.key) ?? null,

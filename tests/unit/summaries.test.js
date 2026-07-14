@@ -18,9 +18,17 @@ import { parseVendorManifest } from "../../src/normalize/vendor.js";
 
 /** Build an Addon-shaped object from a {path: contents} map. */
 function addon(files) {
+  // Mirror the loader: lift manifest.json off the corpus into manifest / manifestText
+  // and drop the key, so both the current and previous addons are manifest-free.
+  const manifestText = files["manifest.json"] ?? "";
+  const map = new Map(
+    Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
+  );
+  map.delete("manifest.json");
   const a = {
-    files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
-    manifest: JSON.parse(files["manifest.json"]),
+    files: map,
+    manifest: manifestText ? JSON.parse(manifestText) : null,
+    manifestText,
   };
   // The pipeline resolves the vendored set once; mirror it deterministically.
   const manifest = parseVendorManifest(a);

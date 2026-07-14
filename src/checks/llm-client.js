@@ -105,7 +105,7 @@ export function createLlmClient({
         introBlock,
         {
           type: "text",
-          text: buildAddonContext(addon, ctx.manifest, nonce),
+          text: buildAddonContext(addon, ctx.manifest, ctx.manifestText, nonce),
           cache_control: { type: "ephemeral" },
         },
       ];
@@ -342,18 +342,26 @@ function buildCriterion(rubric, batch, paths, addon, nonce) {
  * @param {?import("../addon/load.js").Manifest} manifest  The SHIPPED manifest
  *   (ctx.manifest) - what Thunderbird loads - so the model judges declarations
  *   against what ships, uniformly for both artifacts.
+ * @param {string} manifestText  The shipped manifest's raw text (ctx.manifestText).
+ *   The manifest is not in addon.files (the loader lifts it off the corpus), so its
+ *   inventory entry is sized from here, consistent with the shipped manifest shown above.
  * @param {string} nonce
  * @returns {string}
  */
-function buildAddonContext(addon, manifest, nonce) {
+function buildAddonContext(addon, manifest, manifestText, nonce) {
   const manifestJson = manifest
     ? JSON.stringify(sortKeys(manifest), null, 2)
     : "(no valid manifest.json)";
-  const paths = [...addon.files.keys()].sort();
+  const sizeOf = (p) =>
+    p === "manifest.json"
+      ? Buffer.byteLength(manifestText, "utf8")
+      : addon.files.get(p).length;
+  const paths = [
+    ...addon.files.keys(),
+    ...(manifestText ? ["manifest.json"] : []),
+  ].sort();
   const fileList =
-    paths
-      .map((p) => `  ${p} (${addon.files.get(p).length} bytes)`)
-      .join("\n") || "  (none)";
+    paths.map((p) => `  ${p} (${sizeOf(p)} bytes)`).join("\n") || "  (none)";
   const localeDirs = [
     ...new Set(
       paths

@@ -167,9 +167,6 @@ export function buildDiffText(ctx, shippedCtx = ctx) {
   const removed = [];
   const changed = [];
   for (const [file, buf] of cur) {
-    if (file === "manifest.json") {
-      continue;
-    }
     const before = prev.get(file);
     if (!before) {
       added.push(file);
@@ -178,7 +175,7 @@ export function buildDiffText(ctx, shippedCtx = ctx) {
     }
   }
   for (const file of prev.keys()) {
-    if (file !== "manifest.json" && !cur.has(file)) {
+    if (!cur.has(file)) {
       removed.push(file);
     }
   }
@@ -272,11 +269,7 @@ export function buildAddonText(
   // for the packaging pass), the same corpus its producer located those sites in.
   const out = [wrap(nonce, "MANIFEST", canonicalJson(ctx.manifest ?? null))];
   for (const file of [...files.keys()].sort()) {
-    if (
-      file === "manifest.json" ||
-      unused.has(file) ||
-      !isAuthoredText(file, skip)
-    ) {
+    if (unused.has(file) || !isAuthoredText(file, skip)) {
       continue;
     }
     out.push(wrapFile(nonce, file, numberLines(fileText(file, files))));
