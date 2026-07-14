@@ -19,8 +19,9 @@ import vendorUnverified from "../../src/checks/rules/vendor-unverified.js";
 import untrustedLibrary from "../../src/checks/rules/untrusted-library.js";
 import untrustedMinifiedLibrary from "../../src/checks/rules/untrusted-minified-library.js";
 
-// One long, dense line -> minified by geometry (same fixture style as bundled.test.js).
-const MINIFIED = `var data=[${"1,".repeat(700)}1];`;
+// One long line packing many statements -> minified (same fixture style as
+// bundled.test.js). >= 1024 bytes so it is classified, not skipped.
+const MINIFIED = `var a=0;${"a=a+1;".repeat(250)}`;
 
 const addonWith = (files) => ({
   files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),

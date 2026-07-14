@@ -45,7 +45,7 @@ const XPI_FILES = {
       { resources: ["injected.js"], matches: ["*://*/*"] },
     ],
   }),
-  "background.js": `var _b=[${"1,".repeat(700)}1];console.log("built bg");`,
+  "background.js": `var s=0;${"s=s+1;".repeat(240)}console.log("built bg",s);`,
   "content.js": `const u=browser.runtime.getURL("injected.js");const s=document.createElement("script");s.src=u;document.head.append(s);`,
   "injected.js": `console.log("built injected");`,
 };
@@ -252,7 +252,7 @@ test("SCA e2e: a flat layout audits the root package.json dependencies", async (
 // vulnerable one is caught by vendor-vulnerable). On HEAD the SCA source got no CDN/OSV pass,
 // so this file would be rejected as minified and its vulnerability missed.
 test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-audited", async () => {
-  const LIB = `var x=[${"1,".repeat(700)}1];`; // one dense line -> minified geometry
+  const LIB = `var s=0;${"s=s+1;".repeat(240)}`; // one dense line of statements -> minified
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const libHash = rawSha256(Buffer.from(LIB));
   const xpi = tmpDir(XPI_FILES);
@@ -925,8 +925,8 @@ test("SCA e2e: a minified file in the source is rejected by minified-code", asyn
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
     ...SRC_FILES,
-    // One long, dense line >= 1024 bytes -> minified by geometry, not a known library.
-    "src/blob.min.js": `var d=[${"1,".repeat(700)}1];`,
+    // One long line >= 1024 bytes packing many statements -> minified, not a known library.
+    "src/blob.min.js": `var s=0;${"s=s+1;".repeat(240)}`,
   });
   try {
     const { findings } = await runPipeline({

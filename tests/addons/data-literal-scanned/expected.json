@@ -1,0 +1,4 @@
+{
+  "_comment": "icons.js is a readable file whose bulk is one inline data: URI. The statement-density minified detector does NOT flag it (its long line is one literal, not packed code), so it stays authored code and the content scanners run on it - proving which by catching the debugger statement. Before the fix its long line read as minified, the file was skipped, and neither minified-code nor debugger-statement said anything.",
+  "expect": { "debugger-statement": ["icons.js:5"] }
+}

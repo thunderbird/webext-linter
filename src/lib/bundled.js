@@ -2,16 +2,16 @@
 // the missing-library, minified-code and obfuscated-code checks. `library` is a
 // TRUE content-hash match against the known-library database (a file whose raw
 // sha256 is a known release is the library, identified by name@version - see
-// src/lib/library-hashes.js). `minified` is a byte/geometry heuristic (line
-// length); `obfuscated` is a structural match against a known obfuscator family (see
-// src/lib/obfuscation.js).
+// src/lib/library-hashes.js). `minified` is a structural signal (statement density,
+// see src/lib/minified.js); `obfuscated` is a structural match against a known
+// obfuscator family (see src/lib/obfuscation.js).
 //
-// The classification keys off the raw bytes (the minified geometry, the library hash,
-// and the obfuscation detector's parse of the shipped source), so it is resolved ONCE
-// up front - before the normalizer reformats files - by the pipeline into addon.bundled
-// (classifyBundled), the same "compute once, checks read it" pattern as addon.vendor.
-// Were it computed during the review, build/lint mode (which pretty-prints first) would
-// change the bytes and miss all three.
+// The classification keys off the raw shipped bytes (the library hash, and each
+// detector's parse of the shipped source), so it is resolved ONCE up front - before the
+// normalizer reformats files - by the pipeline into addon.bundled (classifyBundled), the
+// same "compute once, checks read it" pattern as addon.vendor. Were it computed during
+// the review, build/lint mode (which pretty-prints first) would change the bytes and
+// miss all three.
 //
 // Belongs here: classifyBundled (the one-shot classification + non-authored skip
 // set) and the per-file tagging it uses. classifyAddonJs / nonAuthoredJs are thin
@@ -27,6 +27,7 @@ import { extname, JS_EXTENSIONS, CSS_EXTENSIONS } from "../util/files.js";
 import { isVendored } from "../vendor/resolve.js";
 import { rawSha256 } from "../normalize/hash.js";
 import { isObfuscated } from "./obfuscation.js";
+import { isMinified } from "./minified.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../addon/load.js").Addon} Addon */
@@ -307,29 +308,19 @@ export function hasUnreviewableCode(bundled) {
 }
 
 /**
- * The CONTENT signal for one file: whether it is minified (line geometry) or
- * obfuscated (a recognized obfuscator's AST structure, via isObfuscated). Library
+ * The CONTENT signal for one file: whether it is minified (packed code, via isMinified)
+ * or obfuscated (a recognized obfuscator's AST structure, via isObfuscated). Library
  * detection is NOT here - it is a true content-hash match against the known-library
- * database, done in classifyBundled. Pure (bytes + filename only; the obfuscation
- * detector parses `text` internally, offline).
+ * database, done in classifyBundled. Pure (bytes + filename only; both detectors parse
+ * `text` internally, offline).
  * @param {string} text
  * @param {string} file
  * @returns {{minified: boolean, obfuscated: boolean}}
  */
 export function classify(text, file) {
-  // Obfuscation is JS-only (a stylesheet is never obfuscated in this sense); minified
-  // geometry applies to JS and CSS alike.
-  const isJs = JS_EXTENSIONS.has(extname(file));
-
-  // Minified line geometry: at least one very long line, dense on average.
-  const lines = text.split("\n");
-  const maxLine = lines.reduce((m, l) => (l.length > m ? l.length : m), 0);
-  const minified = maxLine > 500 && text.length / lines.length > 150;
-
-  // Obfuscation: structural match against a known obfuscator family. Precise by
-  // construction - readable code and plain-minified libraries match none - so this is
-  // the final verdict (no separate byte-vs-AST correction), computed on JS bytes only.
-  const obfuscated = isJs && isObfuscated(text, file);
-
-  return { minified, obfuscated };
+  // Obfuscation is JS-only (a stylesheet is never obfuscated in this sense); isMinified
+  // handles both JS (statement density) and CSS (packed rules).
+  const obfuscated =
+    JS_EXTENSIONS.has(extname(file)) && isObfuscated(text, file);
+  return { minified: isMinified(text, file), obfuscated };
 }

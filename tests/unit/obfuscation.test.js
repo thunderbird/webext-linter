@@ -37,8 +37,9 @@ test("readable code is not obfuscated", () => {
 });
 
 test("plain-minified but clean code is not obfuscated (that is minified-code's job)", () => {
-  // Dense one-liner, no obfuscator structure: minified geometry, not obfuscation.
-  const minified = `var data=[${"1,".repeat(700)}1];function sum(a){return a.reduce((x,y)=>x+y,0);}sum(data);`;
+  // Dense one-liner packing many statements, no obfuscator structure: minified, not
+  // obfuscation.
+  const minified = `var s=0;${"s=s+1;".repeat(250)}`;
   assert.equal(isObfuscated(minified), false);
 });
 

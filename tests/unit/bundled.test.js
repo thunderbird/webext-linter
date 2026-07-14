@@ -29,9 +29,17 @@ const libHashes = (addon, ...keys) =>
     ])
   );
 
-// One long, dense line (no newline): minified by geometry, not by name, so it
-// exercises the heuristic rather than the ".min.js" / library-name shortcut.
-const MINIFIED = `var data=[${"1,".repeat(700)}1];`;
+// One long line packing many statements (no newline): minified by density, not by
+// name, so it exercises the heuristic rather than the ".min.js" / library-name
+// shortcut. >= 1024 bytes so it is classified, not skipped.
+const MINIFIED = `var a=0;${"a=a+1;".repeat(250)}`;
+// The SAME geometry (one long line, >= 1024 bytes) but a single DATA literal, not code:
+// one statement, so it is readable data, NOT minified. This is the false positive the
+// statement-density signal fixes (the old geometry flagged it).
+const DATA_BLOB = `var data=[${"1,".repeat(700)}1];`;
+// A readable file whose one long line is a single string payload (an inline icon): also
+// one statement -> not minified, and it must stay scannable authored code.
+const DATA_URI = `var ICON="data:image/png;base64,${"A".repeat(2000)}";\nexport function icon(){return ICON}`;
 // A real array-replacement obfuscation: a string array dereferenced through an accessor,
 // the AST structure obfuscation-detector recognizes. Multi-line and low-density, so it is
 // obfuscated but NOT minified-by-geometry. >= 1024 bytes so it is classified, not skipped.
@@ -49,7 +57,7 @@ const addonWith = (files) => ({
   files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
 });
 
-test("classifyBundled flags an undeclared minified-by-geometry file", () => {
+test("classifyBundled flags an undeclared statement-dense file", () => {
   const { classified, nonAuthored } = classifyBundled(
     addonWith({ "lib/blob.js": MINIFIED })
   );
@@ -59,6 +67,35 @@ test("classifyBundled flags an undeclared minified-by-geometry file", () => {
     [true, false, false]
   );
   assert.ok(nonAuthored.has("lib/blob.js"));
+});
+
+// A file whose one long line is a single data literal (a big array, an inline data:
+// URI) is readable data, not packed code: NOT minified, so it stays authored source -
+// it is scanned by the content checks, not rejected with "provide the original source".
+test("a long-line file that is a single data literal is not minified", () => {
+  for (const [name, body] of [
+    ["lib/blob.js", DATA_BLOB],
+    ["src/icon.js", DATA_URI],
+  ]) {
+    const { classified, nonAuthored } = classifyBundled(
+      addonWith({ [name]: body })
+    );
+    const tag = classified.find((c) => c.file === name);
+    assert.equal(tag.minified, false, `${name} must not be minified`);
+    assert.ok(!nonAuthored.has(name), `${name} must stay authored (scanned)`);
+    assert.deepEqual(
+      minifiedCode
+        .run({
+          addon: {
+            ...addonWith({ [name]: body }),
+            bundled: { classified, nonAuthored },
+          },
+        })
+        .map((f) => f.file),
+      [],
+      `${name} must not be reported as minified-code`
+    );
+  }
 });
 
 // A minified-by-geometry file (an unidentifiable webpack/tsc bundle) is non-authored
@@ -142,9 +179,12 @@ test("the classification is memoized: readers share one computation", () => {
 // exactly like a bundled JS library (CSS releases are in the hash DB too). >= 1024
 // bytes so it is classified, not skipped.
 const LIB_CSS = `/*! Bootstrap v5 */\n${".navbar{display:flex}".repeat(80)}`;
-// Minified-by-geometry CSS NOT in the hash DB: one long, dense line -> minified,
-// but NOT a recognized library.
+// Minified CSS NOT in the hash DB: one long line of packed rules -> minified, but NOT
+// a recognized library.
 const MINIFIED_CSS = `.x{color:#fff}${".y{margin:0}".repeat(120)}`;
+// A readable stylesheet whose one long line is a single `data:` font payload: after the
+// payload is stripped it is short, so it is NOT minified (the CSS false positive).
+const DATA_FONT_CSS = `@font-face{font-family:x;src:url("data:font/woff2;base64,${"A".repeat(2000)}")}\n.a{color:red}`;
 
 test("classifyBundled tags an undeclared vendored CSS as a library", () => {
   const file = "vendor/bootstrap/bootstrap.min.css";
@@ -194,7 +234,7 @@ test("library is a content-hash match, not a .min name or banner", () => {
   assert.equal(tagOf("vendor/x.min.css", minCss, true), true);
 });
 
-test("a minified-by-geometry CSS is minified but not a library or obfuscated", () => {
+test("a minified CSS is minified but not a library or obfuscated", () => {
   const { classified } = classifyBundled(
     addonWith({ "popup/app.css": MINIFIED_CSS })
   );
@@ -203,6 +243,15 @@ test("a minified-by-geometry CSS is minified but not a library or obfuscated", (
     [tag.minified, tag.library, tag.obfuscated],
     [true, false, false]
   );
+});
+
+test("a CSS whose one long line is a single data: payload is not minified", () => {
+  const { classified, nonAuthored } = classifyBundled(
+    addonWith({ "popup/fonts.css": DATA_FONT_CSS })
+  );
+  const tag = classified.find((c) => c.file === "popup/fonts.css");
+  assert.equal(tag.minified, false);
+  assert.ok(!nonAuthored.has("popup/fonts.css"));
 });
 
 // hasUnreviewableCode is the single definition of "code we cannot review" shared by the
