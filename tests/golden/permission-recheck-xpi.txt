@@ -3,10 +3,7 @@
 Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
 
 1) One or more declared permissions are unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If a permission is in fact used, please specify which part of your add-on stops working if it is removed.
- - [XPI] manifest.json:6 - compose
-
-[XPI] = source file in the submitted XPI
-[SCA] = source file in the submitted source code archive
+ - manifest.json:6 - compose
 
 You can run this automated review yourself before submitting (this review was performed using the --llm-review option):
 https://github.com/thunderbird/webext-linter
@@ -19,7 +16,7 @@ Continue manual review for the following checks:
    whether the add-on actually needs them, and if not, ask the developer to
    remove them.
 Suggested response: One or more declared permissions are unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If a permission is in fact used, please specify which part of your add-on stops working if it is removed.
- - [XPI] manifest.json:6 - accountsRead
+ - manifest.json:6 - accountsRead
 
 ── Standard manual review ──
 
@@ -90,8 +87,8 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary of add-on ──
 
-  SCA citation demo: three declared permissions re-judged against the source
-  with cited evidence.
+  Per-occurrence recheck: three declared permissions judged at their token
+  sites.
 
 ── Summary ──
 

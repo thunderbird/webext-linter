@@ -7,21 +7,32 @@
         "properties": {
           "compose_scripts": {
             "annotations": [
-              { "additional_properties": { "required_permissions": ["compose"] } }
+              {
+                "additional_properties": {
+                  "required_permissions": [
+                    "compose"
+                  ]
+                }
+              }
             ]
           },
           "message_display_scripts": {
             "annotations": [
               {
+                "min_strict_version": "154",
                 "additional_properties": {
-                  "required_permissions": ["messagesModify"]
+                  "required_permissions": [
+                    "messagesModify"
+                  ]
                 }
               },
               {
                 "max_strict_version": "153",
-                "note": "Before Thunderbird 154, message_display_scripts also required the \"scripting\" permission to inject; the requirement was removed in 154.",
                 "additional_properties": {
-                  "required_permissions": ["scripting"]
+                  "required_permissions": [
+                    "messagesModify",
+                    "scripting"
+                  ]
                 }
               }
             ]

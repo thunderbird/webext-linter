@@ -157,10 +157,15 @@ export function runExtractionPass(
         parsed
       );
       // The code-text atoms (identifiers/strings/templates, comments excluded)
-      // for a textual token-presence test - the unused-permission scan. Authored
-      // only: a non-authored bundle is searched raw (see permissions.js), where
-      // including comments only pushes toward escalation, the safe direction.
-      extracted.codeText = scanCodeText(src.code, parsed).text;
+      // with their source lines - the unused-permission token scan tests presence
+      // AND points the recheck at each occurrence. Authored only: a non-authored
+      // bundle is searched raw (see permissions.js), where including comments only
+      // pushes toward escalation, the safe direction.
+      extracted.codeAtoms = scanCodeText(
+        src.code,
+        src.lineOffset,
+        parsed
+      ).atoms;
     }
     src.extracted = extracted;
     // The AST (`parsed`) goes out of scope with this iteration; src.extracted holds
@@ -244,8 +249,7 @@ export const experimentRefsOf = (src) => resultsOf(src).experimentRefs;
 /** @param {JsSource} src  The loc of the first ES module statement (import/export), or
  *   null if none. */
 export const moduleSyntaxOf = (src) => resultsOf(src).moduleSyntaxLoc;
-/** @param {JsSource} src  The text a token-presence test should search: the comment-free
- *   code-text atoms for an AUTHORED source, or the raw source for a non-authored bundle
- *   (which the pass does not scan) - where including comments only pushes toward
- *   escalation, the safe direction. */
-export const codeTextOf = (src) => resultsOf(src).codeText ?? src.code;
+/** @param {JsSource} src  The comment-free code-text atoms with their source lines
+ *   for an AUTHORED source, or null for a non-authored bundle (which the pass does
+ *   not scan into atoms - locate its tokens over the raw text instead). */
+export const codeAtomsOf = (src) => resultsOf(src).codeAtoms ?? null;

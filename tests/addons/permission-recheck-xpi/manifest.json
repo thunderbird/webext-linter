@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Permission recheck (XPI)",
+  "version": "1.0",
+  "description": "messagesRead/accountsRead/compose are not proven used by the deterministic scan, so each escalates to the per-occurrence unused-permission recheck; scripting is grounded by scripting.executeScript and dropped.",
+  "permissions": ["messagesRead", "accountsRead", "compose", "scripting"],
+  "background": { "scripts": ["bg.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

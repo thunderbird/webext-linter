@@ -11,11 +11,15 @@
 //     handed items, carrying that consumer's rubric and the list of item keys to
 //     judge. Most consumers carry a static `summary-prompt`; a `permission-recheck`
 //     consumer instead assembles its rubric per review from the permission-prompt-
-//     framing + permission-prompts sections, including only the sections for the
-//     permissions actually handed over. The model returns a verdict per item in the
-//     review's `recheck` field (stored on ctx.recheckVerdicts).
+//     framing + permission-prompts sections, including only the permissions actually
+//     handed over. A token-bearing permission is judged PER OCCURRENCE: the producer
+//     located every site of its usage tokens, and each site is one item (an
+//     orchestrator-minted id) the model verdicts while seeing the full add-on. A
+//     token-less permission (no located sites) is judged holistically, one verdict
+//     for the permission. The model returns a verdict per item in the review's
+//     `recheck` field (stored on ctx.recheckVerdicts).
 //
-//   resolveRecheck(ctx, check) - the shared run() of every recheck consumer (a
+//   resolveRecheck(ctx, check) - the shared run() of most recheck consumers (a
 //     normal post-summary check). It reads the items handed to THIS consumer and
 //     the summary's verdicts, then follows the ordinary check contract: pass ->
 //     drop (used), fail -> finding (the issue is present), unsure or no verdict
@@ -23,22 +27,24 @@
 //     wording (response/instructions) renders the result, since runOneCheck
 //     stamps the finding/escalation with the consumer's id and severity.
 //
-// The guard: resolveRecheck only ever consults verdicts for items actually handed
-// to this consumer, so the summary can neither invent items nor flip anything it
-// was not given.
+//   resolvePermissionRecheck(ctx, check) - the run() of the permission consumer.
+//     Same contract, but it AGGREGATES the per-occurrence verdicts of each permission
+//     (any site exercised -> justified/drop; every site definitively not -> unused
+//     finding; otherwise -> manual), so the model's answer for one site never decides
+//     a whole permission alone.
 //
-// Belongs here: the prompt composition and the verdict->finding/manual mapping,
-// including gating a pass on cited evidence for a require-citation consumer (the
-// adjudication itself is delegated to src/lib/citation.js). Does NOT belong here:
-// diverting a producer's manual items (-> runChecks), the summary transport and
-// storing ctx.recheckVerdicts (-> src/checks/summaries.js), or the recheck output
-// schema (-> src/llm/schema.js).
+// The guard: a resolve only ever consults verdicts for items actually handed to this
+// consumer, so the summary can neither invent items nor flip anything it was not given.
+//
+// Belongs here: the prompt composition and the verdict->finding/manual mapping. Does
+// NOT belong here: diverting a producer's manual items (-> runChecks), the summary
+// transport and storing ctx.recheckVerdicts (-> src/checks/summaries.js), locating
+// the token sites (-> src/lib/permissions.js), or the recheck output schema
+// (-> src/llm/schema.js).
 
 import { finding } from "../report/finding.js";
 import { wrap } from "./untrusted.js";
 import { versionInBounds } from "./util.js";
-import { verifyCitation } from "./citation.js";
-import { recheckTokenVocab } from "./permissions.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../checks/registry.js").LoadedCheck} LoadedCheck */
@@ -106,18 +112,21 @@ export function buildRecheckSections(ctx, registry, nonce, consumers) {
       continue;
     }
     // A permission-recheck consumer assembles its rubric from the registry's
-    // permission-prompts for just the permissions being rechecked (keys); every
-    // other consumer carries a static summary-prompt. Either may be "" (no rubric),
-    // in which case the items stay unjudged and resolveRecheck falls them to manual.
+    // permission-prompts for just the permissions being rechecked, and its items are
+    // the token SITES to judge (occurrence ids), or the permission itself when it has
+    // no located site (holistic). Every other consumer carries a static
+    // summary-prompt keyed by the item itself. Either may be "" (no rubric), in which
+    // case the items stay unjudged and the resolve falls them to manual.
     let prompt;
     let itemKeys = keys;
     if (entry?.["permission-recheck"]) {
-      const assembled = assemblePermissionPrompt(registry, ctx, keys);
+      // Assembled from the handed items (which carry each permission's located
+      // sites). Only permissions the rubric actually grounds contribute items; a
+      // handed permission whose sole prompt is version-filtered out yields no item,
+      // so it falls to manual (the resolve's no-verdict path), never judged blind.
+      const assembled = assemblePermissionPrompt(registry, ctx, items);
       prompt = assembled.prompt;
-      // Only ask the model about permissions the rubric actually grounds. A handed
-      // permission whose sole prompt is version-filtered out is not grounded here, so
-      // it must fall to manual (resolveRecheck's no-verdict path), never be judged blind.
-      itemKeys = keys.filter((k) => assembled.grounded.has(k));
+      itemKeys = assembled.itemKeys;
     } else {
       prompt = entry?.["summary-prompt"];
     }
@@ -147,23 +156,32 @@ export function buildRecheckSections(ctx, registry, nonce, consumers) {
 }
 
 /**
- * Assemble the unused-permission recheck rubric for the permissions being rechecked:
- * the shared framing wraps only the permission-prompts entries that cover one of the
- * requested `permissions` and whose version bounds fit the add-on's strict_min_version,
- * deduped in registry order. A prompt's `{{note:<member>}}` placeholder is replaced
- * with the version-matched `note` annotation(s) on that schema member (the
- * dual-purpose doc/review notes). Returns the rubric AND the set of permissions it
- * actually grounds: a requested permission whose only entry is version-filtered out
- * is not in `grounded`, so the caller drops it from the items sent to the model.
- * `prompt` is "" when no entry matches at all.
+ * Assemble the unused-permission recheck rubric for the handed permission items: the
+ * shared framing, the permission-prompts entries covering one of the requested
+ * permissions whose version bounds fit the add-on's strict_min_version (deduped in
+ * registry order, `{{note:<member>}}` placeholders resolved to version-matched schema
+ * notes), and a "sites to judge" list. Each grounded, token-bearing permission
+ * contributes one line per located occurrence (an id the model verdicts); a
+ * token-less permission contributes a single holistic line. Returns the rubric AND
+ * the item keys the model must return a verdict for (occurrence ids + holistic
+ * permission names) - already filtered to what the rubric grounds, so a permission
+ * whose only entry is version-filtered out contributes nothing and falls to manual.
+ * `prompt` is "" and `itemKeys` empty when no entry matches at all.
  * @param {import("../checks/registry.js").Registry} registry
  * @param {import("../checks/registry.js").RunContext} ctx  For the manifest (version
  *   bounds) and the schema (member notes).
- * @param {string[]} permissions  The permissions handed to this recheck.
- * @returns {{prompt: string, grounded: Set<string>}}
+ * @param {import("../checks/escalation.js").ManualRef[]} items  The handed permission
+ *   items, each carrying its located token occurrences.
+ * @returns {{prompt: string, itemKeys: string[]}}
  */
-function assemblePermissionPrompt(registry, ctx, permissions) {
-  const want = new Set(permissions);
+function assemblePermissionPrompt(registry, ctx, items) {
+  const occByPerm = new Map();
+  for (const r of items) {
+    if (r.item != null && !occByPerm.has(r.item)) {
+      occByPerm.set(r.item, r.occurrences ?? []);
+    }
+  }
+  const want = new Set(occByPerm.keys());
   const entries = registry
     .permissionPrompts()
     .filter(
@@ -172,30 +190,40 @@ function assemblePermissionPrompt(registry, ctx, permissions) {
         versionInBounds(ctx.manifest, e.minStrictVersion, e.maxStrictVersion)
     );
   const grounded = new Set(entries.flatMap((e) => e.permissions));
-  if (!entries.length) {
-    return { prompt: "", grounded };
+  const groundedPerms = [...want].filter((p) => grounded.has(p));
+  if (!entries.length || !groundedPerms.length) {
+    return { prompt: "", itemKeys: [] };
   }
   const { preamble, closing } = registry.permissionPromptFraming();
+  const itemKeys = [];
+  const siteLines = [];
+  for (const p of groundedPerms) {
+    const occ = occByPerm.get(p) ?? [];
+    if (occ.length) {
+      for (const o of occ) {
+        itemKeys.push(o.id);
+        const loc = o.line != null ? `${o.file}:${o.line}` : o.file;
+        // The exact SITE format the framing preamble documents - a located candidate,
+        // no re-posed "is it used" question (the preamble sets the discriminator task).
+        siteLines.push(`${o.id}: "${p}" token "${o.token}" at ${loc}`);
+      }
+    } else {
+      itemKeys.push(p);
+      siteLines.push(
+        `${p}: no specific site - give one overall verdict for "${p}" from the full add-on.`
+      );
+    }
+  }
   const prompt = [
     preamble,
-    ...entries.map((e) => renderPermissionEntry(e, ctx)),
+    ...entries.map((e) => resolveNotes(e.prompt, ctx)),
+    "Sites to judge (return a verdict for each id below):",
+    ...siteLines,
     closing,
   ]
     .filter(Boolean)
     .join("\n");
-  return { prompt, grounded };
-}
-
-// One permission entry as it appears in the rubric: its prose (schema-member notes
-// resolved) followed by the accepted tokens the model must cite one of for a pass, so
-// it knows the exact strings that ground the permission. An entry with no tokens
-// (unlimitedStorage - not token-detectable) renders prose only.
-function renderPermissionEntry(e, ctx) {
-  const body = resolveNotes(e.prompt, ctx);
-  if (!e.tokens?.length) {
-    return body;
-  }
-  return `${body}\nAccepted tokens (cite the one that appears in the code): ${e.tokens.join(", ")}.`;
+  return { prompt, itemKeys };
 }
 
 // Replace each `{{note:<ns>.<member>}}` in a prompt with the version-matched `note`
@@ -216,101 +244,57 @@ function resolveNotes(text, ctx) {
 }
 
 /**
- * The feed suffix for a verified pass: the item label plus the location the evidence
- * was accepted at, `file:lines (token)` (token omitted for a structural-only pass),
- * so a reviewer can spot-check the accepted pass at a line.
- * @param {?string} label @param {import("../llm/schema.js").RecheckUsage} cited
- * @returns {string}
+ * The summary's verdicts for one consumer, indexed by item key. Only keys the
+ * consumer handed over are ever looked up, so a verdict for anything else is inert -
+ * the summary can neither invent items nor flip one it was not given.
+ * @param {RunContext} ctx @param {string} checkId
+ * @returns {Map<string, {verdict: string, reason?: ?string}>}
  */
-function citedLabel(label, cited) {
-  const loc = cited.token
-    ? `${cited.file}:${cited.lines} (${cited.token})`
-    : `${cited.file}:${cited.lines}`;
-  return label ? `${label} — ${loc}` : loc;
+function verdictsFor(ctx, checkId) {
+  const verdicts = new Map();
+  for (const v of ctx.recheckVerdicts ?? []) {
+    if (v && v.check === checkId && typeof v.item === "string") {
+      verdicts.set(v.item, v);
+    }
+  }
+  return verdicts;
 }
 
 /**
- * The run() of a recheck consumer. Maps the summary's verdict for each handed-over
- * item to the ordinary check contract: pass -> drop, fail -> finding, unsure or
- * no verdict -> manual review (carrying the model's reason). Only items handed to
- * THIS consumer are consulted (the guard).
- *
- * A consumer that requires citation (check.requireCitation) accepts a `pass` only
- * when its cited evidence verifies (verifyCitation) against the accepted-token
- * vocabulary for the item; an ungrounded pass is downgraded to unsure -> manual, the
- * safe direction, so a hallucinated "it's used" never silently drops a real issue.
- *
- * The verdicts and handed items live on the main ctx, but the citation is verified
- * against `corpusCtx` - the PRODUCER's artifact (the same corpus the summary numbered
- * and showed the model), resolved by the caller via ctxForRule. It equals `ctx` for a
- * source-anchored recheck and in any XPI review; only an SCA xpi-anchored recheck
- * differs. Callers that never cite may omit it.
+ * The run() of most recheck consumers (all but the permission consumer). Maps the
+ * summary's verdict for each handed-over item to the ordinary check contract: pass ->
+ * drop, fail -> finding, unsure or no verdict -> manual review (carrying the model's
+ * reason). Only items handed to THIS consumer are consulted (the guard).
  * @param {RunContext} ctx
  * @param {LoadedCheck} check  The recheck consumer (its id keys ctx.recheck).
- * @param {RunContext} [corpusCtx]  The producer's corpus for citation; defaults to ctx.
  * @returns {{findings: object[], escalations: {item: ?string, hint: ?string,
  *   file: ?string, loc: ?object, data: object}[]}}
  */
-export function resolveRecheck(ctx, check, corpusCtx = ctx) {
+export function resolveRecheck(ctx, check) {
   const handed = ctx.recheck?.get(check.id) ?? [];
   if (!handed.length) {
     return { findings: [], escalations: [] };
   }
-  // The summary's verdicts for THIS consumer, indexed by item key. Only keys we
-  // hand over are ever looked up below, so a verdict for anything else is inert.
-  const verdicts = new Map();
-  for (const v of ctx.recheckVerdicts ?? []) {
-    if (v && v.check === check.id && typeof v.item === "string") {
-      verdicts.set(v.item, v);
-    }
-  }
-  // The accepted-token vocabulary per item, assembled once, when this consumer
-  // verifies cited evidence. Read from the PRODUCER's corpus (corpusCtx) so the
-  // version-filtered tokens match the artifact a pass is cited against. Empty for an
-  // item with no vocabulary -> the citation is checked structurally only.
-  const vocab = check.requireCitation
-    ? recheckTokenVocab(corpusCtx, check)
-    : null;
+  const verdicts = verdictsFor(ctx, check.id);
   const findings = [];
   const escalations = [];
+  // Label the feed note by the corpus this consumer ACTS ON (its producer's), not the
+  // main ctx it runs on to read ctx.recheck - so a recheck's notes carry [XPI] when
+  // they re-judge XPI-corpus items. check.labelInput is set at load; it falls back to
+  // the note's bound input when absent.
+  const labelInput = check.labelInput;
   for (const ref of handed) {
     const key = itemKey(ref);
     const v = key != null ? verdicts.get(key) : undefined;
-    let verdict = v?.verdict ?? "unsure";
+    const verdict = v?.verdict ?? "unsure";
     // The feed suffix after `file:line`: the item token, else a per-locus hint
     // (e.g. a transmission method). Never the file - that only repeated the locus.
     const label = ref.item ?? ref.hint ?? null;
-    // Label the feed note by the corpus this consumer ACTS ON (its producer's), not
-    // the main ctx it runs on to read ctx.recheck - so a recheck's notes carry [XPI]
-    // when they re-judge XPI-corpus items. check.labelInput is set at load; it falls
-    // back to the note's bound input when absent.
-    const labelInput = check.labelInput;
-    // A pass this consumer requires to be cited: verify the evidence. A verified pass
-    // drops as usual; an unverifiable one becomes unsure and falls to manual below.
-    let citationReason = null;
-    if (verdict === "pass" && check.requireCitation) {
-      const cited = verifyCitation(v?.usages, vocab.get(key), corpusCtx);
-      if (cited) {
-        ctx.note?.(
-          ref.file,
-          ref.loc,
-          citedLabel(label, cited),
-          "pass",
-          labelInput
-        );
-        continue;
-      }
-      verdict = "unsure";
-      citationReason = "claimed used, but the cited evidence did not verify";
-    }
     if (verdict === "pass") {
       ctx.note?.(ref.file, ref.loc, label, "pass", labelInput);
       continue; // the summary confirmed it is used / justified - drop it
     }
-    const data = {
-      ...(ref.data ?? {}),
-      reason: citationReason ?? v?.reason ?? "",
-    };
+    const data = { ...(ref.data ?? {}), reason: v?.reason ?? "" };
     if (verdict === "fail") {
       ctx.note?.(ref.file, ref.loc, label, "fail", labelInput);
       findings.push(
@@ -332,6 +316,62 @@ export function resolveRecheck(ctx, check, corpusCtx = ctx) {
         file: ref.file ?? null,
         loc: ref.loc ?? null,
         data,
+      });
+    }
+  }
+  return { findings, escalations };
+}
+
+/**
+ * The run() of the unused-permission recheck consumer. Each handed permission was
+ * given the summary as either its located token SITES (each an occurrence id) or, for
+ * a permission with no located site, itself (one holistic key). This aggregates the
+ * site verdicts per permission: ANY site exercised (pass) -> justified, drop; every
+ * site definitively not (all fail) -> unused finding; anything else, including a
+ * summary that never ran -> manual. The bias is deliberate and asymmetric: a permission
+ * exercised at even one site IS used, so any pass justifies it - which trades a possible
+ * false-drop (the model wrongly passes one site) for never emitting a false "unused" from
+ * a permission that is genuinely used somewhere. Only items handed to THIS consumer are
+ * consulted (the guard).
+ * @param {RunContext} ctx
+ * @param {LoadedCheck} check  The permission recheck consumer.
+ * @returns {{findings: object[], escalations: {item: ?string, hint: ?string,
+ *   file: ?string, loc: ?object, data: object}[]}}
+ */
+export function resolvePermissionRecheck(ctx, check) {
+  const handed = ctx.recheck?.get(check.id) ?? [];
+  if (!handed.length) {
+    return { findings: [], escalations: [] };
+  }
+  const verdicts = verdictsFor(ctx, check.id);
+  const findings = [];
+  const escalations = [];
+  const labelInput = check.labelInput;
+  for (const ref of handed) {
+    const permission = ref.item;
+    const occ = ref.occurrences ?? [];
+    // The keys whose verdicts decide this permission: its occurrence ids, or the
+    // permission itself when judged holistically (no located site - a token-less
+    // permission, or one whose tokens do not occur in the reviewed corpus).
+    const keys = occ.length ? occ.map((o) => o.id) : [permission];
+    const vs = keys.map((k) => verdicts.get(k)?.verdict ?? "unsure");
+    if (vs.some((v) => v === "pass")) {
+      ctx.note?.(ref.file, ref.loc, permission, "pass", labelInput);
+      continue; // a site exercises the permission - justified, drop it
+    }
+    if (vs.length && vs.every((v) => v === "fail")) {
+      ctx.note?.(ref.file, ref.loc, permission, "fail", labelInput);
+      findings.push(
+        finding({ file: ref.file, loc: ref.loc, item: permission })
+      );
+    } else {
+      ctx.note?.(ref.file, ref.loc, permission, "unsure", labelInput);
+      escalations.push({
+        item: permission ?? null,
+        hint: null,
+        file: ref.file ?? null,
+        loc: ref.loc ?? null,
+        data: null,
       });
     }
   }

@@ -1,0 +1,6 @@
+{
+  "_comment": "SCA review (src/ + xpi/, XPI minified so SCA is required) exercising the permission recheck through the SOURCE summary pass, mixing PER-OCCURRENCE and HOLISTIC judging. All three permissions escalate (the deterministic 'unused' finding is disabled in SCA). messagesRead/accountsRead have bare tokens found in the source -> judged per occurrence (messagesRead#1 pass -> dropped; accountsRead#1 unsure -> manual). compose's dotted injection token resolves no call in the non-entry-point source, so it has no site and is judged holistically (compose fail -> the finding here). Covers the source x SCA matrix cell, the SCA two-pass source summary, and the holistic fallback; the rendered golden locks the dropped/manual/finding split.",
+  "expect": {
+    "unused-permission-recheck": ["manifest.json:6"]
+  }
+}

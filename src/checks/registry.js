@@ -135,10 +135,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   The linked consumer's data for a producer that declares postSummaryRecheck:
  *   for a permission-recheck consumer, the permission-prompts token entries
  *   ({permissions, tokens, version bounds} - prompt text stripped) that feed the
- *   producer's deterministic verdicts (see recheckDataFor). Also carried by a
- *   permission-recheck CONSUMER, which verifies a pass's cited token against it.
- * @property {boolean} [requireCitation]  A post-summary consumer that accepts a
- *   `pass` only when its cited evidence verifies (resolveRecheck -> verifyCitation).
+ *   producer's deterministic verdicts (see recheckDataFor).
  * @property {Function} run
  */
 
@@ -748,11 +745,6 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
         typeof entry["post-summary-recheck"] === "string"
           ? entry["post-summary-recheck"]
           : undefined,
-      // A post-summary consumer that accepts a `pass` only when its cited evidence
-      // verifies (resolveRecheck -> verifyCitation); an unverifiable pass is
-      // downgraded to unsure -> manual. Only opted-in consumers require it - the rest
-      // keep the plain pass -> drop mapping.
-      requireCitation: entry["require-citation"] === true,
       // A producer's window into its linked consumer's data - for a
       // permission-recheck consumer, the permission-prompts token entries, so
       // the producer renders deterministic verdicts from the same data that
@@ -767,15 +759,16 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
 }
 
 /**
- * The permission-prompts token vocabulary for an entry that is one end of a
- * permission-recheck pair, or undefined otherwise. The SAME data serves both ends:
- * the PRODUCER renders deterministic verdicts from it (enumerateUnusedPermissions),
- * and the CONSUMER verifies a pass's cited token against it (recheckTokenVocab).
+ * The permission-prompts token vocabulary for the PRODUCER of a permission-recheck
+ * pair (the check whose post-summary-recheck target is a permission-recheck consumer),
+ * or undefined otherwise. The producer both locates the token sites and renders the
+ * deterministic verdicts from it (enumerateUnusedPermissions); the consumer reads the
+ * prompts directly off the registry when it assembles its rubric, so it needs no copy.
  * Deliberately narrow: only the token entries, prompt text stripped - wording stays
- * the report layer's business - so a check has no window into the other end's prose
+ * the report layer's business - so the check has no window into the other end's prose
  * or severity. A static-rubric pair feeds no such data.
  * @param {Registry} registry
- * @param {object} entry  A producer or consumer registry entry.
+ * @param {object} entry  A producer registry entry.
  * @returns {?{permissionPrompts: object[]}}
  */
 function recheckDataFor(registry, entry) {
@@ -784,8 +777,7 @@ function recheckDataFor(registry, entry) {
     typeof target === "string" &&
     !!target &&
     !!registry.checkEntry(target)?.["permission-recheck"];
-  const isConsumer = entry["permission-recheck"] === true;
-  if (!isProducer && !isConsumer) {
+  if (!isProducer) {
     return undefined;
   }
   return {
@@ -1121,19 +1113,14 @@ export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
   // invalid Experiment.
   const checksRun = [...checks];
   for (const [j, check] of deferred.entries()) {
-    const checkCtx = routeCtx(check, ctx, siblings);
     // A recheck consumer runs on the main ctx (checkCtx) to read ctx.recheck /
-    // ctx.recheckVerdicts, but its items describe its PRODUCER's corpus. So it is also
-    // handed that corpus, resolved by ctxForRule from the producer's input (the same
-    // resolver collapseUnusedFolders and the [XPI]/[SCA] label use) - the one artifact
-    // a pass may cite against. In an XPI review, or a source-anchored recheck, this is
-    // just checkCtx; only an SCA xpi-anchored recheck differs.
-    const corpusCtx = ctxForRule(registry, check.id, ctx, siblings);
+    // ctx.recheckVerdicts; its handed items already carry every locus they need (a
+    // producer stamps them before diverting), so it reads no other artifact.
+    const checkCtx = routeCtx(check, ctx, siblings);
     const out = await runOneCheck(
       checkCtx,
       check,
-      `[${checks.length + j + 1}/${total}]`,
-      corpusCtx
+      `[${checks.length + j + 1}/${total}]`
     );
     findings.push(...out.findings);
     manualItems.push(...out.manualItems);
@@ -1167,21 +1154,17 @@ export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
  * @param {RunContext} ctx
  * @param {LoadedCheck} check
  * @param {string} label  The feed prefix before the id, e.g. "[3/12]".
- * @param {RunContext} [corpusCtx]  Only for a recheck consumer: the producer's
- *   corpus (ctxForRule), the artifact a cited pass is verified against. A regular
- *   check ignores it - it reads only its own ctx.addon.
  * @returns {Promise<{findings: object[], manualItems: object[]}>}
  */
-export async function runOneCheck(ctx, check, label, corpusCtx) {
+export async function runOneCheck(ctx, check, label) {
   progress(`${label} ${check.id}`, FEED.STEP);
   const findings = [];
   const manualItems = [];
   try {
     // ctx is already the artifact the caller routed this check to (runChecks /
     // pipeline, keyed on check.input). The check - and its LLM adjudication below -
-    // read only ctx.addon; there is no way here to reach the other artifact. A recheck
-    // consumer additionally receives its producer's corpus (corpusCtx) for citation.
-    const result = (await check.run(ctx, check, corpusCtx)) || [];
+    // read only ctx.addon; there is no way here to reach the other artifact.
+    const result = (await check.run(ctx, check)) || [];
     const direct = Array.isArray(result) ? result : (result.findings ?? []);
     const escalations = Array.isArray(result) ? [] : (result.escalations ?? []);
     const llmStep = Array.isArray(result) ? null : (result.llm ?? null);

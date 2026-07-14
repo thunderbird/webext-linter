@@ -39,9 +39,8 @@
 // permissions the browser.* schema cannot gate (clipboard/geolocation) used,
 // the manifest-key grounding that proves a script-injection key's implied
 // permission used (and missing when undeclared), and enumerateUnusedPermissions
-// with its live-code token scan (the unused-permission producer's deterministic
-// verdicts), and recheckTokenVocab (the accepted-token vocabulary per item a
-// citation-verifying recheck consumer checks a pass against).
+// with its live-code token scan (locateTokens) - the unused-permission producer's
+// deterministic verdicts, plus the token occurrences the recheck judges per site.
 //
 // Does NOT belong here: the rules' wiring and any severity or text - that lives
 // in the missing-permission / missing-manifest-key rules under
@@ -55,13 +54,14 @@ import {
   asArray,
   isMatchPattern,
   manifestPathLine,
+  manifestTokenLine,
   versionInBounds,
   wholeWordRe,
 } from "./util.js";
 import { resolveApiUsages } from "./api-resolution.js";
 import { buildReachability } from "./reachability.js";
 import { webApiSignatures } from "../parse/web-api-calls.js";
-import { webApiPermsOf, codeTextOf } from "../checks/extract.js";
+import { webApiPermsOf, codeAtomsOf } from "../checks/extract.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
@@ -321,9 +321,10 @@ function groundWebApiPermissions(ctx, declaredNamed) {
  */
 export function enumerateUnusedPermissions(ctx, recheckData) {
   const used = getPermissionAnalysis(ctx).usedPermissions;
-  // The deterministic verdict claims "nothing this permission gates can be in
-  // use" - only tenable when the scan can actually see every usage. Cases where
-  // it cannot, so every permission escalates instead:
+  // A deterministic "unused" FINDING claims "nothing this permission gates can be in
+  // use" - only tenable when the scan can see every usage, so that a token found
+  // NOWHERE really means nowhere. Cases where absence cannot be trusted, so a
+  // token-bearing permission escalates instead of becoming a finding:
   //  - an SCA review scans the SOURCE corpus, but the shipped XPI may exercise
   //    the permission through dependencies materialized at build time;
   //  - a source that failed to PARSE (apiUsage.parseError) yields no usages and
@@ -335,6 +336,9 @@ export function enumerateUnusedPermissions(ctx, recheckData) {
   //  - an ABSENT ctx.apiUsages is a view with no visibility into the source's
   //    API surface (the sibling-ctx marker) - maximally blind, so it fails
   //    closed rather than reading as fully sighted.
+  // This gates only the finding: token PRESENCE is always trustworthy (a located
+  // occurrence IS a real site), so occurrences are collected regardless and the
+  // recheck judges them the same in every mode.
   const decidable =
     ctx.mode !== "sca" &&
     Array.isArray(ctx.apiUsages) &&
@@ -344,12 +348,15 @@ export function enumerateUnusedPermissions(ctx, recheckData) {
         u.limitations?.length ||
         u.usages?.some((x) => x.dynamicTail)
     );
-  const tokensFor = decidable
-    ? permissionTokens(ctx.manifest, recheckData?.permissionPrompts)
-    : new Map();
+  const tokensFor = permissionTokens(
+    ctx.manifest,
+    recheckData?.permissionPrompts
+  );
   // One scan over the live code + manifest for the union of every permission's
-  // tokens; each permission then reads its own subset.
-  const present = presentTokens(ctx, new Set([...tokensFor.values()].flat()));
+  // tokens, recording WHERE each occurs; each permission then reads its own subset,
+  // both to decide presence (no occurrence, when decidable = unused) and to hand the
+  // recheck the sites to judge.
+  const located = locateTokens(ctx, new Set([...tokensFor.values()].flat()));
   const m = ctx.manifest ?? {};
   const seen = new Set();
   const findings = [];
@@ -370,19 +377,23 @@ export function enumerateUnusedPermissions(ctx, recheckData) {
       }
       // Deterministically unused: the permission's prompt entries name its
       // justifying usages as tokens, and not one of them occurs anywhere in the
-      // live code or manifest - nothing the permission gates can be in use.
+      // live code or manifest - nothing the permission gates can be in use. Only
+      // when the scan is decidable, so absence is trustworthy (else escalate).
       const tokens = tokensFor.get(p);
-      if (tokens?.length && !tokens.some((t) => present.has(t))) {
+      const occurrences = permissionOccurrences(p, tokens, located);
+      if (decidable && tokens?.length && !occurrences.length) {
         ctx.note?.("manifest.json", loc, p, "fail");
         findings.push(finding({ item: p, file: "manifest.json", loc }));
         return;
       }
-      // Everything else escalates the same way (a token was found, the entry
-      // declares no tokens, or the permission has no prompt entry). Whether it is
-      // re-judged by the LLM or stays manual-only is decided later, at the divert,
-      // by registry.rechecks - the check does not know.
+      // Everything else escalates (a token was found, the entry declares no tokens,
+      // the scan was not decidable, or the permission has no prompt entry). Whether it
+      // is re-judged by the LLM or stays manual-only is decided later, at the divert,
+      // by registry.rechecks - the check does not know. The token sites (empty for a
+      // token-less permission, or when no token is visible) ride along so the recheck
+      // can point the model at each one; with none it is judged holistically.
       ctx.note?.("manifest.json", loc, p, "unsure");
-      escalations.push({ item: p, file: "manifest.json", loc });
+      escalations.push({ item: p, file: "manifest.json", loc, occurrences });
     });
   }
   return { findings, escalations };
@@ -420,32 +431,29 @@ function permissionTokens(manifest, prompts) {
 }
 
 /**
- * The accepted-token vocabulary per handed item for a citation-verifying recheck
- * consumer, keyed by the item key a citation is checked against. For a
- * permission-recheck consumer that is the version-filtered usage tokens keyed by
- * permission; a consumer carrying no permission-prompts data yields an empty map, so
- * verifyCitation falls back to structural-only verification. Permission-aware by
- * design: this is where the per-item vocabulary is assembled, so the verifier stays
- * generic.
- * @param {RunContext} ctx
- * @param {LoadedCheck} check  The recheck consumer.
- * @returns {Map<string, string[]>}
- */
-export function recheckTokenVocab(ctx, check) {
-  const prompts = check?.recheckData?.permissionPrompts;
-  return prompts ? permissionTokens(ctx.manifest, prompts) : new Map();
-}
-
-/**
- * The subset of `tokens` that occur in the add-on's code or manifest. Every
- * jsSource counts - authored AND non-authored, since a library exercising a
- * permission counts (deciding "unused" stays conservative) - searched via
- * codeTextOf: an authored source's comment-free code-text atoms (so a token in a
- * developer's comment does NOT ground the permission), or a non-authored bundle's
- * raw text (a token in its comments only pushes toward escalation, the safe
- * direction). String literals deliberately count (dynamic access spells the token
- * in a string). The manifest is searched as JSON (no comments there), so
- * manifest-key tokens (compose_scripts) ground too.
+ * Every occurrence of each of `tokens` in the add-on's code or manifest, keyed by
+ * token: `{file, line}` per site (line null only when a manifest occurrence cannot
+ * be located). Both the presence decision (a token with no occurrences is unused)
+ * and the recheck (each occurrence is a site the model judges) read this.
+ *
+ * A token comes in two forms. A DOTTED token `ns.member` (e.g. `tabs.executeScript`)
+ * is an API CALL: it is resolved against the api-usage analysis (resolveApiUsages),
+ * matching a call whose resolved namespace + member equal `ns` + `member` - precise
+ * (tabs.executeScript vs scripting.executeScript), comment-free, and it never matches a
+ * bare identifier or a property read on a non-API object. A BARE token is a plain word,
+ * matched textually as below.
+ *
+ * Every jsSource counts - authored AND non-authored, since a library exercising a
+ * permission counts (deciding "unused" stays conservative). An AUTHORED source is
+ * searched over its comment-free code-text atoms, each carrying its real source
+ * line (so a token in a developer's comment does NOT ground the permission); a
+ * non-authored bundle has no atoms, so its raw text is scanned line by line (a
+ * token in its comments only over-includes an occurrence, the safe direction).
+ * String literals deliberately count (dynamic access spells the token in a string).
+ * The manifest is also searched as JSON (no comments there) and a manifest occurrence
+ * is located via manifestTokenLine - though the script-injection manifest keys
+ * (compose_scripts / message_display_scripts) are NOT tokens: they ground their
+ * permission deterministically (analyzePermissions), so the recheck never sees them.
  *
  * A token matches on WORD BOUNDARIES (case-sensitive): it must be a whole
  * identifier / key / string word, not a coincidental substring of a longer name -
@@ -454,31 +462,109 @@ export function recheckTokenVocab(ctx, check) {
  * listed explicitly in the registry rather than caught by a broad substring.
  * @param {RunContext} ctx
  * @param {Set<string>} tokens
- * @returns {Set<string>}
+ * @returns {Map<string, {file: string, line: ?number}[]>}
  */
-function presentTokens(ctx, tokens) {
-  const present = new Set();
+function locateTokens(ctx, tokens) {
+  const located = new Map([...tokens].map((t) => [t, []]));
   if (!tokens.size) {
-    return present;
+    return located;
   }
-  const patterns = new Map([...tokens].map((t) => [t, wholeWordRe(t)]));
-  const texts = (function* () {
-    yield JSON.stringify(ctx.manifest ?? {});
-    for (const src of ctx.jsSources ?? []) {
-      yield codeTextOf(src);
-    }
-  })();
-  for (const text of texts) {
-    for (const [t, re] of patterns) {
-      if (!present.has(t) && re.test(text)) {
-        present.add(t);
+  // A DOTTED token `ns.member` is an API call, not a text word: it is resolved against
+  // the api-usage analysis (namespace + member), which distinguishes tabs.executeScript
+  // from scripting.executeScript and never matches a bare identifier, a property read on
+  // a non-API object, or a comment. A BARE token is a plain word matched textually.
+  const dotted = [...tokens].filter((t) => t.includes("."));
+  const bare = [...tokens].filter((t) => !t.includes("."));
+
+  if (dotted.length) {
+    const wanted = dotted.map((t) => {
+      const dot = t.lastIndexOf(".");
+      return { token: t, ns: t.slice(0, dot), member: t.slice(dot + 1) };
+    });
+    for (const { file, usage, res } of resolveApiUsages(ctx)) {
+      if (!res) {
+        continue;
+      }
+      for (const { token, ns, member } of wanted) {
+        if (res.namespace === ns && res.member === member) {
+          located.get(token).push({ file, line: usage.line });
+        }
       }
     }
-    if (present.size === tokens.size) {
-      break;
+  }
+
+  if (bare.length) {
+    const patterns = new Map(bare.map((t) => [t, wholeWordRe(t)]));
+    const manifestJson = JSON.stringify(ctx.manifest ?? {});
+    for (const [t, re] of patterns) {
+      if (re.test(manifestJson)) {
+        located.get(t).push({
+          file: "manifest.json",
+          line: manifestTokenLine(ctx.manifestText, t),
+        });
+      }
+    }
+    for (const src of ctx.jsSources ?? []) {
+      const atoms = codeAtomsOf(src);
+      if (atoms) {
+        for (const a of atoms) {
+          for (const [t, re] of patterns) {
+            if (re.test(a.value)) {
+              located.get(t).push({ file: src.file, line: a.line });
+            }
+          }
+        }
+      } else {
+        const lines = src.code.split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+          for (const [t, re] of patterns) {
+            if (re.test(lines[i])) {
+              located
+                .get(t)
+                .push({ file: src.file, line: i + 1 + (src.lineOffset ?? 0) });
+            }
+          }
+        }
+      }
     }
   }
-  return present;
+  return located;
+}
+
+/**
+ * The token sites of one permission, merged across its tokens and deduped by
+ * `file:line` (two tokens on the same line collapse to one site), each stamped with
+ * an orchestrator-minted id the recheck hands the model to echo a verdict back
+ * against. Empty when the permission has no tokens (a token-less permission) or when
+ * none of its tokens occur in the reviewed corpus - the recheck then judges it
+ * holistically.
+ * @param {string} permission
+ * @param {?string[]} tokens  The permission's usage tokens.
+ * @param {Map<string, {file: string, line: ?number}[]>} located
+ * @returns {{id: string, file: string, line: ?number, token: string}[]}
+ */
+function permissionOccurrences(permission, tokens, located) {
+  if (!tokens?.length) {
+    return [];
+  }
+  const seen = new Set();
+  const out = [];
+  for (const t of tokens) {
+    for (const occ of located.get(t) ?? []) {
+      const key = `${occ.file}:${occ.line}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      out.push({
+        id: `${permission}#${out.length + 1}`,
+        file: occ.file,
+        line: occ.line,
+        token: t,
+      });
+    }
+  }
+  return out;
 }
 
 /**

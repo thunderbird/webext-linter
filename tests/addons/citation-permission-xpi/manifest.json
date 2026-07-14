@@ -1,9 +1,0 @@
-{
-  "manifest_version": 3,
-  "name": "Citation permission (XPI)",
-  "version": "1.0",
-  "description": "Declares permissions whose usage tokens appear in live code but which no API call grounds, so each escalates to the unused-permission recheck.",
-  "permissions": ["messagesRead", "accountsRead", "compose"],
-  "background": { "scripts": ["bg.js"] },
-  "icons": { "16": "icon.png", "48": "icon.png" }
-}

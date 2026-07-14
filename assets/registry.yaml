@@ -868,27 +868,30 @@ deterministic-phase:
 # Grounding for the unused-permission recheck consumer (permission-recheck: true).
 # The --llm-review pass assembles its rubric as: framing.preamble + the prompt of
 # every permission-prompts entry whose `permissions` intersects the permissions
-# actually handed over (deduped, in order) + framing.closing. So the model is only
-# ever sent grounding for the permissions in play - not the whole catalogue. Each
-# entry may carry min_strict_version / max_strict_version (an INCLUSIVE bound on the
-# add-on's strict_min_version, compared at the bound's own precision - so "153" covers
-# the whole 153.* series; adjacent major bounds partition with no gap; an unset version
-# is treated as oldest). No entry currently sets a bound; the tabs/activeTab version
-# pivot instead lives in the `tabs.query` schema-annotation notes, pulled in version-
-# matched via the {{note:tabs.query}} placeholder in the single tabs entry's prompt -
-# before Thunderbird 154, filtering tabs.query by url/title needs "tabs" even for the
-# add-on's own pages; at/after 154 it does not. Every name in a
+# actually handed over (deduped, in order) + a "sites to judge" list + framing.closing.
+# So the model is only ever sent grounding for the permissions in play - not the whole
+# catalogue. Each entry may carry min_strict_version / max_strict_version (an INCLUSIVE
+# bound on the add-on's strict_min_version, compared at the bound's own precision - so
+# "153" covers the whole 153.* series; adjacent major bounds partition with no gap; an
+# unset version is treated as oldest). No entry currently sets a bound; the
+# tabs/activeTab version pivot instead lives in the `tabs.query` schema-annotation
+# notes, pulled in version-matched via the {{note:tabs.query}} placeholder in the single
+# tabs entry's prompt - before Thunderbird 154, filtering tabs.query by url/title needs
+# "tabs" even for the add-on's own pages; at/after 154 it does not. Every name in a
 # `permissions`
 # list must appear in that entry's `prompt` (a test enforces this - an ungrounded
 # permission just reintroduces guessing).
 # An entry may declare `tokens`: the code-level spellings (API property names,
 # manifest keys, literal strings) of every usage its prompt names as justifying.
 # The unused-permission producer scans the add-on's live code (comments excluded)
-# and manifest for them: a permission whose version-matched entries declare tokens
-# and whose tokens ALL appear nowhere is deterministically unused - a warning
-# finding without any model involvement. An entry WITHOUT tokens (unlimitedStorage:
-# quota/OPFS use is not token-detectable) is deterministically undecidable and its
-# permissions always escalate.
+# and manifest for them and records WHERE each occurs: a permission whose
+# version-matched entries declare tokens and whose tokens ALL appear nowhere is
+# deterministically unused - a warning finding without any model involvement. When a
+# token DOES occur, each occurrence is a SITE the model judges one by one (does the
+# permission get exercised there?), so the model reasons about a concrete line, never
+# a bare yes/no over the whole add-on. An entry WITHOUT tokens (unlimitedStorage:
+# quota/OPFS use is not token-detectable) has no site to point at, so its permissions
+# escalate to a single holistic verdict over the full add-on.
 # Token matching is CASE-SENSITIVE and on WORD BOUNDARIES (\btoken\b) over each
 # source's code atoms and the manifest serialized as JSON (key names and values,
 # including the permissions array itself - a test enforces that no token matches
@@ -901,28 +904,33 @@ deterministic-phase:
 # finding, while an extra spelling merely widens escalation, so list generously.
 permission-prompt-framing:
   preamble: |-
-    Each listed item is a permission this add-on declares in its manifest that
-    static analysis could not confirm is used. Judge each only from what the current
-    code actually does, using the criteria below. Ignore comments, TODOs,
-    documentation, and any stated or implied intention of future use: a permission
-    the current code never exercises is unused even if a comment hints it may be used
-    later.
+    The permissions below are declared in this add-on's manifest but static analysis
+    could not confirm they are used. The full add-on code is shown above, each source
+    line-numbered. Under "Sites to judge" you are given the concrete items to verdict.
+    An item is one of two kinds:
+    - A code SITE, written `<id>: "<permission>" token "<tok>" at <file>:<line>`. The
+      token at that line is already known to be strongly associated with the permission,
+      so the site is a genuine CANDIDATE - do not dismiss it as unrelated or "not really
+      using the permission". The only open question is the discriminator: does THIS site
+      meet the permission's specific criteria below? For an injection permission that is
+      whether the injection targets the right kind of tab (a compose tab for "compose", a
+      message-display tab for "messagesModify"); for a property permission it is whether
+      the code really reads the gated data. Look at the line and the surrounding code and
+      answer only that.
+    - A HOLISTIC item, written `<permission>: no specific site ...`: the permission has
+      no pinpointable token, so judge from the whole add-on whether it is exercised at
+      all.
 
-    Return fail when the current code does not exercise the permission (it is
-    unused). Return unsure when the criteria do not clearly settle it - unsure is the
-    default whenever you cannot plainly decide.
-
-    Return pass ONLY with cited evidence, in the recheck entry's "usages" field: the
-    file and the line number(s) where the current code exercises the permission -
-    each add-on source is shown with every line prefixed by its number ("N: ...") -
-    plus, when the permission lists accepted tokens below, the exact token that
-    appears at that line. For a token that lives in the manifest (a manifest key such
-    as compose_scripts), cite file "manifest.json" with line 1 (the manifest is shown
-    as one block). A pass whose citation cannot be verified against the shown sources
-    is treated as unsure, so cite a real, current line; never guess.
+    Return one recheck entry per id. verdict pass = this site meets the criteria (the
+    permission IS exercised here; for a holistic item, anywhere in the add-on); fail = it
+    does not (e.g. the injection targets a normal web/content tab, not the required tab
+    kind); unsure = you genuinely cannot tell from the code. unsure is the default
+    whenever the criteria do not clearly settle it. Ignore comments, TODOs, documentation,
+    and any stated or implied intention of future use.
   closing: |-
-    Judge each permission from whether the current code actually does what its
-    criteria describe, and cite the line that proves any pass.
+    For each id, take the candidate as given and answer only the discriminator: does the
+    current code at that site (or, for a holistic item, anywhere in the add-on) actually
+    meet the matching permission's criteria?
 
 permission-prompts:
   - permissions: accountsRead
@@ -997,7 +1005,8 @@ permission-prompts:
       "unlimitedStorage" gates no API or property; it raises the browser's storage
       quota. It is justified when the add-on persists non-trivial data - through
       storage.local, IndexedDB, the Cache API, or the Origin Private File System. It
-      has no token to cite: for a pass, cite the file and line of the storage call.
+      has no single site to point at, so this item is judged holistically: pass if the
+      add-on persists such data anywhere, fail if it does not.
   # The Thunderbird-154 own-page exemption is version-dependent, so it lives as two
   # bounded `note` annotations on tabs.query (assets/schema-annotations/tabs.json) and
   # is pulled in version-matched via {{note:tabs.query}} - one entry, no version bound.
@@ -1018,44 +1027,55 @@ permission-prompts:
       tabId passed to menus.overrideContext and by a urls filter on tabs.onUpdated.
       A broad host permission like "<all_urls>" usually makes "tabs" redundant for reads.
   - permissions: activeTab
+    # Namespace-qualified (dotted) tokens: matched against the resolved api-usage
+    # (tabs.executeScript vs scripting.executeScript), not a bare `executeScript` word -
+    # so only real injection CALLS count, never a stray identifier.
     tokens:
-      - executeScript
-      - insertCSS
+      - tabs.executeScript
+      - tabs.insertCSS
+      - scripting.executeScript
+      - scripting.insertCSS
     prompt: |-
       The "activeTab" permission is justified, if a script or CSS is injected into an active
       CONTENT tab (a web page) by ANY of the following methods: tabs.executeScript, tabs.insertCSS,
       scripting.executeScript or scripting.insertCSS. A host permission matching the tab's url
       (e.g. "<all_urls>") is the alternative and makes "activeTab" redundant.
   - permissions: compose
-    # `attachments` covers the compose-gated attachments property a menus
-    # OnClickData/OnShowData reports.
+    # The injection tokens are namespace-qualified (dotted): resolved against the
+    # api-usage analysis, so only real tabs.*/scripting.* calls count. `attachments` is a
+    # bare property token (a menus OnClickData/OnShowData read). The compose_scripts
+    # manifest key is NOT a token here: it grounds compose deterministically (its
+    # required_permissions annotation, before this recheck), so the LLM never judges it.
     tokens:
-      - compose_scripts
-      - executeScript
-      - insertCSS
+      - tabs.executeScript
+      - tabs.insertCSS
+      - scripting.executeScript
+      - scripting.insertCSS
       - attachments
     prompt: |-
       The "compose" permission is REQUIRED, if a script or CSS is injected into a
-      COMPOSE tab by ANY of the following methods: the compose_scripts manifest key,
-      tabs.executeScript, tabs.insertCSS, scripting.executeScript or scripting.insertCSS.
+      COMPOSE tab by tabs.executeScript, tabs.insertCSS, scripting.executeScript or
+      scripting.insertCSS.
   - permissions: messagesModify
+    # Namespace-qualified (dotted) injection tokens, resolved against the api-usage
+    # analysis. message_display_scripts is NOT a token here: it grounds messagesModify
+    # deterministically (its required_permissions annotation), so the LLM never judges it.
     tokens:
-      - message_display_scripts
-      - executeScript
-      - insertCSS
+      - tabs.executeScript
+      - tabs.insertCSS
+      - scripting.executeScript
+      - scripting.insertCSS
     prompt: |-
       The "messagesModify" permission is REQUIRED, if a script or CSS is injected into a
-      MESSAGE-DISPLAY tab by ANY of the following methods: the message_display_scripts manifest
-      key, tabs.executeScript, tabs.insertCSS, scripting.executeScript or scripting.insertCSS.
-  - permissions: scripting
-    tokens:
-      - message_display_scripts
-      - executeScript
-      - insertCSS
-    prompt: |-
-      In an MV3 add-on, the "scripting" permission is REQUIRED, if a script or CSS is
-      injected into a MESSAGE-DISPLAY tab by ANY of the following methods: the
-      message_display_scripts manifest key, scripting.executeScript or scripting.insertCSS.
+      MESSAGE-DISPLAY tab by tabs.executeScript, tabs.insertCSS, scripting.executeScript
+      or scripting.insertCSS.
+  # No "scripting" entry: unlike compose/messagesModify (which need the semantic judgment
+  # of WHICH kind of tab the injection targets), "scripting" is guarded at the namespace
+  # level (the scripting schema namespace declares permissions: ["scripting"]), so ANY
+  # scripting.* call grounds it deterministically in analyzePermissions - there is no
+  # ambiguous case for the LLM to judge. It is also grounded by the message_display_scripts
+  # manifest key (before Thunderbird 154). A declared-but-unused scripting therefore has no
+  # prompt here and falls to manual review, like any other permission the recheck cannot judge.
 
 # An llm-check carries a `prompt` (the rubric sent to the LLM for an ambiguous
 # case) and an `instructions` (the message printed when the case is routed to
@@ -1284,11 +1304,6 @@ post-summary-phase:
   severity: warning
   check: unused-permission-recheck
   permission-recheck: true
-  # A pass must cite locatable evidence ({file, line(s)}, plus the accepted token when
-  # the permission lists one), verified against the numbered corpus in resolveRecheck;
-  # an unverifiable pass is downgraded to unsure -> manual. Only this consumer opts in
-  # (its rubric asks for citations); the other rechecks keep the plain pass -> drop.
-  require-citation: true
   response: |-
     One or more declared permissions are unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If a permission is in fact used, please specify which part of your add-on stops working if it is removed.
   instructions: |-

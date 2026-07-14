@@ -1,6 +1,0 @@
-{
-  "_comment": "SCA review (src/ + xpi/, XPI minified so SCA is required) exercising require-citation through the SOURCE summary pass. All three permissions escalate to unused-permission-recheck (SCA is deterministically undecidable); the source pass (llm.js) returns: messagesRead pass with a VALID citation (relatedMessageId at bg.js:6, verified against the SOURCE corpus via ctxForRule) -> dropped (absent below); accountsRead pass citing displayedFolder at the WRONG line -> unverifiable -> manual review; compose fail -> the finding here. Proves citation verifies against the recheck's producer corpus (source), and covers the source x SCA matrix cell + the SCA two-pass source summary. The rendered golden locks the dropped/manual/finding split.",
-  "expect": {
-    "unused-permission-recheck": ["manifest.json:6"]
-  }
-}

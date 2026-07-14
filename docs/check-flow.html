@@ -522,11 +522,11 @@ flowchart LR
         a <strong>post-summary recheck consumer</strong>: the loader forbids it an
         <code>input</code>, so <code>routeCtx</code> leaves it on the main ctx — it needs
         <code>ctx.recheck</code> / <code>ctx.recheckVerdicts</code> — even though the items it
-        re-judges belong to its <em>producer&rsquo;s</em> artifact. That producer corpus is
-        recovered separately by <code>ctxForRule</code> (via <code>labelInput</code>), the same
-        resolver the report&rsquo;s [XPI]/[SCA] labels and the folder-collapse use. It is also
-        the corpus a citation is verified against, so an SCA XPI-anchored recheck cites the
-        built XPI while still running on the source ctx.
+        re-judges belong to its <em>producer&rsquo;s</em> artifact. Each handed item already
+        carries every locus it needs (the producer stamps them before diverting), so the
+        consumer reads no other artifact. The producer corpus is still recovered by
+        <code>ctxForRule</code> (via <code>labelInput</code>) for the report&rsquo;s
+        [XPI]/[SCA] labels and the folder-collapse.
       </p>
 
       <h2>The orchestrator</h2>
@@ -734,49 +734,47 @@ flowchart TB
           its own <code>run()</code>, so it fully owns the interpretation of its output.
         </li>
         <li>
-          A <strong>post-summary consumer</strong> has no such hook. All six delegate to the
-          shared <code>resolveRecheck()</code>, which reads the handed items and their
-          verdicts and applies one uniform mapping. It is generic, but not blind: a consumer
-          that opts in with <code>require-citation</code> has each <code>pass</code> verified
-          against the numbered corpus (<code>verifyCitation</code>,
-          <code>src/lib/citation.js</code>) — an ungrounded pass (no evidence, an invalid
-          token, a token absent from or off the cited line) is downgraded to
-          <code>unsure&nbsp;→&nbsp;manual</code>, so a hallucinated &ldquo;it&rsquo;s
-          used&rdquo; cannot silently drop a real issue.
-          <code>unused-permission-recheck</code> is the first to require it.
+          A <strong>post-summary consumer</strong> has no such hook. Five delegate to the
+          shared <code>resolveRecheck()</code> — read the handed items and their verdicts,
+          apply one uniform mapping (<code>pass</code>&nbsp;→&nbsp;drop,
+          <code>fail</code>&nbsp;→&nbsp;finding, else manual). The
+          <code>unused-permission-recheck</code> consumer instead uses
+          <code>resolvePermissionRecheck()</code>, because its items are judged
+          <strong>per token site</strong> and must be aggregated back up to the permission
+          (see below).
         </li>
       </ul>
 
       <p>
-        The evidence is what makes a <code>pass</code> auditable. The add-on-summary corpus
-        is line-numbered (<code>numberLines</code>), the framing tells the model a
-        <code>pass</code> is valid only with a cited <code>{file, line(s), token?}</code> in
-        the recheck entry&rsquo;s <code>usages</code>, and <code>resolveRecheck</code> checks
-        it against the real file (structural for every file; the token must also be an
-        accepted one, present in the file&rsquo;s comment-free code at the cited line). The
-        residual is honest: this catches an <em>ungrounded</em> pass, not a wrong judgment
-        about a real usage.
+        The permission recheck is where the summary earns its keep. The
+        <code>unused-permission</code> producer does not just decide whether a
+        permission&rsquo;s usage tokens are present — it records <em>where</em> each occurs.
+        Each token <strong>site</strong> (<code>file:line</code>) is handed to the summary as
+        its own item, and the model — seeing the full, line-numbered add-on — judges each:
+        is the permission exercised there? A token-less permission
+        (<code>unlimitedStorage</code>) has no site, so it gets one holistic verdict.
+        <code>resolvePermissionRecheck</code> then aggregates a permission&rsquo;s sites: any
+        <code>pass</code> drops it (justified), every <code>fail</code> flags it (unused),
+        anything else falls to manual. Because the orchestrator owns the sites, the model
+        only judges given lines — there is nothing to cite and nothing to hallucinate, and a
+        single site&rsquo;s verdict never decides the whole permission.
       </p>
       <div class="flow">
         <pre class="mermaid">
 ---
-title: resolveRecheck() — a handed item's verdict → outcome
+title: resolvePermissionRecheck() — token sites → permission outcome
 ---
 flowchart LR
-  V{{"summary verdict<br/>for a handed item"}}
-  V -- fail --> FND["finding"]
-  V -- "unsure / no verdict" --> MAN["manual review"]
-  V -- pass --> RQ{{"consumer requires<br/>citation?"}}
-  RQ -- no --> DROP["drop (used)"]
-  RQ -- yes --> VC{{"verifyCitation():<br/>cited file+line (and token)<br/>real in the corpus?"}}
-  VC -- verified --> DROP
-  VC -- "unverifiable" --> MAN
+  V{{"summary verdicts for a<br/>permission's token sites<br/>(or one holistic verdict)"}}
+  V -- "any site pass" --> DROP["drop (justified)"]
+  V -- "every site fail" --> FND["finding (unused)"]
+  V -- "mixed / unsure / no verdict" --> MAN["manual review"]
 
   classDef work fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
   classDef term fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
   classDef fail fill:#fdecea,stroke:#c0392b,color:#7b241c;
-  class V,RQ,VC work;
+  class V work;
   class DROP term;
   class MAN manual;
   class FND fail;
@@ -792,9 +790,10 @@ flowchart LR
         summary interleave), <code>src/checks/escalation.js</code>
         (<code>runLlmCheck</code>, <code>manualEscalations</code>),
         <code>src/lib/recheck.js</code> (<code>buildRecheckSections</code>,
-        <code>resolveRecheck</code>), <code>src/lib/citation.js</code>
-        (<code>verifyCitation</code> — the cited-evidence check),
-        <code>src/lib/unused-folders.js</code>
+        <code>resolveRecheck</code>, <code>resolvePermissionRecheck</code>),
+        <code>src/lib/permissions.js</code>
+        (<code>enumerateUnusedPermissions</code>, <code>locateTokens</code> — the token
+        sites), <code>src/lib/unused-folders.js</code>
         (<code>collapseUnusedFolders</code>), <code>src/pipeline.js</code>
         (<code>runPipeline</code> — Phase&nbsp;5 calls <code>runChecks</code> and assembles the
         <code>Review</code>), and the phase sections of <code>assets/registry.yaml</code>.

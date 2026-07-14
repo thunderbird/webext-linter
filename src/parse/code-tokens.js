@@ -1,48 +1,51 @@
 // The code-text atoms of a source: every identifier name, string-literal value,
-// template-literal text and regex pattern, joined into one newline-separated
-// string. A textual presence test - "does token T occur in the CODE?" - reads
-// this instead of the raw source, so it sees code and never comments: the atoms
-// come from AST nodes, which carry no comment text, exactly the way every other
-// analysis scanner ignores comments by walking the parse tree rather than the
-// source string. Newlines separate atoms so a substring match cannot span two of
-// them (permission tokens are word-like and never contain a newline).
+// template-literal text and regex pattern, each with its 1-based source line. A
+// token scan - "does token T occur in the CODE, and where?" - reads these instead
+// of the raw source, so it sees code and never comments: the atoms come from AST
+// nodes, which carry no comment text, exactly the way every other analysis scanner
+// ignores comments by walking the parse tree rather than the source string. Each
+// atom carries its line so the unused-permission recheck can POINT the model at a
+// token occurrence, not only test presence.
 //
-// Belongs here: collecting the code-text atoms from a parsed AST. Does NOT belong
-// here: deciding what to search for - that is the consumer's (e.g. the
-// unused-permission token scan in src/lib/permissions.js). Babel access
+// Belongs here: collecting the code-text atoms (value + line) from a parsed AST.
+// Does NOT belong here: deciding what to search for - that is the consumer's (e.g.
+// the unused-permission token scan in src/lib/permissions.js). Babel access
 // goes through src/parse/ast.js.
 
-import { parseJs, traverse } from "./ast.js";
+import { parseJs, traverse, nodeLoc } from "./ast.js";
 
 /**
  * @param {string} code  JavaScript source text.
+ * @param {number} [lineOffset]  Added to each atom's line (for inline scripts).
  * @param {import("./ast.js").ParseResult} [parsed]  Reuse this parse of `code`
  *   instead of re-parsing it.
- * @returns {{text: string, parseError: string|null}}  `text` is the newline-joined
- *   code-text atoms (empty on a fatal parse).
+ * @returns {{atoms: {value: string, line: number}[], parseError: string|null}}
+ *   `atoms` pairs each value with its source line (empty on a fatal parse).
  */
-export function scanCodeText(code, parsed) {
+export function scanCodeText(code, lineOffset = 0, parsed) {
   const { ast, parseError } = parsed ?? parseJs(code);
   if (parseError || !ast) {
-    return { text: "", parseError: parseError ?? null };
+    return { atoms: [], parseError: parseError ?? null };
   }
   const atoms = [];
+  const push = (node, value) => {
+    if (value) {
+      atoms.push({ value, line: nodeLoc(node, lineOffset).line });
+    }
+  };
   traverse(ast, {
     Identifier(path) {
-      atoms.push(path.node.name);
+      push(path.node, path.node.name);
     },
     StringLiteral(path) {
-      atoms.push(path.node.value);
+      push(path.node, path.node.value);
     },
     TemplateElement(path) {
-      const value = path.node.value?.cooked ?? path.node.value?.raw;
-      if (value) {
-        atoms.push(value);
-      }
+      push(path.node, path.node.value?.cooked ?? path.node.value?.raw);
     },
     RegExpLiteral(path) {
-      atoms.push(path.node.pattern);
+      push(path.node, path.node.pattern);
     },
   });
-  return { text: atoms.join("\n"), parseError: null };
+  return { atoms, parseError: null };
 }

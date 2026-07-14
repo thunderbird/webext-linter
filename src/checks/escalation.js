@@ -47,6 +47,10 @@ import { wrapText } from "../util/text.js";
  * @property {"escalation"|"llm-error"} kind  Picks the registry message used.
  * @property {Record<string, string|number>|null} data  Extra `{{slot}}` values
  *   for the instructions template (null when the case carries none).
+ * @property {?{id: string, file: string, line: ?number, token: string}[]}
+ *   occurrences  For a post-summary recheck: the token sites the model judges one
+ *   by one (the unused-permission recheck). Null/empty means judge the item
+ *   holistically (a token-less permission).
  */
 
 /**
@@ -105,8 +109,9 @@ export async function runLlmCheck(ctx, check, step) {
 /**
  * @param {LoadedCheck} check
  * @param {{item?: ?string, hint?: ?string, file?: ?string, loc?: object,
- *   data?: object}} c  The manual case: its `{{item}}` token, an optional per-locus
- *   `hint`, an optional locus (file/loc), and data.
+ *   data?: object, occurrences?: object[]}} c  The manual case: its `{{item}}`
+ *   token, an optional per-locus `hint`, an optional locus (file/loc), data, and -
+ *   for a recheck - the token occurrences to judge.
  * @param {"escalation"|"llm-error"} kind
  * @returns {ManualRef}
  */
@@ -119,6 +124,7 @@ function manualRef(check, c, kind) {
     loc: c.loc ?? null,
     kind,
     data: c.data ?? null,
+    occurrences: c.occurrences ?? null,
   };
 }
 

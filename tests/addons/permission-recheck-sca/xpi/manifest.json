@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Citation permission (SCA)",
+  "name": "Permission recheck (SCA)",
   "version": "1.0",
-  "description": "SCA review: declared permissions escalate to the unused-permission recheck, re-judged by the source summary pass with cited evidence.",
+  "description": "SCA review: declared permissions escalate to the unused-permission recheck, re-judged per occurrence by the source summary pass.",
   "permissions": ["messagesRead", "accountsRead", "compose"],
   "background": { "scripts": ["background.js"] },
   "icons": { "16": "icon.png", "48": "icon.png" }

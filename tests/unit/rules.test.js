@@ -74,7 +74,7 @@ import strictMinVersionApi from "../../src/checks/rules/strict-min-version-api.j
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex, SchemaIndex } from "../../src/schema/index.js";
 import { collectJsSources } from "../../src/addon/sources.js";
-import { runExtractionPass } from "../../src/checks/extract.js";
+import { runExtractionPass, apiUsageOf } from "../../src/checks/extract.js";
 import { parseVendorManifest } from "../../src/normalize/vendor.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -1160,7 +1160,12 @@ const PERMISSION_TOKEN_RECHECK = {
   permissionPrompts: [
     {
       permissions: ["compose"],
-      tokens: ["compose_scripts", "executeScript", "insertCSS"],
+      tokens: [
+        "tabs.executeScript",
+        "tabs.insertCSS",
+        "scripting.executeScript",
+        "scripting.insertCSS",
+      ],
       minStrictVersion: null,
       maxStrictVersion: null,
     },
@@ -1185,9 +1190,11 @@ test("unused-permission decides token-absent permissions deterministically", () 
     permissions: ["compose", "cookies", "storage", "unlimitedStorage"],
     background: { scripts: ["bg.js"] },
   };
-  // The only executeScript mention is a comment - it must not ground "compose";
-  // the cookieStoreId in live code grounds "cookies". Extraction populates
-  // codeText (the comment-free atoms) on the authored source, as in production.
+  // "compose" uses dotted (api-resolved) injection tokens, and there is no resolved
+  // tabs.*/scripting.* injection call here (the comment names tabs.executeScript, but a
+  // comment is never a call, and apiUsages is empty), so compose is deterministically
+  // unused. The bare "cookieStoreId" token in live code grounds "cookies" via the atom
+  // scan. Extraction populates codeAtoms (the comment-free atoms) on the authored source.
   const code = [
     "// tabs.executeScript(1, { file: 'x.js' }) would need a permission",
     "browser.tabs.create({ url: 'a.html', cookieStoreId: store });",
@@ -1218,6 +1225,133 @@ test("unused-permission decides token-absent permissions deterministically", () 
     "storage",
     "unlimitedStorage",
   ]);
+  // cookies escalated because its token is PRESENT in live code but not API-grounded:
+  // the located site rides along so the recheck can judge it per occurrence.
+  assert.deepEqual(
+    out.escalations.find((e) => e.item === "cookies").occurrences,
+    [{ id: "cookies#1", file: "bg.js", line: 2, token: "cookieStoreId" }]
+  );
+  // A token-less permission (unlimitedStorage) escalates holistically - no sites. A
+  // permission with no prompt entry (storage) likewise has no tokens, so no sites.
+  assert.deepEqual(
+    out.escalations.find((e) => e.item === "unlimitedStorage").occurrences,
+    []
+  );
+  assert.deepEqual(
+    out.escalations.find((e) => e.item === "storage").occurrences,
+    []
+  );
+});
+
+// The NON-AUTHORED bundle path for a BARE token: a vendored bundle has no codeAtoms, so
+// its raw text is scanned line by line (with its lineOffset applied).
+test("unused-permission locates a bare token in a non-authored bundle (raw scan)", () => {
+  const manifest = { manifest_version: 2, permissions: ["cookies"] };
+  const bundle = "// vendored\nvar a = opts.cookieStoreId;";
+  const jsSources = [{ file: "lib.js", code: bundle, lineOffset: 5 }];
+  runExtractionPass(jsSources, { schema, nonAuthored: new Set(["lib.js"]) });
+  const ctx = {
+    schema,
+    jsSources,
+    apiUsages: [],
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+        ["lib.js", Buffer.from(bundle)],
+      ]),
+    },
+  };
+  const out = unusedPermissionProducer.run(withManifest(ctx), {
+    recheckData: PERMISSION_TOKEN_RECHECK,
+  });
+  // cookieStoreId located in the non-authored bundle via the raw-line scan, lineOffset
+  // applied (source line 2 + offset 5).
+  assert.deepEqual(
+    out.escalations.find((e) => e.item === "cookies").occurrences,
+    [{ id: "cookies#1", file: "lib.js", line: 7, token: "cookieStoreId" }]
+  );
+});
+
+// DOTTED (namespace-qualified) injection tokens are resolved against the api-usage
+// analysis, not the text scan: only a real tabs.*/scripting.* CALL counts. This is both
+// the noise reduction (a bare identifier, a property read on a local, and a comment do
+// NOT match) and the tabs-vs-scripting precision. It also covers the split dispatch
+// (compose's dotted tokens via api-usage AND cookies' bare token via the atom scan in one
+// run) and the per-line dedup (two injection calls on one line collapse to one site).
+test("unused-permission resolves dotted injection tokens via api-usage; bare tokens via atoms", () => {
+  const manifest = {
+    manifest_version: 3,
+    permissions: ["compose", "messagesModify", "activeTab", "cookies"],
+    background: { scripts: ["bg.js"] },
+  };
+  const code = [
+    "// browser.tabs.executeScript(x) in a comment must NOT count", // line 1
+    "browser.tabs.executeScript(t, { code: 'a' });", // line 2 -> tabs.executeScript
+    "messenger.scripting.insertCSS(t, { css: 'b' });", // line 3 -> scripting.insertCSS
+    "const bare = executeScript;", // line 4 -> bare identifier, NOT a call
+    "function f(tab) { return tab.executeScript; }", // line 5 -> property on a local, NOT a call
+    "browser.tabs.executeScript(a); browser.scripting.executeScript(b);", // line 6 -> two calls, one line
+    "const c = obj.cookieStoreId;", // line 7 -> bare token (cookies), atom scan
+  ].join("\n");
+  const jsSources = [{ file: "bg.js", code, lineOffset: 0 }];
+  runExtractionPass(jsSources, { schema });
+  const ctx = withManifest({
+    schema,
+    jsSources,
+    apiUsages: [{ file: "bg.js", ...apiUsageOf(jsSources[0]) }],
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+        ["bg.js", Buffer.from(code)],
+      ]),
+    },
+  });
+  const recheckData = {
+    permissionPrompts: [
+      ...["compose", "messagesModify", "activeTab"].map((p) => ({
+        permissions: [p],
+        tokens: [
+          "tabs.executeScript",
+          "tabs.insertCSS",
+          "scripting.executeScript",
+          "scripting.insertCSS",
+        ],
+        minStrictVersion: null,
+        maxStrictVersion: null,
+      })),
+      {
+        permissions: ["cookies"],
+        tokens: ["cookieStoreId"],
+        minStrictVersion: null,
+        maxStrictVersion: null,
+      },
+    ],
+  };
+  const out = unusedPermissionProducer.run(ctx, { recheckData });
+  const linesOf = (perm) =>
+    out.escalations
+      .find((e) => e.item === perm)
+      .occurrences.map((o) => o.line)
+      .sort((a, b) => a - b);
+  // Only the resolved injection CALLS (lines 2, 3, and 6 - deduped to one) count; the
+  // comment (1), bare identifier (4), and local property read (5) contribute nothing.
+  for (const p of ["compose", "messagesModify", "activeTab"]) {
+    assert.deepEqual(linesOf(p), [2, 3, 6], p);
+    // every injection occurrence carries a dotted (namespace-qualified) token.
+    assert.ok(
+      out.escalations
+        .find((e) => e.item === p)
+        .occurrences.every((o) => o.token.includes(".")),
+      `${p} occurrences are dotted`
+    );
+  }
+  // Bare token still resolved via the atom scan, in the SAME run (split dispatch).
+  assert.deepEqual(
+    out.escalations.find((e) => e.item === "cookies").occurrences,
+    [{ id: "cookies#1", file: "bg.js", line: 7, token: "cookieStoreId" }]
+  );
 });
 
 // The compose_scripts manifest key requires compose (the required_permissions
@@ -1589,10 +1723,12 @@ test("unused-permission escalates unlimitedStorage (gates no API)", () => {
 
 // ---- unused-permission-recheck (recheck consumer) ----
 // Given the items handed to it (ctx.recheck) and the summary's verdicts
-// (ctx.addon.recheck), it maps each: fail -> a warning finding carrying the reason
-// on the permission's manifest line, pass -> dropped, unsure -> a manual-review
-// escalation. The mapping itself is resolveRecheck (see recheck.test.js); this
-// confirms the module is wired to it.
+// (ctx.addon.recheck), it aggregates per permission: fail -> a warning finding on the
+// permission's manifest line, pass -> dropped, unsure -> a manual-review escalation.
+// The finding/manual are deliberately reason-free (the model's reasons live only in
+// the AI summary). These items carry no located sites, so each is judged holistically
+// (keyed by the permission itself). The aggregation is resolvePermissionRecheck (see
+// recheck.test.js); this confirms the module is wired to it.
 test("unused-permission-recheck maps the summary's recheck verdicts to findings + escalations", () => {
   const check = { id: "unused-permission-recheck" };
   const ctx = {
@@ -1647,13 +1783,11 @@ test("unused-permission-recheck maps the summary's recheck verdicts to findings 
   const out = unusedPermissionRecheck.run(withManifest(ctx), check);
   assert.equal(out.findings.length, 1);
   assert.equal(out.findings[0].item, "tabs"); // fail -> finding
-  assert.equal(out.findings[0].data.reason, "no tab property read");
   assert.equal(out.findings[0].loc.line, 4); // the permission's manifest line
   assert.deepEqual(
     out.escalations.map((e) => e.item),
     ["downloads"] // unsure -> manual; storage (pass) is dropped
   );
-  assert.equal(out.escalations[0].data.reason, "cannot tell");
 });
 
 test("unused-permission-recheck is a no-op with nothing handed over", () => {

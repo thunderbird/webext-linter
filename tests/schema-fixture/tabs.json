@@ -19,6 +19,14 @@
         "parameters": [
           { "name": "queryInfo", "type": "object", "properties": {} }
         ]
+      },
+      {
+        "name": "executeScript",
+        "parameters": [{ "name": "details", "type": "object", "properties": {} }]
+      },
+      {
+        "name": "insertCSS",
+        "parameters": [{ "name": "details", "type": "object", "properties": {} }]
       }
     ]
   }

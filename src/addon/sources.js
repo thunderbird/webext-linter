@@ -64,8 +64,9 @@ import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
  * @property {Set<string>} [webApiPerms]  scanWebApiCalls grounded permissions
  *   (against ALL web_api signatures; the consumer intersects with declared) - EVERY source
  *   (a vendored library's navigator.* call grounds the permission just as authored code does).
- * @property {string} [codeText]  scanCodeText comment-free code-text atoms, joined,
- *   for the unused-permission token-presence test - authored (non-authored raw).
+ * @property {{value: string, line: number}[]} [codeAtoms]  scanCodeText comment-free
+ *   code-text atoms with their source lines, for the unused-permission token scan
+ *   (presence + occurrence location) - authored only (non-authored searched raw).
  */
 
 /**

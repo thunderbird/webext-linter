@@ -450,9 +450,9 @@ export function escapeRegExp(s) {
 }
 
 /**
- * A regexp matching `token` as a whole word (case-sensitive) - the shared basis for
- * grounding a usage token in code (permissions.presentTokens, citation.verifyCitation),
- * so both settle a token by the same word-boundary rule.
+ * A regexp matching `token` as a whole word (case-sensitive) - the basis for
+ * grounding a usage token in code (permissions.locateTokens), so a permission is
+ * settled by a stable word-boundary rule.
  * @param {string} token @returns {RegExp}
  */
 export function wholeWordRe(token) {

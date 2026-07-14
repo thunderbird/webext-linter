@@ -74,7 +74,7 @@ export function wrap(nonce, label, body, attr) {
 
 /**
  * Wrap one add-on file: a json-escaped path (so it cannot smuggle a marker) plus the
- * verbatim body, newlines intact for readability and line citation.
+ * verbatim body, newlines intact for readability and line references.
  * @param {string} nonce @param {string} path @param {string} body
  * @returns {string}
  */
@@ -88,12 +88,12 @@ export function wrapFile(nonce, path, body) {
 }
 
 /**
- * Prefix each line with its 1-based number ("N: line"), so the model can cite a
- * line or range it can see and the citation verifier can check the same line in the
- * real file. The numbers are the file's physical 1-based lines, so a caller must
- * number the SAME text it wraps. Applied only at the add-on-summary corpus - the
- * one place a recheck pass must cite evidence - never inside wrapFile, whose other
- * callers stay unnumbered.
+ * Prefix each line with its 1-based number ("N: line"), so the model can locate the
+ * file:line sites the permission recheck points it at (each token occurrence is given
+ * as file:line). The numbers are the file's physical 1-based lines, so a caller must
+ * number the SAME text it wraps. Applied only at the add-on-summary corpus - the one
+ * place a recheck judges concrete sites - never inside wrapFile, whose other callers
+ * stay unnumbered.
  * @param {string} body
  * @returns {string}
  */

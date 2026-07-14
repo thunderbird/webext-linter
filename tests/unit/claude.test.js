@@ -135,44 +135,6 @@ test("coerceReview survives hostile shapes", () => {
   assert.deepEqual(r, { summary: "", recheck: [] });
 });
 
-// The optional `usages` evidence for a pass: well-formed entries survive (token
-// optional), malformed entries are dropped, and an all-malformed, empty, or non-array
-// list omits the field entirely rather than leaving [] on the entry.
-test("coerceReview keeps well-formed usages and omits empty ones", () => {
-  const r = coerceReview({
-    summary: "S",
-    recheck: [
-      {
-        check: "c",
-        item: "compose",
-        verdict: "pass",
-        usages: [
-          { file: "background.js", lines: "40-45", token: "executeScript" },
-          { file: "manifest.json", lines: "1", token: "compose_scripts" },
-          { file: "b.js", lines: "12" }, // token optional -> kept without it
-          { file: "d.js", lines: "5", token: 9 }, // bad token type -> kept, token dropped
-          { file: "", lines: "3", token: "x" }, // empty file -> dropped
-          { file: "c.js", token: "y" }, // no lines -> dropped
-          { lines: "3" }, // no file -> dropped
-          "junk", // non-object -> dropped
-        ],
-      },
-      { check: "c", item: "downloads", verdict: "pass", usages: [] }, // empty -> omitted
-      { check: "c", item: "tabs", verdict: "pass", usages: "no" }, // non-array -> omitted
-      { check: "c", item: "menus", verdict: "pass" }, // absent -> omitted
-    ],
-  });
-  assert.deepEqual(r.recheck[0].usages, [
-    { file: "background.js", lines: "40-45", token: "executeScript" },
-    { file: "manifest.json", lines: "1", token: "compose_scripts" },
-    { file: "b.js", lines: "12" },
-    { file: "d.js", lines: "5" },
-  ]);
-  assert.ok(!("usages" in r.recheck[1]));
-  assert.ok(!("usages" in r.recheck[2]));
-  assert.ok(!("usages" in r.recheck[3]));
-});
-
 // Pins the default model to the Sonnet tier so the client does not silently
 // default to a different (e.g. more expensive) model family.
 test("DEFAULT_MODEL_CLAUDE is a sonnet model", () => {

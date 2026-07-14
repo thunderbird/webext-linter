@@ -1,0 +1,16 @@
+[
+  {
+    "namespace": "scripting",
+    "permissions": ["scripting"],
+    "functions": [
+      {
+        "name": "executeScript",
+        "parameters": [{ "name": "injection", "type": "object", "properties": {} }]
+      },
+      {
+        "name": "insertCSS",
+        "parameters": [{ "name": "injection", "type": "object", "properties": {} }]
+      }
+    ]
+  }
+]

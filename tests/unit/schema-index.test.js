@@ -141,9 +141,11 @@ test("the bundled extensionScripts overlay grounds manifest-key permissions end-
     [["compose"]]
   );
   const md = idx.manifestKeyPermissions.get("message_display_scripts");
+  // Two version-partitioned entries: 154+ needs messagesModify; <=153 needs both
+  // messagesModify AND scripting (scripting's requirement was dropped in 154).
   assert.deepEqual(
     md.map((e) => e.permissions),
-    [["messagesModify"], ["scripting"]]
+    [["messagesModify"], ["messagesModify", "scripting"]]
   );
   assert.equal(md[1].maxStrictVersion, "153");
 });

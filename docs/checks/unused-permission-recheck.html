@@ -23,42 +23,47 @@
         re-judges each one with full context.
       </p>
       <p>
-        For each handed-over permission it maps the summary's verdict: a justified
-        (<code>pass</code>) verdict drops the permission, an unused verdict becomes a
-        warning that the permission appears unused, and an unsure verdict — or no
-        verdict at all, when the summary was skipped or failed — routes the permission
-        back to manual review. The model's per-permission reason rides along into the
-        developer-facing wording. With no summary nothing is handed over, so this
-        check emits nothing and the producer's reminder stands instead.
+        Crucially, the producer does not just decide whether a permission&rsquo;s tokens
+        are <em>present</em> — it records <em>where</em> each occurs. A token-bearing
+        permission is handed over with its list of token <strong>sites</strong>
+        (<code>file:line</code>), and the summary judges <strong>each site</strong>:
+        seeing the full, line-numbered add-on, is the permission actually exercised
+        there? A token-less permission (such as <code>unlimitedStorage</code>, whose
+        quota use has no reliable token) has no site to point at, so it gets one
+        <strong>holistic</strong> verdict over the whole add-on.
       </p>
       <p>
-        A <code>pass</code> must be <em>earned</em>. The model has to cite the file and
-        line — and, when the permission lists accepted tokens, the token — that proves
-        the use, and <code>resolveRecheck</code> verifies that citation against the
-        numbered add-on corpus (<code>verifyCitation</code>,
-        <code>src/lib/citation.js</code>): the cited token must be an accepted one and
-        appear in the file&rsquo;s comment-free code at the cited line. A pass whose
-        evidence does not check out — no citation, an unaccepted token, or a token
-        absent from or off the cited line — is downgraded to <code>unsure</code> and
-        reviewed by hand, so a hallucinated pass cannot silently drop a real issue. The
-        rubric it judges against is assembled per review from the registry&rsquo;s
+        <code>resolvePermissionRecheck</code> then <strong>aggregates</strong> the site
+        verdicts per permission: if any site is exercised (<code>pass</code>) the
+        permission is justified and dropped; if every site is definitively not
+        (<code>fail</code>) it becomes a warning that the permission appears unused;
+        anything else — a mix, all unsure, or no verdict at all when the summary was
+        skipped or failed — routes the permission back to manual review. So one
+        site&rsquo;s answer never decides a whole permission alone, and a model that
+        points a permission at concrete lines cannot wave it through on a bare yes/no.
+        Because the orchestrator owns the sites, the model only judges them — there is
+        no citation to hallucinate. With no summary nothing is handed over, so this
+        check emits nothing and the producer&rsquo;s reminder stands instead. The rubric
+        it judges against is assembled per review from the registry&rsquo;s
         <code>permission-prompts</code>, carrying only the sections for the permissions
-        in play (each with its accepted tokens) and the <code>tabs</code> wording that
-        matches the add-on&rsquo;s <code>strict_min_version</code> (the D308076 fix).
+        in play and the <code>tabs</code> wording that matches the add-on&rsquo;s
+        <code>strict_min_version</code> (the D308076 fix).
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Permissions handed over by<br/>unused-permission"] --> P{"Any items handed over?<br/>(only when summary ran)"}
+  A["Permissions handed over by<br/>unused-permission<br/>(each with its token sites)"] --> P{"Any items handed over?<br/>(only when summary ran)"}
   P -- no --> S([skip — nothing handed over;<br/>producer's reminder stands])
-  P -- yes --> V{"Summary verdict for<br/>this permission?"}
-  V -- "pass (justified)" --> C{"Cited evidence verifies?<br/>(verifyCitation)"}
-  C -- yes --> OK([no finding — drop])
-  C -- no --> ESC
-  V -- "fail (unused)" --> WARN([WARNING: permission<br/>appears unused])
-  V -- "unsure / no verdict" --> ESC([escalate to manual review])
+  P -- yes --> K{"Token-bearing?"}
+  K -- "yes (per-site)" --> J["Summary verdicts each<br/>token site: exercised here?"]
+  K -- "no (token-less)" --> H["Summary gives one<br/>holistic verdict"]
+  J --> AGG{"Aggregate the<br/>permission's sites"}
+  H --> AGG
+  AGG -- "any site pass" --> OK([no finding — drop])
+  AGG -- "every site fail" --> WARN([WARNING: permission<br/>appears unused])
+  AGG -- "mixed / unsure / no verdict" --> ESC([escalate to manual review])
 
   classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -73,16 +78,16 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told that a specific permission appears to be unused, with the
-        summary's reason, and is asked to remove it or to say which part of the
-        add-on stops working without it.
+        The add-on is told that a specific permission appears to be unused, and is asked
+        to remove it or to say which part of the add-on stops working without it.
       </div>
 
       <p class="source-note">
-        Source of truth: <code>src/checks/rules/unused-permission-recheck.js</code>,
-        <code>resolveRecheck</code> (<code>src/lib/recheck.js</code>) and
-        <code>verifyCitation</code> (<code>src/lib/citation.js</code>), and its
-        <code>require-citation</code> entry in <code>assets/registry.yaml</code>.
+        Source of truth: <code>src/checks/rules/unused-permission-recheck.js</code> and
+        <code>resolvePermissionRecheck</code> (<code>src/lib/recheck.js</code>); the
+        token sites come from <code>enumerateUnusedPermissions</code> /
+        <code>locateTokens</code> (<code>src/lib/permissions.js</code>), and the rubric
+        from the <code>permission-prompts</code> in <code>assets/registry.yaml</code>.
       </p>
     </main>
 

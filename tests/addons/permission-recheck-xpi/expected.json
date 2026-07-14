@@ -1,0 +1,6 @@
+{
+  "_comment": "XPI review exercising the per-occurrence permission recheck end-to-end, including a DOTTED (api-resolved) injection token. messagesRead/accountsRead/compose escalate, each with one located site: relatedMessageId (bare) and displayedFolder (bare), and messenger.scripting.executeScript (compose's dotted token, resolved via api-usage). scripting is grounded by that call and dropped. The --llm-review pass verdicts each site by id: messagesRead#1 pass -> dropped (absent below); accountsRead#1 unsure -> manual review; compose#1 fail -> the warning finding here. So the only finding is compose (both the pass-drop and the unsure-manual are locked by the rendered golden).",
+  "expect": {
+    "unused-permission-recheck": ["manifest.json:6"]
+  }
+}

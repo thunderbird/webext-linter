@@ -97,23 +97,19 @@ export function recheckItems(prompt) {
 }
 
 /** Look up a per-item recheck verdict in a spec map. A consumer's entry may be a bare
- *  verdict string (applied to all its items) or an item->verdict object. A pass may carry
- *  `usages` ([{file, lines, token?}]) - the cited evidence a require-citation consumer
- *  verifies (src/lib/citation.js); omit it to model an ungrounded pass. */
+ *  verdict string (applied to all its items) or an item->verdict object. For the
+ *  permission recheck an item is a token-occurrence id ("<permission>#<n>") or, for a
+ *  token-less permission, the permission itself. */
 function recheckVerdict(map, dflt, check, item) {
   const perCheck = map?.[check];
   const v = typeof perCheck === "string" ? perCheck : perCheck?.[item];
   const o = typeof v === "string" ? { verdict: v } : v;
-  const entry = {
+  return {
     check,
     item,
     verdict: o?.verdict ?? dflt,
     reason: o?.reason ?? "",
   };
-  if (o?.usages) {
-    entry.usages = o.usages;
-  }
-  return entry;
 }
 
 /** Resolve a spec field that may be a plain value, an ordered list consumed one per
