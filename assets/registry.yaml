@@ -924,9 +924,12 @@ permission-prompt-framing:
     Return one recheck entry per id. verdict pass = this site meets the criteria (the
     permission IS exercised here; for a holistic item, anywhere in the add-on); fail = it
     does not (e.g. the injection targets a normal web/content tab, not the required tab
-    kind); unsure = you genuinely cannot tell from the code. unsure is the default
-    whenever the criteria do not clearly settle it. Ignore comments, TODOs, documentation,
-    and any stated or implied intention of future use.
+    kind); unsure = you genuinely cannot tell from the code. unsure is the default whenever
+    the criteria do not clearly settle it. But "the tab kind is not visible at the injection
+    line" is not itself grounds for unsure if the tabId's origin is traceable elsewhere in
+    the code - trace it. unsure already routes the permission to manual review, so the reason
+    must not ask for manual or "main" review; just pick the verdict. Ignore comments, TODOs,
+    documentation, and any stated or implied intention of future use.
   closing: |-
     For each id, take the candidate as given and answer only the discriminator: does the
     current code at that site (or, for a holistic item, anywhere in the add-on) actually
@@ -1053,9 +1056,13 @@ permission-prompts:
       - scripting.insertCSS
       - attachments
     prompt: |-
-      The "compose" permission is REQUIRED, if a script or CSS is injected into a
-      COMPOSE tab by tabs.executeScript, tabs.insertCSS, scripting.executeScript or
-      scripting.insertCSS.
+      The "compose" permission is justified when a script or CSS is injected into a
+      COMPOSE tab (a message being composed) via tabs.executeScript, tabs.insertCSS,
+      scripting.executeScript or scripting.insertCSS. A tab is a compose tab when its
+      tabId comes from compose.* (onComposeStateChanged, beginNew/beginReply/beginForward,
+      getComposeDetails) or a composeAction / compose_action button. The name of the injected
+      tabId argument can corroborate this - e.g. a variable or parameter named composeTabId -
+      though a name alone is a hint, not proof.
   - permissions: messagesModify
     # Namespace-qualified (dotted) injection tokens, resolved against the api-usage
     # analysis. message_display_scripts is NOT a token here: it grounds messagesModify
@@ -1066,9 +1073,14 @@ permission-prompts:
       - scripting.executeScript
       - scripting.insertCSS
     prompt: |-
-      The "messagesModify" permission is REQUIRED, if a script or CSS is injected into a
-      MESSAGE-DISPLAY tab by tabs.executeScript, tabs.insertCSS, scripting.executeScript
-      or scripting.insertCSS.
+      The "messagesModify" permission is justified when a script or CSS is injected into a
+      MESSAGE-DISPLAY tab (a tab showing a mail message) via tabs.executeScript,
+      tabs.insertCSS, scripting.executeScript or scripting.insertCSS. A tab is a
+      message-display tab when its tabId comes from messageDisplay.* (onMessageDisplayed,
+      getDisplayedMessage[s]), a messageDisplayAction / message_display_action button, or a
+      mailTab whose displayed message is being read. The name of the injected tabId argument
+      can corroborate this - e.g. a variable or parameter named messageTabId - though a name
+      alone is a hint, not proof.
   # No "scripting" entry: unlike compose/messagesModify (which need the semantic judgment
   # of WHICH kind of tab the injection targets), "scripting" is guarded at the namespace
   # level (the scripting schema namespace declares permissions: ["scripting"]), so ANY
@@ -1324,7 +1336,7 @@ post-summary-phase:
     quoted among the sources above. Reading all of it together, decide: verdict fail
     = the user-facing text is hardcoded in a non-English language (an English
     localization should be added), pass = it is English, or there is nothing to
-    localize, unsure = you genuinely cannot tell. Judge only this item.
+    localize, unsure = you genuinely cannot tell. Return a verdict for this item only.
   instructions: |-
     This add-on ships no English localization, so user-facing text may be
     hardcoded in another language. Review its strings by hand and confirm if an
@@ -1350,8 +1362,9 @@ post-summary-phase:
     path that plausibly resolves to it (for example code building
     "icons/icon-${theme}-${size}.png" loads the icons in that family). Verdict pass
     = it is loaded somewhere (keep it), fail = nothing in the add-on loads it (it is
-    unused and safe to remove), unsure = you genuinely cannot tell. Judge only the
-    listed files, by their packaged path.
+    unused and safe to remove), unsure = you genuinely cannot tell. Base each verdict on
+    the provided add-on corpus; return one per listed file, by its packaged
+    path, and add no others.
   instructions: |-
     The following files are not reachable from any entry point but may be loaded
     dynamically. Confirm by hand whether they are unused and safe to remove.
@@ -1374,8 +1387,9 @@ post-summary-phase:
     options or tab page, or an iframe of it inside another of the add-on's own
     pages) never needs it. With the whole add-on in view, decide for each entry:
     verdict pass = something external reads it (keep it), fail = nothing external
-    reads it (it is needless and should be removed), unsure = you cannot tell. Judge
-    only the listed entries.
+    reads it (it is needless and should be removed), unsure = you cannot tell. Base each
+    verdict on the provided add-on corpus; return one per listed entry and
+    add no others.
   instructions: |-
     The following resources are exposed via web_accessible_resources but nothing
     in the add-on loads them. Confirm by hand whether they need to be exposed.
@@ -1400,8 +1414,9 @@ post-summary-phase:
     Thunderbird has no built-in data-collection consent prompt. With the whole
     add-on in view (every settings page, background flag, and stored preference),
     decide for each location: verdict fail = user data is transmitted WITHOUT such
-    consent, pass = it is not, unsure = you cannot tell. Judge only the listed
-    locations.
+    consent, pass = it is not, unsure = you cannot tell. Base each verdict on the
+    provided add-on corpus; return one per listed location and add no
+    others.
   instructions: |-
     The following code locations transmit data to a remote server. Confirm by
     hand that any user data they send is gated behind an explicit opt-in (a
@@ -1421,7 +1436,8 @@ post-summary-phase:
     remote host using a runtime value, with no obvious user-data API call. With the
     whole add-on in view, decide for each location: verdict fail = it smuggles user
     data out through this channel, pass = it is a legitimate dynamic URL, unsure =
-    you cannot tell. Judge only the listed locations.
+    you cannot tell. Base each verdict on the provided add-on corpus;
+    return one per listed location and add no others.
   instructions: |-
     The following code locations build a resource or navigation URL to a remote
     host with a runtime value. Confirm by hand whether any of them smuggle user
