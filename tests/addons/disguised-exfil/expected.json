@@ -1,0 +1,7 @@
+{
+  "_comment": "Covers the two STRONG covert-channel errors that isStrongCovertExfil escalates (src/lib/outbound-sinks.js): a window.open (window-open sink) and a location.href navigation (navigation sink), each to a remote host and each carrying a messenger.messages.* call so carriesData is true. messagesRead/accountsRead ground the API so no permission/unknown-api noise. Complements disguised-data (which covers the resource sink's strong/weak split).",
+  "expect": {
+    "disguised-window": ["background.js:8"],
+    "disguised-navigation": ["background.js:12"]
+  }
+}

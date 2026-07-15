@@ -1,0 +1,7 @@
+{
+  "_comment": "SCA (src/ + xpi/) whose shipped XPI ships a minified background.js, so the review stays in SCA mode (not downgraded to sca-not-required) and the input:build checks run over the src/ build corpus. build-lifecycle-hook flags the package.json postinstall script (warning); committed-build-artifact flags the committed src/dist/addon.zip (error, archive extension only - contents irrelevant). Build-corpus paths are sca-root-relative (no src/ prefix).",
+  "expect": {
+    "build-lifecycle-hook": ["package.json:6"],
+    "committed-build-artifact": ["dist/addon.zip"]
+  }
+}
