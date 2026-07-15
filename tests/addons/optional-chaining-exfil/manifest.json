@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "Optional Chaining Exfil",
+  "version": "1.0",
+  "background": { "scripts": ["bg.js"] },
+  "icons": { "48": "icon.png" }
+}

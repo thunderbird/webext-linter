@@ -8,7 +8,7 @@
 // (-> src/lib/bundled.js), authored wording / severity (->
 // assets/registry.yaml). Babel access goes through src/parse/ast.js.
 
-import { parseJs, traverse, nodeLoc } from "./ast.js";
+import { parseJs, traverse, nodeLoc, isMemberLike } from "./ast.js";
 
 /**
  * @param {string} code  JavaScript source text.
@@ -26,10 +26,10 @@ export function scanSyncXhr(code, lineOffset = 0, parsed) {
   }
   const hits = [];
   traverse(ast, {
-    CallExpression(path) {
+    "CallExpression|OptionalCallExpression"(path) {
       const callee = path.node.callee;
       if (
-        callee.type !== "MemberExpression" ||
+        !isMemberLike(callee) ||
         callee.computed ||
         callee.property?.name !== "open"
       ) {

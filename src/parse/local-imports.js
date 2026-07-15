@@ -56,7 +56,7 @@ export function scanLocalImports(code, lineOffset = 0, parsed) {
     ExportNamedDeclaration: (p) => p.node.source && add(p.node.source),
     ExportAllDeclaration: (p) => add(p.node.source),
     ImportExpression: (p) => add(p.node.source), // dynamic import()
-    CallExpression(p) {
+    "CallExpression|OptionalCallExpression"(p) {
       const callee = p.node.callee;
       if (
         callee?.type === "Identifier" &&

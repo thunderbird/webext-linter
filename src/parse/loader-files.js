@@ -30,7 +30,7 @@
 // src/parse/ast.js.
 
 import { apiBasesOf, calleeApiPath } from "./api-base.js";
-import { parseJs, traverse, staticPathOf, nodeLoc } from "./ast.js";
+import { parseJs, traverse, staticPathOf, nodeLoc, isCallLike } from "./ast.js";
 import { BRIDGE, ROOT_RELATIVE_FILE_METHODS } from "./webext-facts.js";
 import { REL_URL_FORMATS } from "../schema/index.js";
 
@@ -98,7 +98,7 @@ export function scanLoaderRefs(
   const loaders = schema?.fileLoaderMethods;
   const canWalk = typeof schema?.resolveApi === "function";
   traverse(ast, {
-    CallExpression(path) {
+    "CallExpression|OptionalCallExpression"(path) {
       const dotted = dottedApiPath(path.node.callee, bases);
       if (!dotted) {
         return;
@@ -287,7 +287,7 @@ function isDynamicValue(node, bases) {
   // where it is static if its argument is a literal and dynamic otherwise. So it
   // must not re-flag the outer slot as dynamic.
   if (
-    node?.type === "CallExpression" &&
+    isCallLike(node) &&
     dottedApiPath(node.callee, bases) === "runtime.getURL"
   ) {
     return false;

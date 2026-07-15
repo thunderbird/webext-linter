@@ -18,7 +18,14 @@
 // and Babel access (-> src/parse/ast.js). Not yet covered: document.write, the
 // anchor ping attribute.
 
-import { parseJs, traverse, nodeLoc, memberPropName } from "./ast.js";
+import {
+  parseJs,
+  traverse,
+  nodeLoc,
+  memberPropName,
+  isCallLike,
+  isMemberLike,
+} from "./ast.js";
 import { classifyUrl, isLoopback } from "../scan/url.js";
 import { apiBasesOf } from "./api-base.js";
 import { DATA_APIS } from "./webext-facts.js";
@@ -127,7 +134,7 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
     node?.type === "Identifier" && formVars.has(node.name);
 
   traverse(ast, {
-    CallExpression(path) {
+    "CallExpression|OptionalCallExpression"(path) {
       const { callee, arguments: args } = path.node;
       if (calleeName(callee) === "fetch") {
         push("fetch", "overt", args[0], args.slice(1), path.node);
@@ -256,7 +263,7 @@ function isActionAttr(node) {
  */
 function isCreateElementForm(node) {
   return (
-    node?.type === "CallExpression" &&
+    isCallLike(node) &&
     memberPropName(node.callee) === "createElement" &&
     node.arguments[0]?.type === "StringLiteral" &&
     node.arguments[0].value.toLowerCase() === "form"
@@ -439,7 +446,7 @@ function bareUrl(s) {
 function carriesData(node, bases) {
   let found = false;
   walk(node, (n) => {
-    if (found || n.type !== "MemberExpression") {
+    if (found || !isMemberLike(n)) {
       return;
     }
     const target = n.object?.type === "Identifier" ? bases.get(n.object) : null;

@@ -102,6 +102,34 @@ export function nodeLoc(node, lineOffset = 0) {
 }
 
 /**
+ * True for a call node in either form: `f(x)` (CallExpression) or `f?.(x)`
+ * (OptionalCallExpression). The two share their shape (callee, arguments), so a
+ * scanner that handles one handles the other - this is the single guard that keeps
+ * an optional call from slipping past a `=== "CallExpression"` check.
+ * @param {AstNode} node
+ * @returns {boolean}
+ */
+export function isCallLike(node) {
+  return (
+    node?.type === "CallExpression" || node?.type === "OptionalCallExpression"
+  );
+}
+
+/**
+ * True for a member access in either form: `x.foo` (MemberExpression) or `x?.foo`
+ * (OptionalMemberExpression). Same shape (object, property, computed), so callee
+ * and receiver checks must accept both or an optional-chained access slips past.
+ * @param {AstNode} node
+ * @returns {boolean}
+ */
+export function isMemberLike(node) {
+  return (
+    node?.type === "MemberExpression" ||
+    node?.type === "OptionalMemberExpression"
+  );
+}
+
+/**
  * The static property name of a (possibly optional) member expression:
  * `x.foo` / `x?.foo` -> "foo", `x["foo"]` -> "foo", and null for anything
  * computed/dynamic or a non-member node. The type guard is load-bearing -

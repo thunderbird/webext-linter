@@ -69,7 +69,7 @@ export function scanExperimentInjectedRefs(
   };
   const bases = apiBasesOf(ast);
   traverse(ast, {
-    CallExpression(p) {
+    "CallExpression|OptionalCallExpression"(p) {
       // The callee resolves through the api-base index, so an aliased root or a
       // captured Experiment namespace (`const wl = messenger.WindowListener;
       // wl.registerWindow(...)`) matches like a direct call. The namespace is

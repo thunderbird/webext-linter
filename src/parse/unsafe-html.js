@@ -54,7 +54,7 @@ export function scanUnsafeHtml(code, lineOffset = 0, parsed) {
         hits.push({ sink, ...at(path.node) });
       }
     },
-    CallExpression(path) {
+    "CallExpression|OptionalCallExpression"(path) {
       const { callee, arguments: args } = path.node;
       if (
         memberPropName(callee) === "insertAdjacentHTML" &&

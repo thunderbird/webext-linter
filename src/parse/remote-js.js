@@ -17,7 +17,7 @@
 
 import { classifyUrl } from "../scan/url.js";
 import { eachElement } from "../scan/html-parse.js";
-import { parseJs, traverse, nodeLoc } from "./ast.js";
+import { parseJs, traverse, nodeLoc, isCallLike, isMemberLike } from "./ast.js";
 
 // Identifiers that denote the global object, where window.eval / self.eval /
 // globalThis.eval etc. are the same sinks as the bare forms.
@@ -124,7 +124,7 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
     ImportExpression(path) {
       classifyDynamicRef("import", path.node.source, path.node, push);
     },
-    CallExpression(path) {
+    "CallExpression|OptionalCallExpression"(path) {
       const { callee, arguments: args } = path.node;
 
       // eval(...) / Function(...) (Function() without `new`), and the same
@@ -184,15 +184,12 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
       }
       // WebAssembly.instantiateStreaming/compileStreaming(fetch("REMOTE"))
       if (
-        callee.type === "MemberExpression" &&
+        isMemberLike(callee) &&
         isIdent(callee.object, "WebAssembly") &&
         isMemberProp(callee, "instantiateStreaming", "compileStreaming")
       ) {
         const fetchArg = args[0];
-        if (
-          fetchArg?.type === "CallExpression" &&
-          isIdent(fetchArg.callee, "fetch")
-        ) {
+        if (isCallLike(fetchArg) && isIdent(fetchArg.callee, "fetch")) {
           const url = literalString(fetchArg.arguments[0]);
           if (url && classifyUrl(url) === "remote") {
             push("remote-wasm", path.node, url);
@@ -290,7 +287,7 @@ function isStringLiteral(node) {
  */
 function isMemberProp(node, ...names) {
   return (
-    node?.type === "MemberExpression" &&
+    isMemberLike(node) &&
     !node.computed &&
     node.property?.type === "Identifier" &&
     names.includes(node.property.name)
@@ -315,7 +312,7 @@ function isTrackedScriptObj(obj, scriptVars) {
  */
 function isGlobalMember(node, name) {
   if (
-    node?.type !== "MemberExpression" ||
+    !isMemberLike(node) ||
     node.object?.type !== "Identifier" ||
     !GLOBAL_OBJECTS.has(node.object.name)
   ) {
@@ -356,7 +353,7 @@ function literalString(node) {
  */
 function isCreateElementScript(node) {
   return (
-    node?.type === "CallExpression" &&
+    isCallLike(node) &&
     isMemberProp(node.callee, "createElement") &&
     literalString(node.arguments[0])?.toLowerCase() === "script"
   );

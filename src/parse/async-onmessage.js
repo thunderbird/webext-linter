@@ -30,7 +30,7 @@ export function scanAsyncOnMessage(code, lineOffset = 0, parsed) {
   const hits = [];
   const bases = apiBasesOf(ast);
   traverse(ast, {
-    CallExpression(path) {
+    "CallExpression|OptionalCallExpression"(path) {
       // The callee resolves through the api-base index (aliases and captured
       // namespaces included) and must be exactly the runtime.onMessage.addListener
       // path from the root - full-path equality, so an unrelated chain that merely

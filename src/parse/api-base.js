@@ -31,7 +31,7 @@
 // permission/finding verdicts (-> src/checks/*). Babel access goes through
 // src/parse/ast.js.
 
-import { traverse, memberPropName } from "./ast.js";
+import { traverse, memberPropName, isMemberLike } from "./ast.js";
 import { API_ROOTS } from "./webext-facts.js";
 
 export { API_ROOTS };
@@ -100,12 +100,12 @@ export function apiBasesOf(ast) {
  * @returns {?{root: "browser"|"messenger"|"chrome", segments: string[]}}
  */
 export function calleeApiPath(callee, bases) {
-  if (callee?.type !== "MemberExpression") {
+  if (!isMemberLike(callee)) {
     return null;
   }
   const segments = [];
   let cur = callee;
-  while (cur?.type === "MemberExpression") {
+  while (isMemberLike(cur)) {
     const key = memberPropName(cur);
     if (key === null) {
       return null;
@@ -127,11 +127,13 @@ export function calleeApiPath(callee, bases) {
  * @returns {boolean}
  */
 function isChainBase(path) {
-  if (path.key === "property" && path.parent.type === "MemberExpression") {
+  if (path.key === "property" && isMemberLike(path.parent)) {
     return false; // it's the `.x` part of something.x
   }
   return Boolean(
-    path.parentPath?.isMemberExpression() && path.parent.object === path.node
+    (path.parentPath?.isMemberExpression() ||
+      path.parentPath?.isOptionalMemberExpression()) &&
+    path.parent.object === path.node
   );
 }
 

@@ -1,0 +1,4 @@
+{
+  "_comment": "bg.js transmits data with an OPTIONALLY-chained fetch (fetch?.()). The network-sinks scanner must fire on the optional-call node exactly as on a plain call: the http:// target then surfaces deterministically as cleartext-transmission (data-exfiltration also escalates to manual - see the golden). A regression means `?.` again hides the sink from every scanner.",
+  "expect": { "cleartext-transmission": ["bg.js:7"] }
+}

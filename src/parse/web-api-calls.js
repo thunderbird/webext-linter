@@ -16,7 +16,7 @@
 // that picks which files to scan, and the unused verdict (both ->
 // src/lib/permissions.js, groundWebApiPermissions). Babel -> src/parse/ast.js.
 
-import { parseJs, traverse, memberPropName } from "./ast.js";
+import { parseJs, traverse, memberPropName, isMemberLike } from "./ast.js";
 
 /** @typedef {import("@babel/types").Node} AstNode */
 
@@ -61,7 +61,7 @@ function flatten(node) {
   if (node?.type === "Identifier") {
     return node.name;
   }
-  if (node?.type === "MemberExpression") {
+  if (isMemberLike(node)) {
     const obj = flatten(node.object);
     const prop = memberPropName(node);
     return obj && prop ? `${obj}.${prop}` : null;
@@ -118,7 +118,7 @@ export function scanWebApiCalls(code, signatures, parsed) {
   });
 
   traverse(ast, {
-    CallExpression(path) {
+    "CallExpression|OptionalCallExpression"(path) {
       const { callee } = path.node;
       const method = memberPropName(callee);
       if (!method) {
