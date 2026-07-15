@@ -1,16 +1,10 @@
-// Guarded enum values, and the shared status vocabulary the review speaks with
-// them. `guarded` is the single home for the "guarded singleton" policy; `makeEnum`
-// builds a whole enum from it; VERDICT is the one this review needs today.
+// The home for the codebase's guarded enums. `guarded` is the single home for the
+// "guarded singleton" policy; `makeEnum` builds a whole enum from it; each enum the
+// review needs is declared and exported here (VERDICT, URL_CLASS).
 //
-// Belongs here: the guard primitive, the enum factory, and the status vocabulary.
-// Does NOT belong here: how a verdict is decided (the detectors and checks), how it
-// maps to an outcome, or how it renders (a consumer switch).
-
-/** @typedef {{fail: boolean, pass: boolean, unsure: boolean, skipped: boolean,
- *   info: boolean}} Verdict  An opaque guarded singleton; only its five LOWERCASE
- *   booleans are readable (any other access throws). Compare by reference
- *   (v === VERDICT.FAIL) or by boolean (v.fail); render by switching over it
- *   (report/verdict-label.js). */
+// Belongs here: the guard primitive, the enum factory, and the enums themselves.
+// Does NOT belong here: how an enum value is decided (the detectors and checks), how
+// it maps to an outcome, or how it renders (a consumer switch).
 
 /**
  * One guard for both an enum's values and its container - the single home for the
@@ -81,6 +75,12 @@ function makeEnum(names, label = "enum member") {
   );
 }
 
+/** @typedef {{fail: boolean, pass: boolean, unsure: boolean, skipped: boolean,
+ *   info: boolean}} Verdict  An opaque guarded singleton; only its five LOWERCASE
+ *   booleans are readable (any other access throws). Compare by reference
+ *   (v === VERDICT.FAIL) or by boolean (v.fail); render by switching over it
+ *   (report/verdict-label.js). */
+
 /**
  * The canonical status values - shared, immutable, reusable across the review.
  * FAIL/PASS/UNSURE are the three judgment verdicts (obfuscation, the LLM);
@@ -91,4 +91,22 @@ function makeEnum(names, label = "enum member") {
 export const VERDICT = makeEnum(
   ["fail", "pass", "unsure", "skipped", "info"],
   "verdict"
+);
+
+/** @typedef {{remote: boolean, embedded: boolean, local: boolean,
+ *   dynamic: boolean}} UrlClass  An opaque guarded singleton; only its four
+ *   LOWERCASE booleans are readable (any other access throws). Compare by reference
+ *   (c === URL_CLASS.REMOTE) or boolean (c.remote). */
+
+/**
+ * How a URL / destination is loaded: REMOTE (network), EMBEDDED (inline
+ * data:/blob:), LOCAL (bundled/relative), or DYNAMIC (built at runtime, no literal
+ * URL to classify). src/scan/url.js classifyUrl produces REMOTE/EMBEDDED/LOCAL from
+ * a literal string; DYNAMIC is assigned by the network-sink scanner when there is no
+ * literal URL.
+ * @type {{REMOTE: UrlClass, EMBEDDED: UrlClass, LOCAL: UrlClass, DYNAMIC: UrlClass}}
+ */
+export const URL_CLASS = makeEnum(
+  ["remote", "embedded", "local", "dynamic"],
+  "url_class"
 );

@@ -43,7 +43,7 @@ export function scanLocalImports(code, lineOffset = 0, parsed) {
     // check's concern, not a packaged-file edge.
     const path = staticPathOf(node);
     if (path != null) {
-      if (classifyUrl(path) === "local") {
+      if (classifyUrl(path).local) {
         refs.push({ path, ...nodeLoc(node, lineOffset) });
       }
     } else if (node != null) {

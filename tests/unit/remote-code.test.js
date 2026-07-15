@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { classifyUrl } from "../../src/scan/url.js";
+import { URL_CLASS } from "../../src/lib/enum.js";
 import {
   scanHtmlRemoteRefs,
   scanHtmlInlineCssRefs,
@@ -31,12 +32,12 @@ test("classifyUrl distinguishes remote / embedded / local", () => {
     "ftp://x",
     "wss://x",
   ]) {
-    assert.equal(classifyUrl(u), "remote", u);
+    assert.equal(classifyUrl(u), URL_CLASS.REMOTE, u);
   }
-  assert.equal(classifyUrl("data:text/js,alert(1)"), "embedded");
-  assert.equal(classifyUrl("blob:abc"), "embedded");
+  assert.equal(classifyUrl("data:text/js,alert(1)"), URL_CLASS.EMBEDDED);
+  assert.equal(classifyUrl("blob:abc"), URL_CLASS.EMBEDDED);
   for (const u of ["lib/x.js", "/lib/x.js", "moz-extension://x", "#frag", ""]) {
-    assert.equal(classifyUrl(u), "local", u);
+    assert.equal(classifyUrl(u), URL_CLASS.LOCAL, u);
   }
 });
 
@@ -50,14 +51,14 @@ test("HTML scan flags remote script/link/iframe, ignores local", () => {
          <link rel="stylesheet" href="https://cdn/s.css">
          <iframe src="https://evil/p.html"></iframe>`
   );
-  const remote = refs.filter((r) => r.klass === "remote");
+  const remote = refs.filter((r) => r.klass.remote);
   assert.equal(remote.length, 3);
   assert.deepEqual(remote.map((r) => r.kind).sort(), [
     "content",
     "css",
     "script",
   ]);
-  assert.ok(refs.some((r) => r.kind === "script" && r.klass === "local"));
+  assert.ok(refs.some((r) => r.kind === "script" && r.klass.local));
 });
 
 // ---- CSS ----
@@ -70,7 +71,7 @@ test("CSS scan flags remote @import and url(), not local", () => {
          body { background: url(https://cdn/bg.png); }
          div { background: url("fonts/x.woff"); }`
   );
-  const remote = refs.filter((r) => r.klass === "remote");
+  const remote = refs.filter((r) => r.klass.remote);
   assert.deepEqual(remote.map((r) => r.kind).sort(), ["import", "url"]);
 });
 
@@ -82,7 +83,7 @@ test("CSS scan ignores url() in comments and handles ')' inside a data URI", () 
      body { background: url("data:image/png;base64,AA)BB"); }
      a { background-image: url(https://cdn.example.com/i.png); }`
   );
-  const remote = refs.filter((r) => r.klass === "remote");
+  const remote = refs.filter((r) => r.klass.remote);
   // Only the real remote url() counts: the commented one is a comment node,
   // and the data: URI (with a ')' inside) is embedded, not remote.
   assert.equal(remote.length, 1);
@@ -103,9 +104,7 @@ test("inline CSS scan flags remote @import in <style> and url() in style=", () =
     `</style>\n` + // line 6
     `</head>\n` + // line 7
     `<body><div style="background:url(https://cdn/bg.png)"></div></body>`; // line 8
-  const remote = scanHtmlInlineCssRefs(html).filter(
-    (r) => r.klass === "remote"
-  );
+  const remote = scanHtmlInlineCssRefs(html).filter((r) => r.klass.remote);
   assert.deepEqual(remote.map((r) => [r.kind, r.line]).sort(), [
     ["import", 4],
     ["url", 8],
@@ -313,7 +312,7 @@ test("HTML scan matches rel by whitespace token, not substring", () => {
          <link rel="stylesheet-x" href="https://cdn/b.css">
          <link rel="x-preload" as="script" href="https://cdn/c.js">`
   );
-  const remote = refs.filter((r) => r.klass === "remote");
+  const remote = refs.filter((r) => r.klass.remote);
   // Only the real "stylesheet" token counts; "stylesheet-x"/"x-preload" are
   // single non-keyword tokens and must not match.
   assert.equal(remote.length, 1);
@@ -333,7 +332,7 @@ test("HTML scan flags remote module/script preload links", () => {
          <link rel="icon" href="https://cdn/favicon.ico">
          <link rel="preconnect" href="https://cdn">`
   );
-  const remote = refs.filter((r) => r.klass === "remote");
+  const remote = refs.filter((r) => r.klass.remote);
   // modulepreload + preload-as-script => script; preload-as-style => css.
   // icon / preconnect are not sources and must be ignored.
   assert.deepEqual(remote.map((r) => r.kind).sort(), [

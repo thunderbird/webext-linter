@@ -42,7 +42,7 @@ const URL_ATTR = { object: "data" };
  * @property {string} tag  Lowercased tag name.
  * @property {"script"|"css"|"content"|"resource"} kind  Reference kind.
  * @property {string} url  The referenced URL.
- * @property {"remote"|"embedded"|"local"} klass  URL classification.
+ * @property {import("../lib/enum.js").UrlClass} klass  URL classification.
  * @property {number} line  1-based source line.
  */
 

@@ -259,7 +259,7 @@ function compute(ctx) {
     const ext = extname(file);
     if (HTML_EXTENSIONS.has(ext)) {
       for (const r of scanHtmlRemoteRefs(buf.toString("utf8"))) {
-        if (r.klass === "local") {
+        if (r.klass.local) {
           const target = resolveRef(files, file, r.url);
           addEdge(file, target);
           // A <script src> loads its target AS CODE (kind:"script" covers <script>,
@@ -272,7 +272,7 @@ function compute(ctx) {
       }
     } else if (ext === ".css") {
       for (const r of scanCssRemoteRefs(buf.toString("utf8"))) {
-        if (r.klass === "local") {
+        if (r.klass.local) {
           addEdge(file, resolveRef(files, file, r.url));
         }
       }

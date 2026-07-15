@@ -10,32 +10,34 @@
 // Deciding whether a remote reference is a violation lives in the checks
 // (src/checks/rules/*) and the registry (assets/registry.yaml).
 
+import { URL_CLASS } from "../lib/enum.js";
+
 const REMOTE_RE = /^(?:https?:|ftps?:|wss?:)\/\//i;
 const PROTOCOL_RELATIVE_RE = /^\/\//; // "//host/x" - inherits page scheme, i.e. remote
 const EMBEDDED_RE = /^(?:data|blob):/i;
 
 /**
  * @param {string} raw  URL or reference string to classify.
- * @returns {"remote"|"embedded"|"local"}
- *   - remote:   network-loaded (http/https/ftp/ws, or protocol-relative
+ * @returns {import("../lib/enum.js").UrlClass}
+ *   - REMOTE:   network-loaded (http/https/ftp/ws, or protocol-relative
  *               "//host")
- *   - embedded: inline payload (data:, blob:) - not bundled source, often
+ *   - EMBEDDED: inline payload (data:, blob:) - not bundled source, often
  *               obfuscation
- *   - local:    relative path, root-relative "/x",
+ *   - LOCAL:    relative path, root-relative "/x",
  *               moz-extension:/chrome:/resource:, "#...", or empty
  */
 export function classifyUrl(raw) {
   const url = String(raw ?? "").trim();
   if (url === "") {
-    return "local";
+    return URL_CLASS.LOCAL;
   }
   if (EMBEDDED_RE.test(url)) {
-    return "embedded";
+    return URL_CLASS.EMBEDDED;
   }
   if (REMOTE_RE.test(url) || PROTOCOL_RELATIVE_RE.test(url)) {
-    return "remote";
+    return URL_CLASS.REMOTE;
   }
-  return "local";
+  return URL_CLASS.LOCAL;
 }
 
 /**

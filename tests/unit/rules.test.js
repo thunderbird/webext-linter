@@ -24,6 +24,7 @@ import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
 import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
 import { VERDICT } from "../../src/lib/enum.js";
+import { URL_CLASS } from "../../src/lib/enum.js";
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 import vendorVulnerableDev from "../../src/checks/rules/vendor-vulnerable-dev.js";
 import { rawSha256 } from "../../src/normalize/hash.js";
@@ -3426,11 +3427,11 @@ test("scanNetworkSinks classifies channel, destination, appended data", () => {
   const img = one('img.src = "https://x/?d=" + v;');
   assert.equal(img.type, "element-src");
   assert.equal(img.channel, "covert");
-  assert.equal(img.destClass, "remote");
+  assert.equal(img.destClass, URL_CLASS.REMOTE);
   assert.equal(img.dataAppended, true);
   const beacon = one('navigator.sendBeacon("https://x", d);');
   assert.equal(beacon.channel, "overt");
-  assert.equal(beacon.destClass, "remote");
+  assert.equal(beacon.destClass, URL_CLASS.REMOTE);
   assert.equal(
     one("fetch(u, { body: messenger.messages.getFull(id) });").carriesData,
     true

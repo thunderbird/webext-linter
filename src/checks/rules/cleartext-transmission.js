@@ -26,7 +26,7 @@ export default {
   run(ctx) {
     const out = [];
     for (const sink of getOutboundSinks(ctx)) {
-      if (sink.channel !== "overt" || sink.destClass !== "remote") {
+      if (sink.channel !== "overt" || !sink.destClass.remote) {
         continue;
       }
       if (!sink.cleartext) {

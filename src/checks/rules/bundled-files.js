@@ -142,5 +142,5 @@ function isPackagedPathRef(raw) {
   if (SCHEME_RE.test(s)) {
     return false; // about:, moz-extension:, chrome:, http:, ...
   }
-  return classifyUrl(s) === "local"; // also drops protocol-relative "//host/x"
+  return classifyUrl(s).local; // also drops protocol-relative "//host/x"
 }

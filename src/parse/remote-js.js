@@ -191,7 +191,7 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
         const fetchArg = args[0];
         if (isCallLike(fetchArg) && isIdent(fetchArg.callee, "fetch")) {
           const url = literalString(fetchArg.arguments[0]);
-          if (url && classifyUrl(url) === "remote") {
+          if (url && classifyUrl(url).remote) {
             push("remote-wasm", path.node, url);
           }
         }
@@ -221,7 +221,7 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
  */
 function classifyModuleSource(source, node, push) {
   const url = literalString(source);
-  if (url && classifyUrl(url) === "remote") {
+  if (url && classifyUrl(url).remote) {
     push("remote-import", node, url);
   }
 }
@@ -239,7 +239,7 @@ function classifyDynamicRef(which, arg, node, push) {
     push(`ambiguous-${which}`, node); // non-literal - can't resolve the host
     return;
   }
-  if (classifyUrl(url) === "remote") {
+  if (classifyUrl(url).remote) {
     push(`remote-${which}`, node, url);
   }
 }
@@ -257,9 +257,9 @@ function pushSrc(valueNode, node, push) {
     return;
   }
   const klass = classifyUrl(url);
-  if (klass === "remote") {
+  if (klass.remote) {
     push("remote-script-src", node, url);
-  } else if (klass === "embedded") {
+  } else if (klass.embedded) {
     push("embedded-script-src", node, url);
   }
 }
@@ -378,7 +378,7 @@ function remoteScriptInString(node) {
       return;
     }
     const src = el.tag === "script" ? el.attr("src") : null;
-    if (src && classifyUrl(src) === "remote") {
+    if (src && classifyUrl(src).remote) {
       found = src;
     }
   });

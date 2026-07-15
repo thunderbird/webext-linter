@@ -48,8 +48,7 @@ export default {
     const seen = new Set();
     let n = 0;
     for (const sink of getOutboundSinks(ctx)) {
-      const remote =
-        sink.destClass === "remote" || sink.destClass === "dynamic";
+      const remote = sink.destClass.remote || sink.destClass.dynamic;
       const key = `${sink.file}:${sink.line}`;
       if (sink.channel !== "overt" || !remote || seen.has(key)) {
         continue;

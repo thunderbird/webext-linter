@@ -25,7 +25,7 @@ import { SCHEME_RE } from "../lib/util.js";
  * @returns {?{kind: "path"|"basename", value: string}}
  */
 function classifyInjectedArg(value) {
-  if (typeof value !== "string" || classifyUrl(value) !== "local") {
+  if (typeof value !== "string" || !classifyUrl(value).local) {
     return null;
   }
   return SCHEME_RE.test(value)

@@ -152,7 +152,7 @@ function compute(ctx) {
     }
     const out = [];
     for (const r of scanHtmlRemoteRefs(buf.toString("utf8"))) {
-      if (r.kind === "script" && r.klass === "local") {
+      if (r.kind === "script" && r.klass.local) {
         const t = resolveRef(files, pageFile, r.url);
         if (t) {
           out.push(t);

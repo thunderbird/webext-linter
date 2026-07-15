@@ -123,10 +123,10 @@ function pushHtml(ctx, findings, esc, file, ref) {
   const { tag, kind, url, klass, line } = ref;
   const loc = { line, column: 0 };
   const item = `<${tag}> ${trunc(url)}`;
-  if (klass === "remote") {
+  if (klass.remote) {
     findings.push(finding({ file, loc, item: url }));
     ctx.note?.(file, loc, item, VERDICT.FAIL);
-  } else if (klass === "embedded" && kind === "script") {
+  } else if (klass.embedded && kind === "script") {
     addCandidate(
       esc,
       file,
@@ -135,7 +135,7 @@ function pushHtml(ctx, findings, esc, file, ref) {
       `has a <script> with an inline ${scheme(url)} URL`
     );
     ctx.note?.(file, loc, item, VERDICT.UNSURE);
-  } else if (klass === "local" && (kind === "script" || kind === "content")) {
+  } else if (klass.local && (kind === "script" || kind === "content")) {
     // A bundled script/iframe load - cleared, but on the trail of "what runs".
     ctx.note?.(file, loc, item, VERDICT.PASS);
   }
@@ -149,7 +149,7 @@ function pushHtml(ctx, findings, esc, file, ref) {
  */
 function pushCss(ctx, findings, file, ref) {
   const { url, klass, line } = ref;
-  if (klass !== "remote") {
+  if (!klass.remote) {
     return; // local CSS url()/imports are bundled assets - benign, not noted
   }
   const loc = { line, column: 0 };

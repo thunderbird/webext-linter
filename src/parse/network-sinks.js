@@ -27,6 +27,7 @@ import {
   isMemberLike,
 } from "./ast.js";
 import { classifyUrl, isLoopback } from "../scan/url.js";
+import { URL_CLASS } from "../lib/enum.js";
 import { apiBasesOf } from "./api-base.js";
 import { DATA_APIS } from "./webext-facts.js";
 
@@ -59,7 +60,7 @@ const HTTP_METHODS = new Set([
  * @property {string} type  Which sink fired (see the visitors below).
  * @property {"overt"|"covert"} channel  Overt = a transmission API; covert = a
  *   resource load that can disguise data as a URL.
- * @property {"remote"|"embedded"|"local"|"dynamic"} destClass  Destination.
+ * @property {import("../lib/enum.js").UrlClass} destClass  Destination.
  * @property {boolean} cleartext  The destination scheme is non-TLS
  *   (http/ws/ftp).
  * @property {?string} host  The destination host, or null when local/dynamic.
@@ -315,13 +316,13 @@ function isHttpMethodLiteral(node) {
  * appended to the URL). Cleartext/host are read from the static value, or from
  * the leading static prefix of a dynamic URL (which still carries the scheme).
  * @param {?AstNode} node
- * @returns {{destClass: "remote"|"embedded"|"local"|"dynamic",
+ * @returns {{destClass: import("../lib/enum.js").UrlClass,
  *   cleartext: boolean, host: ?string, dataAppended: boolean}}
  */
 function urlInfo(node) {
   if (!node) {
     return {
-      destClass: "local",
+      destClass: URL_CLASS.LOCAL,
       cleartext: false,
       host: null,
       dataAppended: false,
@@ -331,7 +332,7 @@ function urlInfo(node) {
     const url = bareUrl(staticValue(node));
     const host = urlHost(url);
     const destClass = classifyUrl(url);
-    if (destClass === "remote" && isLoopback(host)) {
+    if (destClass.remote && isLoopback(host)) {
       return LOCAL_DEST; // loopback never leaves the machine - not a transmission
     }
     return {
@@ -343,22 +344,22 @@ function urlInfo(node) {
   }
   const prefix = bareUrl(staticPrefix(node));
   const host = urlHost(prefix);
-  const destClass = prefix ? classifyUrl(prefix) : "dynamic";
-  if (destClass === "remote" && isLoopback(host)) {
+  const destClass = prefix ? classifyUrl(prefix) : URL_CLASS.DYNAMIC;
+  if (destClass.remote && isLoopback(host)) {
     return LOCAL_DEST; // concat-prefix loopback ("http://127.0.0.1:" + port) too
   }
   return {
     destClass,
     cleartext: CLEARTEXT_RE.test(prefix),
     host,
-    dataAppended: destClass === "remote",
+    dataAppended: destClass.remote,
   };
 }
 
 // A local (non-network) destination: no cleartext/privacy/exfil concern. Shared
 // by the no-URL case and a resolved loopback destination.
 const LOCAL_DEST = {
-  destClass: "local",
+  destClass: URL_CLASS.LOCAL,
   cleartext: false,
   host: null,
   dataAppended: false,

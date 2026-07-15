@@ -6,6 +6,7 @@
 // alongside the checks that consume them.
 
 import { test } from "node:test";
+import { URL_CLASS } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
@@ -18,7 +19,7 @@ test("scanNetworkSinks marks cleartext schemes and extracts the host", () => {
   const http = one('fetch("http://api.example.com/collect");');
   assert.equal(http.cleartext, true);
   assert.equal(http.host, "api.example.com");
-  assert.equal(http.destClass, "remote");
+  assert.equal(http.destClass, URL_CLASS.REMOTE);
 
   assert.equal(one('fetch("https://api.example.com/x");').cleartext, false);
   assert.equal(one('fetch("ftp://files.example.com/x");').cleartext, true);
@@ -48,7 +49,7 @@ test("a local path has no host and is not cleartext", () => {
   const hit = one('fetch("/api/local.json");');
   assert.equal(hit.cleartext, false);
   assert.equal(hit.host, null);
-  assert.equal(hit.destClass, "local");
+  assert.equal(hit.destClass, URL_CLASS.LOCAL);
 });
 
 // Loopback traffic never leaves the machine, so a literal loopback sink is local:
@@ -63,12 +64,12 @@ test("a loopback destination is treated as local, not a cleartext remote send", 
     "http://0.0.0.0/x",
   ]) {
     const hit = one(`fetch(${JSON.stringify(url)});`);
-    assert.equal(hit.destClass, "local", url);
+    assert.equal(hit.destClass, URL_CLASS.LOCAL, url);
     assert.equal(hit.cleartext, false, url);
     assert.equal(hit.host, null, url);
   }
   const ws = one('new WebSocket("ws://127.0.0.1:1234/");');
-  assert.equal(ws.destClass, "local");
+  assert.equal(ws.destClass, URL_CLASS.LOCAL);
   assert.equal(ws.cleartext, false);
 });
 
@@ -76,7 +77,7 @@ test("a loopback destination is treated as local, not a cleartext remote send", 
 // from the static prefix and is likewise local.
 test("a concat-prefix loopback URL is local (no cleartext, no dataAppended)", () => {
   const hit = one('fetch("http://127.0.0.1:" + port + "/x");');
-  assert.equal(hit.destClass, "local");
+  assert.equal(hit.destClass, URL_CLASS.LOCAL);
   assert.equal(hit.cleartext, false);
   assert.equal(hit.dataAppended, false);
 });
@@ -85,12 +86,12 @@ test("a concat-prefix loopback URL is local (no cleartext, no dataAppended)", ()
 // hostname that merely starts with "127." (only all-numeric 127.x is loopback).
 test("a real remote http sink still flags cleartext after the loopback fix", () => {
   const hit = one('fetch("http://api.example.com/collect");');
-  assert.equal(hit.destClass, "remote");
+  assert.equal(hit.destClass, URL_CLASS.REMOTE);
   assert.equal(hit.cleartext, true);
   assert.equal(hit.host, "api.example.com");
 
   const hostlike = one('fetch("http://127.example.com/collect");');
-  assert.equal(hostlike.destClass, "remote");
+  assert.equal(hostlike.destClass, URL_CLASS.REMOTE);
   assert.equal(hostlike.cleartext, true);
   assert.equal(hostlike.host, "127.example.com");
 });
@@ -107,7 +108,7 @@ test("createElement('form') + action + submit() is an overt sink to the action",
   );
   assert.equal(hit.type, "form-submit");
   assert.equal(hit.channel, "overt");
-  assert.equal(hit.destClass, "remote");
+  assert.equal(hit.destClass, URL_CLASS.REMOTE);
   assert.equal(hit.host, "cloud.example.com");
 });
 
@@ -130,7 +131,7 @@ test("form action via setAttribute / dynamic URL / requestSubmit are covered", (
       "f.requestSubmit();"
   );
   assert.equal(dyn.type, "form-submit");
-  assert.equal(dyn.destClass, "dynamic");
+  assert.equal(dyn.destClass, URL_CLASS.DYNAMIC);
 });
 
 // A form with no action set, and a .submit() on an untracked element, are not
@@ -141,7 +142,7 @@ test("form-submit without a tracked form or an action is not flagged", () => {
   // Tracked form but no action -> local destination, not an outbound transmission.
   const noAction = one('const f = document.createElement("form"); f.submit();');
   assert.equal(noAction.type, "form-submit");
-  assert.equal(noAction.destClass, "local");
+  assert.equal(noAction.destClass, URL_CLASS.LOCAL);
 });
 
 // XHR vs window.open: a `.open(method, url)` is disambiguated by a LITERAL HTTP
@@ -179,7 +180,7 @@ test("window.open carrying a data-API call is a covert, data-bearing sink", () =
   );
   assert.equal(hit.type, "window-open");
   assert.equal(hit.channel, "covert");
-  assert.equal(hit.destClass, "remote");
+  assert.equal(hit.destClass, URL_CLASS.REMOTE);
   assert.equal(hit.carriesData, true);
 
   // Same sink to the same host, but no data-API call in the URL -> not data-bearing.
@@ -194,7 +195,7 @@ test("a location.href navigation carrying a data-API call is covert and data-bea
   );
   assert.equal(hit.type, "navigation");
   assert.equal(hit.channel, "covert");
-  assert.equal(hit.destClass, "remote");
+  assert.equal(hit.destClass, URL_CLASS.REMOTE);
   assert.equal(hit.carriesData, true);
 
   // A runtime value appended with no data-API call is a navigation but not data-bearing.
