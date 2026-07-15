@@ -43,7 +43,7 @@ flowchart TD
   B -- yes --> L{"LLM judges from the file and<br/>options page: is user data sent<br/>WITHOUT an explicit opt-in?"}
   L -- "pass: consented or no user data" --> OK([no finding])
   L -- "fail: sent without consent" --> ERR([ERROR: user-data exfiltration])
-  L -- unsure --> M([escalate to manual review])
+  L -- unsure --> M([escalate to manual review<br/>— re-judged by the recheck])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -61,7 +61,8 @@ flowchart TD
         The add-on is told the listed code locations send user data to a remote
         server without an explicit opt-in, and that user data may be transmitted
         only when the user actively enables it on an options page that discloses
-        what is sent.
+        what is sent. Locations the model cannot resolve are deferred to the
+        post-summary recheck.
       </div>
 
       <p class="source-note">

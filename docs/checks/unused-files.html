@@ -52,7 +52,7 @@ flowchart TD
   F -- no --> L{"LLM judges per loader site:<br/>does this site load the file?"}
   L -- "at least one site loads it" --> OK
   L -- "no site loads it" --> ERR2
-  L -- "unsure / no verdict" --> M([escalate to manual review])
+  L -- "unsure / no verdict" --> M([escalate to manual review<br/>— re-judged by the recheck])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -71,7 +71,8 @@ flowchart TD
         <strong>When it fires</strong>
         The add-on is told the listed files or folders appear unused or hidden,
         that they complicate review and bloat the package, and is asked to fix
-        its packaging so they are no longer included.
+        its packaging so they are no longer included. Files the model cannot
+        resolve are deferred to the post-summary recheck.
       </div>
 
       <p class="source-note">

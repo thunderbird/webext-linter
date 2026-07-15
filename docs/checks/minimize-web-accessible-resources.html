@@ -50,7 +50,7 @@ flowchart TD
   D -- no --> L{"LLM judges per loader site:<br/>does this site load the file<br/>for a web context?"}
   L -- "at least one site exposes it" --> OK
   L -- "no site exposes it" --> WARN2
-  L -- "unsure / no verdict" --> M([escalate to manual review])
+  L -- "unsure / no verdict" --> M([escalate to manual review<br/>— re-judged by the recheck])
 
   classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -69,7 +69,8 @@ flowchart TD
         The add-on is told one or more web_accessible_resources entries may not
         need to be exposed, that files belong there only when a web page or
         content script must reach them, and is asked to remove the unnecessary
-        entries to reduce its exposed surface.
+        entries to reduce its exposed surface. Entries the model cannot resolve
+        are deferred to the post-summary recheck.
       </div>
 
       <p class="source-note">

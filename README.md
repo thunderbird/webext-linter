@@ -265,6 +265,10 @@ The full flow - setup, the stores it computes, the orchestrator, and how one che
 each phase runs - is described in
 [docs/check-flow.html](docs/check-flow.html) ("The review pipeline").
 
+The tables below are an illustrative selection, not the full catalogue. For the
+complete, registry-synced list of every check with its own page, see
+[docs/index.html](docs/index.html).
+
 ### Deterministic checks
 
 Each `deterministic-phase` entry links to a module in
@@ -327,7 +331,7 @@ escalate only their ambiguous residue.
 | `unparsable-file` | A JavaScript, TypeScript, or Vue `<script>` source that failed to parse, so its API checks were skipped (info). |
 | `unpinned-dependency` | A `package.json` dependency declared as a version range with no lock file, so it can't be pinned to one release and verified (error). |
 | `unpinned-vendor-source` | A VENDOR-declared file whose (trusted-host) source is not pinned to an immutable version/tag/commit, so its bytes can't be verified (error). |
-| `unrecognized-manifest-key` | A top-level manifest key the schema does not define - Thunderbird ignores it (warning). |
+| `unrecognized-manifest-key` | A top-level manifest key the schema does not define - Thunderbird ignores it (info). |
 | `unsafe-html` | Any write to `innerHTML`/`outerHTML`/`srcdoc`/`insertAdjacentHTML`; only `Element.setHTML()` is sanctioned (an empty/null clear is exempt) (info). |
 | `unused-permission` | A declared named permission (required or optional) that no reachable call provably requires (warning) - host patterns are `minimize-host-permissions`' concern. A permission is dropped as justified when an API call, a `navigator.*` Web/DOM call, or a script-injection manifest key proves it in use. It is a finding when the registry's permission prompt names its justifying usages as `tokens` and not one of them occurs anywhere in the live code (comments excluded) or the manifest - decided with no model involved, and only while the scan can see every usage. Everything else escalates: under `--llm-review` to the `unused-permission-recheck` consumer, which judges the located token sites one by one, else to manual review. |
 | `vendor-modified` | A declared third-party file whose bytes don't match its pinned source (EOL-tolerant compare) - it appears modified from upstream (error). |
