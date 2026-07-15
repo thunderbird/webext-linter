@@ -1,3 +1,3 @@
-body[data-kim-seen] {
+body[data-injected-seen] {
   outline: 1px solid transparent;
 }
