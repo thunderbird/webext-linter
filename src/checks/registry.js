@@ -1217,8 +1217,7 @@ export async function runOneCheck(ctx, check, label) {
       }
       findings.push(f);
     }
-  } catch (err) {
-    ctx.lastError = err; // surfaced via debug only; text comes from the registry
+  } catch {
     findings.push(
       finding({
         ruleId: "check-failed",
