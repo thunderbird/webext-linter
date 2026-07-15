@@ -39,6 +39,7 @@ import { isVendored } from "./resolve.js";
 import { npmNameForLibrary } from "../lib/library-hashes.js";
 import { matchLibraryBlock } from "../lib/library-blocks.js";
 import { normalizedSha256, eolNormalize } from "../normalize/hash.js";
+import { fetchWithTimeout } from "../util/net.js";
 import { getProvider } from "../llm/provider.js";
 import { newNonce, wrap, framing } from "../lib/untrusted.js";
 import {
@@ -967,34 +968,41 @@ export async function isPopular(src, net) {
  * @type {VendorNet}
  */
 export const defaultNet = {
-  async fetchBytes(url) {
-    const res = await timedFetch(url);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    const declared = Number(res.headers.get("content-length"));
-    if (declared && declared > VENDOR_FETCH_MAX_BYTES) {
-      throw new Error("source exceeds size cap");
-    }
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > VENDOR_FETCH_MAX_BYTES) {
-      throw new Error("source exceeds size cap");
-    }
-    return buf;
+  fetchBytes(url) {
+    return fetchWithTimeout(url, readBytes, VENDOR_FETCH_TIMEOUT_MS);
   },
-  async fetchJson(url) {
-    return readJson(await timedFetch(url));
+  fetchJson(url) {
+    return fetchWithTimeout(url, readJson, VENDOR_FETCH_TIMEOUT_MS);
   },
-  async postJson(url, body) {
-    return readJson(
-      await timedFetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      })
-    );
+  postJson(url, body) {
+    return fetchWithTimeout(url, readJson, VENDOR_FETCH_TIMEOUT_MS, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
   },
 };
+
+/**
+ * Read a fetch Response as bytes, enforcing the size cap (fetchBytes' consumer). A
+ * consume callback for fetchWithTimeout, so the read runs under the abort timeout.
+ * @param {Response} res
+ * @returns {Promise<Buffer>}
+ */
+async function readBytes(res) {
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const declared = Number(res.headers.get("content-length"));
+  if (declared && declared > VENDOR_FETCH_MAX_BYTES) {
+    throw new Error("source exceeds size cap");
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > VENDOR_FETCH_MAX_BYTES) {
+    throw new Error("source exceeds size cap");
+  }
+  return buf;
+}
 
 /**
  * Read a fetch Response as JSON, enforcing the size cap. Shared by fetchJson and
@@ -1015,24 +1023,4 @@ async function readJson(res) {
     throw new Error("response exceeds size cap");
   }
   return JSON.parse(buf.toString("utf8"));
-}
-
-/**
- * fetch() with an abort timeout. Redirects are followed - the trust is that the
- * allowlisted CDNs only redirect within their own canonical URLs.
- * @param {string} url @param {RequestInit} [init]
- * @returns {Promise<Response>}
- */
-async function timedFetch(url, init) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), VENDOR_FETCH_TIMEOUT_MS);
-  try {
-    return await fetch(url, {
-      ...init,
-      signal: ctrl.signal,
-      redirect: "follow",
-    });
-  } finally {
-    clearTimeout(timer);
-  }
 }
