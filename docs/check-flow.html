@@ -54,6 +54,31 @@
         width: 100%;
         height: auto;
       }
+      /* Edge labels: a light-grey chip with a thin border. Mermaid sizes the
+         foreignObject to the bare text, so the added border/padding must not be
+         clipped (overflow: visible) and the chip must shrink to its content
+         (inline-block); otherwise the border renders as clipped top/bottom
+         fragments around the text. */
+      .flow .mermaid .edgeLabel foreignObject {
+        overflow: visible;
+      }
+      .flow .mermaid .edgeLabel foreignObject > div {
+        display: inline-block !important;
+        background-color: #f2f4f7 !important;
+        border: 1px solid #eceef1;
+        border-radius: 4px;
+        padding: 1px 6px;
+        line-height: 1.2;
+      }
+      .flow .mermaid .edgeLabel foreignObject p,
+      .flow .mermaid .edgeLabel foreignObject span {
+        background-color: transparent !important;
+      }
+      /* Unlabeled edges still get an (empty) label container; without this the chip
+         above would draw each as an empty bordered box. Hide any label with no text. */
+      .flow .mermaid .edgeLabel foreignObject > div:not(:has(*:not(:empty))) {
+        display: none !important;
+      }
     </style>
   </head>
   <body>
@@ -64,36 +89,32 @@
       </header>
 
       <p class="lead">
-        One review is one call to <code>runPipeline()</code> — the pipeline
-        (<code>src/pipeline.js</code>), and the tool's core: opts in, a Review
-        out. A submitted add-on goes in; findings and manual-review notes come
-        out. It loads and resolves the add-on, builds the run context, then
+        A review is a single call to <code>runPipeline()</code>
+        (<code>src/pipeline.js</code>), the tool's core: it performs an analysis of
+        the provided add-on and returns a <code>Review</code> - the findings and
+        manual-review notes. The call loads and resolves the add-on, builds the
+        run context, then
         hands off to the orchestrator, which runs the checks. Everything below
-        happens inside that single call.
+        happens inside it.
       </p>
 
       <h2>Setup</h2>
       <p>
         Nothing is checked until the add-on is loaded, classified, resolved and
-        parsed. That is the pipeline's first job, and it does every expensive
-        thing exactly once. The amber boxes are the ones that matter most: they
-        <strong>resolve the review state</strong> —
+        parsed - the pipeline's first job, and it does every expensive thing
+        exactly once. The amber boxes are the ones that matter: they
+        <strong>resolve the review state</strong> -
         <code>invalidExperiment</code>, the <code>mode</code> (with
         <code>scaNotRequired</code>), <code>llmVerified</code>, and the
-        <strong>review target</strong>. Everything after them, and every check,
-        keys off those. The mode is where a submitted source archive can be
-        thrown away; <code>llmVerified</code> is the one place this run decides
-        it may call the model, and every later decision reads the answer off
-        <code>ctx.llm</code> rather than asking again. After Phase&nbsp;4,
-        <code>runPipeline()</code>&rsquo;s Phase&nbsp;5 runs the review &mdash;
-        a single <code>runChecks()</code> call, detailed in
-        <em>The orchestrator</em> below &mdash; then finalizes the
-        <code>Review</code> for the report.
+        <strong>review target</strong> - and everything after them, every check,
+        keys off those. After Phase&nbsp;4, Phase&nbsp;5 runs the review (a single
+        <code>runChecks()</code> call, detailed in <em>The orchestrator</em>) then
+        finalizes the <code>Review</code> for the report.
       </p>
       <div class="flow">
         <pre class="mermaid">
 ---
-title: cli.js — main execution flow
+title: cli.js - main execution flow
 config:
   layout: dagre
   themeVariables:
@@ -104,9 +125,9 @@ config:
       bottom: 8
 ---
 flowchart TB
-  SUB(["called from src/cli.js —<br/>a built XPI / folder (+ a source archive, --sca-root)"]) --> LOAD
+  SUB(["called from src/cli.js -<br/>a built XPI / folder (+ a source archive, --sca-root)"]) --> LOAD
 
-  subgraph P1 ["runPipeline() · Phase 1 — load & resolve mode, experiments, LLM"]
+  subgraph P1 ["runPipeline() · Phase 1 - load & resolve mode, experiments, LLM"]
     LOAD["Reading add-on<br/>loadAddon(XPI)"] --> LDQ{{"the archive reads, and fits the size cap?"}}
     LDQ -- no --> P1F((("THROW<br/>exit 2")))
     LDQ -- yes --> SCH["Fetching review schemas<br/>resolveReviewSchema()<br/>pick the channel from manifest_version +<br/>strict_max_version, fetch it, index it"]
@@ -120,8 +141,8 @@ flowchart TB
     EXP --> EXFQ{{"any bundled experiment<br/>files to verify?"}}
     EXFQ -- yes --> EXQ{{"the upstream allow-list fetched?"}}
     EXQ -- no --> P1F
-    EXQ -- yes --> IQ{{"an UNSUPPORTED Experiment,<br/>and --allow-experiments is off?"}}
-    EXFQ -- "no — file-less declaration → unsupported" --> IQ
+    EXQ -- yes --> IQ{{"an UNSUPPORTED Experiment (unrecognised<br/>draft or file-less declaration), and<br/>--allow-experiments is off?"}}
+    EXFQ -- no --> IQ
     IQ -- yes --> SETINV["invalidExperiment = true<br/>mode = xpi"]
     IQ -- no --> LQ
 
@@ -142,8 +163,8 @@ flowchart TB
     SQ -- no --> MX2["mode = xpi"]
     SQ -- yes --> CLS["Classifying the built add-on<br/>classifyBundled(XPI)"]
     CLS --> DQ{{"is the shipped XPI's OWN first-party code<br/>minified / obfuscated?<br/>hasUnreviewableCode()"}}
-    DQ -- "yes — the source IS needed" --> KEEP["mode = sca"]
-    DQ -- "no — the source adds nothing" --> DOWN["mode = xpi<br/>scaNotRequired = true"]
+    DQ -- "yes - the source IS needed" --> KEEP["mode = sca"]
+    DQ -- "no - the source adds nothing" --> DOWN["mode = xpi<br/>scaNotRequired = true"]
   end
 
   SETINV --> MODE
@@ -151,7 +172,7 @@ flowchart TB
   KEEP --> MODE
   DOWN --> MODE
 
-  subgraph P2 ["runPipeline() · Phase 2 — resolve the REVIEW TARGET"]
+  subgraph P2 ["runPipeline() · Phase 2 - resolve the REVIEW TARGET"]
     MODE{{"mode?"}}
     MODE -- sca --> LSRC["load the source archive → loadScaAddon()<br/>addon.experiments = xpiAddon.experiments"]
     LSRC --> LSQ{{"--sca-source resolves within --sca-root,<br/>and matches files?"}}
@@ -163,24 +184,24 @@ flowchart TB
   SETSRC --> Q2
   SETXPI --> Q2
 
-  subgraph P3 ["runPipeline() · Phase 3 — vendor / library / build setup"]
+  subgraph P3 ["runPipeline() · Phase 3 - vendor / library / build setup"]
     Q2{{"invalidExperiment?"}}
-    Q2 -- no --> RV["resolveVendor() — the declared dependency manifest<br/>resolveLibraryBlocks() — the banned-library list"]
+    Q2 -- no --> RV["resolveVendor() - the declared dependency manifest<br/>resolveLibraryBlocks() - the banned-library list"]
     RV --> M2{{"mode?"}}
 
-    M2 -- sca --> SCA1["Auditing source dependencies<br/>verifyScaDependencies() — the source's package.json"]
-    M2 -- xpi --> XPI1["Verifying vendored libraries<br/>verifyVendor() — the committed copies"]
+    M2 -- sca --> SCA1["Auditing source dependencies<br/>verifyScaDependencies() - the source's package.json"]
+    M2 -- xpi --> XPI1["Verifying vendored libraries<br/>verifyVendor() - the committed copies"]
 
     SCA1 --> CE
-    XPI1 --> CE["classifyReview() — the REVIEW TARGET<br/>classifyFiles + assembleBundled<br/>library hash · minified geometry · obfuscation · vendored"]
+    XPI1 --> CE["classifyReview() - the REVIEW TARGET<br/>classifyFiles + assembleBundled<br/>library hash · minified geometry · obfuscation · vendored"]
 
-    CE --> IBL["identifyBundledLibraries() — the REVIEW TARGET<br/>applyNotPopularVendor()<br/>Identifying libraries on a CDN → resolveCdnLibraries()<br/>Auditing libraries → auditIdentifiedLibraries()<br/>FINALIZES the authored / non-authored split — it both ADDS<br/>and REMOVES, so the parse must come after it"]
+    CE --> IBL["identifyBundledLibraries() - the REVIEW TARGET<br/>applyNotPopularVendor()<br/>Identifying libraries on a CDN → resolveCdnLibraries()<br/>Auditing libraries → auditIdentifiedLibraries()<br/>FINALIZES the authored / non-authored split - it both ADDS<br/>and REMOVES, so the parse must come after it"]
 
     IBL --> EXR["Parsing add-on sources → extractReview()<br/>the REVIEW TARGET, with the FINAL skip set<br/>parse each source ONCE, drop the AST<br/>content extraction on the authored remainder"]
 
     EXR --> M3{{"mode?"}}
     M3 -- sca --> SCA2["Identifying built-add-on libraries on a CDN → resolveCdnLibraries(XPI)"]
-    SCA2 --> SXP["Parsing the built add-on → runShippedExtractionPass(XPI)<br/>the shipped view is only ever walked as a LOAD GRAPH:<br/>localImports · loaderRefs · experimentRefs · moduleSyntaxLoc<br/>no content scan, no api-usage — in SCA the reviewed code is the SOURCE<br/>parse each source ONCE, drop the AST"]
+    SCA2 --> SXP["Parsing the built add-on → runShippedExtractionPass(XPI)<br/>the shipped view is only ever walked as a LOAD GRAPH:<br/>localImports · loaderRefs · experimentRefs · moduleSyntaxLoc<br/>no content scan, no api-usage - in SCA the reviewed code is the SOURCE<br/>parse each source ONCE, drop the AST"]
     SXP --> SCB["selectScaBuildFiles()<br/>Analyzing the build → analyzeBuild()"]
   end
 
@@ -188,7 +209,7 @@ flowchart TB
   M3 -- xpi --> CTX
   SCB --> CTX
 
-  subgraph P4 ["runPipeline() · Phase 4 — build the RunContext"]
+  subgraph P4 ["runPipeline() · Phase 4 - build the RunContext"]
     CTX["buildRunContext()<br/>--diff-to: also loadAddon(the prior version) → ctx.previous"] --> IEQ{{"invalidExperiment?"}}
     IEQ -- yes --> NOSRC["ctx.jsSources = [ ]<br/>ctx.apiUsages = [ ]"]
     NOSRC --> SIB
@@ -206,13 +227,13 @@ flowchart TB
     SIBQ -- no --> P4F
   end
 
-  subgraph P5 ["runPipeline() · Phase 5 — run the review, then render the findings"]
+  subgraph P5 ["runPipeline() · Phase 5 - run the review, then render the findings"]
     RAQ{{"ctx.llm attached?"}}
     RAQ -- yes --> RAT["recheckActive = true"]
     RAQ -- no --> RAF["recheckActive = false"]
     RAT --> RCBOX
     RAF --> RCBOX
-    RCBOX[["runChecks() — runs all four phases<br/>detailed under The orchestrator below"]] --> META["merge findings + assemble meta<br/>manual-review list = invalidExperiment ? [ ]<br/>: renderManualItems(manualItems) + registry.manualChecks(diff-gated on ctx.previous)"]
+    RCBOX[["runChecks() - runs all four phases<br/>detailed under The orchestrator below"]] --> META["merge findings + assemble meta<br/>manual-review list = invalidExperiment ? [ ]<br/>: renderManualItems(manualItems) + registry.manualChecks(diff-gated on ctx.previous)"]
     META --> RFIND["renderFindings()<br/>fill each finding's message from its registry response"]
   end
 
@@ -220,7 +241,7 @@ flowchart TB
 
   RFIND --> FMT
 
-  FMT["src/cli.js: formatReview(review, format)<br/>calls src/report/format.js — renders text or json"] --> WRITE["write the report to stdout"]
+  FMT["src/cli.js: formatReview(review, format)<br/>calls src/report/format.js - renders text or json"] --> WRITE["write the report to stdout"]
   WRITE --> ROUT{{"--report-out given?"}}
   ROUT -- yes --> SAVE["save a plain copy:<br/>feed + report"]
   ROUT -- no --> EXITQ
@@ -258,18 +279,16 @@ flowchart TB
         the classification entirely, so it is never downgraded.
       </div>
       <p>
-        The invalid-Experiment path is not an early exit — it runs on to the
-        orchestrator, which reviews the shipped XPI with the single reject
-        check. It only <em>skips work</em>, and it skips it in one step: setting
-        <code>invalidExperiment</code> also pins the mode, and everything after
-        it is bypassed — the LLM (both the pre-flight and the client, even when
-        <code>--llm-review</code> is given), the library hashes, the
-        classification, the whole vendor block, and the parse. Not one line of
-        the add-on's code is read: the reject check judges from the manifest,
-        the experiment classification and the schema alone, so
-        <code>ctx.jsSources</code> is empty. Only two things still run: the
-        schema, which is resolved <em>before</em> the decision because the check
-        resolves API paths through it, and the run context itself.
+        The invalid-Experiment path is not an early exit - it runs on to the
+        orchestrator, which reviews the shipped XPI with the single reject check.
+        It only <em>skips work</em>, in one step: setting
+        <code>invalidExperiment</code> pins the mode and bypasses everything after
+        it - the LLM (pre-flight and client, even under <code>--llm-review</code>),
+        the library hashes, the classification, the vendor block, the parse. Not
+        one line of the add-on's code is read, so <code>ctx.jsSources</code> is
+        empty; the reject check judges from the manifest, the experiment
+        classification and the schema - which is resolved <em>before</em> the
+        decision because the check resolves API paths through it.
       </p>
 
       <h2>The stores</h2>
@@ -278,24 +297,21 @@ flowchart TB
         diagram reads left to right in four columns: the
         <strong>producer</strong> step, the <strong>store</strong> it builds,
         the <strong>access layer</strong>, and the <strong>checks</strong>. A
-        <strong>store</strong> (solid) is raw and <em>eager</em> — built once
+        <strong>store</strong> (solid) is raw and <em>eager</em> - built once
         during setup (<code>ctx.schema</code>,
         <code>addon.vendor</code>/<code>bundled</code>, the per-source
         <code>src.extracted.*</code> fields), whether or not anything reads it.
-        A <strong>cache</strong> (dashed) is a <em>derived, lazy</em> view —
+        A <strong>cache</strong> (dashed) is a <em>derived, lazy</em> view -
         <code>apiResolution</code>, <code>permissionAnalysis</code>,
         <code>outboundSinks</code>, <code>evalScan</code>, <code>locales</code>,
-        and the <code>reachability</code> graph — computed from stores on the
+        and the <code>reachability</code> graph - computed from stores on the
         first read that needs it, then memoized (so a cache nobody reads is
         never built). The lazy caches never re-parse: they derive from the
         precomputed <code>src.extracted</code> stores (a check reading before
         the extraction pass ran throws "a check is a pure reader, it never
-        parses"). The small unlabeled circles are <strong>relays</strong> — pure
-        layout: a store a check reads directly still passes through the access
-        column so every check lines up in the last one. Solid arrows are
-        "produces / derives from"; dashed are "read by". (A couple of
-        cache→cache inputs, shown as <code>+&nbsp;…</code> notes on the cache,
-        are kept out of the arrows so nothing jumps a column.)
+        parses"). The small unlabeled circles are <strong>relays</strong> - pure
+        layout, so a store a check reads directly still lines up in the last
+        column. Solid arrows are "produces / derives from"; dashed are "read by".
       </p>
       <div class="flow">
         <pre class="mermaid">
@@ -307,8 +323,8 @@ flowchart LR
   RS["resolveReviewSchema()"] --> s_schema
   RV["resolveVendor() → verifyVendor()<br/>(SCA: verifyScaDependencies)"] --> s_vendor
   CB2["classifyFiles() → assembleBundled()"] --> s_bundled
-  IBL2["identifyBundledLibraries()<br/>CDN + not-popular-vendor — FINALIZES the<br/>authored / non-authored split (ADDS + REMOVES)"] --> s_bundled
-  PARSE2["parse each source ONCE<br/>runExtractionPass() — drops the AST"] --> s_apiusage
+  IBL2["identifyBundledLibraries()<br/>CDN + not-popular-vendor - FINALIZES the<br/>authored / non-authored split (ADDS + REMOVES)"] --> s_bundled
+  PARSE2["parse each source ONCE<br/>runExtractionPass() - drops the AST"] --> s_apiusage
   PARSE2 --> s_webapiperms
   PARSE2 --> s_loaderrefs
   PARSE2 --> s_localimports
@@ -351,11 +367,11 @@ flowchart LR
   s_sinks --> s_outboundsinks("outboundSinks<br/>getOutboundSinks")
   s_remotejs --> s_evalscan("evalScan<br/>getEvalScan<br/>+ reachability, manifest CSP")
   s_localefiles --> s_locales("locales<br/>getLocales")
-  s_loaderrefs --> s_reachability("reachability<br/>buildReachability")
+  s_loaderrefs --> s_reachability("reachability<br/>buildReachability<br/>the reachable-code tree")
   s_localimports --> s_reachability
   s_experimentrefs --> s_reachability
 
-  %% ===== COL 3b: blind relays — a store read directly by checks passes through one =====
+  %% ===== COL 3b: blind relays - a store read directly by checks passes through one =====
   s_apiusage --> r_apiusage(( ))
   s_codeatoms --> r_codeatoms(( ))
   s_modulesyntax --> r_modsyntax(( ))
@@ -378,7 +394,7 @@ flowchart LR
   s_permanalysis -.-> k_missing_perm["missing-permission"]
   s_permanalysis -.-> k_unused_perm["unused-permission"]
   s_permanalysis -.-> k_missing_key["missing-manifest-key"]
-  r_codeatoms -. locateTokens .-> k_unused_perm
+  r_codeatoms -.-> k_unused_perm
 
   s_outboundsinks -.-> k_exfil["data-exfiltration"]
   s_outboundsinks -.-> k_disguised["disguised-transmission"]
@@ -402,6 +418,9 @@ flowchart LR
   s_reachability -.-> k_unused_files["unused-files"]
   s_reachability -.-> k_bundled_files["bundled-files"]
   s_reachability -.-> k_war["minimize-web-accessible-resources"]
+  s_reachability -.-> k_unrecognized["unrecognized-file-type"]
+  s_reachability -.-> k_api_coverage
+  s_reachability -.-> k_core_symbol
 
   r_apiusage -.-> k_api_coverage["api-coverage"]
   r_apiusage -.-> k_unparsable["unparsable-file"]
@@ -432,7 +451,7 @@ flowchart LR
   class s_schema,s_vendor,s_bundled,s_apiusage,s_webapiperms,s_loaderrefs,s_localimports,s_modulesyntax,s_experimentrefs,s_sinks,s_remotejs,s_codeatoms,s_unsafehtml,s_syncxhr,s_debugger,s_asyncmsg,s_coresym,s_localefiles store;
   class s_apiresolution,s_permanalysis,s_outboundsinks,s_evalscan,s_locales,s_reachability cache;
   class r_apiusage,r_codeatoms,r_modsyntax,r_remotejs,r_unsafehtml,r_syncxhr,r_debugger,r_asyncmsg,r_coresym,r_vendor,r_bundled relay;
-  class k_unknown_api,k_deprecated_api,k_smin,k_smax,k_exp_unknown_api,k_api_coverage,k_unparsable,k_missing_perm,k_unused_perm,k_missing_key,k_eval_call,k_fn_ctor,k_string_timer,k_remote_eval,k_csp_eval,k_csp_inline,k_loc_missing,k_loc_unused,k_vendor_mod,k_vendor_vuln,k_unpinned_dep,k_banned_lib,k_minified,k_obfuscated,k_untrusted_lib,k_cdn,k_code_sanity,k_exfil,k_disguised,k_cleartext,k_privacy,k_disg_nav,k_disg_win,k_disg_style,k_disg_res,k_remote_script,k_unused_files,k_bundled_files,k_war,k_unsafe_html,k_sync_xhr,k_debugger_stmt,k_async_onmsg,k_core_symbol,k_bg_module,k_bg_page_module check;
+  class k_unknown_api,k_deprecated_api,k_smin,k_smax,k_exp_unknown_api,k_api_coverage,k_unparsable,k_missing_perm,k_unused_perm,k_missing_key,k_eval_call,k_fn_ctor,k_string_timer,k_remote_eval,k_csp_eval,k_csp_inline,k_loc_missing,k_loc_unused,k_vendor_mod,k_vendor_vuln,k_unpinned_dep,k_banned_lib,k_minified,k_obfuscated,k_untrusted_lib,k_cdn,k_code_sanity,k_exfil,k_disguised,k_cleartext,k_privacy,k_disg_nav,k_disg_win,k_disg_style,k_disg_res,k_remote_script,k_unused_files,k_bundled_files,k_war,k_unsafe_html,k_sync_xhr,k_debugger_stmt,k_async_onmsg,k_core_symbol,k_bg_module,k_bg_page_module,k_unrecognized check;
         </pre>
       </div>
 
@@ -473,7 +492,7 @@ flowchart LR
               that every content scanner honours.
               <code>identifyBundledLibraries()</code> (the CDN +
               not-popular-vendor reconciliation) <strong>finalizes</strong> the
-              split — it both adds and removes — which is why the parse runs
+              split - it both adds and removes - which is why the parse runs
               after it.
             </td>
           </tr>
@@ -506,7 +525,7 @@ flowchart LR
             <td>
               <code>permissionAnalysis</code>, <code>apiResolution</code>,
               <code>evalScan</code>, <code>outboundSinks</code>,
-              <code>locales</code> … — derived on demand by whichever check asks
+              <code>locales</code> … - derived on demand by whichever check asks
               first <strong>from the precomputed stores</strong> (no re-parse),
               then shared with the rest.
             </td>
@@ -517,9 +536,9 @@ flowchart LR
       <p>
         Which stores a check may reach is not open either. Every check declares
         an
-        <code>input</code>, and <code>routeCtx</code> — the single place routing
+        <code>input</code>, and <code>routeCtx</code> - the single place routing
         is decided, shared by the main loop and the deferred loop so they can
-        never drift — hands it the <code>ctx</code> for that <code>input</code>.
+        never drift - hands it the <code>ctx</code> for that <code>input</code>.
         It reads exactly one artifact and cannot reach another's. What the
         <code>input</code> resolves to depends on the review mode:
       </p>
@@ -559,8 +578,8 @@ flowchart LR
         <code>xpi</code> both collapse onto <code>ctx</code>. The
         <strong>one exception</strong> to the table is a
         <strong>post-summary recheck consumer</strong>: the loader forbids it an
-        <code>input</code>, so <code>routeCtx</code> leaves it on the main ctx —
-        it needs <code>ctx.recheck</code> / <code>ctx.recheckVerdicts</code> —
+        <code>input</code>, so <code>routeCtx</code> leaves it on the main ctx -
+        it needs <code>ctx.recheck</code> / <code>ctx.recheckVerdicts</code> -
         even though the items it re-judges belong to its
         <em>producer&rsquo;s</em> artifact. Each handed item already carries
         every locus it needs (the producer stamps them before diverting), so the
@@ -573,7 +592,7 @@ flowchart LR
       <p>
         With the stores in place <code>runChecks()</code> takes over. A check's
         <strong>phase</strong> is simply the <code>registry.yaml</code> section
-        it lives in — never declared on the entry, so the two cannot disagree.
+        it lives in - never declared on the entry, so the two cannot disagree.
         The orchestrator looks up the phases it wants, in the order it runs
         them, which makes any section it never asks for inert.
       </p>
@@ -591,7 +610,7 @@ flowchart LR
             <td><code>invalid-experiment-phase</code></td>
             <td>
               ONLY when the add-on is an invalid Experiment
-              (<code>ctx.invalidExperiment</code>) — and then it is the
+              (<code>ctx.invalidExperiment</code>) - and then it is the
               <em>only</em> phase that runs at all: the whole rest of the review
               is skipped.
             </td>
@@ -637,10 +656,10 @@ flowchart LR
         the <code>Review</code>. Every check, in every phase, goes through the
         same per-check runner, <code>runOneCheck()</code>. The two diagrams
         below expand the <code>runChecks()</code> box from the pipeline diagram
-        above — its orchestration, then the phase-runner loop each check runs
+        above - its orchestration, then the phase-runner loop each check runs
         through. In both, a <strong>teal parallelogram</strong> marks a direct
         model call (<code>ctx.llm.evaluate</code> / <code>reviewAddon</code> /
-        <code>summarize</code>) — the points where an actual LLM prompt fires.
+        <code>summarize</code>) - the points where an actual LLM prompt fires.
       </p>
       <div class="flow">
         <pre class="mermaid">
@@ -663,22 +682,22 @@ flowchart TB
   QSUM -- no --> DLOOP
   QSUM -- yes --> QMODE{{"mode?"}}
 
-  QMODE -- xpi --> SUM1[/"AI add-on summary — the displayed 'Summary of add-on'<br/>generateAddonSummary(XPI) → ctx.llm.reviewAddon()"/]
-  QMODE -- sca --> SUM2[/"AI summary over the SOURCE — the displayed 'Summary of add-on'<br/>(source corpus: no unused-files exclusion)<br/>generateAddonSummary(SCA) → ctx.llm.reviewAddon()"/]
+  QMODE -- xpi --> SUM1[/"AI add-on summary - the displayed 'Summary of add-on'<br/>generateAddonSummary(XPI) → ctx.llm.reviewAddon()"/]
+  QMODE -- sca --> SUM2[/"AI summary over the SOURCE - the displayed 'Summary of add-on'<br/>(source corpus: no unused-files exclusion)<br/>generateAddonSummary(SCA) → ctx.llm.reviewAddon()"/]
   SUM2 --> QXPI{{"did an XPI-anchored<br/>recheck escalate?"}}
-  QXPI -- yes --> SUM3[/"packaging summary over the shipped XPI — VERDICT-ONLY (prose discarded)<br/>generateAddonSummary(XPI) → ctx.llm.reviewAddon()"/]
+  QXPI -- yes --> SUM3[/"packaging summary over the shipped XPI - VERDICT-ONLY (prose discarded)<br/>generateAddonSummary(XPI) → ctx.llm.reviewAddon()"/]
   QXPI -- no --> SETV
   SUM3 --> SETV
   SUM1 --> SETV
 
-  SETV["ctx.recheckVerdicts = one verdict per handed item<br/>(set only if a summary pass ran without error; each SCA pass's<br/>verdicts filtered to its corpus's consumers — keepVerdicts)"] --> QDIFF{{"--diff-to given?"}}
-  QDIFF -- yes --> SUMD[/"summary of changes — advisory only, no verdicts<br/>ctx.llm.summarize()"/]
+  SETV["ctx.recheckVerdicts = one verdict per handed item<br/>(set only if a summary pass ran without error; each SCA pass's<br/>verdicts filtered to its corpus's consumers - keepVerdicts)"] --> QDIFF{{"--diff-to given?"}}
+  QDIFF -- yes --> SUMD[/"summary of changes - advisory only, no verdicts<br/>ctx.llm.summarize()"/]
   QDIFF -- no --> DLOOP
   SUMD --> DLOOP
 
   DLOOP[["run the post-summary-phase"]] --> COLL1["collapseUnusedFolders(findings)<br/>src/lib/unused-folders.js"]
   COLL1 --> COLL2["collapseUnusedFolders(manualItems)<br/>src/lib/unused-folders.js"]
-  COLL2 --> RVR["buildRecheckVerdictReport()<br/>src/lib/recheck.js — the per-site verdict rows the report prints"]
+  COLL2 --> RVR["buildRecheckVerdictReport()<br/>src/lib/recheck.js - the per-site verdict rows the report prints"]
   RVR --> RET(["return findings · manualItems · checksRun<br/>summarizeAddon · summarize · recheckVerdictRows<br/>→ runPipeline() · Phase 5"])
 
   classDef work fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
@@ -699,26 +718,23 @@ flowchart TB
         main loop (<code>src/checks/registry.js</code>): it walks a
         phase&rsquo;s gated checks in order, routes each to its input&rsquo;s
         <code>ctx</code> (<code>routeCtx</code>), runs it through
-        <code>runOneCheck()</code>, and collects the results — findings onto the
+        <code>runOneCheck()</code>, and collects the results - findings onto the
         returned list, manual items either straight to manual review or, for a
         <code>post-summary-recheck</code> producer, diverted into
         <code>ctx.recheck</code> for the AI summary to re-judge.
         <code>runOneCheck()</code> decides what to do with a check purely from
-        the <strong>shape its <code>run()</code> returned</strong> — never its
+        the <strong>shape its <code>run()</code> returned</strong> - never its
         phase; a check that throws becomes a single
         <code>check-failed</code> finding so the rest still run; and only the
         orchestrator routes anything to manual review. This loop is also where
-        the <strong>lazy caches</strong> are computed: the first check to read a
-        store&rsquo;s lazy cache (<code>permissionAnalysis</code>,
-        <code>apiResolution</code>, <code>outboundSinks</code>,
-        <code>evalScan</code>, <code>locales</code>) computes it inside its
-        <code>run()</code>, memoized on <code>ctx.addon</code> for every later
-        check.
+        the <strong>lazy caches</strong> are computed - the first check to read
+        one builds it inside its <code>run()</code> and memoizes it on
+        <code>ctx.addon</code> for every later check (see <em>The stores</em>).
       </p>
       <div class="flow">
         <pre class="mermaid">
 ---
-title: phase runner — the main loop that runs a phase's checks
+title: phase runner - the main loop that runs a phase's checks
 ---
 flowchart TB
   IN(["a phase's gated checks<br/>deterministic + llm (or invalid-experiment only)"]) --> HEAD
@@ -728,25 +744,24 @@ flowchart TB
   HEAD -- "yes · next check [i/total]" --> ROUTE["routeCtx(check, ctx, siblings)<br/>the ctx for the check's declared input"]
 
   ROUTE --> RUN["runOneCheck(checkCtx, check) → check.run()"]
-  RUN -. throws .-> CF["one check-failed finding<br/>(so the remaining checks still run)"]
-  RUN -. "first read of a store's lazy cache<br/>→ compute + memoize on ctx.addon" .-> LZ["the lazy caches are computed here, inside run():<br/>permissionAnalysis · apiResolution ·<br/>outboundSinks · evalScan · locales"]
-  RUN --> DIR["direct findings = the returned Finding[]<br/>(or result.findings) — ALWAYS collected"]
-  RUN --> QLANE{{"the result ALSO carries an<br/>llm step or escalations?"}}
+  RUN -. throws .-> CF["one check-failed finding"]
+  RUN -.-> LZ["the lazy caches are computed here, inside run():<br/>permissionAnalysis · apiResolution ·<br/>outboundSinks · evalScan · locales"]
+  RUN --> QLANE{{"what did run() return?"}}
   QLANE -- "llm: { candidates, resolve }" --> QT{{"ctx.llm attached, and the run-wide<br/>LLM budget allows another call?"}}
   QT -- yes --> EV[/"ctx.llm.evaluate()<br/>one verdict per candidate"/]
-  QT -- no --> UN["verdict = unsure for every candidate<br/>(no LLM configured, or the budget is spent)"]
+  QT -- no --> UN["verdict = unsure for every candidate"]
   EV --> RES["the check's resolve(verdicts)<br/>+ findings · + manual items"]
   UN --> RES
-  QLANE -- "escalations (deterministic)" --> ME["manualEscalations()<br/>manual items only — never the model"]
-  QLANE -- "neither (plain Finding[])" --> STAMP
+  QLANE -- "escalations (deterministic)" --> ME["manualEscalations()<br/>repack the escalations as manual items"]
+  QLANE -- "a plain Finding[]" --> STAMP
 
-  DIR --> STAMP["stamp the produced findings<br/>ruleId + severity (auto → the check sets it)"]
+  ME --> STAMP["stamp the produced findings — the check's<br/>direct findings + any the llm lane added<br/>ruleId + severity (auto → the check sets it)"]
   RES --> STAMP
   STAMP --> PUSHF["findings.push(out.findings)"]
   CF --> PUSHF
-  RES -. "+ manual items (unstamped)" .-> QDIV
-  ME -. "manual items (unstamped)" .-> QDIV
-  PUSHF --> QDIV{{"check.postSummaryRecheck<br/>&& recheckActive<br/>&& out.manualItems.length?"}}
+  PUSHF --> QANY{{"any manual items?<br/>out.manualItems.length?"}}
+  QANY -- no --> NEXT
+  QANY -- yes --> QDIV{{"check.postSummaryRecheck<br/>&& recheckActive?"}}
   QDIV -- no --> PUSHM["manualItems.push(out.manualItems)<br/>→ manual review"]
   QDIV -- "yes · per manual item" --> QRUB{{"registry.rechecks(consumer, item)?<br/>a rubric for it?"}}
   QRUB -- no --> PUSHM
@@ -763,7 +778,7 @@ flowchart TB
   classDef fail fill:#fdecea,stroke:#c0392b,color:#7b241c;
   classDef cache fill:#eceef1,stroke:#5b626b,color:#3a3f45,stroke-dasharray:4 3;
   classDef llm fill:#d3f0ec,stroke:#0f766e,color:#0b3d38;
-  class ROUTE,RUN,DIR,ME,RES,STAMP,PUSHF work;
+  class ROUTE,RUN,ME,RES,STAMP,PUSHF work;
   class EV llm;
   class UN,HELD state;
   class IN,DONE,NEXT term;
@@ -786,7 +801,7 @@ flowchart TB
         </li>
         <li>
           A <strong>post-summary consumer</strong> has no such hook. Five
-          delegate to the shared <code>resolveRecheck()</code> — read the handed
+          delegate to the shared <code>resolveRecheck()</code> - read the handed
           items and their verdicts, apply one uniform mapping
           (<code>pass</code>&nbsp;→&nbsp;drop,
           <code>fail</code>&nbsp;→&nbsp;finding, else manual). The
@@ -798,14 +813,14 @@ flowchart TB
       </ul>
 
       <p>
-        These two seams are not separate worlds — they form a
+        These two seams are not separate worlds - they form a
         <strong>funnel</strong>. A direct llm-phase check judges its candidates
         against a <em>focused</em> corpus (just the candidate&rsquo;s files,
         batched) and settles the confident ones itself:
         <code>fail</code>&nbsp;→&nbsp;finding,
         <code>pass</code>&nbsp;→&nbsp;drop. Its
         <strong><code>unsure</code> residue is not the end of the line</strong>
-        — those items are deferred to that check&rsquo;s
+        - those items are deferred to that check&rsquo;s
         <strong>post-summary recheck</strong>, where the whole-add-on summary
         re-judges them with the full, line-numbered add-on in view. So the cheap
         focused pass settles the bulk, and only the genuinely ambiguous cases
@@ -816,101 +831,75 @@ flowchart TB
       <div class="flow">
         <pre class="mermaid">
 flowchart LR
-  E{{"llm-phase evaluate()<br/>focused corpus"}}
-  E -- fail --> F["finding"]
-  E -- pass --> D["drop"]
-  E -- unsure --> R["post-summary recheck<br/>whole add-on in view"]
-  R --> RR["re-judged:<br/>drop / finding / manual"]
+  EV[/"llm-phase evaluate()<br/>focused corpus"/] --> EQ{{"verdict?"}}
+  EQ -- fail --> F["finding"]
+  EQ -- pass --> D["drop"]
+  EQ -- unsure --> R[/"post-summary recheck<br/>whole add-on in view"/]
+  R --> RR{{"re-judged?"}}
+  RR -- fail --> RRF["finding"]
+  RR -- pass --> RRD["drop"]
+  RR -- unsure --> RRM["manual review"]
 
   classDef work fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
   classDef term fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
-  class E,R work;
-  class F,D,RR term;
+  classDef llm fill:#d3f0ec,stroke:#0f766e,color:#0b3d38;
+  class EQ,RR work;
+  class EV,R llm;
+  class F,D,RRD,RRF,RRM term;
         </pre>
       </div>
 
       <p>
         The permission recheck is where the summary earns its keep. The
         <code>unused-permission</code> producer does not just decide whether a
-        permission&rsquo;s usage tokens are present — it records
+        permission&rsquo;s usage tokens are present - it records
         <em>where</em> each occurs. Each token
         <strong>site</strong> (<code>file:line</code>) is handed to the summary
-        as its own item, and the model — seeing the full, line-numbered add-on —
+        as its own item, and the model - seeing the full, line-numbered add-on -
         judges each: is the permission exercised there? A token-less permission
         (<code>unlimitedStorage</code>) has no site, so it gets one holistic
         verdict. <code>resolvePermissionRecheck</code> then aggregates a
         permission&rsquo;s sites: any <code>pass</code> drops it (justified),
         every <code>fail</code> flags it (unused), anything else falls to
         manual. Because the orchestrator owns the sites, the model only judges
-        given lines — there is nothing to cite and nothing to hallucinate, and a
+        given lines - there is nothing to cite and nothing to hallucinate, and a
         single site&rsquo;s verdict never decides the whole permission.
       </p>
 
       <p>
         The text report surfaces the model&rsquo;s structured answer: below the
         &ldquo;Summary of add-on&rdquo; prose it prints a
-        <code>Recheck verdicts:</code> list holding every recheck verdict (both
-        SCA passes), one bullet per candidate site —
-        <code
-          >* &lt;check&gt; - [LABEL] file:line - &lt;subject&gt; -
-          &lt;verdict&gt;</code
-        >
-        with the real source line beneath it, indented behind an
-        <code>-&gt;</code> arrow. <code>&lt;check&gt;</code> is the consumer's
-        title, <code>[LABEL]</code> the artifact prefix
-        (<code>[XPI]</code>/<code>[SCA]</code>, a no-op in a plain XPI review),
-        and <code>&lt;subject&gt;</code> the permission for the permission
-        recheck, or a per-site descriptor otherwise. A handed site the model
-        returned no verdict for still appears, as <code>unsure</code>. No model
-        reason is printed here — the reasons live in the prose summary above.
-        <code>buildRecheckVerdictReport</code> assembles these rows in
-        <code>runChecks</code> (where each consumer&rsquo;s corpus is in scope,
-        so the source line is read from the right artifact — and a
-        <code>manifest.json</code> line from <code>ctx.manifestText</code>, the
-        shipped manifest); the renderer only prints them.
+        <code>Recheck verdicts:</code> list, one bullet per candidate site (the
+        consumer&rsquo;s title, the <code>[XPI]</code>/<code>[SCA]</code> label,
+        <code>file:line</code>, the subject, and the verdict) with the real source
+        line beneath it. A handed site the model returned no verdict for still
+        appears, as <code>unsure</code>. No model reason is printed - those live in
+        the prose summary above. <code>buildRecheckVerdictReport</code> assembles
+        the rows in <code>runChecks</code>, where each consumer&rsquo;s corpus is
+        in scope so every source line is read from the right artifact; the renderer
+        only prints them.
       </p>
-      <div class="flow">
-        <pre class="mermaid">
----
-title: resolvePermissionRecheck() — token sites → permission outcome
----
-flowchart LR
-  V{{"summary verdicts for a<br/>permission's token sites<br/>(or one holistic verdict)"}}
-  V -- "any site pass" --> DROP["drop (justified)"]
-  V -- "every site fail" --> FND["finding (unused)"]
-  V -- "mixed / unsure / no verdict" --> MAN["manual review"]
-
-  classDef work fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
-  classDef term fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
-  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
-  classDef fail fill:#fdecea,stroke:#c0392b,color:#7b241c;
-  class V work;
-  class DROP term;
-  class MAN manual;
-  class FND fail;
-        </pre>
-      </div>
 
       <p class="source-note">
         Source of truth:
         <code>src/checks/registry.js</code> (<code>PHASE_SECTIONS</code>,
-        <code>loadChecks</code>, <code>runChecks</code> — which runs all four
-        phases plus the collapse — <code>runOneCheck</code>),
+        <code>loadChecks</code>, <code>runChecks</code> - which runs all four
+        phases plus the collapse - <code>runOneCheck</code>),
         <code>src/checks/summaries.js</code>
         (<code>resolveRecheckSummaries</code>,
-        <code>generateAddonSummary</code> — the summary interleave),
+        <code>generateAddonSummary</code> - the summary interleave),
         <code>src/checks/escalation.js</code> (<code>runLlmCheck</code>,
         <code>manualEscalations</code>),
         <code>src/lib/recheck.js</code> (<code>buildRecheckSections</code>,
         <code>resolveRecheck</code>, <code>resolvePermissionRecheck</code>,
-        <code>buildRecheckVerdictReport</code> — the per-verdict rows shown
+        <code>buildRecheckVerdictReport</code> - the per-verdict rows shown
         under the summary, rendered by <code>src/report/format.js</code>),
         <code>src/lib/permissions.js</code>
-        (<code>enumerateUnusedPermissions</code>, <code>locateTokens</code> —
+        (<code>enumerateUnusedPermissions</code>, <code>locateTokens</code> -
         the token sites),
         <code>src/lib/unused-folders.js</code>
         (<code>collapseUnusedFolders</code>),
-        <code>src/pipeline.js</code> (<code>runPipeline</code> — Phase&nbsp;5
+        <code>src/pipeline.js</code> (<code>runPipeline</code> - Phase&nbsp;5
         calls <code>runChecks</code> and assembles the <code>Review</code>), and
         the phase sections of <code>assets/registry.yaml</code>.
       </p>
