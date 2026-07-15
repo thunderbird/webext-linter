@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { classifyUrl } from "../../src/scan/url.js";
-import { URL_CLASS } from "../../src/lib/enum.js";
+import { URL_CLASS, REF_KIND } from "../../src/lib/enum.js";
 import {
   scanHtmlRemoteRefs,
   scanHtmlInlineCssRefs,
@@ -53,12 +53,11 @@ test("HTML scan flags remote script/link/iframe, ignores local", () => {
   );
   const remote = refs.filter((r) => r.klass.remote);
   assert.equal(remote.length, 3);
-  assert.deepEqual(remote.map((r) => r.kind).sort(), [
-    "content",
-    "css",
-    "script",
-  ]);
-  assert.ok(refs.some((r) => r.kind === "script" && r.klass.local));
+  assert.deepEqual(
+    new Set(remote.map((r) => r.kind)),
+    new Set([REF_KIND.CONTENT, REF_KIND.CSS, REF_KIND.SCRIPT])
+  );
+  assert.ok(refs.some((r) => r.kind.script && r.klass.local));
 });
 
 // ---- CSS ----
@@ -72,7 +71,10 @@ test("CSS scan flags remote @import and url(), not local", () => {
          div { background: url("fonts/x.woff"); }`
   );
   const remote = refs.filter((r) => r.klass.remote);
-  assert.deepEqual(remote.map((r) => r.kind).sort(), ["import", "url"]);
+  assert.deepEqual(
+    new Set(remote.map((r) => r.kind)),
+    new Set([REF_KIND.IMPORT, REF_KIND.URL])
+  );
 });
 
 // A url() inside a CSS comment is skipped and a data: URI containing a literal
@@ -105,10 +107,13 @@ test("inline CSS scan flags remote @import in <style> and url() in style=", () =
     `</head>\n` + // line 7
     `<body><div style="background:url(https://cdn/bg.png)"></div></body>`; // line 8
   const remote = scanHtmlInlineCssRefs(html).filter((r) => r.klass.remote);
-  assert.deepEqual(remote.map((r) => [r.kind, r.line]).sort(), [
-    ["import", 4],
-    ["url", 8],
-  ]);
+  assert.deepEqual(
+    remote.map((r) => [r.kind, r.line]).sort((a, b) => a[1] - b[1]),
+    [
+      [REF_KIND.IMPORT, 4],
+      [REF_KIND.URL, 8],
+    ]
+  );
   assert.ok(!remote.some((r) => r.url.includes("local.png")));
 });
 
@@ -316,7 +321,7 @@ test("HTML scan matches rel by whitespace token, not substring", () => {
   // Only the real "stylesheet" token counts; "stylesheet-x"/"x-preload" are
   // single non-keyword tokens and must not match.
   assert.equal(remote.length, 1);
-  assert.equal(remote[0].kind, "css");
+  assert.equal(remote[0].kind, REF_KIND.CSS);
   assert.equal(remote[0].url, "https://cdn/a.css");
 });
 
@@ -335,11 +340,8 @@ test("HTML scan flags remote module/script preload links", () => {
   const remote = refs.filter((r) => r.klass.remote);
   // modulepreload + preload-as-script => script; preload-as-style => css.
   // icon / preconnect are not sources and must be ignored.
-  assert.deepEqual(remote.map((r) => r.kind).sort(), [
-    "css",
-    "script",
-    "script",
-  ]);
+  assert.equal(remote.filter((r) => r.kind.css).length, 1);
+  assert.equal(remote.filter((r) => r.kind.script).length, 2);
 });
 
 // ---- check + manifest CSP ----

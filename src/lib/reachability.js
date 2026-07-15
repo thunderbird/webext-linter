@@ -265,7 +265,7 @@ function compute(ctx) {
           // A <script src> loads its target AS CODE (kind:"script" covers <script>,
           // modulepreload, preload as=script) - so a target that is not JS-parseable
           // (extname not in JS_EXTENSIONS) is executable code no check reviewed.
-          if (r.kind === "script") {
+          if (r.kind.script) {
             noteUnrecognized(target, file, JS_EXTENSIONS, r.line);
           }
         }

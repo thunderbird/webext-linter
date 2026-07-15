@@ -17,6 +17,7 @@
 // and the registry (assets/registry.yaml).
 
 import { classifyUrl } from "./url.js";
+import { REF_KIND } from "../lib/enum.js";
 import { eachElement } from "./html-parse.js";
 import { scanCssRemoteRefs } from "./css.js";
 
@@ -40,7 +41,7 @@ const URL_ATTR = { object: "data" };
 /**
  * @typedef {object} HtmlRef
  * @property {string} tag  Lowercased tag name.
- * @property {"script"|"css"|"content"|"resource"} kind  Reference kind.
+ * @property {import("../lib/enum.js").RefKind} kind  Reference kind.
  * @property {string} url  The referenced URL.
  * @property {import("../lib/enum.js").UrlClass} klass  URL classification.
  * @property {number} line  1-based source line.
@@ -63,14 +64,14 @@ export function scanHtmlRemoteRefs(html) {
       const as = (el.attr("as") || "").toLowerCase();
       url = el.attr("href");
       if (rels.has("stylesheet")) {
-        kind = "css";
+        kind = REF_KIND.CSS;
       } else if (
         rels.has("modulepreload") ||
         (rels.has("preload") && as === "script")
       ) {
-        kind = "script";
+        kind = REF_KIND.SCRIPT;
       } else if (rels.has("preload") && as === "style") {
-        kind = "css";
+        kind = REF_KIND.CSS;
       } else {
         return;
       }
@@ -78,10 +79,10 @@ export function scanHtmlRemoteRefs(html) {
       url = el.attr(URL_ATTR[el.tag] || "src");
       kind =
         el.tag === "script"
-          ? "script"
+          ? REF_KIND.SCRIPT
           : CONTENT_TAGS.has(el.tag)
-            ? "content"
-            : "resource";
+            ? REF_KIND.CONTENT
+            : REF_KIND.RESOURCE;
     } else {
       return;
     }

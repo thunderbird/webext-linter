@@ -122,3 +122,20 @@ export const URL_CLASS = makeEnum(
  * @type {{OVERT: Channel, COVERT: Channel}}
  */
 export const CHANNEL = makeEnum(["overt", "covert"], "channel");
+
+/** @typedef {{script: boolean, css: boolean, content: boolean, resource: boolean,
+ *   import: boolean, url: boolean}} RefKind  An opaque guarded singleton; only its
+ *   six LOWERCASE booleans are readable (any other access throws). Compare by
+ *   reference (k === REF_KIND.SCRIPT) or boolean (k.script). */
+
+/**
+ * What a scanned URL reference points at (src/scan/html.js, src/scan/css.js):
+ * SCRIPT, CSS, CONTENT (iframe/frame/object/embed), RESOURCE (img/audio/...), or -
+ * from CSS - IMPORT (@import) / URL (url()).
+ * @type {{SCRIPT: RefKind, CSS: RefKind, CONTENT: RefKind, RESOURCE: RefKind,
+ *   IMPORT: RefKind, URL: RefKind}}
+ */
+export const REF_KIND = makeEnum(
+  ["script", "css", "content", "resource", "import", "url"],
+  "ref_kind"
+);

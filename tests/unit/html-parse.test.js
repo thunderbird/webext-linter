@@ -47,7 +47,7 @@ test("remote-ref scan parses a tag whose attribute value contains '>'", () => {
   const refs = scanHtmlRemoteRefs(
     '<script data-x="a>b" src="https://cdn.example.com/x.js"></script>'
   );
-  const remote = refs.filter((r) => r.klass.remote && r.kind === "script");
+  const remote = refs.filter((r) => r.klass.remote && r.kind.script);
   assert.equal(remote.length, 1);
   assert.equal(remote[0].url, "https://cdn.example.com/x.js");
 });

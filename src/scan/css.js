@@ -15,10 +15,11 @@
 import postcss from "postcss";
 import valueParser from "postcss-value-parser";
 import { classifyUrl } from "./url.js";
+import { REF_KIND } from "../lib/enum.js";
 
 /**
  * @typedef {object} CssRef
- * @property {"import"|"url"} kind  Reference kind.
+ * @property {import("../lib/enum.js").RefKind} kind  Reference kind.
  * @property {string} url  The referenced URL.
  * @property {import("../lib/enum.js").UrlClass} klass  URL classification.
  * @property {number} line  1-based source line.
@@ -43,7 +44,7 @@ export function scanCssRemoteRefs(css) {
     const url = firstRef(rule.params);
     if (url != null) {
       refs.push({
-        kind: "import",
+        kind: REF_KIND.IMPORT,
         url,
         klass: classifyUrl(url),
         line: rule.source?.start?.line ?? 1,
@@ -55,7 +56,7 @@ export function scanCssRemoteRefs(css) {
   root.walkDecls((decl) => {
     for (const url of urlsIn(decl.value)) {
       refs.push({
-        kind: "url",
+        kind: REF_KIND.URL,
         url,
         klass: classifyUrl(url),
         line: decl.source?.start?.line ?? 1,
