@@ -3,6 +3,7 @@
 // only source of this text.
 
 import { test } from "node:test";
+import { REVIEW_MODE } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 
 import {
@@ -170,7 +171,7 @@ test("a recheck consumer's XPI-corpus manual item labels [XPI] end-to-end", () =
   const label = artifactLabel({
     file: item.file,
     input: registry.checkInputs().get(item.ruleId),
-    mode: "sca",
+    mode: REVIEW_MODE.SCA,
   });
   assert.equal(label, "XPI");
 });

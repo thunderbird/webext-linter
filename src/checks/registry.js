@@ -170,7 +170,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   options a check reads (experiment-not-allowed, the lazy bundled classifier). The LLM
  *   credentials are NOT here - a check reaches the model only through ctx.llm.
  * @property {import("../addon/load.js").Addon|null} [previous]  Diff baseline.
- * @property {"xpi"|"sca"} [mode]  Review mode: "xpi" (a built add-on, default) or
+ * @property {import("../lib/enum.js").ReviewMode} [mode]  Review mode: "xpi" (a built add-on, default) or
  *   "sca" (a source code archive). Gates checks via scaEligible.
  *
  *   The SHIPPED artifact (the built XPI) is deliberately NOT a ctx field: a check
@@ -845,7 +845,7 @@ function diffEligible(entry, inDiffMode) {
 }
 
 /**
- * Whether a registry entry runs in the current review MODE, per its `sca` field
+ * Whether a registry entry runs in the current review REVIEW_MODE, per its `sca` field
  * (mirrors diffEligible): `sca: true` only in SCA mode (a source code archive,
  * triggered by `--sca-root`), `sca: false` only in XPI mode (reviewing a built
  * add-on), an omitted `sca` in both. The XPI bundled/vendor checks are `sca:
@@ -982,7 +982,7 @@ export async function runChecks(ctx, registry, opts = {}, siblings = {}) {
   // XPI-only bundled/vendor checks (`sca: false`) are dropped and the
   // source-dependency audit (`sca: true`) is added; XPI mode (the default) is
   // the inverse. An omitted `sca` runs in both.
-  const inScaMode = ctx.mode === "sca";
+  const inScaMode = ctx.mode?.sca;
   // The orchestrator NAMES the phases it runs, in the order it runs them - a check's
   // phase is simply which list it is in, so a phase never asked for here does not run
   // (that is what makes an unrecognized registry section inert). An invalid Experiment

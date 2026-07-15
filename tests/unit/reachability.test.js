@@ -2,7 +2,7 @@
 // built on it (unused-files, minimize-web-accessible-resources).
 
 import { test } from "node:test";
-import { VERDICT } from "../../src/lib/enum.js";
+import { VERDICT, REVIEW_MODE } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -214,14 +214,17 @@ test("SCA mode: pureWebExtensionReachable is all source, minus --sca-exp-source"
 
   // SCA mode, no exp folder: every source file is WebExtension code (incl. the
   // experiment subtree - the deferred false-positive case).
-  const sca = buildReachability({ ...ctxFrom(files, manifest), mode: "sca" });
+  const sca = buildReachability({
+    ...ctxFrom(files, manifest),
+    mode: REVIEW_MODE.SCA,
+  });
   assert.ok(sca.pureWebExtensionReachable.has("helper.js"));
   assert.ok(sca.pureWebExtensionReachable.has("experiments/exp.js"));
 
   // SCA mode + --sca-exp-source: the Experiment subtree drops out; the rest stays.
   const scaExp = buildReachability({
     ...ctxFrom(files, manifest),
-    mode: "sca",
+    mode: REVIEW_MODE.SCA,
     scaExpSource: "experiments",
   });
   assert.ok(scaExp.pureWebExtensionReachable.has("helper.js"));
@@ -232,7 +235,7 @@ test("SCA mode: pureWebExtensionReachable is all source, minus --sca-exp-source"
   // the all-source SCA fallback does NOT apply - a non-entry file is not swept in.
   const shipped = buildReachability({
     ...ctxFrom(files, manifest),
-    mode: "sca",
+    mode: REVIEW_MODE.SCA,
     isShippedView: true,
   });
   assert.ok(!shipped.pureWebExtensionReachable.has("helper.js"));
@@ -266,7 +269,7 @@ test("SCA: reachability over the built XPI describes the XPI", () => {
     withManifest({
       addon: xpi,
       jsSources: parsedSources(xpi),
-      mode: "sca",
+      mode: REVIEW_MODE.SCA,
     })
   );
   assert.ok(reach.webReachable.has("injected.js"));

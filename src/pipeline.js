@@ -29,6 +29,7 @@ import {
 } from "./schema/fetch.js";
 import { loadSchemaFiles, peekApplicationVersion } from "./schema/load.js";
 import { buildSchemaIndex } from "./schema/index.js";
+import { REVIEW_MODE } from "./lib/enum.js";
 import {
   loadSchemaAnnotations,
   applySchemaAnnotations,
@@ -342,7 +343,7 @@ export async function runPipeline(opts) {
   // `xpi` for a rejected Experiment, whose rejection is decided entirely from the shipped XPI's
   // bundled experiments - reviewing the readable source would be pointless, so Phase 2 never
   // reads the source archive at all.
-  let mode = "xpi";
+  let mode = REVIEW_MODE.XPI;
   // Set below when a submitted SCA is downgraded to a plain XPI review because the shipped XPI
   // is directly reviewable. Read by the sca-not-required check via ctx.
   let scaNotRequired = false;
@@ -442,7 +443,7 @@ export async function runPipeline(opts) {
       // becomes the review target and is re-classified vendor-aware in Phase 3; reusing this
       // pre-vendor bundle would scan VENDOR-declared readable files as authored, unlike a
       // native XPI review of the same artifact.
-      if (mode === "sca") {
+      if (mode?.sca) {
         xpiAddon.bundled = bundled;
       }
     }
@@ -452,7 +453,7 @@ export async function runPipeline(opts) {
   // SCA source archive is read HERE, and only when the mode stays SCA (a downgrade never
   // touches it). The review target `addon`, `scaSource`, `scaExpSource`, the experiment
   // mirror, and `meta` all follow the resolved mode.
-  if (mode === "sca") {
+  if (mode?.sca) {
     // Read the whole --sca-root archive ONCE (shared with selectScaBuildFiles below); the
     // review addon is the source subtree carrying the XPI's manifest.
     scaSource = opts.scaSource || ".";
@@ -535,7 +536,7 @@ export async function runPipeline(opts) {
 
     // 1d. Check the DECLARED dependencies of the review target. Both modes ask about the
     // same artifact, but the two declare differently, so the question is not the same one.
-    if (mode === "sca") {
+    if (mode?.sca) {
       // SCA: the source archive's package.json declares the dependencies - audit each for
       // popularity (non-popular -> reject) and OSV. The readable source may ALSO vendor a
       // library as a committed copy, so full identification (Mozilla-hash + CDN + OSV,
@@ -589,7 +590,7 @@ export async function runPipeline(opts) {
       cdnEnabled: opts.cdnLookup !== false,
       blocks: libraryBlocks,
       setupStep,
-      scope: mode === "sca" ? "source" : "bundled",
+      scope: mode?.sca ? "source" : "bundled",
     });
 
     // 1g. Parse the REVIEW TARGET - once, with the FINAL skip set (see extractReview).
@@ -598,7 +599,7 @@ export async function runPipeline(opts) {
     // 1h. SCA only: cover the two artifacts that are NOT the review target. In XPI mode the
     // review target IS the shipped XPI (1f already identified it) and there is no build
     // corpus, so both of these collapse away.
-    if (mode === "sca") {
+    if (mode?.sca) {
       // The BUILT XPI was already classified above (the sca-not-required decision) into
       // xpiAddon.bundled - the packaging summary + the input:xpi checks read it, and their
       // skip set is that classification's non-authored set, so the XPI's minified/library
@@ -721,10 +722,11 @@ export async function runPipeline(opts) {
   // review source minus node_modules), so the `input: build` check
   // (undeclared-build-source) reads them off ctx.addon via the same one-place
   // `input` routing - no separate ctx field. Undefined in XPI mode, where no such check
-  // runs. `mode === "sca"` implies Phase 3 ran (a rejected Experiment is pinned to xpi),
+  // runs. `mode?.sca` implies Phase 3 ran (a rejected Experiment is pinned to xpi),
   // so addon.buildFiles is always loaded by here.
-  const buildCtx =
-    mode === "sca" ? buildScaBuildCtx(ctx, addon.buildFiles) : undefined;
+  const buildCtx = mode?.sca
+    ? buildScaBuildCtx(ctx, addon.buildFiles)
+    : undefined;
   // A sibling context with NO file corpus (empty ctx.addon.files), for `input: manifest`
   // checks - they read only the shipped manifest (on ctx.manifest), so there is no
   // artifact's files for them to reach. Both modes (the manifest exists in each).
@@ -1054,16 +1056,16 @@ export function selectSchemaChannel({ candidates, strictMax }) {
  *
  * @param {object} opts  Pipeline opts; only `opts.scaRoot` is read here.
  * @param {?import("./lib/bundled.js").Bundled} bundled  classifyBundled(xpiAddon).
- * @returns {{mode: "xpi"|"sca", scaNotRequired: boolean}}
+ * @returns {{mode: REVIEW_MODE.XPI|"sca", scaNotRequired: boolean}}
  */
 export function resolveReviewMode(opts, bundled) {
   if (!opts.scaRoot) {
-    return { mode: "xpi", scaNotRequired: false };
+    return { mode: REVIEW_MODE.XPI, scaNotRequired: false };
   }
   if (hasUnreviewableCode(bundled)) {
-    return { mode: "sca", scaNotRequired: false };
+    return { mode: REVIEW_MODE.SCA, scaNotRequired: false };
   }
-  return { mode: "xpi", scaNotRequired: true };
+  return { mode: REVIEW_MODE.XPI, scaNotRequired: true };
 }
 
 /**

@@ -23,8 +23,12 @@ import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
 import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
-import { VERDICT } from "../../src/lib/enum.js";
-import { URL_CLASS, CHANNEL } from "../../src/lib/enum.js";
+import {
+  VERDICT,
+  URL_CLASS,
+  CHANNEL,
+  REVIEW_MODE,
+} from "../../src/lib/enum.js";
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 import vendorVulnerableDev from "../../src/checks/rules/vendor-vulnerable-dev.js";
 import { rawSha256 } from "../../src/normalize/hash.js";
@@ -831,7 +835,7 @@ test("an input:xpi LLM check adjudicates over its routed (XPI) addon", async () 
     addon: xpi,
     jsSources: parsedSources(xpi, { schema }),
     schema,
-    mode: "sca",
+    mode: REVIEW_MODE.SCA,
     options: {},
     llm: {
       evaluate: async (req) => {
@@ -971,7 +975,7 @@ test("SCA diverts a source-anchored recheck to the summary", async () => {
     addon,
     jsSources: parsedSources(addon, { schema }),
     schema,
-    mode: "sca",
+    mode: REVIEW_MODE.SCA,
     options: {},
     // The per-site adjudication returns unsure, so the site becomes a manual item the
     // divert then routes.
@@ -1548,7 +1552,7 @@ test("unused-permission escalates instead of deciding when the scan is blind", (
   );
   // SCA mode -> the source corpus cannot prove the shipped add-on -> escalate.
   const sca = base();
-  sca.mode = "sca";
+  sca.mode = REVIEW_MODE.SCA;
   assert.equal(
     unusedPermissionProducer.run(withManifest(sca), {
       recheckData: PERMISSION_TOKEN_RECHECK,
@@ -3714,7 +3718,7 @@ const reachCtx = (files, manifest) => {
   return withManifest({
     addon,
     jsSources: parsedSources(addon),
-    mode: "xpi",
+    mode: REVIEW_MODE.XPI,
     options: {},
   });
 };

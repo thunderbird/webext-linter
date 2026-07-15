@@ -477,7 +477,7 @@ export async function resolveRecheckSummaries(
     const unusedFiles = new Set(
       findings.filter((f) => f.ruleId === "unused-files").map((f) => f.file)
     );
-    if (ctx.mode === "sca") {
+    if (ctx.mode?.sca) {
       // SCA: one summary per corpus. The behavioral pass over the readable SOURCE is the
       // displayed "Summary of add-on" and re-judges the source-anchored rechecks; the
       // packaging pass over the built XPI is recheck-only (its prose is discarded). Each

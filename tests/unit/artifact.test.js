@@ -1,6 +1,7 @@
 // Unit tests for the per-finding artifact label rule ([XPI]/[SCA]).
 
 import { test } from "node:test";
+import { REVIEW_MODE } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 
 import {
@@ -13,11 +14,15 @@ import {
 // the check's input or the file.
 test("artifactLabel returns '' in XPI mode", () => {
   assert.equal(
-    artifactLabel({ file: "manifest.json", input: "xpi", mode: "xpi" }),
+    artifactLabel({
+      file: "manifest.json",
+      input: "xpi",
+      mode: REVIEW_MODE.XPI,
+    }),
     ""
   );
   assert.equal(
-    artifactLabel({ file: "app.js", input: "source", mode: "xpi" }),
+    artifactLabel({ file: "app.js", input: "source", mode: REVIEW_MODE.XPI }),
     ""
   );
   assert.equal(
@@ -30,20 +35,24 @@ test("artifactLabel returns '' in XPI mode", () => {
 // against the built XPI, source/build against the readable source archive.
 test("artifactLabel keys off the check input in SCA mode", () => {
   assert.equal(
-    artifactLabel({ file: "app.js", input: "xpi", mode: "sca" }),
+    artifactLabel({ file: "app.js", input: "xpi", mode: REVIEW_MODE.SCA }),
     ARTIFACT_XPI
   );
   assert.equal(
-    artifactLabel({ file: "app.js", input: "source", mode: "sca" }),
+    artifactLabel({ file: "app.js", input: "source", mode: REVIEW_MODE.SCA }),
     ARTIFACT_SCA
   );
   assert.equal(
-    artifactLabel({ file: "scripts/build.sh", input: "build", mode: "sca" }),
+    artifactLabel({
+      file: "scripts/build.sh",
+      input: "build",
+      mode: REVIEW_MODE.SCA,
+    }),
     ARTIFACT_SCA
   );
   // An unknown/undefined input falls to the source archive (the review target).
   assert.equal(
-    artifactLabel({ file: "app.js", input: undefined, mode: "sca" }),
+    artifactLabel({ file: "app.js", input: undefined, mode: REVIEW_MODE.SCA }),
     ARTIFACT_SCA
   );
 });
@@ -52,11 +61,19 @@ test("artifactLabel keys off the check input in SCA mode", () => {
 // manifest.json finding is [XPI] even from an input:source check.
 test("artifactLabel labels manifest.json as XPI regardless of input", () => {
   assert.equal(
-    artifactLabel({ file: "manifest.json", input: "source", mode: "sca" }),
+    artifactLabel({
+      file: "manifest.json",
+      input: "source",
+      mode: REVIEW_MODE.SCA,
+    }),
     ARTIFACT_XPI
   );
   assert.equal(
-    artifactLabel({ file: "manifest.json", input: "xpi", mode: "sca" }),
+    artifactLabel({
+      file: "manifest.json",
+      input: "xpi",
+      mode: REVIEW_MODE.SCA,
+    }),
     ARTIFACT_XPI
   );
 });
@@ -66,11 +83,15 @@ test("artifactLabel labels manifest.json as XPI regardless of input", () => {
 // (manifest-missing / manifest-missing-key), which don't hit the manifest.json branch.
 test("artifactLabel labels input:manifest as XPI (incl. fileless findings)", () => {
   assert.equal(
-    artifactLabel({ file: "manifest.json", input: "manifest", mode: "sca" }),
+    artifactLabel({
+      file: "manifest.json",
+      input: "manifest",
+      mode: REVIEW_MODE.SCA,
+    }),
     ARTIFACT_XPI
   );
   assert.equal(
-    artifactLabel({ file: null, input: "manifest", mode: "sca" }),
+    artifactLabel({ file: null, input: "manifest", mode: REVIEW_MODE.SCA }),
     ARTIFACT_XPI
   );
 });

@@ -18,6 +18,7 @@
 // shared analysis helpers belong in src/lib/*.
 
 import { loadAddon } from "../addon/load.js";
+import { REVIEW_MODE } from "../lib/enum.js";
 import { apiUsageOf } from "./extract.js";
 import { createLlmClient } from "./llm-client.js";
 
@@ -112,7 +113,7 @@ export function buildRunContext({
   systemIntro,
   llmVerified,
   invalidExperiment,
-  mode = "xpi",
+  mode = REVIEW_MODE.XPI,
   scaExpSource,
   scaNotRequired,
   budget,

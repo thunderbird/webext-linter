@@ -410,7 +410,7 @@ function compute(ctx) {
   // the closure branch, like an XPI review. (That closure already excludes experiment
   // implementation code.)
   const pureWebExtensionReachable =
-    ctx.mode === "sca" && !ctx.isShippedView
+    ctx.mode?.sca && !ctx.isShippedView
       ? scaWebExtensionFiles(files, ctx.scaExpSource)
       : bfs(new Set([...generalSeeds, ...htmlInjectedSeeds]), outEdges);
 

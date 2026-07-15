@@ -341,7 +341,7 @@ export function enumerateUnusedPermissions(ctx, recheckData) {
   // occurrence IS a real site), so occurrences are collected regardless and the
   // recheck judges them the same in every mode.
   const decidable =
-    ctx.mode !== "sca" &&
+    !ctx.mode?.sca &&
     Array.isArray(ctx.apiUsages) &&
     !ctx.apiUsages.some(
       (u) =>

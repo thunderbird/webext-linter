@@ -318,7 +318,7 @@ function issuesLines(
   }
   // In an SCA review a finding's file:line is prefixed with the artifact it lives in;
   // a legend explains the labels. XPI reviews (one artifact) omit it.
-  if (mode === "sca") {
+  if (mode?.sca) {
     out.push("");
     out.push(grey("[XPI] = source file in the submitted XPI"));
     out.push(grey("[SCA] = source file in the submitted source code archive"));

@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { VERDICT } from "../../src/lib/enum.js";
+import { VERDICT, REVIEW_MODE } from "../../src/lib/enum.js";
 
 import {
   formatText,
@@ -499,7 +499,7 @@ test("Manual review caps a grouped locus list at 25 with a marker", () => {
 // footer closes the Issues section. An XPI review adds neither.
 test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () => {
   const r = {
-    mode: "sca",
+    mode: REVIEW_MODE.SCA,
     ruleInputs: new Map([
       ["unused-files", "xpi"],
       ["unknown-api", "source"],
@@ -546,7 +546,7 @@ test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () =
 
   // The SAME result in XPI mode carries no artifact labels or legend, but still the
   // pre-flight pointer.
-  const xpi = formatText({ ...r, mode: "xpi" });
+  const xpi = formatText({ ...r, mode: REVIEW_MODE.XPI });
   assert.doesNotMatch(xpi, /\[XPI\]|\[SCA\]/);
   assert.match(xpi, /orphan\.js:2/); // the bare file:line still renders
   assert.match(xpi, /run this automated review yourself/);
@@ -593,7 +593,7 @@ test("run-it-yourself pointer reflects whether the LLM review ran", () => {
 function verdictReview() {
   return {
     findings: [],
-    mode: "sca",
+    mode: REVIEW_MODE.SCA,
     meta: { action: "review", addon: "x", reviewed: true },
     summarizeAddon: { text: "Prose overview of the add-on." },
     recheckVerdictRows: [
@@ -659,7 +659,7 @@ test("no verdicts adds nothing under the summary", () => {
 
 test("an XPI review omits the artifact label", () => {
   const r = verdictReview();
-  r.mode = "xpi";
+  r.mode = REVIEW_MODE.XPI;
   const block = formatText(r).split("── Summary of add-on ──")[1];
   assert.match(block, /\* Unused permission - bg\.js:3 - compose - pass/); // no [SCA]
   assert.doesNotMatch(block, /\[SCA\]|\[XPI\]/);

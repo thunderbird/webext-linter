@@ -24,7 +24,7 @@ import {
   hasAllCachedSchemas,
 } from "../../src/schema/fetch.js";
 import { peekApplicationVersion } from "../../src/schema/load.js";
-import { VERDICT } from "../../src/lib/enum.js";
+import { VERDICT, REVIEW_MODE } from "../../src/lib/enum.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA_FIXTURE = path.join(here, "..", "schema-fixture");
@@ -262,7 +262,7 @@ const MINIFIED_FIRST_PARTY = {
 
 test("resolveReviewMode: no --sca-root -> plain XPI review", () => {
   assert.deepEqual(resolveReviewMode({}, bundled()), {
-    mode: "xpi",
+    mode: REVIEW_MODE.XPI,
     scaNotRequired: false,
   });
 });
@@ -270,13 +270,13 @@ test("resolveReviewMode: no --sca-root -> plain XPI review", () => {
 test("resolveReviewMode: --sca-root + an unreviewable (minified) XPI -> keep SCA", () => {
   assert.deepEqual(
     resolveReviewMode({ scaRoot: "src" }, bundled([MINIFIED_FIRST_PARTY])),
-    { mode: "sca", scaNotRequired: false }
+    { mode: REVIEW_MODE.SCA, scaNotRequired: false }
   );
 });
 
 test("resolveReviewMode: --sca-root + a directly-reviewable XPI -> downgrade", () => {
   assert.deepEqual(resolveReviewMode({ scaRoot: "src" }, bundled([])), {
-    mode: "xpi",
+    mode: REVIEW_MODE.XPI,
     scaNotRequired: true,
   });
 });

@@ -5,6 +5,7 @@
 // which files it skips) is tested in extract.test.js.
 
 import { test } from "node:test";
+import { REVIEW_MODE } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 
 import {
@@ -85,7 +86,7 @@ test("buildShippedCtx swaps the artifact fields and is a no-op in an XPI review"
     addon: source,
     schema: { s: 1 },
     options: {},
-    mode: "sca",
+    mode: REVIEW_MODE.SCA,
     preParsedJsSources: parsed(source),
   });
 
@@ -126,7 +127,7 @@ test("buildScaBuildCtx puts the build corpus on ctx.addon and strips manifest/so
     addon: source,
     schema: { s: 1 },
     options: {},
-    mode: "sca",
+    mode: REVIEW_MODE.SCA,
     preParsedJsSources: parsed(source),
   });
   const buildFiles = new Map([["build.sh", Buffer.from("echo hi")]]);
@@ -199,7 +200,7 @@ test("buildManifestCtx has an empty file corpus and keeps the shipped manifest",
     addon: manifestAddon,
     schema: { s: 1 },
     options: {},
-    mode: "sca",
+    mode: REVIEW_MODE.SCA,
     preParsedJsSources: parsed(manifestAddon),
   });
   const man = buildManifestCtx(ctx);

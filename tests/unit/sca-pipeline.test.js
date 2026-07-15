@@ -6,6 +6,7 @@
 // stresses the shipped/review-target split.
 
 import { test, mock } from "node:test";
+import { REVIEW_MODE } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -149,7 +150,7 @@ test("SCA e2e: the rendered report carries [XPI]/[SCA] labels + the footer", asy
       "the Issues section closes with the artifact legend"
     );
     // The pipeline exposes the mode + rule inputs for the report layer.
-    assert.equal(result.mode, "sca");
+    assert.equal(result.mode, REVIEW_MODE.SCA);
     assert.equal(result.ruleInputs.get("unused-files"), "xpi");
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
@@ -1077,7 +1078,7 @@ test("SCA e2e: a readable-XPI submission is downgraded to a plain XPI review (sc
     const { findings, mode } = result;
     assert.equal(
       mode,
-      "xpi",
+      REVIEW_MODE.XPI,
       "a directly-reviewable XPI downgrades the SCA to a plain XPI review"
     );
     assert.ok(
@@ -1113,7 +1114,7 @@ test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", 
     });
     assert.equal(
       mode,
-      "sca",
+      REVIEW_MODE.SCA,
       "a minified XPI keeps the source-code-archive review"
     );
     assert.ok(
@@ -1152,7 +1153,7 @@ test("SCA e2e: a downgrade excludes VENDOR-declared readable files from content 
       scaSource: ".",
       ...OFFLINE,
     });
-    assert.equal(mode, "xpi", "the readable XPI downgrades");
+    assert.equal(mode, REVIEW_MODE.XPI, "the readable XPI downgrades");
     assert.ok(has(findings, "sca-not-required"));
     assert.ok(
       !has(findings, "unknown-api", (f) => /widget\.js/.test(f.file ?? "")),

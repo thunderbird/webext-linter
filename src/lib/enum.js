@@ -1,6 +1,7 @@
 // The home for the codebase's guarded enums. `guarded` is the single home for the
 // "guarded singleton" policy; `makeEnum` builds a whole enum from it; each enum the
-// review needs is declared and exported here (VERDICT, URL_CLASS).
+// review needs is declared and exported here (VERDICT, URL_CLASS, CHANNEL, REF_KIND,
+// REVIEW_MODE).
 //
 // Belongs here: the guard primitive, the enum factory, and the enums themselves.
 // Does NOT belong here: how an enum value is decided (the detectors and checks), how
@@ -139,3 +140,14 @@ export const REF_KIND = makeEnum(
   ["script", "css", "content", "resource", "import", "url"],
   "ref_kind"
 );
+
+/** @typedef {{sca: boolean, xpi: boolean}} ReviewMode  An opaque guarded singleton; only
+ *   its two LOWERCASE booleans are readable (any other access throws). Compare by
+ *   reference (m === REVIEW_MODE.SCA) or boolean (m.sca). */
+
+/**
+ * The review mode: SCA (a source-code submission - the two-pass source+build
+ * review) or XPI (a built add-on, the default).
+ * @type {{SCA: ReviewMode, XPI: ReviewMode}}
+ */
+export const REVIEW_MODE = makeEnum(["sca", "xpi"], "review_mode");

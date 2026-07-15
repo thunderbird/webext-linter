@@ -27,7 +27,7 @@ export const ARTIFACT_SCA = "SCA";
  * @returns {string} "XPI", "SCA", or "" (XPI review - a single artifact).
  */
 export function artifactLabel({ file, input, mode }) {
-  if (mode !== "sca") {
+  if (!mode?.sca) {
     return ""; // an XPI review has one artifact - nothing to disambiguate.
   }
   if (file === "manifest.json") {
