@@ -1,0 +1,6 @@
+{
+  "_comment": "An SCA submission (src/ + xpi/) whose shipped XPI is readable, non-minified authored code. hasUnreviewableCode is false, so the pipeline downgrades to a plain XPI review and sets scaNotRequired (resolveReviewMode in src/pipeline.js); sca-not-required reports it (warning) so the developer submits only the XPI next time. The src/ tree is never reviewed after the downgrade. Complements the unit-level coverage in sca-pipeline.test.js with end-to-end report rendering.",
+  "expect": {
+    "sca-not-required": ["manifest.json"]
+  }
+}

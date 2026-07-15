@@ -3244,6 +3244,21 @@ test("severity:auto fails safe to error when the check sets none/invalid", async
   );
 });
 
+test("a throwing check is caught and turned into a check-failed error", async () => {
+  const check = {
+    id: "boom-check",
+    severity: "info", // ignored: the catch stamps ERROR regardless
+    run: () => {
+      throw new Error("boom");
+    },
+  };
+  const out = await runOneCheck({}, check, "[1/1]");
+  assert.equal(out.findings.length, 1);
+  assert.equal(out.findings[0].ruleId, "check-failed");
+  assert.equal(out.findings[0].severity, SEVERITY.ERROR);
+  assert.equal(out.findings[0].item, "boom-check");
+});
+
 // ---- disguised-transmission (covert) + data-exfiltration (overt) ----
 // Covert channels (data appended to an image/CSS/resource URL) are a flat
 // error; a normal fetch to a remote host escalates for an options-page consent
