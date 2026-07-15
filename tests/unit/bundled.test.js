@@ -17,6 +17,7 @@ import minifiedCode from "../../src/checks/rules/minified-code.js";
 import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import { rawSha256 } from "../../src/normalize/hash.js";
+import { VERDICT } from "../../src/lib/enum.js";
 
 // Build a known-library hash map from file keys, so the classifier tags those
 // files `library` (a true content-hash match - the library signal, as opposed to a
@@ -52,6 +53,21 @@ const OBFUSCATED =
 // Readable, multi-line, still >= 1024 bytes so it is classified (not skipped):
 // short lines, low density -> NOT minified. This is what prettier would produce.
 const PRETTY = "const x = 1;\n".repeat(120);
+// The revealing module pattern: an IIFE-initialized const whose only reference is a
+// member call - readable first-party code that nevertheless matches the WEAK
+// function_to_array_replacements structure (see src/lib/obfuscation.js). >= 1024
+// bytes so it is classified, not skipped.
+const MODULE_PATTERN =
+  "const EmailSignature = (() => {\n" +
+  Array.from(
+    { length: 20 },
+    (_, i) =>
+      `  function helper${i}(value) {\n    return String(value || "").trim() + "-${i}";\n  }\n`
+  ).join("") +
+  "  function init() {\n    return helper0('user@example.com');\n  }\n" +
+  "  return { init };\n" +
+  "})();\n" +
+  "EmailSignature.init();\n";
 
 const addonWith = (files) => ({
   files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
@@ -63,8 +79,8 @@ test("classifyBundled flags an undeclared statement-dense file", () => {
   );
   const tag = classified.find((c) => c.file === "lib/blob.js");
   assert.deepEqual(
-    [tag.minified, tag.library, tag.obfuscated],
-    [true, false, false]
+    [tag.minified, tag.library, tag.obfuscation],
+    [true, false, VERDICT.PASS]
   );
   assert.ok(nonAuthored.has("lib/blob.js"));
 });
@@ -129,7 +145,7 @@ test("a minified non-library is non-authored and rejected; identified libraries 
   });
   assert.ok(nonAuthored.has("jquery.min.js"));
   // Obfuscated and VENDOR-declared files stay non-authored.
-  assert.equal(tag("packed.js").obfuscated, true);
+  assert.equal(tag("packed.js").obfuscation, VERDICT.FAIL);
   assert.ok(nonAuthored.has("packed.js"));
   assert.ok(nonAuthored.has("vendor/dep.min.js"));
 
@@ -145,8 +161,54 @@ test("a minified non-library is non-authored and rejected; identified libraries 
     ["jquery.min.js"]
   );
   assert.deepEqual(
-    obfuscatedCode.run(ctx).map((f) => f.file),
+    obfuscatedCode.run(ctx).findings.map((f) => f.file),
     ["packed.js"]
+  );
+});
+
+// A weak-family-only match is not a verdict: the file stays readable authored code
+// (scanned, reviewable), and obfuscated-code turns it into ONE LLM candidate judged
+// from the file's own content - with no hint of what the detector matched, so the
+// model cannot be steered into confirming a detector claim. The resolve maps the
+// verdict 1:1: fail -> finding, pass -> drop, unsure -> manual review (also the
+// no-token default).
+test("a weak-family-only file is not obfuscated: authored, one LLM candidate", () => {
+  const file = "modules/signature.js";
+  const addon = addonWith({ [file]: MODULE_PATTERN });
+  const bundled = classifyBundled(addon);
+  const tag = bundled.classified.find((c) => c.file === file);
+  assert.deepEqual(
+    [tag.minified, tag.library, tag.obfuscation],
+    [false, false, VERDICT.UNSURE]
+  );
+  assert.ok(!bundled.nonAuthored.has(file), "stays authored (scanned)");
+  assert.equal(
+    hasUnreviewableCode(bundled),
+    false,
+    "a weak-only match does not force a source review"
+  );
+
+  const out = obfuscatedCode.run({ addon: { ...addon, bundled } });
+  assert.deepEqual(out.findings, []);
+  assert.equal(out.llm.candidates.length, 1);
+  const cand = out.llm.candidates[0];
+  assert.equal(cand.file, file);
+  assert.deepEqual(cand.corpus, [file]); // the model reads that single file
+  assert.ok(
+    !JSON.stringify(out.llm.candidates).includes("function_to_array"),
+    "the candidate carries no detector hint"
+  );
+
+  const resolveWith = (verdict) =>
+    out.llm.resolve(new Map([[cand.id, { verdict, reason: null }]]));
+  assert.deepEqual(
+    resolveWith(VERDICT.FAIL).findings.map((f) => f.file),
+    [file]
+  );
+  assert.deepEqual(resolveWith(VERDICT.PASS), { findings: [], manual: [] });
+  assert.deepEqual(
+    resolveWith(VERDICT.UNSURE).manual.map((m) => m.file),
+    [file]
   );
 });
 
@@ -195,7 +257,7 @@ test("classifyBundled tags an undeclared vendored CSS as a library", () => {
   const tag = classified.find((c) => c.file === file);
   assert.equal(tag.library, true);
   assert.deepEqual(tag.libraryId, { name: "demolib", version: "1.0.0" }); // named
-  assert.equal(tag.obfuscated, false); // obfuscation is a JS-only concept
+  assert.equal(tag.obfuscation, VERDICT.PASS); // obfuscation is a JS-only concept
   assert.ok(nonAuthored.has(file)); // joins the non-authored skip set
 });
 
@@ -240,8 +302,8 @@ test("a minified CSS is minified but not a library or obfuscated", () => {
   );
   const tag = classified.find((c) => c.file === "popup/app.css");
   assert.deepEqual(
-    [tag.minified, tag.library, tag.obfuscated],
-    [true, false, false]
+    [tag.minified, tag.library, tag.obfuscation],
+    [true, false, VERDICT.PASS]
   );
 });
 

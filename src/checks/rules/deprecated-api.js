@@ -17,6 +17,7 @@
 // wording -> assets/registry.yaml. Severity -> that registry entry, stamped by
 // runChecks (src/checks/registry.js). Report formatting -> src/report/format.js.
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
 import { resolveApiUsages } from "../../lib/api-resolution.js";
@@ -47,7 +48,7 @@ export default {
         file,
         loc,
         dep ? `${full} (deprecated)` : full,
-        dep ? "fail" : "pass"
+        dep ? VERDICT.FAIL : VERDICT.PASS
       );
 
       if (dep && add(seen, full)) {

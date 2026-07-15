@@ -12,6 +12,7 @@
 // severity (-> that registry entry, stamped by src/checks/registry.js), and
 // report formatting (-> src/report/format.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { debuggerStmtOf } from "../extract.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
@@ -31,7 +32,7 @@ export default {
           src.file,
           loc,
           hit.guarded ? "debugger (guarded by if)" : "debugger",
-          hit.guarded ? "pass" : "fail"
+          hit.guarded ? VERDICT.PASS : VERDICT.FAIL
         );
         if (!hit.guarded) {
           out.push(finding({ file: src.file, loc }));

@@ -282,16 +282,6 @@ deterministic-phase:
     Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
     Read more #2: https://extensionworkshop.com/documentation/publish/source-code-submission/
 
-# Flags shipped obfuscated JS that is not a recognized library; asks for the
-# original sources.
-- title: Obfuscated code is not permitted
-  severity: error
-  check: obfuscated-code
-  input: source
-  response: |-
-    The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
-    Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
-
 # Flags a bundled file whose bytes match a pinned upstream release, but which is
 # not a confirmed widely-used library AND is minified/obfuscated - untrusted and
 # unreviewable, so a readable build is required.
@@ -1094,6 +1084,37 @@ permission-prompts:
 # manual review instead - no token, the LLM is unsure, or it errored). A
 # confident LLM "fail" emits a normal finding rendered from `response`.
 llm-phase:
+# Flags shipped obfuscated JS that is not a recognized library; asks for the
+# original sources. A strong structural detector match is a deterministic finding;
+# a weak-only match (a structure ordinary readable code also has - see
+# src/lib/obfuscation.js WEAK_FAMILIES) becomes an LLM candidate judged by the
+# prompt below (fail -> finding, unsure -> manual review via the instructions,
+# pass -> drop). The prompt deliberately never mentions the structural detector or
+# what it matched, so the model judges the file cold and cannot be steered into
+# confirming a detector claim.
+- title: Obfuscated code is not permitted
+  severity: error
+  check: obfuscated-code
+  input: source
+  prompt: |-
+    Each candidate is one packaged JavaScript file. Read the file and judge only
+    whether it is genuinely obfuscated - code transformed to hide its behavior
+    from a human reviewer.
+    Verdict fail (the file is obfuscated): machine-mangled identifiers (such as
+    _0x1a2b), encoded or rotated string tables resolved through decoder
+    indirection, control-flow flattening, or similar transformations whose
+    purpose is to make the code unreadable.
+    Verdict pass (the file is not obfuscated): readable developer code with
+    meaningful names and ordinary structure - even if it is dense, compact, or
+    minified; minification alone is judged elsewhere and is not obfuscation.
+    Use unsure only when you genuinely cannot tell.
+  instructions: |-
+    The automated analysis could not determine whether the following file(s) are
+    obfuscated. Inspect them by hand.
+  response: |-
+    The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
+    Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
+
 # LLM check: functions/events added after the declared strict_min_version. The
 # deterministic pre-flight (strict-min-version-api.js) emits an UNGUARDED too-new
 # call as a finding directly; a call carrying a guard signal (optional chaining, a

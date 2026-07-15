@@ -17,6 +17,7 @@
 // verify.js), the dep pinning (-> src/vendor/resolve.js + src/vendor/locks.js),
 // and the wording (-> assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { manifestTokenLine, lineContaining } from "../../lib/util.js";
 
@@ -42,7 +43,12 @@ export default {
       // The response is collapsible (no {{item}}), so `item` renders on the
       // location line as "package.json:<line> - <name> (<version>)".
       const item = `${name} (${version})`;
-      ctx.note?.(file, loc, `${item} - unreviewable build dependency`, "fail");
+      ctx.note?.(
+        file,
+        loc,
+        `${item} - unreviewable build dependency`,
+        VERDICT.FAIL
+      );
       findings.push(finding({ file, loc, item }));
     }
     return findings;

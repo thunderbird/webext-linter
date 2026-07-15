@@ -14,6 +14,7 @@
 // severity (-> that registry entry, stamped by src/checks/registry.js), and
 // report formatting (-> src/report/format.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { unsafeHtmlOf } from "../extract.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
@@ -34,7 +35,7 @@ export default {
             : `.${hit.sink}`;
         const loc = { line: hit.line, column: hit.column };
         out.push(finding({ file: src.file, loc, item: how }));
-        ctx.note?.(src.file, loc, how, "fail");
+        ctx.note?.(src.file, loc, how, VERDICT.FAIL);
       }
     }
     return out;

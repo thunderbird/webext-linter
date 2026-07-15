@@ -30,6 +30,7 @@
 // annotations (SchemaIndex), the verdict mapping (lib/verdict-resolve.js), or the
 // wording / severity (assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
 import { strictMinVersion, parseVersion, cmpVersion } from "../../lib/util.js";
@@ -49,7 +50,7 @@ export default {
         "manifest.json",
         null,
         "no parsable strict_min_version",
-        "skipped"
+        VERDICT.SKIPPED
       );
       return { findings: [] };
     }
@@ -102,13 +103,23 @@ export default {
         data: { min: String(minStr) },
       };
       if (!e.guarded) {
-        ctx.note?.(e.file, e.loc, `${e.display} (added in TB ${e.va})`, "fail");
+        ctx.note?.(
+          e.file,
+          e.loc,
+          `${e.display} (added in TB ${e.va})`,
+          VERDICT.FAIL
+        );
         findings.push(finding(args));
         continue;
       }
       // Possibly feature-detected: let the LLM decide from the call's file.
       const id = `V${++n}`;
-      ctx.note?.(e.file, e.loc, `${e.display} (added in TB ${e.va})`, "unsure");
+      ctx.note?.(
+        e.file,
+        e.loc,
+        `${e.display} (added in TB ${e.va})`,
+        VERDICT.UNSURE
+      );
       candidates.push({
         id,
         file: e.file,

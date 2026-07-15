@@ -11,6 +11,7 @@
 // verify.js), resolving the store (-> src/vendor/resolve.js), and the wording
 // (-> assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -25,9 +26,9 @@ export default {
     const findings = [];
     for (const { path, source, outcome } of results) {
       if (outcome === "verified") {
-        ctx.note?.(path, null, `verified against ${source}`, "pass");
+        ctx.note?.(path, null, `verified against ${source}`, VERDICT.PASS);
       } else if (outcome === "modified") {
-        ctx.note?.(path, null, `does not match ${source}`, "fail");
+        ctx.note?.(path, null, `does not match ${source}`, VERDICT.FAIL);
         findings.push(
           finding({
             file: path,

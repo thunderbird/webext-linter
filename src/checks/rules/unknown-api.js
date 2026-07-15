@@ -20,6 +20,7 @@
 // assets/registry.yaml. Severity -> that registry entry, stamped by runChecks
 // (src/checks/registry.js). Report formatting -> src/report/format.js.
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
 import { resolveApiUsages } from "../../lib/api-resolution.js";
@@ -50,7 +51,7 @@ export default {
       }
 
       if (!reason) {
-        ctx.note?.(file, loc, full, "pass");
+        ctx.note?.(file, loc, full, VERDICT.PASS);
         continue;
       }
 
@@ -64,12 +65,12 @@ export default {
           file,
           loc,
           `${full} (${reason}, feature-detected)`,
-          "skipped"
+          VERDICT.SKIPPED
         );
         continue;
       }
 
-      ctx.note?.(file, loc, `${full} (${reason})`, "fail");
+      ctx.note?.(file, loc, `${full} (${reason})`, VERDICT.FAIL);
       findings.push(finding(args));
     }
     return findings;

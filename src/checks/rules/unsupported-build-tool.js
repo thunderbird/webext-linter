@@ -16,6 +16,7 @@
 // here: which files are in the build corpus (-> src/addon/load.js) or the wording
 // (-> the registry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { basename } from "../../util/files.js";
 
@@ -92,6 +93,6 @@ function packageManagerName(buf) {
  * @returns {import("../../report/finding.js").Finding}
  */
 function reject(ctx, file, tool) {
-  ctx.note?.(file, null, `build uses ${tool}`, "fail");
+  ctx.note?.(file, null, `build uses ${tool}`, VERDICT.FAIL);
   return finding({ file, item: tool });
 }

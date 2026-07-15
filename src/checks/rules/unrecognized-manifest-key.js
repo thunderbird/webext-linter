@@ -11,6 +11,7 @@
 // manifest-* error checks), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { asObject, manifestTokenLine } from "../../lib/util.js";
 import { experimentManifestKeys } from "../../lib/experiments.js";
@@ -38,7 +39,12 @@ export default {
         schema.validManifestKeys.has(key) ||
         expKeys.has(key) ||
         expManifestKeys.has(key);
-      ctx.note?.("manifest.json", null, key, known ? "pass" : "fail");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        key,
+        known ? VERDICT.PASS : VERDICT.FAIL
+      );
       if (!known) {
         const line = manifestTokenLine(text, key);
         out.push(

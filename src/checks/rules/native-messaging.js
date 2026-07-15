@@ -13,6 +13,7 @@
 // src/checks/registry.js + escalation.js), and the authored instructions (->
 // assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { declaredPermissions } from "../../lib/permissions.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -37,7 +38,7 @@ export default {
       "manifest.json",
       null,
       `'${NATIVE_MESSAGING}' permission`,
-      "unsure"
+      VERDICT.UNSURE
     );
     // A single whole-add-on reminder: no item/locus to list (the instructions
     // name the permission), so it renders as the wrapped message alone.

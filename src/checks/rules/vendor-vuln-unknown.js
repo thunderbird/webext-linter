@@ -16,6 +16,7 @@
 // note. Does NOT belong here: the resolution/audit attempt (-> src/vendor/
 // verify.js), or the wording (-> the registry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { lineContaining } from "../../lib/util.js";
 
@@ -42,7 +43,7 @@ export default {
         vendorName,
         loc,
         `${path} (source ${source}) could not be checked for known vulnerabilities`,
-        "skipped"
+        VERDICT.SKIPPED
       );
       findings.push(
         finding({

@@ -7,6 +7,7 @@
 // match-pattern detection (-> src/lib/util.js), authored wording (->
 // assets/registry.yaml), and severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { asArray, isMatchPattern, manifestPathLine } from "../../lib/util.js";
 
@@ -28,14 +29,14 @@ export default {
           schema.validPermissions.has(p) ||
           schema.dataCollectionPermissions.has(p)
         ) {
-          ctx.note?.("manifest.json", null, `'${p}'`, "pass");
+          ctx.note?.("manifest.json", null, `'${p}'`, VERDICT.PASS);
           return;
         }
         ctx.note?.(
           "manifest.json",
           null,
           `'${p}' (unknown permission)`,
-          "fail"
+          VERDICT.FAIL
         );
         const line = manifestPathLine(ctx, field, i);
         out.push(

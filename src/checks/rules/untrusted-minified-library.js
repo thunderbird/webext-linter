@@ -15,6 +15,7 @@
 // readable case (-> untrusted-library.js), authored wording (-> registry.yaml),
 // severity (-> that registry entry), report formatting (-> src/report/format.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { untrustedLibs } from "../../lib/bundled.js";
 
@@ -31,7 +32,7 @@ export default {
         continue; // a readable one is untrusted-library's (info) concern
       }
       const item = lib.name || lib.file;
-      ctx.note?.(lib.file, null, item, "fail");
+      ctx.note?.(lib.file, null, item, VERDICT.FAIL);
       findings.push(finding({ file: lib.file, item, hint: lib.source }));
     }
     return findings;

@@ -11,6 +11,7 @@
 // (src/experiments/verify.js), authored wording (assets/registry.yaml), or
 // severity (that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { isExperiment } from "../../lib/util.js";
 
@@ -23,7 +24,7 @@ export default {
   run(ctx) {
     const m = ctx.manifest;
     if (!m || !isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "not an Experiment", "skipped");
+      ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
       return [];
     }
     const groups = ctx.experiments?.groups;
@@ -32,7 +33,7 @@ export default {
         "manifest.json",
         null,
         "no experiment classification",
-        "skipped"
+        VERDICT.SKIPPED
       );
       return [];
     }
@@ -40,10 +41,15 @@ export default {
     for (const g of groups) {
       const loc = g.line ? { line: g.line, column: 0 } : null;
       if (g.status === "modified") {
-        ctx.note?.("manifest.json", loc, `${g.name} (modified draft)`, "fail");
+        ctx.note?.(
+          "manifest.json",
+          loc,
+          `${g.name} (modified draft)`,
+          VERDICT.FAIL
+        );
         findings.push(finding({ file: "manifest.json", loc, item: g.name }));
       } else if (g.status === "pristine") {
-        ctx.note?.("manifest.json", loc, g.name, "pass");
+        ctx.note?.("manifest.json", loc, g.name, VERDICT.PASS);
       } else {
         // unsupported: not a known upstream draft, so there is nothing to
         // compare against - this check has no say (experiment-not-allowed does).
@@ -51,7 +57,7 @@ export default {
           "manifest.json",
           loc,
           `${g.name} (not a known upstream draft)`,
-          "skipped"
+          VERDICT.SKIPPED
         );
       }
     }

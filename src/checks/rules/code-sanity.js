@@ -17,6 +17,7 @@
 // are the item, not authored prose), severity (-> that registry entry, stamped
 // by src/checks/registry.js), and report formatting (-> src/report/format.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { Linter } from "eslint";
 import { finding } from "../../report/finding.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
@@ -112,10 +113,10 @@ export default {
         const loc = { line: m.line + src.lineOffset, column: m.column };
         const item = `${m.ruleId || "syntax"}: ${m.message}`;
         out.push(finding({ file: src.file, loc, item }));
-        ctx.note?.(src.file, loc, item, "fail");
+        ctx.note?.(src.file, loc, item, VERDICT.FAIL);
       }
       if (!messages.length) {
-        ctx.note?.(src.file, null, "no lint issues", "pass");
+        ctx.note?.(src.file, null, "no lint issues", VERDICT.PASS);
       }
     }
     return out;

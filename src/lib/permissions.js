@@ -49,6 +49,7 @@
 // src/schema/index.js (incl. the permissionWebApis annotation). The navigator.*
 // call match itself - src/parse/web-api-calls.js. Match-pattern helpers - lib/util.js.
 
+import { VERDICT } from "./enum.js";
 import { finding } from "../report/finding.js";
 import {
   asArray,
@@ -71,8 +72,8 @@ const GATED_KINDS = new Set(["function", "event", "property", "namespace"]);
 
 /**
  * @typedef {{file: string, loc: ?{line: number, column: number}, item: string,
- *   verdict: string}} PermNote  A feed-activity record (emitted by the owning
- *   rule, so each appears once under the right check group).
+ *   verdict: import("./enum.js").Verdict}} PermNote  A feed-activity record
+ *   (emitted by the owning rule, so each appears once under the right check group).
  */
 
 /**
@@ -154,7 +155,7 @@ function analyzePermissions(ctx) {
         file,
         loc,
         item: `${res.namespace}.${member} needs '${perm}'`,
-        verdict: declaredHere ? "pass" : "fail",
+        verdict: declaredHere ? VERDICT.PASS : VERDICT.FAIL,
       });
       if (!declaredHere && !missingReported.has(perm)) {
         missingReported.add(perm);
@@ -202,7 +203,7 @@ function analyzePermissions(ctx) {
           file: "manifest.json",
           loc,
           item: `manifest key "${key}" needs '${perm}'`,
-          verdict: declaredHere ? "pass" : "fail",
+          verdict: declaredHere ? VERDICT.PASS : VERDICT.FAIL,
         });
         if (!declaredHere && !missingReported.has(perm)) {
           missingReported.add(perm);
@@ -231,7 +232,7 @@ function analyzePermissions(ctx) {
       file: rec.file,
       loc: rec.loc,
       item: `${rec.example} needs manifest key "${alts}"`,
-      verdict: satisfied ? "pass" : "fail",
+      verdict: satisfied ? VERDICT.PASS : VERDICT.FAIL,
     });
     if (!satisfied) {
       missingManifestKeys.push(
@@ -372,7 +373,7 @@ export function enumerateUnusedPermissions(ctx, recheckData) {
       if (used.has(p)) {
         // A reachable call provably requires it, so it is justified - not a manual
         // case. Every other declared permission is judged below.
-        ctx.note?.("manifest.json", loc, p, "pass");
+        ctx.note?.("manifest.json", loc, p, VERDICT.PASS);
         return;
       }
       // Deterministically unused: the permission's prompt entries name its
@@ -382,7 +383,7 @@ export function enumerateUnusedPermissions(ctx, recheckData) {
       const tokens = tokensFor.get(p);
       const occurrences = permissionOccurrences(p, tokens, located);
       if (decidable && tokens?.length && !occurrences.length) {
-        ctx.note?.("manifest.json", loc, p, "fail");
+        ctx.note?.("manifest.json", loc, p, VERDICT.FAIL);
         findings.push(finding({ item: p, file: "manifest.json", loc }));
         return;
       }
@@ -392,7 +393,7 @@ export function enumerateUnusedPermissions(ctx, recheckData) {
       // by registry.rechecks - the check does not know. The token sites (empty for a
       // token-less permission, or when no token is visible) ride along so the recheck
       // can point the model at each one; with none it is judged holistically.
-      ctx.note?.("manifest.json", loc, p, "unsure");
+      ctx.note?.("manifest.json", loc, p, VERDICT.UNSURE);
       escalations.push({ item: p, file: "manifest.json", loc, occurrences });
     });
   }

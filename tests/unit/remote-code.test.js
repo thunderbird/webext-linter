@@ -1,6 +1,7 @@
 // Unit tests for the remote-code scanners and check.
 
 import { withManifest, parsed } from "./manifest-ctx.js";
+import { VERDICT } from "../../src/lib/enum.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -457,10 +458,14 @@ test("eval checks note each dynamic-code site and the CSP, with verdicts", () =>
   evalCall.run(withManifest(ctx));
   remoteEval.run(withManifest(ctx));
   cspUnsafeEval.run(withManifest(ctx));
-  assert.ok(notes.some((n) => n.item === "eval()" && n.verdict === "fail"));
-  assert.ok(notes.some((n) => /fetch/.test(n.item) && n.verdict === "unsure"));
   assert.ok(
-    notes.some((n) => n.file === "manifest.json" && n.verdict === "fail")
+    notes.some((n) => n.item === "eval()" && n.verdict === VERDICT.FAIL)
+  );
+  assert.ok(
+    notes.some((n) => /fetch/.test(n.item) && n.verdict === VERDICT.UNSURE)
+  );
+  assert.ok(
+    notes.some((n) => n.file === "manifest.json" && n.verdict === VERDICT.FAIL)
   );
 });
 
@@ -476,11 +481,13 @@ test("remote-resources notes remote (fail), local code (pass) and ambiguous (uns
   const notes = [];
   ctx.note = (file, loc, item, verdict) => notes.push({ item, verdict });
   remoteScript.run(withManifest(ctx));
-  assert.ok(notes.some((n) => /cdn/.test(n.item) && n.verdict === "fail"));
   assert.ok(
-    notes.some((n) => /local\.js/.test(n.item) && n.verdict === "pass")
+    notes.some((n) => /cdn/.test(n.item) && n.verdict === VERDICT.FAIL)
   );
-  assert.ok(notes.some((n) => n.verdict === "unsure"));
+  assert.ok(
+    notes.some((n) => /local\.js/.test(n.item) && n.verdict === VERDICT.PASS)
+  );
+  assert.ok(notes.some((n) => n.verdict === VERDICT.UNSURE));
 });
 
 // The feed line: a padded [verdict] tag aligning the file column, then
@@ -488,27 +495,28 @@ test("remote-resources notes remote (fail), local code (pass) and ambiguous (uns
 test("formatNote renders a padded verdict tag and the site", () => {
   // The note is unindented - runChecks prints it at the feed's DETAIL level.
   assert.equal(
-    formatNote("bg.js", { line: 4 }, "fetch x", "fail"),
+    formatNote("bg.js", { line: 4 }, "fetch x", VERDICT.FAIL),
     "• [fail]    bg.js:4 - fetch x"
   );
   assert.equal(
-    formatNote("manifest.json", null, "CSP 'unsafe-eval'", "unsure"),
+    formatNote("manifest.json", null, "CSP 'unsafe-eval'", VERDICT.UNSURE),
     "• [unsure]  manifest.json - CSP 'unsafe-eval'"
   );
   // The widest tag, [skipped], sets the column; the others pad to align to it.
   assert.equal(
-    formatNote("manifest.json", null, "not an Experiment", "skipped"),
+    formatNote("manifest.json", null, "not an Experiment", VERDICT.SKIPPED),
     "• [skipped] manifest.json - not an Experiment"
   );
-  // The verdict is an enforced contract: an unknown one is a programmer error.
-  assert.throws(() => formatNote("f.js", null, "x", "nope"), /verdict/);
+  // The verdict is an enforced contract: a non-VERDICT (here a raw string) is a
+  // programmer error.
+  assert.throws(() => formatNote("f.js", null, "x", "nope"), /VERDICT/);
   // An artifact label (SCA review) prefixes the site; "" (XPI review) adds nothing.
   assert.equal(
-    formatNote("bg.js", { line: 4 }, "fetch x", "fail", "SCA"),
+    formatNote("bg.js", { line: 4 }, "fetch x", VERDICT.FAIL, "SCA"),
     "• [fail]    [SCA] bg.js:4 - fetch x"
   );
   assert.equal(
-    formatNote("bg.js", { line: 4 }, "fetch x", "fail", ""),
+    formatNote("bg.js", { line: 4 }, "fetch x", VERDICT.FAIL, ""),
     "• [fail]    bg.js:4 - fetch x"
   );
 });

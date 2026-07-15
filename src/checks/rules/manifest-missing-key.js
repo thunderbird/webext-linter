@@ -6,6 +6,7 @@
 // manifest-version-mismatch.js), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 
 const REQUIRED_KEYS = ["manifest_version", "name", "version"];
@@ -23,7 +24,7 @@ export default {
           "manifest.json",
           null,
           `missing required key "${key}"`,
-          "fail"
+          VERDICT.FAIL
         );
         // No file/line: the key is absent, so it has no location. The item (the
         // missing key) is listed on its own, and the message names

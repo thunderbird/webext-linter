@@ -22,6 +22,7 @@ import {
   hasErrors,
 } from "./finding.js";
 import { artifactLabel } from "./artifact.js";
+import { verdictLabel } from "./verdict-label.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
 import { wrapText } from "../util/text.js";
 import { MAX_ENTRIES_PER_CATEGORY } from "../config.js";
@@ -157,7 +158,9 @@ function recheckVerdictLines(review) {
       ? `${label ? `[${label}] ` : ""}${r.file}${r.line != null ? `:${r.line}` : ""}`
       : "(add-on)";
     const subject = r.subject ? ` - ${r.subject}` : "";
-    lines.push(`  * ${r.check} - ${locus}${subject} - ${r.verdict}`);
+    lines.push(
+      `  * ${r.check} - ${locus}${subject} - ${verdictLabel(r.verdict)}`
+    );
     if (r.content) {
       lines.push(`     -> ${r.content}`);
     }

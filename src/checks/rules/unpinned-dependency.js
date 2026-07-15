@@ -10,6 +10,7 @@
 // Does NOT belong here: parsing package.json / locks (-> src/vendor/resolve.js +
 // src/vendor/locks.js) and the registry wording.
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { manifestTokenLine } from "../../lib/util.js";
 
@@ -32,7 +33,7 @@ export default {
         "package.json",
         loc,
         `${name} ("${spec}") is not pinned`,
-        "fail"
+        VERDICT.FAIL
       );
       // Collapsed response (no {{item}}): the subject renders on the location line
       // as `name (spec)`, matching the other dependency rejects.

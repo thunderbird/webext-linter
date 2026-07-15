@@ -6,6 +6,7 @@
 // add-on (-> src/addon/load.js), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 
 export default {
@@ -13,7 +14,7 @@ export default {
     if (ctx.manifestError || ctx.manifest) {
       return [];
     }
-    ctx.note?.("manifest.json", null, "no manifest.json", "fail");
+    ctx.note?.("manifest.json", null, "no manifest.json", VERDICT.FAIL);
     return [finding({})];
   },
 };

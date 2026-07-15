@@ -7,6 +7,7 @@
 // ctx.manifestError - the SHIPPED manifest's), authored wording
 // (-> assets/registry.yaml), and severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 
 export default {
@@ -14,7 +15,7 @@ export default {
     if (!ctx.manifestError) {
       return [];
     }
-    ctx.note?.("manifest.json", null, "unparsable JSON", "fail");
+    ctx.note?.("manifest.json", null, "unparsable JSON", VERDICT.FAIL);
     return [finding({ file: "manifest.json" })];
   },
 };

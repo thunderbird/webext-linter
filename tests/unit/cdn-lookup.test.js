@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { classifyBundled } from "../../src/lib/bundled.js";
+import { VERDICT } from "../../src/lib/enum.js";
 import { resolveCdnLibraries, cdnUrl } from "../../src/lib/cdn-lookup.js";
 import findLibOnCdn from "../../src/checks/rules/find-lib-on-cdn.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
@@ -257,7 +258,7 @@ test("a large readable file is CDN-identified as a library (not scanned as autho
   const addon = classify(addonWith({ "libs/pdf.mjs": READABLE }));
   const tag0 = addon.bundled.classified.find((c) => c.file === "libs/pdf.mjs");
   assert.equal(tag0.minified, false, "the file is readable, not minified");
-  assert.equal(tag0.obfuscated, false);
+  assert.equal(tag0.obfuscation, VERDICT.PASS);
   assert.equal(tag0.library, false, "not yet identified");
 
   const { rawSha256 } = await import("../../src/normalize/hash.js");
@@ -329,7 +330,7 @@ test("a readable obfuscated file is NOT CDN-identified (obfuscation is never lau
   const tag0 = addon.bundled.classified.find(
     (c) => c.file === "libs/packed.js"
   );
-  assert.equal(tag0.obfuscated, true);
+  assert.equal(tag0.obfuscation, VERDICT.FAIL);
   assert.equal(tag0.minified, false);
 
   const { rawSha256 } = await import("../../src/normalize/hash.js");

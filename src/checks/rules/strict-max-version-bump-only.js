@@ -17,6 +17,7 @@
 // strict-max-version-bump-only registry entry, stamped by src/checks/
 // registry.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { strictMaxVersion, manifestTokenLine } from "../../lib/util.js";
 import { canonicalJson } from "../../util/json.js";
@@ -53,7 +54,7 @@ export default {
         "manifest.json",
         null,
         "changes beyond a strict_max_version bump",
-        "pass"
+        VERDICT.PASS
       );
       return [];
     }
@@ -61,7 +62,7 @@ export default {
       "manifest.json",
       null,
       "only version + strict_max_version changed",
-      "fail"
+      VERDICT.FAIL
     );
     const text = ctx.manifestText;
     const line = manifestTokenLine(text, "strict_max_version");

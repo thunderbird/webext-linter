@@ -21,6 +21,8 @@
 import { progress, feedIndent, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
 import { wrapText } from "../util/text.js";
+import { VERDICT } from "../lib/enum.js";
+import { verdictLabel } from "../report/verdict-label.js";
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
 /** @typedef {import("./registry.js").LoadedCheck} LoadedCheck */
@@ -57,7 +59,7 @@ import { wrapText } from "../util/text.js";
  * @typedef {object} LlmStep  What an LLM check returns under `run().llm`.
  * @property {Array<{id: string, file?: string, line?: number, note?: string,
  *   corpus?: string[]}>} candidates  The sites to judge; the check owns the ids.
- * @property {(verdicts: Map<string, {verdict: string, reason: ?string,
+ * @property {(verdicts: Map<string, {verdict: import("../lib/enum.js").Verdict, reason: ?string,
  *   additionalInformation?: string}>) => {findings: object[],
  *   manual?: {item: ?string}[]}} resolve  Maps the per-id verdicts to findings +
  *   manual notes via the check's own id->data table.
@@ -95,7 +97,7 @@ export async function runLlmCheck(ctx, check, step) {
     verdicts = new Map(
       candidates.map((c) => [
         c.id,
-        { verdict: "unsure", reason: null, additionalInformation: "" },
+        { verdict: VERDICT.UNSURE, reason: null, additionalInformation: "" },
       ])
     );
   }
@@ -148,8 +150,13 @@ export function manualEscalations(check, escalations) {
 // from the feed's DETAIL indent (feedIndent) so the feed has one indentation source.
 const HEAD = `${feedIndent(FEED.DETAIL)}↳ `;
 const DETAIL_HANG = `${feedIndent(FEED.DETAIL)}  `;
-// Pass green, fail red, unsure blue - a no-op unless the CLI enabled color.
-const VERDICT_COLOR = { pass: green, fail: red, unsure: blue };
+// Pass green, fail red, unsure blue - keyed by the VERDICT itself (a no-op unless
+// the CLI enabled color).
+const VERDICT_COLOR = new Map([
+  [VERDICT.PASS, green],
+  [VERDICT.FAIL, red],
+  [VERDICT.UNSURE, blue],
+]);
 
 /**
  * Narrate the header of a batched LLM review (printed before the model call, so
@@ -169,23 +176,24 @@ function narrateBatchHeader(check, candidates) {
  * verdict. The internal id is never shown - the reviewer sees the file:line site
  * it points at.
  * @param {LlmStep["candidates"]} candidates
- * @param {Map<string, {verdict: string, reason: ?string,
- *   additionalInformation?: string}>} verdicts
+ * @param {Map<string, {verdict: import("../lib/enum.js").Verdict,
+ *   reason: ?string, additionalInformation?: string}>} verdicts
  */
 function narrateBatchVerdicts(candidates, verdicts) {
   for (const c of candidates) {
-    const v = verdicts.get(c.id) ?? { verdict: "unsure", reason: null };
+    const v = verdicts.get(c.id) ?? { verdict: VERDICT.UNSURE, reason: null };
     const loc = c.line != null ? `:${c.line}` : "";
     const where = `${c.file ?? "(add-on)"}${loc}`;
     const why = v.reason ? ` - ${v.reason}` : "";
-    const tint = VERDICT_COLOR[v.verdict] ?? ((s) => s);
+    const tint = VERDICT_COLOR.get(v.verdict) ?? ((s) => s);
     // A bullet per candidate so the verdicts read as a separated list. wrapText
     // hangs continuation lines past the marker, so the DETAIL indent is baked into
     // each line and printed at SECTION - unlike a plain DETAIL line, where emit adds
     // the indent OUTSIDE the color. Here it lands inside tint(), which is harmless:
     // leading spaces are colorless and --report-out strips color before capture.
+    // verdictLabel is the one string reduction (the displayed tag text).
     wrapText(
-      `• ${where} ${v.verdict.toUpperCase()}${why}`,
+      `• ${where} ${verdictLabel(v.verdict).toUpperCase()}${why}`,
       DETAIL_HANG
     ).forEach((line) => progress(tint(line)));
   }

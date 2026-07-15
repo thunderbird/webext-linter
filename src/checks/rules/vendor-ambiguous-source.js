@@ -9,6 +9,7 @@
 // Does NOT belong here: the parse / pairing (src/normalize/vendor.js), the offline
 // resolve (src/vendor/resolve.js), or the wording (assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -24,7 +25,7 @@ export default {
     const out = [];
     for (const { source, paths } of vendor?.ambiguousSources ?? []) {
       const files = paths.join(", ");
-      ctx.note?.(file, null, `${source} -> ${files}`, "fail");
+      ctx.note?.(file, null, `${source} -> ${files}`, VERDICT.FAIL);
       out.push(finding({ file, item: source, data: { files } }));
     }
     return out;

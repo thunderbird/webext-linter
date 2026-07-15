@@ -10,8 +10,28 @@
 // anthropic.js / openai.js), the per-review add-on context and transport (->
 // src/checks/llm-client.js), or any prose prompt (-> the registry).
 
+import { VERDICT } from "../lib/enum.js";
+
 export const RESULT_TOOL = "report_verdicts";
 export const REVIEW_TOOL = "report_addon_review";
+
+// The verdict strings the model may answer with on the wire - the enum the two
+// schemas below force it into. The model returns `verdict` as a raw JSON string;
+// wireVerdict is the ONE string -> VERDICT boundary in the codebase: once the
+// string is a known wire value it is VERDICT[NAME], and anything off-protocol (or
+// absent) defaults to the safe UNSURE. The model never returns the note-only
+// statuses (skipped/info).
+export const WIRE_VERDICTS = ["fail", "pass", "unsure"];
+
+/**
+ * The VERDICT for a raw wire verdict string, defaulting off-protocol input to
+ * UNSURE (so a hostile/garbled response never throws or slips a bad verdict past).
+ * @param {unknown} s  The model's raw `verdict` value.
+ * @returns {import("../lib/enum.js").Verdict}
+ */
+export function wireVerdict(s) {
+  return WIRE_VERDICTS.includes(s) ? VERDICT[s.toUpperCase()] : VERDICT.UNSURE;
+}
 
 // The structured result every LLM check must return. The orchestrator gives the
 // model a list of CANDIDATES, each with an id. The model returns one verdict per
@@ -36,7 +56,7 @@ export const RESULT_SCHEMA = {
           },
           verdict: {
             type: "string",
-            enum: ["fail", "pass", "unsure"],
+            enum: WIRE_VERDICTS,
             description:
               "fail = confident the issue this check looks for is present at " +
               "this candidate; pass = confident it is absent; unsure = not " +
@@ -63,11 +83,6 @@ export const RESULT_SCHEMA = {
   },
   required: ["verdicts"],
 };
-
-// Allowed verdict values the model may return - anything else coerces to the
-// safe "unsure". Distinct from DETERMINISTIC_VERDICTS (the feed-note verdicts in
-// registry.js): the LLM never returns "skipped".
-export const LLM_VERDICTS = new Set(["fail", "pass", "unsure"]);
 
 // The --llm-review structured result: the prose summary the reviewer reads,
 // plus `recheck` - one verdict per item handed to a post-summary recheck consumer
@@ -103,7 +118,7 @@ export const ADDON_REVIEW_SCHEMA = {
           },
           verdict: {
             type: "string",
-            enum: ["fail", "pass", "unsure"],
+            enum: WIRE_VERDICTS,
             description:
               "Apply that section's rubric: fail = the issue it looks for is " +
               "present; pass = it is absent; unsure = you cannot tell.",
@@ -123,7 +138,7 @@ export const ADDON_REVIEW_SCHEMA = {
 /**
  * @typedef {object} LlmVerdict  One verdict, keyed to a candidate id.
  * @property {string} id  The candidate id this verdict is for.
- * @property {"fail"|"pass"|"unsure"} verdict
+ * @property {import("../lib/enum.js").Verdict} verdict
  * @property {string|null} reason  Short reason (feed, or surfaced by the check), or null.
  * @property {string} additionalInformation  Optional extra detail a check asked for
  *   in its rubric (e.g. build instructions), else "".
@@ -140,8 +155,8 @@ export const ADDON_REVIEW_SCHEMA = {
  * @property {string} check  Id of the recheck consumer the item belongs to.
  * @property {string} item  The exact item text it was listed under (a permission
  *   recheck's item is a token-occurrence id, or the permission for a holistic one).
- * @property {"fail"|"pass"|"unsure"} verdict  fail = issue present (finding),
- *   pass = absent (drop), unsure = a human reviews.
+ * @property {import("../lib/enum.js").Verdict} verdict  fail = issue present
+ *   (finding), pass = absent (drop), unsure = a human reviews.
  * @property {string} reason  Short developer-facing why (may be "").
  */
 
@@ -162,7 +177,7 @@ export function coerceResult(input) {
     .filter((v) => v && typeof v === "object" && typeof v.id === "string")
     .map((v) => ({
       id: v.id,
-      verdict: LLM_VERDICTS.has(v.verdict) ? v.verdict : "unsure",
+      verdict: wireVerdict(v.verdict),
       reason: typeof v.reason === "string" ? v.reason : null,
       additionalInformation:
         typeof v.additionalInformation === "string"
@@ -195,7 +210,7 @@ export function coerceReview(input) {
     .map((r) => ({
       check: r.check,
       item: r.item,
-      verdict: LLM_VERDICTS.has(r.verdict) ? r.verdict : "unsure",
+      verdict: wireVerdict(r.verdict),
       reason: typeof r.reason === "string" ? r.reason : "",
     }));
   return { summary, recheck };

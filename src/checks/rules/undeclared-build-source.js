@@ -15,6 +15,7 @@
 // belong here: the analysis (-> src/build/analyze.js), the corpus policy
 // (-> build-corpus.js), or the wording (-> assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -44,7 +45,7 @@ export default {
         anchor,
         null,
         "the build fetches from a remote source",
-        "fail"
+        VERDICT.FAIL
       );
       return { findings: [finding({ file: anchor, data: { explanation } })] };
     }
@@ -55,7 +56,7 @@ export default {
     const anotherRejectOwnsIt = OWNED_ELSEWHERE.has(classification);
     const couldNotVerify = !analyzed || (unresolved?.length ?? 0) > 0;
     if (classification !== "none" && !anotherRejectOwnsIt && couldNotVerify) {
-      ctx.note?.(anchor, null, "the build configuration", "unsure");
+      ctx.note?.(anchor, null, "the build configuration", VERDICT.UNSURE);
       return {
         findings: [],
         escalations: [

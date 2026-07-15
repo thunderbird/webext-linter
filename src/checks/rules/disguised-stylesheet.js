@@ -7,6 +7,7 @@
 // isStrongCovertExfil in src/lib/outbound-sinks.js), authored wording (->
 // assets/registry.yaml), and severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import {
   getOutboundSinks,
   isStrongCovertExfil,
@@ -22,7 +23,12 @@ export default {
       }
       const loc = { line: sink.line, column: sink.column };
       out.push(finding({ file: sink.file, loc }));
-      ctx.note?.(sink.file, loc, "disguised data send (style-url)", "fail");
+      ctx.note?.(
+        sink.file,
+        loc,
+        "disguised data send (style-url)",
+        VERDICT.FAIL
+      );
     }
     return out;
   },

@@ -17,6 +17,7 @@
 // escalation.js), authored wording (-> assets/registry.yaml), and severity
 // (-> that registry entry, stamped by runChecks).
 
+import { VERDICT } from "../../lib/enum.js";
 import { francAll } from "franc-min";
 import { finding } from "../../report/finding.js";
 import { visibleText } from "../../scan/html-parse.js";
@@ -47,7 +48,7 @@ export default {
     const { addon } = ctx;
     const files = addon?.files;
     if (!files) {
-      ctx.note?.("manifest.json", null, "no files", "skipped");
+      ctx.note?.("manifest.json", null, "no files", VERDICT.SKIPPED);
       return { findings: [], escalations: [] };
     }
     const localeDirs = new Set(
@@ -69,7 +70,7 @@ export default {
         "manifest.json",
         null,
         `English locale present (_locales/${english})`,
-        "pass"
+        VERDICT.PASS
       );
       return { findings: [], escalations: [] };
     }
@@ -77,7 +78,7 @@ export default {
       "manifest.json",
       null,
       "_locales has no English directory",
-      "fail"
+      VERDICT.FAIL
     );
     return {
       findings: [finding({ file: "manifest.json" })],
@@ -99,13 +100,13 @@ function detectHardcodedLanguage(ctx, addon) {
   /**
    * Record an advisory note against manifest.json.
    * @param {string} msg  The note text.
-   * @param {string} verdict  The verdict label (e.g. "pass", "unsure").
+   * @param {import("../../lib/enum.js").Verdict} verdict  The note verdict.
    * @returns {void}
    */
   const note = (msg, verdict) =>
     ctx.note?.("manifest.json", null, msg, verdict);
   if (!text) {
-    note("no user-facing text to localize", "pass");
+    note("no user-facing text to localize", VERDICT.PASS);
     return { findings: [], escalations: [] };
   }
 
@@ -115,26 +116,26 @@ function detectHardcodedLanguage(ctx, addon) {
 
   // Too little text, or franc cannot tell - a human decides (manual review).
   if (text.length < MIN_CONFIDENT || topLang === "und") {
-    note("too little user-facing text to detect a language", "unsure");
+    note("too little user-facing text to detect a language", VERDICT.UNSURE);
     // Anchored to manifest.json (matching the confident finding below) so the
     // post-summary recheck has a stable key to re-judge with all the text in view.
     return { findings: [], escalations: [{ file: "manifest.json" }] };
   }
   if (topLang === "eng") {
-    note("user-facing text is English", "pass");
+    note("user-facing text is English", VERDICT.PASS);
     return { findings: [], escalations: [] };
   }
   // A non-English top language, but English nearly ties it - too close to flag.
   if (engScore >= NEAR_TIE) {
     note(
       `user-facing text language is ambiguous (${topLang} vs English)`,
-      "unsure"
+      VERDICT.UNSURE
     );
     // Anchored to manifest.json (matching the confident finding below) so the
     // post-summary recheck has a stable key to re-judge with all the text in view.
     return { findings: [], escalations: [{ file: "manifest.json" }] };
   }
-  note(`non-English user-facing text (${topLang})`, "fail");
+  note(`non-English user-facing text (${topLang})`, VERDICT.FAIL);
   return {
     findings: [finding({ file: "manifest.json" })],
     escalations: [],

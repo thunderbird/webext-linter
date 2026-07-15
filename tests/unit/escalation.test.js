@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { runLlmCheck, manualEscalations } from "../../src/checks/escalation.js";
+import { VERDICT } from "../../src/lib/enum.js";
 
 const check = {
   id: "unused-files",
@@ -26,13 +27,14 @@ test("runLlmCheck with no token defaults every candidate to unsure", async () =>
     ],
     resolve: (verdicts) => {
       for (const [id, v] of verdicts) {
-        seen.push(`${id}:${v.verdict}`);
+        assert.equal(v.verdict, VERDICT.UNSURE);
+        seen.push(id);
       }
       return { findings: [], manual: [{ item: "a.js" }] };
     },
   };
   const out = await runLlmCheck({}, check, step);
-  assert.deepEqual(seen.sort(), ["U1:unsure", "U2:unsure"]);
+  assert.deepEqual(seen.sort(), ["U1", "U2"]);
   assert.deepEqual(out.findings, []);
   assert.deepEqual(out.manualItems, [
     {
@@ -60,14 +62,14 @@ test("runLlmCheck sends prompt + candidates + the routed addon to evaluate", asy
     llm: {
       evaluate: async (req) => {
         sent = req;
-        return new Map([["U1", { verdict: "fail", reason: "r" }]]);
+        return new Map([["U1", { verdict: VERDICT.FAIL, reason: "r" }]]);
       },
     },
   };
   const step = {
     candidates: [{ id: "U1", file: "a.js" }],
     resolve: (verdicts) => ({
-      findings: verdicts.get("U1").verdict === "fail" ? [{ file: "a.js" }] : [],
+      findings: verdicts.get("U1").verdict.fail ? [{ file: "a.js" }] : [],
       manual: [],
     }),
   };

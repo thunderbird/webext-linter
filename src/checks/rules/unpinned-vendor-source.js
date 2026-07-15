@@ -10,6 +10,7 @@
 // note). Does NOT belong here: classifying the URL (-> src/vendor/sources.js),
 // resolving the store (-> src/vendor/resolve.js) and the registry wording.
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { lineContaining } from "../../lib/util.js";
 
@@ -39,7 +40,7 @@ export default {
         vendorName ?? path,
         loc,
         `non-pinned source: ${source}`,
-        "fail"
+        VERDICT.FAIL
       );
       findings.push(
         finding({

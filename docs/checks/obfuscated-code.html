@@ -26,6 +26,17 @@
         <code>obfuscation-detector</code> library.
       </p>
       <p>
+        Detection is two-tier. A <strong>strong</strong> family match is a
+        deterministic finding. One family — the revealing-module pattern
+        (<code>const X = (() =&gt; {…})(); X.init();</code>) — also fits ordinary
+        readable code, so a <strong>weak-only</strong> match is not decided outright:
+        the file becomes a single candidate the model judges from its own content,
+        mapping <code>fail</code> → finding, <code>unsure</code> → manual review,
+        <code>pass</code> → drop (with no model configured, every candidate falls to
+        manual review). The model is never told which family the detector matched, so
+        its judgment cannot be anchored to a detector claim.
+      </p>
+      <p>
         A file that looks like a recognised third-party library is excluded here,
         because that is the missing-library check's concern, and a file that is
         merely minified (not obfuscated) is the minified-code check's concern. The
@@ -41,17 +52,23 @@ flowchart TD
   Z -- yes --> S([skip])
   Z -- no --> L{"Recognized third-party library?"}
   L -- yes --> S2([skip — missing-library's concern])
-  L -- no --> B{"Obfuscated?<br/>matches a known<br/>obfuscator family"}
-  B -- no --> OK([no finding here — minified-code<br/>handles a merely-minified file])
-  B -- yes --> ERR([ERROR: obfuscated code])
+  L -- no --> B{"Obfuscator-family match?"}
+  B -- "no family" --> OK([no finding — a merely-minified<br/>file is minified-code's concern])
+  B -- "STRONG family" --> ERR([ERROR: obfuscated code])
+  B -- "WEAK family only<br/>(a structure readable code also has)" --> J{"LLM judges the file from its<br/>content alone — obfuscated?<br/>(never told what matched)"}
+  J -- fail --> ERR
+  J -- pass --> OK
+  J -- "unsure / no model" --> MAN([manual review])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
   class ERR err;
   class OK ok;
   class S skip;
   class S2 skip;
+  class MAN manual;
         </pre>
       </div>
 
@@ -60,7 +77,9 @@ flowchart TD
         The add-on is told the named files are obfuscated and that obfuscated code is
         not permitted — whether or not the add-on is hosted on addons.thunderbird.net
         — as it violates the Add-on Policy and is subject to being blocked. It is
-        asked to ship the original, human-readable code directly.
+        asked to ship the original, human-readable code directly. A weak-family match
+        the model cannot decide (or that no model was configured to judge) is deferred
+        to manual review instead.
       </div>
 
       <p class="source-note">

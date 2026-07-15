@@ -25,14 +25,27 @@ import { debug, progress, FEED, llmErrorText } from "../util/log.js";
 import { red } from "../util/color.js";
 import { sortKeys } from "../util/json.js";
 import { nonceFor, wrap, wrapFile, framing } from "../lib/untrusted.js";
+import { VERDICT } from "../lib/enum.js";
+import { verdictLabel } from "../report/verdict-label.js";
 
 // The safe fallback verdict for a candidate the model did not settle: a batch that
 // errored, or an id missing from the response. A fresh object per call, so a consumer
 // that mutates a verdict record cannot bleed into another.
 const unsureVerdict = () => ({
-  verdict: "unsure",
+  verdict: VERDICT.UNSURE,
   reason: null,
   additionalInformation: "",
+});
+
+// A review result for the debug dump: a verdict is a VERDICT (not serializable -
+// JSON.stringify probes `.toJSON` and throws), so reduce each recheck verdict to
+// its label first. The only place the debug log touches a verdict.
+const reviewForLog = (result) => ({
+  ...result,
+  recheck: (result.recheck ?? []).map((r) => ({
+    ...r,
+    verdict: verdictLabel(r.verdict),
+  })),
 });
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
@@ -57,7 +70,7 @@ const unsureVerdict = () => ({
  *   (tests).
  * @returns {{evaluate: (req: {rubric: string, candidates: object[],
  *   addon: object}) =>
- *   Promise<Map<string, {verdict: string, reason: ?string,
+ *   Promise<Map<string, {verdict: import("../lib/enum.js").Verdict, reason: ?string,
  *   additionalInformation?: string}>>, summarize: (msg:
  *   {system: string, user: string}) => Promise<string>, reviewAddon: (msg:
  *   {system: string, user: string}) =>
@@ -135,7 +148,7 @@ export function createLlmClient({
      * @param {object} req.addon  The routed add-on artifact whose file bytes +
      *   inventory the model reads (the review target, or the built XPI for an
      *   `input: xpi` check).
-     * @returns {Promise<Map<string, {verdict: "fail"|"pass"|"unsure",
+     * @returns {Promise<Map<string, {verdict: import("../lib/enum.js").Verdict,
      *   reason: string|null, additionalInformation: string}>>}
      */
     async evaluate({ rubric, candidates, addon }) {
@@ -236,7 +249,9 @@ export function createLlmClient({
         system: sys,
         prompt: user,
       });
-      debug(`[llm] reviewAddon result:\n${JSON.stringify(result, null, 2)}`);
+      debug(
+        `[llm] reviewAddon result:\n${JSON.stringify(reviewForLog(result), null, 2)}`
+      );
       return result;
     },
   };

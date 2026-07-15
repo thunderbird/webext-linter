@@ -13,6 +13,7 @@
 // belong here: parsing package.json for anything else (build "scripts" reachability is
 // src/build/corpus.js), or the wording (-> assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { manifestTokenLine } from "../../lib/util.js";
 
@@ -58,7 +59,7 @@ export default {
       const line = manifestTokenLine(text, hook);
       const loc = line ? { line } : undefined;
       const item = `${hook}: ${cmd}`;
-      ctx.note?.("package.json", loc, `runs a ${hook} hook`, "fail");
+      ctx.note?.("package.json", loc, `runs a ${hook} hook`, VERDICT.FAIL);
       findings.push(finding({ file: "package.json", loc, item }));
     }
     return findings;

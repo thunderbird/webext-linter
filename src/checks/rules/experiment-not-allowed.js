@@ -15,6 +15,7 @@
 // heading wording (assets/registry.yaml), or severity (that registry entry,
 // stamped by src/checks/registry.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { isExperiment, manifestTokenLine } from "../../lib/util.js";
 
@@ -27,11 +28,16 @@ export default {
   run(ctx) {
     const m = ctx.manifest;
     if (!m) {
-      ctx.note?.("manifest.json", null, "manifest did not parse", "skipped");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        "manifest did not parse",
+        VERDICT.SKIPPED
+      );
       return [];
     }
     if (!isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "not an Experiment", "pass");
+      ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.PASS);
       return [];
     }
     if (ctx.options?.allowExperiments) {
@@ -39,7 +45,7 @@ export default {
         "manifest.json",
         null,
         "experiments allowed (--allow-experiments)",
-        "skipped"
+        VERDICT.SKIPPED
       );
       return [];
     }
@@ -50,7 +56,12 @@ export default {
       // Defensive: the pipeline populates groups before short-circuiting here.
       const line = manifestTokenLine(text, "experiment_apis");
       const loc = line ? { line, column: 0 } : null;
-      ctx.note?.("manifest.json", loc, "experiment_apis declared", "fail");
+      ctx.note?.(
+        "manifest.json",
+        loc,
+        "experiment_apis declared",
+        VERDICT.FAIL
+      );
       return [finding({ file: "manifest.json", loc })];
     }
 
@@ -68,7 +79,7 @@ export default {
         "manifest.json",
         loc,
         `${g.name} (${shadow ? "shadows built-in" : "unsupported"})`,
-        "fail"
+        VERDICT.FAIL
       );
       findings.push(finding({ file: "manifest.json", loc, hint: reason }));
     }

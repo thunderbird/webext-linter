@@ -17,6 +17,7 @@
 // (-> normalizeRef in src/lib/manifest-refs.js), authored wording
 // (-> assets/registry.yaml), and severity (-> that entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { moduleSyntaxOf } from "../extract.js";
 import { normalizeRef } from "../../lib/manifest-refs.js";
@@ -59,10 +60,15 @@ export default {
         continue; // a classic background script - fine without "type": "module"
       }
       if (isModule) {
-        ctx.note?.(src.file, loc, "module syntax (type: module)", "pass");
+        ctx.note?.(src.file, loc, "module syntax (type: module)", VERDICT.PASS);
         continue;
       }
-      ctx.note?.(src.file, loc, "module syntax without type: module", "fail");
+      ctx.note?.(
+        src.file,
+        loc,
+        "module syntax without type: module",
+        VERDICT.FAIL
+      );
       out.push(finding({ file: src.file, loc }));
     }
     return out;

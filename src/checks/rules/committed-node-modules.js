@@ -12,6 +12,7 @@
 // here: detecting/skipping node_modules (-> src/addon/load.js) or the wording
 // (-> the registry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -24,7 +25,7 @@ export default {
   run(ctx) {
     const findings = [];
     for (const dir of ctx.addon?.nodeModules ?? []) {
-      ctx.note?.(dir, null, "committed node_modules", "fail");
+      ctx.note?.(dir, null, "committed node_modules", VERDICT.FAIL);
       findings.push(finding({ file: dir, item: dir }));
     }
     return findings;

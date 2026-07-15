@@ -18,6 +18,7 @@
 // the model transport (-> src/checks/llm-client.js), the resolve pattern (->
 // src/lib/verdict-resolve.js), and authored wording (-> registry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { getOutboundSinks } from "../../lib/outbound-sinks.js";
 import { normalizeRef } from "../../lib/manifest-refs.js";
 import { perCandidateResolve } from "../../lib/verdict-resolve.js";
@@ -68,7 +69,7 @@ export default {
       // method) rides along so it survives the unsure->manual->recheck hand-off and
       // is shown on the locus. `item` stays absent so the recheck key is file:line.
       cases.push({ id, finding: { file: sink.file, loc, hint: method } });
-      ctx.note?.(sink.file, loc, method, "unsure");
+      ctx.note?.(sink.file, loc, method, VERDICT.UNSURE);
     }
     if (!candidates.length) {
       return { findings: [] };

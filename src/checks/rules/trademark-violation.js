@@ -14,6 +14,7 @@
 // Severity -> that registry entry, stamped by runChecks (src/checks/
 // registry.js). Report formatting -> src/report/format.js.
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { manifestTokenLine } from "../../lib/util.js";
 
@@ -41,7 +42,7 @@ export default {
     const { addon } = ctx;
     const name = ctx.manifest?.name;
     if (typeof name !== "string") {
-      ctx.note?.("manifest.json", null, "no add-on name", "skipped");
+      ctx.note?.("manifest.json", null, "no add-on name", VERDICT.SKIPPED);
       return [];
     }
     // Anchor every note/finding on the manifest's `name` property line.
@@ -50,17 +51,22 @@ export default {
     const loc = line ? { line } : null;
     const candidates = resolveNames(name, addon);
     if (!candidates.length) {
-      ctx.note?.("manifest.json", loc, `${name} not resolvable`, "skipped");
+      ctx.note?.(
+        "manifest.json",
+        loc,
+        `${name} not resolvable`,
+        VERDICT.SKIPPED
+      );
       return [];
     }
     for (const candidate of candidates) {
       const term = trademarkTerm(candidate);
       if (term) {
-        ctx.note?.("manifest.json", loc, `name uses "${term}"`, "fail");
+        ctx.note?.("manifest.json", loc, `name uses "${term}"`, VERDICT.FAIL);
         return [finding({ file: "manifest.json", loc, item: candidate })];
       }
     }
-    ctx.note?.("manifest.json", loc, `name "${name}"`, "pass");
+    ctx.note?.("manifest.json", loc, `name "${name}"`, VERDICT.PASS);
     return [];
   },
 };

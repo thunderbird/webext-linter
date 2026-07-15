@@ -3,6 +3,7 @@
 // file:line + subject + source line, reading each consumer's OWN corpus.
 
 import { test } from "node:test";
+import { VERDICT } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 
 import { buildRecheckVerdictReport } from "../../src/lib/recheck.js";
@@ -68,16 +69,24 @@ test("resolves per-occurrence, holistic, and non-permission verdicts to file:lin
       {
         check: "unused-permission-recheck",
         item: "compose#1",
-        verdict: "pass",
+        verdict: VERDICT.PASS,
       },
       {
         check: "unused-permission-recheck",
         item: "unlimitedStorage",
-        verdict: "fail",
+        verdict: VERDICT.FAIL,
       },
-      { check: "unused-files-recheck", item: "lib/x.js:2", verdict: "unsure" },
+      {
+        check: "unused-files-recheck",
+        item: "lib/x.js:2",
+        verdict: VERDICT.UNSURE,
+      },
       // a verdict for an item never handed over -> inert, dropped.
-      { check: "unused-permission-recheck", item: "ghost#9", verdict: "pass" },
+      {
+        check: "unused-permission-recheck",
+        item: "ghost#9",
+        verdict: VERDICT.PASS,
+      },
     ],
   };
   const corpusForCheck = (id) => ({
@@ -97,7 +106,7 @@ test("resolves per-occurrence, holistic, and non-permission verdicts to file:lin
     file: "bg.js",
     line: 3,
     subject: "compose",
-    verdict: "pass",
+    verdict: VERDICT.PASS,
     content: "messenger.scripting.executeScript(t);",
   });
 
@@ -108,7 +117,7 @@ test("resolves per-occurrence, holistic, and non-permission verdicts to file:lin
     file: "manifest.json",
     line: 4,
     subject: "unlimitedStorage",
-    verdict: "fail",
+    verdict: VERDICT.FAIL,
     content: '"unlimitedStorage"',
   });
 
@@ -121,7 +130,7 @@ test("resolves per-occurrence, holistic, and non-permission verdicts to file:lin
       file: "lib/x.js",
       line: 2,
       subject: null,
-      verdict: "unsure",
+      verdict: VERDICT.UNSURE,
       content: "const UNUSED = 1;",
     }
   );
@@ -136,7 +145,11 @@ test("a non-permission verdict takes its subject from the ref hint", () => {
       ],
     ]),
     recheckVerdicts: [
-      { check: "data-exfiltration-recheck", item: "bg.js:1", verdict: "fail" },
+      {
+        check: "data-exfiltration-recheck",
+        item: "bg.js:1",
+        verdict: VERDICT.FAIL,
+      },
     ],
   };
   const rows = buildRecheckVerdictReport(
@@ -177,7 +190,7 @@ test("a manifest.json locus reads the shipped manifest text, not the source corp
       {
         check: "unused-permission-recheck",
         item: "unlimitedStorage",
-        verdict: "fail",
+        verdict: VERDICT.FAIL,
       },
     ],
   };
@@ -232,7 +245,9 @@ test("a handed candidate with no model verdict is shown as unsure, never dropped
   }));
   assert.equal(rows.length, 2); // both sites shown despite no verdict
   assert.ok(
-    rows.every((r) => r.verdict === "unsure" && r.subject === "messagesModify")
+    rows.every(
+      (r) => r.verdict === VERDICT.UNSURE && r.subject === "messagesModify"
+    )
   );
   assert.deepEqual(
     rows.map((r) => r.line).sort((a, b) => a - b),

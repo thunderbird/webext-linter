@@ -10,6 +10,7 @@
 // src/schema/json-schema.js: buildManifestJsonSchema), authored wording (->
 // assets/registry.yaml), and severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import Ajv from "ajv";
 import { finding } from "../../report/finding.js";
 import { buildManifestJsonSchema } from "../../schema/json-schema.js";
@@ -62,7 +63,12 @@ export default {
         continue;
       }
       seen.add(key);
-      ctx.note?.("manifest.json", null, `${where} (${err.keyword})`, "fail");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        `${where} (${err.keyword})`,
+        VERDICT.FAIL
+      );
       out.push(
         finding({
           file: "manifest.json",

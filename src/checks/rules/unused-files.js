@@ -20,6 +20,7 @@
 // orchestration -> src/checks/escalation.js. Authored wording ->
 // assets/registry.yaml. Severity -> that registry entry, stamped by runChecks.
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { ARCHIVE_EXTENSIONS, extname } from "../../util/files.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
@@ -102,7 +103,7 @@ export default {
         JUNK.some((re) => re.test(file)) ||
         ARCHIVE_EXTENSIONS.has(extname(file))
       ) {
-        ctx.note?.(file, null, "hidden/junk file", "fail");
+        ctx.note?.(file, null, "hidden/junk file", VERDICT.FAIL);
         findings.push(finding({ file }));
         continue;
       }
@@ -122,7 +123,7 @@ export default {
         file,
         null,
         loaderTrace(reach, mentions, supported),
-        orphan ? "fail" : "unsure"
+        orphan ? VERDICT.FAIL : VERDICT.UNSURE
       );
       if (orphan) {
         findings.push(finding({ file }));

@@ -17,6 +17,7 @@
 // deterministic->manual routing (-> src/checks/registry.js + escalation.js), and
 // the authored instructions (-> assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { getOutboundSinks } from "../../lib/outbound-sinks.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -42,7 +43,7 @@ export default {
         sink.file,
         { line: sink.line, column: sink.column },
         `transmits to ${sink.host ?? "a remote server"}`,
-        "unsure"
+        VERDICT.UNSURE
       );
     }
     if (!any) {

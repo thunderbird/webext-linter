@@ -12,6 +12,7 @@
 // SchemaIndex.resolveApi), wording (-> assets/registry.yaml), or severity (->
 // that registry entry, stamped by src/checks/registry.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { isExperiment, manifestTokenLine } from "../../lib/util.js";
 import { experimentApiPaths } from "../../lib/experiments.js";
@@ -25,7 +26,7 @@ export default {
   run(ctx) {
     const m = ctx.manifest;
     if (!m || !isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "not an Experiment", "skipped");
+      ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
       return [];
     }
     const { schema } = ctx;
@@ -39,14 +40,14 @@ export default {
       // Genuinely new (adds an API) -> fine. Anything else resolves to / grafts
       // onto a built-in -> the experiment overrides a built-in API.
       if (kind === "experiment" || kind === "unknown-namespace") {
-        ctx.note?.("manifest.json", loc, apiPath, "pass");
+        ctx.note?.("manifest.json", loc, apiPath, VERDICT.PASS);
         continue;
       }
       ctx.note?.(
         "manifest.json",
         loc,
         `${apiPath} (overrides built-in)`,
-        "fail"
+        VERDICT.FAIL
       );
       findings.push(finding({ file: "manifest.json", loc, item: apiPath }));
     }

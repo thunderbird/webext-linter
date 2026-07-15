@@ -6,6 +6,7 @@
 // orchestrator divert itself.
 
 import { withManifest, parsed } from "./manifest-ctx.js";
+import { VERDICT } from "../../src/lib/enum.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -60,9 +61,14 @@ test("resolveRecheck maps each verdict to a finding, a drop, or a manual item", 
     ]),
     addon: {
       recheck: [
-        { check: "c", item: "a", verdict: "fail", reason: "unused" },
-        { check: "c", item: "b", verdict: "pass", reason: "used" },
-        { check: "c", item: "c", verdict: "unsure", reason: "cannot tell" },
+        { check: "c", item: "a", verdict: VERDICT.FAIL, reason: "unused" },
+        { check: "c", item: "b", verdict: VERDICT.PASS, reason: "used" },
+        {
+          check: "c",
+          item: "c",
+          verdict: VERDICT.UNSURE,
+          reason: "cannot tell",
+        },
         // "d" gets no verdict at all.
       ],
     },
@@ -96,7 +102,7 @@ test("resolveRecheck labels its feed notes by the consumer's labelInput", () => 
     note: (...args) => noteCalls.push(args),
     recheck: new Map([["c", [handed("a", 4), handed("b", 5)]]]),
     addon: {
-      recheck: [{ check: "c", item: "a", verdict: "pass", reason: "" }],
+      recheck: [{ check: "c", item: "a", verdict: VERDICT.PASS, reason: "" }],
     },
   };
   resolveRecheck(withManifest(ctx), { id: "c", labelInput: "xpi" });
@@ -114,7 +120,7 @@ test("resolveRecheck passes undefined labelInput when the check has none", () =>
     note: (...args) => noteCalls.push(args),
     recheck: new Map([["c", [handed("a", 4)]]]),
     addon: {
-      recheck: [{ check: "c", item: "a", verdict: "pass", reason: "" }],
+      recheck: [{ check: "c", item: "a", verdict: VERDICT.PASS, reason: "" }],
     },
   };
   resolveRecheck(withManifest(ctx), { id: "c" });
@@ -153,12 +159,12 @@ test("resolvePermissionRecheck drops a permission when any of its sites passes",
       {
         check: "unused-permission-recheck",
         item: "compose#1",
-        verdict: "fail",
+        verdict: VERDICT.FAIL,
       },
       {
         check: "unused-permission-recheck",
         item: "compose#2",
-        verdict: "pass",
+        verdict: VERDICT.PASS,
       },
     ]
   );
@@ -183,12 +189,12 @@ test("resolvePermissionRecheck flags a permission when every site fails", () => 
       {
         check: "unused-permission-recheck",
         item: "compose#1",
-        verdict: "fail",
+        verdict: VERDICT.FAIL,
       },
       {
         check: "unused-permission-recheck",
         item: "compose#2",
-        verdict: "fail",
+        verdict: VERDICT.FAIL,
       },
     ]
   );
@@ -218,12 +224,12 @@ test("resolvePermissionRecheck routes a mixed/uncertain permission to manual", (
       {
         check: "unused-permission-recheck",
         item: "compose#1",
-        verdict: "fail",
+        verdict: VERDICT.FAIL,
       },
       {
         check: "unused-permission-recheck",
         item: "compose#2",
-        verdict: "unsure",
+        verdict: VERDICT.UNSURE,
       },
       // cookies#1 gets no verdict at all (summary skipped it).
     ]
@@ -250,12 +256,12 @@ test("resolvePermissionRecheck judges a token-less permission holistically", () 
       {
         check: "unused-permission-recheck",
         item: "unlimitedStorage",
-        verdict: "pass",
+        verdict: VERDICT.PASS,
       },
       {
         check: "unused-permission-recheck",
         item: "management",
-        verdict: "fail",
+        verdict: VERDICT.FAIL,
       },
     ]
   );
@@ -277,9 +283,13 @@ test("resolvePermissionRecheck ignores verdicts for sites it was not handed", ()
       {
         check: "unused-permission-recheck",
         item: "compose#1",
-        verdict: "pass",
+        verdict: VERDICT.PASS,
       },
-      { check: "unused-permission-recheck", item: "ghost#9", verdict: "fail" },
+      {
+        check: "unused-permission-recheck",
+        item: "ghost#9",
+        verdict: VERDICT.FAIL,
+      },
     ]
   );
   const out = resolvePermissionRecheck(ctx, {
@@ -298,12 +308,17 @@ test("resolveRecheck ignores verdicts for items it was not handed (the guard)", 
     recheck: new Map([["c", [handed("real", 4)]]]),
     addon: {
       recheck: [
-        { check: "c", item: "real", verdict: "pass", reason: "" },
-        { check: "c", item: "ghost", verdict: "fail", reason: "invented" },
+        { check: "c", item: "real", verdict: VERDICT.PASS, reason: "" },
+        {
+          check: "c",
+          item: "ghost",
+          verdict: VERDICT.FAIL,
+          reason: "invented",
+        },
         {
           check: "other",
           item: "real",
-          verdict: "fail",
+          verdict: VERDICT.FAIL,
           reason: "wrong check",
         },
       ],
@@ -326,7 +341,7 @@ test("resolveRecheck is a no-op when nothing was handed over", () => {
     resolveRecheck(
       {
         recheck: new Map(),
-        addon: { recheck: [{ check: "c", item: "x", verdict: "fail" }] },
+        addon: { recheck: [{ check: "c", item: "x", verdict: VERDICT.FAIL }] },
       },
       { id: "c" }
     ),
@@ -352,8 +367,8 @@ test("loc-bearing items with no item token key on file:line", () => {
     recheck: new Map([["x", [sink(4), sink(7)]]]),
     addon: {
       recheck: [
-        { check: "x", item: "bg.js:4", verdict: "fail", reason: "a" },
-        { check: "x", item: "bg.js:7", verdict: "pass", reason: "b" },
+        { check: "x", item: "bg.js:4", verdict: VERDICT.FAIL, reason: "a" },
+        { check: "x", item: "bg.js:7", verdict: VERDICT.PASS, reason: "b" },
       ],
     },
   };

@@ -12,6 +12,7 @@
 // assets/registry.yaml), and severity (-> that registry entry, stamped by
 // src/checks/registry.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { asObject } from "../../lib/util.js";
 
@@ -25,7 +26,12 @@ export default {
   run(ctx) {
     const manifest = ctx.manifest;
     if (!manifest) {
-      ctx.note?.("manifest.json", null, "manifest did not parse", "skipped");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        "manifest did not parse",
+        VERDICT.SKIPPED
+      );
       return [];
     }
     // Static themes and dictionaries (language packs) are not represented by an
@@ -35,7 +41,7 @@ export default {
         "manifest.json",
         null,
         "theme or dictionary add-on",
-        "skipped"
+        VERDICT.SKIPPED
       );
       return [];
     }
@@ -46,10 +52,10 @@ export default {
       (p) => typeof p === "string" && p.trim() !== ""
     );
     if (hasIcon) {
-      ctx.note?.("manifest.json", null, "icons declared", "pass");
+      ctx.note?.("manifest.json", null, "icons declared", VERDICT.PASS);
       return [];
     }
-    ctx.note?.("manifest.json", null, "no add-on icon defined", "fail");
+    ctx.note?.("manifest.json", null, "no add-on icon defined", VERDICT.FAIL);
     return [finding({ file: "manifest.json" })];
   },
 };

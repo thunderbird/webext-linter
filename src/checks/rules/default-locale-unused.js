@@ -11,6 +11,7 @@
 // in src/lib/util.js), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { getLocales } from "../../lib/locales.js";
 import { manifestTokenLine } from "../../lib/util.js";
@@ -29,21 +30,36 @@ export default {
     // scan read the XPI.
     const manifest = ctx.manifest;
     if (!manifest) {
-      ctx.note?.("manifest.json", null, "manifest did not parse", "skipped");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        "manifest did not parse",
+        VERDICT.SKIPPED
+      );
       return [];
     }
     if (!manifest.default_locale) {
-      ctx.note?.("manifest.json", null, "no default_locale", "skipped");
+      ctx.note?.("manifest.json", null, "no default_locale", VERDICT.SKIPPED);
       return [];
     }
     if (getLocales(ctx).hasLocales) {
-      ctx.note?.("manifest.json", null, "_locales directory present", "pass");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        "_locales directory present",
+        VERDICT.PASS
+      );
       return [];
     }
     const text = ctx.manifestText;
     const line = manifestTokenLine(text, "default_locale");
     const loc = line ? { line, column: 0 } : null;
-    ctx.note?.("manifest.json", loc, "default_locale without _locales", "fail");
+    ctx.note?.(
+      "manifest.json",
+      loc,
+      "default_locale without _locales",
+      VERDICT.FAIL
+    );
     return [finding({ file: "manifest.json", loc })];
   },
 };

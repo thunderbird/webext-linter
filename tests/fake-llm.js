@@ -12,10 +12,15 @@
 //   callVerdicts({criterion, ...}) -> { verdicts: [{id, verdict, reason, additionalInformation}] }
 //   callReview({system, prompt})   -> { summary, recheck: [{check, item, verdict, reason}] }
 //   callText({system, prompt})     -> string
+// A fixture spells its verdicts as plain strings ("fail"/"pass"/"unsure"); like the real
+// coercion, the fake wraps each into a VERDICT (src/lib/enum.js) so the transport
+// return matches an adapter's post-coercion shape - a verdict is a VERDICT past the wire.
 //
 // A transport the spec does not mention becomes a THROWING stub, never the real
 // provider - so a fixture that makes an undeclared model call fails loudly instead of
 // silently reaching the network.
+
+import { wireVerdict } from "../src/llm/schema.js";
 
 /**
  * Recover the candidate refs from a verdict criterion. buildCriterion (llm-client.js)
@@ -66,7 +71,7 @@ function verdictEntry(id, v) {
   const o = typeof v === "string" ? { verdict: v } : (v ?? {});
   return {
     id,
-    verdict: o.verdict ?? "unsure",
+    verdict: wireVerdict(o.verdict),
     reason: o.reason ?? null,
     additionalInformation: o.additionalInformation ?? "",
   };
@@ -107,7 +112,7 @@ function recheckVerdict(map, dflt, check, item) {
   return {
     check,
     item,
-    verdict: o?.verdict ?? dflt,
+    verdict: wireVerdict(o?.verdict ?? dflt),
     reason: o?.reason ?? "",
   };
 }

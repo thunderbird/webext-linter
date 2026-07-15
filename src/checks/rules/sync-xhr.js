@@ -8,6 +8,7 @@
 // assets/registry.yaml), severity (-> that registry entry, stamped by
 // src/checks/registry.js), and report formatting (-> src/report/format.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { syncXhrOf } from "../extract.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
@@ -27,7 +28,7 @@ export default {
           src.file,
           loc,
           `.open(..., async=${hit.async})`,
-          hit.async ? "pass" : "fail"
+          hit.async ? VERDICT.PASS : VERDICT.FAIL
         );
         if (!hit.async) {
           out.push(finding({ file: src.file, loc }));

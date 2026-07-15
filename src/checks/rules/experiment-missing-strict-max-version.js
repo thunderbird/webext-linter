@@ -15,6 +15,7 @@
 // assets/registry.yaml). Severity (-> the experiment-missing-strict-max-version
 // registry entry, stamped by src/checks/registry.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { isExperiment, strictMaxVersion } from "../../lib/util.js";
 
@@ -27,11 +28,16 @@ export default {
   run(ctx) {
     const m = ctx.manifest;
     if (!m) {
-      ctx.note?.("manifest.json", null, "manifest did not parse", "skipped");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        "manifest did not parse",
+        VERDICT.SKIPPED
+      );
       return [];
     }
     if (!isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "not an Experiment", "skipped");
+      ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
       return [];
     }
     const max = strictMaxVersion(m);
@@ -40,7 +46,7 @@ export default {
         "manifest.json",
         null,
         `Experiment pins strict_max_version ${max}`,
-        "pass"
+        VERDICT.PASS
       );
       return [];
     }
@@ -48,7 +54,7 @@ export default {
       "manifest.json",
       null,
       "Experiment lacks strict_max_version",
-      "fail"
+      VERDICT.FAIL
     );
     return [finding({ file: "manifest.json" })];
   },

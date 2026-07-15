@@ -16,6 +16,7 @@
 // (SchemaIndex.versionAdded), the wording (assets/registry.yaml) or severity (its
 // registry entry, stamped by runChecks).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
 import { strictMaxVersion } from "../../lib/util.js";
@@ -30,7 +31,12 @@ export default {
     const maxStr = ctx.manifest ? strictMaxVersion(ctx.manifest) : undefined;
     const maxMajor = maxStr ? parseInt(maxStr, 10) : NaN;
     if (!Number.isInteger(maxMajor)) {
-      ctx.note?.("manifest.json", null, "no strict_max_version", "skipped");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        "no strict_max_version",
+        VERDICT.SKIPPED
+      );
       return [];
     }
 
@@ -59,7 +65,7 @@ export default {
         `${usage.root ?? "browser"}.${usage.segments.join(".")}` +
         (res.kind === "function" ? "()" : "");
       const loc = { line: usage.line, column: usage.column };
-      ctx.note?.(file, loc, `${display} (added in TB ${va})`, "fail");
+      ctx.note?.(file, loc, `${display} (added in TB ${va})`, VERDICT.FAIL);
       findings.push(
         finding({
           file,

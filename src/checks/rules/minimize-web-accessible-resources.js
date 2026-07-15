@@ -19,6 +19,7 @@
 // Severity -> that registry entry, stamped by runChecks. Report formatting ->
 // src/report/format.js.
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import {
   referrerSupported,
@@ -88,7 +89,12 @@ export default {
       // and does not belong in this resource-minimization finding.
       for (const pat of entry.resources) {
         if (isOverBroadResource(pat)) {
-          ctx.note?.("manifest.json", null, `${pat} (over-broad)`, "fail");
+          ctx.note?.(
+            "manifest.json",
+            null,
+            `${pat} (over-broad)`,
+            VERDICT.FAIL
+          );
           once(`res:${pat}`, pat);
         }
       }
@@ -108,7 +114,7 @@ export default {
               "manifest.json",
               null,
               `${file} reachable by a web context`,
-              "pass"
+              VERDICT.PASS
             );
             continue;
           }
@@ -121,7 +127,7 @@ export default {
           // live dynamic loader) -> ask per site whether it really does. Named
           // only by dead code with no live loader -> plainly needless.
           if (supported || reach.hasDynamicLoaders) {
-            ctx.note?.("manifest.json", null, trace, "unsure");
+            ctx.note?.("manifest.json", null, trace, VERDICT.UNSURE);
             const ids = [];
             for (const site of loaderSites(reach, mentions, supported)) {
               const id = `W${++n}`;
@@ -139,7 +145,7 @@ export default {
               finding: { file: "manifest.json", loc: lineOf(pat), item: file },
             });
           } else {
-            ctx.note?.("manifest.json", null, trace, "fail");
+            ctx.note?.("manifest.json", null, trace, VERDICT.FAIL);
             once(`unused-finding:${file}`, file, pat);
           }
         }

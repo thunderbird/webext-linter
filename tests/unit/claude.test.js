@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 
 import { coerceResult, coerceReview } from "../../src/llm/schema.js";
 import { defaultModel } from "../../src/llm/settings.js";
+import { VERDICT } from "../../src/lib/enum.js";
 
 // Well-formed input passes through unchanged; empty/null input yields no
 // verdicts (so the orchestrator defaults every candidate to "unsure", deferring
@@ -27,7 +28,7 @@ test("coerceResult normalizes the tool_use input", () => {
       verdicts: [
         {
           id: "E1",
-          verdict: "fail",
+          verdict: VERDICT.FAIL,
           reason: "r",
           additionalInformation: "info",
         },
@@ -45,8 +46,18 @@ test("coerceResult normalizes the tool_use input", () => {
     ],
   });
   assert.deepEqual(messy.verdicts, [
-    { id: "E1", verdict: "unsure", reason: null, additionalInformation: "" },
-    { id: "E2", verdict: "pass", reason: null, additionalInformation: "" },
+    {
+      id: "E1",
+      verdict: VERDICT.UNSURE,
+      reason: null,
+      additionalInformation: "",
+    },
+    {
+      id: "E2",
+      verdict: VERDICT.PASS,
+      reason: null,
+      additionalInformation: "",
+    },
   ]);
 });
 
@@ -68,7 +79,12 @@ test("coerceResult survives hostile shapes", () => {
     ],
   });
   assert.deepEqual(r.verdicts, [
-    { id: "ok", verdict: "fail", reason: null, additionalInformation: "" },
+    {
+      id: "ok",
+      verdict: VERDICT.FAIL,
+      reason: null,
+      additionalInformation: "",
+    },
   ]);
 });
 
@@ -95,7 +111,7 @@ test("coerceReview normalizes the report_addon_review input", () => {
         {
           check: "unused-permission-recheck",
           item: "tabs",
-          verdict: "fail",
+          verdict: VERDICT.FAIL,
           reason: "r",
         },
       ],
@@ -112,8 +128,8 @@ test("coerceReview normalizes the report_addon_review input", () => {
   });
   assert.equal(messy.summary, ""); // missing summary -> ""
   assert.deepEqual(messy.recheck, [
-    { check: "c", item: "tabs", verdict: "unsure", reason: "" },
-    { check: "c", item: "downloads", verdict: "pass", reason: "" },
+    { check: "c", item: "tabs", verdict: VERDICT.UNSURE, reason: "" },
+    { check: "c", item: "downloads", verdict: VERDICT.PASS, reason: "" },
   ]);
 });
 

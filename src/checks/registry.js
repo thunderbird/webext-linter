@@ -46,6 +46,8 @@ import { red, green, blue } from "../util/color.js";
 import { runLlmCheck, manualEscalations } from "./escalation.js";
 import { resolveRecheckSummaries } from "./summaries.js";
 import { buildRecheckVerdictReport } from "../lib/recheck.js";
+import { VERDICT } from "../lib/enum.js";
+import { verdictLabel } from "../report/verdict-label.js";
 import { collapseUnusedFolders } from "../lib/unused-folders.js";
 
 /** @typedef {import("../report/finding.js").Severity} Severity */
@@ -790,46 +792,38 @@ function recheckDataFor(registry, entry) {
   };
 }
 
-// The verdicts a deterministic check may narrate to the feed via ctx.note:
-// skipped = the check did not apply (with a reason), unsure = the pre-flight's
-// decision to escalate. Distinct from LLM_VERDICTS (the model's answer in
-// claude.js), which is never "skipped".
-const DETERMINISTIC_VERDICTS = new Set(["pass", "fail", "unsure", "skipped"]);
-
-// Tag column width, sized to the widest "[verdict]" so the file column aligns.
+// Tag column width, sized to the widest "[label]" so the file column aligns. The
+// note vocabulary is every VERDICT (fail/pass/unsure judgments + the note-only
+// skipped/info); the model's answer (schema.js WIRE_VERDICTS) is only ever
+// fail/pass/unsure.
 const TAG_WIDTH = Math.max(
-  ...[...DETERMINISTIC_VERDICTS].map((v) => v.length + 2)
+  ...Object.values(VERDICT).map((v) => verdictLabel(v).length + 2)
 );
 
 // On an interactive screen, a fail note is red, a pass note green, and an unsure
-// (escalated) note blue (skipped stays plain). A no-op unless the CLI enabled
-// color (color.js).
+// (escalated) note blue (skipped/info stay plain), keyed by the rendered label. A
+// no-op unless the CLI enabled color (color.js).
 const VERDICT_COLOR = { fail: red, pass: green, unsure: blue };
 
 /**
  * Format one investigation note for the feed (unindented - the printer applies
- * the DETAIL indent): a padded `[verdict]` tag then the site (`file:line` when a
+ * the DETAIL indent): a padded `[label]` tag then the site (`file:line` when a
  * line is known, else `file`) and the optional item.
  * @param {string} file
  * @param {?{line?: number}} loc
  * @param {?string} item
- * @param {"pass"|"fail"|"unsure"|"skipped"} verdict  A DETERMINISTIC_VERDICTS
- *   value (skipped = the check did not apply; unsure = escalated).
+ * @param {import("../lib/enum.js").Verdict} verdict  A shared VERDICT; its
+ *   verdictLabel is the tag rendered here (the one place a verdict becomes text).
  * @param {string} [label]  Artifact label ("XPI"/"SCA") prepended before the site
  *   in an SCA review, else "" (an XPI review has one artifact). See report/artifact.js.
  * @returns {string}
  */
 export function formatNote(file, loc, item, verdict, label = "") {
-  if (!DETERMINISTIC_VERDICTS.has(verdict)) {
-    throw new Error(
-      `formatNote: unknown verdict "${verdict}" (expected one of ` +
-        `${[...DETERMINISTIC_VERDICTS].join("/")})`
-    );
-  }
+  const status = verdictLabel(verdict); // throws if not a VERDICT
   const at = loc?.line != null ? `${file}:${loc.line}` : file;
   const site = label ? `[${label}] ${at}` : at;
-  const line = `• ${`[${verdict}]`.padEnd(TAG_WIDTH)} ${site}${item ? ` - ${item}` : ""}`;
-  return (VERDICT_COLOR[verdict] ?? ((s) => s))(line);
+  const line = `• ${`[${status}]`.padEnd(TAG_WIDTH)} ${site}${item ? ` - ${item}` : ""}`;
+  return (VERDICT_COLOR[status] ?? ((s) => s))(line);
 }
 
 /**

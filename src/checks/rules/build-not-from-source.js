@@ -12,6 +12,7 @@
 // Belongs here: mapping the stored classification to a finding. Does NOT belong here: the analysis
 // (-> src/build/analyze.js) or the wording (-> assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -28,7 +29,12 @@ export default {
     }
     const anchor = review.anchor ?? "package.json";
     const explanation = typeof review.reason === "string" ? review.reason : "";
-    ctx.note?.(anchor, null, "the build does not build from source", "fail");
+    ctx.note?.(
+      anchor,
+      null,
+      "the build does not build from source",
+      VERDICT.FAIL
+    );
     return [finding({ file: anchor, data: { explanation } })];
   },
 };

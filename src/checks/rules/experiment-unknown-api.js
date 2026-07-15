@@ -12,6 +12,7 @@
 // (-> assets/registry.yaml), or the deterministic->manual routing (registry.js +
 // escalation.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { isExperiment } from "../../lib/util.js";
 import { unknownApis } from "../../lib/api-resolution.js";
 
@@ -26,18 +27,23 @@ export default {
   run(ctx) {
     const m = ctx.manifest;
     if (!m || !isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "not an Experiment", "skipped");
+      ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
       return { findings: [], escalations: [] };
     }
     if (unknownApis(ctx).length === 0) {
-      ctx.note?.("manifest.json", null, "no unrecognized API usage", "skipped");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        "no unrecognized API usage",
+        VERDICT.SKIPPED
+      );
       return { findings: [], escalations: [] };
     }
     ctx.note?.(
       "manifest.json",
       null,
       "Experiment with unrecognized API usage - manual review",
-      "unsure"
+      VERDICT.UNSURE
     );
     // A whole-add-on reminder: no locus, so it renders as the instruction +
     // suggested response alone under Extended manual review (unknown-api lists the

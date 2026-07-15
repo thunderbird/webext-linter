@@ -11,6 +11,7 @@
 // data-exfiltration checks), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import {
   getOutboundSinks,
   isStrongCovertExfil,
@@ -28,7 +29,12 @@ export default {
       }
       const loc = { line: sink.line, column: sink.column };
       out.push(finding({ file: sink.file, loc }));
-      ctx.note?.(sink.file, loc, `disguised data send (${sink.type})`, "fail");
+      ctx.note?.(
+        sink.file,
+        loc,
+        `disguised data send (${sink.type})`,
+        VERDICT.FAIL
+      );
     }
     return out;
   },

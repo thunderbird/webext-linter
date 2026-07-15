@@ -5,6 +5,7 @@
 // dynamic-execution checks), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { dedupe } from "../../lib/util.js";
 import { getEvalScan } from "../../lib/eval-scan.js";
@@ -18,7 +19,7 @@ export default {
       }
       const loc = { line: hit.line, column: hit.column };
       out.push(finding({ file: hit.file, loc }));
-      ctx.note?.(hit.file, loc, "eval()", "fail");
+      ctx.note?.(hit.file, loc, "eval()", VERDICT.FAIL);
     }
     return dedupe(out);
   },

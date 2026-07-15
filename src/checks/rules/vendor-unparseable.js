@@ -9,6 +9,7 @@
 // Does NOT belong here: parsing the VENDOR file (src/normalize/vendor.js), the
 // offline resolve (src/vendor/resolve.js), or the wording (assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -24,7 +25,7 @@ export default {
       return [];
     }
     const file = vendor.vendorFile ?? "VENDOR";
-    ctx.note?.(file, null, "could not be parsed", "fail");
+    ctx.note?.(file, null, "could not be parsed", VERDICT.FAIL);
     return [finding({ file })];
   },
 };

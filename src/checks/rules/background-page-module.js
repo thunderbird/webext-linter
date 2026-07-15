@@ -14,6 +14,7 @@
 // ref resolution (-> resolveRef in lib/manifest-refs.js), authored wording
 // (-> assets/registry.yaml), and severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { moduleSyntaxOf } from "../extract.js";
 import { eachElement } from "../../scan/html-parse.js";
@@ -69,7 +70,7 @@ export default {
         return; // a classic script - fine without type="module"
       }
       const loc = { line: el.line };
-      ctx.note?.(pageFile, loc, `${src} needs type="module"`, "fail");
+      ctx.note?.(pageFile, loc, `${src} needs type="module"`, VERDICT.FAIL);
       out.push(finding({ file: pageFile, loc }));
     });
     return out;

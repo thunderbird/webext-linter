@@ -2,6 +2,7 @@
 // built on it (unused-files, minimize-web-accessible-resources).
 
 import { test } from "node:test";
+import { VERDICT } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -345,7 +346,7 @@ test("reachability resolves tabs.executeScript file against the host page dir", 
 // With no token every candidate is "unsure"; the check's resolve then yields the
 // manual notes (one per ambiguous file F) the orchestrator routes to a human.
 const allUnsure = (candidates) =>
-  new Map((candidates ?? []).map((c) => [c.id, { verdict: "unsure" }]));
+  new Map((candidates ?? []).map((c) => [c.id, { verdict: VERDICT.UNSURE }]));
 const manualItems = (result) =>
   result.llm ? result.llm.resolve(allUnsure(result.llm.candidates)).manual : [];
 
@@ -488,11 +489,11 @@ test("unused-files notes the loaders it examined per candidate", () => {
   unusedFiles.run(ctx);
 
   const maybe = notes.find((n) => n.file === "maybe.js");
-  assert.equal(maybe.verdict, "unsure");
+  assert.equal(maybe.verdict, VERDICT.UNSURE);
   assert.equal(maybe.item, "referenced by bg.js:1"); // referrer file:line traced
 
   const orphan = notes.find((n) => n.file === "orphan.js");
-  assert.equal(orphan.verdict, "fail");
+  assert.equal(orphan.verdict, VERDICT.FAIL);
   assert.equal(orphan.item, "referenced by no loaded file");
 
   // The name-based junk branch is narrated too, so the feed trail is complete.
@@ -501,7 +502,7 @@ test("unused-files notes the loaders it examined per candidate", () => {
     {
       file: ".DS_Store",
       item: "hidden/junk file",
-      verdict: "fail",
+      verdict: VERDICT.FAIL,
     }
   );
 });

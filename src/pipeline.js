@@ -166,7 +166,7 @@ import { DEFAULT_CACHE } from "./config.js";
  * @property {GeneratedSummary} [summarize]
  * @property {GeneratedSummary} [summarizeAddon]
  * @property {{check: string, label: string, file: ?string, line: ?number,
- *   subject: ?string, verdict: string, content: ?string}[]} [recheckVerdictRows]  The
+ *   subject: ?string, verdict: import("./lib/enum.js").Verdict, content: ?string}[]} [recheckVerdictRows]  The
  *   per-site recheck rows shown under the add-on summary in the text report.
  */
 
@@ -832,7 +832,7 @@ export async function runPipeline(opts) {
 /**
  * Per-file classification of the REVIEW TARGET (library hash / minified geometry /
  * obfuscation, plus the vendored + experiment-trusted non-authored seed) -> addon.bundled.
- * It runs before identifyBundledLibraries, which reads its tags (tag.obfuscated) and refines
+ * It runs before identifyBundledLibraries, which reads its tags (tag.obfuscation) and refines
  * the result.
  * @param {import("./addon/load.js").Addon} addon
  * @param {{libraryHashes: Map<string, {name: string, version: string}>}} deps
@@ -883,7 +883,7 @@ function extractReview(addon, { schema, xpiAddon, setupStep }) {
  * unrecognized bundles against jsDelivr by content hash, then OSV-audit every identified
  * (undeclared) library - both Mozilla-hash and CDN matches. Reads/writes addon.bundled and
  * addon.vendor; every step is best-effort and skips silently offline. Runs AFTER
- * classification (so the Mozilla-hash matches and tag.obfuscated are final) and after the
+ * classification (so the Mozilla-hash matches and tag.obfuscation are final) and after the
  * declared-dependency audit (so auditIdentifiedLibraries dedups against it). Requires
  * addon.vendor for the OSV audit; the shipped XPI in SCA has none, so it gets only the CDN
  * pass (resolveCdnLibraries directly), not this routine.

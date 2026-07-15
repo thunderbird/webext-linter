@@ -14,6 +14,7 @@
 // src/vendor/{verify,sources,resolve}.js) and the authored instructions (->
 // assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { readVendorFile } from "../../normalize/vendor.js";
 import { VENDOR_TRUSTED_HOSTS } from "../../config.js";
 
@@ -56,7 +57,7 @@ export default {
       const reason = REASON[outcome];
       if (reason) {
         const item = [path, source, reason].filter(Boolean).join(" - ");
-        ctx.note?.(vendorName, null, item, "unsure");
+        ctx.note?.(vendorName, null, item, VERDICT.UNSURE);
         escalations.push({ file: vendorName, item });
       }
     }

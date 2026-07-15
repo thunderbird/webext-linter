@@ -15,6 +15,7 @@
 // non-authored skip-list (-> src/lib/bundled.js), authored wording / severity
 // (-> assets/registry.yaml), report formatting (-> src/report/format.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { coreSymbolsOf } from "../extract.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
@@ -37,7 +38,7 @@ export default {
       const { hits } = coreSymbolsOf(src);
       for (const hit of hits) {
         const loc = { line: hit.line, column: hit.column };
-        ctx.note?.(src.file, loc, hit.name, "fail");
+        ctx.note?.(src.file, loc, hit.name, VERDICT.FAIL);
         // The registry response carries no {{item}}, so the resolver collapses
         // these into one grouped entry and surfaces `item` (the symbol) on each
         // locus line ("file:line - Services") - see report/responses.js + format.js.

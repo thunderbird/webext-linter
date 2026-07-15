@@ -6,6 +6,7 @@
 // Does NOT belong here: the schema query (-> src/schema/index.js), authored
 // wording (-> assets/registry.yaml), and severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 
 export default {
@@ -22,7 +23,7 @@ export default {
       "manifest.json",
       null,
       `manifest_version ${m.manifest_version} (schema set is ${major})`,
-      "fail"
+      VERDICT.FAIL
     );
     return [
       finding({

@@ -16,6 +16,7 @@
 // Belongs here: flagging .npmrc registry settings. Does NOT belong here: which files are
 // in the build corpus (-> src/addon/load.js) or the wording (-> the registry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -40,7 +41,7 @@ export default {
         const value = registrySetting(lines[i]);
         if (value !== null) {
           const loc = { line: i + 1 };
-          ctx.note?.(path, loc, "sets a package registry", "fail");
+          ctx.note?.(path, loc, "sets a package registry", VERDICT.FAIL);
           findings.push(finding({ file: path, loc, item: value }));
         }
       }

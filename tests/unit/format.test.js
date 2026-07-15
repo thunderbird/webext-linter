@@ -2,6 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { VERDICT } from "../../src/lib/enum.js";
 
 import {
   formatText,
@@ -602,7 +603,7 @@ function verdictReview() {
         file: "bg.js",
         line: 3,
         subject: "compose",
-        verdict: "pass",
+        verdict: VERDICT.PASS,
         content: "messenger.scripting.executeScript(t);",
       },
       {
@@ -611,7 +612,7 @@ function verdictReview() {
         file: "lib/x.js",
         line: 2,
         subject: null,
-        verdict: "unsure",
+        verdict: VERDICT.UNSURE,
         content: "const UNUSED = 1;",
       },
       // A row with no content (unlocatable line) renders without the `->` line.
@@ -621,7 +622,7 @@ function verdictReview() {
         file: "gen.js",
         line: 9,
         subject: "tabs",
-        verdict: "unsure",
+        verdict: VERDICT.UNSURE,
         content: null,
       },
     ],

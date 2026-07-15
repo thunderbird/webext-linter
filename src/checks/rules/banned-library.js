@@ -15,6 +15,7 @@
 // src/lib/library-blocks.js), the OSV audit (-> src/vendor/verify.js), and the
 // wording (-> assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding, SEVERITY } from "../../report/finding.js";
 import { manifestTokenLine, lineContaining } from "../../lib/util.js";
 
@@ -55,7 +56,7 @@ export default {
         file,
         loc,
         `${name}@${version} is ${statusText} by Mozilla add-on policy`,
-        "fail"
+        VERDICT.FAIL
       );
       findings.push(
         finding({

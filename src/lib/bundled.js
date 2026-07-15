@@ -26,19 +26,23 @@
 import { extname, JS_EXTENSIONS, CSS_EXTENSIONS } from "../util/files.js";
 import { isVendored } from "../vendor/resolve.js";
 import { rawSha256 } from "../normalize/hash.js";
-import { isObfuscated } from "./obfuscation.js";
+import { obfuscationVerdict } from "./obfuscation.js";
+import { VERDICT } from "./enum.js";
 import { isMinified } from "./minified.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /** @typedef {{name: string, version: string}} LibraryId */
 /** @typedef {{file: string, library: boolean, minified: boolean,
- *   obfuscated: boolean, untrusted?: boolean, libraryId?: LibraryId,
+ *   obfuscation: import("./enum.js").Verdict, untrusted?: boolean, libraryId?: LibraryId,
  *   cdn?: {url: string, type?: string, popular?: boolean}}} BundleTag  `library` is set by a
  *   content-hash match against the known-library database; `libraryId` names the
  *   matched release (for the missing-library finding). `minified` is the raw
  *   minified-by-geometry verdict; a minified non-library is non-authored and the CDN
- *   identifier considers it for a jsDelivr match. `cdn` is set later
+ *   identifier considers it for a jsDelivr match. `obfuscation` is the three-state VERDICT
+ *   from src/lib/obfuscation.js: FAIL (a STRONG-family match - the obfuscated-code finding,
+ *   non-authored), UNSURE (a weak-family-only match - readable, authored, scanned, and
+ *   referred to obfuscated-code's LLM/manual adjudication), or PASS. `cdn` is set later
  *   (src/lib/cdn-lookup.js) when such a bundle is matched on the jsDelivr CDN:
  *   it holds the jsDelivr source URL (and its type) for the find-lib-on-cdn finding
  *   plus `popular` - whether the matched package cleared the popularity trust bar.
@@ -91,8 +95,8 @@ export function classifyBundled(addon, { libraryHashes = new Map() } = {}) {
 
 /**
  * The per-file classification: library (content hash) / minified (geometry) /
- * obfuscated (structural, via classify) tags, plus the vendored / experiment-trusted /
- * library / minified / obfuscated non-authored seed. `tag.obfuscated` is the final
+ * obfuscation (structural, via classify) tags, plus the vendored / experiment-trusted /
+ * library / minified / obfuscated non-authored seed. `tag.obfuscation` is the final
  * verdict here - the detector is structural, so there is no later AST correction.
  * @param {Addon} addon
  * @param {{libraryHashes?: Map<string, LibraryId>}} [opts]
@@ -140,7 +144,7 @@ export function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
     // it joins the skip set: identified libraries are declared third-party, minified
     // and obfuscated files are rejected (and their original source requested) rather
     // than scanned.
-    if (tag.library || tag.minified || tag.obfuscated) {
+    if (tag.library || tag.minified || tag.obfuscation.fail) {
       nonAuthored.add(file);
     }
   }
@@ -209,11 +213,11 @@ export function applyNotPopularVendor(addon) {
     const buf = addon.files?.get(result.path);
     const content = buf
       ? classify(buf.toString("utf8"), result.path)
-      : { minified: false, obfuscated: false };
+      : { minified: false, obfuscation: VERDICT.PASS };
     markUntrusted(addon, {
       file: result.path,
       source: result.source,
-      unreadable: content.minified || content.obfuscated,
+      unreadable: content.minified || content.obfuscation.fail,
     });
   }
   addon.vendor.results = remaining;
@@ -272,17 +276,22 @@ export function untrustedLibs(ctx) {
  * @returns {boolean}
  */
 export function isMinifiedFirstParty(c) {
-  return Boolean(c.minified && !c.library && !c.obfuscated && !c.untrusted);
+  return Boolean(
+    c.minified && !c.library && !c.obfuscation.fail && !c.untrusted
+  );
 }
 
 /**
- * An obfuscated first-party file: obfuscated, not a recognized library, not an
- * identified-but-untrusted match - exactly what obfuscated-code flags.
+ * An obfuscated first-party file: the FAIL verdict, on the developer's own code (not a
+ * recognized library, not an identified-but-untrusted match). Read by hasUnreviewableCode
+ * to decide whether the shipped XPI carries developer-authored obfuscated code, so the
+ * source-archive review is kept: a recognized library is reviewable by its identity, and
+ * an untrusted match is counted by its own branch there.
  * @param {BundleTag} c
  * @returns {boolean}
  */
 export function isObfuscatedFirstParty(c) {
-  return Boolean(c.obfuscated && !c.library && !c.untrusted);
+  return Boolean(c.obfuscation.fail && !c.library && !c.untrusted);
 }
 
 /**
@@ -309,18 +318,23 @@ export function hasUnreviewableCode(bundled) {
 
 /**
  * The CONTENT signal for one file: whether it is minified (packed code, via isMinified)
- * or obfuscated (a recognized obfuscator's AST structure, via isObfuscated). Library
- * detection is NOT here - it is a true content-hash match against the known-library
- * database, done in classifyBundled. Pure (bytes + filename only; both detectors parse
- * `text` internally, offline).
+ * and its obfuscation verdict (a recognized obfuscator's AST structure, via
+ * obfuscationVerdict). Library detection is NOT here - it is a true content-hash match
+ * against the known-library database, done in classifyBundled. Pure (bytes + filename
+ * only; both detectors parse `text` internally, offline).
  * @param {string} text
  * @param {string} file
- * @returns {{minified: boolean, obfuscated: boolean}}
+ * @returns {{minified: boolean, obfuscation: import("./enum.js").Verdict}}
  */
 export function classify(text, file) {
   // Obfuscation is JS-only (a stylesheet is never obfuscated in this sense); isMinified
-  // handles both JS (statement density) and CSS (packed rules).
-  const obfuscated =
-    JS_EXTENSIONS.has(extname(file)) && isObfuscated(text, file);
-  return { minified: isMinified(text, file), obfuscated };
+  // handles both JS (statement density) and CSS (packed rules). The verdict is three-state:
+  // a weak-family-only match is UNSURE (readable, authored, scanned) and referred to the
+  // obfuscated-code check's LLM/manual adjudication, never a deterministic finding.
+  return {
+    minified: isMinified(text, file),
+    obfuscation: JS_EXTENSIONS.has(extname(file))
+      ? obfuscationVerdict(text, file)
+      : VERDICT.PASS,
+  };
 }

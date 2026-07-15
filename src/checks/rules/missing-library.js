@@ -19,6 +19,7 @@
 // that registry entry, stamped by src/checks/registry.js), and report formatting
 // (-> src/report/format.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { classifyAddonJs } from "../../lib/bundled.js";
 
@@ -44,7 +45,7 @@ export default {
         c.file,
         null,
         mozillaLib ? (id ?? "bundled library") : "not a library",
-        mozillaLib ? "fail" : "pass"
+        mozillaLib ? VERDICT.FAIL : VERDICT.PASS
       );
       if (mozillaLib) {
         findings.push(finding({ file: c.file, item: id ?? undefined }));

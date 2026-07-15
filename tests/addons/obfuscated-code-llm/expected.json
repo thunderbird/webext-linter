@@ -1,0 +1,6 @@
+{
+  "_comment": "Three revealing-module background scripts matching ONLY the weak function_to_array_replacements structure - no deterministic obfuscated-code finding; each is one LLM candidate judged with --llm-review (turned on by the sibling llm.js). The canned verdicts exercise the full mapping: module-fail.js fail -> a finding, module-pass.js pass -> dropped, module-unsure.js unsure -> manual review. See llm.js for the canned answers.",
+  "expect": {
+    "obfuscated-code": ["module-fail.js"]
+  }
+}

@@ -15,8 +15,9 @@
 // src/checks/llm-client.js).
 
 import { finding } from "../report/finding.js";
+import { VERDICT } from "./enum.js";
 
-/** @typedef {Map<string, {verdict: string, reason: ?string,
+/** @typedef {Map<string, {verdict: import("./enum.js").Verdict, reason: ?string,
  *   additionalInformation?: string}>} VerdictMap */
 
 /**
@@ -32,10 +33,10 @@ export function perCandidateResolve(cases) {
     const findings = [];
     const manual = [];
     for (const c of cases) {
-      const v = verdicts.get(c.id)?.verdict ?? "unsure";
-      if (v === "fail") {
+      const v = verdicts.get(c.id)?.verdict ?? VERDICT.UNSURE;
+      if (v.fail) {
         findings.push(finding(c.finding));
-      } else if (v === "unsure") {
+      } else if (v.unsure) {
         // Carry the finding's locus so the manual entry can list file:line/item.
         manual.push({ ...c.finding });
       }
@@ -57,11 +58,11 @@ export function aggregateGroups(groups) {
     const findings = [];
     const manual = [];
     for (const g of groups) {
-      const vs = g.ids.map((id) => verdicts.get(id)?.verdict ?? "unsure");
-      if (vs.some((v) => v === "pass")) {
+      const vs = g.ids.map((id) => verdicts.get(id)?.verdict ?? VERDICT.UNSURE);
+      if (vs.some((v) => v.pass)) {
         continue; // a site loads F -> F is used
       }
-      if (vs.length && vs.every((v) => v === "fail")) {
+      if (vs.length && vs.every((v) => v.fail)) {
         findings.push(finding(g.finding));
       } else {
         // Carry the finding's locus so the manual entry can list file:line/item.

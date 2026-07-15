@@ -8,6 +8,7 @@
 // memoized and shared with default-locale-unused), authored wording (->
 // assets/registry.yaml), and severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { getLocales } from "../../lib/locales.js";
 
@@ -25,22 +26,37 @@ export default {
     // scan read the XPI.
     const manifest = ctx.manifest;
     if (!manifest) {
-      ctx.note?.("manifest.json", null, "manifest did not parse", "skipped");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        "manifest did not parse",
+        VERDICT.SKIPPED
+      );
       return [];
     }
     if (!getLocales(ctx).hasLocales) {
-      ctx.note?.("manifest.json", null, "no _locales directory", "skipped");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        "no _locales directory",
+        VERDICT.SKIPPED
+      );
       return [];
     }
     if (manifest.default_locale) {
-      ctx.note?.("manifest.json", null, "default_locale declared", "pass");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        "default_locale declared",
+        VERDICT.PASS
+      );
       return [];
     }
     ctx.note?.(
       "manifest.json",
       null,
       "_locales without default_locale",
-      "fail"
+      VERDICT.FAIL
     );
     return [finding({ file: "manifest.json" })];
   },

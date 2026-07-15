@@ -17,6 +17,7 @@
 // src/vendor/resolve.js + src/vendor/locks.js), and the wording (->
 // assets/registry.yaml).
 
+import { VERDICT } from "./enum.js";
 import { finding, SEVERITY } from "../report/finding.js";
 import { manifestTokenLine, lineContaining } from "./util.js";
 
@@ -81,7 +82,7 @@ export function vulnFindings(ctx, vulns) {
       file,
       loc,
       `${name}@${version} has known vulnerabilities (${ids.join(", ")})`,
-      "fail"
+      VERDICT.FAIL
     );
     findings.push(
       finding({

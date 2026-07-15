@@ -9,6 +9,7 @@
 // Does NOT belong here: the VENDOR parse (-> src/normalize/vendor.js) and the
 // store resolution (-> src/vendor/resolve.js) or the wording (-> the registry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { readVendorFile } from "../../normalize/vendor.js";
 
@@ -34,7 +35,7 @@ export default {
         vendorName,
         null,
         `${path} declared (source ${sourceUrl}) but not in the submission`,
-        "fail"
+        VERDICT.FAIL
       );
       findings.push(finding({ file: path, item: vendorName }));
     }

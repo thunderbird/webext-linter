@@ -9,6 +9,7 @@
 // here: the deterministic->manual routing (registry.js + escalation.js) or the
 // authored instructions/response (assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { isExperiment } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -22,10 +23,15 @@ export default {
   run(ctx) {
     const m = ctx.manifest;
     if (!m || !isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "not an Experiment", "skipped");
+      ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
       return { findings: [], escalations: [] };
     }
-    ctx.note?.("manifest.json", null, "Experiment - manual review", "unsure");
+    ctx.note?.(
+      "manifest.json",
+      null,
+      "Experiment - manual review",
+      VERDICT.UNSURE
+    );
     // A whole-add-on reminder: no locus, so it renders as the instruction +
     // suggested response alone under Extended manual review.
     return { findings: [], escalations: [{}] };

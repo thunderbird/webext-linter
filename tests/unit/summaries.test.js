@@ -3,6 +3,7 @@
 // reaches the API.
 
 import { test } from "node:test";
+import { VERDICT } from "../../src/lib/enum.js";
 import { withManifest } from "./manifest-ctx.js";
 import assert from "node:assert/strict";
 
@@ -278,7 +279,7 @@ test("buildAddonSummarizer sends prompt+add-on and returns the structured review
       {
         check: "unused-permission-recheck",
         item: "tabs",
-        verdict: "fail",
+        verdict: VERDICT.FAIL,
         reason: "no tab property is read",
       },
     ],

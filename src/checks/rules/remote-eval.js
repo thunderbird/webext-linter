@@ -12,6 +12,7 @@
 // src/lib/verdict-resolve.js), and authored wording (->
 // assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import { getEvalScan } from "../../lib/eval-scan.js";
 import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 
@@ -41,7 +42,7 @@ export default {
         corpus: [hit.file],
       });
       cases.push({ id, finding: { file: hit.file, loc, item }, item });
-      ctx.note?.(hit.file, loc, "fetch().then(eval)", "unsure");
+      ctx.note?.(hit.file, loc, "fetch().then(eval)", VERDICT.UNSURE);
     }
     if (!candidates.length) {
       return { findings: [] };

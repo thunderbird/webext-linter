@@ -10,6 +10,7 @@
 // assets/registry.yaml). Severity (-> the minimize-host-permissions registry
 // entry, stamped by src/checks/registry.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import {
   asArray,
@@ -35,7 +36,12 @@ export default {
         }
         seen.add(p);
         const broad = isBroadHost(p);
-        ctx.note?.("manifest.json", null, p, broad ? "fail" : "pass");
+        ctx.note?.(
+          "manifest.json",
+          null,
+          p,
+          broad ? VERDICT.FAIL : VERDICT.PASS
+        );
         if (broad) {
           const line = manifestPathLine(ctx, key, i);
           out.push(

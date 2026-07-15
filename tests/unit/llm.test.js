@@ -2,6 +2,7 @@
 // transport). No network: the client uses an injected callVerdicts.
 
 import { test } from "node:test";
+import { VERDICT } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 
 import { createLlmClient } from "../../src/checks/llm-client.js";
@@ -34,8 +35,8 @@ function clientWith(files, callVerdicts) {
 test("evaluate returns a verdict per candidate id", async () => {
   const { llm, addon } = clientWith(["a.js", "b.js"], async () => ({
     verdicts: [
-      { id: "E1", verdict: "fail", reason: "r1" },
-      { id: "E2", verdict: "pass", reason: null },
+      { id: "E1", verdict: VERDICT.FAIL, reason: "r1" },
+      { id: "E2", verdict: VERDICT.PASS, reason: null },
     ],
   }));
   const out = await llm.evaluate({
@@ -47,12 +48,12 @@ test("evaluate returns a verdict per candidate id", async () => {
     addon,
   });
   assert.deepEqual(out.get("E1"), {
-    verdict: "fail",
+    verdict: VERDICT.FAIL,
     reason: "r1",
     additionalInformation: "",
   });
   assert.deepEqual(out.get("E2"), {
-    verdict: "pass",
+    verdict: VERDICT.PASS,
     reason: null,
     additionalInformation: "",
   });
@@ -103,8 +104,8 @@ test("createLlmClient forwards the url to the transports as baseURL", async () =
 test("evaluate defaults missing ids to unsure and drops unknown ids", async () => {
   const { llm, addon } = clientWith(["a.js"], async () => ({
     verdicts: [
-      { id: "E1", verdict: "fail", reason: null },
-      { id: "GHOST", verdict: "pass", reason: null },
+      { id: "E1", verdict: VERDICT.FAIL, reason: null },
+      { id: "GHOST", verdict: VERDICT.PASS, reason: null },
     ],
   }));
   const out = await llm.evaluate({
@@ -115,8 +116,8 @@ test("evaluate defaults missing ids to unsure and drops unknown ids", async () =
     ],
     addon,
   });
-  assert.equal(out.get("E1").verdict, "fail");
-  assert.equal(out.get("E2").verdict, "unsure"); // omitted -> unsure
+  assert.equal(out.get("E1").verdict, VERDICT.FAIL);
+  assert.equal(out.get("E2").verdict, VERDICT.UNSURE); // omitted -> unsure
   assert.ok(!out.has("GHOST")); // invented -> dropped
 });
 
@@ -137,7 +138,7 @@ test("evaluate splits candidates into file-bounded batches", async () => {
   assert.equal(calls.length, 2);
   assert.equal(out.size, candidates.length);
   for (const c of candidates) {
-    assert.equal(out.get(c.id).verdict, "unsure");
+    assert.equal(out.get(c.id).verdict, VERDICT.UNSURE);
   }
 });
 
@@ -182,7 +183,7 @@ test("evaluate stops at the request budget; the rest are unsure", async () => {
   assert.equal(calls, 1); // only the first batch ran; the budget stopped the rest
   assert.equal(out.size, candidates.length);
   for (const c of candidates) {
-    assert.equal(out.get(c.id).verdict, "unsure");
+    assert.equal(out.get(c.id).verdict, VERDICT.UNSURE);
   }
 });
 
@@ -197,7 +198,7 @@ test("evaluate turns a batch error into unsure (never throws)", async () => {
     candidates: [{ id: "E1", file: "a.js" }],
     addon,
   });
-  assert.equal(out.get("E1").verdict, "unsure");
+  assert.equal(out.get("E1").verdict, VERDICT.UNSURE);
 });
 
 // The shared system context (reviewer intro + cached add-on block) is built once

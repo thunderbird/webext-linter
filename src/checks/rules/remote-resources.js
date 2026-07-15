@@ -17,6 +17,7 @@
 // (-> that registry entry, stamped by src/checks/registry.js), and report
 // formatting (-> src/report/format.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { scanHtmlRemoteRefs, scanHtmlInlineCssRefs } from "../../scan/html.js";
 import { scanCssRemoteRefs } from "../../scan/css.js";
 import { remoteJsOf } from "../extract.js";
@@ -80,7 +81,7 @@ export default {
 
     for (const host of analyzeCsp(ctx.manifest).remoteHosts) {
       findings.push(finding({ file: "manifest.json", item: host }));
-      ctx.note?.("manifest.json", null, `CSP script-src ${host}`, "fail");
+      ctx.note?.("manifest.json", null, `CSP script-src ${host}`, VERDICT.FAIL);
     }
 
     const result = { findings: dedupe(findings) };
@@ -124,7 +125,7 @@ function pushHtml(ctx, findings, esc, file, ref) {
   const item = `<${tag}> ${trunc(url)}`;
   if (klass === "remote") {
     findings.push(finding({ file, loc, item: url }));
-    ctx.note?.(file, loc, item, "fail");
+    ctx.note?.(file, loc, item, VERDICT.FAIL);
   } else if (klass === "embedded" && kind === "script") {
     addCandidate(
       esc,
@@ -133,10 +134,10 @@ function pushHtml(ctx, findings, esc, file, ref) {
       loc,
       `has a <script> with an inline ${scheme(url)} URL`
     );
-    ctx.note?.(file, loc, item, "unsure");
+    ctx.note?.(file, loc, item, VERDICT.UNSURE);
   } else if (klass === "local" && (kind === "script" || kind === "content")) {
     // A bundled script/iframe load - cleared, but on the trail of "what runs".
-    ctx.note?.(file, loc, item, "pass");
+    ctx.note?.(file, loc, item, VERDICT.PASS);
   }
 }
 
@@ -153,7 +154,7 @@ function pushCss(ctx, findings, file, ref) {
   }
   const loc = { line, column: 0 };
   findings.push(finding({ file, loc, item: url }));
-  ctx.note?.(file, loc, `css ${trunc(url)}`, "fail");
+  ctx.note?.(file, loc, `css ${trunc(url)}`, VERDICT.FAIL);
 }
 
 // Remote-JS hit types that are definite remote loads (vs the undecidable ones,
@@ -190,10 +191,10 @@ function pushJs(ctx, findings, esc, file, hit) {
       file,
       loc,
       `${hit.type}${hit.url ? ` ${trunc(hit.url)}` : ""}`,
-      "fail"
+      VERDICT.FAIL
     );
   } else if (UNDECIDABLE_JS[hit.type]) {
     addCandidate(esc, file, hit.line, loc, UNDECIDABLE_JS[hit.type]);
-    ctx.note?.(file, loc, UNDECIDABLE_JS[hit.type], "unsure");
+    ctx.note?.(file, loc, UNDECIDABLE_JS[hit.type], VERDICT.UNSURE);
   }
 }

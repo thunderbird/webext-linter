@@ -15,6 +15,7 @@
 // minified/obfuscated reject (-> untrusted-minified-library.js), authored wording
 // (-> registry.yaml), severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { untrustedLibs } from "../../lib/bundled.js";
 
@@ -31,7 +32,7 @@ export default {
         continue; // a minified/obfuscated one is untrusted-minified-library's (reject) concern
       }
       const item = lib.name || lib.file;
-      ctx.note?.(lib.file, null, item, "info");
+      ctx.note?.(lib.file, null, item, VERDICT.INFO);
       findings.push(finding({ file: lib.file, item, hint: lib.source }));
     }
     return findings;

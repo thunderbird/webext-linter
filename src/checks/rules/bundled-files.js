@@ -18,6 +18,7 @@
 // assets/registry.yaml), severity (-> that registry entry, stamped by
 // src/checks/registry.js), and report formatting (-> src/report/format.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { loaderRefsOf } from "../extract.js";
 import { buildReachability } from "../../lib/reachability.js";
@@ -60,7 +61,12 @@ export default {
         const line = manifestTokenLine(manifestText, path);
         const loc = line ? { line } : null;
         const present = rootOk(path);
-        ctx.note?.("manifest.json", loc, path, present ? "pass" : "fail");
+        ctx.note?.(
+          "manifest.json",
+          loc,
+          path,
+          present ? VERDICT.PASS : VERDICT.FAIL
+        );
         if (!present) {
           out.push(finding({ file: "manifest.json", loc, item: path }));
         }
@@ -105,7 +111,12 @@ export default {
             ? resolvePageRelative(addon.files, hostDirs, src.file, ref.path) !=
               null
             : resolveRef(addon.files, null, ref.path) != null;
-        ctx.note?.(src.file, loc, ref.path, present ? "pass" : "fail");
+        ctx.note?.(
+          src.file,
+          loc,
+          ref.path,
+          present ? VERDICT.PASS : VERDICT.FAIL
+        );
         if (!present) {
           out.push(finding({ file: src.file, loc, item: ref.path }));
         }

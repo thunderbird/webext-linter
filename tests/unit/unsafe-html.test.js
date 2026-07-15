@@ -1,6 +1,7 @@
 // Unit tests for the unsanitized-HTML scanner.
 
 import { test } from "node:test";
+import { VERDICT } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 import { parsed } from "./manifest-ctx.js";
 
@@ -74,6 +75,6 @@ test("unsafe-html notes each sink site (verdict fail)", () => {
   const out = unsafeHtml.run(ctx);
   assert.equal(out.length, 1); // still one finding
   assert.deepEqual(notes, [
-    { file: "render.js", item: ".innerHTML", verdict: "fail" },
+    { file: "render.js", item: ".innerHTML", verdict: VERDICT.FAIL },
   ]);
 });

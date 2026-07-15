@@ -24,6 +24,7 @@ import {
   hasAllCachedSchemas,
 } from "../../src/schema/fetch.js";
 import { peekApplicationVersion } from "../../src/schema/load.js";
+import { VERDICT } from "../../src/lib/enum.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA_FIXTURE = path.join(here, "..", "schema-fixture");
@@ -256,7 +257,7 @@ const MINIFIED_FIRST_PARTY = {
   file: "bundle.js",
   minified: true,
   library: false,
-  obfuscated: false,
+  obfuscation: VERDICT.PASS,
 };
 
 test("resolveReviewMode: no --sca-root -> plain XPI review", () => {

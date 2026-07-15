@@ -23,6 +23,7 @@ import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
 import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
+import { VERDICT } from "../../src/lib/enum.js";
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 import vendorVulnerableDev from "../../src/checks/rules/vendor-vulnerable-dev.js";
 import { rawSha256 } from "../../src/normalize/hash.js";
@@ -63,6 +64,7 @@ import {
   assertRequiredPhaseSections,
 } from "../../src/checks/registry.js";
 import { finding, SEVERITY } from "../../src/report/finding.js";
+import { runLlmCheck } from "../../src/checks/escalation.js";
 
 // loadChecks groups its result by phase (a check's phase IS the list it lands in).
 // Flatten it when a test cares about the checks themselves, not which phase they run in.
@@ -364,7 +366,7 @@ test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () =
       "\n"
     );
   assert.equal(
-    obfuscatedCode.run(withManifest(filesCtx({ "o.js": obf }))).length,
+    obfuscatedCode.run(withManifest(filesCtx({ "o.js": obf }))).findings.length,
     1
   );
   assert.equal(
@@ -374,7 +376,8 @@ test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () =
   // A merely-minified file is NOT obfuscated-code's concern.
   const minified = "var a=1;b=2;c=3;d=4;".repeat(100) + "\n";
   assert.equal(
-    obfuscatedCode.run(withManifest(filesCtx({ "m.js": minified }))).length,
+    obfuscatedCode.run(withManifest(filesCtx({ "m.js": minified }))).findings
+      .length,
     0
   );
   // The same obfuscation collapsed onto one dense line -> minified geometry AND
@@ -384,13 +387,83 @@ test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () =
     "function _0xg(i){return _0xa[i];}" +
     Array.from({ length: 80 }, (_, i) => `console.log(_0xg(${i}));`).join("");
   assert.equal(
-    obfuscatedCode.run(withManifest(filesCtx({ "b.js": both }))).length,
+    obfuscatedCode.run(withManifest(filesCtx({ "b.js": both }))).findings
+      .length,
     1
   );
   assert.equal(
     minifiedCode.run(withManifest(filesCtx({ "b.js": both }))).length,
     0
   );
+});
+
+// A weak-family-only file (a revealing-module pattern, which the structural
+// detector flags but readable code also has) is the UNSURE verdict: no
+// deterministic finding, one LLM candidate judged from the file's own content.
+// With a token, evaluate's per-candidate verdict drives the check's OWN resolve
+// mapping - fail -> finding, pass -> drop, unsure -> manual review - which the
+// deterministic and no-token paths never exercise. ctx.llm.evaluate is faked
+// (no network); each run returns the given verdict for every candidate.
+test("obfuscated-code maps the LLM verdict of a weak-only candidate: fail->finding, pass->drop, unsure->manual", async () => {
+  // A revealing-module pattern over the 1024-byte floor: an IIFE-initialized
+  // const referenced only as `Helper.method(...)`, which structurally matches
+  // the WEAK family the detector applies no density guard to -> UNSURE, not FAIL.
+  const methods = Array.from(
+    { length: 12 },
+    (_, i) =>
+      `  function step${i}(value) {\n` +
+      `    const result = String(value || "").trim().toLowerCase();\n` +
+      `    return result.length > ${i} ? result : "fallback${i}";\n` +
+      `  }\n`
+  ).join("");
+  const returns = Array.from({ length: 12 }, (_, i) => `step${i}`).join(", ");
+  const calls = Array.from(
+    { length: 12 },
+    (_, i) => `Helper.step${i}("x${i}");`
+  ).join("\n");
+  const weak = `const Helper = (() => {\n${methods}  return { ${returns} };\n})();\n${calls}\n`;
+
+  const step = obfuscatedCode.run(withManifest(filesCtx({ "app.js": weak })));
+  // No deterministic finding for a weak-only match - just the one candidate.
+  assert.equal(step.findings.length, 0);
+  assert.equal(step.llm.candidates.length, 1);
+  assert.equal(step.llm.candidates[0].file, "app.js");
+
+  // The check owns the id->file table (perCandidateResolve); the model only ever
+  // returns a verdict keyed to that minted id. Fake evaluate with a token present.
+  const check = {
+    id: "obfuscated-code",
+    title: "Obfuscated code",
+    prompt: "P",
+  };
+  const drive = async (verdict) => {
+    const ctx = {
+      addon: {},
+      llm: {
+        evaluate: async () =>
+          new Map(
+            step.llm.candidates.map((c) => [c.id, { verdict, reason: null }])
+          ),
+      },
+    };
+    return runLlmCheck(ctx, check, step.llm);
+  };
+
+  const failed = await drive(VERDICT.FAIL);
+  assert.equal(failed.findings.length, 1);
+  assert.equal(failed.findings[0].file, "app.js");
+  assert.equal(failed.manualItems.length, 0);
+
+  const passed = await drive(VERDICT.PASS);
+  assert.equal(passed.findings.length, 0);
+  assert.equal(passed.manualItems.length, 0);
+
+  const unsure = await drive(VERDICT.UNSURE);
+  assert.equal(unsure.findings.length, 0);
+  assert.equal(unsure.manualItems.length, 1);
+  // The manual entry is located by the file (the finding's locus); it carries no
+  // `{{item}}` token - the reviewer inspects the named file by hand.
+  assert.equal(unsure.manualItems[0].file, "app.js");
 });
 
 // vendor-vulnerable surfaces a vulnerability the OSV audit recorded for a
@@ -763,7 +836,7 @@ test("an input:xpi LLM check adjudicates over its routed (XPI) addon", async () 
       evaluate: async (req) => {
         seenAddon = req.addon;
         return new Map(
-          req.candidates.map((c) => [c.id, { verdict: "unsure" }])
+          req.candidates.map((c) => [c.id, { verdict: VERDICT.UNSURE }])
         );
       },
     },
@@ -903,7 +976,7 @@ test("SCA diverts a source-anchored recheck to the summary", async () => {
     // divert then routes.
     llm: {
       evaluate: async (req) =>
-        new Map(req.candidates.map((c) => [c.id, { verdict: "unsure" }])),
+        new Map(req.candidates.map((c) => [c.id, { verdict: VERDICT.UNSURE }])),
       // runChecks now also runs the add-on summary; benign stubs keep it from erroring
       // (the divert this test asserts on happens in the main loop, before the summary).
       reviewAddon: async () => ({ summary: "", recheck: [] }),
@@ -1639,7 +1712,7 @@ test("unused-permission drops permissions proved used by static analysis", () =>
   // The override is recorded as a pass note, so the feed shows it was dropped.
   assert.deepEqual(
     notes.find((n) => n.item === "messagesRead"),
-    { item: "messagesRead", verdict: "pass" }
+    { item: "messagesRead", verdict: VERDICT.PASS }
   );
 });
 
@@ -1716,7 +1789,7 @@ test("unused-permission escalates unlimitedStorage (gates no API)", () => {
     notes.find((n) => n.item === "unlimitedStorage"),
     {
       item: "unlimitedStorage",
-      verdict: "unsure",
+      verdict: VERDICT.UNSURE,
     }
   );
 });
@@ -1762,19 +1835,19 @@ test("unused-permission-recheck maps the summary's recheck verdicts to findings 
         {
           check: "unused-permission-recheck",
           item: "tabs",
-          verdict: "fail",
+          verdict: VERDICT.FAIL,
           reason: "no tab property read",
         },
         {
           check: "unused-permission-recheck",
           item: "downloads",
-          verdict: "unsure",
+          verdict: VERDICT.UNSURE,
           reason: "cannot tell",
         },
         {
           check: "unused-permission-recheck",
           item: "storage",
-          verdict: "pass",
+          verdict: VERDICT.PASS,
           reason: "used by storage.local",
         },
       ],
@@ -2217,11 +2290,11 @@ test("strict-min-version-api defers a guarded too-new API to the LLM", () => {
   assert.deepEqual(c.corpus, ["bg.js"]); // local judgement: just the call's file
   assert.match(c.note, /messenger\.messages\.future/);
   // fail -> finding, pass -> drop, unsure (no verdict) -> manual.
-  const fail = out.llm.resolve(new Map([[c.id, { verdict: "fail" }]]));
+  const fail = out.llm.resolve(new Map([[c.id, { verdict: VERDICT.FAIL }]]));
   assert.equal(fail.findings.length, 1);
   assert.equal(fail.findings[0].item, "messenger.messages.future()");
   assert.equal(fail.findings[0].data.min, "60.0");
-  const pass = out.llm.resolve(new Map([[c.id, { verdict: "pass" }]]));
+  const pass = out.llm.resolve(new Map([[c.id, { verdict: VERDICT.PASS }]]));
   assert.equal(pass.findings.length, 0);
   assert.equal(pass.manual.length, 0);
   const unsure = out.llm.resolve(new Map()); // no token / no verdict -> manual
@@ -2748,7 +2821,7 @@ test("sync-xhr notes each open() site (sync=fail, async=pass)", () => {
   );
   assert.deepEqual(
     notes.map((n) => n.verdict),
-    ["fail", "pass"]
+    [VERDICT.FAIL, VERDICT.PASS]
   );
 });
 
@@ -2757,7 +2830,10 @@ test("debugger-statement notes guarded (pass) and unconditional (fail)", () => {
     debuggerStatement,
     jsCtx(`debugger;\nif (D) debugger;`)
   );
-  assert.deepEqual(notes.map((n) => n.verdict).sort(), ["fail", "pass"]);
+  assert.deepEqual(
+    new Set(notes.map((n) => n.verdict)),
+    new Set([VERDICT.FAIL, VERDICT.PASS])
+  );
 });
 
 test("minimize-host-permissions notes broad (fail) and scoped (pass) hosts", () => {
@@ -2766,8 +2842,12 @@ test("minimize-host-permissions notes broad (fail) and scoped (pass) hosts", () 
     jsCtx("", { host_permissions: ["<all_urls>", "https://example.com/*"] })
   );
   assert.deepEqual(notes, [
-    { file: "manifest.json", item: "<all_urls>", verdict: "fail" },
-    { file: "manifest.json", item: "https://example.com/*", verdict: "pass" },
+    { file: "manifest.json", item: "<all_urls>", verdict: VERDICT.FAIL },
+    {
+      file: "manifest.json",
+      item: "https://example.com/*",
+      verdict: VERDICT.PASS,
+    },
   ]);
 });
 
@@ -2782,8 +2862,8 @@ test("missing-library / obfuscated-code note a verdict per classified file", () 
     missingLibrary,
     filesCtx({ "lib.js": lib, "app.js": readable }, { libs: ["lib.js"] })
   );
-  assert.equal(libNotes.find((n) => n.file === "lib.js").verdict, "fail");
-  assert.equal(libNotes.find((n) => n.file === "app.js").verdict, "pass");
+  assert.equal(libNotes.find((n) => n.file === "lib.js").verdict, VERDICT.FAIL);
+  assert.equal(libNotes.find((n) => n.file === "app.js").verdict, VERDICT.PASS);
   // obfuscated-code defers libraries to missing-library, so it notes only app.js.
   const obfNotes = notesFrom(
     obfuscatedCode,
@@ -2793,7 +2873,7 @@ test("missing-library / obfuscated-code note a verdict per classified file", () 
     obfNotes.map((n) => n.file),
     ["app.js"]
   );
-  assert.equal(obfNotes[0].verdict, "pass");
+  assert.equal(obfNotes[0].verdict, VERDICT.PASS);
 });
 
 // ---- Tier 2 status notes (one deterministic verdict per check) ----
@@ -2812,9 +2892,15 @@ test("experiment-not-allowed notes pass / fail / skipped", () => {
     options: { allowExperiments },
   });
   const v = (m, allow) => notesFrom(experimentNotAllowed, ctxFor(m, allow));
-  assert.equal(v({ name: "x" }, false)[0].verdict, "pass"); // not an Experiment
-  assert.equal(v({ experiment_apis: { a: {} } }, false)[0].verdict, "fail");
-  assert.equal(v({ experiment_apis: { a: {} } }, true)[0].verdict, "skipped");
+  assert.equal(v({ name: "x" }, false)[0].verdict, VERDICT.PASS); // not an Experiment
+  assert.equal(
+    v({ experiment_apis: { a: {} } }, false)[0].verdict,
+    VERDICT.FAIL
+  );
+  assert.equal(
+    v({ experiment_apis: { a: {} } }, true)[0].verdict,
+    VERDICT.SKIPPED
+  );
 });
 
 test("experiment-missing-strict-max-version notes pass / fail / skipped", () => {
@@ -2823,32 +2909,32 @@ test("experiment-missing-strict-max-version notes pass / fail / skipped", () => 
       addon: { manifest },
       options: { allowExperiments: true },
     });
-  assert.equal(v({ experiment_apis: { a: {} } })[0].verdict, "fail"); // no max
+  assert.equal(v({ experiment_apis: { a: {} } })[0].verdict, VERDICT.FAIL); // no max
   assert.equal(
     v({
       experiment_apis: { a: {} },
       browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
     })[0].verdict,
-    "pass"
+    VERDICT.PASS
   );
-  assert.equal(v({ name: "x" })[0].verdict, "skipped"); // not an Experiment
+  assert.equal(v({ name: "x" })[0].verdict, VERDICT.SKIPPED); // not an Experiment
 });
 
 test("non-experiment-strict-max-version notes pass / fail / skipped", () => {
   const v = (manifest) => notesFrom(nonExperimentMax, { addon: { manifest } });
-  assert.equal(v({ name: "x" })[0].verdict, "pass"); // no max
+  assert.equal(v({ name: "x" })[0].verdict, VERDICT.PASS); // no max
   assert.equal(
     v({
       browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
     })[0].verdict,
-    "fail"
+    VERDICT.FAIL
   );
   assert.equal(
     v({
       experiment_apis: { a: {} },
       browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
     })[0].verdict,
-    "skipped" // an Experiment is the other check's concern
+    VERDICT.SKIPPED // an Experiment is the other check's concern
   );
 });
 
@@ -2874,12 +2960,12 @@ test("strict-max-version-bump-only notes fail / pass", () => {
     notesFrom(strictMaxBumpOnly, { addon, previous });
   assert.equal(
     v(ver(m("128.0", "1.1"), { "bg.js": bg }), prev)[0].verdict,
-    "fail"
+    VERDICT.FAIL
   );
   assert.equal(
     v(ver(m("128.0", "1.1"), { "bg.js": "console.log(2);\n" }), prev)[0]
       .verdict,
-    "pass" // a code file also changed
+    VERDICT.PASS // a code file also changed
   );
 });
 
@@ -2888,9 +2974,9 @@ test("trademark-violation notes pass / fail / skipped", () => {
     addon: { manifest: name == null ? {} : { name }, files: new Map() },
   });
   const v = (name) => notesFrom(trademarkViolation, ctxFor(name));
-  assert.equal(v("Calendar for Thunderbird")[0].verdict, "pass");
-  assert.equal(v("Firefox Helper")[0].verdict, "fail");
-  assert.equal(v(null)[0].verdict, "skipped"); // no name
+  assert.equal(v("Calendar for Thunderbird")[0].verdict, VERDICT.PASS);
+  assert.equal(v("Firefox Helper")[0].verdict, VERDICT.FAIL);
+  assert.equal(v(null)[0].verdict, VERDICT.SKIPPED); // no name
 });
 
 test("missing-english-localization: _locales branches (pass / fail)", () => {
@@ -2902,8 +2988,14 @@ test("missing-english-localization: _locales branches (pass / fail)", () => {
         ),
       },
     });
-  assert.equal(v({ "_locales/en/messages.json": "{}" })[0].verdict, "pass");
-  assert.equal(v({ "_locales/de/messages.json": "{}" })[0].verdict, "fail");
+  assert.equal(
+    v({ "_locales/en/messages.json": "{}" })[0].verdict,
+    VERDICT.PASS
+  );
+  assert.equal(
+    v({ "_locales/de/messages.json": "{}" })[0].verdict,
+    VERDICT.FAIL
+  );
 });
 
 // No _locales: franc over the user-facing text (HTML visible text + manifest
@@ -3321,7 +3413,9 @@ test("data-exfiltration labels each locus with the transmission method", () => {
   const out = dataExfiltration.run(
     withManifest(jsCtx('fetch("https://api.example.com/", { body });'))
   );
-  const { findings } = out.llm.resolve(new Map([["X1", { verdict: "fail" }]]));
+  const { findings } = out.llm.resolve(
+    new Map([["X1", { verdict: VERDICT.FAIL }]])
+  );
   assert.equal(findings.length, 1);
   assert.equal(findings[0].hint, "fetch()");
   assert.equal(findings[0].item, null);

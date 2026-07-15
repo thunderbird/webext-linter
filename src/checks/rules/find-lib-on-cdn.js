@@ -20,6 +20,7 @@
 // authored wording (-> assets/registry.yaml), severity (-> that registry entry,
 // stamped by src/checks/registry.js), and report formatting (-> src/report/format.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { classifyAddonJs } from "../../lib/bundled.js";
 
@@ -44,7 +45,7 @@ export default {
       }
       // A cdn tag always carries the matched release (cdn-lookup sets both).
       const id = `${c.libraryId.name} ${c.libraryId.version}`;
-      ctx.note?.(c.file, null, id, "fail");
+      ctx.note?.(c.file, null, id, VERDICT.FAIL);
       // hint = the jsDelivr source URL: with the file path (the location) it IS the
       // `file:`/`source:` VENDOR entry to add.
       findings.push(finding({ file: c.file, item: id, hint: c.cdn.url }));

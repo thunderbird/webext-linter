@@ -12,6 +12,7 @@
 // experiment-strict-max-version registry entry, stamped by src/checks/
 // registry.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import {
   isExperiment,
@@ -28,23 +29,28 @@ export default {
   run(ctx) {
     const m = ctx.manifest;
     if (!m) {
-      ctx.note?.("manifest.json", null, "manifest did not parse", "skipped");
+      ctx.note?.(
+        "manifest.json",
+        null,
+        "manifest did not parse",
+        VERDICT.SKIPPED
+      );
       return [];
     }
     if (isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "is an Experiment", "skipped");
+      ctx.note?.("manifest.json", null, "is an Experiment", VERDICT.SKIPPED);
       return [];
     }
     const max = strictMaxVersion(m);
     if (max == null) {
-      ctx.note?.("manifest.json", null, "no strict_max_version", "pass");
+      ctx.note?.("manifest.json", null, "no strict_max_version", VERDICT.PASS);
       return [];
     }
     ctx.note?.(
       "manifest.json",
       null,
       `strict_max_version ${max} on a non-Experiment`,
-      "fail"
+      VERDICT.FAIL
     );
     const text = ctx.manifestText;
     const line = manifestTokenLine(text, "strict_max_version");

@@ -16,6 +16,7 @@
 // that registry entry, stamped by src/checks/registry.js), and report
 // formatting (-> src/report/format.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { classifyAddonJs, isMinifiedFirstParty } from "../../lib/bundled.js";
 
@@ -28,7 +29,7 @@ export default {
   run(ctx) {
     const findings = [];
     for (const c of classifyAddonJs(ctx)) {
-      if (c.library || c.obfuscated || c.untrusted) {
+      if (c.library || c.obfuscation.fail || c.untrusted) {
         // library -> missing-library; obfuscated -> obfuscated-code; untrusted (a
         // not-popular CDN match) -> untrusted-minified-library if unreadable, else
         // untrusted-library.
@@ -38,7 +39,7 @@ export default {
         c.file,
         null,
         c.minified ? "minified" : "readable",
-        c.minified ? "fail" : "pass"
+        c.minified ? VERDICT.FAIL : VERDICT.PASS
       );
       if (isMinifiedFirstParty(c)) {
         findings.push(finding({ file: c.file }));

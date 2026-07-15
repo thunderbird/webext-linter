@@ -16,6 +16,7 @@
 // src/checks/llm-client.js), the resolve pattern (-> src/lib/
 // verdict-resolve.js), and authored wording (-> assets/registry.yaml).
 
+import { VERDICT } from "../../lib/enum.js";
 import {
   getOutboundSinks,
   isWeakCovertExfil,
@@ -67,7 +68,7 @@ export default {
       // survives the unsure->manual->recheck hand-off. `item` stays absent so the
       // recheck key is file:line.
       cases.push({ id, finding: { file: sink.file, loc, hint: channel } });
-      ctx.note?.(sink.file, loc, channel, "unsure");
+      ctx.note?.(sink.file, loc, channel, VERDICT.UNSURE);
     }
     if (!candidates.length) {
       return { findings: [] };

@@ -44,6 +44,7 @@
 // rendering the display rows (-> src/report/format.js), or the recheck output schema
 // (-> src/llm/schema.js).
 
+import { VERDICT } from "./enum.js";
 import { finding } from "../report/finding.js";
 import { wrap } from "./untrusted.js";
 import { versionInBounds, trunc } from "./util.js";
@@ -251,7 +252,7 @@ function resolveNotes(text, ctx) {
  * consumer handed over are ever looked up, so a verdict for anything else is inert -
  * the summary can neither invent items nor flip one it was not given.
  * @param {RunContext} ctx @param {string} checkId
- * @returns {Map<string, {verdict: string, reason?: ?string}>}
+ * @returns {Map<string, {verdict: import("./enum.js").Verdict, reason?: ?string}>}
  */
 function verdictsFor(ctx, checkId) {
   const verdicts = new Map();
@@ -289,17 +290,17 @@ export function resolveRecheck(ctx, check) {
   for (const ref of handed) {
     const key = itemKey(ref);
     const v = key != null ? verdicts.get(key) : undefined;
-    const verdict = v?.verdict ?? "unsure";
+    const verdict = v?.verdict ?? VERDICT.UNSURE;
     // The feed suffix after `file:line`: the item token, else a per-locus hint
     // (e.g. a transmission method). Never the file - that only repeated the locus.
     const label = ref.item ?? ref.hint ?? null;
-    if (verdict === "pass") {
-      ctx.note?.(ref.file, ref.loc, label, "pass", labelInput);
+    if (verdict.pass) {
+      ctx.note?.(ref.file, ref.loc, label, VERDICT.PASS, labelInput);
       continue; // the summary confirmed it is used / justified - drop it
     }
     const data = { ...(ref.data ?? {}), reason: v?.reason ?? "" };
-    if (verdict === "fail") {
-      ctx.note?.(ref.file, ref.loc, label, "fail", labelInput);
+    if (verdict.fail) {
+      ctx.note?.(ref.file, ref.loc, label, VERDICT.FAIL, labelInput);
       findings.push(
         finding({
           file: ref.file,
@@ -312,7 +313,7 @@ export function resolveRecheck(ctx, check) {
     } else {
       // unsure, or no verdict at all (the summary was skipped or errored): the
       // item still needs a human, so route it to manual review.
-      ctx.note?.(ref.file, ref.loc, label, "unsure", labelInput);
+      ctx.note?.(ref.file, ref.loc, label, VERDICT.UNSURE, labelInput);
       escalations.push({
         item: ref.item ?? null,
         hint: ref.hint ?? null,
@@ -357,18 +358,18 @@ export function resolvePermissionRecheck(ctx, check) {
     // permission itself when judged holistically (no located site - a token-less
     // permission, or one whose tokens do not occur in the reviewed corpus).
     const keys = occ.length ? occ.map((o) => o.id) : [permission];
-    const vs = keys.map((k) => verdicts.get(k)?.verdict ?? "unsure");
-    if (vs.some((v) => v === "pass")) {
-      ctx.note?.(ref.file, ref.loc, permission, "pass", labelInput);
+    const vs = keys.map((k) => verdicts.get(k)?.verdict ?? VERDICT.UNSURE);
+    if (vs.some((v) => v.pass)) {
+      ctx.note?.(ref.file, ref.loc, permission, VERDICT.PASS, labelInput);
       continue; // a site exercises the permission - justified, drop it
     }
-    if (vs.length && vs.every((v) => v === "fail")) {
-      ctx.note?.(ref.file, ref.loc, permission, "fail", labelInput);
+    if (vs.length && vs.every((v) => v.fail)) {
+      ctx.note?.(ref.file, ref.loc, permission, VERDICT.FAIL, labelInput);
       findings.push(
         finding({ file: ref.file, loc: ref.loc, item: permission })
       );
     } else {
-      ctx.note?.(ref.file, ref.loc, permission, "unsure", labelInput);
+      ctx.note?.(ref.file, ref.loc, permission, VERDICT.UNSURE, labelInput);
       escalations.push({
         item: permission ?? null,
         hint: null,
@@ -404,7 +405,7 @@ export function resolvePermissionRecheck(ctx, check) {
  * @param {(checkId: string) => ({files?: Map<string, Buffer>}|null|undefined)} corpusForCheck  The
  *   add-on whose files back a consumer's items (its producer's corpus).
  * @returns {{check: string, label: string, file: ?string, line: ?number, subject: ?string,
- *   verdict: string, content: ?string}[]}
+ *   verdict: import("./enum.js").Verdict, content: ?string}[]}
  */
 export function buildRecheckVerdictReport(ctx, registry, corpusForCheck) {
   const rows = [];
@@ -425,7 +426,7 @@ export function buildRecheckVerdictReport(ctx, registry, corpusForCheck) {
           subject: site.subject,
           // The model's verdict for this candidate, or `unsure` when it returned none - the same
           // default resolveRecheck/resolvePermissionRecheck apply (a no-verdict item -> manual).
-          verdict: verdicts.get(site.key)?.verdict ?? "unsure",
+          verdict: verdicts.get(site.key)?.verdict ?? VERDICT.UNSURE,
           // A manifest.json locus is line-numbered against the SHIPPED manifest (manifestPathLine
           // reads ctx.manifestLoc = the XPI's) and its report label is forced to [XPI], so read the
           // line from ctx.manifestText - not the producer's own corpus, whose source manifest may

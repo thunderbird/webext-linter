@@ -13,6 +13,7 @@
 // detecting archives (-> src/addon/load.js, using ARCHIVE_EXTENSIONS from src/util/files.js)
 // or the wording (-> the registry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -25,7 +26,7 @@ export default {
   run(ctx) {
     const findings = [];
     for (const file of ctx.addon?.archives ?? []) {
-      ctx.note?.(file, null, "committed build artifact", "fail");
+      ctx.note?.(file, null, "committed build artifact", VERDICT.FAIL);
       findings.push(finding({ file, item: file }));
     }
     return findings;

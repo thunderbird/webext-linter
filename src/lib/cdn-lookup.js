@@ -94,7 +94,7 @@ export async function resolveCdnLibraries(
   for (const tag of classified) {
     // Never CDN-identify an already-recognized library or an obfuscated file - the
     // latter must not be laundered into the trusted family, minified or readable.
-    if (tag.library || tag.obfuscated) {
+    if (tag.library || tag.obfuscation.fail) {
       continue;
     }
     const buf = addon.files.get(tag.file);
@@ -169,7 +169,7 @@ export async function resolveCdnLibraries(
         file: tag.file,
         source: tag.cdn.url,
         name: `${hit.name} ${hit.version}`,
-        unreadable: tag.minified || tag.obfuscated,
+        unreadable: tag.minified || tag.obfuscation.fail,
       });
     }
   }

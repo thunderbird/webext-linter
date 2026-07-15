@@ -21,6 +21,7 @@ import YAML from "yaml";
 import { callVerdicts, callText, callReview } from "../../src/llm/openai.js";
 import { resetLlmSettings } from "../../src/llm/settings.js";
 import { isolateLlmCache } from "./llm-table.js";
+import { VERDICT } from "../../src/lib/enum.js";
 
 /** State a model's shape outright with a one-off chatgpt table (for a shape no shipped
  *  model carries). Keeps the negotiated cache isolateLlmCache() already redirected. */
@@ -114,7 +115,7 @@ function fnCall(name, args) {
 
 const VERDICTS = { verdicts: [{ id: "E1", verdict: "pass" }] };
 const COERCED = [
-  { id: "E1", verdict: "pass", reason: null, additionalInformation: "" },
+  { id: "E1", verdict: VERDICT.PASS, reason: null, additionalInformation: "" },
 ];
 
 test("callVerdicts forces the report_verdicts function and coerces the result", async () => {
@@ -188,7 +189,7 @@ test("callReview forces the review function and coerces", async () => {
     {
       check: "unused-permission-recheck",
       item: "tabs",
-      verdict: "fail",
+      verdict: VERDICT.FAIL,
       reason: "",
     },
   ]);

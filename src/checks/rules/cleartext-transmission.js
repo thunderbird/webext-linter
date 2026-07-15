@@ -12,6 +12,7 @@
 // by src/lib/outbound-sinks.js), and authored wording (-> the response in
 // assets/registry.yaml), severity (-> that registry entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { getOutboundSinks } from "../../lib/outbound-sinks.js";
 import { finding } from "../../report/finding.js";
 
@@ -33,7 +34,12 @@ export default {
       }
       const loc = { line: sink.line, column: sink.column };
       out.push(finding({ file: sink.file, loc, item: sink.host }));
-      ctx.note?.(sink.file, loc, `cleartext send to ${sink.host}`, "fail");
+      ctx.note?.(
+        sink.file,
+        loc,
+        `cleartext send to ${sink.host}`,
+        VERDICT.FAIL
+      );
     }
     return out;
   },

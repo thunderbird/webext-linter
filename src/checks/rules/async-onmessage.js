@@ -12,6 +12,7 @@
 // severity (-> that registry entry, stamped by src/checks/registry.js), and
 // report formatting (-> src/report/format.js).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { asyncOnMessageOf } from "../extract.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
@@ -33,7 +34,7 @@ export default {
           hit.async
             ? "runtime.onMessage.addListener (async)"
             : "runtime.onMessage.addListener",
-          hit.async ? "fail" : "pass"
+          hit.async ? VERDICT.FAIL : VERDICT.PASS
         );
         if (hit.async) {
           out.push(finding({ file: src.file, loc }));
