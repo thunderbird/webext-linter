@@ -37,6 +37,7 @@ import {
   coerceResult,
   coerceReview,
 } from "./schema.js";
+import { LLM_REQUEST_TIMEOUT_MS, LLM_MAX_RETRIES } from "../config.js";
 
 /** @typedef {InstanceType<typeof import("openai").default>} OpenAI */
 /** @typedef {import("./settings.js").ModelSettings} ModelSettings */
@@ -74,6 +75,8 @@ async function clientFor(token, baseURL, client) {
   const OpenAI = await lazyImportSdk("openai", "OpenAI");
   return new OpenAI({
     apiKey: token || KEYLESS_PLACEHOLDER,
+    timeout: LLM_REQUEST_TIMEOUT_MS,
+    maxRetries: LLM_MAX_RETRIES,
     ...(baseURL ? { baseURL } : {}),
   });
 }

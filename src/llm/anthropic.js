@@ -29,6 +29,7 @@ import {
   coerceResult,
   coerceReview,
 } from "./schema.js";
+import { LLM_REQUEST_TIMEOUT_MS, LLM_MAX_RETRIES } from "../config.js";
 
 /**
  * @typedef {InstanceType<typeof import("@anthropic-ai/sdk").default>} Anthropic
@@ -48,7 +49,12 @@ async function clientFor(token, baseURL, client) {
     throw new Error("the LLM call requires an API token.");
   }
   const Anthropic = await lazyImportSdk("@anthropic-ai/sdk", "Anthropic");
-  return new Anthropic({ apiKey: token, ...(baseURL ? { baseURL } : {}) });
+  return new Anthropic({
+    apiKey: token,
+    timeout: LLM_REQUEST_TIMEOUT_MS,
+    maxRetries: LLM_MAX_RETRIES,
+    ...(baseURL ? { baseURL } : {}),
+  });
 }
 
 /**

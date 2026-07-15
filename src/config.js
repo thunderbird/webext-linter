@@ -86,6 +86,19 @@ export const CDN_LOOKUP_READABLE_MIN_BYTES = 16384;
 export const LLM_MODEL_CACHE = ".llm-model-cache";
 
 /**
+ * How long one LLM request may run, and how many times the SDK retries it, before
+ * the review gives up. These bound a client that connects but never answers -
+ * without them a hung server blocks the whole run (the SDK defaults are 10 min x 3
+ * attempts). Client transport, not model knowledge, so they live here rather than in
+ * the YAML tables; both the OpenAI and Anthropic SDK constructors accept them.
+ * 5 minutes is deliberately generous - a batched verdict call finishes in well under
+ * a minute normally, but a max-reasoning model can legitimately take minutes, so this
+ * bounds a true hang without clipping a live call. Lower it for faster models.
+ */
+export const LLM_REQUEST_TIMEOUT_MS = 300000;
+export const LLM_MAX_RETRIES = 2;
+
+/**
  * Max distinct add-on files an LLM check sends in one batched request. A check
  * collects all its candidates (each an id pointing at a file:line site) and asks
  * the model for a verdict per id in one call. The corpus is the union of the
