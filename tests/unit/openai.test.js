@@ -3,17 +3,35 @@
 // result, and the negotiation - when the server rejects a request shape, the adapter
 // must repair it from the rejection, remember the repair for the rest of the run, and
 // cache it for the next one. The requests are built against the SHIPPED model table,
-// so what these tests assert is what a real run sends. Fake clients record them, so
-// nothing reaches the network and the openai SDK is never loaded, and the negotiated
-// cache is redirected to a temp dir so no test writes into the developer's own.
+// so what these tests assert is what a real run sends - except the two that state a
+// model's shape with a one-off table (tableWith), for the chat + max_completion_tokens
+// shape no shipped model carries anymore (it now arises only from negotiation). Fake
+// clients record the requests, so nothing reaches the network and the openai SDK is
+// never loaded, and the negotiated cache is redirected to a temp dir so no test writes
+// into the developer's own.
 
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
+import YAML from "yaml";
+
 import { callVerdicts, callText, callReview } from "../../src/llm/openai.js";
+import { resetLlmSettings } from "../../src/llm/settings.js";
 import { isolateLlmCache } from "./llm-table.js";
+
+/** State a model's shape outright with a one-off chatgpt table (for a shape no shipped
+ *  model carries). Keeps the negotiated cache isolateLlmCache() already redirected. */
+function tableWith(models) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "webext-linter-oai-tbl-"));
+  fs.writeFileSync(
+    path.join(dir, "chatgpt.yaml"),
+    YAML.stringify({ default: { model: "m", maxRequests: 25 }, models })
+  );
+  resetLlmSettings(dir);
+}
 
 let cache;
 beforeEach(() => {
@@ -212,7 +230,14 @@ test("an exhausted output-token cap says so, rather than blaming the model", asy
   );
 });
 
-test("a reasoning model is sent max_completion_tokens, never max_tokens", async () => {
+test("a chat model configured with max_completion_tokens is sent it, never max_tokens", async () => {
+  tableWith([
+    {
+      name: "reasoner",
+      endpoint: "chat",
+      parameters: { max_completion_tokens: 32768 },
+    },
+  ]);
   let req;
   const client = fakeClient((r) => {
     req = r;
@@ -221,7 +246,7 @@ test("a reasoning model is sent max_completion_tokens, never max_tokens", async 
   await callVerdicts({
     token: "t",
     type: "chatgpt",
-    model: "gpt-5.1",
+    model: "reasoner",
     system: [],
     criterion: "c",
     client,
@@ -491,6 +516,13 @@ test("a run that needs no repair caches nothing", async () => {
 });
 
 test("a rejected max_completion_tokens is renamed back (an older or local server)", async () => {
+  tableWith([
+    {
+      name: "reasoner",
+      endpoint: "chat",
+      parameters: { max_completion_tokens: 32768 },
+    },
+  ]);
   const client = bothClient({
     chat: (r) => {
       if (r.max_completion_tokens !== undefined) {
@@ -506,7 +538,7 @@ test("a rejected max_completion_tokens is renamed back (an older or local server
   await callVerdicts({
     token: "t",
     type: "chatgpt",
-    model: "gpt-5.1",
+    model: "reasoner",
     system: [],
     criterion: "c",
     client,

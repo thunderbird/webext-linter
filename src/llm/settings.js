@@ -87,16 +87,16 @@ function fileFor(type) {
 
 /**
  * Reject a malformed entry when the table is read, rather than letting it match
- * nothing (or everything) at request time.
+ * nothing (or everything) at request time. An entry needs a `name` (an exact id), a
+ * `match` (a regex), or BOTH - one entry can serve its exact id AND a family pattern.
  * @param {LlmFile} file
  */
 function validate(file) {
   for (const [i, entry] of (file.data?.models ?? []).entries()) {
-    const keys = ["name", "match"].filter((k) => entry?.[k] != null);
-    if (keys.length !== 1) {
+    if (entry?.name == null && entry?.match == null) {
       throw new Error(
-        `${file.path}: models[${i}] must have exactly one of "name" (an exact ` +
-          `model id) or "match" (a regex), not ${keys.join(" + ") || "neither"}.`
+        `${file.path}: models[${i}] must have a "name" (an exact model id), a ` +
+          '"match" (a regex), or both.'
       );
     }
     if (entry.match != null) {
@@ -122,9 +122,11 @@ export function defaultModel(type) {
 
 /**
  * How to talk to `model` under `type`, as the mutable object every call this run
- * shares. The table decides it - the `name` entries first, then the `match` entries
- * in file order, so a curated entry cannot be shadowed by a broad pattern above it
- * and the table's catch-all is the genuine last resort - and anything negotiated
+ * shares. The table decides it - every entry's `name` is tried first, then every
+ * entry's `match` in file order, so a curated entry cannot be shadowed by a broad
+ * pattern above it and the table's catch-all is the genuine last resort. An entry may
+ * carry BOTH a `name` and a `match`: it then wins for that exact id (the name pass)
+ * and for anything else its pattern covers (the match pass). Anything negotiated
  * against this server on an earlier run is applied on top.
  * @param {string} type  An LLM_API_TYPE.
  * @param {string} [baseURL]  The API base URL ("" / undefined = the SDK default).

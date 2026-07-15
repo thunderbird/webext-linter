@@ -49,12 +49,17 @@ test("every LLM_API_TYPE has a shipped table, and it names a default model", () 
 
 test("each table names its provider's default model, budget and token cap", () => {
   assert.equal(defaultModel("claude"), "claude-sonnet-4-6");
-  assert.equal(defaultModel("chatgpt"), "gpt-4.1");
+  assert.equal(defaultModel("chatgpt"), "gpt-5.6-terra");
   assert.equal(defaultModel("ollama"), "llama3.1");
   for (const type of LLM_TYPES) {
     const settings = modelSettings(type, "", defaultModel(type));
     assert.equal(settings.maxRequests, 25);
-    assert.equal(settings.parameters.max_tokens, 8192);
+    // Each default carries exactly one output-token cap; the parameter name depends
+    // on its endpoint (max_tokens for chat, max_output_tokens for responses).
+    const caps = Object.keys(settings.parameters).filter((k) =>
+      k.startsWith("max_")
+    );
+    assert.equal(caps.length, 1, `${type} default names one output cap`);
   }
 });
 
@@ -98,6 +103,31 @@ test("an exact name wins over a pattern, and the catch-all is the last resort", 
   assert.equal(modelSettings("chatgpt", "", "other").parameters.max_tokens, 1);
 });
 
+test("an entry with both a name and a match serves its exact id and its family", () => {
+  table("chatgpt", {
+    default: { model: "m", maxRequests: 25 },
+    models: [
+      {
+        name: "fam-x",
+        match: "^fam-",
+        endpoint: "responses",
+        parameters: { max_output_tokens: 7 },
+      },
+      { match: ".*", endpoint: "chat", parameters: { max_tokens: 1 } },
+    ],
+  });
+  // The exact id (name pass) and a sibling the pattern covers (match pass) both land
+  // on that one entry, not the catch-all.
+  const exact = modelSettings("chatgpt", "", "fam-x");
+  const sibling = modelSettings("chatgpt", "", "fam-y");
+  assert.equal(exact.endpoint, "responses");
+  assert.equal(exact.parameters.max_output_tokens, 7);
+  assert.equal(sibling.endpoint, "responses");
+  assert.deepEqual(sibling.parameters, exact.parameters);
+  // A model the pattern does not cover still falls to the catch-all.
+  assert.equal(modelSettings("chatgpt", "", "other").parameters.max_tokens, 1);
+});
+
 test("an entry inherits maxRequests from the default block, and can override it", () => {
   table("chatgpt", {
     default: { model: "m", maxRequests: 25 },
@@ -118,11 +148,11 @@ test("an entry inherits maxRequests from the default block, and can override it"
 test("a malformed table, or a model nothing matches, is refused by name", () => {
   table("chatgpt", {
     default: { model: "m" },
-    models: [{ name: "x", match: "x", parameters: {} }],
+    models: [{ endpoint: "chat", parameters: {} }],
   });
   assert.throws(
     () => defaultModel("chatgpt"),
-    /models\[0\] must have exactly one of "name" .* or "match"/
+    /models\[0\] must have a "name" .* a "match" .* or both/
   );
 
   table("chatgpt", {
@@ -176,15 +206,15 @@ test("a rename whose source the table no longer has is simply not applied", () =
   const cache = fs.mkdtempSync(path.join(os.tmpdir(), "webext-linter-neg-"));
   resetNegotiated(cache);
   // Learned when the entry still said max_tokens; the table has since been edited.
-  learn("chatgpt", "", "gpt-5.1", {
+  learn("chatgpt", "", "gpt-5.6-luna", {
     rename: { from: "max_tokens", to: "max_output_tokens" },
   });
   resetLlmSettings();
-  // gpt-5.1's shipped entry carries max_completion_tokens, which the stale rename
+  // gpt-5.6-luna's shipped entry carries max_output_tokens, which the stale rename
   // does not name - so the request goes out as the table says and, if the server
   // still disagrees, it is negotiated again.
   assert.deepEqual(
-    modelSettings("chatgpt", "", "gpt-5.1").parameters,
-    shippedSettings("chatgpt", "gpt-5.1").parameters
+    modelSettings("chatgpt", "", "gpt-5.6-luna").parameters,
+    shippedSettings("chatgpt", "gpt-5.6-luna").parameters
   );
 });

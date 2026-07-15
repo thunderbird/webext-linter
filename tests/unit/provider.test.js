@@ -64,24 +64,43 @@ test("getProvider selects the adapter by type, defaulting to claude", async () =
 });
 
 test("getProvider binds the type in, so the adapter reads that type's model table", async () => {
-  // gpt-5.1 is a chatgpt entry (max_completion_tokens); under ollama the same id
-  // is a stranger and gets that file's catch-all instead.
+  // gpt-5.6-luna is a chatgpt entry (the responses endpoint, max_output_tokens); under
+  // ollama the same id is a stranger and gets that file's catch-all (chat, max_tokens).
   const seen = {};
-  for (const type of ["chatgpt", "ollama"]) {
-    await getProvider(type).callVerdicts({
-      token: "t",
-      model: "gpt-5.1",
-      system: [],
-      criterion: "c",
-      client: openaiClient((r) => {
-        seen[type] = r;
-        return toolCall();
-      }),
-    });
-  }
-  assert.equal(seen.chatgpt.max_completion_tokens, 32768);
+  await getProvider("chatgpt").callVerdicts({
+    token: "t",
+    model: "gpt-5.6-luna",
+    system: [],
+    criterion: "c",
+    client: {
+      chat: {
+        completions: {
+          create: async () =>
+            assert.fail("chatgpt gpt-5.6-luna must use the responses endpoint"),
+        },
+      },
+      responses: {
+        create: async (r) => {
+          seen.chatgpt = r;
+          return fnCall();
+        },
+      },
+    },
+  });
+  await getProvider("ollama").callVerdicts({
+    token: "t",
+    model: "gpt-5.6-luna",
+    system: [],
+    criterion: "c",
+    client: openaiClient((r) => {
+      seen.ollama = r;
+      return toolCall();
+    }),
+  });
+  assert.equal(seen.chatgpt.max_output_tokens, 32768);
+  assert.equal(seen.chatgpt.max_tokens, undefined);
   assert.equal(seen.ollama.max_tokens, 8192);
-  assert.equal(seen.ollama.max_completion_tokens, undefined);
+  assert.equal(seen.ollama.max_output_tokens, undefined);
 });
 
 function toolCall() {
@@ -100,6 +119,23 @@ function toolCall() {
             },
           ],
         },
+      },
+    ],
+  };
+}
+
+/** A forced function call on the responses endpoint (what a responses model returns). */
+function fnCall() {
+  return {
+    status: "completed",
+    output: [
+      {
+        type: "function_call",
+        name: "report_verdicts",
+        call_id: "c1",
+        arguments: JSON.stringify({
+          verdicts: [{ id: "E1", verdict: "pass" }],
+        }),
       },
     ],
   };

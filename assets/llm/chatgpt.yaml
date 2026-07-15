@@ -6,10 +6,11 @@
 # in that model's entry below. `parameters` is spread verbatim into the request
 # body, so a new knob (temperature, reasoning, ...) is a YAML edit, no code.
 #
-# An entry is keyed by EITHER `name` (one exact model id) OR `match` (a regex
-# over the id), never both. A model resolves against the `name` entries, then the
-# `match` entries in file order - so the trailing catch-all is the last resort for
-# a model we know nothing about.
+# An entry is keyed by `name` (one exact model id), `match` (a regex over the id),
+# or BOTH - an entry with both serves its exact id AND anything its pattern covers
+# (e.g. one entry pins gpt-5.6-luna and the rest of the gpt-5.6 family). A model
+# resolves against every entry's `name`, then every entry's `match` in file order -
+# so the trailing catch-all is the last resort for a model we know nothing about.
 #
 # The endpoint dictates which token parameter is legal:
 #   chat      -> max_tokens | max_completion_tokens
@@ -23,7 +24,7 @@
 # `--cache-clear` makes it forget what it did.
 
 default:
-  model: gpt-4.1 # for its 1M-token context: add-ons can be large (gpt-4o's 128k overflowed)
+  model: gpt-5.6-terra # luna is faster/cheaper, both 1M-token context (add-ons can be large)
   maxRequests: 25 # total model requests one run may make before pausing
 
 models:
@@ -31,6 +32,17 @@ models:
     endpoint: chat
     parameters:
       max_tokens: 8192 # cap on the tokens the model may GENERATE (output, not input)
+
+  # The whole GPT-5.6 family (Feb-2026 cutoff, 1M context) is Responses-only for us:
+  # chat/completions rejects function tools together with reasoning_effort ("use
+  # /v1/responses"), and we force a tool for the structured verdict. The `name` pins
+  # luna (the cheap/fast tier, our default); the `match` gives sol and terra the same
+  # shape. The cap covers hidden reasoning AND the answer, like codex.
+  - name: gpt-5.6-terra
+    match: gpt-5\.6
+    endpoint: responses
+    parameters:
+      max_output_tokens: 32768
 
   # Codex is Responses-only: chat/completions 404s and names the endpoint. The
   # cap covers hidden reasoning AND the answer, so 8192 would starve the reply.
@@ -40,13 +52,9 @@ models:
     parameters:
       max_output_tokens: 32768
 
-  # Reasoning models on chat/completions reject max_tokens outright.
-  - match: ^(gpt-5|o[1-9])
-    endpoint: chat
-    parameters:
-      max_completion_tokens: 32768
-
-  # Anything else: the request every OpenAI-compatible server understands.
+  # Anything else (incl. earlier gpt-5.x / o-series): the request every
+  # OpenAI-compatible server understands. A model that rejects this shape is repaired
+  # by the adapter's negotiation and the working shape cached (see the header).
   - match: .*
     endpoint: chat
     parameters:
