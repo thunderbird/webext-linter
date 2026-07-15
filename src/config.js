@@ -39,6 +39,16 @@ export const LIBRARY_HASHES_URL =
 export const LIBRARY_HASHES_CACHE = ".lib-mozilla-hash-db-cache";
 
 /**
+ * Timeout for the MANDATORY setup downloads that back the caches above - the schema
+ * zip, the allowed-experiments zip, the library-hash DB (src/util/net.js
+ * fetchWithTimeout). The artifacts are small (~80-220 KB), so 60s never fails a
+ * legitimately slow link (~11s even at 20 KB/s) while still bounding a half-open hang.
+ * On timeout the review fails loud (exit 2) rather than hanging, because it cannot
+ * proceed without these inputs.
+ */
+export const SETUP_FETCH_TIMEOUT_MS = 60000;
+
+/**
  * jsDelivr's content-addressed reverse lookup: GET <CDN_LOOKUP_URL><sha256-hex>
  * returns `{type, name, version, file}` for a file whose exact bytes are published
  * on the CDN, or 404 when nothing matches. A second-tier library identifier (after

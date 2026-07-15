@@ -14,6 +14,7 @@ import path from "node:path";
 
 import { debug } from "../util/log.js";
 import { writeFileAtomic } from "../util/atomic.js";
+import { fetchWithTimeout } from "../util/net.js";
 import { LIBRARY_HASHES_URL, LIBRARY_HASHES_CACHE } from "../config.js";
 
 /**
@@ -47,23 +48,60 @@ export async function resolveLibraryHashes({
   fs.mkdirSync(cacheDir, { recursive: true });
   const cached = cachedHashesPath(cacheDir);
   if (fs.existsSync(cached)) {
-    debug(`Using cached library hashes: ${cached}`);
-    return { text: fs.readFileSync(cached, "utf8"), source: "cache" };
+    const text = fs.readFileSync(cached, "utf8");
+    // Validate the cache, don't trust it: a truncated/partial cached DB would
+    // silently review a real library as authored code. A bad cache falls through to
+    // a re-download (self-heal) rather than being used.
+    if (isCompleteHashDb(text)) {
+      debug(`Using cached library hashes: ${cached}`);
+      return { text, source: "cache" };
+    }
+    debug(`Cached library hashes look incomplete; re-downloading: ${cached}`);
   }
 
   const url = LIBRARY_HASHES_URL;
   debug(`Downloading library hashes from ${url} ...`);
-  const res = await fetch(url);
-  if (!res.ok) {
+  const text = await fetchWithTimeout(url, async (res) => {
+    if (!res.ok) {
+      throw new Error(
+        `Failed to download library hashes: HTTP ${res.status} ${res.statusText} (${url}).`
+      );
+    }
+    return res.text();
+  });
+  // Refuse to review against a partial DB (a short/HTML error body, a cut download)
+  // rather than caching and silently mis-classifying libraries. A hard, fixable error.
+  if (!isCompleteHashDb(text)) {
     throw new Error(
-      `Failed to download library hashes: HTTP ${res.status} ${res.statusText} (${url}).`
+      `Downloaded library hashes look incomplete (${text.length} bytes, ` +
+        `${parseLibraryHashes(text).size} entries) - refusing to review against a ` +
+        `partial library database. Retry, or check ${url}.`
     );
   }
-  const text = await res.text();
   // Atomic, so an interrupted download is not reused as a truncated cache.
   writeFileAtomic(cached, text);
   debug(`Wrote ${text.length} bytes to ${cached}`);
   return { text, source: "download" };
+}
+
+/**
+ * Whether `text` is a COMPLETE dispensary hash DB, not a truncated/partial one. Two
+ * cheap signals, both true of the real file (and of the small offline test fixture),
+ * both false of the realistic corruptions: it ends with a newline (a mid-line cut - the
+ * usual truncation - does not), and it parses to at least one entry (an empty file or
+ * an HTML/error body parses to zero). A partial DB must never be used - see the
+ * resolveLibraryHashes header. (A truncation landing exactly on a line boundary would
+ * still pass; atomic cache writes make that vanishingly rare, and it is the last gap
+ * short of a size/checksum the source does not publish.)
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function isCompleteHashDb(text) {
+  return (
+    typeof text === "string" &&
+    text.endsWith("\n") &&
+    parseLibraryHashes(text).size > 0
+  );
 }
 
 /**

@@ -5,6 +5,7 @@
 
 import { debug } from "./log.js";
 import { writeFileAtomic } from "./atomic.js";
+import { fetchWithTimeout } from "./net.js";
 
 /**
  * The codeload zip URL for a whole GitHub branch (one request for the tree).
@@ -27,11 +28,12 @@ export function codeloadZipUrl(repo, branch) {
  * @returns {Promise<void>}
  */
 export async function downloadToCache(url, dest, describeError) {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(describeError(res));
-  }
-  const buf = Buffer.from(await res.arrayBuffer());
+  const buf = await fetchWithTimeout(url, async (res) => {
+    if (!res.ok) {
+      throw new Error(describeError(res));
+    }
+    return Buffer.from(await res.arrayBuffer());
+  });
   writeFileAtomic(dest, buf);
   debug(`Wrote ${buf.length} bytes to ${dest}`);
 }

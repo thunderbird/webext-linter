@@ -12,6 +12,7 @@ import {
   parseLibraryHashes,
   resolveLibraryHashes,
   npmNameForLibrary,
+  isCompleteHashDb,
 } from "../../src/lib/library-hashes.js";
 
 const H = "a".repeat(64); // a syntactically valid (if fake) sha256
@@ -62,6 +63,19 @@ test("resolveLibraryHashes reads a pre-seeded cache without touching the network
   assert.match(text, /lib\.1\.0\.0/);
   assert.equal(source, "cache");
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A partial/corrupt cached DB must not be used: it would silently review a real
+// library as authored code. isCompleteHashDb is the gate - a complete file ends with
+// a newline and parses to >= 1 entry; a mid-line truncation or an error/empty body
+// fails it, so resolveLibraryHashes falls through to a re-download.
+test("isCompleteHashDb rejects a truncated or empty hash DB", () => {
+  const complete = `${H} lib.1.0.0.lib.js\n`;
+  assert.equal(isCompleteHashDb(complete), true);
+  assert.equal(isCompleteHashDb(complete.slice(0, complete.length - 5)), false); // cut mid-line (no newline)
+  assert.equal(isCompleteHashDb("404: Not Found"), false); // an error body: no entries
+  assert.equal(isCompleteHashDb(""), false);
+  assert.equal(isCompleteHashDb("# only a comment\n"), false); // newline but zero entries
 });
 
 test("npmNameForLibrary maps dispensary aliases and passes others through", () => {
