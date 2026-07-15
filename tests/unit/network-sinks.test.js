@@ -141,3 +141,28 @@ test("form-submit without a tracked form or an action is not flagged", () => {
   assert.equal(noAction.type, "form-submit");
   assert.equal(noAction.destClass, "local");
 });
+
+// XHR vs window.open: a `.open(method, url)` is disambiguated by a LITERAL HTTP
+// method OR by a tracked `new XMLHttpRequest()` receiver. A dynamic method on an
+// XHR receiver must still be read as an XHR (url = args[1]), not misrouted to
+// window.open (which would treat the method as the URL and drop the destination).
+test("XHR with a dynamic method keeps its destination", () => {
+  const dyn = one(
+    'const xhr = new XMLHttpRequest(); xhr.open(opts.method, "http://evil.example.com/c");'
+  );
+  assert.equal(dyn.type, "xhr");
+  assert.equal(dyn.host, "evil.example.com");
+  assert.equal(dyn.cleartext, true);
+
+  // A variable NAMED like an xhr but bound to something else is not flipped: the
+  // construct (new XMLHttpRequest), not the name, is what marks an XHR.
+  const notXhr = one(
+    'const xhr = makeThing(); xhr.open(m, "http://x.example.com/c");'
+  );
+  assert.equal(notXhr.type, "window-open");
+
+  // A genuine window.open (untracked receiver, non-method first arg) is unchanged.
+  const win = one('window.open("http://popup.example.com/p");');
+  assert.equal(win.type, "window-open");
+  assert.equal(win.host, "popup.example.com");
+});

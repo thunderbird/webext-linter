@@ -115,14 +115,23 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
   // the form's `action` (the fields go to the action URL) - the form.submit()
   // exfiltration channel, which does not look like fetch/XHR.
   const formVars = new Set();
+  // Identifiers bound to `new XMLHttpRequest()`: an `.open(method, url)` on one is an
+  // XHR even when the method is a variable (xhr.open(opts.method, url)), where the
+  // literal-method test below cannot tell it from window.open and would drop the URL.
+  const xhrVars = new Set();
   traverse(ast, {
     "VariableDeclarator|AssignmentExpression"(path) {
       const id = path.isVariableDeclarator() ? path.node.id : path.node.left;
       const init = path.isVariableDeclarator()
         ? path.node.init
         : path.node.right;
-      if (id?.type === "Identifier" && isCreateElementForm(init)) {
+      if (id?.type !== "Identifier") {
+        return;
+      }
+      if (isCreateElementForm(init)) {
         formVars.add(id.name);
+      } else if (isXhrConstruct(init)) {
+        xhrVars.add(id.name);
       }
     },
   });
@@ -132,6 +141,8 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
   const formActions = new Map();
   const isFormVar = (node) =>
     node?.type === "Identifier" && formVars.has(node.name);
+  const isXhrVar = (node) =>
+    node?.type === "Identifier" && xhrVars.has(node.name);
 
   traverse(ast, {
     "CallExpression|OptionalCallExpression"(path) {
@@ -144,8 +155,11 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
       if (prop === "sendBeacon") {
         push("beacon", "overt", args[0], args.slice(1), path.node);
       } else if (prop === "open") {
-        if (isHttpMethodLiteral(args[0])) {
-          push("xhr", "overt", args[1], [], path.node); // XHR.open(method, url)
+        // XHR.open(method, url): a literal HTTP method OR a tracked XMLHttpRequest
+        // receiver marks it as an XHR (url = args[1]); otherwise it is window.open,
+        // whose sole argument is the URL.
+        if (isXhrVar(callee.object) || isHttpMethodLiteral(args[0])) {
+          push("xhr", "overt", args[1], [], path.node);
         } else {
           push("window-open", "covert", args[0], [], path.node);
         }
@@ -267,6 +281,20 @@ function isCreateElementForm(node) {
     memberPropName(node.callee) === "createElement" &&
     node.arguments[0]?.type === "StringLiteral" &&
     node.arguments[0].value.toLowerCase() === "form"
+  );
+}
+
+/**
+ * True for `new XMLHttpRequest()`. Lets a later `.open(method, url)` on the bound
+ * identifier be read as an XHR even when the method argument is dynamic (where the
+ * literal-method test alone cannot tell it from window.open).
+ * @param {AstNode} node
+ * @returns {boolean}
+ */
+function isXhrConstruct(node) {
+  return (
+    node?.type === "NewExpression" &&
+    calleeName(node.callee) === "XMLHttpRequest"
   );
 }
 
