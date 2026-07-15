@@ -32,8 +32,7 @@ export function getOutboundSinks(ctx) {
 
 // A covert channel (resource/stylesheet/window/navigation) to a non-local
 // destination - the precondition for both gates below.
-const isCovertRemote = (sink) =>
-  sink.channel === "covert" && !sink.destClass.local;
+const isCovertRemote = (sink) => sink.channel.covert && !sink.destClass.local;
 
 /**
  * STRONG disguised exfiltration: a covert remote channel with a user-data API

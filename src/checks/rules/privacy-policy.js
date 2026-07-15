@@ -32,7 +32,7 @@ export default {
     const hosts = new Set();
     let any = false;
     for (const sink of getOutboundSinks(ctx)) {
-      if (sink.channel !== "overt" || !sink.destClass.remote) {
+      if (!sink.channel.overt || !sink.destClass.remote) {
         continue;
       }
       any = true;

@@ -110,3 +110,15 @@ export const URL_CLASS = makeEnum(
   ["remote", "embedded", "local", "dynamic"],
   "url_class"
 );
+
+/** @typedef {{overt: boolean, covert: boolean}} Channel  An opaque guarded
+ *   singleton; only its two LOWERCASE booleans are readable (any other access
+ *   throws). Compare by reference (c === CHANNEL.OVERT) or boolean (c.overt). */
+
+/**
+ * How a network sink sends data (src/parse/network-sinks.js): OVERT (a transmission
+ * API like fetch/XHR/sendBeacon) or COVERT (a resource load that can disguise data
+ * as a URL).
+ * @type {{OVERT: Channel, COVERT: Channel}}
+ */
+export const CHANNEL = makeEnum(["overt", "covert"], "channel");
