@@ -265,7 +265,10 @@ export function helpText() {
       "Run the ESLint code-sanity checks on authored JS (off by default).",
     ],
     ["--help", "Show this help."],
-    ["--verbose", "Verbose logging (text mode only)."],
+    [
+      "--verbose",
+      "Verbose logging, and expand the text report with the per-site recheck-verdict list under the add-on summary.",
+    ],
   ];
 
   const commands = [
@@ -559,6 +562,7 @@ function pipelineOptsFromValues(values) {
     llmModel: llm.model,
     llmApiUrl: llm.apiUrl,
     llmApiType: llm.apiType,
+    verbose: values.verbose,
   };
 }
 

@@ -588,12 +588,13 @@ test("run-it-yourself pointer reflects whether the LLM review ran", () => {
 
 // The recheck-verdict list: below the "Summary of add-on" prose, one bullet per verdict
 // (`* <check> - [LABEL] file:line - <subject> - <verdict>`) with the real source line beneath.
-// Subject present for permission verdicts, omitted when null. Shown whenever the summary
-// produced verdicts (no flag).
+// Subject present for permission verdicts, omitted when null. Shown only with --verbose
+// (review.verbose), so the fixture sets it.
 function verdictReview() {
   return {
     findings: [],
     mode: REVIEW_MODE.SCA,
+    verbose: true,
     meta: { action: "review", addon: "x", reviewed: true },
     summarizeAddon: { text: "Prose overview of the add-on." },
     recheckVerdictRows: [
@@ -653,6 +654,13 @@ test("renders the recheck-verdict list under the add-on summary", () => {
 test("no verdicts adds nothing under the summary", () => {
   const r = verdictReview();
   r.recheckVerdictRows = [];
+  assert.match(formatText(r), /── Summary of add-on ──/); // the prose still shows
+  assert.doesNotMatch(formatText(r), /Recheck verdicts:/);
+});
+
+test("the recheck-verdict list is hidden without --verbose", () => {
+  const r = verdictReview();
+  r.verbose = false; // rows present, but not verbose
   assert.match(formatText(r), /── Summary of add-on ──/); // the prose still shows
   assert.doesNotMatch(formatText(r), /Recheck verdicts:/);
 });

@@ -51,6 +51,8 @@ const SEV_COLOR = {
  *   legend footer; XPI reviews add neither. See src/report/artifact.js.
  * @property {Map<string, string>} [ruleInputs]  ruleId -> routed input
  *   ("xpi"|"build"|"source"|"manifest"), from registry.checkInputs(); the artifact label reads it.
+ * @property {boolean} [verbose]  --verbose: gates the per-site recheck-verdict list under
+ *   the add-on summary (hidden when falsy). See summarySectionLines.
  */
 
 /**
@@ -103,8 +105,8 @@ export function formatText(review) {
  * The advisory "Summary of add-on" / "Summary of changes" sections, each a
  * `── <title> ──` block over the model's prose (wrapped, 2-space indent), or an
  * "unavailable" note when the call failed. The per-verdict recheck list (recheckVerdictLines) is
- * appended below the "Summary of add-on" prose. Empty ([]) unless --llm-review produced one - so a
- * non-LLM report is unchanged. Text-only; JSON omits these.
+ * appended below the "Summary of add-on" prose ONLY with --verbose (review.verbose). Empty ([])
+ * unless --llm-review produced one - so a non-LLM report is unchanged. Text-only; JSON omits these.
  * @param {ReviewResult} review
  * @returns {string[]}
  */
@@ -124,7 +126,7 @@ function summarySectionLines(review) {
           ? `  (summary unavailable - ${s.error})`
           : "  (summary unavailable)";
     out.push(...section(title), "", body);
-    if (title === "Summary of add-on") {
+    if (title === "Summary of add-on" && review.verbose) {
       out.push(...recheckVerdictLines(review));
     }
   }
@@ -134,11 +136,11 @@ function summarySectionLines(review) {
 /**
  * The per-site recheck list, shown below the "Summary of add-on" prose: one bullet per candidate site
  * handed to the summary, `* <check> - [LABEL] file:line - <subject> - <verdict>` with the real
- * source line beneath, so a reviewer sees exactly what the model decided and where. Empty unless
- * candidates were handed (review.recheckVerdictRows, precomputed in runChecks); a handed site with no
- * returned verdict still appears, defaulting to unsure. The `[XPI]/[SCA]` label uses each row's own
- * input + the review mode (a no-op in an XPI review). No model reason here - reasons live only in the
- * prose summary above.
+ * source line beneath, so a reviewer sees exactly what the model decided and where. Shown only with
+ * --verbose (the caller in summarySectionLines gates on review.verbose). Empty unless candidates were
+ * handed (review.recheckVerdictRows, precomputed in runChecks); a handed site with no returned verdict
+ * still appears, defaulting to unsure. The `[XPI]/[SCA]` label uses each row's own input + the review
+ * mode (a no-op in an XPI review). No model reason here - reasons live only in the prose summary above.
  * @param {ReviewResult} review
  * @returns {string[]}
  */

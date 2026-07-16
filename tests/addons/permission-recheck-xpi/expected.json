@@ -1,5 +1,8 @@
 {
-  "_comment": "XPI review exercising the per-occurrence permission recheck end-to-end, including a DOTTED (api-resolved) injection token. messagesRead/accountsRead/compose escalate, each with one located site: relatedMessageId (bare) and displayedFolder (bare), and messenger.scripting.executeScript (compose's dotted token, resolved via api-usage). scripting is grounded by that call and dropped. The --llm-review pass verdicts each site by id: messagesRead#1 pass -> dropped (absent below); accountsRead#1 unsure -> manual review; compose#1 fail -> the warning finding here. So the only finding is compose (both the pass-drop and the unsure-manual are locked by the rendered golden).",
+  "_comment": "XPI review exercising the per-occurrence permission recheck end-to-end, including a DOTTED (api-resolved) injection token. messagesRead/accountsRead/compose escalate, each with one located site: relatedMessageId (bare) and displayedFolder (bare), and messenger.scripting.executeScript (compose's dotted token, resolved via api-usage). scripting is grounded by that call and dropped. The --llm-review pass verdicts each site by id: messagesRead#1 pass -> dropped (absent below); accountsRead#1 unsure -> manual review; compose#1 fail -> the warning finding here. So the only finding is compose (both the pass-drop and the unsure-manual are locked by the rendered golden). Runs with --verbose so the golden keeps the per-site 'Recheck verdicts:' block (gated behind --verbose); the other recheck goldens run non-verbose and omit it.",
+  "options": {
+    "--verbose": true
+  },
   "expect": {
     "unused-permission-recheck": ["manifest.json:6"]
   }

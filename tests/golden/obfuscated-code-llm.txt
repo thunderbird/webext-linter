@@ -97,9 +97,6 @@ Because the original project is still active, your submission does not meet thes
 
   Weak Obfuscation Signal Demo ships three module-pattern background scripts.
 
-  Recheck verdicts:
-  * Missing English localization - manifest.json - unsure
-
 ── Summary ──
 
 1 error(s), 0 warning(s), 0 info, 12 manual review step(s)

@@ -93,16 +93,6 @@ Because the original project is still active, your submission does not meet thes
   SCA recheck: per-occurrence for the property tokens, holistic for the dotted
   compose token.
 
-  Recheck verdicts:
-  * Unused permission - [SCA] bg.js:9 - accountsRead - unsure
-     -> function describe(msg, folder) {
-  * Unused permission - [SCA] bg.js:10 - messagesRead - pass
-     -> const rel = msg.relatedMessageId;
-  * Unused permission - [SCA] bg.js:11 - accountsRead - unsure
-     -> const box = folder.displayedFolder;
-  * Unused permission - [XPI] manifest.json:6 - compose - fail
-     -> "permissions": ["messagesRead", "accountsRead", "compose"],
-
 ── Summary ──
 
 0 error(s), 1 warning(s), 0 info, 11 manual review step(s)

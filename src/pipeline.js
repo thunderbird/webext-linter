@@ -169,6 +169,8 @@ import { DEFAULT_CACHE } from "./config.js";
  * @property {{check: string, label: string, file: ?string, line: ?number,
  *   subject: ?string, verdict: import("./lib/enum.js").Verdict, content: ?string}[]} [recheckVerdictRows]  The
  *   per-site recheck rows shown under the add-on summary in the text report.
+ * @property {boolean} [verbose]  --verbose: expands the text report with the per-site
+ *   recheck-verdict list under the add-on summary (hidden otherwise).
  */
 
 /**
@@ -825,9 +827,11 @@ export async function runPipeline(opts) {
     summarize,
     summarizeAddon,
     // The per-site recheck rows (both SCA passes), shown under the add-on summary in the
-    // text report. Empty unless candidates were handed to the summary; a handed site with
-    // no returned verdict still appears, defaulting to unsure.
+    // text report ONLY with --verbose (verbose below). Empty unless candidates were handed
+    // to the summary; a handed site with no returned verdict still appears, defaulting to unsure.
     recheckVerdictRows,
+    // --verbose: the report layer gates the per-site recheck-verdict list on this.
+    verbose: opts.verbose ?? false,
   };
 }
 
