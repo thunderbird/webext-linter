@@ -218,10 +218,12 @@ test("scaRootRelative resolves relative + absolute paths, rejects escapes", () =
   );
 });
 
-// --sca-exp-source shares the --sca-root base and is re-based to a source-relative
-// path (the --sca-source prefix stripped) for scaWebExtensionFiles. It must be within
-// --sca-source; the OLD source-relative form (no scaSource prefix) is now an error.
-test("scaExpSourceRelative re-bases the scaRoot-relative exp path onto the source", () => {
+// --sca-exp-source shares the --sca-root base. When it lives INSIDE the review source
+// it is re-based to a source-relative path (the --sca-source prefix stripped) for
+// scaWebExtensionFiles. When it lives anywhere ELSE under --sca-root it is outside the
+// reviewed source set, so "" is returned (nothing to exclude here - the build-file
+// selection excludes it via its scaRoot-relative path).
+test("scaExpSourceRelative re-bases an in-source exp path, else returns ''", () => {
   const root = "/tmp/wrr-root";
   assert.equal(
     scaExpSourceRelative("addon/experiment-api", "addon", root),
@@ -236,12 +238,8 @@ test("scaExpSourceRelative re-bases the scaRoot-relative exp path onto the sourc
     "experiment-api"
   ); // absolute exp path
   assert.equal(scaExpSourceRelative(undefined, "addon", root), ""); // unset
-  assert.throws(
-    () => scaExpSourceRelative("experiment-api", "addon", root),
-    /within --sca-source/
-  ); // the old source-relative form
-  assert.throws(
-    () => scaExpSourceRelative("other/exp", "addon", root),
-    /within --sca-source/
-  );
+  // Outside the review source (but under --sca-root): not in the reviewed set -> "".
+  assert.equal(scaExpSourceRelative("experiment", "src", root), ""); // sibling of the source
+  assert.equal(scaExpSourceRelative("experiment-api", "addon", root), "");
+  assert.equal(scaExpSourceRelative("other/exp", "addon", root), "");
 });

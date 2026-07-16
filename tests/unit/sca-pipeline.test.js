@@ -482,6 +482,38 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
   }
 });
 
+test("SCA e2e: --sca-exp-source may be a sibling of --sca-source under --sca-root", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  // The Experiment lives OUTSIDE the review source (src/), as a sibling under --sca-root.
+  // This is the layout that used to throw "must be a folder within --sca-source".
+  const src = tmpDir({
+    ...SRC_FILES,
+    "experiment/exp.js": `ChromeUtils.importESModule("resource:///x.sys.mjs");\n`,
+  });
+  try {
+    const base = { addonPath: xpi, scaRoot: src, scaSource: "src", ...OFFLINE };
+    // Accepted (no throw) whether the sibling folder is named relative to --sca-root or
+    // by an absolute path.
+    for (const scaExpSource of ["experiment", path.join(src, "experiment")]) {
+      const res = await runPipeline({ ...base, scaExpSource });
+      // The review source is still reviewed...
+      assert.ok(
+        has(res.findings, "unknown-api", (f) => f.file === "main.js"),
+        "the WebExtension source is reviewed with a sibling --sca-exp-source"
+      );
+      // ...and the out-of-source Experiment is never reviewed as WebExtension code (it is
+      // not part of the scaSource subtree, so nothing false-positives on ChromeUtils).
+      assert.ok(
+        !has(res.findings, "core-symbol-in-webext"),
+        "the sibling Experiment is not reviewed as WebExtension code"
+      );
+    }
+  } finally {
+    fs.rmSync(xpi, { recursive: true, force: true });
+    fs.rmSync(src, { recursive: true, force: true });
+  }
+});
+
 test("SCA e2e: unused-files flags the build's dead files, not source scaffolding", async () => {
   // The XPI ships a file no entry point reaches; the source repo has its own
   // unreferenced scaffolding that never ships.

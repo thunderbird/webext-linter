@@ -140,8 +140,9 @@ export function buildReachability(ctx) {
  * re-bases the scaRoot-relative --sca-exp-source flag to it via scaExpSourceRelative,
  * matching the addon.files keys loadScaAddon already stripped of the scaSource
  * prefix). Files equal to `<exp>` or under `<exp>/` are excluded;
- * an empty/absent value excludes nothing (so experiment code is reviewed too, the
- * deferred false-positive case).
+ * an empty/absent value excludes nothing - the case when --sca-exp-source is unset OR
+ * lies outside the review source (scaExpSourceRelative returns "" for both), where the
+ * Experiment is not in this file set to begin with.
  * @param {Map<string, Buffer>} files
  * @param {?string} scaExpSource
  * @returns {Set<string>}

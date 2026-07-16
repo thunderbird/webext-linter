@@ -236,13 +236,19 @@ export function scaRootRelative(value, scaRoot, flag = "SCA path") {
 /**
  * The Experiment folder as a path relative to the review SOURCE (scaSource), from
  * the --sca-exp-source flag which - like --sca-source - is relative to scaRoot (or
- * absolute). Both flags share the scaRoot base; this strips the scaSource prefix so
- * scaWebExtensionFiles can match it against the (already source-stripped) file keys.
+ * absolute). Both flags share the scaRoot base; when the Experiment lives inside the
+ * review source this strips the scaSource prefix so scaWebExtensionFiles can match it
+ * against the (already source-stripped) file keys. --sca-exp-source may sit anywhere
+ * under scaRoot, though: when it lies outside the review source it is not part of the
+ * reviewed WebExtension file set at all (loadScaAddon loads only the scaSource
+ * subtree), so there is nothing to strip or exclude here and "" is returned -
+ * selectScaBuildFiles still excludes it from the build corpus via its scaRoot-relative
+ * path.
  * @param {string|undefined} scaExpSource  The --sca-exp-source flag ("" when unset).
  * @param {string} scaSource  The --sca-source flag.
  * @param {string} scaRoot  The --sca-root flag.
- * @returns {string} A posix path relative to scaSource ("" when unset). Throws when
- *   the Experiment folder is not within scaSource.
+ * @returns {string} A posix path relative to scaSource, or "" when unset or when the
+ *   Experiment folder lies outside the review source.
  */
 export function scaExpSourceRelative(scaExpSource, scaSource, scaRoot) {
   if (!scaExpSource) {
@@ -254,9 +260,9 @@ export function scaExpSourceRelative(scaExpSource, scaSource, scaRoot) {
     return exp; // the review source IS the archive root
   }
   if (exp === src || !exp.startsWith(`${src}/`)) {
-    throw new Error(
-      `--sca-exp-source (${scaExpSource}) must be a folder within --sca-source (${scaSource})`
-    );
+    // The Experiment sits elsewhere under scaRoot (or IS the whole source), so it is
+    // already outside the reviewed WebExtension file set - nothing to strip here.
+    return "";
   }
   return exp.slice(src.length + 1);
 }
@@ -340,8 +346,9 @@ export function loadScaAddon(archive, scaSource, scaRoot) {
  *   with loadScaAddon (the tree is not read twice).
  * @param {string} scaSource  The --sca-source flag (the review source subtree).
  * @param {string} scaRoot  Path to the source archive root (for the path math).
- * @param {string} [scaExpSource]  The --sca-exp-source flag; excluded too (it sits
- *   inside scaSource, so this is defensive).
+ * @param {string} [scaExpSource]  The --sca-exp-source flag; its subtree is excluded
+ *   too. Resolved relative to scaRoot, so it may sit anywhere under the root (not only
+ *   inside scaSource).
  * @returns {{files: Map<string, Buffer>, nodeModules: string[], archives: string[]}}
  */
 export function selectScaBuildFiles(archive, scaSource, scaRoot, scaExpSource) {

@@ -243,7 +243,7 @@ export function helpText() {
     ],
     [
       "--sca-exp-source <path>",
-      "The Experiment implementation folder, relative to --sca-root or an absolute path, and within --sca-source (e.g. addon/experiment-api). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-root; REQUIRED when --allow-experiments is used in SCA mode.",
+      "The Experiment implementation folder, relative to --sca-root or an absolute path - anywhere within --sca-root (e.g. addon/experiment-api, or a sibling of the source like experiment). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-root; REQUIRED when --allow-experiments is used in SCA mode.",
     ],
   ];
 

@@ -119,7 +119,7 @@ import { DEFAULT_CACHE } from "./config.js";
  *   absolute path (e.g. "src" or "addon"). Optional; defaults to "." (the whole scaRoot
  *   reviewed as the source - a flat layout with manifest.json at the root).
  * @property {string} [scaExpSource]  SCA mode: the Experiment implementation folder,
- *   relative to scaRoot (or absolute) and within scaSource (e.g. "addon/experiment-api");
+ *   relative to scaRoot (or absolute), anywhere under scaRoot (e.g. "addon/experiment-api");
  *   runPipeline re-bases it to a source-relative ctx.scaExpSource. Its privileged, non-WebExtension
  *   files are excluded from the WebExtension code checks (which review all of the
  *   readable source, having no reachability tree there). Optional in general, but
