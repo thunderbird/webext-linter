@@ -75,10 +75,10 @@ test("buildRunContext throws when a reviewable add-on arrives with no parsed sou
   );
 });
 
-// buildShippedCtx swaps the artifact-specific fields to the built XPI's, shares the
-// run-state, drops the source's apiUsages, and marks itself the shipped view. When
-// the XPI IS the review target (an XPI review) it is a no-op - the same ctx object -
-// so callers route unconditionally through it.
+// buildShippedCtx swaps the artifact-specific fields to the built XPI's (files, jsSources,
+// and the XPI's OWN apiUsages), shares the run-state, and marks itself the shipped view. When
+// the XPI IS the review target (an XPI review) it is a no-op - the same ctx object - so
+// callers route unconditionally through it.
 test("buildShippedCtx swaps the artifact fields and is a no-op in an XPI review", () => {
   const source = addonWith({ "src/app.js": "export const x = 1;" });
   const xpi = addonWith({ "app.js": "export const x = 1;" });
@@ -91,15 +91,17 @@ test("buildShippedCtx swaps the artifact fields and is a no-op in an XPI review"
   });
 
   // The XPI is a SECOND artifact here, so the pipeline hands over its sources - already
-  // through the shipped extraction pass, because a check never parses.
-  const shippedJsSources = parsed(xpi);
-  const shipped = buildShippedCtx(ctx, xpi, shippedJsSources);
+  // through the full extraction pass (Phase 2), because a check never parses.
+  const xpiParsedSources = parsed(xpi);
+  const shipped = buildShippedCtx(ctx, xpi, xpiParsedSources);
   // ctx.addon is a reviewView (a shallow copy without manifest/experiments), so the
   // shipped view's addon carries the XPI's files Map by reference, not the XPI object.
   assert.equal(shipped.addon.files, xpi.files);
-  assert.equal(shipped.jsSources, shippedJsSources); // the XPI's own, not the source's
+  assert.equal(shipped.jsSources, xpiParsedSources); // the XPI's own, not the source's
   assert.equal(shipped.jsSources[0].file, "app.js");
-  assert.equal(shipped.apiUsages, undefined); // per-source, source-only: dropped
+  // The XPI's OWN per-source api-usage (from its full pass), NOT the source's.
+  assert.equal(shipped.apiUsages.length, xpiParsedSources.length);
+  assert.equal(shipped.apiUsages[0].file, "app.js");
   assert.equal(shipped.schema, ctx.schema); // shared run-state
   assert.equal(shipped.isShippedView, true); // gates reachability's SCA fallback
 

@@ -174,8 +174,9 @@ export function buildRunContext({
     // extraction pass (src/checks/extract.js) parses each source ONCE, extracts every per-file
     // result the checks need, and DROPS the AST - so peak memory is a single AST no matter how
     // much code the add-on ships, and the checks read a precomputed summary. It hands the
-    // results over as preParsedJsSources. (The SCA shipped view is a distinct artifact, parsed
-    // by its own runShippedExtractionPass in Phase 3; nothing here re-parses.)
+    // results over as preParsedJsSources. (In SCA the shipped view is a distinct artifact, given
+    // its own full extraction pass in Phase 2 and projected by buildShippedCtx; nothing here
+    // re-parses.)
     //
     // So their ABSENCE is a wiring bug, and it must be loud. Defaulting to the empty corpus
     // would mean "this add-on has no code": every code check would pass vacuously and the
@@ -229,30 +230,32 @@ export function buildRunContext({
  * minimize-web-accessible-resources, ...), the diff summary, and - in SCA - the packaging
  * summary, which describe what actually ships. (The behavioral --llm-review describes the
  * review target: the source in SCA.) The orchestrator (registry.js runChecks / pipeline)
- * builds this once and routes it to those consumers; every other field is shared with
- * the review context, and `apiUsages` (per-source, source-only) is dropped so the
- * shipped view never carries the source's. It REQUIRES the built XPI as an argument,
- * so there is no way to derive the shipped artifact from a check's context alone.
+ * builds this once and routes it to those consumers; every other field is shared with the
+ * review context. The built XPI is analysed the SAME full way in both modes (the pipeline's
+ * Phase 2 runs the full extractReview on it), so this view carries the XPI's OWN per-source
+ * api-usage - an `input: xpi` check sees the identical artifact whether the run is an XPI
+ * review or an SCA review. It REQUIRES the built XPI as an argument, so there is no way to
+ * derive the shipped artifact from a check's context alone.
  *
  * When the built XPI IS the review target (an XPI review), there is one artifact and
  * this returns ctx unchanged - so callers route unconditionally through it.
  * @param {RunContext} ctx  The review context (ctx.addon = the review target).
  * @param {import("../addon/load.js").Addon} xpiAddon  The built XPI.
- * @param {import("../addon/sources.js").JsSource[]} [shippedJsSources]  The XPI's sources,
- *   ALREADY through the shipped extraction pass (the pipeline runs it in the SCA tail).
- *   Required whenever the XPI is a SECOND artifact: its `input: xpi` checks read the load
- *   graph off these, and a check never parses. Not needed when the XPI IS the review target,
- *   where this returns ctx unchanged and its sources are the ones already parsed.
+ * @param {import("../addon/sources.js").JsSource[]} [xpiParsedSources]  The XPI's sources,
+ *   ALREADY through the full extraction pass (the pipeline runs it in Phase 2). Required
+ *   whenever the XPI is a SECOND artifact: its `input: xpi` checks read the load graph and
+ *   api-usage off these, and a check never parses. Not needed when the XPI IS the review
+ *   target, where this returns ctx unchanged and its sources are the ones already parsed.
  * @returns {RunContext}
  */
-export function buildShippedCtx(ctx, xpiAddon, shippedJsSources) {
+export function buildShippedCtx(ctx, xpiAddon, xpiParsedSources) {
   // ctx.addon is a reviewView (a shallow copy), so it is never === xpiAddon even in
   // XPI mode; the files Map, however, is copied by reference, so an identical files
   // Map means the review target IS the built XPI (one artifact) - return ctx unchanged.
   if (ctx.addon.files === xpiAddon.files) {
     return ctx;
   }
-  if (!shippedJsSources) {
+  if (!xpiParsedSources) {
     throw new Error(
       "buildShippedCtx: the built XPI is a second artifact here, and its sources have not " +
         "been through the extraction pass - its input:xpi checks would have to parse it"
@@ -261,8 +264,15 @@ export function buildShippedCtx(ctx, xpiAddon, shippedJsSources) {
   return {
     ...ctx,
     addon: reviewView(xpiAddon),
-    jsSources: shippedJsSources,
-    apiUsages: undefined,
+    jsSources: xpiParsedSources,
+    // The XPI's OWN per-source api-usage (Phase 2's full extractReview computed it on every
+    // source), NOT the review source's - so an input:xpi consumer reads the shipped artifact's
+    // api-usage. Same per-source shape buildRunContext builds.
+    apiUsages: xpiParsedSources.map((src) => ({
+      file: src.file,
+      inline: src.inline,
+      ...apiUsageOf(src),
+    })),
     // Marks the shipped view for reachability: the built XPI's manifest entry points
     // resolve against its OWN files, so pureWebExtensionReachable takes the closure
     // branch - not the SCA "all readable-source files" fallback, which exists only

@@ -33,9 +33,9 @@ import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
  * @property {ExtractedResults} [extracted]  The per-file extraction results, set
  *   by an extraction pass (src/checks/extract.js) and read through its xOf()
  *   accessors. A CHECK NEVER PARSES: the accessors THROW on a source no pass ran, rather
- *   than recompute. The full pass (runExtractionPass, the review target) sets every field
- *   below; the light pass (runShippedExtractionPass, the SCA built XPI - walked only as a
- *   load graph) sets just localImports / loaderRefs / experimentRefs / moduleSyntaxLoc.
+ *   than recompute. runExtractionPass sets every field below; it runs once per artifact -
+ *   the review target, and in an SCA review the built XPI too (so its input:xpi checks read
+ *   the same load graph + api-usage a native XPI review would produce).
  */
 
 /**

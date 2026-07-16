@@ -1,9 +1,8 @@
-// Unit tests for the extraction passes and their accessors: a pass produces, per source on
+// Unit tests for the extraction pass and its accessors: the pass produces, per source on
 // src.extracted, the SAME per-file results a direct scanner call would (so migrating a
 // consumer to the precomputed field cannot change a finding), gates content extraction on
-// authored-ness, and retains no AST. runShippedExtractionPass is the light variant for the
-// SHIPPED XPI in an SCA review - the load graph alone. The xOf() accessors are PURE READS:
-// they throw on a source no pass ever ran on, because a check never parses.
+// authored-ness, and retains no AST. The xOf() accessors are PURE READS: they throw on a
+// source no pass ever ran on, because a check never parses.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -12,7 +11,6 @@ import {
   networkSinksOf,
   apiUsageOf,
   runExtractionPass,
-  runShippedExtractionPass,
   remoteJsOf,
   moduleSyntaxOf,
 } from "../../src/checks/extract.js";
@@ -99,25 +97,6 @@ test("records module-syntax loc + moduleSyntaxOf reads it", () => {
     "no module syntax -> null (not undefined)"
   );
   assert.equal(moduleSyntaxOf(mod), mod.extracted.moduleSyntaxLoc);
-});
-
-// The LIGHT pass, for the SHIPPED XPI in an SCA review: the built add-on is only ever
-// walked as a load graph there, so that is all it extracts. The two input:xpi module checks
-// read moduleSyntaxOf off it, and reachability reads the refs - no content scanner and no
-// api-usage consumer ever reads this artifact.
-test("the shipped pass extracts the load graph, and no content", () => {
-  const shipped = src("bundle.js", RICH);
-  runShippedExtractionPass([shipped]);
-
-  assert.ok(shipped.extracted.localImports, "local imports extracted");
-  assert.ok(shipped.extracted.loaderRefs, "loader refs extracted");
-  assert.equal(moduleSyntaxOf(shipped), shipped.extracted.moduleSyntaxLoc);
-
-  // No content scanner ran, and no api-usage: the accessors read that absence, they do NOT
-  // parse the bundle to fill it in.
-  assert.equal(remoteJsOf(shipped), undefined);
-  assert.equal(networkSinksOf(shipped), undefined);
-  assert.equal(apiUsageOf(shipped), undefined);
 });
 
 test("extracts experimentRefs only when Experiment namespaces are supplied", () => {

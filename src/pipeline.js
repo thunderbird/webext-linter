@@ -59,16 +59,12 @@ import {
 import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
 import {
   classifyFiles,
-  classifyBundled,
   assembleBundled,
   applyNotPopularVendor,
   hasUnreviewableCode,
 } from "./lib/bundled.js";
 import { collectJsSources } from "./addon/sources.js";
-import {
-  runExtractionPass,
-  runShippedExtractionPass,
-} from "./checks/extract.js";
+import { runExtractionPass } from "./checks/extract.js";
 import { resolveCdnLibraries } from "./lib/cdn-lookup.js";
 import {
   resolveLibraryHashes,
@@ -231,19 +227,20 @@ export async function runPipeline(opts) {
   // The "Setup" feed: one numbered [i/total] line per slow pre-review step, matching
   // the Activity check loop, so the otherwise-silent pre-review pause shows what is
   // running (a no-op when progress is off - JSON, the golden harness). The total is
-  // sized from what the fast .xpi read already gives us: mode (SCA skips the XPI-only
-  // CDN + identified-library-audit steps, so is shorter), --llm-review, and whether
-  // it is an Experiment (which adds a classification step). Exact for every path EXCEPT
-  // a REJECTED Experiment (an experiment add-on run WITHOUT --allow-experiments whose
-  // bundled draft is unrecognised): it skips the whole vendor block, so its counter
-  // stops MID-count (e.g. [4/8]) rather than completing. Sizing the total for that short
-  // path would need `invalidExperiment`, known only AFTER the narrated experiment fetch
-  // - i.e. a second classification pass before the banner, which we deliberately avoid;
-  // the accepted path (the reviewer's --allow-experiments flow) is exact. A false SCA that
-  // is downgraded to an XPI review (below) likewise under-runs the SCA-sized total by the
-  // few SCA-only steps it then skips - the same accepted inexactness, no re-sizing.
+  // sized from what the fast .xpi read already gives us: mode (SCA analyses BOTH
+  // artifacts - the always-run built-XPI analysis PLUS the readable source and its
+  // build - so it is longer), --llm-review, and whether it is an Experiment (which adds
+  // a bundled-experiment verification step). Exact for every path EXCEPT a REJECTED
+  // Experiment (an experiment add-on run WITHOUT --allow-experiments whose bundled draft
+  // is unrecognised): it skips the whole vendor block, so its counter stops MID-count
+  // (e.g. [4/8]) rather than completing. Sizing the total for that short path would need
+  // `invalidExperiment`, known only AFTER the narrated experiment fetch - i.e. a second
+  // classification pass before the banner, which we deliberately avoid; the accepted path
+  // (the reviewer's --allow-experiments flow) is exact. A false SCA that is downgraded to
+  // an XPI review (below) likewise OVER-runs the SCA-sized total by the source-only steps
+  // it then skips - the same accepted inexactness, no re-sizing.
   const setupTotal =
-    (preliminaryMode === "sca" ? 11 : 7) +
+    (preliminaryMode === "sca" ? 12 : 7) +
     (opts.llmReview ? 1 : 0) +
     (isExp ? 1 : 0);
   let setupDone = 0;
@@ -352,18 +349,21 @@ export async function runPipeline(opts) {
   // The known-library hash DB the bundled classifier matches files against. An empty Map
   // recognizes nothing.
   let libraryHashes = new Map();
-  // The parse-first review sources: extractReview (Phase 3) runs the extraction pass and
-  // returns them for Phase 4 to hand to buildRunContext, which never parses for itself.
-  // Stays unset for a rejected Experiment (Phase 3 is skipped), whose one check reads no code -
-  // so it reviews with an empty ctx.jsSources.
+  // The parse-first REVIEW-TARGET sources handed to buildRunContext (Phase 4), which never
+  // parses for itself. In an XPI review the review target IS the built XPI, so these ARE
+  // xpiParsedSources (below); in SCA they are the readable source's, parsed in Phase 3. Stays
+  // unset for a rejected Experiment (its one check reads no code - an empty ctx.jsSources).
   let preParsedJsSources;
-  // The SHIPPED XPI's sources, parsed as a LOAD GRAPH in the SCA tail below. Only SCA needs
-  // them: in an XPI review the built add-on IS the review target, so buildShippedCtx returns
-  // the review ctx unchanged and its already-parsed sources with it.
-  let shippedJsSources;
+  // The BUILT XPI's sources, from the FULL extractReview run on it in Phase 2 (always, unless a
+  // rejected Experiment). buildShippedCtx (Phase 4) hands them to the input:xpi checks, so the
+  // shipped ctx is built ONE way regardless of mode; in an XPI review they ALSO ARE
+  // preParsedJsSources (the XPI is the review target).
+  let xpiParsedSources;
+  // The banned-library list (assets/library-blocks.yaml), resolved once in Phase 2 and shared
+  // by BOTH artifact analyses (the XPI in Phase 2, the SCA source in Phase 3).
+  let libraryBlocks;
   // The XPI's Experiment API namespaces (null for a non-Experiment). Computed ONCE when
-  // registered below, then reused by the shipped extraction pass - it reads/parses each bundled
-  // experiment schema.json, so it is not free to recompute.
+  // registered into the schema below.
   let xpiExperimentNamespaces = null;
   // MAY THIS RUN CALL THE MODEL? Asked exactly once, here, because this is the only place that
   // can answer it: --llm-review requests the model, the pre-flight below proves the config can
@@ -429,26 +429,66 @@ export async function runPipeline(opts) {
     });
     libraryHashes = parseLibraryHashes(libraryHashesText);
 
-    // A source-code archive is only needed when the shipped XPI cannot be reviewed
-    // directly. Classify the built XPI and decide purely from ITS OWN code - whether it
-    // ships minified/obfuscated first-party code - so the SCA source content is irrelevant.
-    // A directly-reviewable XPI downgrades to a plain XPI review (which still runs
-    // minified-code and the rest against the XPI); sca-not-required reports it.
-    mode = preliminaryMode;
-    if (opts.scaRoot) {
-      setupStep("Classifying the built add-on");
-      const bundled = classifyBundled(xpiAddon, { libraryHashes });
-      ({ mode, scaNotRequired } = resolveReviewMode(opts, bundled));
-      // Persist the classification ONLY for a kept SCA: there the packaging / input:xpi
-      // checks read xpiAddon.bundled, the XPI carries no vendor store, and resolveCdnLibraries
-      // refines it - so this pre-resolveVendor classification is final. On a DOWNGRADE the XPI
-      // becomes the review target and is re-classified vendor-aware in Phase 3; reusing this
-      // pre-vendor bundle would scan VENDOR-declared readable files as authored, unlike a
-      // native XPI review of the same artifact.
-      if (mode?.sca) {
-        xpiAddon.bundled = bundled;
-      }
-    }
+    // The Mozilla add-on policy blocklist (curated assets/library-blocks.yaml): a shipped
+    // asset read from disk (fast, no network, so no Setup feed line). Consulted by the vendor
+    // audit before each OSV query (auditNpm) - a banned library is recorded and skips the
+    // request. Read ONCE here and shared by both artifact analyses (the XPI below, the SCA
+    // source in Phase 3).
+    const { text: libraryBlocksText } = await resolveLibraryBlocks();
+    libraryBlocks = parseLibraryBlocks(libraryBlocksText);
+
+    // Analyse the BUILT XPI FIRST and UNCONDITIONALLY, with the SAME full chain an XPI review
+    // runs on its review target - resolveVendor -> verifyVendor -> classifyReview ->
+    // identifyBundledLibraries -> extractReview - so siblings.xpi is built ONE way regardless of
+    // the mode resolved just below. The vendor-aware classification it produces
+    // (xpiAddon.bundled) is exactly what the SCA->XPI downgrade decision reads: verifyVendor
+    // DISCOVERS vendored files that classifyReview then marks non-authored, so a minified
+    // vendored library is not miscounted as unreviewable first-party code. In a native XPI
+    // review the XPI IS the review target, so this is that review's own analysis (Phase 3 then
+    // only reuses xpiParsedSources rather than parsing again).
+    xpiAddon.vendor = await resolveVendor({
+      addon: xpiAddon,
+      parsePrompt: registry.prompt("vendor-parse"),
+      enabled: llmVerified,
+      token: opts.llmApiKey,
+      model: opts.llmModel,
+      url: opts.llmApiUrl,
+      type: opts.llmApiType,
+      callText: opts.llmTransport?.callText,
+      budget: llmBudget,
+    });
+    setupStep("Verifying vendored libraries");
+    await verifyVendor(
+      xpiAddon,
+      opts.vendorNet,
+      {
+        enabled: llmVerified,
+        resolvePrompt: registry.prompt("vendor-npm-resolve"),
+        token: opts.llmApiKey,
+        model: opts.llmModel,
+        url: opts.llmApiUrl,
+        type: opts.llmApiType,
+        callText: opts.llmTransport?.callText,
+        budget: llmBudget,
+      },
+      libraryBlocks
+    );
+    classifyReview(xpiAddon, { libraryHashes });
+    await identifyBundledLibraries(xpiAddon, {
+      net: opts.vendorNet,
+      cacheDir: opts.cdnLookupCache,
+      cdnEnabled: opts.cdnLookup !== false,
+      blocks: libraryBlocks,
+      setupStep,
+      scope: "bundled",
+    });
+    xpiParsedSources = extractReview(xpiAddon, { schema, xpiAddon, setupStep });
+
+    // Resolve the effective mode from that always-built, vendor-aware classification.
+    // resolveReviewMode returns a plain XPI review when there is no --sca-root (a native XPI
+    // submission); with --sca-root it DOWNGRADES to a plain XPI review when the shipped XPI's
+    // own first-party code is directly reviewable (sca-not-required reports it), else keeps SCA.
+    ({ mode, scaNotRequired } = resolveReviewMode(opts, xpiAddon.bundled));
   }
 
   // Phase 2: everything mode-dependent, DERIVED from the resolved mode - no mutation. The
@@ -506,146 +546,66 @@ export async function runPipeline(opts) {
     );
   }
 
-  // Phase 3: the vendor / library / build setup. Three steps run on the REVIEW TARGET, in
-  // this order: check its DECLARED dependencies, classify + extract it, then identify its
-  // UNDECLARED libraries. Only the first is mode-specific, because a source archive and an
-  // XPI declare dependencies differently. A submitted SCA then adds a tail for the two
-  // artifacts that are NOT the review target: the shipped XPI (whose bundled store the
-  // input:xpi checks read) and the build corpus.
-  // Skipped for a rejected Experiment (only the reject check runs).
+  // Phase 3: SCA only - analyse the readable SOURCE (the review target) with the same chain
+  // the XPI got in Phase 2 (declared-dependency audit, classify, identify, parse), plus the
+  // build corpus. In an XPI review the review target IS the built XPI, already fully analysed
+  // in Phase 2, so there is nothing to do but reuse its parsed sources. Skipped for a rejected
+  // Experiment (only the reject check runs, and it reads no code).
   if (!invalidExperiment) {
-    // 1c. Resolve the dependency manifest ONCE (package.json deps + any VENDOR
-    // declarations), so the review's checks share one immutable store.
-    addon.vendor = await resolveVendor({
-      addon,
-      parsePrompt: registry.prompt("vendor-parse"),
-      enabled: llmVerified,
-      token: opts.llmApiKey,
-      model: opts.llmModel,
-      url: opts.llmApiUrl,
-      type: opts.llmApiType,
-      callText: opts.llmTransport?.callText,
-      budget: llmBudget,
-    });
-
-    // The Mozilla add-on policy blocklist (curated assets/library-blocks.yaml): a
-    // shipped asset read from disk (fast, no network, so no Setup feed line). Passed
-    // to the vendor audit, which consults it before each OSV query (auditNpm) - a
-    // banned library is recorded and skips the request. Not applied to SCA
-    // devDependencies (never shipped).
-    const { text: libraryBlocksText } = await resolveLibraryBlocks();
-    const libraryBlocks = parseLibraryBlocks(libraryBlocksText);
-
-    // 1d. Check the DECLARED dependencies of the review target. Both modes ask about the
-    // same artifact, but the two declare differently, so the question is not the same one.
     if (mode?.sca) {
-      // SCA: the source archive's package.json declares the dependencies - audit each for
-      // popularity (non-popular -> reject) and OSV. The readable source may ALSO vendor a
-      // library as a committed copy, so full identification (Mozilla-hash + CDN + OSV,
-      // deduped against the declared audit) runs on it below. An unrecognized minified file
-      // the source vendors stays non-authored and is rejected.
+      // 1c. Resolve the source's dependency manifest ONCE (package.json deps + any VENDOR
+      // declarations), so the review's checks share one immutable store.
+      addon.vendor = await resolveVendor({
+        addon,
+        parsePrompt: registry.prompt("vendor-parse"),
+        enabled: llmVerified,
+        token: opts.llmApiKey,
+        model: opts.llmModel,
+        url: opts.llmApiUrl,
+        type: opts.llmApiType,
+        callText: opts.llmTransport?.callText,
+        budget: llmBudget,
+      });
+      // 1d. The source's package.json declares its dependencies - audit each for popularity
+      // (non-popular -> reject) and OSV. The readable source may ALSO vendor a library as a
+      // committed copy, so full identification (Mozilla-hash + CDN + OSV, deduped against the
+      // declared audit) runs on it below. An unrecognized minified file the source vendors
+      // stays non-authored and is rejected.
       setupStep("Auditing source dependencies");
       await verifyScaDependencies(addon, opts.vendorNet, libraryBlocks);
-    } else {
-      // XPI: no package.json - the add-on ships COMMITTED COPIES, declared in VENDOR.md.
-      // Verify the resolved declarations over the network ONCE - fetch, compare
-      // (EOL-tolerant), popularity, and the package.json<->file matching. An offline
-      // transport (the golden harness) makes no request. The LLM params drive the
-      // github->npm resolution fallback; the run-wide budget is shared.
-      setupStep("Verifying vendored libraries");
-      await verifyVendor(
-        addon,
-        opts.vendorNet,
-        {
-          enabled: llmVerified,
-          resolvePrompt: registry.prompt("vendor-npm-resolve"),
-          token: opts.llmApiKey,
-          model: opts.llmModel,
-          url: opts.llmApiUrl,
-          type: opts.llmApiType,
-          callText: opts.llmTransport?.callText,
-          budget: llmBudget,
-        },
-        libraryBlocks
-      );
-    }
-
-    // 1e. Classify the REVIEW TARGET's files (library hash, minified geometry, obfuscation),
-    // seeding addon.bundled and its non-authored set. The review target is whatever Phase 2
-    // resolved, so this is one step in both modes. It runs AFTER the declaration check above,
-    // so the declared vendored set is final (verifyVendor DISCOVERS further vendored files by
-    // hash and adds them to vendor.set, which classifyFiles reads).
-    classifyReview(addon, { libraryHashes });
-
-    // 1f. Identify + OSV-audit the UNDECLARED third-party libraries the declaration check
-    // cannot see: a committed copy the Mozilla hash DB missed, matched by jsDelivr content
-    // hash, then reconciled against the declared audit above. One step in both modes - it runs
-    // on the review target, and `scope` only names it in the Setup feed.
-    //
-    // This FINALIZES the authored / non-authored split: it adds to the skip set (an identified
-    // library) and removes from it (applyNotPopularVendor: a readable vendored library whose
-    // package is not popular is reviewed as the developer's own code). So it must precede the
-    // parse below, which gates content extraction on that set.
-    await identifyBundledLibraries(addon, {
-      net: opts.vendorNet,
-      cacheDir: opts.cdnLookupCache,
-      cdnEnabled: opts.cdnLookup !== false,
-      blocks: libraryBlocks,
-      setupStep,
-      scope: mode?.sca ? "source" : "bundled",
-    });
-
-    // 1g. Parse the REVIEW TARGET - once, with the FINAL skip set (see extractReview).
-    preParsedJsSources = extractReview(addon, { schema, xpiAddon, setupStep });
-
-    // 1h. SCA only: cover the two artifacts that are NOT the review target. In XPI mode the
-    // review target IS the shipped XPI (1f already identified it) and there is no build
-    // corpus, so both of these collapse away.
-    if (mode?.sca) {
-      // The BUILT XPI was already classified above (the sca-not-required decision) into
-      // xpiAddon.bundled - the packaging summary + the input:xpi checks read it, and their
-      // skip set is that classification's non-authored set, so the XPI's minified/library
-      // bundles are excluded exactly as in an XPI review. Its trusted upstream experiment
-      // files (verifyExperiments) seeded the non-authored set there too.
-      // Second-tier identification for the shipped XPI too: a readable/minified library the
-      // Mozilla DB missed, matched on jsDelivr, so the XPI's non-authored set (read by the
-      // input:xpi checks) is correct. No OSV audit here - the XPI carries no vendor store,
-      // and an undeclared library the BUILD bundled is the build review's concern.
-      setupStep("Identifying built-add-on libraries on a CDN");
-      await resolveCdnLibraries(xpiAddon, {
+      // 1e. Classify the source's files (library hash, minified geometry, obfuscation), seeding
+      // addon.bundled and its non-authored set - AFTER the declaration audit, so the vendored
+      // set is final (verifyScaDependencies DISCOVERS further vendored files that classifyFiles
+      // reads). 1f then identifies the UNDECLARED libraries the audit cannot see (jsDelivr hash),
+      // and applyNotPopularVendor removes a readable not-popular vendored copy from the skip set;
+      // this FINALIZES the authored / non-authored split, so it must precede the parse (1g).
+      classifyReview(addon, { libraryHashes });
+      await identifyBundledLibraries(addon, {
         net: opts.vendorNet,
         cacheDir: opts.cdnLookupCache,
-        enabled: opts.cdnLookup !== false,
+        cdnEnabled: opts.cdnLookup !== false,
+        blocks: libraryBlocks,
+        setupStep,
+        scope: "source",
       });
-      // Parse the SHIPPED XPI. In an XPI review the built add-on IS the review target, and
-      // the pass above already parsed it. Here it is a SECOND artifact that nothing had
-      // parsed - so each of its `input: xpi` checks (unused-files,
-      // minimize-web-accessible-resources, bundled-files, the two background-module ones)
-      // would have had to parse it itself, at check time. A check is a pure reader, so setup
-      // parses it once, here.
-      //
-      // The LIGHT pass: in SCA the code under review is the readable SOURCE, so the built
-      // add-on is only ever walked as a LOAD GRAPH. No content scanner and no api-usage
-      // consumer reads this artifact, so none is run over it.
-      setupStep("Parsing the built add-on");
-      shippedJsSources = collectJsSources(xpiAddon);
-      runShippedExtractionPass(shippedJsSources, {
+      // 1g. Parse the source - once, with the FINAL skip set (see extractReview).
+      preParsedJsSources = extractReview(addon, {
         schema,
-        // Reuse the set registered in Phase 1 (same manifest + files); null for a non-Experiment.
-        experimentNamespaces: xpiExperimentNamespaces,
+        xpiAddon,
+        setupStep,
       });
-      // The BUILD files (archive minus the review source + Experiment source) - the
-      // build scripts/config the review otherwise drops. buildScaBuildCtx wraps these
-      // as the `input: build` check's ctx.addon; they never merge into the review addon.
+      // 1h. The BUILD files (archive minus the review source + Experiment source) - the build
+      // scripts/config the review otherwise drops. buildScaBuildCtx wraps these as the
+      // input:build check's ctx.addon; they never merge into the review addon.
       addon.buildFiles = selectScaBuildFiles(
         scaArchive,
         scaSource,
         opts.scaRoot,
         opts.scaExpSource
       );
-      // Classify the build ONCE here (the vendor pattern): one model request over the
-      // build corpus, stored on addon.buildFiles.buildReview for the input:build checks to
-      // read deterministically. Offline / no token -> analyzed:false (routed to manual review).
+      // Classify the build ONCE here (the vendor pattern): one model request over the build
+      // corpus, stored on addon.buildFiles.buildReview for the input:build checks to read
+      // deterministically. Offline / no token -> analyzed:false (routed to manual review).
       setupStep("Analyzing the build");
       addon.buildFiles.buildReview = await analyzeBuild({
         build: addon.buildFiles,
@@ -658,6 +618,10 @@ export async function runPipeline(opts) {
         callText: opts.llmTransport?.callText,
         budget: llmBudget,
       });
+    } else {
+      // XPI review (native, or a downgraded false SCA): the built XPI IS the review target and
+      // was fully analysed in Phase 2. Its parsed sources ARE the review's sources.
+      preParsedJsSources = xpiParsedSources;
     }
   }
 
@@ -719,7 +683,7 @@ export async function runPipeline(opts) {
   // one by its `input` (see routeCtx); a check cannot derive one from another, so it only
   // ever sees the artifact it was routed to. In an XPI review shippedCtx IS sourceCtx
   // (buildShippedCtx returns the review target unchanged when the XPI is that target).
-  const shippedCtx = buildShippedCtx(sourceCtx, xpiAddon, shippedJsSources);
+  const shippedCtx = buildShippedCtx(sourceCtx, xpiAddon, xpiParsedSources);
   // SCA: a sibling context whose addon is the build files (the archive minus the
   // review source minus node_modules), so the `input: build` check
   // (undeclared-build-source) reads them off ctx.addon via the same one-place
@@ -896,8 +860,8 @@ function extractReview(addon, { schema, xpiAddon, setupStep }) {
  * addon.vendor; every step is best-effort and skips silently offline. Runs AFTER
  * classification (so the Mozilla-hash matches and tag.obfuscation are final) and after the
  * declared-dependency audit (so auditIdentifiedLibraries dedups against it). Requires
- * addon.vendor for the OSV audit; the shipped XPI in SCA has none, so it gets only the CDN
- * pass (resolveCdnLibraries directly), not this routine.
+ * addon.vendor for the OSV audit; both the built XPI (Phase 2) and the SCA source (Phase 3)
+ * resolve their vendor store before this runs.
  * @param {import("./addon/load.js").Addon} addon
  * @param {{net?: object, cacheDir?: string, cdnEnabled?: boolean,
  *   blocks?: Map<string, object>, setupStep?: (label: string) => void,
@@ -1064,7 +1028,8 @@ export function selectSchemaChannel({ candidates, strictMax }) {
  * Experiment (which is never downgraded).
  *
  * @param {object} opts  Pipeline opts; only `opts.scaRoot` is read here.
- * @param {?import("./lib/bundled.js").Bundled} bundled  classifyBundled(xpiAddon).
+ * @param {?import("./lib/bundled.js").Bundled} bundled  The built XPI's vendor-aware
+ *   classification (xpiAddon.bundled from the Phase 2 classifyReview).
  * @returns {{mode: REVIEW_MODE.XPI|"sca", scaNotRequired: boolean}}
  */
 export function resolveReviewMode(opts, bundled) {

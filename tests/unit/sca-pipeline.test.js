@@ -157,6 +157,53 @@ test("SCA e2e: the rendered report carries [XPI]/[SCA] labels + the footer", asy
   }
 });
 
+// MODE-INVARIANCE: the built XPI is analysed the SAME way whether it is reviewed inside an
+// SCA submission (a second artifact) or as a standalone XPI review (the review target). So
+// the input:xpi checks - which read siblings.xpi's classification, reachability, and (now)
+// api-usage - must produce the IDENTICAL findings for the same XPI in either mode. That is
+// the whole point of building siblings.xpi one way regardless of mode; without it an
+// input:xpi finding could silently depend on how the run was invoked.
+test("SCA e2e: the built XPI's input:xpi findings match a standalone XPI review of it", async () => {
+  // orphan.js is unreferenced in the XPI -> a deterministic unused-files (input:xpi) finding,
+  // so the comparison is non-vacuous.
+  const xpi = tmpDir({
+    ...XPI_FILES,
+    "orphan.js": `console.log("nobody imports me");\n`,
+  });
+  const src = tmpDir(SRC_FILES);
+  try {
+    const sca = await runPipeline({ addonPath: xpi, scaRoot: src, ...OFFLINE });
+    const xpiOnly = await runPipeline({ addonPath: xpi, ...OFFLINE });
+    assert.equal(
+      sca.mode,
+      REVIEW_MODE.SCA,
+      "the minified XPI keeps the review in SCA mode"
+    );
+
+    // The findings from input:xpi rules only (ruleInputs is the static registry map, the same
+    // in both runs). In the standalone XPI review the source IS the XPI, so its input:source
+    // checks also run - filtering to input:xpi isolates the shipped-artifact analysis.
+    const xpiFindings = (r) =>
+      r.findings
+        .filter((f) => r.ruleInputs.get(f.ruleId) === "xpi")
+        .map((f) => `${f.ruleId}|${f.file}|${f.item ?? f.loc ?? ""}`)
+        .sort();
+
+    const inSca = xpiFindings(sca);
+    assert.ok(
+      inSca.includes("unused-files|orphan.js|"),
+      "the orphaned XPI file is flagged unused (a real input:xpi finding fired)"
+    );
+    assert.deepEqual(
+      inSca,
+      xpiFindings(xpiOnly),
+      "the built XPI's input:xpi findings are identical in SCA and standalone-XPI review"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
 // --sca-root alone (no --sca-source) switches to SCA mode and defaults the source to
 // ".", so a flat submission needs only the one flag - identical to passing --sca-source ".".
 test("SCA e2e: --sca-root without --sca-source defaults the source to '.'", async () => {

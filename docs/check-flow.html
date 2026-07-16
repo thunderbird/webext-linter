@@ -163,10 +163,10 @@ flowchart TB
 
   BLK --> XV
 
-  subgraph P2 ["runPipeline() · Phase 2 - analyse the BUILT XPI (always) → the shipped ctx, then resolve the mode"]
+  subgraph P2 ["runPipeline() · Phase 2 - analyse the BUILT XPI (always) → xpiAddon.bundled + its parsed sources, then resolve the mode"]
     XV["resolveVendor(XPI) → verifyVendor()<br/>the committed copies (VENDOR.md)"] --> XC["classifyReview(XPI)<br/>classifyFiles + assembleBundled<br/>library hash · minified geometry · obfuscation · vendored<br/>→ xpiAddon.bundled"]
     XC --> XI["identifyBundledLibraries(XPI)<br/>applyNotPopularVendor() · resolveCdnLibraries() · auditIdentifiedLibraries()<br/>FINALIZES the authored / non-authored split - ADDS + REMOVES"]
-    XI --> XE["Parsing the built add-on → extractReview(XPI)<br/>content extraction + api-usage on the authored remainder<br/>parse each source ONCE, drop the AST<br/>buildRunContext(XPI) → the SHIPPED ctx (ctx.llm iff llmVerified)"]
+    XI --> XE["Parsing the built add-on → extractReview(XPI)<br/>content extraction + api-usage on the authored remainder<br/>parse each source ONCE, drop the AST<br/>→ xpiParsedSources (Phase 4 hands them to buildShippedCtx)"]
     XE --> MODEQ{{"resolveReviewMode(xpiAddon.bundled)<br/>--sca-root, and the XPI's OWN first-party<br/>code is minified / obfuscated?"}}
     MODEQ -- "no source archive -<br/>native XPI review" --> MX2["mode = xpi"]
     MODEQ -- "XPI reviewable -<br/>source adds nothing" --> DOWN["mode = xpi<br/>scaNotRequired = true"]
@@ -177,13 +177,13 @@ flowchart TB
   KEEP --> LSRC
   IQ -- yes --> SETINV
 
-  subgraph P3 ["runPipeline() · Phase 3 - SCA only: analyse the readable SOURCE → the source ctx + the build corpus"]
+  subgraph P3 ["runPipeline() · Phase 3 - SCA only: analyse the readable SOURCE → its parsed sources + the build corpus"]
     LSRC["load the source archive → loadScaAddon()<br/>addon.experiments = xpiAddon.experiments"] --> LSQ{{"--sca-source resolves within --sca-root,<br/>and matches files?"}}
     LSQ -- no --> P3F((("THROW<br/>exit 2")))
     LSQ -- yes --> SV["resolveVendor(source) → verifyScaDependencies()<br/>the source's package.json"]
     SV --> SC["classifyReview(source)<br/>library hash · minified · obfuscation · vendored"]
     SC --> SI["identifyBundledLibraries(source)<br/>CDN + not-popular-vendor - FINALIZES the split"]
-    SI --> SE["Parsing source → extractReview(source)<br/>content extraction + api-usage on the authored remainder<br/>buildRunContext(source) → the SOURCE ctx"]
+    SI --> SE["Parsing source → extractReview(source)<br/>content extraction + api-usage on the authored remainder<br/>→ preParsedJsSources (the review target's sources)"]
     SE --> SB["selectScaBuildFiles()<br/>Analyzing the build → analyzeBuild() → the build corpus"]
     HP1(( ))
     HP2(( ))
@@ -199,9 +199,9 @@ flowchart TB
 
   subgraph P4 ["runPipeline() · Phase 4 - assemble the siblings map"]
     INV["buildRunContext(XPI) · invalidExperiment<br/>ctx.jsSources = [ ] · ctx.apiUsages = [ ]"] --> SIBS2["siblings = { source, xpi, build, manifest }<br/>all alias the single reject-only ctx"]
-    ASSIGN["source ctx = the shipped ctx<br/>(one artifact - no readable source)"] --> SIB
+    ASSIGN["review target = the built XPI<br/>(one artifact - no readable source)"] --> SIB
     SB --> SIB
-    SIB["assemble the siblings map (--diff-to → ctx.previous):<br/>xpi = the shipped ctx (built in Phase 2)<br/>source = the source ctx (SCA) / the shipped ctx (XPI)<br/>build = buildScaBuildCtx() · manifest = buildManifestCtx()"] --> SIBS["siblings = { source, xpi, build, manifest }"]
+    SIB["buildRunContext(review target) ONCE → the spine<br/>(ctx.llm iff llmVerified · ctx.previous ← --diff-to)<br/>xpi = buildShippedCtx(spine, xpiParsedSources) - a projection<br/>(XPI review: returns the spine, so xpi === source)<br/>build = buildScaBuildCtx() · manifest = buildManifestCtx()"] --> SIBS["siblings = { source, xpi, build, manifest }"]
   end
 
   subgraph P5 ["runPipeline() · Phase 5 - run the review, then render the findings"]
@@ -250,9 +250,11 @@ flowchart TB
       <div class="outcome">
         <strong>The built XPI is analysed first, and always.</strong>
         Phase&nbsp;2 runs the full XPI analysis - vendor, classify, identify,
-        parse - <em>before</em> the mode is known, producing the
-        <strong>shipped ctx</strong> that every <code>input: xpi</code> check
-        reads. Because it is built the same way in both modes, an
+        parse - <em>before</em> the mode is known, yielding
+        <code>xpiAddon.bundled</code> and the XPI's parsed sources; Phase&nbsp;4
+        then projects those into the <strong>shipped ctx</strong>
+        (<code>siblings.xpi</code>) that every <code>input: xpi</code> check
+        reads. Because the XPI is analysed the same way in both modes, an
         <code>input: xpi</code> check sees the identical artifact whether the run
         is SCA or XPI - the reason for the rework. There is no separate
         &ldquo;light&rdquo; classification pass any more: the

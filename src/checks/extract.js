@@ -14,10 +14,10 @@
 // consumers read that same nonAuthored Set: the pass to decide what to precompute, each
 // consumer to decide what to read, so the two never disagree.
 //
-// Two passes, because the two artifacts are read differently. runExtractionPass is the
-// artifact UNDER REVIEW. runShippedExtractionPass is the SHIPPED XPI when it is not the
-// review target (an SCA review), where the built add-on is only ever walked as a LOAD
-// GRAPH - so it extracts that alone.
+// runExtractionPass is the single full pass, run once per artifact: the review target, and
+// - in an SCA review - the built XPI too (both get the same load graph + api-usage + the
+// authored-only content scans), so an input:xpi check sees the XPI analysed the same way in
+// either mode.
 //
 // The `xOf(src)` accessors are the ONE seam a consumer uses to read a result, and they
 // are PURE READS. A CHECK NEVER PARSES: a source that reaches a check without having been
@@ -58,9 +58,9 @@ const parseHint = (src) => src.parseAs ?? src.file;
  * The LOAD-GRAPH facts, extracted from an AST the caller already holds: the refs
  * reachability follows (local imports, the schema's loader calls, and an Experiment's
  * injected file refs) plus the first ES-module statement's loc (the two input:xpi module
- * checks read it via moduleSyntaxOf). Every artifact needs these, whatever its role - the
- * review target is walked for them, and so is the SHIPPED XPI, which in an SCA review is
- * ONLY ever walked as a load graph.
+ * checks read it via moduleSyntaxOf). Every artifact needs these, whatever its role: the
+ * full pass extracts them for the review target, and - in an SCA review - for the built XPI
+ * too (both go through runExtractionPass), alongside the api-usage and content results.
  * @param {JsSource} src
  * @param {object} parsed  The AST the caller parsed; it drops it after this returns.
  * @param {object} opts
@@ -100,10 +100,11 @@ function extractLoadGraph(
 }
 
 /**
- * The FULL pass, for the artifact UNDER REVIEW. Parse each source once and store its
- * per-file extraction results on `src.extracted`; the AST is dropped with each iteration.
- * On top of the load graph it extracts api-usage from every source, and runs the content
- * scanners over the AUTHORED remainder.
+ * The one full pass, run once per artifact - the review target, and in an SCA review the
+ * built XPI too. Parse each source once and store its per-file extraction results on
+ * `src.extracted`; the AST is dropped with each iteration. On top of the load graph it
+ * extracts api-usage from every source, and runs the content scanners over the AUTHORED
+ * remainder.
  * @param {JsSource[]} jsSources
  * @param {object} [opts]
  * @param {import("../schema/index.js").SchemaIndex} [opts.schema]  For the web_api
@@ -174,42 +175,13 @@ export function runExtractionPass(
 }
 
 /**
- * The LIGHT pass, for the SHIPPED XPI when it is NOT the review target (an SCA review).
- * There, the built add-on is only ever walked as a LOAD GRAPH - reachability (unused-files,
- * minimize-web-accessible-resources, bundled-files) and the two background-module checks.
- * No content scanner and no api-usage consumer reads it: in SCA the code under review is the
- * readable SOURCE. So parse each source once, keep the load graph, drop the AST.
- *
- * It takes no `nonAuthored`, because it runs no content scanner there is anything to gate.
- * @param {JsSource[]} jsSources
- * @param {object} [opts]
- * @param {import("../schema/index.js").SchemaIndex} [opts.schema]  For the loader-ref walk.
- * @param {Set<string>} [opts.experimentNamespaces]  The XPI's Experiment API namespaces
- *   (null for a non-Experiment).
- */
-export function runShippedExtractionPass(
-  jsSources,
-  { schema, experimentNamespaces } = {}
-) {
-  const mvMajor = schema?.manifestVersionMajor ?? null;
-  for (const src of jsSources) {
-    const parsed = parseJs(src.code, parseHint(src));
-    src.extracted = extractLoadGraph(src, parsed, {
-      schema,
-      mvMajor,
-      experimentNamespaces,
-    });
-  }
-}
-
-/**
  * The per-file results an extraction pass stored on a source. A CHECK IS A PURE READER: it
  * never parses, so a source that reaches a check without having been through a pass is a
  * wiring bug in setup, not something to paper over by parsing here. Fail loudly instead.
  *
  * A field being ABSENT is a different thing, and legitimate: the content fields exist only
- * for AUTHORED sources (a consumer skips the non-authored ones first), and the shipped view
- * carries the load graph alone.
+ * for AUTHORED sources (a consumer skips the non-authored ones first); the load graph and
+ * api-usage are on every source.
  * @param {JsSource} src
  * @returns {object}
  */
