@@ -27,7 +27,7 @@ import {
   isMemberLike,
 } from "./ast.js";
 import { classifyUrl, isLoopback } from "../scan/url.js";
-import { URL_CLASS, CHANNEL } from "../lib/enum.js";
+import { URL_CLASS, OVERTNESS } from "../lib/enum.js";
 import { apiBasesOf } from "./api-base.js";
 import { DATA_APIS } from "./webext-facts.js";
 
@@ -58,7 +58,7 @@ const HTTP_METHODS = new Set([
 /**
  * @typedef {object} SinkHit
  * @property {string} type  Which sink fired (see the visitors below).
- * @property {import("../lib/enum.js").Channel} channel  Overt = a transmission API; covert = a
+ * @property {import("../lib/enum.js").Overtness} channel  Overt = a transmission API; covert = a
  *   resource load that can disguise data as a URL.
  * @property {import("../lib/enum.js").UrlClass} destClass  Destination.
  * @property {boolean} cleartext  The destination scheme is non-TLS
@@ -92,7 +92,7 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
 
   /**
    * @param {string} type
-   * @param {import("../lib/enum.js").Channel} channel
+   * @param {import("../lib/enum.js").Overtness} channel
    * @param {?AstNode} urlNode  The destination-URL argument.
    * @param {AstNode[]} dataNodes  Other arguments that may hold the payload.
    * @param {AstNode} site  The node to report the location of.
@@ -149,28 +149,28 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
     "CallExpression|OptionalCallExpression"(path) {
       const { callee, arguments: args } = path.node;
       if (calleeName(callee) === "fetch") {
-        push("fetch", CHANNEL.OVERT, args[0], args.slice(1), path.node);
+        push("fetch", OVERTNESS.OVERT, args[0], args.slice(1), path.node);
         return;
       }
       const prop = memberPropName(callee);
       if (prop === "sendBeacon") {
-        push("beacon", CHANNEL.OVERT, args[0], args.slice(1), path.node);
+        push("beacon", OVERTNESS.OVERT, args[0], args.slice(1), path.node);
       } else if (prop === "open") {
         // XHR.open(method, url): a literal HTTP method OR a tracked XMLHttpRequest
         // receiver marks it as an XHR (url = args[1]); otherwise it is window.open,
         // whose sole argument is the URL.
         if (isXhrVar(callee.object) || isHttpMethodLiteral(args[0])) {
-          push("xhr", CHANNEL.OVERT, args[1], [], path.node);
+          push("xhr", OVERTNESS.OVERT, args[1], [], path.node);
         } else {
-          push("window-open", CHANNEL.COVERT, args[0], [], path.node);
+          push("window-open", OVERTNESS.COVERT, args[0], [], path.node);
         }
       } else if (
         (prop === "assign" || prop === "replace") &&
         isLocation(callee.object)
       ) {
-        push("navigation", CHANNEL.COVERT, args[0], [], path.node);
+        push("navigation", OVERTNESS.COVERT, args[0], [], path.node);
       } else if (prop === "setAttribute" && isUrlAttr(args[0])) {
-        push("set-attribute", CHANNEL.COVERT, args[1], [], path.node);
+        push("set-attribute", OVERTNESS.COVERT, args[1], [], path.node);
       } else if (
         prop === "setAttribute" &&
         isActionAttr(args[0]) &&
@@ -185,7 +185,7 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
         // that bypasses fetch/XHR). Destination = the recorded action.
         push(
           "form-submit",
-          CHANNEL.OVERT,
+          OVERTNESS.OVERT,
           formActions.get(callee.object.name),
           [],
           path.node
@@ -196,9 +196,9 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
       const name = calleeName(path.node.callee);
       const url = path.node.arguments[0];
       if (name === "WebSocket") {
-        push("websocket", CHANNEL.OVERT, url, [], path.node);
+        push("websocket", OVERTNESS.OVERT, url, [], path.node);
       } else if (name === "EventSource") {
-        push("eventsource", CHANNEL.OVERT, url, [], path.node);
+        push("eventsource", OVERTNESS.OVERT, url, [], path.node);
       }
     },
     AssignmentExpression(path) {
@@ -213,9 +213,9 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
           prop === "href" && isLocation(left.object)
             ? "navigation"
             : "element-src";
-        push(type, CHANNEL.COVERT, right, [], path.node);
+        push(type, OVERTNESS.COVERT, right, [], path.node);
       } else if (STYLE_URL_PROPS.has(prop)) {
-        push("style-url", CHANNEL.COVERT, right, [], path.node);
+        push("style-url", OVERTNESS.COVERT, right, [], path.node);
       } else if (prop === "action" && isFormVar(left.object)) {
         formActions.set(left.object.name, right); // record the form action
       }

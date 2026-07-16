@@ -1,6 +1,6 @@
 // The home for the codebase's guarded enums. `guarded` is the single home for the
 // "guarded singleton" policy; `makeEnum` builds a whole enum from it; each enum the
-// review needs is declared and exported here (VERDICT, URL_CLASS, CHANNEL, REF_KIND,
+// review needs is declared and exported here (VERDICT, URL_CLASS, OVERTNESS, REF_KIND,
 // REVIEW_MODE).
 //
 // Belongs here: the guard primitive, the enum factory, and the enums themselves.
@@ -112,17 +112,17 @@ export const URL_CLASS = makeEnum(
   "url_class"
 );
 
-/** @typedef {{overt: boolean, covert: boolean}} Channel  An opaque guarded
+/** @typedef {{overt: boolean, covert: boolean}} Overtness  An opaque guarded
  *   singleton; only its two LOWERCASE booleans are readable (any other access
- *   throws). Compare by reference (c === CHANNEL.OVERT) or boolean (c.overt). */
+ *   throws). Compare by reference (c === OVERTNESS.OVERT) or boolean (c.overt). */
 
 /**
  * How a network sink sends data (src/parse/network-sinks.js): OVERT (a transmission
  * API like fetch/XHR/sendBeacon) or COVERT (a resource load that can disguise data
  * as a URL).
- * @type {{OVERT: Channel, COVERT: Channel}}
+ * @type {{OVERT: Overtness, COVERT: Overtness}}
  */
-export const CHANNEL = makeEnum(["overt", "covert"], "channel");
+export const OVERTNESS = makeEnum(["overt", "covert"], "overtness");
 
 /** @typedef {{script: boolean, css: boolean, content: boolean, resource: boolean,
  *   import: boolean, url: boolean}} RefKind  An opaque guarded singleton; only its

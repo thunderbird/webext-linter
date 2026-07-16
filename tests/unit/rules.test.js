@@ -26,7 +26,7 @@ import obfuscatedCode from "../../src/checks/rules/obfuscated-code.js";
 import {
   VERDICT,
   URL_CLASS,
-  CHANNEL,
+  OVERTNESS,
   REVIEW_MODE,
 } from "../../src/lib/enum.js";
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
@@ -3430,11 +3430,11 @@ test("scanNetworkSinks classifies channel, destination, appended data", () => {
   const one = (code) => scanNetworkSinks(code).hits[0];
   const img = one('img.src = "https://x/?d=" + v;');
   assert.equal(img.type, "element-src");
-  assert.equal(img.channel, CHANNEL.COVERT);
+  assert.equal(img.channel, OVERTNESS.COVERT);
   assert.equal(img.destClass, URL_CLASS.REMOTE);
   assert.equal(img.dataAppended, true);
   const beacon = one('navigator.sendBeacon("https://x", d);');
-  assert.equal(beacon.channel, CHANNEL.OVERT);
+  assert.equal(beacon.channel, OVERTNESS.OVERT);
   assert.equal(beacon.destClass, URL_CLASS.REMOTE);
   assert.equal(
     one("fetch(u, { body: messenger.messages.getFull(id) });").carriesData,
