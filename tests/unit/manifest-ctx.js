@@ -59,6 +59,19 @@ function liftManifest(addon) {
 }
 
 /**
+ * A single-artifact siblings map for a hand-built ctx: every input routes to the one ctx,
+ * mirroring production's routing when a review has one artifact (in an XPI review the
+ * source and xpi siblings are the same ctx). runChecks reads its review-level state
+ * (recheck / recheckVerdicts / the base feed note) off siblings.source, so a test that
+ * inspects ctx.recheck after a run still observes it.
+ * @param {object} ctx
+ * @returns {Record<string, object>}
+ */
+export function siblingsOf(ctx) {
+  return { source: ctx, xpi: ctx, build: ctx, manifest: ctx };
+}
+
+/**
  * @param {object} ctx
  * @returns {object} the same ctx, with manifest/manifestError/manifestLoc/manifestText.
  */

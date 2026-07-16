@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { withManifest, parsed } from "./manifest-ctx.js";
+import { withManifest, parsed, siblingsOf } from "./manifest-ctx.js";
 import { createLlmClient } from "../../src/checks/llm-client.js";
 import { buildAddonSummarizer } from "../../src/checks/summaries.js";
 import {
@@ -217,13 +217,12 @@ async function driveExfil(reviewVerdict) {
     callReview,
   });
   const out = await runChecks(
-    ctx,
     registry,
     {
       only: ["data-exfiltration", "data-exfiltration-recheck"],
       recheckActive: true,
     },
-    {}
+    siblingsOf(ctx)
   );
   return { out, ctx, prompt: reviewCalls[0] };
 }

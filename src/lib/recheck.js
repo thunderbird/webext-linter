@@ -283,7 +283,7 @@ export function resolveRecheck(ctx, check) {
   const findings = [];
   const escalations = [];
   // Label the feed note by the corpus this consumer ACTS ON (its producer's), not the
-  // main ctx it runs on to read ctx.recheck - so a recheck's notes carry [XPI] when
+  // source ctx it runs on to read ctx.recheck - so a recheck's notes carry [XPI] when
   // they re-judge XPI-corpus items. check.labelInput is set at load; it falls back to
   // the note's bound input when absent.
   const labelInput = check.labelInput;

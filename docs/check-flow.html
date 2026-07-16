@@ -222,8 +222,8 @@ flowchart TB
     QL -- yes --> LLMC["ctx.llm = the verified LLM client"]
     QL -- no --> SIB
     LLMC --> SIB
-    SIB["build the sibling ctxs<br/>buildShippedCtx() · buildScaBuildCtx() · buildManifestCtx()"] --> SIBQ{{"in SCA: were the shipped XPI's<br/>sources parsed?"}}
-    SIBQ -- yes --> SIBS["siblings = { xpi, build, manifest }"]
+    SIB["assemble the siblings map<br/>source = the review-target ctx (buildRunContext, above)<br/>xpi · build · manifest derived from it:<br/>buildShippedCtx() · buildScaBuildCtx() · buildManifestCtx()"] --> SIBQ{{"in SCA: were the shipped XPI's<br/>sources parsed?"}}
+    SIBQ -- yes --> SIBS["siblings = { source, xpi, build, manifest }"]
     SIBQ -- no --> P4F
   end
 
@@ -538,9 +538,14 @@ flowchart LR
         an
         <code>input</code>, and <code>routeCtx</code> - the single place routing
         is decided, shared by the main loop and the deferred loop so they can
-        never drift - hands it the <code>ctx</code> for that <code>input</code>.
-        It reads exactly one artifact and cannot reach another's. What the
-        <code>input</code> resolves to depends on the review mode:
+        never drift - hands it the sibling ctx for that <code>input</code>.
+        Routing is <strong>total</strong>: <code>source</code> is a first-class
+        sibling like the rest, there is no default artifact to fall through to,
+        and a declared <code>input</code> with no sibling (a stray
+        <code>input: build</code> in an XPI review) throws rather than silently
+        running on the wrong corpus. A check reads exactly one artifact and
+        cannot reach another's. What the <code>input</code> resolves to depends
+        on the review mode:
       </p>
       <table class="phases">
         <thead>
@@ -553,13 +558,13 @@ flowchart LR
         <tbody>
           <tr>
             <td><code>source</code></td>
-            <td>the readable source (<code>ctx.addon</code>)</td>
-            <td>the built add-on (<code>ctx.addon</code>)</td>
+            <td>the readable source (<code>siblings.source</code>)</td>
+            <td>the built add-on (<code>siblings.source</code>)</td>
           </tr>
           <tr>
             <td><code>xpi</code></td>
             <td>the built XPI (<code>siblings.xpi</code>)</td>
-            <td>the built add-on (<code>ctx.addon</code>)</td>
+            <td>the built add-on (<code>siblings.xpi</code>)</td>
           </tr>
           <tr>
             <td><code>build</code></td>
@@ -574,13 +579,14 @@ flowchart LR
         </tbody>
       </table>
       <p>
-        In an XPI review there is one artifact, so <code>source</code> and
-        <code>xpi</code> both collapse onto <code>ctx</code>. The
-        <strong>one exception</strong> to the table is a
+        In an XPI review there is one artifact, so <code>siblings.source</code>
+        and <code>siblings.xpi</code> are the same ctx. The
+        <strong>one input-less case</strong> is a
         <strong>post-summary recheck consumer</strong>: the loader forbids it an
-        <code>input</code>, so <code>routeCtx</code> leaves it on the main ctx -
-        it needs <code>ctx.recheck</code> / <code>ctx.recheckVerdicts</code> -
-        even though the items it re-judges belong to its
+        <code>input</code>, so <code>routeCtx</code> routes it to
+        <code>siblings.source</code> - it needs the review-level
+        <code>ctx.recheck</code> / <code>ctx.recheckVerdicts</code> that live
+        there - even though the items it re-judges belong to its
         <em>producer&rsquo;s</em> artifact. Each handed item already carries
         every locus it needs (the producer stamps them before diverting), so the
         consumer reads no other artifact. The producer corpus is still recovered
@@ -667,7 +673,7 @@ flowchart LR
 title: runChecks()
 ---
 flowchart TB
-  IN(["called by runPipeline() · Phase 5 with<br/>ctx · registry · opts (only · skip · eslint · budget · recheckActive) · siblings"]) --> LC["loadChecks()<br/>one list per phase section · the --eslint gate drops code-sanity before import (eslintEligible)"]
+  IN(["called by runPipeline() · Phase 5 with<br/>registry · opts (only · skip · eslint · budget · recheckActive) · siblings"]) --> LC["loadChecks()<br/>one list per phase section · the --eslint gate drops code-sanity before import (eslintEligible)"]
   LC --> GATE["select each phase's eligible checks<br/>diff gate reads ctx.previous · sca gate reads ctx.mode"]
   GATE --> QIE{{"ctx.invalidExperiment?"}}
 
@@ -741,7 +747,7 @@ flowchart TB
 
   HEAD{{"more checks<br/>in the list?"}}
   HEAD -- no --> DONE(["return<br/>findings · manualItems · ctx.recheck"])
-  HEAD -- "yes · next check [i/total]" --> ROUTE["routeCtx(check, ctx, siblings)<br/>the ctx for the check's declared input"]
+  HEAD -- "yes · next check [i/total]" --> ROUTE["routeCtx(check, siblings)<br/>the sibling ctx for the check's declared input"]
 
   ROUTE --> RUN["runOneCheck(checkCtx, check) → check.run()"]
   RUN -. throws .-> CF["one check-failed finding"]

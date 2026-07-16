@@ -1,6 +1,11 @@
 // Unit tests for the new deterministic rule modules and the yaml-driven loader.
 
-import { withManifest, parsedSources, parsed } from "./manifest-ctx.js";
+import {
+  withManifest,
+  parsedSources,
+  parsed,
+  siblingsOf,
+} from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -725,7 +730,7 @@ test("checks carry the sca mode tag (false=XPI-only, true=SCA-only, undefined=bo
 test("every non-recheck check declares a valid input (rechecks declare none); the input:xpi set is exactly the pinned structure checks", async () => {
   const byPhase = await loadChecks(loadRegistry());
   const checks = allChecks(byPhase);
-  // A post-summary-phase consumer declares NO input - it runs on the main ctx and is
+  // A post-summary-phase consumer declares NO input - it routes to siblings.source and is
   // labelled by its producer's corpus (see labelInputFor). Its input is undefined.
   const rechecks = new Set(byPhase.get("post-summary"));
   for (const c of rechecks) {
@@ -988,10 +993,11 @@ test("SCA diverts a source-anchored recheck to the summary", async () => {
       summarize: async () => "",
     },
   });
-  const out = await runChecks(ctx, loadRegistry(), {
-    only: ["data-exfiltration"],
-    recheckActive: true,
-  });
+  const out = await runChecks(
+    loadRegistry(),
+    { only: ["data-exfiltration"], recheckActive: true },
+    siblingsOf(ctx)
+  );
   // Diverted to the summary (source corpus), not left in manual review.
   assert.ok(
     ctx.recheck?.get("data-exfiltration-recheck")?.length,
@@ -3249,8 +3255,9 @@ test("loadChecks rejects a check with no valid input", async () => {
 });
 
 // An `input: build` check reads the SCA-only build corpus, so it MUST be `sca: true` - else it
-// runs in an XPI review too, where the build sibling is undefined and routeCtx silently routes
-// it to the review target. The gate is the only guard, so loadChecks asserts it.
+// runs in an XPI review too, where the build sibling is undefined and routeCtx would THROW (no
+// build sibling there). loadChecks asserts the gate so the failure is a clear load-time config
+// error rather than a mid-review throw.
 test("loadChecks rejects an input:build check that is not sca:true", async () => {
   const tmp = path.join(
     os.tmpdir(),

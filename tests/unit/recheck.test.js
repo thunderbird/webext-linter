@@ -5,7 +5,7 @@
 // (only handed-over items can be touched), the summary-prompt composition, and the
 // orchestrator divert itself.
 
-import { withManifest, parsed } from "./manifest-ctx.js";
+import { withManifest, parsed, siblingsOf } from "./manifest-ctx.js";
 import { VERDICT } from "../../src/lib/enum.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -92,7 +92,7 @@ test("resolveRecheck maps each verdict to a finding, a drop, or a manual item", 
   assert.equal(c.loc.line, 6);
 });
 
-// A recheck consumer runs on the main ctx (input: source) but its items belong to its
+// A recheck consumer routes to siblings.source but its items belong to its
 // producer's corpus. Its feed notes must be labelled by that corpus (check.labelInput),
 // passed to ctx.note as the 5th arg - so an XPI-corpus recheck's notes read [XPI], not
 // [SCA]. Covers the pass path (item "a") and the no-verdict -> unsure path (item "b").
@@ -556,10 +556,11 @@ const producerCtx = () => {
 test("runChecks hands only permissions with a rubric prompt to the recheck; the rest stay manual", async () => {
   const registry = loadRegistry();
   const ctx = { ...producerCtx() };
-  const out = await runChecks(withManifest(ctx), registry, {
-    only: ["unused-permission"],
-    recheckActive: true,
-  });
+  const out = await runChecks(
+    registry,
+    { only: ["unused-permission"], recheckActive: true },
+    siblingsOf(withManifest(ctx))
+  );
   // "tabs" has a permission-prompt -> handed to the recheck consumer; "storage" has
   // none -> stays in manual review even though recheck is active.
   assert.deepEqual(
@@ -575,10 +576,11 @@ test("runChecks hands only permissions with a rubric prompt to the recheck; the 
 test("runChecks leaves a producer's manual items in manual review when inactive", async () => {
   const registry = loadRegistry();
   const ctx = { ...producerCtx() };
-  const out = await runChecks(withManifest(ctx), registry, {
-    only: ["unused-permission"],
-    recheckActive: false,
-  });
+  const out = await runChecks(
+    registry,
+    { only: ["unused-permission"], recheckActive: false },
+    siblingsOf(withManifest(ctx))
+  );
   assert.deepEqual(out.manualItems.map((m) => m.item).sort(), [
     "storage",
     "tabs",
@@ -642,7 +644,7 @@ test("the tab-kind injection permissions (activeTab, compose, messagesModify) ar
 });
 
 // The report/feed label is the corpus a check ACTS ON, not the ctx it runs on. A recheck
-// consumer runs on the main ctx (input: source) but acts on its producer's corpus, so
+// consumer routes to siblings.source but acts on its producer's corpus, so
 // checkInputs (the report's ruleInputs) must report that corpus - else an XPI-corpus
 // recheck mislabels its items [SCA]. Non-recheck checks keep their declared input.
 test("checkInputs labels a recheck consumer by the corpus it acts on, not its input", () => {
@@ -661,7 +663,7 @@ test("checkInputs labels a recheck consumer by the corpus it acts on, not its in
 });
 
 // The recheck consumers live in the post-summary-phase section - which IS their phase.
-// They declare NO input (they run on the main ctx and are labelled by their producer's
+// They declare NO input (they route to siblings.source and are labelled by their producer's
 // corpus), and load with phase "post-summary".
 test("post-summary-phase consumers are input-free and carry that phase", async () => {
   const reg = loadRegistry();
