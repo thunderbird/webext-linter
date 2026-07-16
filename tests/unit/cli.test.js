@@ -50,7 +50,7 @@ test("--help prints usage to stdout and exits 0", () => {
   assert.doesNotMatch(r.stdout, /node review\.js|node build\.js|node lint\.js/);
   assert.equal(r.stderr, "");
   // The run header opens the output, echoing the args (here --help).
-  assert.match(r.stdout, /> webext-linter@\d+\.\d+\.\d+ review/);
+  assert.match(r.stdout, /> (?:@[\w-]+\/)?webext-linter@\d+\.\d+\.\d+ review/);
   assert.match(r.stdout, /node verify\.js --help/);
 });
 

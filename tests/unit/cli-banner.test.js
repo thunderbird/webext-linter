@@ -9,7 +9,7 @@ import { runBanner } from "../../src/cli.js";
 test("runBanner mirrors the npm-run banner for review", () => {
   assert.match(
     runBanner([]),
-    /^> webext-linter@\d+\.\d+\.\d+ review\n> node verify\.js$/
+    /^> (?:@[\w-]+\/)?webext-linter@\d+\.\d+\.\d+ review\n> node verify\.js$/
   );
 });
 
