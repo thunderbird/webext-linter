@@ -164,7 +164,7 @@ const ctx = withManifest({
 test("createLlmClient assembles the documented prompt", async () => {
   let captured;
   const client = createLlmClient({
-    ctx,
+    reviewMeta: ctx,
     token: "test-token",
     systemIntro: loadRegistry().prompt("system-intro"),
     model: "test-model",

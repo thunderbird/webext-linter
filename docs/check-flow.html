@@ -166,7 +166,7 @@ flowchart TB
   subgraph P2 ["runPipeline() · Phase 2 - analyse the BUILT XPI (always) → xpiAddon.bundled + its parsed sources, then resolve the mode"]
     XV["resolveVendor(XPI) → verifyVendor()<br/>the committed copies (VENDOR.md)"] --> XC["classifyReview(XPI)<br/>classifyFiles + assembleBundled<br/>library hash · minified geometry · obfuscation · vendored<br/>→ xpiAddon.bundled"]
     XC --> XI["identifyBundledLibraries(XPI)<br/>applyNotPopularVendor() · resolveCdnLibraries() · auditIdentifiedLibraries()<br/>FINALIZES the authored / non-authored split - ADDS + REMOVES"]
-    XI --> XE["Parsing the built add-on → extractReview(XPI)<br/>content extraction + api-usage on the authored remainder<br/>parse each source ONCE, drop the AST<br/>→ xpiParsedSources (Phase 4 hands them to buildShippedCtx)"]
+    XI --> XE["Parsing the built add-on → extractReview(XPI)<br/>content extraction + api-usage on the authored remainder<br/>parse each source ONCE, drop the AST<br/>→ xpiParsedSources (Phase 4 hands them to buildXpiCtxs)"]
     XE --> MODEQ{{"resolveReviewMode(xpiAddon.bundled)<br/>--sca-root, and the XPI's OWN first-party<br/>code is minified / obfuscated?"}}
     MODEQ -- "no source archive -<br/>native XPI review" --> MX2["mode = xpi"]
     MODEQ -- "XPI reviewable -<br/>source adds nothing" --> DOWN["mode = xpi<br/>scaNotRequired = true"]
@@ -191,17 +191,20 @@ flowchart TB
   end
 
   MX2 --- HP1
-  HP1 --> ASSIGN
+  HP1 --> ENV
   DOWN --- HP2
-  HP2 --> ASSIGN
+  HP2 --> ENV
   SETINV --- HP3
-  HP3 --> INV
+  HP3 --> ENV
+  SB --> ENV
 
-  subgraph P4 ["runPipeline() · Phase 4 - assemble the siblings map"]
-    INV["buildRunContext(XPI) · invalidExperiment<br/>ctx.jsSources = [ ] · ctx.apiUsages = [ ]"] --> SIBS2["siblings = { source, xpi, build, manifest }<br/>all alias the single reject-only ctx"]
-    ASSIGN["review target = the built XPI<br/>(one artifact - no readable source)"] --> SIB
-    SB --> SIB
-    SIB["buildRunContext(review target) ONCE → the spine<br/>(ctx.llm iff llmVerified · ctx.previous ← --diff-to)<br/>xpi = buildShippedCtx(spine, xpiParsedSources) - a projection<br/>(XPI review: returns the spine, so xpi === source)<br/>build = buildScaBuildCtx() · manifest = buildManifestCtx()"] --> SIBS["siblings = { source, xpi, build, manifest }"]
+  subgraph P4 ["runPipeline() · Phase 4 - build the shared review env, then the sibling ctxs"]
+    ENV["build the review env ONCE - the singletons every sibling shares:<br/>nonce · previous ← --diff-to · the single LLM client<br/>createLlmClient(shipped manifest + nonce) iff llmVerified"] --> XB
+    XB["buildXpiCtxs(xpiAddon, xpiParsedSources, env) → { xpiCtx, manifestCtx }<br/>ALWAYS - xpiCtx is siblings.xpi; empty sources for a rejected Experiment"] --> SM{{"mode?"}}
+    SM -- sca --> SB2["buildScaCtxs(source, sourceSources, buildFiles, env)<br/>→ { scaCtx, buildCtx }"]
+    SB2 --> SIB
+    SM -- "xpi · invalidExperiment" --> SIB
+    SIB["siblings = { source: scaCtx (SCA) / xpiCtx (else),<br/>xpi: xpiCtx · build: buildCtx · manifest: manifestCtx }"] --> SIBS["siblings = { source, xpi, build, manifest }"]
   end
 
   subgraph P5 ["runPipeline() · Phase 5 - run the review, then render the findings"]
@@ -215,7 +218,6 @@ flowchart TB
   end
 
   SIBS --> RAQ
-  SIBS2 --> RAQ
 
   RFIND --> FMT
 
@@ -237,9 +239,9 @@ flowchart TB
   classDef producer fill:#fce4ec,stroke:#ad1457,color:#7a1338;
   classDef hidden fill:transparent,stroke:transparent,color:transparent;
   class HP1,HP2,HP3 hidden;
-  class LOAD,EXP,XNS,HASH,BLK,PRE,LSRC,SB,INV,SIB,META,RFIND setup;
+  class LOAD,EXP,XNS,HASH,BLK,PRE,LSRC,SB,ENV,XB,SB2,SIB,META,RFIND setup;
   class SCH,XV,XC,XI,XE,SV,SC,SI,SE producer;
-  class SETINV,LOK,MX2,DOWN,KEEP,ASSIGN,SIBS,SIBS2,RAT,RAF state;
+  class SETINV,LOK,MX2,DOWN,KEEP,SIBS,RAT,RAF state;
   class P1F,P3F,EXIT1 fail;
   class SUB,FMT,WRITE,SAVE orch;
   class EXIT0 pass;

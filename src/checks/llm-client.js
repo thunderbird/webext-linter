@@ -16,8 +16,9 @@
 // coercion - which lives in the provider adapters (src/llm/{anthropic,openai}.js
 // + schema.js), selected by src/llm/provider.js. The system intro and criterion
 // text - the registry owns those (the caller passes them in). Deciding what a
-// verdict means - src/checks/escalation.js. Attaching the client to ctx -
-// src/checks/context.js.
+// verdict means - src/checks/escalation.js. Building the client and threading it
+// onto each sibling ctx - the pipeline (src/pipeline.js) builds it once from the
+// review metadata and hands it to the ctx builders (src/checks/context.js).
 
 import { getProvider, defaultModelFor } from "../llm/provider.js";
 import { MAX_FILES_PER_BATCH } from "../config.js";
@@ -48,7 +49,6 @@ const reviewForLog = (result) => ({
   })),
 });
 
-/** @typedef {import("./registry.js").RunContext} RunContext */
 /** @typedef {import("../llm/schema.js").LlmResult} LlmResult */
 
 /**
@@ -56,7 +56,11 @@ const reviewForLog = (result) => ({
  * and reused across `evaluate()` calls, so the large add-on block is a cached
  * prefix billed cheaply after the first call.
  * @param {object} opts
- * @param {RunContext} opts.ctx  The shared check context (add-on metadata).
+ * @param {{manifest: ?object, manifestText: string, __nonce?: string}} opts.reviewMeta
+ *   Review-level metadata ONLY: the SHIPPED manifest (for the add-on-context header) and the
+ *   per-review nonce that delimits untrusted content. NOT a run ctx - the client is
+ *   artifact-agnostic (the add-on a call reads is the one passed to evaluate/systemFor), so it
+ *   is built once for the whole review, before any sibling ctx exists.
  * @param {string} opts.token  LLM API token.
  * @param {string} opts.systemIntro  The reviewer role prompt (registry-owned,
  *   resolved by the caller from prompts.system-intro) - the first system block.
@@ -77,7 +81,7 @@ const reviewForLog = (result) => ({
  *     Promise<import("../llm/schema.js").AddonReview>}}
  */
 export function createLlmClient({
-  ctx,
+  reviewMeta,
   token,
   systemIntro,
   type,
@@ -99,7 +103,7 @@ export function createLlmClient({
   const review = callReview ?? provider.callReview;
   // The per-review nonce delimits untrusted add-on content; the framing tells the
   // model that marked content is data, never instructions (see lib/untrusted.js).
-  const nonce = nonceFor(ctx);
+  const nonce = nonceFor(reviewMeta);
   // The intro + framing block is artifact-independent. The add-on context (the file
   // inventory) describes ONE artifact, so it is built for whichever add-on the
   // orchestrator adjudicates a check against - the review target for `input: source`
@@ -118,7 +122,12 @@ export function createLlmClient({
         introBlock,
         {
           type: "text",
-          text: buildAddonContext(addon, ctx.manifest, ctx.manifestText, nonce),
+          text: buildAddonContext(
+            addon,
+            reviewMeta.manifest,
+            reviewMeta.manifestText,
+            nonce
+          ),
           cache_control: { type: "ephemeral" },
         },
       ];

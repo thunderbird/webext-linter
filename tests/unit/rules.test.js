@@ -750,7 +750,7 @@ test("every non-recheck check declares a valid input (rechecks declare none); th
     );
   }
   // input: manifest reads the shipped manifest ONLY, on a ctx with no file corpus
-  // (buildManifestCtx). The pure-manifest checks; extending this set is deliberate too.
+  // (buildXpiCtxs' manifestCtx). The pure-manifest checks; extending this set is deliberate too.
   const manifest = checks
     .filter((c) => c.input === "manifest")
     .map((c) => c.id)

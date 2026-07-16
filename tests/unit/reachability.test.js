@@ -244,7 +244,7 @@ test("SCA mode: pureWebExtensionReachable is all source, minus --sca-exp-source"
 // SCA: the reachable / webReachable / isLive views (what minimize-WAR and
 // bundled-files read) describe whatever ctx.addon is. Those checks are `input: xpi`,
 // so the orchestrator routes them to a context whose addon is the built XPI
-// (buildShippedCtx); over it a resource the XPI's own content script loads is
+// (buildXpiCtxs' xpiCtx); over it a resource the XPI's own content script loads is
 // web-reachable even when the source's pre-build layout would not show it.
 test("SCA: reachability over the built XPI describes the XPI", () => {
   const xpiManifest = {

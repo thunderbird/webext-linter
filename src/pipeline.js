@@ -42,12 +42,9 @@ import {
 } from "./addon/load.js";
 import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
-import {
-  buildRunContext,
-  buildShippedCtx,
-  buildScaBuildCtx,
-  buildManifestCtx,
-} from "./checks/context.js";
+import { buildXpiCtxs, buildScaCtxs } from "./checks/context.js";
+import { createLlmClient } from "./checks/llm-client.js";
+import { newNonce } from "./lib/untrusted.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
 import { headerLines } from "./report/format.js";
 import { resolveVendor } from "./vendor/resolve.js";
@@ -109,7 +106,7 @@ import { DEFAULT_CACHE } from "./config.js";
  *   dependencies are audited; the positional XPI is the shipped artifact against which
  *   the manifest, experiments, file-completeness (`input: xpi`) checks, the --diff-to
  *   comparison, and the packaging summary all run (a separate shipped context the
- *   orchestrator routes them to - see buildShippedCtx in src/checks/context.js). The
+ *   orchestrator routes them to - see buildXpiCtxs in src/checks/context.js). The
  *   behavioral --llm-review reviews the readable source instead.
  * @property {string} [scaSource]  The add-on code root, relative to scaRoot or an
  *   absolute path (e.g. "src" or "addon"). Optional; defaults to "." (the whole scaRoot
@@ -349,13 +346,13 @@ export async function runPipeline(opts) {
   // The known-library hash DB the bundled classifier matches files against. An empty Map
   // recognizes nothing.
   let libraryHashes = new Map();
-  // The parse-first REVIEW-TARGET sources handed to buildRunContext (Phase 4), which never
+  // The parse-first REVIEW-TARGET sources handed to the ctx builders (Phase 4), which never
   // parses for itself. In an XPI review the review target IS the built XPI, so these ARE
   // xpiParsedSources (below); in SCA they are the readable source's, parsed in Phase 3. Stays
   // unset for a rejected Experiment (its one check reads no code - an empty ctx.jsSources).
   let preParsedJsSources;
   // The BUILT XPI's sources, from the FULL extractReview run on it in Phase 2 (always, unless a
-  // rejected Experiment). buildShippedCtx (Phase 4) hands them to the input:xpi checks, so the
+  // rejected Experiment). buildXpiCtxs (Phase 4) hands them to the input:xpi checks, so the
   // shipped ctx is built ONE way regardless of mode; in an XPI review they ALSO ARE
   // preParsedJsSources (the XPI is the review target).
   let xpiParsedSources;
@@ -595,7 +592,7 @@ export async function runPipeline(opts) {
         setupStep,
       });
       // 1h. The BUILD files (archive minus the review source + Experiment source) - the build
-      // scripts/config the review otherwise drops. buildScaBuildCtx wraps these as the
+      // scripts/config the review otherwise drops. buildScaCtxs wraps these as the
       // input:build check's ctx.addon; they never merge into the review addon.
       addon.buildFiles = selectScaBuildFiles(
         scaArchive,
@@ -628,81 +625,76 @@ export async function runPipeline(opts) {
   // 2. Schema review. runChecks (called inline below, Phase 5) also generates the advisory
   // AI summaries at the tail of the activity feed (the add-on summary's recheck verdicts feed
   // the post-summary recheck consumers, which run there too).
-  // Phase 4: build the RunContext the checks read - the last step of setup. The checks
-  // layer assembles its own context (sources, API usage, diff baseline, LLM client); the
-  // pipeline only resolves the inputs. Its sibling contexts are built here too, so every
-  // artifact a check may be routed to exists before the first check runs.
-  //
-  // Nothing is parsed here: a reviewable add-on had its sources parsed in Phase 3 and hands
-  // them over as preParsedJsSources, and a rejected Experiment parses none at all - its one
-  // check reads no code.
-  const sourceCtx = buildRunContext({
-    addon,
-    // The built XPI - authoritative for the manifest (ctx.manifest). xpiAddon === addon
-    // in XPI mode; in SCA it is the shipped artifact while addon is the readable source.
-    xpiAddon,
-    schema,
-    // Only what a check reads. The LLM credentials go as params (below), not on the
-    // check-facing options - the secret token must not sit on ctx.options.
-    options: {
-      allowExperiments: opts.allowExperiments,
-      libraryHashes,
-    },
-    diffTo: opts.diffTo,
-    llmModel: opts.llmModel,
-    llmApiKey: opts.llmApiKey,
-    llmApiType: opts.llmApiType,
-    llmApiUrl: opts.llmApiUrl,
-    llmTransport: opts.llmTransport,
-    systemIntro: registry.prompt("system-intro"),
-    // Phase 1's verdict on whether this run may call the model. The SOLE gate on attaching
-    // ctx.llm - buildRunContext does not re-ask --llm-review, and does not consult
-    // invalidExperiment for it.
-    llmVerified,
-    invalidExperiment,
-    mode,
-    // SCA: the Experiment folder as a source-relative path (runPipeline re-based it
-    // from the scaRoot-relative --sca-exp-source flag), excluded from the WebExtension
-    // code checks. Undefined in XPI mode.
-    scaExpSource,
-    // A submitted SCA was downgraded to this XPI review because the shipped XPI is
-    // directly reviewable; the sca-not-required check reads this to report it.
-    scaNotRequired,
-    budget: llmBudget,
-    // Phase 3 parsed the review sources (parse-first); buildRunContext assembles from them
-    // and never parses. Absent for a rejected Experiment, whose one check reads no code, so
-    // it gets an empty ctx.jsSources.
-    preParsedJsSources,
-  });
-
-  // The orchestrator holds the sibling contexts, gathered into `siblings` and keyed by
-  // input value: sourceCtx (the review target - the readable source in SCA, the XPI in an
-  // XPI review), shippedCtx (the built XPI - the `input: xpi` checks resolve declared paths
-  // against it, the diff + packaging summaries describe it), buildCtx (the SCA build files),
-  // and manifestCtx (the shipped manifest, no file corpus). Each check is routed to exactly
-  // one by its `input` (see routeCtx); a check cannot derive one from another, so it only
-  // ever sees the artifact it was routed to. In an XPI review shippedCtx IS sourceCtx
-  // (buildShippedCtx returns the review target unchanged when the XPI is that target).
-  const shippedCtx = buildShippedCtx(sourceCtx, xpiAddon, xpiParsedSources);
-  // SCA: a sibling context whose addon is the build files (the archive minus the
-  // review source minus node_modules), so the `input: build` check
-  // (undeclared-build-source) reads them off ctx.addon via the same one-place
-  // `input` routing - no separate ctx field. Undefined in XPI mode, where no such check
-  // runs. `mode?.sca` implies Phase 3 ran (a rejected Experiment is pinned to xpi),
-  // so addon.buildFiles is always loaded by here.
-  const buildCtx = mode?.sca
-    ? buildScaBuildCtx(sourceCtx, addon.buildFiles)
+  // Phase 4: build the sibling RunContexts the checks read - the last step of setup. The
+  // review-level singletons are built ONCE here and shared by every sibling ctx, so they can
+  // never drift between artifacts or double-cost: the --diff-to baseline (loaded once), the
+  // untrusted-content nonce, and the single LLM client. createLlmClient needs only the SHIPPED
+  // manifest + that nonce (both review-level), so it is built here - before any ctx - and handed
+  // to both ctx builders. Nothing is parsed here: Phase 2/3 parsed each artifact's sources.
+  const nonce = newNonce();
+  const previous = opts.diffTo ? loadAddon(opts.diffTo) : null;
+  // Phase 1's verdict (llmVerified: --llm-review asked, config proven, not a rejected Experiment)
+  // is the SOLE gate on the client - this does not re-ask it. The secret token stays in this
+  // scope; only the built client reaches the check-facing ctx, never the credentials.
+  const llm = llmVerified
+    ? createLlmClient({
+        reviewMeta: {
+          manifest: xpiAddon.manifest ?? null,
+          manifestText: xpiAddon.manifestText ?? "",
+          __nonce: nonce,
+        },
+        token: opts.llmApiKey,
+        systemIntro: registry.prompt("system-intro"),
+        type: opts.llmApiType,
+        model: opts.llmModel,
+        url: opts.llmApiUrl,
+        budget: llmBudget,
+        // Injectable transports (else the provider's own): undefined in production, deterministic
+        // fakes under the offline test harness.
+        callVerdicts: opts.llmTransport?.callVerdicts,
+        callText: opts.llmTransport?.callText,
+        callReview: opts.llmTransport?.callReview,
+      })
     : undefined;
-  // A sibling context with NO file corpus (empty ctx.addon.files), for `input: manifest`
-  // checks - they read only the shipped manifest (on ctx.manifest), so there is no
-  // artifact's files for them to reach. Both modes (the manifest exists in each).
-  const manifestCtx = buildManifestCtx(sourceCtx);
-  // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). Routing
-  // is total: `source` is a first-class sibling like the rest, so an `input: source` check
-  // resolves to siblings.source with no default artifact to fall back to.
+  // The shared review env every sibling ctx projects (buildXpiCtxs / buildScaCtxs). The
+  // manifest/experiments are the SHIPPED artifact's - authoritative like the schema, so no
+  // artifact's own template can shadow them. Only what a check reads goes on `options` (the LLM
+  // credentials are deliberately absent - the secret token must not sit on the check-facing ctx).
+  const env = {
+    schema,
+    options: { allowExperiments: opts.allowExperiments, libraryHashes },
+    mode,
+    scaExpSource,
+    scaNotRequired,
+    invalidExperiment,
+    manifest: xpiAddon.manifest ?? null,
+    manifestError: xpiAddon.manifestError ?? null,
+    manifestLoc: xpiAddon.manifestLoc ?? null,
+    manifestText: xpiAddon.manifestText ?? "",
+    experiments: xpiAddon.experiments ?? null,
+    previous,
+    llm,
+    nonce,
+  };
+
+  // From the ALWAYS-analysed built XPI: the shipped ctx (siblings.xpi - the input:xpi structure
+  // checks, the diff + packaging summaries) and the manifest ctx (input:manifest checks, an empty
+  // corpus carrying only the shipped manifest).
+  const { xpiCtx, manifestCtx } = buildXpiCtxs(xpiAddon, xpiParsedSources, env);
+  // SCA only: from the readable-source analysis, the source ctx (the review target the code
+  // checks analyse) and the SCA build corpus ctx (undeclared-build-source). `mode?.sca` implies
+  // Phase 3 ran, so addon.buildFiles is loaded; both are undefined in an XPI review (no source).
+  const { scaCtx, buildCtx } = mode?.sca
+    ? buildScaCtxs(addon, preParsedJsSources, addon.buildFiles, env)
+    : {};
+  // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). Routing is
+  // total: `source` is a first-class sibling. siblings.source is the REVIEW TARGET - the readable
+  // source in SCA, else the built XPI (xpiCtx doubles as both siblings.xpi and siblings.source in
+  // an XPI review). The orchestrator reads every review-level datum (recheck, the base feed note)
+  // off siblings.source; a check routed to one sibling can never reach another's artifact.
   const siblings = {
-    source: sourceCtx,
-    xpi: shippedCtx,
+    source: mode?.sca ? scaCtx : xpiCtx,
+    xpi: xpiCtx,
     build: buildCtx,
     manifest: manifestCtx,
   };
@@ -729,7 +721,7 @@ export async function runPipeline(opts) {
       budget: llmBudget,
       // Whether the add-on summary will run to re-judge post-summary-recheck items:
       // the summary runs only with an LLM client attached.
-      recheckActive: Boolean(sourceCtx.llm),
+      recheckActive: Boolean(llm),
     },
     siblings
   );
@@ -744,10 +736,10 @@ export async function runPipeline(opts) {
     schemaSource,
     schemaBranch,
     schemaChannel,
-    applicationVersion: sourceCtx.schema.applicationVersion,
-    manifestVersion: sourceCtx.manifest?.manifest_version ?? null,
+    applicationVersion: schema.applicationVersion,
+    manifestVersion: xpiAddon.manifest?.manifest_version ?? null,
     checksRun: checksRun.map((c) => c.id),
-    llmReviewed: Boolean(sourceCtx.llm),
+    llmReviewed: Boolean(llm),
     manualReview: invalidExperiment
       ? []
       : [
@@ -756,7 +748,7 @@ export async function runPipeline(opts) {
             extended: true,
           })),
           ...registry
-            .manualChecks(Boolean(sourceCtx.previous))
+            .manualChecks(Boolean(previous))
             .map((m) => ({ ...m, extended: false })),
         ],
   });

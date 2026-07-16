@@ -1,5 +1,5 @@
 // Test helper: the checks read the SHIPPED manifest from ctx.manifest (+ siblings),
-// resolved by buildRunContext in production. Unit tests build a ctx inline with a
+// resolved by the ctx builders (buildXpiCtxs) in production. Unit tests build a ctx inline with a
 // single artifact, so this derives those fields from ctx.addon (mutating and
 // returning the SAME ctx, so tests that inspect the ctx after a run still observe it).
 
@@ -90,7 +90,7 @@ export function withManifest(ctx) {
     liftManifest(ctx.previous);
   }
   // Other shipped-authoritative fields the pipeline attaches to the review addon and
-  // buildRunContext hoists onto ctx: the Experiment classification and the summary's
+  // the ctx builders hoist onto ctx: the Experiment classification and the summary's
   // recheck verdicts. Mirror that hoist here for a hand-built ctx (don't clobber a
   // value a test set directly on ctx).
   if (ctx.experiments === undefined) {

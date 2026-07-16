@@ -67,7 +67,7 @@ that no longer exist.
    context → Phase 5 one `runChecks()` call, then render the report) and the
    `mode === "sca"` forks (the source /
    dependency / build / shipped-XPI / shipped-manifest split, routed via `routeCtx`
-   through `buildShippedCtx` / `buildScaBuildCtx` / `buildManifestCtx`).
+   over the sibling ctxs built by `buildXpiCtxs` / `buildScaCtxs`).
 5. `src/checks/registry.js` — the orchestrator (`runChecks`), which runs the whole
    review inside that single Phase-5 call: the deterministic and llm phases in its
    main loop, then the add-on-summary interleave (`resolveRecheckSummaries`, in

@@ -77,7 +77,7 @@ async function drive(raw) {
   const registry = loadRegistry();
   const fake = fakeReviewTransport(raw);
   ctx.llm = createLlmClient({
-    ctx,
+    reviewMeta: ctx,
     token: "t",
     systemIntro: "intro",
     callReview: fake.callReview,
@@ -210,7 +210,7 @@ async function driveExfil(reviewVerdict) {
     return fake.callReview(p);
   };
   ctx.llm = createLlmClient({
-    ctx,
+    reviewMeta: ctx,
     token: "t",
     systemIntro: "intro",
     callVerdicts: fake.callVerdicts,

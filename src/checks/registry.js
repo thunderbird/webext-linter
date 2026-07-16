@@ -71,12 +71,12 @@ const VALID_CHECK_SEVERITIES = new Set([...CONCRETE_SEVERITIES, AUTO_SEVERITY]);
 // there); "xpi" = ALWAYS the built XPI (the shipped artifact), for the structure checks
 // that describe what ships; "build" = the SCA build files (the archive minus the review
 // source minus node_modules), for the build review; "manifest" = the shipped manifest
-// ONLY, on a ctx with an EMPTY file corpus (buildManifestCtx), for pure-manifest checks
+// ONLY, on a ctx with an EMPTY file corpus (buildXpiCtxs' manifestCtx), for pure-manifest checks
 // that read ctx.manifest and no files. Required on every check EXCEPT a
 // post-summary-recheck (which declares no input - it routes to siblings.source and is
 // labelled by its producer's corpus): runChecks routes each check to its artifact's
 // context, so the check reads one artifact and has no way to reach another (see
-// buildShippedCtx / buildScaBuildCtx / buildManifestCtx).
+// buildXpiCtxs / buildScaCtxs).
 const VALID_CHECK_INPUTS = new Set(["source", "xpi", "build", "manifest"]);
 
 // The check-bearing yaml sections ARE the phases: a check's phase IS the section it
@@ -117,9 +117,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   (the readable --sca-source in an SCA review, the built XPI in an XPI review); "xpi" = always
  *   the built XPI (the shipped artifact), for the structure checks that describe what ships;
  *   "build" = the SCA build files, for the build review; "manifest" = the shipped manifest only,
- *   on a ctx with an empty file corpus (buildManifestCtx), for pure-manifest checks. Required for
- *   a normal check - runChecks routes it to that artifact's context (see buildShippedCtx /
- *   buildScaBuildCtx / buildManifestCtx). ABSENT for a post-summary-recheck, which always
+ *   on a ctx with an empty file corpus (buildXpiCtxs' manifestCtx), for pure-manifest checks. Required for
+ *   a normal check - runChecks routes it to that artifact's context (see buildXpiCtxs /
+ *   buildScaCtxs). ABSENT for a post-summary-recheck, which always
  *   routes to siblings.source and is labelled by labelInput.
  * @property {"source"|"xpi"|"build"|"manifest"} labelInput  The artifact this check's OUTPUT is
  *   labelled as ([XPI]/[SCA]) - the corpus it acts on. Equals `input` for a normal check;
@@ -175,9 +175,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *
  *   The SHIPPED artifact (the built XPI) is deliberately NOT a ctx field: a check
  *   has no way to reach the artifact it was not routed to. The orchestrator builds a
- *   separate shipped context (buildShippedCtx, src/checks/context.js) and routes each
+ *   separate shipped context (buildXpiCtxs, src/checks/context.js) and routes each
  *   `input: xpi` check to it - see runChecks / runOneCheck.
- * @property {boolean} [isShippedView]  Set by buildShippedCtx on the shipped
+ * @property {boolean} [isShippedView]  Set by buildXpiCtxs on the shipped
  *   context (never the review target). buildReachability reads it so the SCA
  *   "all readable-source files" pureWebExtensionReachable fallback applies only to
  *   the review source, not the built XPI (whose entry points resolve).
@@ -187,7 +187,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   WebExtension code checks skip privileged Experiment code.
  * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
  *   --allow-experiments is off: the review short-circuits to the reject check
- *   only, with no LLM (see runChecks and buildRunContext).
+ *   only, with no LLM (see runChecks and buildXpiCtxs).
  * @property {boolean} [scaNotRequired]  A submitted SCA (--sca-root) was downgraded to
  *   this plain XPI review because the shipped XPI is directly reviewable; the
  *   sca-not-required check reads this to report the redundant source submission.
@@ -897,7 +897,7 @@ function eslintEligible(entry, inEslintMode) {
  *     manifest     | siblings.manifest                | siblings.manifest
  *
  * In an XPI review there is a single artifact, so siblings.source and siblings.xpi are the
- * SAME ctx (buildShippedCtx returns the review target unchanged). The ONE input-less case is
+ * SAME ctx (the pipeline aliases siblings.source to xpiCtx). The ONE input-less case is
  * a post-summary recheck CONSUMER: the loader forbids it an `input`, and it routes to
  * siblings.source to read the review-level ctx.recheck / ctx.recheckVerdicts - while the
  * items it re-judges belong to its PRODUCER's artifact. That producer corpus is recovered
@@ -964,7 +964,7 @@ export function ctxForRule(registry, ruleId, siblings) {
  *   `only`/`skip`/`eslint` thread to loadChecks (the `--eslint` opt-in gates code-sanity);
  *   `budget` is the run-wide LLM request cap, threaded to the add-on-summary interleave;
  *   `recheckActive` is whether the add-on summary will run to re-judge post-summary-recheck
- *   items (the pipeline passes `Boolean(sourceCtx.llm)`).
+ *   items (the pipeline passes `Boolean(llm)` - true iff a verified client was built).
  * @param {Record<string, RunContext>} siblings  The artifact contexts, keyed by the `input`
  *   that routes to each: `source` = the review target (readable source in SCA, the XPI in an
  *   XPI review), `xpi` = the shipped XPI, `build` = the SCA build files, `manifest` = the

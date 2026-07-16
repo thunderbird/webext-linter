@@ -326,7 +326,7 @@ export function loadScaAddon(archive, scaSource, scaRoot) {
  * through as `nodeModules` for the committed-node-modules check. This is the tooling
  * that BUILDS the add-on - build scripts, bundler configs, Makefiles, package.json/lock,
  * READMEs - which the add-on review (loadScaAddon) deliberately drops. Keys keep their
- * real archive-relative paths (nothing is prefix-stripped). buildScaBuildCtx wraps these
+ * real archive-relative paths (nothing is prefix-stripped). buildScaCtxs wraps these
  * as the SCA-only `input: build` checks' ctx.addon, so its files never enter the review
  * addon that the other checks scan.
  *

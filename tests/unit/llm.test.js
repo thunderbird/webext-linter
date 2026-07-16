@@ -21,7 +21,7 @@ function clientWith(files, callVerdicts) {
   // The manifest lives off the corpus (like production); ctx.manifestText sizes its
   // inventory entry.
   const llm = createLlmClient({
-    ctx: { addon, manifestText: "{}" },
+    reviewMeta: { addon, manifestText: "{}" },
     token: "t",
     systemIntro: "intro",
     callVerdicts,
@@ -70,7 +70,7 @@ test("createLlmClient forwards the url to the transports as baseURL", async () =
     manifestText: "{}",
   };
   const llm = createLlmClient({
-    ctx,
+    reviewMeta: ctx,
     token: "t",
     systemIntro: "intro",
     url: "https://proxy.example/v1",
@@ -165,7 +165,7 @@ test("evaluate stops at the request budget; the rest are unsure", async () => {
     manifestText: "{}",
   };
   const llm = createLlmClient({
-    ctx,
+    reviewMeta: ctx,
     token: "t",
     systemIntro: "intro",
     budget,
