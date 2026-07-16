@@ -127,7 +127,7 @@ config:
 flowchart TB
   SUB(["called from src/cli.js -<br/>a built XPI / folder (+ a source archive, --sca-root)"]) --> LOAD
 
-  subgraph P1 ["runPipeline() · Phase 1 - load & resolve mode, experiments, LLM"]
+  subgraph P1 ["runPipeline() · Phase 1 - load, schema, experiments, LLM"]
     LOAD["Reading add-on<br/>loadAddon(XPI)"] --> LDQ{{"the archive reads, and fits the size cap?"}}
     LDQ -- no --> P1F((("THROW<br/>exit 2")))
     LDQ -- yes --> SCH["Fetching review schemas<br/>resolveReviewSchema()<br/>pick the channel from manifest_version +<br/>strict_max_version, fetch it, index it"]
@@ -143,7 +143,6 @@ flowchart TB
     EXQ -- no --> P1F
     EXQ -- yes --> IQ{{"an UNSUPPORTED Experiment (unrecognised<br/>draft or file-less declaration), and<br/>--allow-experiments is off?"}}
     EXFQ -- no --> IQ
-    IQ -- yes --> SETINV["invalidExperiment = true<br/>mode = xpi"]
     IQ -- no --> LQ
 
     LQ{{"--llm-review?"}}
@@ -159,72 +158,50 @@ flowchart TB
     NSQ -- no --> HASH
     XNS --> HASH
 
-    HASH["Fetching library hashes<br/>resolveLibraryHashes()"] --> SQ{{"--sca-root given?"}}
-    SQ -- no --> MX2["mode = xpi"]
-    SQ -- yes --> CLS["Classifying the built add-on<br/>classifyBundled(XPI)"]
-    CLS --> DQ{{"is the shipped XPI's OWN first-party code<br/>minified / obfuscated?<br/>hasUnreviewableCode()"}}
-    DQ -- "yes - the source IS needed" --> KEEP["mode = sca"]
-    DQ -- "no - the source adds nothing" --> DOWN["mode = xpi<br/>scaNotRequired = true"]
+    HASH["Fetching library hashes<br/>resolveLibraryHashes()"] --> BLK["resolveLibraryBlocks()<br/>the banned-library list"]
   end
 
-  SETINV --> MODE
-  MX2 --> MODE
-  KEEP --> MODE
-  DOWN --> MODE
+  BLK --> XV
 
-  subgraph P2 ["runPipeline() · Phase 2 - resolve the REVIEW TARGET"]
-    MODE{{"mode?"}}
-    MODE -- sca --> LSRC["load the source archive → loadScaAddon()<br/>addon.experiments = xpiAddon.experiments"]
-    LSRC --> LSQ{{"--sca-source resolves within --sca-root,<br/>and matches files?"}}
-    LSQ -- yes --> SETSRC["addon = the readable source"]
-    LSQ -- no --> P2F((("THROW<br/>exit 2")))
-    MODE -- xpi --> SETXPI["addon = the shipped XPI"]
+  subgraph P2 ["runPipeline() · Phase 2 - analyse the BUILT XPI (always) → the shipped ctx, then resolve the mode"]
+    XV["resolveVendor(XPI) → verifyVendor()<br/>the committed copies (VENDOR.md)"] --> XC["classifyReview(XPI)<br/>classifyFiles + assembleBundled<br/>library hash · minified geometry · obfuscation · vendored<br/>→ xpiAddon.bundled"]
+    XC --> XI["identifyBundledLibraries(XPI)<br/>applyNotPopularVendor() · resolveCdnLibraries() · auditIdentifiedLibraries()<br/>FINALIZES the authored / non-authored split - ADDS + REMOVES"]
+    XI --> XE["Parsing the built add-on → extractReview(XPI)<br/>content extraction + api-usage on the authored remainder<br/>parse each source ONCE, drop the AST<br/>buildRunContext(XPI) → the SHIPPED ctx (ctx.llm iff llmVerified)"]
+    XE --> MODEQ{{"resolveReviewMode(xpiAddon.bundled)<br/>--sca-root, and the XPI's OWN first-party<br/>code is minified / obfuscated?"}}
+    MODEQ -- "no source archive -<br/>native XPI review" --> MX2["mode = xpi"]
+    MODEQ -- "XPI reviewable -<br/>source adds nothing" --> DOWN["mode = xpi<br/>scaNotRequired = true"]
+    MODEQ -- "XPI unreviewable -<br/>source IS needed" --> KEEP["mode = sca"]
+    SETINV["invalidExperiment = true<br/>mode = xpi · reads no code"]
   end
 
-  SETSRC --> Q2
-  SETXPI --> Q2
+  KEEP --> LSRC
+  IQ -- yes --> SETINV
 
-  subgraph P3 ["runPipeline() · Phase 3 - vendor / library / build setup"]
-    Q2{{"invalidExperiment?"}}
-    Q2 -- no --> RV["resolveVendor() - the declared dependency manifest<br/>resolveLibraryBlocks() - the banned-library list"]
-    RV --> M2{{"mode?"}}
-
-    M2 -- sca --> SCA1["Auditing source dependencies<br/>verifyScaDependencies() - the source's package.json"]
-    M2 -- xpi --> XPI1["Verifying vendored libraries<br/>verifyVendor() - the committed copies"]
-
-    SCA1 --> CE
-    XPI1 --> CE["classifyReview() - the REVIEW TARGET<br/>classifyFiles + assembleBundled<br/>library hash · minified geometry · obfuscation · vendored"]
-
-    CE --> IBL["identifyBundledLibraries() - the REVIEW TARGET<br/>applyNotPopularVendor()<br/>Identifying libraries on a CDN → resolveCdnLibraries()<br/>Auditing libraries → auditIdentifiedLibraries()<br/>FINALIZES the authored / non-authored split - it both ADDS<br/>and REMOVES, so the parse must come after it"]
-
-    IBL --> EXR["Parsing add-on sources → extractReview()<br/>the REVIEW TARGET, with the FINAL skip set<br/>parse each source ONCE, drop the AST<br/>content extraction on the authored remainder"]
-
-    EXR --> M3{{"mode?"}}
-    M3 -- sca --> SCA2["Identifying built-add-on libraries on a CDN → resolveCdnLibraries(XPI)"]
-    SCA2 --> SXP["Parsing the built add-on → runShippedExtractionPass(XPI)<br/>the shipped view is only ever walked as a LOAD GRAPH:<br/>localImports · loaderRefs · experimentRefs · moduleSyntaxLoc<br/>no content scan, no api-usage - in SCA the reviewed code is the SOURCE<br/>parse each source ONCE, drop the AST"]
-    SXP --> SCB["selectScaBuildFiles()<br/>Analyzing the build → analyzeBuild()"]
+  subgraph P3 ["runPipeline() · Phase 3 - SCA only: analyse the readable SOURCE → the source ctx + the build corpus"]
+    LSRC["load the source archive → loadScaAddon()<br/>addon.experiments = xpiAddon.experiments"] --> LSQ{{"--sca-source resolves within --sca-root,<br/>and matches files?"}}
+    LSQ -- no --> P3F((("THROW<br/>exit 2")))
+    LSQ -- yes --> SV["resolveVendor(source) → verifyScaDependencies()<br/>the source's package.json"]
+    SV --> SC["classifyReview(source)<br/>library hash · minified · obfuscation · vendored"]
+    SC --> SI["identifyBundledLibraries(source)<br/>CDN + not-popular-vendor - FINALIZES the split"]
+    SI --> SE["Parsing source → extractReview(source)<br/>content extraction + api-usage on the authored remainder<br/>buildRunContext(source) → the SOURCE ctx"]
+    SE --> SB["selectScaBuildFiles()<br/>Analyzing the build → analyzeBuild() → the build corpus"]
+    HP1(( ))
+    HP2(( ))
+    HP3(( ))
   end
 
-  Q2 -- yes --> CTX
-  M3 -- xpi --> CTX
-  SCB --> CTX
+  MX2 --- HP1
+  HP1 --> ASSIGN
+  DOWN --- HP2
+  HP2 --> ASSIGN
+  SETINV --- HP3
+  HP3 --> INV
 
-  subgraph P4 ["runPipeline() · Phase 4 - build the RunContext"]
-    CTX["buildRunContext()<br/>--diff-to: also loadAddon(the prior version) → ctx.previous"] --> IEQ{{"invalidExperiment?"}}
-    IEQ -- yes --> NOSRC["ctx.jsSources = [ ]<br/>ctx.apiUsages = [ ]"]
-    NOSRC --> SIB
-
-    IEQ -- no --> SRCQ{{"were the parsed sources handed over?"}}
-    SRCQ -- yes --> SRC["ctx.jsSources = the sources Phase 3 parsed<br/>ctx.apiUsages = their extracted api-usage"]
-    SRCQ -- no --> P4F((("THROW<br/>exit 2")))
-
-    SRC --> QL{{"llmVerified?"}}
-    QL -- yes --> LLMC["ctx.llm = the verified LLM client"]
-    QL -- no --> SIB
-    LLMC --> SIB
-    SIB["assemble the siblings map<br/>source = the review-target ctx (buildRunContext, above)<br/>xpi · build · manifest derived from it:<br/>buildShippedCtx() · buildScaBuildCtx() · buildManifestCtx()"] --> SIBQ{{"in SCA: were the shipped XPI's<br/>sources parsed?"}}
-    SIBQ -- yes --> SIBS["siblings = { source, xpi, build, manifest }"]
-    SIBQ -- no --> P4F
+  subgraph P4 ["runPipeline() · Phase 4 - assemble the siblings map"]
+    INV["buildRunContext(XPI) · invalidExperiment<br/>ctx.jsSources = [ ] · ctx.apiUsages = [ ]"] --> SIBS2["siblings = { source, xpi, build, manifest }<br/>all alias the single reject-only ctx"]
+    ASSIGN["source ctx = the shipped ctx<br/>(one artifact - no readable source)"] --> SIB
+    SB --> SIB
+    SIB["assemble the siblings map (--diff-to → ctx.previous):<br/>xpi = the shipped ctx (built in Phase 2)<br/>source = the source ctx (SCA) / the shipped ctx (XPI)<br/>build = buildScaBuildCtx() · manifest = buildManifestCtx()"] --> SIBS["siblings = { source, xpi, build, manifest }"]
   end
 
   subgraph P5 ["runPipeline() · Phase 5 - run the review, then render the findings"]
@@ -238,6 +215,7 @@ flowchart TB
   end
 
   SIBS --> RAQ
+  SIBS2 --> RAQ
 
   RFIND --> FMT
 
@@ -257,10 +235,12 @@ flowchart TB
   classDef module fill:#f3eefb,stroke:#7c4dbc,color:#3d2a5c,stroke-dasharray:5 3;
   classDef pass fill:#e9f7ec,stroke:#2e8b57,color:#1c5334;
   classDef producer fill:#fce4ec,stroke:#ad1457,color:#7a1338;
-  class LOAD,EXP,XNS,HASH,CLS,SCA2,SXP,SCB,PRE,CTX,LSRC,SIB,META,RFIND setup;
-  class SCH,RV,SCA1,CE,IBL,EXR,XPI1 producer;
-  class SETINV,LOK,MX2,KEEP,DOWN,SETSRC,SETXPI,NOSRC,SRC,LLMC,SIBS,RAT,RAF state;
-  class P1F,P2F,P4F,EXIT1 fail;
+  classDef hidden fill:transparent,stroke:transparent,color:transparent;
+  class HP1,HP2,HP3 hidden;
+  class LOAD,EXP,XNS,HASH,BLK,PRE,LSRC,SB,INV,SIB,META,RFIND setup;
+  class SCH,XV,XC,XI,XE,SV,SC,SI,SE producer;
+  class SETINV,LOK,MX2,DOWN,KEEP,ASSIGN,SIBS,SIBS2,RAT,RAF state;
+  class P1F,P3F,EXIT1 fail;
   class SUB,FMT,WRITE,SAVE orch;
   class EXIT0 pass;
   class RCBOX module;
@@ -268,15 +248,26 @@ flowchart TB
       </div>
 
       <div class="outcome">
-        <strong>The SCA&nbsp;→&nbsp;XPI downgrade.</strong>
-        A source archive is only worth reviewing when the shipped XPI cannot be.
-        So
-        <code>resolveReviewMode()</code> classifies the built XPI and decides
-        from its own code alone: if the first-party code is not minified or
-        obfuscated, the source adds nothing. The review is downgraded to a plain
-        XPI review, the source archive is never read, and
-        <code>sca-not-required</code> reports it. An invalid Experiment skips
-        the classification entirely, so it is never downgraded.
+        <strong>The built XPI is analysed first, and always.</strong>
+        Phase&nbsp;2 runs the full XPI analysis - vendor, classify, identify,
+        parse - <em>before</em> the mode is known, producing the
+        <strong>shipped ctx</strong> that every <code>input: xpi</code> check
+        reads. Because it is built the same way in both modes, an
+        <code>input: xpi</code> check sees the identical artifact whether the run
+        is SCA or XPI - the reason for the rework. There is no separate
+        &ldquo;light&rdquo; classification pass any more: the
+        <strong>SCA&nbsp;→&nbsp;XPI downgrade</strong> reads that same
+        <code>xpiAddon.bundled</code>. A source archive is only worth reviewing
+        when the shipped XPI cannot be, so <code>resolveReviewMode()</code>
+        decides from the XPI&rsquo;s own code alone: if its first-party code is
+        not minified or obfuscated the source adds nothing, the review is
+        downgraded to a plain XPI review, the source archive is never read, and
+        <code>sca-not-required</code> reports it. In SCA the readable source is
+        then analysed on its own in Phase&nbsp;3
+        (<code>siblings.source</code>); in an XPI review there is no second
+        artifact, so <code>siblings.source</code> simply aliases the shipped ctx.
+        An invalid Experiment skips the analysis entirely (it reads no code), so
+        it is never downgraded.
       </div>
       <p>
         The invalid-Experiment path is not an early exit - it runs on to the
