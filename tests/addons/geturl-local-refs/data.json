@@ -1,0 +1,3 @@
+{
+  "note": "A packaged data file fetched via browser.runtime.getURL(\"data.json\")."
+}

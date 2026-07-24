@@ -32,6 +32,12 @@ export const ROOT_RELATIVE_FILE_METHODS = new Set(
   FACTS["root-relative-file-methods"]
 );
 /**
+ * Extension-URL-minting methods (runtime.getURL, extension.getURL): they resolve
+ * their argument against the add-on's moz-extension:// base, so the result is local
+ * only for a relative argument. Consumer: src/parse/local-url.js.
+ */
+export const LOCAL_URL_METHODS = new Set(FACTS["local-url-methods"]);
+/**
  * Schema-unmarked file loaders: dotted-method ->
  * {arg0?, stringKeys?, arrayKeys?, mv?} (see assets/webext-facts.yaml).
  * @type {Map<string, {arg0?: boolean, stringKeys?: string[], arrayKeys?: string[], mv?: number}>}

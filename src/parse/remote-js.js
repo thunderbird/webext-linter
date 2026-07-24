@@ -18,6 +18,8 @@
 import { classifyUrl } from "../scan/url.js";
 import { eachElement } from "../scan/html-parse.js";
 import { parseJs, traverse, nodeLoc, isCallLike, isMemberLike } from "./ast.js";
+import { apiBasesOf } from "./api-base.js";
+import { localUrlArg } from "./local-url.js";
 
 // Identifiers that denote the global object, where window.eval / self.eval /
 // globalThis.eval etc. are the same sinks as the bare forms.
@@ -60,6 +62,9 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
   }
 
   const hits = [];
+  // Alias index for the API roots: lets the getURL short-circuit see through a
+  // captured/feature-detected root (see src/parse/local-url.js).
+  const bases = apiBasesOf(ast);
   /** @param {AstNode} node @returns {{line:number, column:number}} */
   const at = (node) => nodeLoc(node, lineOffset);
   /**
@@ -109,7 +114,7 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
         isMemberProp(left, "src") &&
         isTrackedScriptObj(left.object, scriptVars)
       ) {
-        pushSrc(right, path.node, push);
+        pushSrc(right, path.node, push, bases);
       }
       // el.innerHTML / el.outerHTML = "<script src=REMOTE>"
       if (isMemberProp(left, "innerHTML") || isMemberProp(left, "outerHTML")) {
@@ -122,7 +127,7 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
     // Dynamic import() parses as its own ImportExpression node (not a
     // CallExpression), so it gets its own visitor.
     ImportExpression(path) {
-      classifyDynamicRef("import", path.node.source, path.node, push);
+      classifyDynamicRef("import", path.node.source, path.node, push, bases);
     },
     "CallExpression|OptionalCallExpression"(path) {
       const { callee, arguments: args } = path.node;
@@ -142,7 +147,7 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
         isIdent(callee, "importScripts") ||
         isGlobalMember(callee, "importScripts")
       ) {
-        classifyDynamicRef("importscripts", args[0], path.node, push);
+        classifyDynamicRef("importscripts", args[0], path.node, push, bases);
         return;
       }
       // setTimeout/setInterval("code string", …), bare or on a global object.
@@ -179,7 +184,7 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
         isStringLiteral(args[0]) &&
         args[0].value.toLowerCase() === "src"
       ) {
-        pushSrc(args[1], path.node, push);
+        pushSrc(args[1], path.node, push, bases);
         return;
       }
       // WebAssembly.instantiateStreaming/compileStreaming(fetch("REMOTE"))
@@ -232,9 +237,13 @@ function classifyModuleSource(source, node, push) {
  * @param {AstNode} arg
  * @param {AstNode} node
  * @param {Function} push
+ * @param {Map<object, object>} bases  The AST's alias index from apiBasesOf.
  */
-function classifyDynamicRef(which, arg, node, push) {
-  const url = literalString(arg);
+function classifyDynamicRef(which, arg, node, push, bases) {
+  // A getURL(...) reference resolves to the getURL argument (against the extension
+  // base): a relative path classifies local (no signal), an absolute one stays
+  // remote - so the argument is what the classifier judges, not the getURL call.
+  const url = localUrlArg(arg, bases) ?? literalString(arg);
   if (url == null) {
     push(`ambiguous-${which}`, node); // non-literal - can't resolve the host
     return;
@@ -249,9 +258,12 @@ function classifyDynamicRef(which, arg, node, push) {
  * @param {AstNode} valueNode
  * @param {AstNode} node
  * @param {Function} push
+ * @param {Map<object, object>} bases  The AST's alias index from apiBasesOf.
  */
-function pushSrc(valueNode, node, push) {
-  const url = literalString(valueNode);
+function pushSrc(valueNode, node, push, bases) {
+  // scriptEl.src = getURL(<relative>) loads a packaged script (local); an absolute
+  // getURL argument stays remote, so classify the resolved argument, not the call.
+  const url = localUrlArg(valueNode, bases) ?? literalString(valueNode);
   if (url == null) {
     push("ambiguous-script-src", node);
     return;

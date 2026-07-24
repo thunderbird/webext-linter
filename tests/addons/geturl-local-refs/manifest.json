@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "getURL local refs",
+  "version": "1.0",
+  "description": "Loads packaged resources through runtime.getURL - all local, none remote.",
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

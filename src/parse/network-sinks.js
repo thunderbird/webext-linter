@@ -25,10 +25,13 @@ import {
   memberPropName,
   isCallLike,
   isMemberLike,
+  isStatic,
+  staticValue,
 } from "./ast.js";
 import { classifyUrl, isLoopback } from "../scan/url.js";
 import { URL_CLASS, OVERTNESS } from "../lib/enum.js";
 import { apiBasesOf } from "./api-base.js";
+import { localUrlArg } from "./local-url.js";
 import { DATA_APIS } from "./webext-facts.js";
 
 /** @typedef {import("@babel/types").Node} AstNode */
@@ -98,7 +101,10 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
    * @param {AstNode} site  The node to report the location of.
    */
   const push = (type, channel, urlNode, dataNodes, site) => {
-    const { destClass, dataAppended, cleartext, host } = urlInfo(urlNode);
+    const { destClass, dataAppended, cleartext, host } = urlInfo(
+      urlNode,
+      bases
+    );
     hits.push({
       type,
       channel,
@@ -316,10 +322,11 @@ function isHttpMethodLiteral(node) {
  * appended to the URL). Cleartext/host are read from the static value, or from
  * the leading static prefix of a dynamic URL (which still carries the scheme).
  * @param {?AstNode} node
+ * @param {Map<object, object>} bases  The AST's alias index from apiBasesOf.
  * @returns {{destClass: import("../lib/enum.js").UrlClass,
  *   cleartext: boolean, host: ?string, dataAppended: boolean}}
  */
-function urlInfo(node) {
+function urlInfo(node, bases) {
   if (!node) {
     return {
       destClass: URL_CLASS.LOCAL,
@@ -328,19 +335,17 @@ function urlInfo(node) {
       dataAppended: false,
     };
   }
+  // fetch(getURL(<path>)) / img.src = getURL(<path>): getURL resolves its argument
+  // against the extension base, so classify the argument - a relative path is a
+  // local resource, an absolute one escapes the origin and keeps its remote class
+  // (an exfil URL wrapped in getURL is not masked). A dynamic argument stays
+  // unresolved and falls through to the conservative prefix branch below.
+  const localArg = localUrlArg(node, bases);
+  if (localArg != null) {
+    return staticUrlInfo(bareUrl(localArg));
+  }
   if (isStatic(node)) {
-    const url = bareUrl(staticValue(node));
-    const host = urlHost(url);
-    const destClass = classifyUrl(url);
-    if (destClass.remote && isLoopback(host)) {
-      return LOCAL_DEST; // loopback never leaves the machine - not a transmission
-    }
-    return {
-      destClass,
-      cleartext: CLEARTEXT_RE.test(url),
-      host,
-      dataAppended: false,
-    };
+    return staticUrlInfo(bareUrl(staticValue(node)));
   }
   const prefix = bareUrl(staticPrefix(node));
   const host = urlHost(prefix);
@@ -353,6 +358,27 @@ function urlInfo(node) {
     cleartext: CLEARTEXT_RE.test(prefix),
     host,
     dataAppended: destClass.remote,
+  };
+}
+
+/**
+ * Classify a fully-known static URL string (a literal destination, or a getURL
+ * argument resolved against the extension base). Loopback resolves to local.
+ * @param {string} url
+ * @returns {{destClass: import("../lib/enum.js").UrlClass,
+ *   cleartext: boolean, host: ?string, dataAppended: boolean}}
+ */
+function staticUrlInfo(url) {
+  const host = urlHost(url);
+  const destClass = classifyUrl(url);
+  if (destClass.remote && isLoopback(host)) {
+    return LOCAL_DEST; // loopback never leaves the machine - not a transmission
+  }
+  return {
+    destClass,
+    cleartext: CLEARTEXT_RE.test(url),
+    host,
+    dataAppended: false,
   };
 }
 
@@ -375,58 +401,6 @@ const LOCAL_DEST = {
 function urlHost(s) {
   const match = URL_HOST_RE.exec(s);
   return match ? match[1] : null;
-}
-
-/**
- * True if a value carries no dynamic content (a literal, an uninterpolated
- * template, a "+" concatenation of static parts, or a static ternary).
- * @param {AstNode} node
- * @returns {boolean}
- */
-function isStatic(node) {
-  if (!node) {
-    return true;
-  }
-  switch (node.type) {
-    case "StringLiteral":
-    case "NumericLiteral":
-    case "BooleanLiteral":
-    case "NullLiteral":
-      return true;
-    case "TemplateLiteral":
-      return node.expressions.length === 0;
-    case "BinaryExpression":
-      return (
-        node.operator === "+" && isStatic(node.left) && isStatic(node.right)
-      );
-    case "ConditionalExpression":
-      return isStatic(node.consequent) && isStatic(node.alternate);
-    default:
-      return false;
-  }
-}
-
-/**
- * The concatenated string value of a fully-static expression.
- * @param {AstNode} node
- * @returns {string}
- */
-function staticValue(node) {
-  switch (node?.type) {
-    case "StringLiteral":
-      return node.value;
-    case "NumericLiteral":
-    case "BooleanLiteral":
-      return String(node.value);
-    case "TemplateLiteral":
-      return node.quasis.map((q) => q.value.cooked ?? "").join("");
-    case "BinaryExpression":
-      return staticValue(node.left) + staticValue(node.right);
-    case "ConditionalExpression":
-      return staticValue(node.consequent);
-    default:
-      return "";
-  }
 }
 
 /**

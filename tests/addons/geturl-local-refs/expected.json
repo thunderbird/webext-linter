@@ -1,0 +1,4 @@
+{
+  "_comment": "Every resource is loaded through runtime.getURL with a RELATIVE path, which resolves against the add-on's own moz-extension:// base (a local resource). The remote-code (remote-resources) and outbound-sink (data-exfiltration / disguised-*) classifiers must resolve the getURL argument and treat import()/fetch()/script.src as LOCAL, so nothing fires. Locks in the getURL local-resource recognition (src/parse/local-url.js).",
+  "expect": {}
+}

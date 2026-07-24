@@ -198,3 +198,57 @@ function pathBeforeQuery(prefix) {
   const i = prefix.search(/[?#]/);
   return i >= 0 ? prefix.slice(0, i) : null;
 }
+
+/**
+ * True if a value carries no dynamic content: a literal, an uninterpolated
+ * template, a "+" concatenation of static parts, or a static ternary. Its full
+ * string value is then computable with staticValue.
+ * @param {AstNode} node
+ * @returns {boolean}
+ */
+export function isStatic(node) {
+  if (!node) {
+    return true;
+  }
+  switch (node.type) {
+    case "StringLiteral":
+    case "NumericLiteral":
+    case "BooleanLiteral":
+    case "NullLiteral":
+      return true;
+    case "TemplateLiteral":
+      return node.expressions.length === 0;
+    case "BinaryExpression":
+      return (
+        node.operator === "+" && isStatic(node.left) && isStatic(node.right)
+      );
+    case "ConditionalExpression":
+      return isStatic(node.consequent) && isStatic(node.alternate);
+    default:
+      return false;
+  }
+}
+
+/**
+ * The concatenated string value of a fully-static expression (see isStatic); the
+ * empty string for a node with no static text. A ternary takes its consequent.
+ * @param {AstNode} node
+ * @returns {string}
+ */
+export function staticValue(node) {
+  switch (node?.type) {
+    case "StringLiteral":
+      return node.value;
+    case "NumericLiteral":
+    case "BooleanLiteral":
+      return String(node.value);
+    case "TemplateLiteral":
+      return node.quasis.map((q) => q.value.cooked ?? "").join("");
+    case "BinaryExpression":
+      return staticValue(node.left) + staticValue(node.right);
+    case "ConditionalExpression":
+      return staticValue(node.consequent);
+    default:
+      return "";
+  }
+}

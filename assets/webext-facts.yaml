@@ -59,6 +59,18 @@ root-relative-file-methods:
   - scripting.insertCSS
   - scripting.removeCSS
 
+# Methods that mint an extension URL by resolving their argument against the
+# add-on's own moz-extension:// base (Firefox: `new URL(arg, base)`). A RELATIVE
+# argument yields a local resource; an absolute/protocol-relative one escapes the
+# origin (getURL("https://x") -> "https://x"), so recognition is argument-aware, not
+# blanket - the resolver classifies the argument's true destination (see
+# src/parse/local-url.js). Consumers: src/parse/local-url.js (-> remote-js.js,
+# network-sinks.js, loader-files.js). runtime.getURL is the current form;
+# extension.getURL the deprecated MV2 alias.
+local-url-methods:
+  - runtime.getURL
+  - extension.getURL
+
 # TEMPORARY bridge (consumer: src/parse/loader-files.js): file-loading API
 # methods the schema cannot yet mark (their path is a plain string / generic
 # "url", not a relativeUrl format). Delete an entry once the schema tags that

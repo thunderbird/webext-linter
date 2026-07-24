@@ -30,7 +30,8 @@
 // src/parse/ast.js.
 
 import { apiBasesOf, calleeApiPath } from "./api-base.js";
-import { parseJs, traverse, staticPathOf, nodeLoc, isCallLike } from "./ast.js";
+import { parseJs, traverse, staticPathOf, nodeLoc } from "./ast.js";
+import { isLocalUrlMethodCall } from "./local-url.js";
 import { BRIDGE, ROOT_RELATIVE_FILE_METHODS } from "./webext-facts.js";
 import { REL_URL_FORMATS } from "../schema/index.js";
 
@@ -281,15 +282,12 @@ function dottedApiPath(callee, bases) {
  * @returns {boolean}
  */
 function isDynamicValue(node, bases) {
-  // A runtime.getURL(...) call sitting in a loader slot (e.g.
+  // A getURL(...) call sitting in a loader slot (e.g.
   // windows.create({url: getURL("popup.html")})) is a resolved-URL value, not a
   // runtime-built path: the getURL call is itself captured by the getURL loader,
   // where it is static if its argument is a literal and dynamic otherwise. So it
-  // must not re-flag the outer slot as dynamic.
-  if (
-    isCallLike(node) &&
-    dottedApiPath(node.callee, bases) === "runtime.getURL"
-  ) {
+  // must not re-flag the outer slot as dynamic - regardless of the argument.
+  if (isLocalUrlMethodCall(node, bases)) {
     return false;
   }
   switch (node?.type) {

