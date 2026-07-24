@@ -94,12 +94,12 @@
     "warning": 1,
     "info": 0,
     "byRule": {
-      "unused-permission-recheck": 1
+      "unused-permission": 1
     }
   },
   "findings": [
     {
-      "ruleId": "unused-permission-recheck",
+      "ruleId": "unused-permission",
       "severity": "warning",
       "file": "manifest.json",
       "loc": {
@@ -107,7 +107,7 @@
       },
       "item": "compose",
       "hint": null,
-      "message": "One or more declared permissions are unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If a permission is in fact used, please specify which part of your add-on stops working if it is removed."
+      "message": "One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it."
     }
   ]
 }

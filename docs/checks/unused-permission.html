@@ -38,7 +38,9 @@
         minimize-host-permissions check.
       </p>
       <p>
-        <strong>The blindness guard.</strong> A deterministic &ldquo;unused&rdquo;
+        <strong>The blindness guard.</strong> The check judges the
+        <strong>shipped add-on</strong> — the built XPI, the bytes that actually run,
+        so a build-time dependency is in view. A deterministic &ldquo;unused&rdquo;
         finding claims that nothing the permission gates can be in use, which only
         holds while the scan can see every usage — so a token found nowhere really
         means nowhere. Four conditions make the scan blind, and each one stands the
@@ -46,12 +48,13 @@
       </p>
       <ul>
         <li>
-          an <strong>SCA review</strong> — it scans the readable source, but the
-          shipped add-on may exercise the permission through a dependency that only
-          materializes at build time;
+          <strong>obfuscated first-party code</strong> — an API name built at runtime
+          (string concatenation) or a mangled property read hides a gated call from
+          both the API-usage walker and the token scan, so found-nowhere no longer
+          means unused;
         </li>
         <li>
-          a source that <strong>failed to parse</strong> — it yields no API usages
+          a file that <strong>failed to parse</strong> — it yields no API usages
           and no limitations, which is indistinguishable from a clean, empty file
           unless it is checked for explicitly;
         </li>
@@ -62,7 +65,7 @@
         </li>
         <li>
           <strong>no API-usage view at all</strong> — a context with no visibility
-          into the source's API surface is maximally blind, so it fails closed
+          into the artifact's API surface is maximally blind, so it fails closed
           rather than reading as fully sighted.
         </li>
       </ul>
@@ -92,7 +95,7 @@ flowchart TD
   H -- yes --> OK([no finding — host check's concern])
   H -- no --> U{"Provably required by a reachable API call,<br/>a navigator.* Web/DOM call, or a declared<br/>script-injection manifest key?"}
   U -- yes --> OK2([no finding — justified])
-  U -- no --> D{"Can the scan see every usage?<br/>not an SCA review · every source parsed ·<br/>no unresolved dynamic API surface ·<br/>an API-usage view is present"}
+  U -- no --> D{"Can the scan see every usage of the SHIPPED code?<br/>shipped code not obfuscated · every file parsed ·<br/>no unresolved dynamic API surface ·<br/>an API-usage view is present"}
   D -- no --> G{"Does the registry have a recheck<br/>prompt for this permission?"}
   D -- yes --> T{"Prompt entry declares usage tokens,<br/>and none occur in the live code<br/>(comments excluded) or manifest?"}
   T -- yes --> WARN(["warning finding — deterministically<br/>unused, the model is never asked"])

@@ -239,7 +239,7 @@ deterministic-phase:
 - title: Possibly unused permissions
   severity: warning
   check: unused-permission
-  input: source
+  input: xpi
   post-summary-recheck: unused-permission-recheck
   response: |-
     One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
@@ -1628,8 +1628,9 @@ verdict-intros:
 #                   mode it runs over the BUILT, shipped XPI corpus (only when an
 #                   XPI-anchored recheck escalated) and judges just the packaging
 #                   rechecks - reachable files, web_accessible_resources, English
-#                   localization. Its prose is not shown to the reviewer; only its
-#                   recheck verdicts are consumed.
+#                   localization, and unused permissions (unused-permission is
+#                   input:xpi, so it judges the shipped bytes). Its prose is not
+#                   shown to the reviewer; only its recheck verdicts are consumed.
 #   vendor-parse:   the LLM fallback that parses a free-form VENDOR file into
 #                   structured {file, url} declarations, used during vendor
 #                   resolution when the deterministic scan comes up empty and a

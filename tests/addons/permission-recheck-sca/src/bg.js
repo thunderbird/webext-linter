@@ -1,11 +1,8 @@
-// Source that grounds each declared permission's usage token: relatedMessageId
-// (messagesRead) and displayedFolder (accountsRead) are read as properties (bare tokens,
-// found by the atom scan and judged per occurrence). compose's tokens are dotted
-// (api-resolved) injection calls; in this SCA review the source is not the shipped
-// entry point, so no injection call resolves here and compose has no located site - it
-// is therefore judged HOLISTICALLY (one verdict over the whole source), which is the
-// SCA-mode fallback the recheck must still handle. Every declared permission escalates
-// in SCA (the deterministic scan cannot trust the source over the shipped build).
+// The readable review source, reviewed by the input:source code checks. NOTE:
+// unused-permission is input:xpi, so it judges the SHIPPED build (xpi/background.js), NOT
+// this file - the permission tokens that decide the verdicts live in the minified XPI, not
+// here. This file only needs to be a valid source subtree for the SCA review to have a
+// review target; its property reads mirror the shipped build's for readability.
 function describe(msg, folder) {
   const rel = msg.relatedMessageId;
   const box = folder.displayedFolder;

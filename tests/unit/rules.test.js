@@ -777,7 +777,8 @@ test("every non-recheck check declares a valid input (rechecks declare none); th
     .map((c) => c.id)
     .sort();
   // The ONLY checks that read the built XPI instead of the review target: the file /
-  // _locales / reachability-structure checks. Extending this set is deliberate -
+  // _locales / reachability-structure checks, plus unused-permission (it judges whether a
+  // declared permission is exercised in the SHIPPED bytes). Extending this set is deliberate -
   // update the check AND this pin together.
   assert.deepEqual(xpi, [
     "background-module",
@@ -792,6 +793,7 @@ test("every non-recheck check declares a valid input (rechecks declare none); th
     "unrecognized-file-type",
     "unrecognized-manifest-key",
     "unused-files",
+    "unused-permission",
   ]);
   // input: build reads the SCA build files (archive minus source minus node_modules).
   // The three build-review checks (gated on the setup classification) plus the
@@ -952,8 +954,8 @@ test("recheckConsumersByCorpus partitions consumers by their producer's input", 
   // source-anchored (producer input: source)
   assert.ok(source.has("data-exfiltration-recheck"));
   assert.ok(source.has("disguised-transmission-recheck"));
-  assert.ok(source.has("unused-permission-recheck"));
-  // XPI-anchored (producer input: xpi)
+  // XPI-anchored (producer input: xpi) - unused-permission judges the shipped bytes
+  assert.ok(xpi.has("unused-permission-recheck"));
   assert.ok(xpi.has("unused-files-recheck"));
   assert.ok(xpi.has("minimize-web-accessible-resources-recheck"));
   assert.ok(xpi.has("missing-english-localization-recheck"));
@@ -1500,10 +1502,11 @@ test("message_display_scripts version-filters scripting on the 154 boundary", ()
   assert.ok(!post.includes("scripting"));
 });
 
-// The deterministic path disables itself whenever the scan cannot see every
-// usage: unresolved API surface (apiUsage limitations / dynamic member tails
-// could spell a gated call without its token) and SCA mode (build-time
-// dependencies are invisible in the source corpus). Everything escalates then.
+// The deterministic path disables itself whenever the scan cannot see every usage:
+// unresolved API surface (apiUsage limitations / dynamic member tails could spell a gated
+// call without its token) or OBFUSCATED first-party code (API names built at runtime /
+// mangled reads hide a call). Those escalate. SCA mode alone does not blind the scan -
+// the check judges the SHIPPED XPI, so a clean scan is decidable in SCA as well.
 test("unused-permission escalates instead of deciding when the scan is blind", () => {
   const manifest = {
     manifest_version: 2,
@@ -1556,14 +1559,37 @@ test("unused-permission escalates instead of deciding when the scan is blind", (
     }).findings.length,
     0
   );
-  // SCA mode -> the source corpus cannot prove the shipped add-on -> escalate.
+  // OBFUSCATED first-party code -> the shipped scan can't be trusted -> escalate. (Pre-seed the
+  // classification so classifyAddonJs sees an obfuscated tag without needing a real bundle.)
+  const obfuscated = base();
+  obfuscated.addon.bundled = {
+    classified: [
+      {
+        file: "bg.js",
+        obfuscation: VERDICT.FAIL,
+        library: false,
+        untrusted: false,
+      },
+    ],
+    nonAuthored: new Set(["bg.js"]),
+  };
+  const obf = unusedPermissionProducer.run(withManifest(obfuscated), {
+    recheckData: PERMISSION_TOKEN_RECHECK,
+  });
+  assert.equal(obf.findings.length, 0); // no deterministic finding
+  assert.deepEqual(
+    obf.escalations.map((e) => e.item),
+    ["compose"] // it ESCALATED (not merely absent)
+  );
+  // SCA mode alone does not blind the scan: it judges the SHIPPED XPI, so a clean scan is
+  // decidable in SCA as well - a genuinely-unused permission is a deterministic finding.
   const sca = base();
   sca.mode = REVIEW_MODE.SCA;
   assert.equal(
     unusedPermissionProducer.run(withManifest(sca), {
       recheckData: PERMISSION_TOKEN_RECHECK,
     }).findings.length,
-    0
+    1
   );
 });
 

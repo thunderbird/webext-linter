@@ -2,7 +2,7 @@
 
 Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
 
-1) One or more declared permissions are unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If a permission is in fact used, please specify which part of your add-on stops working if it is removed.
+1) One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
  - [XPI] manifest.json:6 - compose
 
 [XPI] = source file in the submitted XPI
@@ -90,8 +90,8 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary of add-on ──
 
-  SCA recheck: per-occurrence for the property tokens, holistic for the dotted
-  compose token.
+  Shipped-package recheck: per-occurrence for the property tokens in the built
+  XPI.
 
 ── Summary ──
 

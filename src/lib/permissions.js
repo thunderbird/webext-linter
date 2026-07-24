@@ -13,11 +13,13 @@
 // of returned data (e.g. accountsRead for a message header's folder), which the
 // schema-driven scan cannot confirm - but when the registry's permission-prompts
 // entry names that permission's justifying usages as `tokens` and none of them
-// occurs anywhere in the live code or manifest, "unused" is sound as long as the
-// scan can see every usage: an SCA review (build-time dependencies invisible in
-// the source corpus), a source that failed to parse, or any unresolved API
-// surface (apiUsage limitations / dynamic tails, which could spell a gated call
-// without its token) disables the deterministic path. Accepted residual gap: a
+// occurs anywhere in the shipped code or manifest, "unused" is sound as long as the
+// scan can see every usage. The check scans the SHIPPED add-on (the built XPI - the
+// bytes that actually run), so a build-time dependency is in view; what disables the
+// deterministic path is OBFUSCATED first-party code (API names built at runtime or
+// mangled property reads hide a call), a source that failed to parse, or any
+// unresolved API surface (apiUsage limitations / dynamic tails, which could spell a
+// gated call without its token). Accepted residual gap: a
 // COMPUTED property name - built at runtime and never a literal token
 // substring - defeats both signals at once, whichever side of an API call it
 // sits on: a gated property READ off returned data (msg["fol"+"der"]) is not an
@@ -61,6 +63,7 @@ import {
 } from "./util.js";
 import { resolveApiUsages } from "./api-resolution.js";
 import { buildReachability } from "./reachability.js";
+import { classifyAddonJs, isObfuscatedFirstParty } from "./bundled.js";
 import { webApiSignatures } from "../parse/web-api-calls.js";
 import { webApiPermsOf, codeAtomsOf } from "../checks/extract.js";
 
@@ -300,6 +303,29 @@ function groundWebApiPermissions(ctx, declaredNamed) {
 }
 
 /**
+ * True when the SHIPPED artifact has OBFUSCATED first-party code - a fail-closed signal for the
+ * deterministic unused-permission finding. Obfuscation can build an API name at runtime or mangle
+ * a property read, hiding a gated call from both the api-usage walker and the token scan, so a
+ * permission whose token is found nowhere may still be used. Defensive: returns false when the
+ * artifact carries no classifiable file corpus (a hand-built ctx / an empty-corpus sibling), so it
+ * never throws inside the unconditional `decidable` computation.
+ * @param {RunContext} ctx
+ * @returns {boolean}
+ */
+function scanIsBlindToObfuscation(ctx) {
+  const addon = ctx.addon;
+  // Nothing classifiable (a hand-built ctx / an empty-corpus sibling with no pre-classification):
+  // not blind. A pre-set addon.bundled is used as-is; otherwise a files Map is classified (an
+  // empty Map classifies to nothing). Only a MISSING files map with no bundle is skipped, so
+  // getBundled never iterates undefined.
+  if (!addon || (!addon.bundled && !addon.files)) {
+    return false;
+  }
+  const classified = classifyAddonJs(ctx);
+  return Array.isArray(classified) && classified.some(isObfuscatedFirstParty);
+}
+
+/**
  * Enumerate the declared named permissions that warrant a closer look: every one
  * a reachable API call does NOT provably require, anchored to its manifest.json
  * line. A permission a reachable call provably requires (usedPermissions) is
@@ -323,32 +349,35 @@ function groundWebApiPermissions(ctx, declaredNamed) {
 export function enumerateUnusedPermissions(ctx, recheckData) {
   const used = getPermissionAnalysis(ctx).usedPermissions;
   // A deterministic "unused" FINDING claims "nothing this permission gates can be in
-  // use" - only tenable when the scan can see every usage, so that a token found
-  // NOWHERE really means nowhere. Cases where absence cannot be trusted, so a
-  // token-bearing permission escalates instead of becoming a finding:
-  //  - an SCA review scans the SOURCE corpus, but the shipped XPI may exercise
-  //    the permission through dependencies materialized at build time;
+  // use" - only tenable when the scan can see every usage in the SHIPPED add-on (the
+  // built XPI, the bytes that actually run - so a build-time dependency IS in view),
+  // so that a token found NOWHERE really means nowhere. Cases where absence cannot be
+  // trusted, so a token-bearing permission escalates instead of becoming a finding:
+  //  - OBFUSCATED first-party code: an API name built at runtime (string concat) or a
+  //    mangled property read hides a gated call from both the api-usage walker and the
+  //    token scan, so nowhere-found does not mean unused (classifyAddonJs / bundled);
   //  - a source that failed to PARSE (apiUsage.parseError) yields no usages and
   //    no limitations - indistinguishable from a clean empty file unless this
   //    checks for it explicitly;
   //  - unresolved API surface (a computed/dynamic member chain, a destructured
   //    alias - the apiUsage limitations) could spell a gated call without its
   //    token appearing anywhere;
-  //  - an ABSENT ctx.apiUsages is a view with no visibility into the source's
+  //  - an ABSENT ctx.apiUsages is a view with no visibility into the artifact's
   //    API surface (the sibling-ctx marker) - maximally blind, so it fails
   //    closed rather than reading as fully sighted.
   // This gates only the finding: token PRESENCE is always trustworthy (a located
   // occurrence IS a real site), so occurrences are collected regardless and the
-  // recheck judges them the same in every mode.
+  // recheck judges them the same in every mode. The obfuscation check is LAST so it
+  // is only reached when the cheap conditions already hold.
   const decidable =
-    !ctx.mode?.sca &&
     Array.isArray(ctx.apiUsages) &&
     !ctx.apiUsages.some(
       (u) =>
         u.parseError ||
         u.limitations?.length ||
         u.usages?.some((x) => x.dynamicTail)
-    );
+    ) &&
+    !scanIsBlindToObfuscation(ctx);
   const tokensFor = permissionTokens(
     ctx.manifest,
     recheckData?.permissionPrompts
