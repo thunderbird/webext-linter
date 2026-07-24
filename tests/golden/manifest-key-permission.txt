@@ -80,4 +80,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-2 error(s), 0 warning(s), 0 info, 10 manual review step(s)
+2 error(s), 0 warning(s), 0 info, 0 extended manual review step(s), 10 standard manual review step(s)

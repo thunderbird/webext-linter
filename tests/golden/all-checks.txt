@@ -168,4 +168,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-15 error(s), 1 warning(s), 7 info, 13 manual review step(s)
+15 error(s), 1 warning(s), 7 info, 3 extended manual review step(s), 10 standard manual review step(s)

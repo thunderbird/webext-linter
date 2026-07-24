@@ -77,4 +77,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 1 warning(s), 0 info, 10 manual review step(s)
+0 error(s), 1 warning(s), 0 info, 0 extended manual review step(s), 10 standard manual review step(s)

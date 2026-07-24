@@ -74,4 +74,4 @@ Suggested response: The add-on listing page on ATN (addons.thunderbird.net) shou
 
 ── Summary ──
 
-0 error(s), 0 warning(s), 0 info, 10 manual review step(s)
+0 error(s), 0 warning(s), 0 info, 1 extended manual review step(s), 9 standard manual review step(s)

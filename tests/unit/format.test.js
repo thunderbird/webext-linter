@@ -209,7 +209,7 @@ test("issues render under Issues/JSON; manual items under Manual review", () => 
   assert.match(issuesSection, /\n - bg\.js:2/);
   assert.match(
     out,
-    /1 error\(s\), 0 warning\(s\), 0 info, 1 manual review step\(s\)/
+    /1 error\(s\), 0 warning\(s\), 0 info, 1 extended manual review step\(s\), 0 standard manual review step\(s\)/
   );
   const json = JSON.parse(formatJson(r));
   assert.equal(json.findings.length, 1);
@@ -262,7 +262,7 @@ test("Issues are grouped by severity under headings with continuous numbering", 
   // A blank line sits between the Summary header and its counts line.
   assert.match(
     out,
-    /── Summary ──\n\n2 error\(s\), 1 warning\(s\), 1 info, 0 manual review step\(s\)/
+    /── Summary ──\n\n2 error\(s\), 1 warning\(s\), 1 info, 0 extended manual review step\(s\), 0 standard manual review step\(s\)/
   );
 });
 

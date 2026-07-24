@@ -84,13 +84,14 @@ const SEV_COLOR = {
  */
 export function formatText(review) {
   const manual = review.meta.manualReview ?? [];
+  const extended = manual.filter((m) => m.extended).length;
   // The complete text report: the body, then the advisory LLM summaries (present only with
   // --llm-review), then the verdict tally LAST. The summaries sit before the tally so the
   // verdict closes the report. JSON drops the summaries (formatJson), so they live here.
   const lines = [
     ...reviewBodyLines(review),
     ...summarySectionLines(review),
-    ...summaryLines(review.findings, manual.length),
+    ...summaryLines(review.findings, extended, manual.length - extended),
   ];
   // The "Reviewing …" header is now printed live before the review
   // (src/pipeline.js), not here, so drop the blank that section() prepends to
@@ -233,7 +234,10 @@ export function formatReviewBody(review) {
  */
 export function formatSummary(review) {
   const manual = review.meta.manualReview ?? [];
-  return summaryLines(review.findings, manual.length).join("\n");
+  const extended = manual.filter((m) => m.extended).length;
+  return summaryLines(review.findings, extended, manual.length - extended).join(
+    "\n"
+  );
 }
 
 /**
@@ -495,17 +499,23 @@ function manualSection(items, title, accent = blue, labelOf) {
 }
 
 /**
- * Summary: issue counts by severity plus the manual-review step count.
+ * Summary: issue counts by severity plus the extended and standard manual-review
+ * step counts, kept as separate entries (Extended = per-add-on escalations,
+ * Standard = the always-shown boilerplate checklist). Extended is listed first, to
+ * match the body's section order.
  * @param {import("./finding.js").Finding[]} issues
- * @param {number} manualCount
+ * @param {number} extendedCount
+ * @param {number} standardCount
  * @returns {string[]}
  */
-function summaryLines(issues, manualCount) {
+function summaryLines(issues, extendedCount, standardCount) {
   const c = tally(issues);
   const out = section("Summary");
   out.push("");
   out.push(
-    `${c.error} error(s), ${c.warning} warning(s), ${c.info} info, ${manualCount} manual review step(s)`
+    `${c.error} error(s), ${c.warning} warning(s), ${c.info} info, ` +
+      `${extendedCount} extended manual review step(s), ` +
+      `${standardCount} standard manual review step(s)`
   );
   return out;
 }
