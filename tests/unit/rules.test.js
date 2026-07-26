@@ -771,6 +771,7 @@ test("every non-recheck check declares a valid input (rechecks declare none); th
     "mistyped-manifest-value",
     "native-messaging",
     "non-experiment-strict-max-version",
+    "update-url",
   ]);
   const xpi = checks
     .filter((c) => c.input === "xpi")

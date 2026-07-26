@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/background-module",
+    "addon": "<root>/tests/addons/update-url-bss",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
@@ -97,21 +97,20 @@
     "warning": 0,
     "info": 0,
     "byRule": {
-      "background-module": 1
+      "update-url": 1
     }
   },
   "findings": [
     {
-      "ruleId": "background-module",
+      "ruleId": "update-url",
       "severity": "error",
-      "file": "background.js",
+      "file": "manifest.json",
       "loc": {
-        "line": 2,
-        "column": 0
+        "line": 7
       },
-      "item": null,
+      "item": "https://example.com/updates.json",
       "hint": null,
-      "message": "The following background code location(s) use ES module syntax (import/export), but the manifest’s background is not declared \"type\": \"module\", so Thunderbird will fail to load the background script(s). Add \"type\": \"module\" to the background entry."
+      "message": "This add-on sets an update_url, which directs Thunderbird to install updates from a self-hosted location instead of ATN (addons.thunderbird.net). Because those updates bypass review, an add-on using update_url cannot be listed on ATN. Remove update_url from browser_specific_settings.gecko (or applications.gecko)."
     }
   ]
 }

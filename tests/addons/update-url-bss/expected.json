@@ -1,0 +1,6 @@
+{
+  "_comment": "A self-hosted update_url under browser_specific_settings.gecko is rejected (error) - it bypasses ATN review.",
+  "expect": {
+    "update-url": ["manifest.json:7"]
+  }
+}

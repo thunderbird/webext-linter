@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Update URL (bss)",
+  "version": "1.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "update_url": "https://example.com/updates.json"
+    }
+  },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

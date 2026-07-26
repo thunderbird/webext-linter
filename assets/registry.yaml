@@ -134,6 +134,16 @@ deterministic-phase:
     Invalid manifest.json: one or more requested permissions are unknown.
     Read more: https://webextension-api.thunderbird.net/.
 
+# A self-hosted update_url (browser_specific_settings.gecko or the legacy
+# applications.gecko) points updates outside ATN, so a later version could install
+# unreviewed code. Not accepted, in either location, any manifest version.
+- title: Self-hosted update URL
+  severity: error
+  check: update-url
+  input: manifest
+  response: |-
+    This add-on sets an update_url, which directs Thunderbird to install updates from a self-hosted location instead of ATN (addons.thunderbird.net). Because those updates bypass review, an add-on using update_url cannot be listed on ATN. Remove update_url from browser_specific_settings.gecko (or applications.gecko).
+
 # An unknown top-level manifest key (Thunderbird ignores it).
 - title: Unrecognized manifest key
   severity: info

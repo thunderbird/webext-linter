@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Self-hosted update URL</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Self-hosted update URL <span class="badge error">error</span></h1>
+        <div class="check-id">update-url</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A manifest that declares an <code>update_url</code>. It points Thunderbird
+        at a developer-controlled update manifest, so the add-on's next version is
+        installed from that URL instead of ATN &mdash; bypassing review. A later
+        version could ship code that was never reviewed.
+      </p>
+      <p>
+        The check looks at the manifest only, and at both places
+        <code>update_url</code> may sit: the current
+        <code>browser_specific_settings.gecko</code> and the deprecated MV2
+        <code>applications.gecko</code> alias. It fires for either location, in
+        any manifest version, and reports each present location on its own line.
+        The manifest inspected is the shipped one (the built XPI), so a clean
+        source manifest cannot mask a self-hosted update.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The add-on manifest"] --> B{"Did the manifest parse?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"update_url under<br/>browser_specific_settings.gecko<br/>or applications.gecko?"}
+  C -- no --> OK([no finding])
+  C -- yes --> ERR([ERROR: self-hosted<br/>update URL])
+
+  classDef err fill:#fdecea,stroke:#c53030,color:#822727;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that its <code>update_url</code> directs Thunderbird to
+        install updates from a self-hosted location instead of ATN, that such
+        updates bypass review, and that <code>update_url</code> must be removed
+        from <code>browser_specific_settings.gecko</code> (or
+        <code>applications.gecko</code>).
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/update-url.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

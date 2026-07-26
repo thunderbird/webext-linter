@@ -22,6 +22,7 @@
       "manifest-missing-key",
       "manifest-version-mismatch",
       "manifest-unknown-permission",
+      "update-url",
       "unrecognized-manifest-key",
       "mistyped-manifest-value",
       "bundled-files",
