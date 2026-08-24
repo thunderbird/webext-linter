@@ -6,18 +6,27 @@
 // `GET <CDN_LOOKUP_URL><sha256>` is a content-addressed reverse lookup (no filename
 // guessing) returning `{type, name, version, file}` on a hit, 404 on a miss.
 //
-// Every hit is IDENTIFIED - the tag gets a `libraryId` (so the OSV audit covers it) and a
-// `cdn` marker holding the canonical, trusted+pinned jsDelivr source URL - but whether it
-// is TRUSTED depends on popularity, the same trust bar a declared VENDOR/package.json
-// source gets (isPopular). jsDelivr is uncurated, so a match alone is not trust:
+// A surviving hit is IDENTIFIED - the tag gets a `libraryId` (so the OSV audit covers it)
+// and a `cdn` marker holding the canonical, trusted+pinned jsDelivr source URL - but
+// whether it is TRUSTED depends on popularity, the same trust bar a declared
+// VENDOR/package.json source gets (isPopular). jsDelivr is uncurated, so a match alone
+// is not trust:
 //   - POPULAR -> joins the vendored family, exactly like a Mozilla hash match: the tag
 //     becomes `library` (so minified-code skips it), the file is excluded from scanning,
 //     and find-lib-on-cdn surfaces the "declare it" finding.
-//   - NOT popular -> identified but UNtrusted (markUntrusted): a minified/obfuscated one is
+//   - NOT popular -> the package name must also match the bundled file's name
+//     (packageMatchesFile): jsDelivr indexes every byte it serves, so the same bytes can
+//     be a copy vendored INSIDE an unrelated package (e.g. a pdf-lib.min.js re-published
+//     under some SDK package) - naming that package as "the upstream" would misattribute
+//     the file. A mismatched not-popular hit is therefore discarded entirely (no
+//     libraryId, no cdn tag), exactly as if the lookup had missed. A matching one is
+//     identified but UNtrusted (markUntrusted): a minified/obfuscated one is
 //     unreadable, so it stays non-authored and untrusted-minified-library rejects it; a
 //     readable one is reviewed as authored code and untrusted-library flags it (info).
 //     find-lib-on-cdn stays silent.
-// (Mozilla hash-DB matches are NOT gated - DB membership is the signal.)
+// (Mozilla hash-DB matches are NOT gated - DB membership is the signal. A POPULAR CDN
+// hit is deliberately name-agnostic: canonical packages often serve files named unlike
+// the package, e.g. pdf.mjs from pdfjs-dist.)
 //
 // Best-effort, like auditIdentifiedLibraries: results (positive AND negative) are
 // cached on disk so a repeat review of the same bundle makes no request, and any
@@ -62,9 +71,11 @@ export function cdnUrl({ type, name, version, file }) {
 
 /**
  * Identify unrecognized bundles (a minified one, or a large readable one likely to be a
- * library shipped un-minified) via the jsDelivr hash lookup. A hit is tagged libraryId +
- * cdn; a POPULAR hit also joins the vendored family (library), a not-popular one is marked
- * untrusted. Mutates the tags in `addon.bundled.classified` and the `nonAuthored` set in
+ * library shipped un-minified) via the jsDelivr hash lookup. A POPULAR hit is tagged
+ * libraryId + cdn and joins the vendored family (library); a not-popular one is marked
+ * untrusted when its package name matches the bundled file's name, and discarded like a
+ * miss when it does not (a copy vendored inside an unrelated package - see the header).
+ * Mutates the tags in `addon.bundled.classified` and the `nonAuthored` set in
  * place. Must run AFTER classifyBundled (Mozilla hashes) and BEFORE auditIdentifiedLibraries,
  * so a CDN match is OSV-audited like any other identified library.
  *
@@ -116,7 +127,13 @@ export async function resolveCdnLibraries(
     let hit;
     if (Object.prototype.hasOwnProperty.call(cache, hash)) {
       hit = cache[hash]; // cached result (a CdnHit, or null for a known miss)
-      if (hit && (!hit.name || !hit.version)) {
+      if (
+        hit &&
+        (typeof hit.name !== "string" ||
+          typeof hit.version !== "string" ||
+          !hit.name ||
+          !hit.version)
+      ) {
         hit = null; // a corrupt/foreign cache entry is treated as a miss
       }
     } else {
@@ -136,12 +153,6 @@ export async function resolveCdnLibraries(
       continue;
     }
 
-    // Identified by content: keep the release id (for the OSV audit) and the
-    // jsDelivr source URL either way.
-    tag.libraryId = { name: hit.name, version: hit.version };
-    tag.cdn = { url: cdnUrl(hit), type: hit.type };
-    debug(`CDN-identified ${tag.file} as ${hit.name}@${hit.version}`);
-
     // Apply the same popularity trust bar a declared VENDOR/package.json source
     // gets: jsDelivr is uncurated (unlike the Mozilla hash DB, whose membership IS
     // the popularity signal), so an obscure or author-published package found here
@@ -152,14 +163,33 @@ export async function resolveCdnLibraries(
       hit.type === "gh"
         ? { kind: "github", repo: hit.name }
         : { kind: "npm", pkg: hit.name };
-    tag.cdn.popular = await isPopular(src, net);
-    if (tag.cdn.popular) {
+    const popular = await isPopular(src, net);
+    if (!popular && !packageMatchesFile(hit.name, tag.file)) {
+      // A not-popular package whose name does not match the file is not "the
+      // upstream" of that file - it merely republishes the same bytes (a vendored
+      // copy). Discard the hit entirely, as if the lookup had missed, so the file
+      // is not misattributed: it falls through to the regular minified-code /
+      // authored-source handling.
+      debug(
+        `CDN hit for ${tag.file} discarded: ${hit.name}@${hit.version} is not popular and its name does not match the file`
+      );
+      continue;
+    }
+
+    // Identified by content: keep the release id (for the OSV audit) and the
+    // jsDelivr source URL either way.
+    tag.libraryId = { name: hit.name, version: hit.version };
+    tag.cdn = { url: cdnUrl(hit), type: hit.type, popular };
+    debug(`CDN-identified ${tag.file} as ${hit.name}@${hit.version}`);
+
+    if (popular) {
       // Popular -> trusted vendored family (like a Mozilla hash match): excluded
       // from scanning, surfaced by find-lib-on-cdn ("declare it"), OSV-audited.
       tag.library = true;
       nonAuthored.add(tag.file);
     } else {
-      // Not popular -> identified but UNtrusted: it does not earn the review exemption.
+      // Not popular (but name-matching) -> identified but UNtrusted: it does not earn
+      // the review exemption.
       // markUntrusted routes it by readability: a minified/obfuscated hit is unreadable,
       // so it stays in the non-authored skip set and untrusted-minified-library rejects
       // it; a readable hit is reviewed as authored code and untrusted-library flags it
@@ -180,6 +210,44 @@ export async function resolveCdnLibraries(
 }
 
 /**
+ * Does the package plausibly own the bundled file, judged by name alone? Both sides
+ * are reduced to a canonical stem and compared for EQUALITY - a deterministic test,
+ * not a similarity score:
+ *   - package: the npm scope / GitHub owner is dropped ("@me/obscure" -> "obscure",
+ *     "owner/widget" -> "widget").
+ *   - file: the basename loses its JS extension, then any chain of build-variant
+ *     suffixes ("fuse.slim.min.js" -> "fuse") and a trailing version segment
+ *     ("jquery-3.7.1" -> "jquery").
+ *   - both: lowercased, separators stripped, and a trailing "js" dropped, so
+ *     "fuse.min.js" matches the package "fuse.js" and "day.min.js" matches "dayjs".
+ * Only consulted for NOT-popular hits (see resolveCdnLibraries); popular packages
+ * legitimately serve files named unlike themselves (pdf.mjs from pdfjs-dist).
+ * @param {string} pkgName @param {string} file
+ * @returns {boolean}
+ */
+function packageMatchesFile(pkgName, file) {
+  const canon = (s) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "")
+      .replace(/js$/, "");
+  let stem = path.posix
+    .basename(file)
+    .toLowerCase()
+    .replace(/\.(js|mjs|cjs)$/, "");
+  let prev;
+  do {
+    prev = stem;
+    stem = stem.replace(
+      /\.(min|slim|umd|esm|iife|bundle|prod|production|dev|development|global|browser)$/,
+      ""
+    );
+  } while (stem !== prev);
+  stem = stem.replace(/[-_.]v?\d+(\.\d+)*$/, "");
+  return canon(stem) === canon(pkgName.split("/").pop());
+}
+
+/**
  * One hash lookup against jsDelivr, as a tri-state so the caller can cache only
  * STABLE outcomes:
  *   - "hit"   {hit}  - identified; cache it (a file hash maps to one release
@@ -197,7 +265,13 @@ export async function resolveCdnLibraries(
 async function lookupHash(net, hash) {
   try {
     const j = await net.fetchJson(`${CDN_LOOKUP_URL}${hash}`);
-    if (j && j.name && j.version) {
+    if (
+      j &&
+      typeof j.name === "string" &&
+      j.name &&
+      typeof j.version === "string" &&
+      j.version
+    ) {
       return {
         state: "hit",
         hit: {

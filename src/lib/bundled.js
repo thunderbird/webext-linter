@@ -48,7 +48,10 @@ import { isMinified } from "./minified.js";
  *   plus `popular` - whether the matched package cleared the popularity trust bar.
  *   A POPULAR match ALSO sets `library`/`libraryId` (vendored-family, like a hash
  *   match); a NOT-popular one sets `untrusted` instead (identified but not exempt -
- *   see markUntrusted), keeping `libraryId` for the OSV audit. */
+ *   see markUntrusted), keeping `libraryId` for the OSV audit - but only when the
+ *   package name matches the file's name; a mismatched not-popular match is
+ *   discarded like a miss (a vendored copy inside an unrelated package - see
+ *   src/lib/cdn-lookup.js). */
 /** @typedef {{classified: BundleTag[], nonAuthored: Set<string>,
  *   untrusted: Array<{file: string, source?: string, name?: string, unreadable: boolean}>}} Bundled */
 

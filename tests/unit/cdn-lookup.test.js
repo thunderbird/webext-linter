@@ -176,6 +176,111 @@ test("a NOT-popular hit is identified but untrusted (authored code), not the ven
   assert.equal(vendorUnverified.run(ctx).escalations.length, 0);
 });
 
+// A not-popular package can contain the exact bytes of a well-known library it merely
+// vendors (e.g. a pdf-lib.min.js republished inside some SDK package). Naming that
+// package as the file's upstream would misattribute the file, so a not-popular hit
+// whose package name does not match the file name is discarded entirely - the file is
+// handled exactly like a lookup miss (falls through to minified-code).
+test("a NOT-popular hit whose package name does not match the file is discarded", async () => {
+  const addon = classify(addonWith({ "pdf-lib.min.js": MINIFIED }));
+  addon.vendor = { results: [] };
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(addon.files.get("pdf-lib.min.js"));
+  const net = netFor(
+    new Map([
+      [
+        hash,
+        {
+          type: "npm",
+          name: "cw_office_sdk",
+          version: "1.3.5",
+          file: "/components/cw-pdf-editor/util/pdf-lib.min.js",
+        },
+      ],
+    ]),
+    { downloads: 50 } // below VENDOR_NPM_MIN_DOWNLOADS (1000)
+  );
+
+  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+
+  const tag = addon.bundled.classified.find((c) => c.file === "pdf-lib.min.js");
+  // No identification at all: no libraryId (nothing to OSV-audit under the wrong
+  // package), no cdn marker, not untrusted - just an unidentified minified bundle.
+  assert.equal(tag.library, false);
+  assert.equal(tag.libraryId, undefined);
+  assert.equal(tag.cdn, undefined);
+  assert.notEqual(tag.untrusted, true);
+  assert.deepEqual(addon.bundled.untrusted, []);
+
+  const ctx = { addon };
+  assert.equal(untrustedMinifiedLibrary.run(ctx).length, 0);
+  assert.equal(untrustedLibrary.run(ctx).length, 0);
+  assert.equal(findLibOnCdn.run(ctx).length, 0);
+  assert.deepEqual(
+    minifiedCode.run(ctx).map((f) => f.file),
+    ["pdf-lib.min.js"]
+  );
+});
+
+// The discard is policy, applied AFTER the cache: the raw hit stays cached, so a
+// second run makes no new hash lookup - and if the package later clears the
+// popularity bar, the same cached hit promotes the file into the vendored family.
+test("a discarded hit stays cached; a later popularity flip promotes it from cache", async () => {
+  const cacheDir = tmpCacheDir();
+  const hit = {
+    type: "npm",
+    name: "cw_office_sdk",
+    version: "1.3.5",
+    file: "/components/cw-pdf-editor/util/pdf-lib.min.js",
+  };
+
+  // Run 1: not popular + name mismatch -> discarded, but the hash lookup is cached.
+  const first = classify(addonWith({ "pdf-lib.min.js": MINIFIED }));
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(first.files.get("pdf-lib.min.js"));
+  const net1 = netFor(new Map([[hash, hit]]), { downloads: 50 });
+  await resolveCdnLibraries(first, { net: net1, cacheDir });
+  assert.equal(net1.lookupCalls.length, 1);
+  assert.equal(
+    first.bundled.classified.find((c) => c.file === "pdf-lib.min.js").cdn,
+    undefined
+  );
+
+  // Run 2: same cache, the package is popular this time -> promoted, no new lookup.
+  const second = classify(addonWith({ "pdf-lib.min.js": MINIFIED }));
+  const net2 = netFor(new Map(), { downloads: 5000 });
+  await resolveCdnLibraries(second, { net: net2, cacheDir });
+  assert.equal(net2.lookupCalls.length, 0, "served from cache");
+  const tag = second.bundled.classified.find(
+    (c) => c.file === "pdf-lib.min.js"
+  );
+  assert.equal(tag.library, true);
+  assert.deepEqual(tag.libraryId, { name: "cw_office_sdk", version: "1.3.5" });
+});
+
+// The on-disk cache is foreign-tolerant: an entry whose name/version is not a
+// non-empty string (corrupt, or written by something else) is treated as a miss -
+// it must never reach the name test or the tag promotion, let alone throw.
+test("a corrupt cache entry with a non-string name is treated as a miss", async () => {
+  const cacheDir = tmpCacheDir();
+  const addon = classify(addonWith({ "x.min.js": MINIFIED }));
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(addon.files.get("x.min.js"));
+  fs.writeFileSync(
+    path.join(cacheDir, "jsdelivr-hash-lookup.json"),
+    JSON.stringify({
+      [hash]: { type: "npm", name: 123, version: "1.0.0", file: "/x.min.js" },
+    })
+  );
+
+  await resolveCdnLibraries(addon, { net: netFor(new Map()), cacheDir });
+
+  const tag = addon.bundled.classified.find((c) => c.file === "x.min.js");
+  assert.equal(tag.library, false);
+  assert.equal(tag.libraryId, undefined);
+  assert.equal(tag.cdn, undefined);
+});
+
 test("a gh-type hit uses GitHub stars for the popularity bar; a popular hit adds no vendor result", async () => {
   const addon = classify(addonWith({ "app/widget.min.js": MINIFIED }));
   addon.vendor = { results: [] };
