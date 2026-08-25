@@ -445,23 +445,24 @@ test("unused-files: a basename colliding with a referenced library file is still
   assert.ok(!found.includes("lib/button.js")); // reachable, used
 });
 
-// Docs/metadata the add-on ships are exempt when the basename CONTAINS a known doc
-// name and the file is a doc type (a documentation extension or none) - so localized
-// variants with any separator (README_DE.md, README.de.md) are covered, while a code
-// file that merely shares the name (history.js, README.js) is NOT exempt and stays
-// subject to the unused-files check, so the exemption cannot hide code.
-test("unused-files: docs allowlisted by name; same-named code still flagged", () => {
+// Where an extension does not settle it - a .txt, or no extension at all - a known
+// doc name in the basename does, so LICENSE and AUTHORS are exempt while Makefile
+// and a build log are not. Substring matching covers localized and variant names
+// with any separator. A code file is turned away by its extension whatever it is
+// called, so the exemption cannot hide code.
+test("unused-files: an unsettled extension is exempt by name, code never is", () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
     "bg.js": `console.log(1);`,
-    "Description.md": "# store listing",
-    "Description_DE.md": "# localized variant (underscore)",
-    "README.de.md": "# localized variant (dotted)",
-    "Description.fr.md": "# localized variant (dotted)",
-    "CONTRIBUTING.md": "# how to help",
-    "CODE_OF_CONDUCT.md": "# be nice",
-    "TODO.md": "- things",
+    LICENSE: "MIT",
+    AUTHORS: "someone",
+    "README.txt": "# plain-text readme",
+    "CHANGELOG.v2.txt": "# variant name",
+    "Description_DE.txt": "# localized variant (underscore)",
+    "README.de.txt": "# localized variant (dotted)",
+    Makefile: "all:\n\techo hi",
+    "build-log.txt": "npm WARN ...",
     "history.js": `console.log("orphan code, not a doc");`,
     "README.js": `console.log("not a readme");`,
   };
@@ -470,20 +471,81 @@ test("unused-files: docs allowlisted by name; same-named code still flagged", ()
   const manual = manualItems(result).map((m) => m.file);
   const flagged = (f) => found.includes(f) || manual.includes(f);
   for (const doc of [
-    "Description.md",
-    "Description_DE.md",
-    "README.de.md",
-    "Description.fr.md",
-    "CONTRIBUTING.md",
-    "CODE_OF_CONDUCT.md",
-    "TODO.md",
+    "LICENSE",
+    "AUTHORS",
+    "README.txt",
+    "CHANGELOG.v2.txt",
+    "Description_DE.txt",
+    "README.de.txt",
   ]) {
     assert.ok(!flagged(doc), `${doc} should be allowlisted`);
   }
-  // A code file (.js) is NOT allowlisted, even when named like a doc/metadata
-  // file - neither a doc-prose name nor an existing metadata name gets a pass.
+  // Nothing vouches for these: a build tool's own file and a build log are the
+  // packaging debris the report exists to surface.
+  assert.ok(flagged("Makefile"), "Makefile should still be flagged");
+  assert.ok(flagged("build-log.txt"), "build-log.txt should still be flagged");
+  // A code file is NOT allowlisted, even when named like a doc/metadata file.
   assert.ok(flagged("history.js"), "history.js should still be flagged");
   assert.ok(flagged("README.js"), "README.js should still be flagged");
+});
+
+// A documentation extension settles the question on its own, whatever the file is
+// called: markdown and reStructuredText carry no code, so an unreferenced one is
+// documentation the add-on ships rather than packaging debris. A .txt does not
+// settle it - it is as much a build artifact as a document - which is exactly what
+// this check exists to surface.
+test("unused-files: a documentation extension is exempt; an unnamed .txt is not", () => {
+  const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
+  const files = {
+    "manifest.json": JSON.stringify(manifest),
+    "bg.js": `console.log(1);`,
+    "notes.md": "# scratch notes",
+    "docs/architecture.md": "# how it fits together",
+    "guide.markdown": "# the long spelling",
+    "protocol.rst": "the other markup",
+    "data.txt": "not named like a document",
+  };
+  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const found = result.findings.map((f) => f.file);
+  const manual = manualItems(result).map((m) => m.file);
+  const flagged = (f) => found.includes(f) || manual.includes(f);
+  for (const doc of [
+    "notes.md",
+    "docs/architecture.md",
+    "guide.markdown",
+    "protocol.rst",
+  ]) {
+    assert.ok(!flagged(doc), `${doc} should be exempt`);
+  }
+  assert.ok(flagged("data.txt"), "an unnamed .txt is still reported");
+});
+
+// Junk by name outranks the exemptions, so a leaked build/editor directory is
+// reported for what it is even when everything in it is documentation - shipping
+// .git/ or .vscode/ is the finding, whatever the file inside happens to be.
+test("unused-files: markdown inside a junk directory is still junk", () => {
+  const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
+  const files = {
+    "manifest.json": JSON.stringify(manifest),
+    "bg.js": `console.log(1);`,
+    ".git/COMMIT_EDITMSG.md": "wip",
+    ".github/ISSUE_TEMPLATE/bug.md": "# template",
+    ".vscode/notes.md": "# editor notes",
+    "README.md~": "# an editor backup",
+    "notes.md": "# a document the add-on ships",
+  };
+  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const found = result.findings.map((f) => f.file);
+  for (const junk of [
+    ".git/COMMIT_EDITMSG.md",
+    ".github/ISSUE_TEMPLATE/bug.md",
+    ".vscode/notes.md",
+    "README.md~",
+  ]) {
+    assert.ok(found.includes(junk), `${junk} should be reported as junk`);
+  }
+  // Markdown that is not junk keeps its exemption.
+  assert.ok(!found.includes("notes.md"));
 });
 
 // The pre-flight narrates each unreachable candidate it assesses to the feed via

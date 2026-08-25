@@ -26,9 +26,15 @@
       <p>
         A deterministic pre-flight follows every static load edge — imports,
         getURL, HTML and CSS references, and file-loading APIs — to decide what
-        is reachable. Dependency manifests, the manifest, locale catalogs and
-        documentation metadata are always exempt. Clear junk by name and a file
-        named only by dead code with no dynamic loader are reported directly.
+        is reachable. Clear junk by name is reported first, so a leaked
+        <code>.git/</code> or <code>.vscode/</code> is surfaced whatever it holds.
+        Past that, dependency manifests, the manifest, locale catalogs and
+        documentation are exempt — a documentation extension such as
+        <code>.md</code> or <code>.rst</code> settles it on its own, while a
+        <code>.txt</code> or an extensionless file must also be named like
+        documentation, so <code>LICENSE</code> is exempt and a stray build log is
+        still reported. A file named only by dead code with no dynamic loader is
+        reported directly.
         When a file's name appears in live code, or the add-on builds load paths
         at runtime, the linter cannot tell statically whether any site really
         loads it, so each suspected loader site is handed to the model; the file
@@ -39,11 +45,11 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A packaged file"] --> B{"Vendored, doc metadata,<br/>dependency/lock, manifest,<br/>or a locale catalog?"}
-  B -- yes --> S([skip])
-  B -- no --> C{"Hidden/junk by name?<br/>dotfile, source map, archive,<br/>editor backup"}
+  A["A packaged file"] --> C{"Hidden/junk by name?<br/>dotfile, source map, archive,<br/>editor backup"}
   C -- yes --> ERR([ERROR: hidden/junk file])
-  C -- no --> D{"Is the add-on an Experiment?"}
+  C -- no --> B{"Vendored, documentation,<br/>dependency/lock, manifest,<br/>or a locale catalog?"}
+  B -- yes --> S([skip])
+  B -- no --> D{"Is the add-on an Experiment?"}
   D -- yes --> S2([skip — reachability<br/>unreliable for Experiments])
   D -- no --> E{"Statically reachable<br/>from an entry point?"}
   E -- yes --> OK([no finding])

@@ -26,19 +26,26 @@ import { basename, extname } from "../util/files.js";
 /** @typedef {import("./reachability.js").Reachability} Reachability */
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
 
-// Documentation file extensions; an extensionless file (LICENSE, AUTHORS) also
-// counts as a doc type. .license/.licence cover the `<library>.LICENSE`
-// companion convention for vendored files, where the doc name sits in the
-// extension instead of the basename prefix - a legally shipped file we must
-// never tell a developer to strip.
+// Documentation file extensions. Most settle the question on their own: markdown,
+// reStructuredText and a .license carry no code and are not runtime resources, so a
+// copy nothing loads is something the add-on ships to be READ, whatever it is
+// called. .license/.licence cover the `<library>.LICENSE` companion convention for
+// vendored files, where the doc name sits in the extension instead of the basename
+// prefix - a legally shipped file we must never tell a developer to strip.
 const DOC_EXTENSIONS = new Set([
   ".md",
   ".markdown",
-  ".txt",
   ".rst",
+  ".txt",
   ".license",
   ".licence",
 ]);
+
+// The doc extension that does NOT settle it, so a documentation name must vouch for
+// the file as well: a .txt is as much a build log or a runtime word list as it is a
+// document, and a leftover build-log.txt is the very thing the unused-files report
+// exists to surface. A file with no extension is vouched for the same way.
+const NAME_REQUIRED_EXTENSIONS = new Set([".txt"]);
 
 // Base NAMES (lowercased) of documentation / project-metadata files an add-on may
 // ship (for tooling, its store listing, or the i18n runtime) but never loads at
@@ -66,21 +73,24 @@ const DOC_NAMES = [
 
 /**
  * Whether a packaged file is documentation / project metadata the add-on ships but
- * never loads at runtime: a doc-TYPE file (a DOC_EXTENSIONS extension, or none -
- * LICENSE, AUTHORS) whose basename CONTAINS a DOC_NAME. Substring + doc-type, so
- * localized / variant names (README_DE, README.de.md, CHANGELOG.v2.md) are all
- * covered, while a same-named CODE file (README.js, history.js) is not. Shared so
- * the unused-files ALLOW list and reachability's doc-file test agree.
+ * never loads at runtime. A documentation extension settles it, except for a
+ * NAME_REQUIRED_EXTENSIONS one and a file with no extension at all: those must also
+ * have a basename CONTAINING a DOC_NAME, which is what tells LICENSE and AUTHORS
+ * apart from Makefile and Dockerfile, and a README.txt from a build-log.txt.
+ * Substring matching covers localized / variant names (README_DE, CHANGELOG.v2.txt).
+ * A code file carrying an extension is turned away by that extension alone, so the
+ * exemption cannot reach one. Shared so the unused-files ALLOW list and
+ * reachability's doc-file test agree.
  * @param {string} file
  * @returns {boolean}
  */
 export function isDocMetadataFile(file) {
   const ext = extname(file);
-  if (ext !== "" && !DOC_EXTENSIONS.has(ext)) {
-    return false;
+  if (ext === "" || NAME_REQUIRED_EXTENSIONS.has(ext)) {
+    const base = basename(file).toLowerCase();
+    return DOC_NAMES.some((name) => base.includes(name));
   }
-  const base = basename(file).toLowerCase();
-  return DOC_NAMES.some((name) => base.includes(name));
+  return DOC_EXTENSIONS.has(ext);
 }
 
 // Dependency manifests / lock files (a valid third-party-library declaration).
@@ -92,8 +102,10 @@ export const DEPENDENCY_FILE_RE =
 
 /**
  * Broader doc test for reachability's mention net: a named doc, a dependency
- * manifest / lock file, or ANY doc-extension file (even unnamed, e.g. notes.md) -
- * all prose / metadata, never a runtime loader.
+ * manifest / lock file, or ANY doc-extension file (even unnamed, e.g. data.txt) -
+ * all prose / metadata, never a runtime loader. Wider than isDocMetadataFile on
+ * purpose: being an unnamed doc TYPE is reason enough to keep a file out of the
+ * mention corpus, but not always reason enough to stop reporting it unused.
  * @param {string} file
  * @returns {boolean}
  */

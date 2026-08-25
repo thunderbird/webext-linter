@@ -99,13 +99,17 @@ export const RECOGNIZED_EXTS = new Set([
 ]);
 
 /**
- * Lowercased file extension including the dot (e.g. ".html"), or "".
+ * Lowercased file extension including the dot (e.g. ".html"), or "" when the file
+ * has none. Read from the BASENAME: only a file carries an extension, so a dot in
+ * a directory (a versioned vendor folder, lib/jquery-3.6.0/LICENSE) leaves the
+ * file extensionless rather than lending it one.
  * @param {string} file
  * @returns {string}
  */
 export function extname(file) {
-  const i = file.lastIndexOf(".");
-  return i === -1 ? "" : file.slice(i).toLowerCase();
+  const base = basename(file);
+  const i = base.lastIndexOf(".");
+  return i === -1 ? "" : base.slice(i).toLowerCase();
 }
 
 /**

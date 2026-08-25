@@ -39,10 +39,10 @@ import {
 /** @typedef {import("../../lib/reachability.js").Reachability} Reachability */
 
 // Never flag: dependency manifests / lock files and locale message catalogs.
-// Documentation / project metadata (license, readme, and the like) is exempted
-// separately by isDocMetadataFile (a doc-type file whose name contains a known doc
-// name). The manifest needs no entry: it is not in the corpus (the loader lifts it
-// onto ctx), so it is never enumerated here.
+// Documentation / project metadata is exempted separately by isDocMetadataFile
+// (a documentation extension settles it; a .txt or an extensionless file needs a
+// known doc name too). The manifest needs no entry: it is not in the corpus (the
+// loader lifts it onto ctx), so it is never enumerated here.
 const ALLOW = [DEPENDENCY_FILE_RE, /^_locales\//];
 
 // Definite "should not ship" by name: OS/editor junk, source maps. Archives are handled
@@ -92,19 +92,22 @@ export default {
     let n = 0;
 
     for (const file of addon.files.keys()) {
-      if (
-        skip.has(file) ||
-        isDocMetadataFile(file) ||
-        ALLOW.some((re) => re.test(file))
-      ) {
-        continue;
-      }
+      // Junk outranks every exemption: a leaked .git/ or .vscode/ is debris
+      // whatever it holds, and a document or a vendored library inside one is
+      // no reason to ship the directory.
       if (
         JUNK.some((re) => re.test(file)) ||
         ARCHIVE_EXTENSIONS.has(extname(file))
       ) {
         ctx.note?.(file, null, "hidden/junk file", VERDICT.FAIL);
         findings.push(finding({ file }));
+        continue;
+      }
+      if (
+        skip.has(file) ||
+        isDocMetadataFile(file) ||
+        ALLOW.some((re) => re.test(file))
+      ) {
         continue;
       }
       if (experiment) {
