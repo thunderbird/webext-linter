@@ -15,8 +15,8 @@
 //
 // Scope: this only ever sees REAL, schema-resolved APIs (kind function|event with a
 // version_added). A hallucinated/unsupported API resolves to neither and is left to
-// unknown-api (which flags a guarded unknown namespace, and skips a guarded unknown
-// member/unsupported).
+// unknown-api (which skips a guarded unknown member/unsupported, and a guarded
+// unknown namespace only where the guard offers a live one in its place).
 //
 // Tuple comparison, so version_added "140.4.1" against strict_min "140.0" is caught.
 // No-op when strict_min_version is absent or unparsable. Independent of

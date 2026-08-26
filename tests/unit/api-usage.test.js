@@ -229,6 +229,11 @@ test("flags access inside a local feature-detection guard", () => {
     true
   );
   assert.equal(guarded(`messenger.foo.bar && messenger.foo.bar();`), true);
+  // Every logical operator short-circuits, so each can hold the fallback. `??` is
+  // the form feature detection most often takes, and reads a missing API exactly:
+  // it takes the right side only when the left is nullish.
+  assert.equal(guarded(`const m = messenger.foo ?? messenger.bar;`), true);
+  assert.equal(guarded(`const m = messenger.foo || messenger.bar;`), true);
   assert.equal(
     guarded(
       `if ((await messenger.runtime.getBrowserInfo()).version >= 141) messenger.x.y();`
@@ -241,10 +246,47 @@ test("flags access inside a local feature-detection guard", () => {
   assert.equal(plain.guarded, false);
 });
 
+// A guard says more than THAT an access is feature-detected: where the access is one
+// arm of a short-circuit, it records what the OTHER arm names - the alternative that
+// runs instead. That is what lets a consumer tell a cross-browser shim (the other arm
+// names an API that exists) from a probe for something that exists nowhere. A test
+// names what must be PRESENT to arrive here, so it offers no alternative and records
+// nothing; nor does reaching THROUGH a namespace, which throws rather than falling
+// back.
+test("records what a short-circuit offers as the alternative", () => {
+  const refs = (code) =>
+    parseApiUsage(code).usages.map((u) => u.guardRefs.map((r) => r.join(".")));
+  // Each arm names the other, so the pairing reads the same written either way.
+  assert.deepEqual(refs(`const m = browser.menus ?? browser.contextMenus;`), [
+    ["contextMenus"],
+    ["menus"],
+  ]);
+  assert.deepEqual(refs(`const m = browser.contextMenus ?? browser.menus;`), [
+    ["menus"],
+    ["contextMenus"],
+  ]);
+  // An existence test is not an alternative, and neither is a call reaching through
+  // the namespace - both are guarded, but with nothing offered in its place.
+  assert.deepEqual(
+    refs(`if (browser.menus) { browser.contextMenus.create({}); }`),
+    [[], []]
+  );
+  assert.deepEqual(
+    refs(`browser.contextMenus.create({}) || browser.menus.create({});`),
+    [[], []]
+  );
+  // No guard at all, and a guard naming nothing: both leave the list empty.
+  assert.deepEqual(refs(`browser.contextMenus.create({});`), [[]]);
+  assert.deepEqual(
+    refs(`if (typeof browser.contextMenus !== "undefined") { x(); }`),
+    [[]]
+  );
+});
+
 // A guard referencing an API namespace through an ALIAS (const m = browser.messages;
 // if (m.future) m.future()) is recognized like a literal-root guard - the call is marked
 // guarded. Uses if/&& forms (no typeof), so the signal comes specifically from aliasTarget
-// resolving the alias in refsGuardSignal, not the typeof shortcut. This is the shape that
+// resolving the alias in guardApiRefs, not the typeof shortcut. This is the shape that
 // regressed strict-min-version-api on shim/wrapper add-ons.
 test("recognizes an alias in a feature-detection guard", () => {
   const guardedFuture = (code) =>

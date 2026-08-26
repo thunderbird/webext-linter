@@ -11,8 +11,9 @@
 // "limitations" rather than silently dropping them.
 //
 // Belongs here: usage extraction (segments, line/column, dynamic-tail and alias
-// limitations) and the feature-detection guard signal (whether a call sits
-// behind `if (typeof _m.foo === "function") _m.foo()`).
+// limitations) and the feature-detection guard signal - whether a call sits behind
+// `if (typeof _m.foo === "function") _m.foo()`, and which API paths a short-circuit
+// offers it as the alternative.
 //
 // Does NOT belong here: what denotes an API object - the API_ROOTS set, alias
 // resolution, and the per-AST base index (-> src/parse/api-base.js). Deciding
@@ -38,9 +39,16 @@ import { API_ROOTS, aliasTarget, apiBasesOf } from "./api-base.js";
  *   optional chaining (`messenger.foo?.bar`), so the access short-circuits to
  *   undefined where the member is missing.
  * @property {boolean} guarded         True if `optional`, OR the access sits in a
- *   local guard (an enclosing if/?:/while test or `&&`/`||` referencing an API object
- *   - a root or an alias/captured namespace - or getBrowserInfo, or a `typeof` probe)
- *   - a coarse "might be feature-detected" signal a consumer can hand to the LLM.
+ *   local guard (an enclosing if/?:/while test or a short-circuit referencing an API
+ *   object - a root or an alias/captured namespace - or getBrowserInfo, or a `typeof`
+ *   probe) - a coarse "might be feature-detected" signal a consumer can hand to the
+ *   LLM.
+ * @property {string[][]} guardRefs    The API paths that guard names, as segment
+ *   lists after the root. Empty when the guard names none (a `typeof` probe), and an
+ *   empty list stands for a reference carrying no namespace (a bare root,
+ *   getBrowserInfo). Lets a consumer ask whether the guard offers a path that
+ *   actually exists - the `browser.menus ?? browser.contextMenus` shim - which a bare
+ *   `guarded` cannot say.
  */
 
 /**
@@ -81,13 +89,14 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
     const climbed = climbChain(path);
     const segments = [...target.prefix, ...climbed.segments];
     const { dynamicTail, dynamicAt, optional } = climbed;
-    const guarded = optional || isGuarded(path);
+    const guard = guardOf(path);
     usages.push({
       root: target.root,
       segments,
       dynamicTail,
       optional,
-      guarded,
+      guarded: optional || guard !== null,
+      guardRefs: guard ?? [],
       ...loc(path.node),
     });
     if (dynamicTail && dynamicAt) {
@@ -232,38 +241,50 @@ const GUARD_TEST_TYPES = new Set([
 ]);
 
 /**
- * Coarse: does this AST subtree reference an API object - a literal root, OR a local
- * that aliases a root/namespace (resolved via aliasTarget, the same primitive usage
- * extraction uses) - or the getBrowserInfo version-gate helper? Such a reference in a
- * guard test marks the guarded code as possibly feature-detected; the precise call is
- * left to the LLM. Scope-aware: a shadowed local named browser/messenger/chrome does
- * NOT resolve, so it is not a false signal. Only VALUE-position identifiers count - a
- * property name (`flag.something`) is a name, not a reference, so it is never resolved.
+ * Every API object this AST subtree references - a literal root, a local that aliases
+ * a root/namespace (resolved via aliasTarget, the same primitive usage extraction
+ * uses), or the getBrowserInfo version-gate helper - as the segment path each names
+ * after the root. A reference carrying no namespace of its own (a bare root,
+ * getBrowserInfo) contributes an empty path, so it still counts as a signal without
+ * claiming to name an API. Any reference at all marks the guarded code as possibly
+ * feature-detected; WHICH paths it names lets a consumer tell a compat shim from a
+ * probe for something that does not exist.
+ *
+ * Scope-aware: a shadowed local named browser/messenger/chrome does NOT resolve, so it
+ * is not a false signal. Only VALUE-position identifiers count - a property name
+ * (`flag.something`) is a name, not a reference, so it is never resolved.
  * @param {object} node
  * @param {object} scope  Scope of the guarded access, for resolving aliases.
- * @returns {boolean}
+ * @returns {string[][]}  One path per reference; empty when there are none.
  */
-function refsGuardSignal(node, scope) {
-  let found = false;
+function guardApiRefs(node, scope) {
+  const refs = [];
   const visit = (n) => {
-    if (found || !n || typeof n.type !== "string") {
+    if (!n || typeof n.type !== "string") {
       return;
     }
-    if (
-      n.type === "Identifier" &&
-      (n.name === "getBrowserInfo" || aliasTarget(n, scope, new Set()) !== null)
-    ) {
-      found = true;
-      return;
+    if (n.type === "Identifier") {
+      if (n.name === "getBrowserInfo") {
+        refs.push([]);
+        return;
+      }
+      const target = aliasTarget(n, scope, new Set());
+      if (target) {
+        refs.push([...target.prefix]);
+        return;
+      }
     }
     const isMember =
       n.type === "MemberExpression" || n.type === "OptionalMemberExpression";
     // A member can denote an API object itself (a root named on the global
-    // object), and it is tested here rather than through its parts: the skip
-    // below hides the very property that names the root.
-    if (isMember && aliasTarget(n, scope, new Set()) !== null) {
-      found = true;
-      return;
+    // object, or a namespace read off one), and it is tested here rather than
+    // through its parts: the skip below hides the very property that names it.
+    if (isMember) {
+      const target = aliasTarget(n, scope, new Set());
+      if (target) {
+        refs.push([...target.prefix]);
+        return;
+      }
     }
     // A non-computed member's `property` is a name, not a value - skip it so a plain
     // `flag.something` never resolves `something` as an alias (only `x[expr]` computed
@@ -287,48 +308,67 @@ function refsGuardSignal(node, scope) {
     }
   };
   visit(node);
-  return found;
+  return refs;
 }
 
 /**
- * Whether the access sits in a LOCAL guard - an enclosing if/?:/while test or a
- * `&&`/`||` referencing an API object (root or alias) or getBrowserInfo, or a
- * `typeof` probe. The walk stops at the nearest function boundary, so a guard never
- * leaks across a function definition (a deliberately conservative, coarse signal).
+ * The LOCAL guard the access sits in, as the API paths that guard names (see
+ * guardApiRefs) - an enclosing if/?:/while test or a short-circuit referencing an API
+ * object (root or alias) or getBrowserInfo, or a `typeof` probe. Null when there is
+ * no guard; an empty list when the guard names no API of its own. The walk stops at
+ * the nearest function boundary, so a guard never leaks across a function definition
+ * (a deliberately conservative, coarse signal).
  * @param {BabelPath} rootPath
- * @returns {boolean}
+ * @returns {?string[][]}
  */
-function isGuarded(rootPath) {
+function guardOf(rootPath) {
   let p = rootPath;
   while (p) {
     const parent = p.parentPath;
     if (!parent || parent.isFunction()) {
-      return false;
+      return null;
     }
     const node = parent.node;
     // An optional CALL on this chain (`messenger.foo.bar?.()`) short-circuits to
     // undefined when the member is missing - a guard, like optional chaining on
     // the member path (which climbChain already flags as `optional`).
     if (node.type === "OptionalCallExpression" && p.key === "callee") {
-      return true;
+      return [];
     }
     if (node.type === "UnaryExpression" && node.operator === "typeof") {
-      return true;
+      return [];
     }
     if (
       GUARD_TEST_TYPES.has(node.type) &&
-      refsGuardSignal(node.test, rootPath.scope)
+      guardApiRefs(node.test, rootPath.scope).length
     ) {
-      return true;
+      // A test names what must be PRESENT to reach here, so it offers this access
+      // no alternative of its own.
+      return [];
     }
-    if (
-      node.type === "LogicalExpression" &&
-      (node.operator === "&&" || node.operator === "||") &&
-      refsGuardSignal(node, rootPath.scope)
-    ) {
-      return true;
+    // Every logical operator short-circuits, so each one can hold a fallback: `??`
+    // takes the right side when the left is nullish, which is what a missing API
+    // reads as, and is the form feature detection most often takes.
+    if (node.type === "LogicalExpression") {
+      if (!guardApiRefs(node, rootPath.scope).length) {
+        p = parent;
+        continue;
+      }
+      // The other operand stands as this access's alternative - the two are the
+      // arms of one choice, which is what makes a live sibling vouch for a missing
+      // namespace. Only for a plain READ of the namespace: reaching through a
+      // missing one (`browser.gone.f()`) throws rather than falling back, so it is
+      // no alternative to anything.
+      const plainRead =
+        p.node.type === "Identifier" || p.node.type === "MemberExpression";
+      return plainRead
+        ? guardApiRefs(
+            p.key === "left" ? node.right : node.left,
+            rootPath.scope
+          )
+        : [];
     }
     p = parent;
   }
-  return false;
+  return null;
 }

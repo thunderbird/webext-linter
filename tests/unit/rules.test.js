@@ -1988,9 +1988,10 @@ test("unknown-api flags version_added:false as unsupported", () => {
 });
 
 // A FEATURE-DETECTED (guarded) reference to an unknown MEMBER or an unsupported API is
-// skipped (the fallback runs where it's missing). A guarded unknown NAMESPACE is exempt
-// (still flagged - a whole missing namespace is likely a hallucination), and any
-// UNGUARDED unavailable API is flagged. So the skip is scoped to guarded member/unsupported.
+// skipped (the fallback runs where it's missing). A guarded unknown NAMESPACE needs
+// more than the guard - with nothing known named beside it (no guardRefs here) the
+// functionality is absent whatever the intent, so it is still flagged - and any
+// UNGUARDED unavailable API is flagged.
 test("unknown-api skips guarded members/unsupported but flags guarded namespaces", () => {
   const local = buildSchemaIndex({
     files: {
@@ -2037,6 +2038,92 @@ test("unknown-api skips guarded members/unsupported but flags guarded namespaces
     "3:browser.nope",
     "4:browser.t.gone",
   ]);
+});
+
+// A whole unknown namespace is safe when the SAME guard also names a namespace that
+// exists: that pairing is a cross-browser shim (browser.menus ?? browser.contextMenus)
+// whose working path is right there, so the add-on functions and there is nothing to
+// report. Paired with nothing that resolves, the namespace is absent however it is
+// written, and stays a finding.
+test("unknown-api skips an unknown namespace vouched for by a live one", () => {
+  const usage = (segments, line, guardRefs) => ({
+    root: "browser",
+    segments,
+    line,
+    column: 0,
+    guarded: true,
+    guardRefs,
+  });
+  const out = unknownApi.run(
+    withManifest({
+      schema, // `messages` is a real namespace; `nope`/`alsoNope` are not
+      addon: {
+        manifest: { background: { scripts: ["bg.js"] } },
+        files: new Map([["bg.js", Buffer.from("")]]),
+      },
+      apiUsages: [
+        {
+          file: "bg.js",
+          usages: [
+            // browser.messages ?? browser.nope - the shim shape.
+            usage(["nope", "x"], 1, [["messages"]]),
+            // Guarded, but nothing the schema has is named alongside.
+            usage(["alsoNope", "x"], 2, [["alsoNope"]]),
+            // A guard that names no API at all (a typeof probe) vouches for nothing.
+            usage(["stillNope", "x"], 3, []),
+          ],
+        },
+      ],
+    })
+  );
+  assert.deepEqual(out.map((f) => `${f.loc.line}:${f.item}`).sort(), [
+    "2:browser.alsoNope",
+    "3:browser.stillNope",
+  ]);
+});
+
+// End-to-end through the real parser, which is where the shim rule has to hold: only
+// the arm a short-circuit offers in place of the unknown namespace vouches for it.
+// Standing NEAR a live namespace buys nothing - an existence test names what must be
+// present to arrive, and reaching through a missing namespace throws rather than
+// falling back - so neither shape may launder a name the schema does not have.
+test("unknown-api: only the offered alternative vouches, end-to-end", () => {
+  const run = (src) => {
+    const { usages } = parseApiUsage(src);
+    return unknownApi
+      .run(
+        withManifest({
+          schema, // `messages` is a real namespace; `nope` is not
+          addon: {
+            manifest: { background: { scripts: ["bg.js"] } },
+            files: new Map([["bg.js", Buffer.from(src)]]),
+          },
+          apiUsages: [{ file: "bg.js", usages }],
+        })
+      )
+      .map((f) => f.item);
+  };
+  // The shim: the fallback is what runs where the namespace is missing, and it
+  // reads the same written either way round.
+  assert.deepEqual(run(`const m = browser.messages ?? browser.nope;`), []);
+  assert.deepEqual(run(`const m = browser.nope ?? browser.messages;`), []);
+  assert.deepEqual(run(`const m = browser.messages || browser.nope;`), []);
+  // Merely guarded by a live namespace, with no alternative offered.
+  assert.deepEqual(run(`if (browser.messages) { browser.nope.x(); }`), [
+    "browser.nope",
+  ]);
+  assert.deepEqual(run(`browser.messages && browser.nope.x();`), [
+    "browser.nope",
+  ]);
+  // Reaching through the missing namespace throws; it is no one's fallback.
+  assert.deepEqual(run(`browser.nope.x() || browser.messages.list();`), [
+    "browser.nope",
+  ]);
+  // A version gate says nothing about a namespace no version has.
+  assert.deepEqual(
+    run(`if (browser.runtime.getBrowserInfo()) { browser.nope.x(); }`),
+    ["browser.nope"]
+  );
 });
 
 // End-to-end (the thinbox folders shape): a namespace captured into a local, then a
