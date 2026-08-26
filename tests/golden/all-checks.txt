@@ -45,7 +45,7 @@ Read more: https://webextension-api.thunderbird.net/.
 
 We kindly ask you to resolve the following issues with your next release:
 
-13) Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.
+13) Asynchronous listener attached to runtime.onMessage. An async listener always returns a Promise, which claims the response for every message it sees - including the ones it declines - so the other listeners never get to answer. This is error-prone and must be avoided.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
  - background.js:35
 

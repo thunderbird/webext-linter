@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Async listener in runtime.onMessage()</title>
+    <title>Async listener on a runtime message event</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
         <h1>
-          Async listener in runtime.onMessage()
+          Async listener on a runtime message event
           <span class="badge warning">warning</span>
         </h1>
         <div class="check-id">async-onmessage</div>
@@ -18,19 +18,25 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        An async function passed straight to
-        <em>runtime.onMessage.addListener</em>. An async listener always returns
-        a Promise, which the messaging system reads as "I will respond" for
-        every message — that claims the response channel and breaks other
-        listeners.
+        An async function passed straight to the <em>addListener</em> of a runtime
+        message event — one that answers the sender with whatever its listener
+        returns. An async listener always returns a Promise, which the messaging
+        system reads as "I will respond" for every message it sees, including the
+        ones the listener meant to decline — that claims the response channel, and
+        the other listeners never get to answer.
       </p>
       <p>
         The check looks only at the developer's own authored code; bundled,
-        minified or otherwise non-authored files are skipped. It matches the
-        specific call shape where a recognised API root's
-        <em>runtime.onMessage.addListener</em> is invoked, and flags it only when
-        the first argument is an async function or async arrow function. A plain
-        (non-async) listener is left alone.
+        minified or otherwise non-authored files are skipped. It matches an
+        <em>addListener</em> call on a recognised API root, then asks the schema
+        whether that event answers with its listener's return value — it hands the
+        listener a <em>sendResponse</em> and declares a return. That covers
+        <em>runtime.onMessage</em>, <em>onMessageExternal</em> and
+        <em>onUserScriptMessage</em>, and excludes <em>onConnect</em> and
+        <em>onConnectExternal</em>, which hand over a port and read no return. A
+        message event Thunderbird adds later is covered as it arrives. Only a first
+        argument that is an async function or async arrow function is flagged; a
+        plain listener is left alone.
       </p>
 
       <h2>Decision flow</h2>
@@ -39,11 +45,11 @@
 flowchart TD
   A["A JavaScript file in the add-on"] --> B{"Authored by the developer?<br/>not a bundled or minified library"}
   B -- no --> S([skip])
-  B -- yes --> C{"Call matches<br/>runtime.onMessage.addListener<br/>on a known API root?"}
+  B -- yes --> C{"An addListener call on<br/>an event that answers with its<br/>listener's return value?"}
   C -- no --> OK([no finding])
   C -- yes --> D{"Is the first argument<br/>an async function?"}
   D -- no --> OK
-  D -- yes --> WARN([WARNING: async listener<br/>on runtime.onMessage])
+  D -- yes --> WARN([WARNING: async listener<br/>on a message event])
 
   classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -56,9 +62,10 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told an asynchronous listener is attached to
-        runtime.onMessage, that this is error-prone and must be avoided, with a
-        link to the runtime messaging guide.
+        The add-on is told an asynchronous listener is attached to the named
+        event, what claiming the response costs the other listeners, and that this
+        is error-prone and must be avoided, with a link to the runtime messaging
+        guide.
       </div>
 
       <p class="source-note">

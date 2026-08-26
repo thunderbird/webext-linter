@@ -9,7 +9,46 @@
       }
     ],
     "events": [
-      { "name": "onMessage" },
+      {
+        "name": "onMessage",
+        "parameters": [
+          { "name": "message", "type": "any" },
+          { "name": "sender", "type": "object" },
+          { "name": "sendResponse", "type": "function" }
+        ],
+        "returns": {
+          "type": "boolean",
+          "optional": true,
+          "description": "Return true from the event listener if you wish to call <code>sendResponse</code> after the event listener returns."
+        }
+      },
+      {
+        "name": "onMessageExternal",
+        "parameters": [
+          { "name": "message", "type": "any" },
+          { "name": "sender", "type": "object" },
+          { "name": "sendResponse", "type": "function" }
+        ],
+        "returns": {
+          "type": "boolean",
+          "optional": true,
+          "description": "Return true from the event listener if you wish to call <code>sendResponse</code> after the event listener returns."
+        }
+      },
+      {
+        "name": "onUserScriptMessage",
+        "parameters": [
+          { "name": "message", "type": "any" },
+          { "name": "sender", "type": "object" },
+          { "name": "sendResponse", "type": "function" }
+        ],
+        "returns": {
+          "type": "boolean",
+          "optional": true,
+          "description": "Return true from the event listener if you wish to call <code>sendResponse</code> after the event listener returns."
+        }
+      },
+      { "name": "onConnect", "parameters": [{ "name": "port", "type": "object" }] },
       {
         "name": "onRestartRequired",
         "annotations": [{ "version_added": false }]

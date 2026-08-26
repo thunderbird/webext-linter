@@ -206,13 +206,14 @@ deterministic-phase:
   response: |-
     Unconditional debugger statement. Please remove it or move it behind a config flag.
 
-# Flags an async listener passed to runtime.onMessage.addListener().
-- title: Async listener in runtime.onMessage()
+# Flags an async listener passed to the addListener() of a runtime message event -
+# one that answers the sender with whatever its listener returns.
+- title: Async listener on a runtime message event
   severity: warning
   check: async-onmessage
   input: source
   response: |-
-    Asynchronous listener attached to runtime.onMessage. This is error-prone and must be avoided.
+    Asynchronous listener attached to {{item}}. An async listener always returns a Promise, which claims the response for every message it sees - including the ones it declines - so the other listeners never get to answer. This is error-prone and must be avoided.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
 
 # ESLint correctness rules (no-redeclare/no-shadow/no-empty/no-unreachable/...)

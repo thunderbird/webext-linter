@@ -97,6 +97,7 @@ const schema = buildSchemaIndex(
 const jsCtx = (code, manifest = {}) => ({
   jsSources: parsed([{ file: "f.js", code, lineOffset: 0, inline: false }]),
   addon: { files: new Map(), manifest },
+  schema,
   options: {},
 });
 
@@ -162,6 +163,52 @@ test("debugger-statement flags unconditional debugger, allows if-guarded", () =>
 });
 
 // ---- async onMessage ----
+// The events that matter are the ones the SCHEMA says answer with their listener's
+// return value - they hand the listener a sendResponse and declare a return. So
+// onMessage and onMessageExternal flag, while the near neighbour onConnect (a port,
+// no return) and an ordinary event like tabs.onUpdated do not, however async their
+// listener is. The finding names the event, so one message serves them all.
+test("async-onmessage flags every event that answers with its return value", () => {
+  const items = (code) =>
+    asyncOnMessage.run(withManifest(jsCtx(code))).map((f) => f.item);
+  assert.deepEqual(
+    items(`browser.runtime.onMessageExternal.addListener(async (m) => {});`),
+    ["runtime.onMessageExternal"]
+  );
+  assert.deepEqual(
+    items(`messenger.runtime.onMessage.addListener(async (m) => {});`),
+    ["runtime.onMessage"]
+  );
+  assert.deepEqual(
+    items(`browser.runtime.onUserScriptMessage.addListener(async (m) => {});`),
+    ["runtime.onUserScriptMessage"]
+  );
+  // Hands over a port and reads no return value: an async listener claims nothing.
+  assert.deepEqual(
+    items(`browser.runtime.onConnect.addListener(async (p) => {});`),
+    []
+  );
+  // An ordinary event, and a chain that merely ends in those names - neither
+  // resolves to an event that answers, so neither is this check's business.
+  assert.deepEqual(
+    items(`chrome.tabs.onUpdated.addListener(async (t) => {});`),
+    []
+  );
+  assert.deepEqual(
+    items(`browser.foo.runtime.onMessage.addListener(async (m) => {});`),
+    []
+  );
+  // Reaching PAST an event is not that event: resolution matches the longest known
+  // prefix, so the path has to be the event itself or the report would name an API
+  // that does not exist.
+  assert.deepEqual(
+    items(
+      `browser.runtime.onMessage.hasListener.addListener(async (m) => {});`
+    ),
+    []
+  );
+});
+
 // Only an async callback on runtime.onMessage flags (it breaks sendResponse);
 // a sync onMessage listener and an unrelated async addEventListener do not.
 test("async-onmessage flags an async runtime.onMessage listener only", () => {
@@ -200,6 +247,7 @@ test("sync-xhr / debugger / async-onmessage skip non-authored code", () => {
   const ctxFor = (file, lib = false) => ({
     jsSources: parsed([{ file, code, lineOffset: 0 }]),
     addon: { files: new Map([[file, Buffer.from(code)]]), manifest: {} },
+    schema,
     options: lib
       ? {
           libraryHashes: new Map([

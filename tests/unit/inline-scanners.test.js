@@ -78,22 +78,43 @@ test("scanAsyncOnMessage flags an async listener across API roots", () => {
   );
 });
 
+// The hit names the event it is on, so the caller can ask the schema about that
+// event and the report can name it. The scanner itself takes no view of which
+// events matter - it reports every addListener on a resolved API chain.
+test("scanAsyncOnMessage names the event each listener is on", () => {
+  assert.deepEqual(
+    scanAsyncOnMessage(
+      `
+        browser.runtime.onMessage.addListener(async () => {});
+        browser.runtime.onMessageExternal.addListener(async () => {});
+        messenger.runtime.onConnect.addListener(() => {});
+        chrome.tabs.onUpdated.addListener(async () => {});
+      `
+    ).hits.map((h) => `${h.event}:${h.async}`),
+    [
+      "runtime.onMessage:true",
+      "runtime.onMessageExternal:true",
+      "runtime.onConnect:false",
+      "tabs.onUpdated:true",
+    ]
+  );
+});
+
 test("scanAsyncOnMessage ignores a non-matching addListener shape", () => {
+  // Not rooted at an API object at all.
   assert.equal(
     scanAsyncOnMessage("foo.addListener(async () => {});").hits.length,
     0
   );
+  // addListener must be the call itself, not a link in the chain.
   assert.equal(
-    scanAsyncOnMessage("chrome.tabs.onUpdated.addListener(async () => {});")
-      .hits.length,
+    scanAsyncOnMessage("browser.runtime.onMessage.addListener.call(x);").hits
+      .length,
     0
   );
-  // The full resolved path must equal runtime.onMessage.addListener - a longer
-  // chain that merely ends in those names is a different API surface.
+  // An event needs a namespace to sit in: a bare root.addListener names none.
   assert.equal(
-    scanAsyncOnMessage(
-      "browser.foo.runtime.onMessage.addListener(async () => {});"
-    ).hits.length,
+    scanAsyncOnMessage("browser.addListener(async () => {});").hits.length,
     0
   );
 });
