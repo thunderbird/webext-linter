@@ -13,7 +13,7 @@
 // assets/registry.yaml), severity (-> that registry entry).
 
 import { VERDICT } from "../../lib/enum.js";
-import { getOutboundSinks } from "../../lib/outbound-sinks.js";
+import { getOutboundSinks, sinkLabel } from "../../lib/outbound-sinks.js";
 import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -33,13 +33,12 @@ export default {
         continue; // an encrypted (https/wss/ftps) remote transmission is fine
       }
       const loc = { line: sink.line, column: sink.column };
-      out.push(finding({ file: sink.file, loc, item: sink.host }));
-      ctx.note?.(
-        sink.file,
-        loc,
-        `cleartext send to ${sink.host}`,
-        VERDICT.FAIL
-      );
+      // The host IS the offending identity, so it stays `item` (the response names
+      // it). The destination as written rides on `hint`, which shows the reviewer
+      // the send itself rather than repeating the host.
+      const label = sinkLabel(sink, "cleartext send");
+      out.push(finding({ file: sink.file, loc, item: sink.host, hint: label }));
+      ctx.note?.(sink.file, loc, `${label} to ${sink.host}`, VERDICT.FAIL);
     }
     return out;
   },

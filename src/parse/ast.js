@@ -5,7 +5,8 @@
 // error-recovering and a fatal failure is reported, never thrown.
 //
 // Belongs here: the only direct import of @babel/parser and @babel/traverse in
-// the app, plus the parse-options and nodeLoc primitives every parser reuses.
+// the app, plus the parse-options and the node->report primitives every parser
+// reuses (nodeLoc for where a node is, srcText for what it says).
 // Any module needing Babel goes through parseJs/traverse/nodeLoc here.
 //
 // Does NOT belong here: extracting facts from the AST or any check logic - the
@@ -99,6 +100,41 @@ export function nodeLoc(node, lineOffset = 0) {
     line: (node.loc?.start.line ?? 1) + lineOffset,
     column: node.loc?.start.column ?? 0,
   };
+}
+
+/**
+ * The add-on's own source for a node, as written - the expression a report shows
+ * when what the developer typed IS the evidence (the destination of a network
+ * sink), with nothing resolved. `code` must be the very string the node was parsed
+ * from, since the offsets index into it.
+ *
+ * The text is the ADD-ON'S OWN and lands in a report a human reads in a terminal,
+ * so it is flattened to plain visible characters first. Control and format
+ * characters go: an escape sequence would let a string in the reviewed source
+ * repaint or erase the report around it, and a bidi override would let it reorder
+ * what is displayed. Whitespace then collapses to single spaces, since an
+ * expression can span lines (a template literal, a ternary) and a raw slice would
+ * carry newlines into a one-line locus.
+ *
+ * A node with no offsets - hand-built, or recovered from a parse error - yields
+ * null rather than a slice of undefined bounds, which would be the WHOLE file.
+ *
+ * What survives is display material: never a key, never a match, and never part of
+ * the trusted framing of an LLM prompt.
+ * @param {AstNode} node
+ * @param {string} code  The source the node was parsed from.
+ * @returns {?string}  The expression as written, or null.
+ */
+export function srcText(node, code) {
+  if (typeof node?.start !== "number" || typeof node?.end !== "number") {
+    return null;
+  }
+  const text = String(code ?? "")
+    .slice(node.start, node.end)
+    .replace(/[\p{Cc}\p{Cf}]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text || null;
 }
 
 /**

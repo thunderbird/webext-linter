@@ -81,6 +81,7 @@ import { runLlmCheck } from "../../src/checks/escalation.js";
 const allChecks = (byPhase) => [...byPhase.values()].flat();
 import unknownApi from "../../src/checks/rules/unknown-api.js";
 import { resolveApiUsages, unknownApis } from "../../src/lib/api-resolution.js";
+import { sinkLabel } from "../../src/lib/outbound-sinks.js";
 import strictMaxVersionApi from "../../src/checks/rules/strict-max-version-api.js";
 import strictMinVersionApi from "../../src/checks/rules/strict-min-version-api.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
@@ -3581,18 +3582,51 @@ test("data-exfiltration makes a candidate per overt remote transmission only", (
   assert.equal(candidates('img.src = "https://x/?d=" + body;'), 0); // covert
 });
 
-// The transmission method rides on the finding's `hint` (shown on the locus),
-// while `item` stays absent so the recheck key stays the unique file:line.
-test("data-exfiltration labels each locus with the transmission method", () => {
-  const out = dataExfiltration.run(
-    withManifest(jsCtx('fetch("https://api.example.com/", { body });'))
+// The transmission method and the destination AS WRITTEN ride on the finding's
+// `hint` (shown on the locus), so the reviewer sees where the data goes without
+// opening the file, while `item` stays absent so the recheck key stays the unique
+// file:line. A send with no destination to name keeps the method alone.
+test("data-exfiltration labels each locus with the method and destination", () => {
+  const hintOf = (code) => {
+    const out = dataExfiltration.run(withManifest(jsCtx(code)));
+    const { findings } = out.llm.resolve(
+      new Map([["X1", { verdict: VERDICT.FAIL }]])
+    );
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].item, null);
+    return findings[0].hint;
+  };
+  assert.equal(
+    hintOf('fetch("https://api.example.com/", { body });'),
+    'fetch() "https://api.example.com/"'
   );
-  const { findings } = out.llm.resolve(
-    new Map([["X1", { verdict: VERDICT.FAIL }]])
+  // Unresolved is fine - what the developer wrote is the evidence.
+  assert.equal(hintOf("fetch(endpoint, { body });"), "fetch() endpoint");
+  assert.equal(
+    hintOf('fetch(base + "/collect", { body });'),
+    'fetch() base + "/collect"'
   );
-  assert.equal(findings.length, 1);
-  assert.equal(findings[0].hint, "fetch()");
-  assert.equal(findings[0].item, null);
+});
+
+// How a sink reads on a locus line. A destination is appended to the channel the
+// check names it by; one with no destination to name keeps the channel alone - no
+// dangling separator, nothing invented to fill the slot. A long destination is
+// truncated, since a locus is one line. Tested on the helper itself: a sink with no
+// destination classifies LOCAL, and every check filters those out before display,
+// so that branch is the helper's contract rather than any check's path.
+test("sinkLabel appends the destination, or names the channel alone", () => {
+  assert.equal(
+    sinkLabel({ target: '"https://api.example.com/c"' }, "fetch()"),
+    'fetch() "https://api.example.com/c"'
+  );
+  assert.equal(
+    sinkLabel({ target: "endpoint" }, "fetch()"),
+    "fetch() endpoint"
+  );
+  assert.equal(sinkLabel({ target: null }, "fetch()"), "fetch()");
+  const long = sinkLabel({ target: "u".repeat(200) }, "fetch()");
+  assert.ok(long.length < 100, long.length);
+  assert.ok(long.endsWith("…"));
 });
 
 test("scanNetworkSinks classifies channel, destination, appended data", () => {

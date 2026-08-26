@@ -112,7 +112,7 @@
         "column": 0
       },
       "item": "api.example.com",
-      "hint": null,
+      "hint": "cleartext send \"http://api.example.com/collect\"",
       "message": "Data is sent over an unencrypted connection to api.example.com. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://."
     },
     {
@@ -124,7 +124,7 @@
         "column": 0
       },
       "item": null,
-      "hint": "fetch()",
+      "hint": "fetch() \"http://api.example.com/collect\"",
       "message": "The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent."
     },
     {
@@ -136,7 +136,7 @@
         "column": 0
       },
       "item": null,
-      "hint": "fetch()",
+      "hint": "fetch() \"https://logs.example.com/l\"",
       "message": "The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent."
     }
   ]

@@ -12,6 +12,7 @@ import { VERDICT } from "../../lib/enum.js";
 import {
   getOutboundSinks,
   isStrongCovertExfil,
+  sinkLabel,
 } from "../../lib/outbound-sinks.js";
 import { finding } from "../../report/finding.js";
 
@@ -23,13 +24,11 @@ export default {
         continue;
       }
       const loc = { line: sink.line, column: sink.column };
-      out.push(finding({ file: sink.file, loc }));
-      ctx.note?.(
-        sink.file,
-        loc,
-        "disguised data send (navigation)",
-        VERDICT.FAIL
-      );
+      // `hint` names the channel and where it sends, so the locus says what was
+      // smuggled out through what - `item` stays absent, the locus is the identity.
+      const label = sinkLabel(sink, "disguised data send (navigation)");
+      out.push(finding({ file: sink.file, loc, hint: label }));
+      ctx.note?.(sink.file, loc, label, VERDICT.FAIL);
     }
     return out;
   },

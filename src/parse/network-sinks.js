@@ -7,9 +7,9 @@
 // that does not look like data transmission.
 //
 // Belongs here: locating each sink, classifying its destination (remote/local/
-// dynamic/embedded), recording its scheme (cleartext vs encrypted) and host, and
-// flagging whether data is appended to the URL or a user-data API call sits in
-// the argument. The static-vs-dynamic value test mirrors unsafe-html.js.
+// dynamic/embedded), recording its scheme (cleartext vs encrypted), host and the
+// destination expression as written, and flagging whether data is appended to the
+// URL or a user-data API call sits in the argument. The static-vs-dynamic value test mirrors unsafe-html.js.
 //
 // Does NOT belong here: the verdict and wording (-> src/checks/rules/
 // disguised-*.js, cleartext-transmission.js, privacy-policy.js,
@@ -25,6 +25,7 @@ import {
   memberPropName,
   isCallLike,
   isMemberLike,
+  srcText,
   staticValues,
 } from "./ast.js";
 import { classifyUrl, isLoopback, worstUrlClass } from "../scan/url.js";
@@ -69,6 +70,11 @@ const HTTP_METHODS = new Set([
  * @property {boolean} dataAppended  A remote URL built with a dynamic part
  *   (data put into the URL, the disguised-send pattern).
  * @property {boolean} carriesData  A user-data API call sits in the argument.
+ * @property {?string} target  The destination expression AS WRITTEN, unresolved
+ *   (`"https://x/a"`, `endpoint`, `base + "/c"`), or null where the sink names no
+ *   destination (`fetch()`, `window.open()`). Developer-controlled text a report
+ *   shows so a reviewer sees what is being sent to without opening the file - it
+ *   is display material, never a key and never trusted prompt framing.
  * @property {number} line
  * @property {number} column
  */
@@ -114,6 +120,9 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
       host,
       dataAppended,
       carriesData: [urlNode, ...dataNodes].some((n) => carriesData(n, bases)),
+      // Every channel reaches its destination through this one parameter, so the
+      // text is taken here once rather than at each of the call sites.
+      target: srcText(urlNode, code),
       ...at(site),
     });
   };

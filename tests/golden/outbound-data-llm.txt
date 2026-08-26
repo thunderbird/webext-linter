@@ -3,11 +3,11 @@
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
 1) Data is sent over an unencrypted connection to api.example.com. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
- - background.js:4
+ - background.js:4 - cleartext send "http://api.example.com/collect"
 
 2) The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
- - background.js:4 - fetch()
- - background.js:8 - fetch()
+ - background.js:4 - fetch() "http://api.example.com/collect"
+ - background.js:8 - fetch() "https://logs.example.com/l"
 
 You can run this automated review yourself before submitting (this review was performed using the --llm-review option):
 https://github.com/thunderbird/webext-linter

@@ -19,7 +19,7 @@
 // src/lib/verdict-resolve.js), and authored wording (-> registry).
 
 import { VERDICT } from "../../lib/enum.js";
-import { getOutboundSinks } from "../../lib/outbound-sinks.js";
+import { getOutboundSinks, sinkLabel } from "../../lib/outbound-sinks.js";
 import { normalizeRef } from "../../lib/manifest-refs.js";
 import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 
@@ -65,10 +65,12 @@ export default {
         corpus: optionsPath ? [sink.file, optionsPath] : [sink.file],
       });
       // The finding lists file:line via its location; `hint` (the transmission
-      // method) rides along so it survives the unsure->manual->recheck hand-off and
-      // is shown on the locus. `item` stays absent so the recheck key is file:line.
-      cases.push({ id, finding: { file: sink.file, loc, hint: method } });
-      ctx.note?.(sink.file, loc, method, VERDICT.UNSURE);
+      // method and where it sends) rides along so it survives the
+      // unsure->manual->recheck hand-off and is shown on the locus. `item` stays
+      // absent so the recheck key is file:line.
+      const label = sinkLabel(sink, method);
+      cases.push({ id, finding: { file: sink.file, loc, hint: label } });
+      ctx.note?.(sink.file, loc, label, VERDICT.UNSURE);
     }
     if (!candidates.length) {
       return { findings: [] };

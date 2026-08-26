@@ -17,6 +17,7 @@ import { scanSyncXhr } from "../../src/parse/sync-xhr.js";
 import { scanDebugger } from "../../src/parse/debugger-statement.js";
 import { scanAsyncOnMessage } from "../../src/parse/async-onmessage.js";
 import { scanWebApiCalls } from "../../src/parse/web-api-calls.js";
+import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
 import { parseJs } from "../../src/parse/ast.js";
 
 // A sentinel parse result. `code` here parses fine (parseError would be null), so
@@ -40,6 +41,10 @@ const REUSERS = [
   ["scanSyncXhr", (c, p) => scanSyncXhr(c, 0, p)],
   ["scanDebugger", (c, p) => scanDebugger(c, 0, p)],
   ["scanAsyncOnMessage", (c, p) => scanAsyncOnMessage(c, 0, p)],
+  // Load-bearing here rather than merely tidy: this scanner slices `code` by the
+  // node offsets to record a sink's destination, so a parse of some OTHER string
+  // would quote the wrong source.
+  ["scanNetworkSinks", (c, p) => scanNetworkSinks(c, 0, p)],
 ];
 
 for (const [name, run] of REUSERS) {

@@ -6,7 +6,9 @@
 //
 // Belongs here: getOutboundSinks - reading each authored source's precomputed
 // network-sinks scan (networkSinksOf), skipping non-authored code, and
-// memoizing the result on the addon.
+// memoizing the result on the addon - plus sinkLabel, the one way a sink names
+// itself on a locus line, so the checks that share the list also share how it
+// reads.
 //
 // Does NOT belong here: the sink AST walk itself (-> src/parse/
 // network-sinks.js), the verdicts (-> src/checks/rules/disguised-*.js,
@@ -15,6 +17,7 @@
 
 import { networkSinksOf } from "../checks/extract.js";
 import { nonAuthoredJs } from "./bundled.js";
+import { trunc } from "./util.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../parse/network-sinks.js").SinkHit} SinkHit */
@@ -28,6 +31,21 @@ import { nonAuthoredJs } from "./bundled.js";
  */
 export function getOutboundSinks(ctx) {
   return (ctx.addon.outboundSinks ??= scanAll(ctx));
+}
+
+/**
+ * How a sink reads on a locus line: the channel the check names it by, followed by
+ * the destination as the developer wrote it, so a reviewer sees WHERE the data goes
+ * without opening the file. A sink that names no destination (`fetch()`,
+ * `window.open()`) keeps the channel alone. Truncated for display; the text is the
+ * add-on's own, so it is shown and nothing more.
+ * @param {FileSink} sink
+ * @param {string} label  What this check calls the channel ("fetch()", "a page
+ *   navigation").
+ * @returns {string}
+ */
+export function sinkLabel(sink, label) {
+  return sink.target ? `${label} ${trunc(sink.target)}` : label;
 }
 
 // A covert channel (resource/stylesheet/window/navigation) to a non-local

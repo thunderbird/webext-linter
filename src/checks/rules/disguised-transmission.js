@@ -20,6 +20,7 @@ import { VERDICT } from "../../lib/enum.js";
 import {
   getOutboundSinks,
   isWeakCovertExfil,
+  sinkLabel,
 } from "../../lib/outbound-sinks.js";
 import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 
@@ -67,8 +68,9 @@ export default {
       // file:line via the location; `hint` (the channel) rides along so it
       // survives the unsure->manual->recheck hand-off. `item` stays absent so the
       // recheck key is file:line.
-      cases.push({ id, finding: { file: sink.file, loc, hint: channel } });
-      ctx.note?.(sink.file, loc, channel, VERDICT.UNSURE);
+      const label = sinkLabel(sink, channel);
+      cases.push({ id, finding: { file: sink.file, loc, hint: label } });
+      ctx.note?.(sink.file, loc, label, VERDICT.UNSURE);
     }
     if (!candidates.length) {
       return { findings: [] };

