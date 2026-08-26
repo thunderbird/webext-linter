@@ -283,6 +283,106 @@ test("records what a short-circuit offers as the alternative", () => {
   );
 });
 
+// Feature detection is most often written as a guard clause: bail out first, then use
+// the API below. What follows such an `if` runs only when its test was falsy, so it is
+// guarded just as surely as code nested inside one - the difference is only where the
+// developer put the braces. The bail can be any exit, and the use can sit any distance
+// below, in a nested block, since the `if` governs the rest of its own block.
+test("flags access below a guard clause that bailed", () => {
+  const guarded = (code) =>
+    parseApiUsage(code)
+      .usages.filter((u) => u.segments.join(".").endsWith("getFull"))
+      .every((u) => u.guarded);
+  // The shape that prompted this: probe with ?., bail, then call plainly.
+  assert.equal(
+    guarded(
+      `async function f(id){ if (messenger.messages?.getFull === undefined) { return null }\n return await messenger.messages.getFull(id) }`
+    ),
+    true
+  );
+  assert.equal(
+    guarded(
+      `function f(id){ if (!browser.messages || !browser.messages.getFull) return "";\n return browser.messages.getFull(id) }`
+    ),
+    true
+  );
+  assert.equal(
+    guarded(
+      `function f(id){ if (!browser.messages) throw new Error("x");\n return browser.messages.getFull(id) }`
+    ),
+    true
+  );
+  assert.equal(
+    guarded(
+      `for (const id of ids) { if (!browser.messages) continue;\n browser.messages.getFull(id) }`
+    ),
+    true
+  );
+  // Distance and nesting do not matter - the guard governs the rest of its block.
+  assert.equal(
+    guarded(
+      `function f(id){ if (!browser.messages) return;\n const a = 1; const b = 2;\n if (a) { browser.messages.getFull(id) } }`
+    ),
+    true
+  );
+});
+
+// What bounds it. The `if` has to actually bail, it has to come first, it has to name
+// an API, and it cannot reach into another function - the same boundary every other
+// guard form respects.
+test("a guard clause that does not bail, or does not precede, is no guard", () => {
+  const guardedCall = (code) =>
+    parseApiUsage(code)
+      .usages.filter((u) => u.segments.join(".") === "messages.getFull")
+      .some((u) => u.guarded);
+  // Falls through either way, so arriving below says nothing.
+  assert.equal(
+    guardedCall(
+      `function f(id){ if (!browser.messages) { log() }\n browser.messages.getFull(id) }`
+    ),
+    false
+  );
+  // A guard after the fact guards nothing.
+  assert.equal(
+    guardedCall(
+      `function f(id){ browser.messages.getFull(id);\n if (!browser.messages) return }`
+    ),
+    false
+  );
+  // A test naming no API is not a feature detection.
+  assert.equal(
+    guardedCall(
+      `function f(id){ if (!ready) return;\n browser.messages.getFull(id) }`
+    ),
+    false
+  );
+  // The guard belongs to its own function.
+  assert.equal(
+    guardedCall(
+      `function a(){ if (!browser.messages) return }\nfunction b(id){ browser.messages.getFull(id) }`
+    ),
+    false
+  );
+  assert.equal(
+    guardedCall(
+      `function f(id){ if (!browser.messages) return;\n run(() => browser.messages.getFull(id)) }`
+    ),
+    false
+  );
+});
+
+// A guard clause names what must be PRESENT to arrive, so like an existence test it
+// offers the access no alternative - which is what keeps a hallucinated namespace
+// below one from being vouched for.
+test("a guard clause offers no alternative", () => {
+  const refs = parseApiUsage(
+    `function f(){ if (!browser.messages) return;\n browser.nope.x() }`
+  )
+    .usages.filter((u) => u.segments.join(".") === "nope.x")
+    .map((u) => u.guardRefs);
+  assert.deepEqual(refs, [[]]);
+});
+
 // A guard referencing an API namespace through an ALIAS (const m = browser.messages;
 // if (m.future) m.future()) is recognized like a literal-root guard - the call is marked
 // guarded. Uses if/&& forms (no typeof), so the signal comes specifically from aliasTarget

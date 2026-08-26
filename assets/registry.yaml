@@ -53,6 +53,11 @@ deterministic-phase:
   response: |-
     The following WebExtension APIs are not supported in the targeted Thunderbird version.
     Read more: https://webextension-api.thunderbird.net/.
+  instructions: |-
+    The following API references are not supported in the targeted Thunderbird
+    version, but each sits behind a feature detection. Read the site and confirm
+    the add-on really falls back where the API is missing; if it does not, the
+    reference is a finding.
 
 # Flags deprecated APIs.
 - title: Deprecated WebExtension API
@@ -1129,7 +1134,8 @@ llm-phase:
 # LLM check: functions/events added after the declared strict_min_version. The
 # deterministic pre-flight (strict-min-version-api.js) emits an UNGUARDED too-new
 # call as a finding directly; a call carrying a guard signal (optional chaining, a
-# typeof/existence check, a getBrowserInfo version gate) becomes one candidate the
+# typeof/existence check, an earlier guard clause, a getBrowserInfo version gate)
+# becomes one candidate the
 # LLM judges from the call's file: pass (safely guarded) -> drop, fail (runs
 # unconditionally) -> finding, unsure -> manual. Only real, schema-resolved APIs
 # reach here; a non-existent API is unknown-api's concern.
@@ -1147,9 +1153,10 @@ llm-phase:
     Verdict pass (safely guarded): the access is protected so it cannot run on older
     versions - optional chaining on the API path (messenger.foo?.bar), an existence
     or typeof test (if (messenger.foo.bar) or typeof messenger.foo.bar ===
-    "function"), or a runtime version gate (a messenger.runtime.getBrowserInfo()
-    version comparison) around the call, with the feature genuinely optional or a
-    fallback for older versions.
+    "function"), a guard clause earlier in the function that returned or threw when
+    the API was missing (if (!messenger.foo.bar) return), or a runtime version gate
+    (a messenger.runtime.getBrowserInfo() version comparison), with the feature
+    genuinely optional or a fallback for older versions.
     Verdict fail (runs unconditionally): the API is called with no such guard, so the
     call throws on the still-supported versions below the one that added it.
     Use unsure only when you genuinely cannot tell whether a guard protects this call.

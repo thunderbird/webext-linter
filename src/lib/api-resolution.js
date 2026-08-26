@@ -64,8 +64,9 @@ function resolve(ctx) {
 /**
  * The resolved usages that DON'T exist in the schema: an unknown namespace, an
  * unknown member of a known namespace, or a member the schema marks unsupported -
- * i.e. exactly what unknown-api flags. Shared with experiment-unknown-api, which
- * gates a manual review on whether an Experiment has any.
+ * i.e. what unknown-api acts on, either as a finding or, where the site is guarded, as
+ * a manual review item. Shared with experiment-unknown-api, which gates a manual
+ * review on whether an Experiment has any.
  * @param {RunContext} ctx
  * @returns {ResolvedUsage[]}
  */

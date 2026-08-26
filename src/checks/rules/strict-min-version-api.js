@@ -1,8 +1,9 @@
 // Flags functions/events whose schema version_added is newer than the add-on's
 // declared strict_min_version: the add-on claims to run on Thunderbird versions
 // where the API does not yet exist, so an UNCONDITIONAL call breaks those installs.
-// But the same API may be used safely behind feature detection (optional chaining,
-// a typeof/existence check, or a getBrowserInfo version gate) so it only runs where
+// But the same API may be used safely behind feature detection (optional chaining, a
+// typeof/existence check, an earlier guard clause that bailed out when the API was
+// missing, or a getBrowserInfo version gate) so it only runs where
 // it exists. Whether a site is really guarded is a local judgement, so this is an
 // LLM check with a deterministic pre-flight (like data-exfiltration):
 //   - a too-new API used with no guard signal -> a deterministic finding (a hard
@@ -15,8 +16,9 @@
 //
 // Scope: this only ever sees REAL, schema-resolved APIs (kind function|event with a
 // version_added). A hallucinated/unsupported API resolves to neither and is left to
-// unknown-api (which skips a guarded unknown member/unsupported, and a guarded
-// unknown namespace only where the guard offers a live one in its place).
+// unknown-api (which sends a guarded unknown member/unsupported to manual review, and
+// skips a guarded unknown namespace only where the guard offers a live one in its
+// place).
 //
 // Tuple comparison, so version_added "140.4.1" against strict_min "140.0" is caught.
 // No-op when strict_min_version is absent or unparsable. Independent of

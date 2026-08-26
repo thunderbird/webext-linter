@@ -39,10 +39,11 @@ import { API_ROOTS, aliasTarget, apiBasesOf } from "./api-base.js";
  *   optional chaining (`messenger.foo?.bar`), so the access short-circuits to
  *   undefined where the member is missing.
  * @property {boolean} guarded         True if `optional`, OR the access sits in a
- *   local guard (an enclosing if/?:/while test or a short-circuit referencing an API
+ *   local guard: an enclosing if/?:/while test or a short-circuit referencing an API
  *   object - a root or an alias/captured namespace - or getBrowserInfo, or a `typeof`
- *   probe) - a coarse "might be feature-detected" signal a consumer can hand to the
- *   LLM.
+ *   probe, or an earlier guard clause in the same statement list whose test names such
+ *   an object and whose consequent always exits (`if (!api.foo) return;`). A coarse
+ *   "might be feature-detected" signal a consumer can hand to the LLM.
  * @property {string[][]} guardRefs    The API paths that guard names, as segment
  *   lists after the root. Empty when the guard names none (a `typeof` probe), and an
  *   empty list stands for a reference carrying no namespace (a bare root,
@@ -312,10 +313,69 @@ function guardApiRefs(node, scope) {
 }
 
 /**
+ * Whether control can NEVER continue past this statement to the one after it - it
+ * returns, throws, or jumps out of the loop. That is what turns an `if` into a guard
+ * for its FOLLOWING siblings rather than for its own body: if the bail is taken there
+ * is no "after", so reaching the next statement means the test was falsy.
+ * @param {AstNode} node  A statement.
+ * @returns {boolean}
+ */
+function alwaysExits(node) {
+  switch (node?.type) {
+    case "ReturnStatement":
+    case "ThrowStatement":
+    case "BreakStatement":
+    case "ContinueStatement":
+      return true;
+    case "BlockStatement":
+      return alwaysExits(node.body[node.body.length - 1]);
+    default:
+      return false;
+  }
+}
+
+/**
+ * The guard clause standing over this statement: an earlier sibling that tests an API
+ * object and bails when the test passes (`if (!messenger.x) return`). Everything after
+ * such an `if` runs only when its test was falsy, which is how feature detection is
+ * most often written - the alternative to nesting the whole function in an `if`.
+ *
+ * Siblings are read nearest-first, and the answer is only whether ONE is there; which
+ * API it named is deliberately not weighed against the access, since the verdict this
+ * feeds is "a human should look", not "this is fine".
+ *
+ * The preceding statements are read as plain nodes off the container rather than as
+ * paths. This runs for every API access in a file, and a bundled one puts thousands of
+ * statements in a single list - building a path per sibling to look at its `type` costs
+ * more than the whole rest of the walk.
+ * @param {BabelPath} stmt  A statement path inside a statement list.
+ * @param {object} scope  Scope of the guarded access, for resolving aliases.
+ * @returns {boolean}
+ */
+function precededByGuardClause(stmt, scope) {
+  const siblings = stmt.container;
+  if (!Array.isArray(siblings) || typeof stmt.key !== "number") {
+    return false;
+  }
+  for (let i = stmt.key - 1; i >= 0; i--) {
+    const prev = siblings[i];
+    if (
+      prev?.type === "IfStatement" &&
+      alwaysExits(prev.consequent) &&
+      guardApiRefs(prev.test, scope).length > 0
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * The LOCAL guard the access sits in, as the API paths that guard names (see
- * guardApiRefs) - an enclosing if/?:/while test or a short-circuit referencing an API
- * object (root or alias) or getBrowserInfo, or a `typeof` probe. Null when there is
- * no guard; an empty list when the guard names no API of its own. The walk stops at
+ * guardApiRefs) - an enclosing if/?:/while test, an earlier guard clause that bailed,
+ * or a short-circuit referencing an API object (root or alias) or getBrowserInfo, or a
+ * `typeof` probe. Null when there is no guard; an empty list when the guard names no
+ * API of its own. The walk stops at
  * the nearest function boundary, so a guard never leaks across a function definition
  * (a deliberately conservative, coarse signal).
  * @param {BabelPath} rootPath
@@ -344,6 +404,14 @@ function guardOf(rootPath) {
     ) {
       // A test names what must be PRESENT to reach here, so it offers this access
       // no alternative of its own.
+      return [];
+    }
+    // A guard that already ran: an earlier sibling bailed out unless the API was
+    // there. The walk reaches every statement between the access and the function
+    // boundary, so a guard clause is found however deep the access sits under it and
+    // however far below it stands.
+    if (precededByGuardClause(p, rootPath.scope)) {
+      // Like a test, it names what must be PRESENT to arrive here - no alternative.
       return [];
     }
     // Every logical operator short-circuits, so each one can hold a fallback: `??`

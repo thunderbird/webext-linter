@@ -2032,16 +2032,17 @@ test("unknown-api flags version_added:false as unsupported", () => {
     ],
   };
   const out = unknownApi.run(withManifest(ctx));
-  assert.equal(out.length, 1);
-  assert.equal(out[0].item, "browser.t.gone");
+  assert.equal(out.findings.length, 1);
+  assert.equal(out.findings[0].item, "browser.t.gone");
 });
 
-// A FEATURE-DETECTED (guarded) reference to an unknown MEMBER or an unsupported API is
-// skipped (the fallback runs where it's missing). A guarded unknown NAMESPACE needs
+// A FEATURE-DETECTED (guarded) reference to an unknown MEMBER or an unsupported API
+// goes to a human: the fallback probably runs where it is missing, but the guard signal
+// is coarse, so the site is read rather than dropped. A guarded unknown NAMESPACE needs
 // more than the guard - with nothing known named beside it (no guardRefs here) the
-// functionality is absent whatever the intent, so it is still flagged - and any
-// UNGUARDED unavailable API is flagged.
-test("unknown-api skips guarded members/unsupported but flags guarded namespaces", () => {
+// functionality is absent whatever the intent, so it stays a finding - and any
+// UNGUARDED unavailable API is a finding.
+test("unknown-api escalates guarded members/unsupported, flags guarded namespaces", () => {
   const local = buildSchemaIndex({
     files: {
       t: [
@@ -2082,11 +2083,17 @@ test("unknown-api skips guarded members/unsupported but flags guarded namespaces
   });
   const out = unknownApi.run(ctx);
   // Only the guarded namespace (line 3 -> browser.nope) and the unguarded unsupported
-  // (line 4 -> browser.t.gone) are findings; the guarded member/unsupported are skipped.
-  assert.deepEqual(out.map((f) => `${f.loc.line}:${f.item}`).sort(), [
+  // (line 4 -> browser.t.gone) are findings.
+  assert.deepEqual(out.findings.map((f) => `${f.loc.line}:${f.item}`).sort(), [
     "3:browser.nope",
     "4:browser.t.gone",
   ]);
+  // The guarded member and the guarded unsupported are not dropped - they are handed
+  // to manual review, so nothing leaves the report silently.
+  assert.deepEqual(
+    out.escalations.map((e) => `${e.loc.line}:${e.item}`).sort(),
+    ["1:browser.t.gone", "2:browser.t.nope"]
+  );
 });
 
 // A whole unknown namespace is safe when the SAME guard also names a namespace that
@@ -2125,10 +2132,12 @@ test("unknown-api skips an unknown namespace vouched for by a live one", () => {
       ],
     })
   );
-  assert.deepEqual(out.map((f) => `${f.loc.line}:${f.item}`).sort(), [
+  assert.deepEqual(out.findings.map((f) => `${f.loc.line}:${f.item}`).sort(), [
     "2:browser.alsoNope",
     "3:browser.stillNope",
   ]);
+  // The vouched-for one is settled here, so it needs no human either.
+  assert.deepEqual(out.escalations, []);
 });
 
 // End-to-end through the real parser, which is where the shim rule has to hold: only
@@ -2150,7 +2159,7 @@ test("unknown-api: only the offered alternative vouches, end-to-end", () => {
           apiUsages: [{ file: "bg.js", usages }],
         })
       )
-      .map((f) => f.item);
+      .findings.map((f) => f.item);
   };
   // The shim: the fallback is what runs where the namespace is missing, and it
   // reads the same written either way round.
@@ -2175,11 +2184,32 @@ test("unknown-api: only the offered alternative vouches, end-to-end", () => {
   );
 });
 
+// End-to-end, the markdown_here shape: feature detection written as a guard clause,
+// parsed for real. The too-new API must be handed to judgement rather than rejecting
+// the add-on - the point of the whole change.
+test("a guard clause defers a too-new API to judgement, not rejection", () => {
+  const src =
+    `async function f(id){ if (messenger.messages?.future === undefined) { return null }\n` +
+    ` return await messenger.messages.future(id) }`;
+  const { usages } = parseApiUsage(src);
+  const out = strictMinVersionApi.run(withManifest(minCtx("60.0", usages)));
+  assert.deepEqual(out.findings, []); // not a rejection
+  assert.equal(out.llm.candidates.length, 1); // a judgement instead
+  // Without the guard clause it stays the hard finding it was.
+  const bare = strictMinVersionApi.run(
+    withManifest(
+      minCtx("60.0", parseApiUsage(`messenger.messages.future(1);`).usages)
+    )
+  );
+  assert.equal(bare.findings.length, 1);
+  assert.equal(bare.llm, undefined);
+});
+
 // End-to-end (the thinbox folders shape): a namespace captured into a local, then a
 // call to a non-existent member feature-detected with an if-guard. Parses to a guarded
-// usage of an unknown member, which unknown-api skips - no finding. RED before the
-// alias-aware guard fix (m.nope() would be guarded:false -> flagged).
-test("unknown-api: alias-guarded call to an unknown member is skipped end-to-end", () => {
+// usage of an unknown member, which unknown-api escalates - a manual item, no finding.
+// RED before the alias-aware guard fix (m.nope() would be guarded:false -> flagged).
+test("unknown-api: alias-guarded call to an unknown member goes to review end-to-end", () => {
   const src = `const m = browser.messages; if (m.nope) m.nope();`;
   const { usages } = parseApiUsage(src);
   const out = unknownApi.run(
@@ -2192,7 +2222,12 @@ test("unknown-api: alias-guarded call to an unknown member is skipped end-to-end
       apiUsages: [{ file: "bg.js", usages }],
     })
   );
-  assert.deepEqual(out, []);
+  assert.deepEqual(out.findings, []);
+  // Not a finding, but not silence either - one per site, as findings would be.
+  assert.deepEqual(
+    out.escalations.map((e) => e.item),
+    ["browser.messages.nope", "browser.messages.nope"]
+  );
 });
 
 // ---- api-resolution: the shared usage resolution ----
@@ -2555,8 +2590,8 @@ test("a guarded non-existent namespace: strict-min ignores it, unknown-api still
       apiUsages: [{ file: "bg.js", usages }],
     })
   );
-  assert.equal(flagged.length, 1); // guarded unknown NAMESPACE is still flagged
-  assert.match(flagged[0].item, /^messenger\.fake/);
+  assert.equal(flagged.findings.length, 1); // guarded unknown NAMESPACE is still flagged
+  assert.match(flagged.findings[0].item, /^messenger\.fake/);
 });
 
 // ---- permission analysis: dead files are ignored ----

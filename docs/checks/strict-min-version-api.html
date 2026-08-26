@@ -28,7 +28,8 @@
         non-existent name is left to the unknown-API check. The same too-new API
         can be used safely if it is
         guarded so it runs only where it exists (optional chaining, a typeof or
-        existence test, or a runtime version gate). A call that carries such a
+        existence test, a guard clause earlier in the function that returns or throws
+        when the API is missing, or a runtime version gate). A call that carries such a
         guard signal is the ambiguous case: only there does the linter ask the
         model whether the guard truly protects the call. An API used unguarded
         anywhere becomes the hard finding outright.
