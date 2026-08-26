@@ -110,7 +110,7 @@
       },
       "item": "jquery",
       "hint": null,
-      "message": "A bundled library version is disallowed by Mozilla's add-on policy: jquery (2.2.4) — jQuery before 3.0 is unsupported and carries known security issues; update to the latest 3.x. Update to a permitted version and re-bundle."
+      "message": "A bundled library version is disallowed by Mozilla's add-on policy: jquery (2.2.4) - jQuery before 3.0 is unsupported and carries known security issues. Update to the latest 3.x. Update to a permitted version and re-bundle."
     }
   ]
 }

@@ -21,6 +21,8 @@ export default {
     if (!ctx.scaNotRequired) {
       return [];
     }
-    return [finding({ file: "manifest.json" })];
+    // No locus: the subject is the submission as a whole, not any one file, and a
+    // locus line naming an arbitrary file would only be noise (see renderGroup).
+    return [finding({})];
   },
 };

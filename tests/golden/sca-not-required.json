@@ -104,11 +104,11 @@
     {
       "ruleId": "sca-not-required",
       "severity": "warning",
-      "file": "manifest.json",
+      "file": null,
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The shipped add-on (the built XPI) is directly reviewable - its code is not minified or obfuscated - so a separate source-code archive is not required, and the review was performed on the submitted XPI directly. Submitting a source-code archive switches the add-on into a separate, more involved review process that is considerably slower to complete; because your shipped code is already human-readable, you can avoid that delay by submitting only the XPI as a standard review. A source-code submission is needed only when the shipped code is minified or otherwise not human-readable."
+      "message": "The shipped add-on (the built XPI) is directly reviewable, because its code is not minified or obfuscated. A separate source-code archive is therefore not required, and this review was performed on the submitted XPI itself. A source-code submission is needed only when the shipped code is minified or otherwise not human-readable, and it moves the add-on into a separate review process that takes considerably longer to complete. For this add-on you can avoid that delay by submitting only the XPI as a standard review."
     }
   ]
 }

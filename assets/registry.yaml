@@ -56,7 +56,7 @@ deterministic-phase:
   instructions: |-
     The following API references are not supported in the targeted Thunderbird
     version, but each sits behind a feature detection. Read the site and confirm
-    the add-on really falls back where the API is missing; if it does not, the
+    the add-on really falls back where the API is missing. If it does not, the
     reference is a finding.
 
 # Flags deprecated APIs.
@@ -471,7 +471,7 @@ deterministic-phase:
   check: vendor-vulnerable
   input: source
   response: |-
-    A bundled dependency has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). Update {{item}} to {{fixed}} or later, re-bundle, and resubmit.
+    A bundled dependency has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). Update {{item}} to {{fixed}} or later, re-bundle, and resubmit.
 
 # A bundled library version Mozilla's add-on policy disallows (banned) or discourages
 # (unadvised), matched against the curated assets/library-blocks.yaml BEFORE the OSV
@@ -484,7 +484,7 @@ deterministic-phase:
   check: banned-library
   input: source
   response: |-
-    A bundled library version is {{status}} by Mozilla's add-on policy: {{item}} ({{version}}) — {{reason}} Update to a permitted version and re-bundle.
+    A bundled library version is {{status}} by Mozilla's add-on policy: {{item}} ({{version}}) - {{reason}} Update to a permitted version and re-bundle.
 
 # Each pinned npm devDependency is OSV-audited in SCA mode too (src/vendor/verify.js
 # verifyScaDependencies): the reviewer builds the add-on from source, so a
@@ -497,7 +497,7 @@ deterministic-phase:
   check: vendor-vulnerable-dev
   input: source
   response: |-
-    A build dependency (devDependency) has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories ({{ids}}; severity {{severity}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update {{item}} to {{fixed}} or later and resubmit.
+    A build dependency (devDependency) has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update {{item}} to {{fixed}} or later and resubmit.
 
 # Deterministic (SCA only): the build must use npm or pnpm - the two package managers
 # that share the .npmrc config format, keeping the reviewable surface small. A committed
@@ -511,7 +511,7 @@ deterministic-phase:
   check: unsupported-build-tool
   input: build
   response: |-
-    This add-on is built with {{item}}; only npm and pnpm are supported. Please provide an npm or pnpm build (commit a package-lock.json or pnpm-lock.yaml) so the dependency install can be reviewed against the declared dependencies.
+    This add-on is built with {{item}}, and only npm and pnpm are supported. Please provide an npm or pnpm build (commit a package-lock.json or pnpm-lock.yaml) so the dependency install can be reviewed against the declared dependencies.
 
 # Deterministic (SCA only): a committed .npmrc that SETS a package registry (registry=
 # or @scope:registry=, case-insensitive) is rejected outright - a legitimate build never
@@ -539,7 +539,7 @@ deterministic-phase:
   check: committed-node-modules
   input: build
   response: |-
-    A committed node_modules folder ({{item}}) is not allowed. Remove it and resubmit; the declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission.
+    A committed node_modules folder ({{item}}) is not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove it and resubmit.
 
 # Deterministic (SCA only): a committed binary archive (.zip/.xpi/.crx/...) anywhere in
 # --sca-root is a hard reject. A built archive is build output the reviewer reproduces from
@@ -551,7 +551,7 @@ deterministic-phase:
   check: committed-build-artifact
   input: build
   response: |-
-    A committed build artifact ({{item}}) is not allowed. Remove it and resubmit; a built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces.
+    A committed build artifact ({{item}}) is not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove it and resubmit.
 
 # Deterministic (SCA only): a package.json install lifecycle hook (preinstall / install /
 # postinstall / prepare / prepublish) runs arbitrary code when the reviewer installs the
@@ -590,7 +590,7 @@ deterministic-phase:
     URL, curl/wget, a git clone of an unpinned repo, a CDN, or a postinstall hook.
     {{unresolvedBuildSteps}} {{buildInstructions}}
   response: |-
-    {{explanation}} The build must not fetch or execute code or resources from a remote source; every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+    {{explanation}} The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 
 # Deterministic (SCA only): MISSION 2 of the build review. Reads the setup classification
 # (addon.buildFiles.buildReview). classification "not-from-source" -> error: the build does not
@@ -602,7 +602,7 @@ deterministic-phase:
   check: build-not-from-source
   input: build
   response: |-
-    {{explanation}} The shipped XPI must be BUILT from the reviewed source; a build that only copies or zips files already present in the submission produces an add-on that is not derived from the source under review. Provide a build that compiles/bundles the add-on from its source.
+    {{explanation}} The shipped XPI must be BUILT from the reviewed source. A build that only copies or zips files already present in the submission produces an add-on that is not derived from the source under review. Provide a build that compiles/bundles the add-on from its source.
 
 # Deterministic: a submitted source-code archive (--sca-root) was unnecessary because the shipped
 # XPI is directly reviewable (its first-party code is not minified or obfuscated). The pipeline
@@ -616,7 +616,7 @@ deterministic-phase:
   check: sca-not-required
   input: source
   response: |-
-    The shipped add-on (the built XPI) is directly reviewable - its code is not minified or obfuscated - so a separate source-code archive is not required, and the review was performed on the submitted XPI directly. Submitting a source-code archive switches the add-on into a separate, more involved review process that is considerably slower to complete; because your shipped code is already human-readable, you can avoid that delay by submitting only the XPI as a standard review. A source-code submission is needed only when the shipped code is minified or otherwise not human-readable.
+    The shipped add-on (the built XPI) is directly reviewable, because its code is not minified or obfuscated. A separate source-code archive is therefore not required, and this review was performed on the submitted XPI itself. A source-code submission is needed only when the shipped code is minified or otherwise not human-readable, and it moves the add-on into a separate review process that takes considerably longer to complete. For this add-on you can avoid that delay by submitting only the XPI as a standard review.
 
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the deterministic repo-name candidate, then an
@@ -1163,7 +1163,7 @@ llm-phase:
   instructions: |-
     The "{{item}}" API was added after the declared strict_min_version. Confirm by
     hand whether the call is safely guarded (feature detection or a version check) so
-    it only runs where the API exists; if not, ask the developer to raise
+    it only runs where the API exists. If it does not, ask the developer to raise
     strict_min_version or guard the call.
   response: |-
     The add-on is setting strict_min_version to {{min}} but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
@@ -1264,7 +1264,7 @@ llm-phase:
     This site loads a resource from a source static analysis cannot resolve.
     Confirm by hand that it is bundled with the add-on and not fetched remotely.
   response: |-
-    A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed.
+    A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed.
 
 # LLM check: the statically-undecidable fetch().then(eval) case - is the executed
 # code remote? The definite eval/Function/timer/CSP cases are deterministic

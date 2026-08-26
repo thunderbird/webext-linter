@@ -19,8 +19,8 @@
 
 - name: jquery
   banned_below: "3.0.0"
-  reason: "jQuery before 3.0 is unsupported and carries known security issues; update to the latest 3.x."
+  reason: "jQuery before 3.0 is unsupported and carries known security issues. Update to the latest 3.x."
 
 - name: angular # AngularJS 1.x is published on npm as "angular"
   banned_below: "1.5.9"
-  reason: "AngularJS before 1.5.9 is affected by a Content-Security-Policy bypass; update to the latest 1.x."
+  reason: "AngularJS before 1.5.9 is affected by a Content-Security-Policy bypass. Update to the latest 1.x."

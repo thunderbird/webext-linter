@@ -2,7 +2,7 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) A committed build artifact (dist/addon.zip) is not allowed. Remove it and resubmit; a built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces.
+1) A committed build artifact (dist/addon.zip) is not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove it and resubmit.
  - [SCA] dist/addon.zip
 
 We kindly ask you to resolve the following issues with your next release:
@@ -26,7 +26,7 @@ Continue manual review for the following checks:
    a CDN, or a postinstall hook. The linter could not statically analyze part of
    the build (a network fetch in the "postinstall" script), so the build corpus
    may be incomplete - reproduce the build by hand.
-Suggested response: The build must not fetch or execute code or resources from a remote source; every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
  - [SCA] package.json
 
 2) Missing English localization: This add-on ships no English localization, so

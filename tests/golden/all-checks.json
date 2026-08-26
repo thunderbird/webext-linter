@@ -358,7 +358,7 @@
       },
       "item": "https://cdn.example.com/remote.js",
       "hint": null,
-      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed."
+      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed."
     },
     {
       "ruleId": "unused-files",
@@ -379,7 +379,7 @@
       },
       "item": "https://fonts.example.com/font.css",
       "hint": null,
-      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed."
+      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed."
     }
   ]
 }

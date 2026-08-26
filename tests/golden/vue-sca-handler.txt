@@ -20,7 +20,7 @@ Continue manual review for the following checks:
    it pulls ONLY from the dependencies declared in package.json/lock - no remote
    code or resources from a raw URL, curl/wget, a git clone of an unpinned repo,
    a CDN, or a postinstall hook.
-Suggested response: The build must not fetch or execute code or resources from a remote source; every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
  - [SCA] package.json
 
 2) Missing English localization: This add-on ships no English localization, so

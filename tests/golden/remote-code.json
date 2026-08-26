@@ -121,7 +121,7 @@
       },
       "item": "https://cdn.example.com/lib.js",
       "hint": null,
-      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed."
+      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed."
     },
     {
       "ruleId": "remote-resources",
@@ -133,7 +133,7 @@
       },
       "item": "https://cdn.example.com/fonts.css",
       "hint": null,
-      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed."
+      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed."
     },
     {
       "ruleId": "remote-resources",
@@ -145,7 +145,7 @@
       },
       "item": "https://cdn.example.com/bg.png",
       "hint": null,
-      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed."
+      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed."
     },
     {
       "ruleId": "unused-files",
@@ -166,7 +166,7 @@
       },
       "item": "https://cdn.example.com/theme.css",
       "hint": null,
-      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed; remote sources are not allowed."
+      "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed."
     }
   ]
 }

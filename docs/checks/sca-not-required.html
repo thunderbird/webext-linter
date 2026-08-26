@@ -29,7 +29,8 @@
         <code>obfuscated-code</code> use, recognized libraries excluded) — the source archive's
         content is never consulted. If the XPI is directly reviewable the pipeline downgrades to a
         plain XPI review (so <code>minified-code</code> and the rest still run against the XPI) and
-        this check raises one warning, anchored at the manifest. If the shipped XPI is
+        this check raises one warning. The warning names no file, since its subject is the
+        submission as a whole, so the entry carries no location line. If the shipped XPI is
         minified/obfuscated the source archive is kept and this never fires.
       </p>
 
@@ -53,12 +54,12 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on's built XPI is directly reviewable, so a separate source-code archive is not
-        required; it was reviewed as a standard XPI. A source-code archive switches the add-on into
-        a separate, more involved review process that is considerably slower — since the shipped
-        code is already human-readable, submitting only the XPI as a standard review avoids that
-        delay. A source-code submission is needed only when the shipped code is minified or
-        otherwise not human-readable.
+        The add-on's built XPI is directly reviewable, because its first-party code is not
+        minified or obfuscated. A separate source-code archive is therefore not required, and the
+        submission was reviewed as a standard XPI. A source-code submission is needed only when the
+        shipped code is minified or otherwise not human-readable, and it moves the add-on into a
+        separate review process that takes considerably longer to complete. The developer is told
+        they can avoid that delay by submitting only the XPI.
       </div>
 
       <p class="source-note">

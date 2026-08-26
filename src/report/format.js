@@ -367,20 +367,6 @@ function groupByMessage(findings) {
 }
 
 /**
- * Render one Issues entry: the shared registry response VERBATIM (no 80-column
- * rewrap, no hanging indent - a long line runs off, and the registry's own
- * break before "Read more:" lands at column 0), then one location line per
- * finding. The locus has up to two parts: `locationLine` surfaces the SUBJECT
- * (`item`) after "file:line" when the message did not name it (`listItem`), then
- * the DETAIL (`hint`) is appended after " - " - so a finding with both renders
- * "file:line - item - hint". Every entry uses this form, so a unique message is
- * just a one-location list. Manual review still wraps - see manualLines.
- * @param {number} n  1-based entry number.
- * @param {import("./finding.js").Finding[]} findings  All sharing one message.
- * @param {(f: import("./finding.js").Finding) => string} [labelOf]  Artifact label.
- * @returns {string[]}
- */
-/**
  * The display-capped locus lines for a group: ` - file:line` (with the artifact
  * label and any per-locus hint), then an "(+N more)" marker when the count exceeds
  * the per-category cap. Shared by the Issues entries and the manual-review sections.
@@ -401,10 +387,24 @@ function renderLocusList(items, labelOf) {
   return lines;
 }
 
+/**
+ * Render one Issues entry: the shared registry response VERBATIM (no 80-column
+ * rewrap, no hanging indent - a long line runs off, and the registry's own
+ * break before "Read more:" lands at column 0), then one location line per finding that
+ * HAS one (see hasLocus - an entry whose subject is the submission as a whole has none,
+ * and renders as the message alone). The locus has up to two parts: `locationLine`
+ * surfaces the SUBJECT (`item`) after "file:line" when the message did not name it
+ * (`listItem`), then the DETAIL (`hint`) is appended after " - " - so a finding with
+ * both renders "file:line - item - hint". Manual review still wraps - see manualLines.
+ * @param {number} n  1-based entry number.
+ * @param {import("./finding.js").Finding[]} findings  All sharing one message.
+ * @param {(f: import("./finding.js").Finding) => string} [labelOf]  Artifact label.
+ * @returns {string[]}
+ */
 function renderGroup(n, findings, labelOf) {
   const [first, ...rest] = findings[0].message.split("\n");
   const lines = [`${n}) ${first}`, ...rest];
-  lines.push(...renderLocusList(findings, labelOf));
+  lines.push(...renderLocusList(findings.filter(hasLocus), labelOf));
   // Tint the whole entry by severity (error red, warning yellow) - a no-op
   // unless the CLI enabled color. Each line is tinted on its own, so the color
   // resets per line and stripColor cleans the --report-out copy.
@@ -492,7 +492,7 @@ function manualSection(items, title, accent = blue, labelOf) {
     // reminders have no file/item and render as the wrapped body alone. The
     // list is display-capped like Issues (see renderGroup). Tinted in the same
     // grey as the response (not the instructions' blue), so it reads as detail.
-    const loci = group.filter((m) => m.file || (m.listItem && m.item));
+    const loci = group.filter(hasLocus);
     out.push(...renderLocusList(loci, labelOf).map(grey));
   }
   return out;
@@ -580,6 +580,20 @@ function locationLine(f, label = "") {
     return `${where} - ${item}`;
   }
   return where ?? item ?? "(add-on)";
+}
+
+/**
+ * Whether an entry has anything to put on a location line: a file, a subject surfaced
+ * for display, or a supplementary detail. One of the three is required because
+ * locationLine falls back to "(add-on)", an anchor worth printing only when a detail
+ * follows it. An entry with none of them - a finding whose subject is the submission as
+ * a whole, and whose message already says everything - is listed with no location line
+ * rather than a line naming nothing.
+ * @param {object} x  A finding or manual item.
+ * @returns {boolean}
+ */
+function hasLocus(x) {
+  return Boolean(x.file || (x.listItem && x.item) || x.hint);
 }
 
 /**

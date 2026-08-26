@@ -1170,11 +1170,23 @@ test("SCA e2e: a readable-XPI submission is downgraded to a plain XPI review (sc
       ),
       "the source content is not reviewed after the downgrade - the XPI is"
     );
-    // Lock the rendered response wording (no golden fires this check).
+    // Lock the rendered entry: it must explain the cost of the source-archive route,
+    // and it must carry NO locus line - the subject is the submission as a whole, so
+    // naming a file there would be noise.
+    const body = formatReviewBody(result);
     assert.match(
-      formatReviewBody(result),
-      /separate, more involved review process that is considerably slower/,
+      body,
+      /separate review process that takes considerably longer/,
       "the report explains that the source archive triggers a slower review"
+    );
+    const entry = body
+      .split("\n")
+      .findIndex((l) => l.includes("directly reviewable"));
+    assert.ok(entry >= 0, "the sca-not-required entry is rendered");
+    assert.equal(
+      body.split("\n")[entry + 1].trim(),
+      "",
+      "the entry is followed by a blank line, not a locus"
     );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));

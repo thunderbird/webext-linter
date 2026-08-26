@@ -107,7 +107,7 @@
       "loc": null,
       "item": "dist/addon.zip",
       "hint": null,
-      "message": "A committed build artifact (dist/addon.zip) is not allowed. Remove it and resubmit; a built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces."
+      "message": "A committed build artifact (dist/addon.zip) is not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove it and resubmit."
     },
     {
       "ruleId": "build-lifecycle-hook",

@@ -302,6 +302,43 @@ test("Issues group findings by identical message into one entry", () => {
   assert.equal(JSON.parse(formatJson(r)).findings.length, 4);
 });
 
+// A location line is printed only when there is something to put on it: a file, a
+// surfaced item, or a hint. A finding whose subject is the submission as a whole
+// (sca-not-required, manifest-missing) carries none of the three, and its message
+// already says everything - so it is listed with no location line rather than one
+// naming nothing. A hint with no file still prints, anchored at "(add-on)", because
+// finding.js promises a hint is ALWAYS shown.
+test("Issues print a location line only when it carries something", () => {
+  const mk = (extra) => ({
+    ruleId: "r",
+    severity: "error",
+    message: "shared message",
+    file: null,
+    loc: null,
+    item: null,
+    hint: null,
+    listItem: false,
+    ...extra,
+  });
+  const body = (f) => {
+    const out = formatText({
+      findings: [f],
+      meta: { action: "review", addon: "x", reviewed: true },
+    }).split("── Issues ──")[1];
+    return out.split("\n").filter((l) => l.trim().startsWith("- "));
+  };
+  // Nothing to say -> no line at all.
+  assert.deepEqual(body(mk({})), []);
+  // A hint alone still has to reach the reader, so it gets the whole-add-on anchor.
+  assert.deepEqual(body(mk({ hint: "added in Thunderbird 137" })), [
+    " - (add-on) - added in Thunderbird 137",
+  ]);
+  // An item the message did not consume is a locus of its own.
+  assert.deepEqual(body(mk({ item: "tabs", listItem: true })), [" - tabs"]);
+  // An item the message DID consume is not, so that finding has nothing to list.
+  assert.deepEqual(body(mk({ item: "tabs", listItem: false })), []);
+});
+
 // When the message did not consume {{item}} (listItem), the identifier is shown
 // on the location line: "file:line - item", or the bare item when there is no
 // file. An item with listItem=false (already in the message) is NOT appended.
