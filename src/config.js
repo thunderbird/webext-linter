@@ -48,6 +48,12 @@ export const LIBRARY_HASHES_CACHE = ".lib-mozilla-hash-db-cache";
  */
 export const SETUP_FETCH_TIMEOUT_MS = 60000;
 
+// The control-point probe (src/util/net.js): asked only when a request has already
+// failed to connect, and only to learn whether the network is still there. Short,
+// because the review is either about to continue or about to stop, and a slow answer
+// helps neither.
+export const CONTROL_TIMEOUT_MS = 5000;
+
 /**
  * jsDelivr's content-addressed reverse lookup: GET <CDN_LOOKUP_URL><sha256-hex>
  * returns `{type, name, version, file}` for a file whose exact bytes are published
