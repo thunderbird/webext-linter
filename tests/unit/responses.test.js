@@ -290,3 +290,40 @@ test("renderManualItems uses llm-unavailable for an llm-error ref", () => {
   );
   assert.match(item.instructions, /could not be evaluated/i);
 });
+
+// A substituted value is submission-derived - an item, a path, a URL, a model's
+// words - so fill() cleans each one. That is what keeps the finished `message` safe
+// without stripping the message itself, whose authored line breaks must survive.
+test("a substituted value carries no control characters into the message", () => {
+  const ESC = "\u001B";
+  const f = {
+    ruleId: "unsafe-html",
+    item: `inner${ESC}[2KHTML`,
+    message: null,
+  };
+  renderFindings([f], registry);
+  assert.ok(
+    !f.message.includes(ESC),
+    "the escape did not survive substitution"
+  );
+  assert.match(f.message, /inner \[2KHTML/); // separated, not fused
+  // The authored break before "Read more:" is untouched - the template is ours.
+  assert.match(f.message, /\nRead more:/);
+});
+
+// The same for a named {{slot}}: vendor-modified takes the declared source URL, which
+// comes straight from the submission.
+test("a named slot value carries no control characters", () => {
+  const ESC = "\u001B";
+  const f = {
+    ruleId: "vendor-modified",
+    item: "lib/a.min.js",
+    data: { url: `https://x/${ESC}[1Aa.js` },
+    message: null,
+  };
+  renderFindings([f], registry);
+  assert.ok(!f.message.includes(ESC));
+  // Replaced with a space, not deleted: deleting would let "htt<ESC>ps://evil" fuse
+  // into a working URL, so the pieces stay visibly apart.
+  assert.match(f.message, /https:\/\/x\/ \[1Aa\.js/);
+});

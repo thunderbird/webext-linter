@@ -29,7 +29,7 @@ import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
 import { canonicalJson } from "../util/json.js";
 import { progress, FEED, llmErrorText } from "../util/log.js";
 import { red } from "../util/color.js";
-import { humanSize } from "../util/text.js";
+import { displayText, humanSize } from "../util/text.js";
 import { nonAuthoredJs } from "../lib/bundled.js";
 import { buildRecheckSections } from "../lib/recheck.js";
 import {
@@ -392,7 +392,7 @@ async function generateSummary(deferred, label, budget) {
     // An advisory summary must never abort the review. Report the failure at
     // this step (visible without --verbose) and carry the reason to the report.
     const reason = llmErrorText(err);
-    progress(red(`LLM: ${label} failed - ${reason}`), FEED.STEP);
+    progress(red(`LLM: ${label} failed - ${displayText(reason)}`), FEED.STEP);
     return { bytes: deferred.bytes, text: null, error: reason };
   }
 }
@@ -436,7 +436,10 @@ async function generateAddonSummary(ctx, registry, budget, opts = {}) {
     review = await deferred.run();
   } catch (err) {
     const reason = llmErrorText(err);
-    progress(red(`LLM: ${label} summary failed - ${reason}`), FEED.STEP);
+    progress(
+      red(`LLM: ${label} summary failed - ${displayText(reason)}`),
+      FEED.STEP
+    );
     return { bytes: deferred.bytes, text: null, error: reason };
   }
   return {

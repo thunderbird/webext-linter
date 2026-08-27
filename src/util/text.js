@@ -73,3 +73,46 @@ export function humanSize(bytes) {
   }
   return `${(kb / 1024).toFixed(1)} MB`;
 }
+
+/**
+ * Text from the submission - or from a model reading it - made safe to put in front
+ * of a person. Control and format characters go: an escape sequence can repaint the
+ * terminal around a finding, erasing what sits above it, and a bidi override can make
+ * a path read as something it is not. Tab, carriage return and newline stay: they are
+ * ordinary text, and removing them would flatten prose that is meant to have shape.
+ *
+ * Each one becomes a SPACE rather than nothing, so the characters either side stay
+ * apart - deleting would let "htt<ESC>ps://evil" fuse into a working URL.
+ *
+ * The single definition of that rule. Everything the review shows a user passes
+ * through here: the substituted {{slot}} values (src/report/responses.js), the locus
+ * line and the machine-readable report (src/report/format.js), the per-check feed
+ * notes (src/checks/registry.js) and the LLM verdict narration
+ * (src/checks/escalation.js). Guarding those sinks rather than the hundreds of places
+ * a check composes a finding is what makes a check added later inherit it.
+ *
+ * NOT applied to our own authored prose: the registry's wording is ours, carries none
+ * of this, and stripping it would hide an authoring mistake rather than a submission.
+ * Nor does it lay anything out - a caller wanting one line asks for one (srcText).
+ * @param {?string} text
+ * @returns {string}
+ */
+export function displayText(text) {
+  return String(text ?? "").replace(/(?![\t\r\n])[\p{Cc}\p{Cf}]/gu, " ");
+}
+
+/**
+ * The same guard, for a sink that is ONE line: a locus line, a feed note, a recheck
+ * line. There a newline is not text, it is a second line - a packaged file named
+ * "a.js\n - INJECTED.js" otherwise renders as two loci, indistinguishable from a
+ * real second finding. So tab, CR and LF collapse here, where displayText keeps them
+ * for prose that is meant to have shape.
+ *
+ * Which to call is decided by the SINK, not by the value: a caller that wraps its
+ * text (wrapText) wants displayText, one that emits a single line wants this.
+ * @param {?string} text
+ * @returns {string}
+ */
+export function displayLine(text) {
+  return displayText(text).replace(/\s+/g, " ").trim();
+}

@@ -18,6 +18,7 @@
 import { parse } from "@babel/parser";
 import _traverse from "@babel/traverse";
 import { extname } from "../util/files.js";
+import { displayLine } from "../util/text.js";
 
 export const traverse = _traverse.default || _traverse;
 
@@ -129,12 +130,9 @@ export function srcText(node, code) {
   if (typeof node?.start !== "number" || typeof node?.end !== "number") {
     return null;
   }
-  const text = String(code ?? "")
-    .slice(node.start, node.end)
-    .replace(/[\p{Cc}\p{Cf}]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return text || null;
+  // A destination expression can span lines (a template literal, a ternary) and the
+  // locus it lands on is one.
+  return displayLine(String(code ?? "").slice(node.start, node.end)) || null;
 }
 
 /**

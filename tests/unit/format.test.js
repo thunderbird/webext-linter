@@ -709,3 +709,63 @@ test("an XPI review omits the artifact label", () => {
   assert.match(block, /\* Unused permission - bg\.js:3 - compose - pass/); // no [SCA]
   assert.doesNotMatch(block, /\[SCA\]|\[XPI\]/);
 });
+
+// Submission text reaches a person through four sinks - a substituted {{slot}}, the
+// locus line, the machine-readable report and the live feed. An escape sequence in
+// any of them repaints the terminal around the finding, erasing what sits above it.
+// displayText guards each sink rather than the hundreds of places a check composes a
+// finding, so a check added later inherits it.
+//
+// `message` is NOT guarded here, and must not be: it is authored registry prose whose
+// deliberate line breaks would be collapsed. It is safe by construction instead - no
+// check writes it, it only ever comes out of fill(), and fill() cleans every value it
+// substitutes (see responses.test.js).
+test("control characters from the submission never reach the report", () => {
+  const ESC = "\u001B";
+  const evil = `${ESC}[2K${ESC}[1A`;
+  const r = {
+    findings: [
+      {
+        ruleId: "unused-files",
+        severity: "error",
+        message: "A file is unused.",
+        file: `lib/${evil}x.js`,
+        item: `lib/${evil}x.js`,
+        listItem: true,
+        hint: `taken from https://x/${evil}y.js`,
+        loc: { line: 3 },
+      },
+    ],
+    meta: { action: "review", addon: "x", reviewed: false, manualReview: [] },
+  };
+  const text = formatText(r);
+  assert.ok(!text.includes(ESC), "no escape survived into the text report");
+  // The characters are removed, not the value.
+  assert.ok(text.includes("x.js") && text.includes("y.js"));
+
+  const json = formatJson(r);
+  assert.ok(!json.includes(ESC), "no escape survived into the JSON report");
+  const parsed = JSON.parse(json);
+  for (const field of ["file", "item", "hint"]) {
+    assert.ok(!parsed.findings[0][field].includes(ESC), field);
+  }
+
+  // Every C0 control and every format character, not just the escape.
+  for (const ch of [
+    "\u0000",
+    "\u0008",
+    "\u000C",
+    "\u202E",
+    "\u200B",
+    "\u001B",
+  ]) {
+    const one = {
+      ...r,
+      findings: [
+        { ...r.findings[0], file: `lib/${ch}x.js`, item: null, hint: null },
+      ],
+    };
+    assert.ok(!formatText(one).includes(ch), JSON.stringify(ch));
+    assert.ok(!formatJson(one).includes(ch), JSON.stringify(ch));
+  }
+});

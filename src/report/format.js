@@ -24,7 +24,7 @@ import {
 import { artifactLabel } from "./artifact.js";
 import { verdictLabel } from "./verdict-label.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
-import { wrapText } from "../util/text.js";
+import { displayLine, displayText, wrapText } from "../util/text.js";
 import { MAX_ENTRIES_PER_CATEGORY } from "../config.js";
 
 /** @param {string} s @returns {string} */
@@ -122,9 +122,9 @@ function summarySectionLines(review) {
     }
     const body =
       s.text != null
-        ? wrapText(s.text, "  ").join("\n")
+        ? wrapText(displayText(s.text), "  ").join("\n")
         : s.error
-          ? `  (summary unavailable - ${s.error})`
+          ? `  (summary unavailable - ${displayText(s.error)})`
           : "  (summary unavailable)";
     out.push(...section(title), "", body);
     if (title === "Summary of add-on" && review.verbose) {
@@ -158,14 +158,15 @@ function recheckVerdictLines(review) {
       mode: review.mode,
     });
     const locus = r.file
-      ? `${label ? `[${label}] ` : ""}${r.file}${r.line != null ? `:${r.line}` : ""}`
+      ? `${label ? `[${label}] ` : ""}${displayLine(r.file)}${r.line != null ? `:${r.line}` : ""}`
       : "(add-on)";
-    const subject = r.subject ? ` - ${r.subject}` : "";
+    const subject = r.subject ? ` - ${displayLine(r.subject)}` : "";
     lines.push(
       `  * ${r.check} - ${locus}${subject} - ${verdictLabel(r.verdict)}`
     );
     if (r.content) {
-      lines.push(`     -> ${r.content}`);
+      // A line lifted verbatim out of the submission, shown on one line here.
+      lines.push(`     -> ${displayLine(r.content)}`);
     }
   }
   return lines;
@@ -378,7 +379,7 @@ function renderLocusList(items, labelOf) {
   const lines = [];
   for (const x of items.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
     lines.push(
-      ` - ${locationLine(x, labelOf?.(x))}${x.hint ? ` - ${x.hint}` : ""}`
+      ` - ${locationLine(x, labelOf?.(x))}${x.hint ? ` - ${displayLine(x.hint)}` : ""}`
     );
   }
   if (items.length > MAX_ENTRIES_PER_CATEGORY) {
@@ -534,8 +535,15 @@ export function formatJson(review) {
   const issues = review.findings;
   // `data` (template-resolution input, baked into `message`) and `listItem` (a
   // text-layout flag) are internal, so they are dropped from the machine output.
+  // Consumed by tooling rather than a terminal, but a consumer may print it, so the
+  // submission-derived fields carry no more than the text report shows.
   const publicFindings = sortFindings(issues).map(
-    ({ data: _d, listItem: _li, ...f }) => f
+    ({ data: _d, listItem: _li, ...f }) => ({
+      ...f,
+      ...(f.file == null ? {} : { file: displayLine(f.file) }),
+      ...(f.item == null ? {} : { item: displayLine(f.item) }),
+      ...(f.hint == null ? {} : { hint: displayLine(f.hint) }),
+    })
   );
   return JSON.stringify(
     {
@@ -572,10 +580,12 @@ function section(title) {
  * @returns {string}
  */
 function locationLine(f, label = "") {
+  // The path comes from an archive entry name and the item from the submission, so
+  // both are made safe to show. The label is ours.
   const where = f.file
-    ? `${label ? `[${label}] ` : ""}${f.file}${f.loc?.line != null ? `:${f.loc.line}` : ""}`
+    ? `${label ? `[${label}] ` : ""}${displayLine(f.file)}${f.loc?.line != null ? `:${f.loc.line}` : ""}`
     : null;
-  const item = f.listItem ? f.item : null;
+  const item = f.listItem ? displayLine(f.item) : null;
   if (where && item) {
     return `${where} - ${item}`;
   }

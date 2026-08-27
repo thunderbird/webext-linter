@@ -31,6 +31,7 @@ import JSON5 from "json5";
 
 import { buildManifestLoc } from "./manifest-loc.js";
 import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
+import { displayLine } from "../util/text.js";
 import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
 
 /**
@@ -425,7 +426,10 @@ function readZip(zipPath) {
     // Reject path-traversal / absolute entry names from a (possibly malicious)
     // archive so they can never reach a filesystem write or the output package.
     if (!isSafeAddonPath(name)) {
-      skipped.push(`Skipping unsafe archive entry: ${entry.entryName}`);
+      // The entry name is whatever the archive says, before any validation.
+      skipped.push(
+        `Skipping unsafe archive entry: ${displayLine(entry.entryName)}`
+      );
       continue;
     }
     // Never decompress an installed-dependency tree: record the outer node_modules
@@ -488,7 +492,7 @@ function readDir(dir) {
           nodeModules.push(normalize(path.relative(dir, full)));
         } else {
           skipped.push(
-            `Skipping symlink (not packaged): ${path.relative(dir, full)}`
+            `Skipping symlink (not packaged): ${displayLine(path.relative(dir, full))}`
           );
         }
       } else if (e.isDirectory()) {

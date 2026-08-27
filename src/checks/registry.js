@@ -38,6 +38,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import YAML from "yaml";
+import { displayLine } from "../util/text.js";
 
 import { finding, SEVERITY } from "../report/finding.js";
 import { artifactLabel } from "../report/artifact.js";
@@ -1052,7 +1053,19 @@ export async function runChecks(registry, opts = {}, siblings) {
           input: labelInput,
           mode: sourceCtx.mode,
         });
-        progress(formatNote(file, loc, item, verdict, label), FEED.DETAIL);
+        // The note is composed by ~140 call sites out of paths and submission
+        // text. Made safe here, once, rather than at each of them - and on the
+        // PARTS, so the feed's own colouring downstream is untouched.
+        progress(
+          formatNote(
+            displayLine(file),
+            loc,
+            item == null ? item : displayLine(item),
+            verdict,
+            label
+          ),
+          FEED.DETAIL
+        );
       } catch (err) {
         // A cosmetic feed note must never drop a check's findings - formatNote's
         // throw still guards the contract for its unit test and direct callers.

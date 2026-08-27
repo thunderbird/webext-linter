@@ -18,6 +18,8 @@
 // Whether a check escalates to manual review (vs the LLM) is decided in
 // src/checks/escalation.js - here a manual ref is only rendered, not chosen.
 
+import { displayLine, displayText } from "../util/text.js";
+
 const PLACEHOLDER = "{{item}}";
 
 /**
@@ -59,14 +61,17 @@ function fill(template, item, data) {
   // model-controlled slots (e.g. undeclared-build-source's explanation +
   // buildInstructions) can't bleed into each other, and a "$&"-style value can't
   // trigger a replacement pattern. Unknown {{names}} are left untouched.
+  // Every substituted value is submission-derived - an item, a path, a URL, a
+  // model's words - so each is made safe to show. The TEMPLATE is ours and is left
+  // as authored.
   const values = new Map();
   if (data) {
     for (const [name, value] of Object.entries(data)) {
-      values.set(name, String(value));
+      values.set(name, displayText(value));
     }
   }
   if (item != null) {
-    values.set("item", item);
+    values.set("item", displayLine(item));
   }
   const out = template.replace(/\{\{(\w+)\}\}/g, (match, name) =>
     values.has(name) ? values.get(name) : match

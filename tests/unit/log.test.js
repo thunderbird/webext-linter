@@ -10,6 +10,9 @@ import {
   progress,
   warn,
   info,
+  debug,
+  llmErrorText,
+  setVerbose,
   FEED,
   feedIndent,
   setProgress,
@@ -125,4 +128,31 @@ test("the level prefix sits OUTSIDE a color wrap (spaces are colorless)", () => 
     emitted(() => progress(colored, FEED.DETAIL)),
     [`      ${colored}`]
   );
+});
+
+// Verbose output is where the submission is quoted most freely - whole prompts, a
+// model's raw reply, a path that failed to parse. The guard sits inside debug rather
+// than at its ~30 call sites, so a caller added later inherits it. Newlines survive:
+// these dumps have shape and none of them is a single line.
+test("debug removes control characters from what it dumps", () => {
+  const ESC = "\u001B";
+  setVerbose(true);
+  try {
+    const lines = emitted(() => debug(`[llm] reply:\n${ESC}[2K${ESC}[1Afake`));
+    assert.equal(lines.length, 1);
+    assert.ok(!lines[0].includes(ESC), "no escape reached the feed");
+    assert.ok(lines[0].includes("\n"), "the dump kept its shape");
+    assert.match(lines[0], /\[2K \[1Afake/);
+  } finally {
+    setVerbose(false);
+  }
+});
+
+// The provider's error body can echo the submission - or the operator's own
+// --llm-url proxy composes it - and all five callers print it on one feed line, so
+// the guard is inside llmErrorText rather than at each of them.
+test("llmErrorText guards the provider's message", () => {
+  const ESC = "\u001B";
+  assert.equal(llmErrorText({ message: `a${ESC}[2Kb` }), "a [2Kb");
+  assert.equal(llmErrorText({ message: `a\nb`, status: 400 }), "HTTP 400: a b");
 });

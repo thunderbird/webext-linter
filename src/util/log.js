@@ -1,3 +1,4 @@
+import { displayLine, displayText } from "./text.js";
 // Minimal logger for the tool's narration - the live "what is going on" feed
 // (setup notices, progress, LLM activity). This is standard output: the feed is
 // one of the run's phases and goes to stdout, alongside the report. Only REAL
@@ -147,7 +148,12 @@ export function info(...args) {
  */
 export function debug(...args) {
   if (verbose) {
-    emit(args, true);
+    // Verbose output is where the submission is quoted most freely - whole prompts,
+    // a model's raw reply, a path that failed to parse. Guarded here, once, rather
+    // than at each of the call sites. Newlines survive: these dumps have shape, and
+    // none of them is a single line. No caller colours its text (emit's colour
+    // contract is unaffected).
+    emit(args.map(displayText), true);
   }
 }
 
@@ -186,6 +192,9 @@ export function progress(text, level = FEED.SECTION) {
  */
 export function llmErrorText(err) {
   const status = err?.status ?? err?.statusCode;
-  const msg = err?.message ?? String(err);
+  // A provider's error body can echo the submission - or the operator's own
+  // --llm-url proxy can compose it - and every caller prints this on one feed line.
+  // Guarded here so none of them has to remember.
+  const msg = displayLine(err?.message ?? String(err));
   return status ? `HTTP ${status}: ${msg}` : msg;
 }

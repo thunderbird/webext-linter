@@ -20,7 +20,7 @@
 
 import { progress, feedIndent, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
-import { wrapText } from "../util/text.js";
+import { displayLine, displayText, wrapText } from "../util/text.js";
 import { VERDICT } from "../lib/enum.js";
 import { verdictLabel } from "../report/verdict-label.js";
 
@@ -183,8 +183,10 @@ function narrateBatchVerdicts(candidates, verdicts) {
   for (const c of candidates) {
     const v = verdicts.get(c.id) ?? { verdict: VERDICT.UNSURE, reason: null };
     const loc = c.line != null ? `:${c.line}` : "";
-    const where = `${c.file ?? "(add-on)"}${loc}`;
-    const why = v.reason ? ` - ${v.reason}` : "";
+    // The path is an archive entry name and the reason is the model's words about
+    // the submission, so both are guarded before they reach a terminal.
+    const where = `${c.file ? displayLine(c.file) : "(add-on)"}${loc}`;
+    const why = v.reason ? ` - ${displayText(v.reason)}` : "";
     const tint = VERDICT_COLOR.get(v.verdict) ?? ((s) => s);
     // A bullet per candidate so the verdicts read as a separated list. wrapText
     // hangs continuation lines past the marker, so the DETAIL indent is baked into
