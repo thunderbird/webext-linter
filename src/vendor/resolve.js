@@ -104,6 +104,39 @@ export function isVendored(vendor, file) {
 }
 
 /**
+ * The files one declaration covers: the declared path itself, or - for a folder
+ * declaration - every packaged file under it. This is the unit a `results` row is
+ * written about WHEN the outcome has a per-file consequence - one that leaves each
+ * covered file to be re-decided on its own (no-url, untrusted, unfetchable). Such a
+ * row must never name a DIRECTORY. An outcome that rejects instead (unpinned-source,
+ * modified) re-decides nothing per file, so its row names the declaration.
+ *
+ * That mattered: a row naming a directory reached markUntrusted, which withdraws a
+ * file's exemption by removing it from the non-authored set. Removing "lib" is a
+ * no-op - the skipped entries are "lib/..." - so a folder declaration against a
+ * source we could not check left its files exempt AND unscanned, while the same
+ * source declared file-by-file was reviewed. Expanding here means the consumers are
+ * right by construction rather than by remembering.
+ *
+ * Only files with reviewable content are reconciled (CODE_EXTENSIONS, see
+ * applyUnverifiedVendor): a folder covers whatever sits under it, and nothing reads
+ * a font or an image, so there is no exemption to withdraw for one.
+ *
+ * A declared FILE is returned as declared, packaged or not: whether a declaration
+ * names something absent is missing-vendor-file's question, not this one.
+ * @param {Addon} addon
+ * @param {VendorEntry} entry
+ * @returns {string[]}
+ */
+export function declaredFiles(addon, entry) {
+  if (entry.kind !== "folder") {
+    return [entry.path];
+  }
+  const prefix = `${entry.path}/`;
+  return [...(addon.files?.keys() ?? [])].filter((f) => f.startsWith(prefix));
+}
+
+/**
  * Resolve the offline vendored declarations into `addon.vendor`.
  * @param {object} params
  * @param {Addon} params.addon
@@ -214,14 +247,19 @@ export async function resolveVendor({
     } else {
       set.add(entry.path);
     }
-    if (!entry.sourceUrl) {
-      results.push({ path: entry.path, source: null, outcome: "no-url" });
-    } else if (!src.trusted) {
-      results.push({
-        path: entry.path,
-        source: entry.sourceUrl,
-        outcome: "untrusted",
-      });
+    // A row records a PER-FILE consequence, so who it names follows from whether the
+    // outcome has one. no-url and untrusted do: no rejection follows from them, so
+    // each covered file is re-decided by its own readability (applyUnverifiedVendor),
+    // and a row naming a folder would reach markUntrusted with a path that is not a
+    // packaged file. An unpinned source does not: it is already an error, the
+    // submission is rejected until the developer pins it, and nothing about the files
+    // is re-decided meanwhile - so the row names the DECLARATION, which is what the
+    // complaint is about and what unpinned-vendor-source reports.
+    if (!entry.sourceUrl || !src.trusted) {
+      const outcome = entry.sourceUrl ? "untrusted" : "no-url";
+      for (const path of declaredFiles(addon, entry)) {
+        results.push({ path, source: entry.sourceUrl ?? null, outcome });
+      }
     } else if (!src.pinned) {
       results.push({
         path: entry.path,

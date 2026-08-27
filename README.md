@@ -275,7 +275,7 @@ Each `deterministic-phase` entry links to a module in
 [src/checks/rules/](src/checks/rules/) and supplies the severity for its
 findings. A deterministic check decides each case in code - as a finding, or as an
 escalation of a case it cannot settle. An escalation goes straight to manual review
-(e.g. `vendor-unverified`, `native-messaging`), unless the check names a
+(e.g. `native-messaging`, `privacy-policy`), unless the check names a
 post-summary recheck consumer (`unused-permission`,
 `missing-english-localization`): under `--llm-review` those cases are re-judged by
 the model instead, and only then fall back to manual review. The LLM checks
@@ -337,7 +337,6 @@ escalate only their ambiguous residue.
 | `vendor-modified` | A declared third-party file whose bytes don't match its pinned source (EOL-tolerant compare) - it appears modified from upstream (error). |
 | `multiple-vendor-files` | More than one file in the package root names itself the VENDOR manifest (`VENDOR`, `VENDOR.md`, `VENDORS`, `VENDORS.md`), so which one the review reads would depend on the archive's order (error). None of them is read while it is ambiguous. |
 | `vendor-unparseable` | A VENDOR file is present but yielded no declaration, so nothing can be verified (error). The parse is all-or-nothing: it reads only what is marked as a declaration - a path and a source URL paired by a colon, a key, or Markdown link syntax - and a fault anywhere discards the whole file. |
-| `vendor-unverified` | Declarations that can't be settled automatically - an untrusted-host source, a library not confirmed widely used, or an unfetchable source - routed to manual review. |
 
 ### LLM checks
 

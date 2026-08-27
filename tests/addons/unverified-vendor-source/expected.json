@@ -1,0 +1,6 @@
+{
+  "_comment": "VENDORS.md declares lib/widget.min.js from a PINNED, trusted source - so unlike the vendored-library fixture it reaches the fetch, and the offline harness makes that fetch fail (outcome 'unfetchable'). A declaration alone does not exempt a file: applyUnverifiedVendor moves it into the untrusted family, and because the file is minified nothing can review it, so untrusted-minified-library rejects it and asks for source. This is the path that had no coverage while vendor-unverified owned it.",
+  "expect": {
+    "untrusted-minified-library": ["lib/widget.min.js"]
+  }
+}

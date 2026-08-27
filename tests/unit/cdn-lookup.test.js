@@ -16,7 +16,6 @@ import { resolveCdnLibraries, cdnUrl } from "../../src/lib/cdn-lookup.js";
 import findLibOnCdn from "../../src/checks/rules/find-lib-on-cdn.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
-import vendorUnverified from "../../src/checks/rules/vendor-unverified.js";
 import untrustedLibrary from "../../src/checks/rules/untrusted-library.js";
 import untrustedMinifiedLibrary from "../../src/checks/rules/untrusted-minified-library.js";
 
@@ -165,15 +164,13 @@ test("a NOT-popular hit is identified but untrusted (authored code), not the ven
 
   const ctx = { addon };
   // find-lib-on-cdn + minified-code stay silent; untrusted-minified-library rejects
-  // it; untrusted-library (readable-only info) stays silent; vendor-unverified does
-  // not escalate it.
+  // it; untrusted-library stays silent because it reports only READABLE ones.
   assert.equal(findLibOnCdn.run(ctx).length, 0);
   assert.equal(minifiedCode.run(ctx).length, 0);
   assert.equal(untrustedLibrary.run(ctx).length, 0);
   const rejects = untrustedMinifiedLibrary.run(ctx);
   assert.equal(rejects.length, 1);
   assert.match(rejects[0].item, /@me\/obscure 1\.0\.0/);
-  assert.equal(vendorUnverified.run(ctx).escalations.length, 0);
 });
 
 // A not-popular package can contain the exact bytes of a well-known library it merely

@@ -57,7 +57,7 @@ import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
 import {
   classifyFiles,
   assembleBundled,
-  applyNotPopularVendor,
+  applyUnverifiedVendor,
   hasUnreviewableCode,
 } from "./lib/bundled.js";
 import { collectJsSources } from "./addon/sources.js";
@@ -574,7 +574,7 @@ export async function runPipeline(opts) {
       // addon.bundled and its non-authored set - AFTER the declaration audit, so the vendored
       // set is final (verifyScaDependencies DISCOVERS further vendored files that classifyFiles
       // reads). 1f then identifies the UNDECLARED libraries the audit cannot see (jsDelivr hash),
-      // and applyNotPopularVendor removes a readable not-popular vendored copy from the skip set;
+      // and applyUnverifiedVendor removes a readable not-popular vendored copy from the skip set;
       // this FINALIZES the authored / non-authored split, so it must precede the parse (1g).
       classifyReview(addon, { libraryHashes });
       await identifyBundledLibraries(addon, {
@@ -818,7 +818,7 @@ function classifyReview(addon, { libraryHashes }) {
  * It runs AFTER identifyBundledLibraries, and that ORDER IS THE POINT: that step FINALIZES
  * addon.bundled.nonAuthored - the skip set this pass gates content extraction on - and it moves
  * the line in BOTH directions. The CDN lookup ADDS a file (a library the Mozilla hash DB
- * missed), and applyNotPopularVendor REMOVES one: a READABLE vendored library whose package
+ * missed), and applyUnverifiedVendor REMOVES one: a READABLE vendored library whose package
  * turns out not to be popular is reviewed as the developer's OWN code.
  *
  * That removal is what forces the order. A file dropped from the skip set after the pass would
@@ -863,7 +863,7 @@ async function identifyBundledLibraries(
   addon,
   { net, cacheDir, cdnEnabled = true, blocks, setupStep = () => {}, scope }
 ) {
-  applyNotPopularVendor(addon);
+  applyUnverifiedVendor(addon);
   setupStep(`Identifying ${scope} libraries on a CDN`);
   await resolveCdnLibraries(addon, { net, cacheDir, enabled: cdnEnabled });
   setupStep(`Auditing ${scope} libraries`);

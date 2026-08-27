@@ -21,7 +21,7 @@ import { parseApiUsage } from "../../src/parse/api-usage.js";
 import {
   classifyFiles,
   assembleBundled,
-  applyNotPopularVendor,
+  applyUnverifiedVendor,
 } from "../../src/lib/bundled.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 
@@ -110,7 +110,7 @@ test("extracts experimentRefs only when Experiment namespaces are supplied", () 
 });
 
 // The pipeline's Phase-3 ORDER is load-bearing, and this is why: identifyBundledLibraries
-// FINALIZES the non-authored skip set, and it REMOVES as well as adds. applyNotPopularVendor
+// FINALIZES the non-authored skip set, and it REMOVES as well as adds. applyUnverifiedVendor
 // drops a READABLE vendored library whose package turns out not to be popular, so the library
 // is reviewed as the developer's OWN code. Run the extraction pass before that removal and the
 // file ends up authored but never content-scanned - and since a check is a pure reader, it
@@ -144,7 +144,7 @@ test("a vendored library dropped from the skip set is still content-scanned", ()
     addon.bundled.nonAuthored.has("lib/mylib.js"),
     "declared vendored -> non-authored"
   );
-  applyNotPopularVendor(addon);
+  applyUnverifiedVendor(addon);
   assert.ok(
     !addon.bundled.nonAuthored.has("lib/mylib.js"),
     "not-popular -> reviewed as authored code"

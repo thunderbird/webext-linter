@@ -54,7 +54,6 @@
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",
-      "vendor-unverified",
       "missing-vendor-file",
       "multiple-vendor-files",
       "vendor-unparseable",

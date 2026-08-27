@@ -17,7 +17,12 @@
 
 import { eachElement } from "../scan/html-parse.js";
 import { extractVueSfc } from "../scan/vue-sfc.js";
-import { extname, JS_EXTENSIONS, HTML_EXTENSIONS } from "../util/files.js";
+import {
+  extname,
+  JS_EXTENSIONS,
+  HTML_EXTENSIONS,
+  SFC_EXTENSIONS,
+} from "../util/files.js";
 
 /**
  * @typedef {object} JsSource  A JavaScript source the review enumerates.
@@ -86,7 +91,7 @@ export function collectJsSources(addon) {
       });
     } else if (HTML_EXTENSIONS.has(ext)) {
       sources.push(...extractInlineScripts(file, buf.toString("utf8")));
-    } else if (ext === ".vue") {
+    } else if (SFC_EXTENSIONS.has(ext)) {
       sources.push(...extractVueSfc(file, buf.toString("utf8")));
     }
   }

@@ -23,7 +23,12 @@
 // the vendored set it builds on (addon.vendor.set) - src/vendor/resolve.js.
 // Extension-set helpers - src/util/files.js.
 
-import { extname, JS_EXTENSIONS, CSS_EXTENSIONS } from "../util/files.js";
+import {
+  extname,
+  JS_EXTENSIONS,
+  CSS_EXTENSIONS,
+  CODE_EXTENSIONS,
+} from "../util/files.js";
 import { isVendored } from "../vendor/resolve.js";
 import { rawSha256 } from "../normalize/hash.js";
 import { obfuscationVerdict } from "./obfuscation.js";
@@ -168,17 +173,31 @@ export function assembleBundled({ classified, nonAuthored }) {
   return { classified, nonAuthored, untrusted: [] };
 }
 
+// Every outcome that leaves a declared file unverified. The verdicts that REJECT -
+// a modified copy, an unpinned source - are not here: those are already errors, and
+// the file's status is decided by its own check.
+const UNVERIFIED_OUTCOMES = new Set([
+  "not-popular",
+  "untrusted",
+  "unfetchable",
+  "no-url",
+]);
+
 /**
  * Record an identified-but-not-popular ("untrusted") library and route it out of
  * the trusted/exempt family: a readable one is reviewed as authored code (removed
  * from the non-authored skip set), an unreadable (minified/obfuscated) one stays
  * skipped and is rejected by untrusted-minified-library. The untrusted-library /
- * untrusted-minified-library checks read addon.bundled.untrusted. Idempotent and
- * defensive (no-op without a bundled store, e.g. some unit harnesses).
+ * untrusted-minified-library checks read addon.bundled.untrusted. Defensive (no-op
+ * without a bundled store, e.g. some unit harnesses). One call, one entry: two
+ * declarations covering the same file list it twice, which the report shows and no
+ * consumer minds - the readability routing below is what decides its status, and it
+ * reaches the same answer either way.
  * @param {Addon} addon
  * @param {{file: string, source?: string, name?: string, unreadable: boolean}} entry
  *   `name` is the display id (e.g. "lodash 4.17.21"); `source` the upstream URL.
  */
+
 export function markUntrusted(addon, { file, source, name, unreadable }) {
   const bundled = addon?.bundled;
   if (!bundled) {
@@ -193,24 +212,46 @@ export function markUntrusted(addon, { file, source, name, unreadable }) {
 }
 
 /**
- * Reconcile the `not-popular` VENDOR/package results (recorded by verifyVendor)
- * into the untrusted family - identified but not a confirmed widely-used library,
- * so reviewed as authored code (markUntrusted). Done as a pipeline step AFTER
- * classifyBundled (which builds addon.bundled), since verifyVendor runs before it.
- * The reconciled results leave vendor.results (they are no longer manual review).
- * The CDN not-popular case is handled in cdn-lookup.js, which already runs after
- * classifyBundled. No-op without a bundled store or vendor results.
+ * Reconcile every UNVERIFIED VENDOR/package result into the untrusted family. A
+ * bundled file is exempt from review because we fetched its declared source and the
+ * bytes matched - nothing else earns it. So each way that can fail lands here:
+ *
+ *   not-popular  the source is real but the package is not a known library
+ *   untrusted    the source is on a host we will not fetch from
+ *   unfetchable  a reachable host had no such release (the review stops if the
+ *                network itself is gone - src/util/net.js)
+ *   no-url       nothing was declared as the source at all
+ *
+ * All four say the same thing: the claim is unsupported. markUntrusted then routes by
+ * readability - a readable file is reviewed as the developer's own code and flagged
+ * (info) by untrusted-library, an unreadable one stays unscanned and
+ * untrusted-minified-library rejects it, asking for source. A declaration cannot
+ * exempt a file the tool was never able to check.
+ *
+ * Runs as a pipeline step AFTER classifyBundled (which builds addon.bundled), since
+ * verifyVendor runs before it. The reconciled results leave vendor.results - they are
+ * no longer anyone's manual review. The CDN not-popular case is handled in
+ * cdn-lookup.js, which already runs after classifyBundled. No-op without a bundled
+ * store or vendor results.
  * @param {Addon} addon
  */
-export function applyNotPopularVendor(addon) {
+export function applyUnverifiedVendor(addon) {
   const results = addon?.vendor?.results;
   if (!results || !addon.bundled) {
     return;
   }
   const remaining = [];
   for (const result of results) {
-    if (result.outcome !== "not-popular") {
+    if (!UNVERIFIED_OUTCOMES.has(result.outcome)) {
       remaining.push(result);
+      continue;
+    }
+    // Only files whose CONTENT is reviewed have anything to reconcile. A folder
+    // declaration covers whatever sits under it - fonts, images, JSON - and nothing
+    // reads those, so there is no exemption to withdraw and no readable/unreadable
+    // question to answer. Judging them anyway called a one-line .woff2 "minified"
+    // and rejected the add-on for it.
+    if (!CODE_EXTENSIONS.has(extname(result.path))) {
       continue;
     }
     const buf = addon.files?.get(result.path);

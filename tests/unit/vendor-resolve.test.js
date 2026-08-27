@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveVendor } from "../../src/vendor/resolve.js";
+import { resolveVendor, declaredFiles } from "../../src/vendor/resolve.js";
 
 function fakeAddon(files) {
   const map = new Map();
@@ -324,4 +324,82 @@ test("resolveVendor treats a dep in both dependencies and devDependencies as pro
   ]);
   // "shared" is NOT in devPackages - only the genuinely dev-only package is.
   assert.deepEqual(v.devPackages, [{ name: "devonly", version: "3.0.0" }]);
+});
+
+// ---- declaredFiles: the unit a results row is written about ----
+// A row's `path` must always name a file, never a directory: markUntrusted withdraws
+// an exemption by removing a path from the non-authored set, and removing "lib" does
+// nothing for the "lib/..." entries actually in it. A folder declaration against a
+// source we cannot check would then leave its files exempt AND unscanned, while the
+// same source declared file-by-file is reviewed.
+test("declaredFiles expands a folder declaration to the files under it", () => {
+  const addon = fakeAddon({
+    "lib/a.js": "a",
+    "lib/deep/b.js": "b",
+    "library.js": "not under lib/",
+    "other.js": "c",
+  });
+  assert.deepEqual(
+    declaredFiles(addon, { path: "lib", kind: "folder" }).sort(),
+    ["lib/a.js", "lib/deep/b.js"]
+  );
+  // A prefix that only looks like one is not covered ("library.js" vs "lib/").
+  assert.ok(
+    !declaredFiles(addon, { path: "lib", kind: "folder" }).includes(
+      "library.js"
+    )
+  );
+  // A folder covering nothing yields nothing; whether the declaration names something
+  // absent is missing-vendor-file's question.
+  assert.deepEqual(declaredFiles(addon, { path: "gone", kind: "folder" }), []);
+});
+
+// A FILE declaration is returned as declared, packaged or not - this helper only
+// answers which files a declaration covers, and changing that for files would alter
+// behaviour unrelated to the folder bug.
+test("declaredFiles leaves a file declaration alone", () => {
+  const addon = fakeAddon({ "lib/a.js": "a" });
+  assert.deepEqual(declaredFiles(addon, { path: "lib/a.js", kind: "file" }), [
+    "lib/a.js",
+  ]);
+  assert.deepEqual(declaredFiles(addon, { path: "absent.js", kind: "file" }), [
+    "absent.js",
+  ]);
+});
+
+// The end the consumers see: an unverifiable FOLDER declaration produces one row per
+// covered file, so nothing downstream has to ask what kind of declaration made it.
+test("an unverifiable folder declaration yields one results row per file", async () => {
+  const addon = fakeAddon({
+    "VENDOR.md":
+      "- folder: lib\n  source: https://evil.example.com/w/1.2.3/i.js\n",
+    "lib/a.js": "a",
+    "lib/b.js": "b",
+  });
+  const vendor = await resolveVendor({ addon });
+  assert.deepEqual(vendor.results.map((r) => [r.path, r.outcome]).sort(), [
+    ["lib/a.js", "untrusted"],
+    ["lib/b.js", "untrusted"],
+  ]);
+  // The folder is still vendored by prefix - the rows say what was CHECKED, not what
+  // was declared.
+  assert.deepEqual([...vendor.folders], ["lib"]);
+});
+
+// An outcome that REJECTS re-decides nothing per file: the submission is refused until
+// the developer pins the source, and until then no covered file's status changes. So
+// the row names the DECLARATION - expanding it would report one complaint about one
+// declaration once per file it happens to cover.
+test("an unpinned folder declaration yields ONE row, naming the declaration", async () => {
+  const addon = fakeAddon({
+    "VENDOR.md":
+      "- folder: lib\n  source: https://unpkg.com/demo-widget/dist/index.js\n",
+    "lib/a.js": "a",
+    "lib/b.js": "b",
+  });
+  const vendor = await resolveVendor({ addon });
+  assert.deepEqual(
+    vendor.results.map((r) => [r.path, r.outcome]),
+    [["lib", "unpinned-source"]]
+  );
 });

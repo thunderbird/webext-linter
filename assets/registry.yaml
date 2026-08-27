@@ -648,22 +648,6 @@ deterministic-phase:
   response: |-
     A bundled third-party file does not match its declared source: {{item}} does not match the bytes its declared source ({{url}}) serves, so it appears to have been modified from the upstream release. Ship the file exactly as the source publishes it, or correct the declared source to the release the file actually came from.
 
-# A deterministic check that escalates the declarations it cannot settle
-# automatically to manual review (its `instructions`); it emits no findings, so
-# it carries no severity.
-- title: Vendored library needs manual verification
-  sca: false
-  check: vendor-unverified
-  input: source
-  response: |-
-    The following bundled third-party file(s) could not be automatically verified against their upstream source. For each, make sure your vendor mechanism gives the library’s exact upstream version and a source URL that pins that release on a trusted host (unpkg, jsDelivr, an npm-registry tarball, or a raw GitHub URL), and that the bundled copy is unmodified, so it can be verified automatically.
-    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
-  instructions: |-
-    The following declared third-party (vendored) file(s) could not be verified
-    automatically. Confirm by hand that each is an unmodified copy of a
-    library obtained from a trustworthy source.
-
-# Flags a VENDOR entry (file + source URL) whose file is absent from the package.
 - title: Missing vendored file
   severity: warning
   sca: false

@@ -35,7 +35,7 @@ import { createHash } from "node:crypto";
 import { classifySource } from "./sources.js";
 import { tarballHashes } from "./tarball.js";
 import { zipHashesUnder } from "./archive.js";
-import { isVendored } from "./resolve.js";
+import { isVendored, declaredFiles } from "./resolve.js";
 import { npmNameForLibrary } from "../lib/library-hashes.js";
 import { matchLibraryBlock } from "../lib/library-blocks.js";
 import { normalizedSha256, eolNormalize } from "../normalize/hash.js";
@@ -176,7 +176,7 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}, blocks) {
     );
   }
   // A `not-popular` outcome is reconciled into addon.bundled.untrusted later, by
-  // applyNotPopularVendor (src/lib/bundled.js), because addon.bundled is
+  // applyUnverifiedVendor (src/lib/bundled.js), because addon.bundled is
   // built AFTER this step in the pipeline. It stays in vendor.results until then.
 }
 
@@ -787,8 +787,9 @@ async function verifyTarball(entry, addon, net) {
  * hash every upstream file under the declared subpath, then match EACH packaged file
  * under the directory by content hash (the same membership test as verifyTarball,
  * one result per file). A file not in the upstream set is `modified`; a fetch/parse
- * failure records the whole folder `unfetchable` (so it escalates to manual review,
- * not silence).
+ * failure records every file the folder covers as `unfetchable`, which
+ * applyUnverifiedVendor reconciles into the untrusted family - so each is reviewed as
+ * authored code or rejected as unreadable, per file, never silently exempt.
  * @param {{path: string, sourceUrl: string}} entry  Folder entry (path = directory).
  * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
  * @returns {Promise<void>}
@@ -802,22 +803,21 @@ async function verifyFolder(entry, addon, vendor, net) {
       src.subpath ?? ""
     );
   } catch {
-    vendor.results.push({
-      path: entry.path,
-      source: entry.sourceUrl,
-      outcome: "unfetchable",
-    });
+    // One row per covered file, like the success path below - a row naming the
+    // DIRECTORY would reach markUntrusted, which cannot withdraw an exemption from
+    // a path that is not a packaged file (see declaredFiles).
+    for (const path of declaredFiles(addon, entry)) {
+      vendor.results.push({
+        path,
+        source: entry.sourceUrl,
+        outcome: "unfetchable",
+      });
+    }
     return;
   }
-  // The declared path arrives normalized (src/normalize/vendor.js normalizeToken),
-  // so a trailing slash is already gone - stripping it again here would be a second
-  // place deciding what a folder path looks like.
-  const prefix = `${entry.path}/`;
   let popular = null; // looked up once, lazily, only if a file actually matches
-  for (const [addonPath, mine] of addon.files) {
-    if (!addonPath.startsWith(prefix)) {
-      continue;
-    }
+  for (const addonPath of declaredFiles(addon, entry)) {
+    const mine = addon.files.get(addonPath);
     if (!hashes.has(normalizedSha256(mine))) {
       vendor.results.push({
         path: addonPath,

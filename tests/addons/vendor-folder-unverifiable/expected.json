@@ -1,0 +1,9 @@
+{
+  "_comment": "A FOLDER declaration against a host we will not fetch from. The declaration cannot exempt files the tool never checked, so every file under lib/ that HAS reviewable content is reconciled into the untrusted family INDIVIDUALLY - never the directory - and each is routed by its OWN readability: lib/widget.js is readable, so it is reviewed as authored code (untrusted-library, info) and its innerHTML sink is reported like any authored code; lib/bundle.min.js is minified, so it stays unscanned and untrusted-minified-library rejects it. Guards two halves of that sentence. INDIVIDUALLY: a row naming the DIRECTORY reaches markUntrusted, which cannot withdraw an exemption from a path that is not a packaged file, so both JS files would stay exempt AND unread - the add-on would pass with nothing said. REVIEWABLE CONTENT: lib/face.woff2 and lib/strings.json are here because nothing reads a font or a data file, so there is no exemption to withdraw and no readable/unreadable question to answer - without the CODE_EXTENSIONS gate the non-JS geometry test calls both 'minified' and rejects the add-on for shipping a font.",
+  "expect": {
+    "addon-icon-missing": ["manifest.json"],
+    "unsafe-html": ["lib/widget.js:2"],
+    "untrusted-library": ["lib/widget.js"],
+    "untrusted-minified-library": ["lib/bundle.min.js"]
+  }
+}

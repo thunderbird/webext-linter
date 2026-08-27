@@ -36,6 +36,25 @@ export const CSS_EXTENSIONS = new Set([".css"]);
 /** Extensions treated as HTML documents. */
 export const HTML_EXTENSIONS = new Set([".html", ".htm", ".xhtml"]);
 
+/** Single-file-component extensions - one file carrying template + script + style,
+ *  split by its own parser (src/addon/sources.js extractVueSfc). Named rather than
+ *  spelled inline so the suffix lives in exactly one place, like every other type. */
+export const SFC_EXTENSIONS = new Set([".vue"]);
+
+/** The file types whose CONTENT this tool reviews: everything a scanner reads, parses,
+ *  or extracts sources from. The union is the DEFINITION - consumers spread from it
+ *  rather than restating which suffixes count, so a new parser is added to one set and
+ *  every consumer follows. Used to decide whether a file has reviewable content at all
+ *  (src/lib/bundled.js applyUnverifiedVendor) and as the code half of RECOGNIZED_EXTS.
+ *  Broader than the JS/CSS pair classifyFiles tests, which answers the narrower
+ *  minified/obfuscated question. */
+export const CODE_EXTENSIONS = new Set([
+  ...JS_EXTENSIONS,
+  ...CSS_EXTENSIONS,
+  ...HTML_EXTENSIONS,
+  ...SFC_EXTENSIONS,
+]);
+
 /** Binary archive extensions. A committed archive in a source submission is build
  *  output / a decoy, never authored source; the committed-build-artifact check rejects
  *  one anywhere in --sca-root, unused-files flags one shipped in the XPI, and the build
@@ -60,10 +79,7 @@ export const ARCHIVE_EXTENSIONS = new Set([
  *  when a legitimate common type is missing; add a JS suffix to JS_EXTENSIONS instead (so the
  *  file is actually parsed, not merely recognized). */
 export const RECOGNIZED_EXTS = new Set([
-  ...JS_EXTENSIONS,
-  ...CSS_EXTENSIONS,
-  ...HTML_EXTENSIONS,
-  ".vue",
+  ...CODE_EXTENSIONS,
   // Images
   ".png",
   ".jpg",

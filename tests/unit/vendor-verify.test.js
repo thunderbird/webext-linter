@@ -19,12 +19,11 @@ import { parseLibraryBlocks } from "../../src/lib/library-blocks.js";
 import unpinnedDependency from "../../src/checks/rules/unpinned-dependency.js";
 import unpinnedVendorSource from "../../src/checks/rules/unpinned-vendor-source.js";
 import vendorModified from "../../src/checks/rules/vendor-modified.js";
-import vendorUnverified from "../../src/checks/rules/vendor-unverified.js";
 import missingVendorFile from "../../src/checks/rules/missing-vendor-file.js";
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 import vendorVulnUnknown from "../../src/checks/rules/vendor-vuln-unknown.js";
 import vendorUnparseable from "../../src/checks/rules/vendor-unparseable.js";
-import { applyNotPopularVendor } from "../../src/lib/bundled.js";
+import { applyUnverifiedVendor } from "../../src/lib/bundled.js";
 import { normalizedSha256 } from "../../src/normalize/hash.js";
 import { makeTgz } from "./tarball-fixture.js";
 
@@ -536,7 +535,7 @@ test("verifyVendor: a real byte difference is modified, a niche lib not-popular"
   // the non-authored set so the source-level checks scan it as authored code.
   niche.bundled.nonAuthored.add("a.js");
   await verifyVendor(niche, net({ bytes: "BODY", downloads: 3 }));
-  applyNotPopularVendor(niche); // the pipeline's post-classifyBundled reconciliation
+  applyUnverifiedVendor(niche); // the pipeline's post-classifyBundled reconciliation
   // not-popular is not a manual-review result; it is dropped from results and
   // recorded as an untrusted (here readable) library, reviewed as authored code.
   assert.deepEqual(niche.vendor.results, []);
@@ -595,7 +594,7 @@ test("verifyVendor: a github source from a non-trusted org is still star-gated",
     fetchJson: async () => ({ stargazers_count: 5 }), // below VENDOR_GITHUB_MIN_STARS
   };
   await verifyVendor(addon, net);
-  applyNotPopularVendor(addon);
+  applyUnverifiedVendor(addon);
   // star-gated -> not-popular -> untrusted (authored code), dropped from results.
   assert.deepEqual(addon.vendor.results, []);
   assert.equal(addon.bundled.untrusted[0].file, "vendor/lib.js");
@@ -641,7 +640,7 @@ test("verifyVendor: a hash match for a niche package is not-popular", async () =
   );
   const listing = { files: [{ path: "/lib.js", integrity: sri }] };
   await verifyVendor(addon, net({ listing, downloads: 3, throwOnFetch: true }));
-  applyNotPopularVendor(addon);
+  applyUnverifiedVendor(addon);
   // niche npm dep -> not-popular -> untrusted (authored code), dropped from results.
   assert.deepEqual(addon.vendor.results, []);
   assert.equal(addon.bundled.untrusted[0].file, "vendor/lib.js");
@@ -1417,70 +1416,6 @@ test("vendor-modified: a modified result is a finding; verified passes silently"
   assert.deepEqual(out[0].data, { url: "u2" });
 });
 
-test("vendor-unverified: every unverifiable result escalates; verified does not", () => {
-  const ctx = {
-    addon: {
-      vendor: store({
-        results: [
-          { path: "a.js", source: null, outcome: "no-url" },
-          { path: "b.js", source: "http://evil/x.js", outcome: "untrusted" },
-          { path: "d.js", source: "u", outcome: "unfetchable" },
-          { path: "e.js", source: "u", outcome: "verified" },
-          // not-popular is intentionally absent: it is not manual review here
-          // (it becomes an untrusted/authored library - see markUntrusted).
-        ],
-      }),
-    },
-  };
-  const out = vendorUnverified.run(ctx);
-  assert.deepEqual(out.findings, []);
-  assert.equal(out.escalations.length, 3);
-  // Each escalation is located by the VENDOR file; the item lists the declared
-  // file, the source URL (when there is one), and the URL-free reason.
-  assert.ok(out.escalations.every((e) => e.file === "VENDOR"));
-  assert.equal(out.escalations[0].item, "a.js - no source URL declared");
-  const trustedHosts = VENDOR_TRUSTED_HOSTS.map((h) => `https://${h}`).join(
-    ", "
-  );
-  assert.equal(
-    out.escalations[1].item,
-    `b.js - http://evil/x.js - source not on a trusted host (use ${trustedHosts})`
-  );
-});
-
-test("missing-vendor-file: one warning per missing entry, listing the path", () => {
-  const ctx = {
-    addon: {
-      files: new Map([["VENDORS.md", Buffer.from("file: lib/gone.js")]]),
-      vendor: store({
-        missing: [
-          {
-            path: "lib/gone.js",
-            sourceUrl: "https://unpkg.com/b@2.0.0/gone.js",
-          },
-        ],
-      }),
-    },
-  };
-  const out = missingVendorFile.run(ctx);
-  assert.equal(out.length, 1);
-  // The missing path is the location; the VENDOR filename rides {{item}}.
-  assert.equal(out[0].file, "lib/gone.js");
-  assert.equal(out[0].item, "VENDORS.md");
-});
-
-// An unparsable VENDOR file is not a manual escalation here - it is the
-// vendor-unparseable check's error finding.
-test("vendor-unverified: an unparsable VENDOR file is not escalated here", () => {
-  const ctx = {
-    addon: {
-      files: new Map([["VENDOR", Buffer.from("we bundle stuff, see docs")]]),
-      vendor: store({ unparsedVendor: true }),
-    },
-  };
-  assert.deepEqual(vendorUnverified.run(ctx).escalations, []);
-});
-
 test("vendor-unparseable: an unparsable VENDOR file is an error finding", () => {
   const out = vendorUnparseable.run({
     addon: {
@@ -1497,4 +1432,45 @@ test("vendor-unparseable: an unparsable VENDOR file is an error finding", () => 
     }).length,
     0
   );
+});
+
+// A bundled file is exempt from review because we fetched its declared source and
+// the bytes matched. Nothing else earns it - so every way that can fail says the same
+// thing, and all of them land in the untrusted family rather than in a manual step
+// that asked a reviewer to vouch for provenance they could not check.
+//
+// markUntrusted then routes by readability, which is the whole point: a readable file
+// can be reviewed as the developer's own code, an unreadable one cannot be reviewed at
+// all and is rejected with a request for source.
+test("every unverified outcome becomes untrusted, routed by readability", () => {
+  const MIN = "!function(e){return e}(1);".repeat(60);
+  const READ = "export function hello() {\n  return 1;\n}\n";
+  const build = (outcome, file, body) => ({
+    files: new Map([[file, Buffer.from(body)]]),
+    bundled: { classified: [], nonAuthored: new Set([file]), untrusted: [] },
+    vendor: { results: [{ path: file, source: "https://x/y.js", outcome }] },
+  });
+
+  for (const outcome of ["untrusted", "unfetchable", "no-url", "not-popular"]) {
+    const addon = build(outcome, "lib/read.js", READ);
+    applyUnverifiedVendor(addon);
+    assert.equal(addon.bundled.untrusted.length, 1, outcome);
+    assert.equal(addon.bundled.untrusted[0].unreadable, false, outcome);
+    // Readable: taken OUT of the skip set, so it is reviewed as authored code.
+    assert.ok(!addon.bundled.nonAuthored.has("lib/read.js"), outcome);
+    // The result is spent - it is nobody's manual review any more.
+    assert.deepEqual(addon.vendor.results, [], outcome);
+  }
+
+  // Unreadable: nothing can review it, so it stays skipped and is rejected instead.
+  const min = build("unfetchable", "lib/min.js", MIN);
+  applyUnverifiedVendor(min);
+  assert.equal(min.bundled.untrusted[0].unreadable, true);
+  assert.ok(min.bundled.nonAuthored.has("lib/min.js"));
+
+  // A verdict that already rejects keeps its own result - its check owns the file.
+  const kept = build("modified", "lib/read.js", READ);
+  applyUnverifiedVendor(kept);
+  assert.equal(kept.bundled.untrusted.length, 0);
+  assert.equal(kept.vendor.results.length, 1);
 });
