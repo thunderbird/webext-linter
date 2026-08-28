@@ -238,6 +238,38 @@ const pinnedEntry = (path, sourceUrl) => ({
 
 // ---- verifyScaDependencies (SCA mode dependency audit) ----
 
+// ---- missing-vendor-file ----
+// A declaration naming a file the submission does not ship. The check only reads
+// addon.vendor.missing (resolveVendor decides what is missing), so this pins the
+// shape it reports: the MISSING PATH is the location a reviewer is sent to, and the
+// VENDOR file's own name rides on {{item}} - the two are easy to swap, and swapping
+// them points the reviewer at a file that exists instead of the one that does not.
+test("missing-vendor-file: one warning per missing entry, listing the path", () => {
+  const ctx = {
+    addon: {
+      files: new Map([["VENDORS.md", Buffer.from("file: lib/gone.js")]]),
+      vendor: {
+        missing: [
+          {
+            path: "lib/gone.js",
+            sourceUrl: "https://unpkg.com/b@2.0.0/gone.js",
+          },
+        ],
+      },
+    },
+  };
+  const out = missingVendorFile.run(ctx);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].file, "lib/gone.js");
+  assert.equal(out[0].item, "VENDORS.md");
+});
+
+// Nothing declared missing is silence, not an empty finding.
+test("missing-vendor-file: says nothing when every declared file is shipped", () => {
+  const ctx = { addon: { files: new Map(), vendor: { missing: [] } } };
+  assert.deepEqual(missingVendorFile.run(ctx), []);
+});
+
 test("verifyScaDependencies: a non-popular declared dep is recorded as unreviewable", async () => {
   const addon = addonWith(
     { "package.json": '{"dependencies":{"niche":"1.0.0"}}' },

@@ -18,10 +18,12 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        A bundled file whose bytes match a pinned upstream release — recognised
-        via the Mozilla hash database, the jsDelivr CDN, or a declared VENDOR
-        source — but whose package could not be confirmed to be a widely-used
-        library, and which is also minified or otherwise machine-generated.
+        A bundled file the tool could not confirm as a reviewed dependency, and
+        which is also minified or otherwise machine-generated. Either its bytes
+        match a pinned upstream release — recognised via the jsDelivr CDN or a
+        declared VENDOR source — whose package is not a widely-used library, or
+        its declared source was never checked at all: none was given, it is on a
+        host we do not fetch from, or it has no such release.
       </p>
       <p>
         Such a file is both untrusted, so it does not earn the trusted-library
@@ -36,7 +38,9 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A bundled file identified<br/>as a pinned upstream release"] --> P{"Did it clear the<br/>popularity trust bar?"}
+  A["A bundled file declared or<br/>identified as a third-party library"] --> C{"Could its source<br/>be checked at all?<br/>declared · trusted host · release exists"}
+  C -- no --> R
+  C -- yes --> P{"Did it clear the<br/>popularity trust bar?"}
   P -- yes --> S([skip — trusted library,<br/>exempt from review])
   P -- no --> R{"Is the file minified<br/>or obfuscated?"}
   R -- no --> OK([no finding here —<br/>handled by untrusted-library])
@@ -53,13 +57,15 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told each named file matches a known upstream release but
-        could not be confirmed to be a widely-used library, so it is not trusted
-        as a reviewed dependency, and that because it is minified or otherwise
-        machine-generated it cannot be reviewed in this form. It is asked to ship
-        the original, human-readable code directly, or to upload the original
-        sources as a source-code submission — with the build instructions needed to
-        reproduce the shipped package — during submission.
+        The add-on is told each named file is a third-party library whose origin
+        could not be confirmed — either it matches an upstream release whose
+        package is not a widely-used library, or its declared source could not
+        be checked at all — so it is not trusted as a reviewed dependency, and
+        that because it is minified or otherwise machine-generated it cannot be
+        reviewed in this form. It is asked to ship the original, human-readable
+        code directly, or to upload the original sources as a source-code
+        submission — with the build instructions needed to reproduce the shipped
+        package — during submission.
       </div>
 
       <p class="source-note">

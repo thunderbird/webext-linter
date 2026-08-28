@@ -197,7 +197,6 @@ const UNVERIFIED_OUTCOMES = new Set([
  * @param {{file: string, source?: string, name?: string, unreadable: boolean}} entry
  *   `name` is the display id (e.g. "lodash 4.17.21"); `source` the upstream URL.
  */
-
 export function markUntrusted(addon, { file, source, name, unreadable }) {
   const bundled = addon?.bundled;
   if (!bundled) {
@@ -229,10 +228,11 @@ export function markUntrusted(addon, { file, source, name, unreadable }) {
  * exempt a file the tool was never able to check.
  *
  * Runs as a pipeline step AFTER classifyBundled (which builds addon.bundled), since
- * verifyVendor runs before it. The reconciled results leave vendor.results - they are
- * no longer anyone's manual review. The CDN not-popular case is handled in
- * cdn-lookup.js, which already runs after classifyBundled. No-op without a bundled
- * store or vendor results.
+ * verifyVendor runs before it. A reconciled result is REMOVED from vendor.results:
+ * the untrusted family is now where that file's status is read, so leaving the row
+ * would let a second consumer reach its own conclusion about it. The CDN not-popular
+ * case is handled in cdn-lookup.js, which already runs after classifyBundled. No-op
+ * without a bundled store or vendor results.
  * @param {Addon} addon
  */
 export function applyUnverifiedVendor(addon) {
@@ -343,8 +343,12 @@ export function isObfuscatedFirstParty(c) {
  * first-party code, or an identified-but-untrusted library that is unreadable. The union
  * of what minified-code / obfuscated-code / untrusted-minified-library flag, so the
  * pipeline's "is the shipped XPI directly reviewable?" decision and those checks share one
- * definition. (The untrusted list is CDN/vendor-filled later, so at the pipeline decision
- * point only the deterministic hash-DB classification contributes - the conservative choice.)
+ * definition. Note WHEN the pipeline reads this: applyUnverifiedVendor runs inside
+ * identifyBundledLibraries, which precedes resolveReviewMode, so the untrusted list is
+ * already filled at the mode decision. An unverifiable, unreadable vendored file
+ * therefore counts as unreviewable code and keeps a source-archive review - which is
+ * the point: if we could neither read nor check that file, the source archive is
+ * exactly what the reviewer needs.
  * @param {?Bundled} bundled  A classifyBundled result.
  * @returns {boolean}
  */

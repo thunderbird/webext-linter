@@ -1,8 +1,9 @@
 // Parses the add-on's VENDOR file (developers list every bundled third-party
-// library there so reviewers can verify it matches upstream). Those files must
-// stay byte-for-byte identical to the release they came from, so the normalizer
-// skips any path listed here, and vendor verification fetches the declared
-// source to confirm it (src/vendor/verify.js).
+// library there so reviewers can verify it matches upstream). Those files must stay
+// identical to the release they came from - the compare tolerates end-of-line
+// differences and nothing else (src/normalize/hash.js) - so the normalizer skips any
+// path listed here, and vendor verification fetches the declared source to confirm it
+// (src/vendor/verify.js).
 //
 // The grammar is deliberately narrow, because the cost of reading too much is not a
 // parse error - it is a WRONG declaration that looks right. A file and a URL pair only

@@ -1,11 +1,13 @@
-// Rejects a bundled file that was IDENTIFIED (its bytes match a pinned upstream
-// release on the jsDelivr CDN or a declared VENDOR source) but did NOT clear the
-// popularity trust bar AND is minified/obfuscated. (A Mozilla hash-DB match is never
-// gated - DB membership is the trust signal - so it never becomes untrusted.) Such a
-// file is
-// both untrusted (not a confirmed widely-used library, so it does not earn the
-// review exemption) and unreviewable (machine-generated), so the dev must ship a
-// readable build. The popularity verdict + the untrusted tagging happen earlier
+// Rejects a bundled file the tool could not confirm as a reviewed dependency AND
+// which is minified/obfuscated. Two shapes reach it: the file was IDENTIFIED (its
+// bytes match a pinned upstream release on the jsDelivr CDN or a declared VENDOR
+// source) but did not clear the popularity trust bar; or its declared source was
+// never checked at all - none given, an untrusted host, or no such release
+// (applyUnverifiedVendor). (A Mozilla hash-DB match is never gated - DB membership is
+// the trust signal - so it never becomes untrusted.) Such a file is both untrusted
+// (it does not earn the review exemption) and unreviewable (machine-generated), so
+// the dev must ship a readable build. The trust verdict + the untrusted tagging
+// happen earlier
 // (src/lib/cdn-lookup.js, src/vendor/verify.js -> markUntrusted); this
 // check just reports the unreadable ones. Identity is still OSV-audited.
 //

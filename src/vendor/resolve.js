@@ -155,8 +155,8 @@ export function declaredFiles(addon, entry) {
  * covered by a FOLDER declaration that did not verify and separately declared
  * against a source that did - would otherwise be told to the reviewer twice, once
  * as "reviewed as authored code" and once as vouched for. The stricter half wins.
- * An untrusted entry names whatever the failing DECLARATION named, so a folder
- * entry covers everything under it, exactly as isVendored reads a folder.
+ * An untrusted entry always names a packaged FILE - declaredFiles is what keeps a
+ * folder declaration from putting a directory there - so an exact match is enough.
  *
  * Distinct from isVendored, which asks the DECLARATION question ("skip scanning
  * this file") and is deliberately verification-independent. Use this one only
@@ -170,7 +170,7 @@ export function declaredFiles(addon, entry) {
  */
 export function verifiedVendorSource(addon, file) {
   for (const entry of addon?.bundled?.untrusted ?? []) {
-    if (entry.file === file || file.startsWith(`${entry.file}/`)) {
+    if (entry.file === file) {
       return null;
     }
   }

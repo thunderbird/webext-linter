@@ -32,7 +32,9 @@ const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 
 // Vendor verification is the only networked stage. Inject a transport that
 // refuses every request so the golden harness never touches the real network: a
-// fetchable declaration deterministically becomes "unfetchable" -> manual review.
+// fetchable declaration deterministically becomes "unfetchable" -> the untrusted
+// family (applyUnverifiedVendor), i.e. reviewed as authored code or rejected as
+// unreadable - never exempt.
 const OFFLINE_NET = {
   fetchBytes: async () => {
     throw new Error("offline");

@@ -9,8 +9,9 @@
 //     EOL-tolerant compare against the packaged bytes (verified / modified),
 //     then gate on popularity (verified / not-popular) - except a github source
 //     from a first-party trusted org (e.g. github.com/thunderbird/...) is
-//     accepted by provenance, skipping the popularity bar. An unfetchable URL is
-//     escalated to manual review. An npm-sourced entry is also OSV-audited
+//     accepted by provenance, skipping the popularity bar. An unfetchable URL
+//     records the covered files as unfetchable, which applyUnverifiedVendor
+//     reconciles into the untrusted family. An npm-sourced entry is also OSV-audited
 //     (auditNpm); a github-sourced one (bar a first-party org) is run through
 //     auditGithub, which tries to PROVE an npm twin by content-hash match (the
 //     deterministic repo-name candidate, then an optional LLM-proposed name,

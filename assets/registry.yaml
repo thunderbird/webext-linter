@@ -298,29 +298,31 @@ deterministic-phase:
     Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
     Read more #2: https://extensionworkshop.com/documentation/publish/source-code-submission/
 
-# Flags a bundled file whose bytes match a pinned upstream release, but which is
-# not a confirmed widely-used library AND is minified/obfuscated - untrusted and
-# unreviewable, so a readable build is required.
+# Flags a bundled file the tool could not confirm as a reviewed dependency AND which
+# is minified/obfuscated - untrusted and unreviewable, so a readable build is
+# required. Four routes reach it (see applyUnverifiedVendor / cdn-lookup): the bytes
+# match an upstream release whose package is not widely used, or the declared source
+# was never checked - not declared, an untrusted host, or no such release.
 - title: Source Archive (unverified library) required
   severity: error
   sca: false
   check: untrusted-minified-library
   input: source
   response: |-
-    The following bundled file(s) match a known upstream release, but the package could not be confirmed to be a widely-used library, so it is not trusted as a reviewed dependency - and it is minified or otherwise machine-generated, so it cannot be reviewed in this form. Ship the original, human-readable code directly (it need not be minified), or upload the original sources as a source-code submission (with the build instructions and process needed to reproduce the shipped XPI) using the source code upload field during submission or on the version page in the developer hub. Note that the source-archive route slows review down, as it requires manually verifying the build.
+    The following bundled file(s) are third-party libraries whose origin we could not confirm - either the file matches an upstream release whose package is not a widely-used library, or the declared source could not be checked at all (none was given, it is on a host we do not fetch from, or it has no such release). Either way the file is not trusted as a reviewed dependency - and it is minified or otherwise machine-generated, so it cannot be reviewed in this form. Ship the original, human-readable code directly (it need not be minified), or upload the original sources as a source-code submission (with the build instructions and process needed to reproduce the shipped XPI) using the source code upload field during submission or on the version page in the developer hub. Note that the source-archive route slows review down, as it requires manually verifying the build.
     Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
     Read more #2: https://extensionworkshop.com/documentation/publish/source-code-submission/
 
-# Notes a bundled file whose bytes match a pinned upstream release but which is
-# not a confirmed widely-used library, and IS readable - so it is reviewed as the
-# developer's own code rather than trusted as a vendored dependency.
+# Notes a bundled file the tool could not confirm as a reviewed dependency (the same
+# four routes as above) and which IS readable - so it is reviewed as the developer's
+# own code rather than trusted as a vendored dependency.
 - title: Library reviewed as authored code
   severity: info
   sca: false
   check: untrusted-library
   input: source
   response: |-
-    The following bundled file(s) match a known upstream release, but the package could not be confirmed to be a widely-used library. They are therefore not trusted as reviewed dependencies and are reviewed as authored code - the standard checks apply to them, so a finding may be reported against library code here. Confirm that each is a legitimate, appropriate dependency.
+    The following bundled file(s) are third-party libraries whose origin we could not confirm - either the file matches an upstream release whose package is not a widely-used library, or the declared source could not be checked at all (none was given, it is on a host we do not fetch from, or it has no such release). They are therefore not trusted as reviewed dependencies and are reviewed as authored code - the standard checks apply to them, so a finding may be reported against library code here. Confirm that each is a legitimate, appropriate dependency.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
 # SCA mode (source code archive, sca: true): a declared dependency that is not
