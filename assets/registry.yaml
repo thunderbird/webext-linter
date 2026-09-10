@@ -582,10 +582,11 @@ deterministic-phase:
   check: undeclared-build-source
   input: build
   manual-review-instructions: |-
-    Reproduce the build from the source by hand and confirm it pulls ONLY from the
-    dependencies declared in package.json/lock - no remote code or resources from a raw
-    URL, curl/wget, a git clone of an unpinned repo, a CDN, or a postinstall hook.
-    {{unresolvedBuildSteps}} {{buildInstructions}}
+    Confirm by hand that the shipped XPI is produced by this source: reproduce the
+    build and compare the result against the submitted XPI. Confirm the build pulls
+    ONLY from the dependencies declared in package.json/lock - no remote code or
+    resources from a raw URL, curl/wget, a git clone of an unpinned repo, a CDN, or a
+    postinstall hook. {{unresolvedBuildSteps}} {{buildInstructions}}
   response: |-
     The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 

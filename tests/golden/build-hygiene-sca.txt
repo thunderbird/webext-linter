@@ -31,12 +31,14 @@ An example can be found here: https://github.com/thunderbird/webext-examples/tre
 
 Continue manual review for the following checks:
 
-1) Build process review: Reproduce the build from the source by hand and confirm
-   it pulls ONLY from the dependencies declared in package.json/lock - no remote
-   code or resources from a raw URL, curl/wget, a git clone of an unpinned repo,
-   a CDN, or a postinstall hook. The linter could not statically analyze part of
-   the build (a network fetch in the "postinstall" script), so the build corpus
-   may be incomplete - reproduce the build by hand.
+1) Build process review: Confirm by hand that the shipped XPI is produced by
+   this source: reproduce the build and compare the result against the submitted
+   XPI. Confirm the build pulls ONLY from the dependencies declared in
+   package.json/lock - no remote code or resources from a raw URL, curl/wget, a
+   git clone of an unpinned repo, a CDN, or a postinstall hook. The linter could
+   not statically analyze part of the build (a network fetch in the
+   "postinstall" script), so the build corpus may be incomplete - reproduce the
+   build by hand.
 Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
  - [SCA] package.json
 

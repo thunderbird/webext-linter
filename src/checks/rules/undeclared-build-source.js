@@ -2,13 +2,16 @@
 // Everything must ship in the source; the only allowed copy-in is installed libraries via
 // `npm ci` (from node_modules). A curl/wget/git-clone/CDN fetch is a reject.
 //
-// Nothing classifies what a build does, so every build with a corpus takes this check's
-// escalation lane: the reviewer reproduces it from the source by hand, which is the
-// attestation the SCA review rests on. The deterministic `unresolved` signals from
-// ride along, so the entry names what could not be followed. A build with no corpus
-// ("none") produces nothing - there is no build to reproduce.
+// Nothing decides that from the files, so EVERY source-code submission raises this:
+// the reviewer reproduces the build by hand and confirms the shipped XPI comes from the
+// source they just read. That attestation is what the SCA review rests on - reviewing
+// readable source is only worth anything if the shipped bytes come from it, so a
+// submission documenting no build at all still has to be checked against the XPI. The
+// deterministic `unresolved` signals from selectBuildCorpus (a network fetch, an
+// orchestrator the linter could not follow) ride along, so the entry names what could
+// not be followed, and the source's own build steps ride along when it documents any.
 //
-// Belongs here: mapping the stored classification to a manual escalation. Does NOT
+// Belongs here: raising the escalation and the detail it carries. Does NOT
 // belong here: the analysis (-> src/build/analyze.js), the corpus policy
 // (-> build-corpus.js), or the wording (-> assets/registry.yaml).
 
@@ -27,32 +30,27 @@ export default {
     if (!review) {
       return { findings: [] };
     }
-    const { classification, buildInstructions, unresolved } = review;
-    const anchor = review.anchor ?? "package.json";
+    const { buildInstructions, unresolved } = review;
+    // Null when the source documents no build at all: the entry then carries no locus
+    // rather than pointing the reviewer at a package.json the submission lacks.
+    const anchor = review.anchor;
 
-    // A build that exists (not "none") goes to the reviewer to reproduce.
-    if (classification !== "none") {
-      ctx.note?.(anchor, null, "the build configuration", VERDICT.UNSURE);
-      return {
-        findings: [],
-        escalations: [
-          {
-            file: anchor,
-            // manualReview: reproducing the build is the reviewer's own attestation
-            // that the source produces the shipped XPI. No reading of the code
-            // substitutes for doing it.
-            manualReview: true,
-            data: {
-              buildInstructions:
-                typeof buildInstructions === "string" ? buildInstructions : "",
-              unresolvedBuildSteps: formatUnresolved(unresolved),
-            },
+    ctx.note?.(anchor, null, "the build configuration", VERDICT.UNSURE);
+    return {
+      findings: [],
+      escalations: [
+        {
+          ...(anchor ? { file: anchor } : {}),
+          // manualReview: no reading of the code substitutes for doing it.
+          manualReview: true,
+          data: {
+            buildInstructions:
+              typeof buildInstructions === "string" ? buildInstructions : "",
+            unresolvedBuildSteps: formatUnresolved(unresolved),
           },
-        ],
-      };
-    }
-
-    return { findings: [] };
+        },
+      ],
+    };
   },
 };
 

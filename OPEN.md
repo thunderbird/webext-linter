@@ -13,9 +13,6 @@ Assert what the consumer sees.
 
 - rethink downgrade mode, we can only downgrade if the XPI is including all trusted remote libs 1:1 - a rollup cannot work
 
-- **Nothing drives the `--llm-review` path end to end.** A green suite is not evidence
-  there. It is how a hard `ReferenceError` on every `--llm-review` run once shipped.
-
 - **In SCA mode one VENDOR line exempts a file from EVERY source check.** Its own
   commit; pre-existing (identical at `a02b74b`, `ddbd5c3` and HEAD), unrelated to the
   vendor and lane work around it. Not a false-rejection bug - a review bypass.
@@ -33,7 +30,7 @@ Assert what the consumer sees.
   including error-level ones, and nothing is fetched to earn it - the URL need only
   parse as trusted and pinned.
 
-  Cause (`pipeline.js:551-560`): `resolveVendor` runs on the source addon, `verifyVendor`
+  Cause (`pipeline.js`, the SCA branch of Phase 3): `resolveVendor` runs on the source addon, `verifyVendor`
   never does - SCA gets `verifyScaDependencies`, which reads package.json alone. A
   trusted+pinned entry therefore produces NO `vendor.results` row, so
   `applyUnverifiedVendor` has nothing to reconcile, while `isVendored` -> `nonAuthored`
@@ -61,27 +58,10 @@ Assert what the consumer sees.
   archive must be readable, which is what a source archive is for. Consider saying so
   (an info) rather than ignoring the file silently.
 
-- **Nothing ever produces `kind: "llm-error"` - wire it up, do not delete it.** Its own
-  commit; independent of everything else. The consumer half is written and has never
-  run: the `llm-unavailable` message (`registry.yaml`), the branch that selects it
-  (`responses.js`), and the `kind` parameter on `manualRef` that would carry it - whose
-  two call sites both hardcode `"escalation"`. `llmClient.evaluate()` catches every
-  model failure, prints a red feed line and fills that batch with `unsure`, so those
-  candidates flow through the check's own `resolve` and reach the reviewer under the
-  check's NORMAL instructions. The report therefore cannot distinguish "we looked and
-  could not decide" from "the model never saw this" - if the model was down for every
-  batch it still reads like a completed AI review. The fix: `evaluate()` marks the
-  verdicts it filled from its catch, and `runLlmCheck` stamps those refs `llm-error`.
-  The care needed is that `resolve` is the CHECK's own closure, so the mark has to
-  survive each check's own verdict -> manual-item mapping, and they do not all map the
-  same way. Needs a live test like the one the llm-not-needed divert has (a hand-written
-  registry doc + a failing transport), since nothing drives `--llm-review` end to end.
-
-
 - **No golden covers a VERIFIED vendored file.** The golden harness injects a transport
   that refuses everything (`OFFLINE_NET`), so `outcome: "verified"` is unreachable there
   and the whole verified path - not just this lane - is unit-tested only. A
-  per-fixture `vendor-net.js`, mirroring the existing `llm.js`, would cover it.
+  per-fixture `vendor-net.js` would cover it.
 
 ## Decided - do not re-litigate
 

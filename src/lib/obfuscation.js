@@ -7,8 +7,8 @@
 // libraries match none of them, so they are never called obfuscated - the failure mode
 // of a token-presence heuristic. One family is the exception (WEAK_FAMILIES below):
 // its structure also matches ordinary readable code, so it never decides the verdict
-// on its own - a weak-only match is only a trigger for the obfuscated-code check's
-// a reviewer's judgement, which the classification carries as the "unsure" verdict.
+// on its own - a weak-only match only triggers the obfuscated-code check's
+// escalation, which the classification carries as the "unsure" verdict.
 //
 // Minification is a SEPARATE, geometric signal (src/lib/bundled.js classify) and
 // is deliberately not decided here: a minified-but-clean library is allowed with source,
@@ -65,8 +65,8 @@ function detectFamilies(text, file) {
 
 /**
  * Whether a detectFamilies result decides obfuscation on its own: at least one strong
- * family matched. A weak-only result returns false - it marks a candidate for the
- * obfuscated-code check's a reviewer's judgement, never a verdict. Pure, so callers
+ * family matched. A weak-only result returns false - it marks a case for the
+ * obfuscated-code check to escalate, never a verdict. Pure, so callers
  * derive both the families and the verdict from one parse.
  * @param {string[]} families  A detectFamilies result.
  * @returns {boolean}
@@ -78,8 +78,8 @@ function hasStrongFamily(families) {
 /**
  * The obfuscation verdict for one JavaScript file, a shared VERDICT: FAIL (a strong-family
  * structural match; a deterministic finding), UNSURE (a weak-family-only match, whose
- * structure ordinary readable code also has - judged by the obfuscated-code check's
- * a reviewer's judgement, never a verdict on its own), or PASS (no family matched, or
+ * structure ordinary readable code also has - escalated by the obfuscated-code
+ * check, never a verdict on its own), or PASS (no family matched, or
  * source the detector could not parse). The family list stays inside this module - callers
  * branch on the verdict, not the families.
  * @param {string} text  JavaScript source.

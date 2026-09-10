@@ -875,10 +875,11 @@ const review = (over) => ({
   ...over,
 });
 
-// Nothing classifies what a build does, so every build that HAS a corpus escalates for
-// the reviewer to reproduce - carrying how the source says to build it and whatever
-// steps the linter could not follow. A build with no corpus ("none") says nothing.
-test("undeclared-build-source escalates a build, and stays silent without one", () => {
+// EVERY source-code submission raises this: the reviewer's attestation that the shipped
+// XPI comes from the source they read is what the SCA review rests on, so a submission
+// documenting no build at all is still checked against the XPI. The entry carries how
+// the source says to build it and whatever steps the linter could not follow.
+test("undeclared-build-source escalates every SCA, build documented or not", () => {
   const out = undeclaredBuildSource.run(
     buildCtx(review({ buildInstructions: "npm ci && npm run build" }))
   );
@@ -903,12 +904,15 @@ test("undeclared-build-source escalates a build, and stays silent without one", 
     /curl evil\.com/
   );
 
-  // No build corpus at all -> nothing to reproduce, nothing said.
+  // No build entry point at all still escalates - but with NO locus, rather than
+  // pointing the reviewer at a package.json the submission does not have.
   const none = undeclaredBuildSource.run(
-    buildCtx(review({ classification: "none" }))
+    buildCtx(review({ classification: "none", anchor: null }))
   );
   assert.equal(none.findings.length, 0);
-  assert.deepEqual(none.escalations ?? [], []);
+  assert.equal(none.escalations.length, 1);
+  assert.equal(none.escalations[0].manualReview, true);
+  assert.equal("file" in none.escalations[0], false);
 });
 
 // ---- unsupported-build-tool (SCA deterministic: npm/pnpm only) ----

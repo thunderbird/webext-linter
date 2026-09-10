@@ -26,10 +26,11 @@ Suggested response: One or more declared permissions appear to be unused. An add
 
 Continue manual review for the following checks:
 
-1) Build process review: Reproduce the build from the source by hand and confirm
-   it pulls ONLY from the dependencies declared in package.json/lock - no remote
-   code or resources from a raw URL, curl/wget, a git clone of an unpinned repo,
-   a CDN, or a postinstall hook.
+1) Build process review: Confirm by hand that the shipped XPI is produced by
+   this source: reproduce the build and compare the result against the submitted
+   XPI. Confirm the build pulls ONLY from the dependencies declared in
+   package.json/lock - no remote code or resources from a raw URL, curl/wget, a
+   git clone of an unpinned repo, a CDN, or a postinstall hook.
 Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
  - [SCA] package.json
 
