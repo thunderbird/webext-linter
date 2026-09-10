@@ -393,6 +393,7 @@ deterministic-phase:
 # Experiment submission: Experiments have full access to Thunderbird internals, so
 # they need a careful human review. Emits no findings, so it carries no severity.
 - title: Experiment code review
+  severity: error
   check: experiment-manual-review
   input: manifest
   instructions: |-
@@ -412,6 +413,7 @@ deterministic-phase:
 # reads like a false-positive unsupported-API finding. Emits no findings (no
 # severity); unknown-api already lists the specific APIs.
 - title: Experiment with unrecognized API usage
+  severity: error
   check: experiment-unknown-api
   input: source
   instructions: |-
@@ -733,6 +735,7 @@ deterministic-phase:
 # Preflight -> manual review: data sent to a hardcoded remote host means the
 # listing must carry a privacy policy, which is not part of the package.
 - title: Remote data transmission needs a privacy policy
+  severity: error
   check: privacy-policy
   input: source
   response: |-
@@ -750,6 +753,7 @@ deterministic-phase:
 # to a native application. What the listing discloses about that exchange is not in
 # the package, so a person settles it.
 - title: Native messaging needs disclosure
+  severity: error
   check: native-messaging
   input: manifest
   response: |-

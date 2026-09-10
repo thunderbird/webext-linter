@@ -553,10 +553,14 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
     if (typeof run !== "function") {
       throw new Error(`rules/${id}.js exports no run() function`);
     }
-    const severity = entry.severity || "error";
+    // Declared, never defaulted: a check's impact is configuration, so an entry that
+    // omits it is a registry mistake rather than a request for the strictest value.
+    // An escalate-only check declares one too - it says what a finding from it would
+    // mean, should the check ever gain one.
+    const severity = entry.severity;
     if (!VALID_CHECK_SEVERITIES.has(severity)) {
       throw new Error(
-        `rules/${id}.js has an invalid severity "${severity}" ` +
+        `rules/${id}.js has a missing or invalid severity ${JSON.stringify(severity)} ` +
           `(expected one of: ${[...VALID_CHECK_SEVERITIES].join(", ")})`
       );
     }

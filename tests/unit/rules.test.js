@@ -70,6 +70,7 @@ import {
   runOneCheck,
   runChecks,
   assertRequiredPhaseSections,
+  Registry,
 } from "../../src/checks/registry.js";
 import { finding, SEVERITY } from "../../src/report/finding.js";
 
@@ -722,6 +723,127 @@ test("checks carry the sca mode tag (false=XPI-only, true=SCA-only, undefined=bo
   assert.equal(sca("committed-node-modules"), true); // SCA-only build policy
   assert.equal(sca("eval-call"), undefined); // a code check: both modes
   assert.equal(sca("unknown-api"), undefined);
+});
+
+// Severity is the ONE thing that decides whether a finding rejects a submission, and
+// the JSON report is an upload filter that can auto-reject before a human sees it. It
+// is observable only through a rendered report, and 22 checks fire in no fixture - so
+// demoting one of those from error to info changed nothing anywhere in this suite.
+// This pins the whole map: a flipped severity, or a new check landing in the wrong
+// band, trips here rather than silently softening a reject.
+//
+// The registry also NEVER defaults it (loadChecks throws on a missing severity), so an
+// entry cannot acquire a band by omission - the assertion below is the declared value.
+test("every check's severity is pinned to its band", async () => {
+  // eslint: true so the opt-in code-sanity check is loaded and pinned like the rest.
+  const checks = allChecks(await loadChecks(loadRegistry(), { eslint: true }));
+  const actual = {};
+  for (const c of checks) (actual[c.severity] ??= []).push(c.id);
+  for (const k of Object.keys(actual)) actual[k].sort();
+  assert.deepEqual(actual, {
+    error: [
+      "background-module",
+      "background-page-module",
+      "build-registry-redirect",
+      "bundled-files",
+      "cleartext-transmission",
+      "committed-build-artifact",
+      "committed-node-modules",
+      "core-symbol-in-webext",
+      "csp-unsafe-eval",
+      "csp-unsafe-inline",
+      "data-exfiltration",
+      "debugger-statement",
+      "default-locale-missing",
+      "default-locale-unused",
+      "disguised-navigation",
+      "disguised-resource",
+      "disguised-stylesheet",
+      "disguised-transmission",
+      "disguised-window",
+      "eval-call",
+      "experiment-manual-review",
+      "experiment-missing-strict-max-version",
+      "experiment-modified",
+      "experiment-not-allowed",
+      "experiment-overrides-api",
+      "experiment-unknown-api",
+      "function-constructor",
+      "manifest-invalid-json",
+      "manifest-missing",
+      "manifest-missing-key",
+      "manifest-unknown-permission",
+      "manifest-version-mismatch",
+      "minified-code",
+      "missing-manifest-key",
+      "missing-permission",
+      "multiple-vendor-files",
+      "native-messaging",
+      "obfuscated-code",
+      "privacy-policy",
+      "remote-eval",
+      "remote-resources",
+      "strict-max-version-api",
+      "strict-min-version-api",
+      "string-timer",
+      "sync-xhr",
+      "trademark-violation",
+      "undeclared-build-source",
+      "unknown-api",
+      "unpinned-dependency",
+      "unpinned-vendor-source",
+      "unpopular-source-dependency",
+      "unrecognized-file-type",
+      "unsupported-build-tool",
+      "unsupported-dependency",
+      "untrusted-minified-library",
+      "unused-files",
+      "update-url",
+      "vendor-ambiguous-source",
+      "vendor-modified",
+      "vendor-unparseable",
+    ],
+    warning: [
+      "async-onmessage",
+      "build-lifecycle-hook",
+      "minimize-web-accessible-resources",
+      "missing-english-localization",
+      "missing-vendor-file",
+      "mistyped-manifest-value",
+      "non-experiment-strict-max-version",
+      "sca-not-required",
+      "unused-permission",
+    ],
+    info: [
+      "addon-icon-missing",
+      "api-coverage",
+      "code-sanity",
+      "deprecated-api",
+      "find-lib-on-cdn",
+      "minimize-host-permissions",
+      "missing-library",
+      "strict-max-version-bump-only",
+      "unparsable-file",
+      "unrecognized-manifest-key",
+      "unsafe-html",
+      "untrusted-library",
+      "vendor-vuln-unknown",
+    ],
+    auto: [
+      "banned-library",
+      "vendor-vulnerable",
+      "vendor-vulnerable-dev",
+    ],
+  });
+});
+
+// The band cannot be acquired implicitly: an entry that omits severity is a registry
+// mistake, not a request for the strictest value, so the loader refuses it by name.
+test("loadChecks refuses a check entry with no severity", async () => {
+  const reg = new Registry({
+    "deterministic-phase": [{ title: "X", check: "sync-xhr", input: "source" }],
+  });
+  await assert.rejects(loadChecks(reg), /missing or invalid severity/);
 });
 
 // The shipped-vs-review-target artifact is chosen in ONE place - runChecks routes
