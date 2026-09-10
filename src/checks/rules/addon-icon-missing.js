@@ -21,7 +21,7 @@ import { asObject } from "../../lib/util.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const manifest = ctx.manifest;
@@ -32,7 +32,7 @@ export default {
         "manifest did not parse",
         VERDICT.SKIPPED
       );
-      return [];
+      return { findings: [] };
     }
     // Static themes and dictionaries (language packs) are not represented by an
     // add-on icon, so the advisory does not apply to them.
@@ -43,7 +43,7 @@ export default {
         "theme or dictionary add-on",
         VERDICT.SKIPPED
       );
-      return [];
+      return { findings: [] };
     }
     // An add-on icon is defined when `icons` holds at least one string path. An
     // absent key, a non-object, or an object with no string values all mean
@@ -53,9 +53,9 @@ export default {
     );
     if (hasIcon) {
       ctx.note?.("manifest.json", null, "icons declared", VERDICT.PASS);
-      return [];
+      return { findings: [] };
     }
     ctx.note?.("manifest.json", null, "no add-on icon defined", VERDICT.FAIL);
-    return [finding({ file: "manifest.json" })];
+    return { findings: [finding({ file: "manifest.json" })] };
   },
 };

@@ -28,7 +28,7 @@ import {
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const findings = [];
@@ -67,6 +67,6 @@ export default {
         findings.push(finding({ file: site.file, loc: site.loc }));
       }
     }
-    return findings;
+    return { findings };
   },
 };

@@ -37,18 +37,18 @@ const SUPPORTED = new Set(["npm", "pnpm"]);
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const files = ctx.addon?.files;
     if (!files) {
-      return [];
+      return { findings: [] };
     }
     // A committed lockfile / config (anywhere in the corpus) names its tool directly.
     for (const path of files.keys()) {
       const tool = DISALLOWED_BY_BASENAME.get(basename(path));
       if (tool) {
-        return [reject(ctx, path, tool)];
+        return { findings: [reject(ctx, path, tool)] };
       }
     }
     // Corepack's package.json "packageManager" field is an explicit declaration.
@@ -58,10 +58,10 @@ export default {
       }
       const declared = packageManagerName(buf);
       if (declared && !SUPPORTED.has(declared)) {
-        return [reject(ctx, path, declared)];
+        return { findings: [reject(ctx, path, declared)] };
       }
     }
-    return [];
+    return { findings: [] };
   },
 };
 

@@ -16,7 +16,7 @@ export default {
     const m = ctx.manifest;
     const { schema } = ctx;
     if (!m) {
-      return [];
+      return { findings: [] };
     }
     const out = [];
     for (const field of ["permissions", "optional_permissions"]) {
@@ -48,6 +48,6 @@ export default {
         );
       });
     }
-    return out;
+    return { findings: out };
   },
 };

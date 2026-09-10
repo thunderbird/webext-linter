@@ -28,7 +28,7 @@ import { canonicalJson } from "../../util/json.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const prev = ctx.previous;
@@ -40,7 +40,7 @@ export default {
     // diff check), so one is normally present. Bail out silently only if a
     // manifest did not parse on either side.
     if (!prev?.manifest || !ctx.manifest) {
-      return [];
+      return { findings: [] };
     }
     // To fire, strict_max_version must actually have changed and the rest of the
     // manifest (everything but version + strict_max_version) be unchanged.
@@ -56,7 +56,7 @@ export default {
         "changes beyond a strict_max_version bump",
         VERDICT.PASS
       );
-      return [];
+      return { findings: [] };
     }
     ctx.note?.(
       "manifest.json",
@@ -66,7 +66,11 @@ export default {
     );
     const text = ctx.manifestText;
     const line = manifestTokenLine(text, "strict_max_version");
-    return [finding({ file: "manifest.json", loc: line ? { line } : null })];
+    return {
+      findings: [
+        finding({ file: "manifest.json", loc: line ? { line } : null }),
+      ],
+    };
   },
 };
 

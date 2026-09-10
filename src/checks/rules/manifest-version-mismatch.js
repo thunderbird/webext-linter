@@ -14,10 +14,10 @@ export default {
     const m = ctx.manifest;
     const major = ctx.schema?.manifestVersionMajor;
     if (!m || typeof m.manifest_version !== "number" || !major) {
-      return [];
+      return { findings: [] };
     }
     if (m.manifest_version === major) {
-      return [];
+      return { findings: [] };
     }
     ctx.note?.(
       "manifest.json",
@@ -25,12 +25,14 @@ export default {
       `manifest_version ${m.manifest_version} (schema set is ${major})`,
       VERDICT.FAIL
     );
-    return [
-      finding({
-        file: "manifest.json",
-        item: String(m.manifest_version),
-        data: { schema: major },
-      }),
-    ];
+    return {
+      findings: [
+        finding({
+          file: "manifest.json",
+          item: String(m.manifest_version),
+          data: { schema: major },
+        }),
+      ],
+    };
   },
 };

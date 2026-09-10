@@ -22,6 +22,6 @@ export default {
       out.push(finding({ file: hit.file, loc }));
       ctx.note?.(hit.file, loc, "new Function()", VERDICT.FAIL);
     }
-    return dedupe(out);
+    return { findings: dedupe(out) };
   },
 };

@@ -20,10 +20,10 @@ export default {
   run(ctx) {
     const { addon, schema } = ctx;
     if (ctx.manifestError || !ctx.manifest) {
-      return []; // a missing/unparsable manifest is the manifest-* checks' job
+      return { findings: [] }; // a missing/unparsable manifest is the manifest-* checks' job
     }
     if (schema.validManifestKeys.size === 0) {
-      return [];
+      return { findings: [] };
     }
     const text = ctx.manifestText;
     // Experiment-owned keys are not unknown: a key that NAMES an experiment_apis
@@ -56,6 +56,6 @@ export default {
         );
       }
     }
-    return out;
+    return { findings: out };
   },
 };

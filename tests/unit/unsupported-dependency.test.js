@@ -26,7 +26,7 @@ const ctxWith = (unsupportedDeps, pkgJson = PKG_JSON) => ({
 test("reports one finding per dep, anchored at its package.json line", () => {
   const out = unsupportedDependency.run(
     ctxWith([{ name: "local", spec: "file:../x" }])
-  );
+  ).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "package.json");
   // Collapsed response: name + spec render together on the location line.
@@ -36,13 +36,13 @@ test("reports one finding per dep, anchored at its package.json line", () => {
 });
 
 test("an empty list yields no findings", () => {
-  assert.equal(unsupportedDependency.run(ctxWith([])).length, 0);
+  assert.equal(unsupportedDependency.run(ctxWith([])).findings.length, 0);
 });
 
 test("a dep whose token is absent from package.json anchors at the file, no line", () => {
   const out = unsupportedDependency.run(
     ctxWith([{ name: "ghost", spec: "file:../y" }])
-  );
+  ).findings;
   assert.equal(out.length, 1);
   assert.ok(!out[0].loc);
 });

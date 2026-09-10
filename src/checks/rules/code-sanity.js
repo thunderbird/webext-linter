@@ -119,7 +119,7 @@ export default {
         ctx.note?.(src.file, null, "no lint issues", VERDICT.PASS);
       }
     }
-    return out;
+    return { findings: out };
   },
 };
 

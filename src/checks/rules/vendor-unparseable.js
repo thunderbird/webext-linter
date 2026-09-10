@@ -19,15 +19,15 @@ import { finding } from "../../report/finding.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const vendor = ctx.addon?.vendor;
     if (!vendor?.unparsedVendor) {
-      return [];
+      return { findings: [] };
     }
     const file = vendor.vendorFile ?? "VENDOR";
     ctx.note?.(file, null, "could not be parsed", VERDICT.FAIL);
-    return [finding({ file })];
+    return { findings: [finding({ file })] };
   },
 };

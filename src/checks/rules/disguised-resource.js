@@ -35,6 +35,6 @@ export default {
       out.push(finding({ file: sink.file, loc, hint: label }));
       ctx.note?.(sink.file, loc, label, VERDICT.FAIL);
     }
-    return out;
+    return { findings: out };
   },
 };

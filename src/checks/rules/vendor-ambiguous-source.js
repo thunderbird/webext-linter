@@ -17,7 +17,7 @@ import { finding } from "../../report/finding.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const vendor = ctx.addon?.vendor;
@@ -30,6 +30,6 @@ export default {
       // every ambiguous pairing shares one message and they collapse into one entry.
       out.push(finding({ file, item: source, hint: files }));
     }
-    return out;
+    return { findings: out };
   },
 };

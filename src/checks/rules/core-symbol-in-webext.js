@@ -45,6 +45,6 @@ export default {
         out.push(finding({ file: src.file, loc, item: hit.name }));
       }
     }
-    return out;
+    return { findings: out };
   },
 };

@@ -22,7 +22,7 @@ import { manifestTokenLine } from "../../lib/util.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const { addon } = ctx;
@@ -44,6 +44,6 @@ export default {
         finding({ file: "package.json", loc, item: `${name} (${spec})` })
       );
     }
-    return findings;
+    return { findings };
   },
 };

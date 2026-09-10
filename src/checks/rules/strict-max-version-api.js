@@ -25,7 +25,7 @@ import { resolveApiUsages } from "../../lib/api-resolution.js";
 export default {
   /**
    * @param {import("../registry.js").RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const maxStr = ctx.manifest ? strictMaxVersion(ctx.manifest) : undefined;
@@ -37,7 +37,7 @@ export default {
         "no strict_max_version",
         VERDICT.SKIPPED
       );
-      return [];
+      return { findings: [] };
     }
 
     const findings = [];
@@ -76,6 +76,6 @@ export default {
         })
       );
     }
-    return findings;
+    return { findings };
   },
 };

@@ -30,7 +30,9 @@ const gecko = (container, mv = 3) => ({
 });
 
 test("flags update_url under browser_specific_settings.gecko", () => {
-  const out = rule.run(withManifest(ctxOf(gecko("browser_specific_settings"))));
+  const out = rule.run(
+    withManifest(ctxOf(gecko("browser_specific_settings")))
+  ).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "https://example.com/updates.json");
   assert.ok(out[0].loc?.line > 0); // located at its manifest line
@@ -38,7 +40,7 @@ test("flags update_url under browser_specific_settings.gecko", () => {
 
 // The deprecated MV2 alias is rejected the same way.
 test("flags update_url under the applications.gecko alias", () => {
-  const out = rule.run(withManifest(ctxOf(gecko("applications", 2))));
+  const out = rule.run(withManifest(ctxOf(gecko("applications", 2)))).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "https://example.com/updates.json");
   assert.ok(out[0].loc?.line > 0);
@@ -51,7 +53,7 @@ test("flags both locations independently", () => {
     browser_specific_settings: { gecko: { update_url: "https://a.example/u" } },
     applications: { gecko: { update_url: "https://b.example/u" } },
   };
-  const out = rule.run(withManifest(ctxOf(m)));
+  const out = rule.run(withManifest(ctxOf(m))).findings;
   assert.deepEqual(out.map((f) => f.item).sort(), [
     "https://a.example/u",
     "https://b.example/u",
@@ -67,12 +69,12 @@ test("no finding when update_url is absent", () => {
         browser_specific_settings: { gecko: { strict_min_version: "128.0" } },
       })
     )
-  );
+  ).findings;
   assert.deepEqual(out, []);
 });
 
 // An unparsed manifest yields no findings and does not throw.
 test("no finding (no throw) when the manifest did not parse", () => {
-  const out = rule.run(withManifest({ addon: { manifest: null } }));
+  const out = rule.run(withManifest({ addon: { manifest: null } })).findings;
   assert.deepEqual(out, []);
 });

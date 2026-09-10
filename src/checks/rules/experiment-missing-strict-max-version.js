@@ -23,7 +23,7 @@ import { isExperiment, strictMaxVersion } from "../../lib/util.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const m = ctx.manifest;
@@ -34,11 +34,11 @@ export default {
         "manifest did not parse",
         VERDICT.SKIPPED
       );
-      return [];
+      return { findings: [] };
     }
     if (!isExperiment(m)) {
       ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
-      return [];
+      return { findings: [] };
     }
     const max = strictMaxVersion(m);
     if (max != null) {
@@ -48,7 +48,7 @@ export default {
         `Experiment pins strict_max_version ${max}`,
         VERDICT.PASS
       );
-      return [];
+      return { findings: [] };
     }
     ctx.note?.(
       "manifest.json",
@@ -56,6 +56,6 @@ export default {
       "Experiment lacks strict_max_version",
       VERDICT.FAIL
     );
-    return [finding({ file: "manifest.json" })];
+    return { findings: [finding({ file: "manifest.json" })] };
   },
 };

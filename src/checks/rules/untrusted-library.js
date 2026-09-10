@@ -27,7 +27,7 @@ import { untrustedLibs } from "../../lib/bundled.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const findings = [];
@@ -39,6 +39,6 @@ export default {
       ctx.note?.(lib.file, null, item, VERDICT.INFO);
       findings.push(finding({ file: lib.file, item, hint: lib.source }));
     }
-    return findings;
+    return { findings };
   },
 };

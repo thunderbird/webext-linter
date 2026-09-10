@@ -21,7 +21,7 @@ import { finding } from "../../report/finding.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const out = [];
@@ -43,6 +43,6 @@ export default {
       out.push(finding({ file: sink.file, loc, hint: label }));
       ctx.note?.(sink.file, loc, label, VERDICT.FAIL);
     }
-    return out;
+    return { findings: out };
   },
 };

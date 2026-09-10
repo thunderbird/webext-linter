@@ -29,11 +29,11 @@ test("untrusted-library (info) reports the readable entries only", () => {
       unreadable: true,
     },
   ]);
-  const info = untrustedLibrary.run(ctx);
+  const info = untrustedLibrary.run(ctx).findings;
   assert.equal(info.length, 1);
   assert.equal(info[0].file, "vendor/x.js");
   assert.equal(info[0].item, "x 1.0.0");
-  assert.equal(untrustedMinified.run(ctx).length, 1); // the .min.js is the reject check's
+  assert.equal(untrustedMinified.run(ctx).findings.length, 1); // the .min.js is the reject check's
 });
 
 // An unreadable untrusted lib is the reject check's; the info check stays silent.
@@ -46,11 +46,11 @@ test("untrusted-minified-library (reject) reports the unreadable entries only", 
       unreadable: true,
     },
   ]);
-  const rejects = untrustedMinified.run(ctx);
+  const rejects = untrustedMinified.run(ctx).findings;
   assert.equal(rejects.length, 1);
   assert.equal(rejects[0].file, "vendor/y.min.js");
   assert.equal(rejects[0].item, "y 2.0.0");
-  assert.equal(untrustedLibrary.run(ctx).length, 0);
+  assert.equal(untrustedLibrary.run(ctx).findings.length, 0);
 });
 
 // With no name (e.g. a VENDOR source whose release id was not parsed), the item
@@ -63,7 +63,10 @@ test("item falls back to the file path; empty list yields nothing", () => {
       unreadable: false,
     },
   ]);
-  assert.equal(untrustedLibrary.run(ctx)[0].item, "dep/extract-time.js");
-  assert.equal(untrustedMinified.run(ctxWith([])).length, 0);
-  assert.equal(untrustedLibrary.run(ctxWith([])).length, 0);
+  assert.equal(
+    untrustedLibrary.run(ctx).findings[0].item,
+    "dep/extract-time.js"
+  );
+  assert.equal(untrustedMinified.run(ctxWith([])).findings.length, 0);
+  assert.equal(untrustedLibrary.run(ctxWith([])).findings.length, 0);
 });

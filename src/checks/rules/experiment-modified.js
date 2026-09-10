@@ -19,13 +19,13 @@ import { isExperiment } from "../../lib/util.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const m = ctx.manifest;
     if (!m || !isExperiment(m)) {
       ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
-      return [];
+      return { findings: [] };
     }
     const groups = ctx.experiments?.groups;
     if (!Array.isArray(groups)) {
@@ -35,7 +35,7 @@ export default {
         "no experiment classification",
         VERDICT.SKIPPED
       );
-      return [];
+      return { findings: [] };
     }
     const findings = [];
     for (const g of groups) {
@@ -61,6 +61,6 @@ export default {
         );
       }
     }
-    return findings;
+    return { findings };
   },
 };

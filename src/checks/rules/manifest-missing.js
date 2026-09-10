@@ -12,9 +12,9 @@ import { finding } from "../../report/finding.js";
 export default {
   run(ctx) {
     if (ctx.manifestError || ctx.manifest) {
-      return [];
+      return { findings: [] };
     }
     ctx.note?.("manifest.json", null, "no manifest.json", VERDICT.FAIL);
-    return [finding({})];
+    return { findings: [finding({})] };
   },
 };

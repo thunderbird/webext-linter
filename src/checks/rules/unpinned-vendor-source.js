@@ -19,7 +19,7 @@ import { lineContaining } from "../../lib/util.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const vendor = ctx.addon?.vendor;
@@ -53,6 +53,6 @@ export default {
         })
       );
     }
-    return findings;
+    return { findings };
   },
 };

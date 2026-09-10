@@ -258,7 +258,7 @@ test("missing-vendor-file: one warning per missing entry, listing the path", () 
       },
     },
   };
-  const out = missingVendorFile.run(ctx);
+  const out = missingVendorFile.run(ctx).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "lib/gone.js");
   assert.equal(out[0].item, "VENDORS.md");
@@ -267,7 +267,7 @@ test("missing-vendor-file: one warning per missing entry, listing the path", () 
 // Nothing declared missing is silence, not an empty finding.
 test("missing-vendor-file: says nothing when every declared file is shipped", () => {
   const ctx = { addon: { files: new Map(), vendor: { missing: [] } } };
-  assert.deepEqual(missingVendorFile.run(ctx), []);
+  assert.deepEqual(missingVendorFile.run(ctx).findings, []);
 });
 
 test("verifyScaDependencies: a non-popular declared dep is recorded as unreviewable", async () => {
@@ -546,7 +546,9 @@ test("verifyVendor: a folder verifies each file against the repo archive subpath
   assert.equal(byPath["vendor/lib/b.js"], "modified");
   // the modified file becomes a vendor-modified finding
   assert.ok(
-    vendorModified.run({ addon }).some((f) => f.file === "vendor/lib/b.js")
+    vendorModified
+      .run({ addon })
+      .findings.some((f) => f.file === "vendor/lib/b.js")
   );
 });
 
@@ -1150,7 +1152,7 @@ test("vendor-vulnerable: a recorded vulnerability becomes a finding at the packa
       }),
     },
   };
-  const out = vendorVulnerable.run(ctx);
+  const out = vendorVulnerable.run(ctx).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "package.json");
   assert.equal(out[0].loc.line, 3);
@@ -1188,7 +1190,7 @@ test("vendor-vulnerable: maps the OSV band to the finding severity", () => {
         }),
       },
     };
-    const out = vendorVulnerable.run(ctx);
+    const out = vendorVulnerable.run(ctx).findings;
     assert.equal(out.length, 1); // reported, never dropped
     return out[0].severity;
   };
@@ -1204,7 +1206,7 @@ test("vendor-vulnerable: no recorded vulnerabilities -> no findings", () => {
   const ctx = {
     addon: { files: new Map(), vendor: store() },
   };
-  assert.deepEqual(vendorVulnerable.run(ctx), []);
+  assert.deepEqual(vendorVulnerable.run(ctx).findings, []);
 });
 
 // vendor-vuln-unknown is now a pure reader of vendor.unaudited (verify.js does
@@ -1224,7 +1226,7 @@ test("vendor-vuln-unknown: one info per unaudited entry, at its VENDOR source li
       }),
     },
   };
-  const out = vendorVulnUnknown.run(ctx);
+  const out = vendorVulnUnknown.run(ctx).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].item, ghUrl); // the source URL surfaces on the locus line
   assert.equal(out[0].file, "VENDOR.md");
@@ -1233,7 +1235,7 @@ test("vendor-vuln-unknown: one info per unaudited entry, at its VENDOR source li
 
 test("vendor-vuln-unknown: no unaudited entries -> no findings", () => {
   const ctx = { addon: { files: new Map(), vendor: store() } };
-  assert.deepEqual(vendorVulnUnknown.run(ctx), []);
+  assert.deepEqual(vendorVulnUnknown.run(ctx).findings, []);
 });
 
 test("unpinned-dependency: one finding per unpinned dep, anchored in package.json", () => {
@@ -1244,7 +1246,7 @@ test("unpinned-dependency: one finding per unpinned dep, anchored in package.jso
       vendor: store({ unpinned: [{ name: "lodash", spec: "^4.17.21" }] }),
     },
   };
-  const out = unpinnedDependency.run(ctx);
+  const out = unpinnedDependency.run(ctx).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "package.json");
   assert.equal(out[0].loc.line, 3);
@@ -1265,7 +1267,7 @@ test("unpinned-vendor-source: anchored on the VENDOR line, URL as the hint", () 
       }),
     },
   };
-  const out = unpinnedVendorSource.run(ctx);
+  const out = unpinnedVendorSource.run(ctx).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "VENDOR"); // anchored on the VENDOR declaration
   assert.equal(out[0].loc.line, 2); // the line citing the source
@@ -1284,7 +1286,7 @@ test("vendor-modified: a modified result is a finding; verified passes silently"
       }),
     },
   };
-  const out = vendorModified.run(ctx);
+  const out = vendorModified.run(ctx).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "b.js");
   assert.equal(out[0].item, "b.js");
@@ -1297,14 +1299,14 @@ test("vendor-unparseable: an unparsable VENDOR file is an error finding", () => 
       files: new Map([["VENDOR", Buffer.from("we bundle stuff, see docs")]]),
       vendor: store({ unparsedVendor: true, vendorFile: "VENDOR" }),
     },
-  });
+  }).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "VENDOR");
   // No finding when the VENDOR parsed (or is absent).
   assert.equal(
     vendorUnparseable.run({
       addon: { files: new Map(), vendor: store({ unparsedVendor: false }) },
-    }).length,
+    }).findings.length,
     0
   );
 });

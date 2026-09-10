@@ -533,15 +533,15 @@ test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval",
       },
     }
   );
-  assert.equal(cspUnsafeEval.run(withManifest(bad)).length, 1);
-  assert.equal(cspUnsafeInline.run(withManifest(bad)).length, 1);
+  assert.equal(cspUnsafeEval.run(withManifest(bad)).findings.length, 1);
+  assert.equal(cspUnsafeInline.run(withManifest(bad)).findings.length, 1);
 
   const ok = fakeCtx(
     {},
     { content_security_policy: "script-src 'self' 'wasm-unsafe-eval'" }
   );
-  assert.equal(cspUnsafeEval.run(withManifest(ok)).length, 0);
-  assert.equal(cspUnsafeInline.run(withManifest(ok)).length, 0);
+  assert.equal(cspUnsafeEval.run(withManifest(ok)).findings.length, 0);
+  assert.equal(cspUnsafeInline.run(withManifest(ok)).findings.length, 0);
 
   // Both findings anchor on the content_security_policy line of the manifest
   // text (fakeCtx does not put manifest.json in files, so build the ctx here).
@@ -565,8 +565,14 @@ test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval",
     jsSources: [],
     options: {},
   };
-  assert.equal(cspUnsafeEval.run(withManifest(located))[0].loc.line, 3);
-  assert.equal(cspUnsafeInline.run(withManifest(located))[0].loc.line, 3);
+  assert.equal(
+    cspUnsafeEval.run(withManifest(located)).findings[0].loc.line,
+    3
+  );
+  assert.equal(
+    cspUnsafeInline.run(withManifest(located)).findings[0].loc.line,
+    3
+  );
 });
 
 // A remote host allowed in the CSP script-src directive is flagged with a
@@ -594,7 +600,7 @@ test("remote-resources + eval checks: no findings for a clean bundled add-on", (
   assert.equal(remoteScript.run(withManifest(ctx)).findings.length, 0);
   // no undecidable sites -> nothing escalated either
   assert.deepEqual(remoteScript.run(withManifest(ctx)).escalations, []);
-  assert.equal(evalCall.run(withManifest(ctx)).length, 0);
+  assert.equal(evalCall.run(withManifest(ctx)).findings.length, 0);
   const re = remoteEval.run(withManifest(ctx));
   assert.equal(re.findings.length, 0);
   assert.deepEqual(re.escalations, []);
@@ -615,9 +621,9 @@ test("eval checks note each dynamic-code site and the CSP, with verdicts", () =>
   );
   const notes = [];
   ctx.note = (file, loc, item, verdict) => notes.push({ file, item, verdict });
-  evalCall.run(withManifest(ctx));
+  evalCall.run(withManifest(ctx)).findings;
   remoteEval.run(withManifest(ctx));
-  cspUnsafeEval.run(withManifest(ctx));
+  cspUnsafeEval.run(withManifest(ctx)).findings;
   assert.ok(
     notes.some((n) => n.item === "eval()" && n.verdict === VERDICT.FAIL)
   );

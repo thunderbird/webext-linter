@@ -19,7 +19,7 @@ import { finding } from "../../report/finding.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const results = ctx.addon?.vendor?.results ?? [];
@@ -38,6 +38,6 @@ export default {
         );
       }
     }
-    return findings;
+    return { findings };
   },
 };

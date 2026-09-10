@@ -15,7 +15,7 @@ export default {
   run(ctx) {
     const m = ctx.manifest;
     if (!m) {
-      return [];
+      return { findings: [] };
     }
     const out = [];
     for (const key of REQUIRED_KEYS) {
@@ -32,6 +32,6 @@ export default {
         out.push(finding({ item: key }));
       }
     }
-    return out;
+    return { findings: out };
   },
 };

@@ -25,7 +25,7 @@ import { normalizeRef, resolveRef } from "../../lib/manifest-refs.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     // Registry `input: xpi`: ctx.addon is the built XPI. Module-ness is a runtime-
@@ -36,12 +36,12 @@ export default {
     const { addon } = ctx;
     const page = ctx.manifest?.background?.page;
     if (typeof page !== "string") {
-      return [];
+      return { findings: [] };
     }
     const pageFile = normalizeRef(page);
     const buf = addon.files.get(pageFile);
     if (!buf) {
-      return []; // a declared-but-absent page is bundled-files' concern
+      return { findings: [] }; // a declared-but-absent page is bundled-files' concern
     }
 
     // The page's external scripts are .js files the pass already parsed; read the
@@ -73,7 +73,7 @@ export default {
       ctx.note?.(pageFile, loc, `${src} needs type="module"`, VERDICT.FAIL);
       out.push(finding({ file: pageFile, loc }));
     });
-    return out;
+    return { findings: out };
   },
 };
 

@@ -36,7 +36,7 @@ test("accepts a well-typed manifest", () => {
     unrecognizedKey,
     mistypedValue,
   ]) {
-    assert.equal(check.run(withManifest(ctx(m))).length, 0);
+    assert.equal(check.run(withManifest(ctx(m))).findings.length, 0);
   }
 });
 
@@ -45,13 +45,19 @@ test("accepts a well-typed manifest", () => {
 // manifest-missing.
 test("invalid JSON and a missing manifest are their own checks", () => {
   const broken = { addon: { manifestError: "boom", manifest: null }, schema };
-  assert.equal(manifestInvalidJson.run(withManifest(broken)).length, 1);
-  assert.equal(manifestMissing.run(withManifest(broken)).length, 0);
-  assert.equal(manifestMissingKey.run(withManifest(broken)).length, 0);
+  assert.equal(
+    manifestInvalidJson.run(withManifest(broken)).findings.length,
+    1
+  );
+  assert.equal(manifestMissing.run(withManifest(broken)).findings.length, 0);
+  assert.equal(manifestMissingKey.run(withManifest(broken)).findings.length, 0);
 
   const absent = { addon: { manifest: null }, schema };
-  assert.equal(manifestMissing.run(withManifest(absent)).length, 1);
-  assert.equal(manifestInvalidJson.run(withManifest(absent)).length, 0);
+  assert.equal(manifestMissing.run(withManifest(absent)).findings.length, 1);
+  assert.equal(
+    manifestInvalidJson.run(withManifest(absent)).findings.length,
+    0
+  );
 });
 
 // manifest_version as the string "3" trips ajv's type rule in
@@ -59,17 +65,20 @@ test("invalid JSON and a missing manifest are their own checks", () => {
 // error checks stay silent on type issues.
 test("deep validation flags a wrongly-typed value (derived from the schema)", () => {
   const bad = { manifest_version: "3", name: "x", version: "1.0" };
-  const findings = mistypedValue.run(withManifest(ctx(bad)));
+  const findings = mistypedValue.run(withManifest(ctx(bad))).findings;
   assert.ok(findings.some((f) => /manifest_version/.test(f.item)));
   assert.ok(findings.every((f) => f.severity === null));
-  assert.equal(manifestMissingKey.run(withManifest(ctx(bad))).length, 0);
+  assert.equal(
+    manifestMissingKey.run(withManifest(ctx(bad))).findings.length,
+    0
+  );
 });
 
 // Omitting "version" produces a manifest-missing-key finding naming the key.
 test("manifest-missing-key flags a missing required key", () => {
   const out = manifestMissingKey.run(
     withManifest(ctx({ manifest_version: 3, name: "x" }))
-  );
+  ).findings;
   assert.ok(out.some((f) => f.item === "version"));
 });
 
@@ -78,7 +87,7 @@ test("manifest-missing-key flags a missing required key", () => {
 test("manifest-version-mismatch flags an MV2 manifest under the MV3 schema", () => {
   const out = manifestVersionMismatch.run(
     withManifest(ctx({ manifest_version: 2, name: "x", version: "1.0" }))
-  );
+  ).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "2");
   assert.equal(out[0].data.schema, schema.manifestVersionMajor);
@@ -96,7 +105,7 @@ test("manifest-unknown-permission flags only unknown values", () => {
         permissions: ["https://example.com/*", "bogusPerm"],
       })
     )
-  );
+  ).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "bogusPerm");
 });
@@ -105,6 +114,8 @@ test("manifest-unknown-permission flags only unknown values", () => {
 test("unrecognized-manifest-key flags an unknown top-level key", () => {
   const m = { manifest_version: 3, name: "x", version: "1.0", bogusKey: 1 };
   assert.ok(
-    unrecognizedKey.run(withManifest(ctx(m))).some((f) => f.item === "bogusKey")
+    unrecognizedKey
+      .run(withManifest(ctx(m)))
+      .findings.some((f) => f.item === "bogusKey")
   );
 });

@@ -28,7 +28,7 @@ import { classifyAddonJs } from "../../lib/bundled.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const findings = [];
@@ -50,6 +50,6 @@ export default {
       // `file:`/`source:` VENDOR entry to add.
       findings.push(finding({ file: c.file, item: id, hint: c.cdn.url }));
     }
-    return findings;
+    return { findings };
   },
 };

@@ -32,7 +32,7 @@ test("reports one finding per dep, anchored at its package.json line", () => {
       token: "@louis.jln/extract-time",
     },
   ]);
-  const out = unpopularSourceDependency.run(ctx);
+  const out = unpopularSourceDependency.run(ctx).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "package.json");
   // The response is collapsible (no {{item}}), so item carries the subject AND
@@ -44,14 +44,14 @@ test("reports one finding per dep, anchored at its package.json line", () => {
 });
 
 test("an empty list yields no findings", () => {
-  assert.equal(unpopularSourceDependency.run(ctxWith([])).length, 0);
+  assert.equal(unpopularSourceDependency.run(ctxWith([])).findings.length, 0);
 });
 
 test("a missing token anchors at the file with no line", () => {
   const ctx = ctxWith([
     { name: "niche", version: "1.0.0", file: "package.json", token: "" },
   ]);
-  const out = unpopularSourceDependency.run(ctx);
+  const out = unpopularSourceDependency.run(ctx).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].loc, null);
 });

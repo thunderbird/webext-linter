@@ -31,22 +31,22 @@ export default {
   run(ctx) {
     const { schema } = ctx;
     if (ctx.manifestError || !ctx.manifest) {
-      return [];
+      return { findings: [] };
     }
     let validate;
     try {
       const jsonSchema = buildManifestJsonSchema(schema);
       if (!jsonSchema) {
-        return [];
+        return { findings: [] };
       }
       validate = new Ajv({ allErrors: true, strict: false }).compile(
         jsonSchema
       );
       if (validate(ctx.manifest)) {
-        return [];
+        return { findings: [] };
       }
     } catch {
-      return [];
+      return { findings: [] };
     }
 
     const out = [];
@@ -80,6 +80,6 @@ export default {
         })
       );
     }
-    return out;
+    return { findings: out };
   },
 };

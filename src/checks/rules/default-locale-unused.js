@@ -21,7 +21,7 @@ import { manifestTokenLine } from "../../lib/util.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     // Registry `input: xpi`: ctx.addon is the built XPI. default_locale <-> _locales
@@ -36,11 +36,11 @@ export default {
         "manifest did not parse",
         VERDICT.SKIPPED
       );
-      return [];
+      return { findings: [] };
     }
     if (!manifest.default_locale) {
       ctx.note?.("manifest.json", null, "no default_locale", VERDICT.SKIPPED);
-      return [];
+      return { findings: [] };
     }
     if (getLocales(ctx).hasLocales) {
       ctx.note?.(
@@ -49,7 +49,7 @@ export default {
         "_locales directory present",
         VERDICT.PASS
       );
-      return [];
+      return { findings: [] };
     }
     const text = ctx.manifestText;
     const line = manifestTokenLine(text, "default_locale");
@@ -60,6 +60,6 @@ export default {
       "default_locale without _locales",
       VERDICT.FAIL
     );
-    return [finding({ file: "manifest.json", loc })];
+    return { findings: [finding({ file: "manifest.json", loc })] };
   },
 };

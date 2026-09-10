@@ -21,6 +21,6 @@ export default {
     for (const n of notes.requirements) {
       ctx.note?.(n.file, n.loc, n.item, n.verdict);
     }
-    return missingPermissions;
+    return { findings: missingPermissions };
   },
 };

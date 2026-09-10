@@ -23,7 +23,7 @@ export default {
   run(ctx) {
     const m = ctx.manifest;
     if (!m) {
-      return [];
+      return { findings: [] };
     }
     const out = [];
     const seen = new Set();
@@ -54,6 +54,6 @@ export default {
         }
       });
     }
-    return out;
+    return { findings: out };
   },
 };

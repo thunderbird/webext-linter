@@ -21,13 +21,13 @@ import { experimentApiPaths } from "../../lib/experiments.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const m = ctx.manifest;
     if (!m || !isExperiment(m)) {
       ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
-      return [];
+      return { findings: [] };
     }
     const { schema } = ctx;
     const text = ctx.manifestText ?? "";
@@ -51,6 +51,6 @@ export default {
       );
       findings.push(finding({ file: "manifest.json", loc, item: apiPath }));
     }
-    return findings;
+    return { findings };
   },
 };

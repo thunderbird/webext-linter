@@ -18,6 +18,6 @@ export default {
     for (const n of notes.manifestKeys) {
       ctx.note?.(n.file, n.loc, n.item, n.verdict);
     }
-    return missingManifestKeys;
+    return { findings: missingManifestKeys };
   },
 };

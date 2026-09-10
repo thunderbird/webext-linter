@@ -926,11 +926,23 @@ export async function runOneCheck(ctx, check, label) {
     // ctx is already the artifact the caller routed this check to (runChecks /
     // pipeline, keyed on check.input). The check reads only ctx.addon; there is no
     // way here to reach the other artifact.
-    const result = (await check.run(ctx, check)) || [];
-    const produced = Array.isArray(result)
-      ? [...result]
-      : [...(result.findings ?? [])];
-    const escalations = Array.isArray(result) ? [] : (result.escalations ?? []);
+    // ONE return shape: { findings, escalations? }. A bare array is refused rather
+    // than read as findings, because that shorthand made the two lanes look optional:
+    // a rule that grew an escalation path and kept returning its findings array lost
+    // every escalation silently, with nothing to catch it - `expect` cannot assert an
+    // escalation, so only a golden covering that fixture would have noticed.
+    const result = await check.run(ctx, check);
+    if (
+      Array.isArray(result) ||
+      (result != null && typeof result !== "object")
+    ) {
+      throw new Error(
+        `${check.id} returned ${Array.isArray(result) ? "an array" : typeof result} - ` +
+          "a check returns { findings, escalations }"
+      );
+    }
+    const produced = [...(result?.findings ?? [])];
+    const escalations = result?.escalations ?? [];
     if (escalations.length) {
       // Cases a person must inspect, straight to manual review.
       manualItems.push(...manualEscalations(check, escalations).manualItems);

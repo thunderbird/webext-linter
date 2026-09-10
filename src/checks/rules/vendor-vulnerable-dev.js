@@ -17,9 +17,11 @@ import { vulnFindings } from "../../lib/vuln-findings.js";
 export default {
   /**
    * @param {import("../registry.js").RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    return vulnFindings(ctx, ctx.addon?.vendor?.devVulnerabilities ?? []);
+    return {
+      findings: vulnFindings(ctx, ctx.addon?.vendor?.devVulnerabilities ?? []),
+    };
   },
 };

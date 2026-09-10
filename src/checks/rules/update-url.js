@@ -17,7 +17,7 @@ import { manifestPathLine } from "../../lib/util.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const m = ctx.manifest;
@@ -28,7 +28,7 @@ export default {
         "manifest did not parse",
         VERDICT.SKIPPED
       );
-      return [];
+      return { findings: [] };
     }
     const findings = [];
     // Both keys hold a `gecko` block; browser_specific_settings is current,
@@ -51,6 +51,6 @@ export default {
     if (!findings.length) {
       ctx.note?.("manifest.json", null, "no update_url", VERDICT.PASS);
     }
-    return findings;
+    return { findings };
   },
 };

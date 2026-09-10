@@ -22,12 +22,12 @@ import { vendorFileNames } from "../../normalize/vendor.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const names = vendorFileNames(ctx.addon);
     if (names.length < 2) {
-      return [];
+      return { findings: [] };
     }
     // Every candidate is a locus, so the reviewer sees which files collide without
     // opening the submission - and the response names none of them, so the findings
@@ -35,6 +35,6 @@ export default {
     for (const name of names) {
       ctx.note?.(name, null, "candidate VENDOR file", VERDICT.FAIL);
     }
-    return names.map((name) => finding({ file: name }));
+    return { findings: names.map((name) => finding({ file: name })) };
   },
 };

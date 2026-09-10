@@ -49,7 +49,7 @@ test("minimize-host-permissions anchors <all_urls> on its host_permissions line"
     files: new Map([["manifest.json", Buffer.from(TEXT)]]),
     manifestLoc: buildManifestLoc(TEXT),
   };
-  const out = minimizeHostPermissions.run(withManifest({ addon }));
+  const out = minimizeHostPermissions.run(withManifest({ addon })).findings;
   const f = out.find((x) => x.item === "<all_urls>");
   assert.ok(f, "expected an <all_urls> finding");
   assert.equal(f.loc?.line, 6);

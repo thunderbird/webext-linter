@@ -57,7 +57,7 @@ test("does not throw on malformed content_scripts shapes", () => {
     { content_scripts: [{ js: "content.js" }] },
     { background: "oops.js" },
   ]) {
-    assert.doesNotThrow(() => bundledFiles.run(ctxWith(manifest)));
+    assert.doesNotThrow(() => bundledFiles.run(ctxWith(manifest)).findings);
   }
 });
 
@@ -65,7 +65,9 @@ test("does not throw on malformed content_scripts shapes", () => {
 // would wrongly report each letter as a missing file. Expects zero findings.
 test("a string-typed `js` does not produce per-character findings", () => {
   // Malformed: js is a string, not an array. Must not iterate characters.
-  const out = bundledFiles.run(ctxWith({ content_scripts: [{ js: "x.js" }] }));
+  const out = bundledFiles.run(
+    ctxWith({ content_scripts: [{ js: "x.js" }] })
+  ).findings;
   assert.equal(out.length, 0);
 });
 
@@ -77,7 +79,7 @@ test("flags a genuinely missing content script, not a present one", () => {
       { content_scripts: [{ js: ["present.js", "missing.js"] }] },
       { "present.js": "" }
     )
-  );
+  ).findings;
   assert.equal(out.length, 1);
   assert.match(out[0].item, /missing\.js/);
 });
@@ -101,7 +103,7 @@ test("anchors a missing manifest reference at its manifest.json line", () => {
       },
       { "manifest.json": manifestText }
     )
-  );
+  ).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "manifest.json");
   assert.equal(out[0].item, "chrome/content/dummy.html");
@@ -113,7 +115,7 @@ test("anchors a missing manifest reference at its manifest.json line", () => {
 test("missing manifest reference falls back to no line when manifest.json text is absent", () => {
   const out = bundledFiles.run(
     ctxWith({ content_scripts: [{ js: ["missing.js"] }] })
-  );
+  ).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "manifest.json");
   assert.equal(out[0].loc, null);
@@ -123,11 +125,13 @@ test("missing manifest reference falls back to no line when manifest.json text i
 // must be bundled: an absent one is flagged, a present one is not.
 test("flags a missing file referenced by a schema-derived loader", () => {
   const call = `messenger.messageDisplayScripts.register({ js: [{ file: "inject.js" }] });`;
-  const missing = bundledFiles.run(ctxWithJs(call));
+  const missing = bundledFiles.run(ctxWithJs(call)).findings;
   assert.equal(missing.length, 1);
   assert.match(missing[0].item, /inject\.js/);
 
-  const present = bundledFiles.run(ctxWithJs(call, { "inject.js": "" }));
+  const present = bundledFiles.run(
+    ctxWithJs(call, { "inject.js": "" })
+  ).findings;
   assert.equal(present.length, 0);
 });
 
@@ -137,7 +141,7 @@ test("flags a missing file referenced by a schema-derived loader", () => {
 test("checks bridge loaders but ignores remote / scheme urls", () => {
   const inject = bundledFiles.run(
     ctxWithJs(`browser.scripting.executeScript({ files: ["content.js"] });`)
-  );
+  ).findings;
   assert.equal(inject.length, 1);
   assert.match(inject[0].item, /content\.js/);
 
@@ -146,7 +150,7 @@ test("checks bridge loaders but ignores remote / scheme urls", () => {
     browser.tabs.create({ url: "https://example.com/x" });
     browser.tabs.create({ url: "about:blank" });
   `)
-  );
+  ).findings;
   assert.equal(remote.length, 0);
 });
 
@@ -170,7 +174,7 @@ test("executeScript {file} is checked against the host page (root for background
     [{ file: "src/background.js", code: call, lineOffset: 0 }],
     { schema: present.schema }
   );
-  assert.equal(bundledFiles.run(present).length, 0); // resolves to root message-unescape.js
+  assert.equal(bundledFiles.run(present).findings.length, 0); // resolves to root message-unescape.js
 
   const missing = ctxWith(manifest, {
     "src/background.js": call,
@@ -180,7 +184,7 @@ test("executeScript {file} is checked against the host page (root for background
     [{ file: "src/background.js", code: call, lineOffset: 0 }],
     { schema: missing.schema }
   );
-  const out = bundledFiles.run(missing);
+  const out = bundledFiles.run(missing).findings;
   assert.equal(out.length, 1);
   assert.match(out[0].item, /message-unescape\.js/);
 });
@@ -253,7 +257,7 @@ test("tabs.create {url} resolves against the script's dir (subdir climbs out)", 
     [{ file: "options/options.js", code: call, lineOffset: 0 }],
     { schema: ctx.schema }
   );
-  assert.equal(bundledFiles.run(ctx).length, 0); // options/../target/target.html
+  assert.equal(bundledFiles.run(ctx).findings.length, 0); // options/../target/target.html
 });
 
 // The gmail-conversation-view case: a background.scripts module in a subdirectory
@@ -273,7 +277,7 @@ test("background.scripts: a climbing tabs.create url clamps to a bundled file - 
     [{ file: "background/bg.mjs", code: call, lineOffset: 0 }],
     { schema: ctx.schema }
   );
-  assert.equal(bundledFiles.run(ctx).length, 0); // clamps to assistant/assistant.html
+  assert.equal(bundledFiles.run(ctx).findings.length, 0); // clamps to assistant/assistant.html
 });
 
 // A leading ".." is CLAMPED at the package root (Gecko's URL resolution can't
@@ -297,7 +301,7 @@ test("tabs.create {url} with a leading .. clamps at root", () => {
     ],
     { schema: present.schema }
   );
-  assert.equal(bundledFiles.run(present).length, 0); // clamps to target/target.html
+  assert.equal(bundledFiles.run(present).findings.length, 0); // clamps to target/target.html
 
   const missing = ctxWith(manifest, {
     "bg.js": `browser.tabs.create({ url: "../nope/missing.html" });`,
@@ -312,7 +316,7 @@ test("tabs.create {url} with a leading .. clamps at root", () => {
     ],
     { schema: missing.schema }
   );
-  const out = bundledFiles.run(missing);
+  const out = bundledFiles.run(missing).findings;
   assert.equal(out.length, 1);
   assert.match(out[0].item, /missing\.html/);
 });
@@ -330,7 +334,7 @@ test("loader refs in a non-live (orphan) script are skipped", () => {
     [{ file: "orphan.js", code: call, lineOffset: 0 }],
     { schema: orphan.schema }
   );
-  assert.equal(bundledFiles.run(orphan).length, 0);
+  assert.equal(bundledFiles.run(orphan).findings.length, 0);
 
   // Live: declared as the background script -> checked -> the missing url flagged.
   const live = ctxWith(
@@ -340,7 +344,7 @@ test("loader refs in a non-live (orphan) script are skipped", () => {
   live.jsSources = parsed([{ file: "bg.js", code: call, lineOffset: 0 }], {
     schema: live.schema,
   });
-  const out = bundledFiles.run(live);
+  const out = bundledFiles.run(live).findings;
   assert.equal(out.length, 1);
   assert.match(out[0].item, /missing\.html/);
 });

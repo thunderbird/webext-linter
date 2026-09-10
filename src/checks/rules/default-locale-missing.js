@@ -17,7 +17,7 @@ import { getLocales } from "../../lib/locales.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     // Registry `input: xpi`: ctx.addon is the built XPI. _locales <-> default_locale
@@ -32,7 +32,7 @@ export default {
         "manifest did not parse",
         VERDICT.SKIPPED
       );
-      return [];
+      return { findings: [] };
     }
     if (!getLocales(ctx).hasLocales) {
       ctx.note?.(
@@ -41,7 +41,7 @@ export default {
         "no _locales directory",
         VERDICT.SKIPPED
       );
-      return [];
+      return { findings: [] };
     }
     if (manifest.default_locale) {
       ctx.note?.(
@@ -50,7 +50,7 @@ export default {
         "default_locale declared",
         VERDICT.PASS
       );
-      return [];
+      return { findings: [] };
     }
     ctx.note?.(
       "manifest.json",
@@ -58,6 +58,6 @@ export default {
       "_locales without default_locale",
       VERDICT.FAIL
     );
-    return [finding({ file: "manifest.json" })];
+    return { findings: [finding({ file: "manifest.json" })] };
   },
 };

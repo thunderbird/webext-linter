@@ -15,14 +15,14 @@ import { finding } from "../../report/finding.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     if (!ctx.scaNotRequired) {
-      return [];
+      return { findings: [] };
     }
     // No locus: the subject is the submission as a whole, not any one file, and a
     // locus line naming an arbitrary file would only be noise (see renderGroup).
-    return [finding({})];
+    return { findings: [finding({})] };
   },
 };

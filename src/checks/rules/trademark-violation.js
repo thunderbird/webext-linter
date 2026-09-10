@@ -31,7 +31,7 @@ const FORBIDDEN = [
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     // Registry `input: xpi`: ctx.addon is the built XPI. The displayed name - and a
@@ -43,7 +43,7 @@ export default {
     const name = ctx.manifest?.name;
     if (typeof name !== "string") {
       ctx.note?.("manifest.json", null, "no add-on name", VERDICT.SKIPPED);
-      return [];
+      return { findings: [] };
     }
     // Anchor every note/finding on the manifest's `name` property line.
     const text = ctx.manifestText;
@@ -57,17 +57,19 @@ export default {
         `${name} not resolvable`,
         VERDICT.SKIPPED
       );
-      return [];
+      return { findings: [] };
     }
     for (const candidate of candidates) {
       const term = trademarkTerm(candidate);
       if (term) {
         ctx.note?.("manifest.json", loc, `name uses "${term}"`, VERDICT.FAIL);
-        return [finding({ file: "manifest.json", loc, item: candidate })];
+        return {
+          findings: [finding({ file: "manifest.json", loc, item: candidate })],
+        };
       }
     }
     ctx.note?.("manifest.json", loc, `name "${name}"`, VERDICT.PASS);
-    return [];
+    return { findings: [] };
   },
 };
 

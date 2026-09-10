@@ -24,12 +24,12 @@ import { finding } from "../../report/finding.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const files = ctx.addon?.files;
     if (!files) {
-      return [];
+      return { findings: [] };
     }
     const findings = [];
     for (const [path, buf] of files) {
@@ -46,7 +46,7 @@ export default {
         }
       }
     }
-    return findings;
+    return { findings };
   },
 };
 

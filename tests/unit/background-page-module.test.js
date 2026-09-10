@@ -23,7 +23,7 @@ const run = (files, manifest) => {
   const a = addon(files, manifest);
   return rule
     .run(withManifest({ addon: a, jsSources: parsedSources(a) }))
-    .map((f) => `${f.file}:${f.loc?.line}`);
+    .findings.map((f) => `${f.file}:${f.loc?.line}`);
 };
 
 // background.html lines: 1 doctype, 2 head, 3 background.js (module, no type ->

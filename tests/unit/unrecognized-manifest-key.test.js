@@ -38,7 +38,7 @@ const items = (out) => out.map((f) => f.item).sort();
 test("flags a genuinely unknown top-level key", () => {
   const out = rule.run(
     withManifest(ctxOf({ manifest_version: 3, bogus_key: 1 }))
-  );
+  ).findings;
   assert.deepEqual(items(out), ["bogus_key"]);
 });
 
@@ -66,7 +66,7 @@ test("exempts a key declared by an experiment schema's manifest block", () => {
   ]);
   const out = rule.run(
     withManifest(ctxOf(manifest, { "exp/cal.json": schemaJson }))
-  );
+  ).findings;
   assert.deepEqual(items(out), ["bogus_key"]);
 });
 
@@ -80,6 +80,6 @@ test("exempts a key that names an experiment_apis entry", () => {
         experiment_apis: { calendar_provider: {} },
       })
     )
-  );
+  ).findings;
   assert.deepEqual(items(out), []);
 });

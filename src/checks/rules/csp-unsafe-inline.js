@@ -14,11 +14,15 @@ import { manifestTokenLine } from "../../lib/util.js";
 export default {
   run(ctx) {
     if (!getEvalScan(ctx).unsafeInline) {
-      return [];
+      return { findings: [] };
     }
     ctx.note?.("manifest.json", null, "CSP 'unsafe-inline'", VERDICT.FAIL);
     const text = ctx.manifestText;
     const line = manifestTokenLine(text, "content_security_policy");
-    return [finding({ file: "manifest.json", loc: line ? { line } : null })];
+    return {
+      findings: [
+        finding({ file: "manifest.json", loc: line ? { line } : null }),
+      ],
+    };
   },
 };

@@ -28,7 +28,7 @@ import { asArray } from "../../lib/util.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     // Registry `input: xpi`: ctx.addon is the built XPI. Module-ness is a runtime-
@@ -38,7 +38,7 @@ export default {
     // manifest and its background scripts, not a source submission's readable source.
     const bg = ctx.manifest?.background;
     if (!bg || typeof bg !== "object") {
-      return [];
+      return { findings: [] };
     }
     const scripts = new Set(
       [...asArray(bg.scripts), bg.service_worker]
@@ -46,7 +46,7 @@ export default {
         .map(normalizeRef)
     );
     if (scripts.size === 0) {
-      return [];
+      return { findings: [] };
     }
     const isModule = bg.type === "module";
 
@@ -71,6 +71,6 @@ export default {
       );
       out.push(finding({ file: src.file, loc }));
     }
-    return out;
+    return { findings: out };
   },
 };

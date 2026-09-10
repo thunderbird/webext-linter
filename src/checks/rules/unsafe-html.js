@@ -38,6 +38,6 @@ export default {
         ctx.note?.(src.file, loc, how, VERDICT.FAIL);
       }
     }
-    return out;
+    return { findings: out };
   },
 };

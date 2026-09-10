@@ -13,9 +13,9 @@ import { finding } from "../../report/finding.js";
 export default {
   run(ctx) {
     if (!ctx.manifestError) {
-      return [];
+      return { findings: [] };
     }
     ctx.note?.("manifest.json", null, "unparsable JSON", VERDICT.FAIL);
-    return [finding({ file: "manifest.json" })];
+    return { findings: [finding({ file: "manifest.json" })] };
   },
 };

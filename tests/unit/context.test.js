@@ -214,8 +214,8 @@ test("an input: manifest check reads only the manifest (same result on the no-co
   assert.equal(manifestCtx.addon.files.size, 0); // enforced: no file corpus
   const check = (await import("../../src/checks/rules/manifest-missing.js"))
     .default;
-  const onFull = check.run(xpiCtx);
-  const onManifest = check.run(manifestCtx);
+  const onFull = check.run(xpiCtx).findings;
+  const onManifest = check.run(manifestCtx).findings;
   assert.ok(onFull.length > 0); // the manifest is missing -> a finding
   assert.deepEqual(onManifest, onFull); // identical - the empty corpus is irrelevant
 });

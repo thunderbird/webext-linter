@@ -72,7 +72,7 @@ test("unsafe-html notes each sink site (verdict fail)", () => {
   };
   const notes = [];
   ctx.note = (file, loc, item, verdict) => notes.push({ file, item, verdict });
-  const out = unsafeHtml.run(ctx);
+  const out = unsafeHtml.run(ctx).findings;
   assert.equal(out.length, 1); // still one finding
   assert.deepEqual(notes, [
     { file: "render.js", item: ".innerHTML", verdict: VERDICT.FAIL },

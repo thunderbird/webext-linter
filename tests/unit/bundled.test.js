@@ -109,7 +109,7 @@ test("a long-line file that is a single data literal is not minified", () => {
             bundled: { classified, nonAuthored },
           },
         })
-        .map((f) => f.file),
+        .findings.map((f) => f.file),
       [],
       `${name} must not be reported as minified-code`
     );
@@ -155,11 +155,11 @@ test("a minified non-library is non-authored and rejected; identified libraries 
   // the identified library drives missing-library, and obfuscated-code fires.
   const ctx = { addon: { ...addon, bundled: { classified, nonAuthored } } };
   assert.deepEqual(
-    minifiedCode.run(ctx).map((f) => f.file),
+    minifiedCode.run(ctx).findings.map((f) => f.file),
     ["blob.js"]
   );
   assert.deepEqual(
-    missingLibrary.run(ctx).map((f) => f.file),
+    missingLibrary.run(ctx).findings.map((f) => f.file),
     ["jquery.min.js"]
   );
   assert.deepEqual(
@@ -211,7 +211,7 @@ test("classification done before normalize survives reformatting (the fix)", () 
   // Normalize reformats the file in place (build/lint mode).
   addon.files.set("lib/blob.js", Buffer.from(PRETTY));
   // The check reads the pre-step store, so the minified file is still flagged.
-  const flagged = minifiedCode.run({ addon }).map((f) => f.file);
+  const flagged = minifiedCode.run({ addon }).findings.map((f) => f.file);
   assert.deepEqual(flagged, ["lib/blob.js"]);
 });
 
@@ -220,7 +220,7 @@ test("without the pre-step, classifying the reformatted bytes misses it", () => 
   // do not look minified - the build/lint false negative the pre-step fixes.
   const flagged = minifiedCode
     .run({ addon: addonWith({ "lib/blob.js": PRETTY }) })
-    .map((f) => f.file);
+    .findings.map((f) => f.file);
   assert.deepEqual(flagged, []);
 });
 
@@ -259,7 +259,7 @@ test("missing-library reports an undeclared vendored CSS file", () => {
   addon.bundled = classifyBundled(addon, {
     libraryHashes: libHashes(addon, file),
   });
-  const findings = missingLibrary.run({ addon });
+  const findings = missingLibrary.run({ addon }).findings;
   assert.deepEqual(
     findings.map((f) => f.file),
     [file]

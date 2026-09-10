@@ -18,13 +18,13 @@ import { readVendorFile } from "../../normalize/vendor.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const { addon } = ctx;
     const missing = addon?.vendor?.missing ?? [];
     if (!missing.length) {
-      return [];
+      return { findings: [] };
     }
     // The missing path is the location (listed under the entry); the VENDOR file
     // name fills the message's {{item}}. The source URL rides on the feed note.
@@ -39,6 +39,6 @@ export default {
       );
       findings.push(finding({ file: path, item: vendorName }));
     }
-    return findings;
+    return { findings };
   },
 };

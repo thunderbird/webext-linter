@@ -23,7 +23,7 @@ import { isExperiment, manifestTokenLine } from "../../lib/util.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
     const m = ctx.manifest;
@@ -34,11 +34,11 @@ export default {
         "manifest did not parse",
         VERDICT.SKIPPED
       );
-      return [];
+      return { findings: [] };
     }
     if (!isExperiment(m)) {
       ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.PASS);
-      return [];
+      return { findings: [] };
     }
     if (ctx.options?.allowExperiments) {
       ctx.note?.(
@@ -47,7 +47,7 @@ export default {
         "experiments allowed (--allow-experiments)",
         VERDICT.SKIPPED
       );
-      return [];
+      return { findings: [] };
     }
 
     const text = ctx.manifestText ?? "";
@@ -62,7 +62,7 @@ export default {
         "experiment_apis declared",
         VERDICT.FAIL
       );
-      return [finding({ file: "manifest.json", loc })];
+      return { findings: [finding({ file: "manifest.json", loc })] };
     }
 
     const findings = [];
@@ -83,7 +83,7 @@ export default {
       );
       findings.push(finding({ file: "manifest.json", loc, hint: reason }));
     }
-    return findings;
+    return { findings };
   },
 };
 

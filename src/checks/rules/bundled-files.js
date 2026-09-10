@@ -123,7 +123,7 @@ export default {
       }
     }
 
-    return out;
+    return { findings: out };
   },
 };
 
