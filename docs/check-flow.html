@@ -192,7 +192,7 @@ flowchart TB
   SB --> ENV
 
   subgraph P4 ["runPipeline() · Phase 4 - build the shared review env, then the sibling ctxs"]
-    ENV["build the review env ONCE - the singletons every sibling shares:<br/>previous ← --diff-to"] --> XB
+    ENV["build the review env ONCE - the schema, the shipped manifest and<br/>experiments, the mode: the singletons every sibling shares"] --> XB
     XB["buildXpiCtxs(xpiAddon, xpiParsedSources, env) → { xpiCtx, manifestCtx }<br/>ALWAYS - xpiCtx is siblings.xpi; empty sources for a rejected Experiment"] --> SM{{"mode?"}}
     SM -- sca --> SB2["buildScaCtxs(source, sourceSources, buildFiles, env)<br/>→ { scaCtx, buildCtx }"]
     SB2 --> SIB

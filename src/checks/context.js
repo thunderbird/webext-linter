@@ -1,7 +1,7 @@
 // Builds the sibling RunContexts every check runs against. Each artifact the orchestrator may
 // route a check to - the built XPI, the readable source, the SCA build corpus, and the shipped
 // manifest - gets its own ctx, and all of them project ONE shared review env: the schema, the
-// shipped manifest/experiments, the mode, and the --diff-to baseline. The pipeline
+// shipped manifest/experiments, and the mode. The pipeline
 // (pipeline.js) resolves the schema, parses the sources, and builds that shared env;
 // this module only derives ctx.apiUsages from the already-parsed sources and swaps the
 // per-artifact fields for each sibling.
@@ -11,8 +11,8 @@
 //
 // Does NOT belong here: PARSING. The extraction pass (src/checks/extract.js) parses each source
 // once, up front, and its results arrive already parsed - this module never reaches for an AST.
-// Nor LOADING the --diff-to baseline: the pipeline does that once, as a review-level
-// singleton, and hands it in via the env. Nor any individual review logic - that lives in a rule under src/checks/rules/*.
+// Nor LOADING any review-level singleton: the pipeline does that once and hands it in via
+// the env. Nor any individual review logic - that lives in a rule under src/checks/rules/*.
 // The RunContext type and runChecks live in src/checks/registry.js.
 
 import { apiUsageOf } from "./extract.js";
@@ -24,7 +24,7 @@ import { apiUsageOf } from "./extract.js";
  *   by the pipeline (src/pipeline.js) and handed to both ctx builders. It carries only what is
  *   the SAME across artifacts, so a sibling can never drift from another: the schema, the
  *   shipped manifest/experiments, the review mode (+ scaExpSource/scaNotRequired), the
- *   invalid-Experiment flag, and the --diff-to baseline (`previous`).
+ *   and the invalid-Experiment flag.
  * @property {import("../schema/index.js").SchemaIndex} schema
  * @property {{allowExperiments?: boolean, libraryHashes?: Map<string, object>}} options
  * @property {object} mode  The REVIEW_MODE enum member (XPI/SCA); read as `mode?.sca`.
@@ -36,7 +36,6 @@ import { apiUsageOf } from "./extract.js";
  * @property {?object} manifestLoc
  * @property {string} manifestText
  * @property {?object} experiments
- * @property {?import("../addon/load.js").Addon} previous
  */
 
 /**
@@ -119,8 +118,6 @@ function projectCtx(
     jsSources,
     apiUsages,
     options: env.options,
-    // The --diff-to baseline (the pipeline loaded it ONCE for the whole review).
-    previous: env.previous,
     invalidExperiment: env.invalidExperiment,
     // "xpi" (a built add-on) or "sca" (a source-code archive review, --sca-root). Gates checks
     // via scaEligible.

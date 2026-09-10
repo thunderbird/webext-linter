@@ -93,7 +93,7 @@ is monitored and upstream changes are ported manually.
 
 | Option | Description |
 | --- | --- |
-| `--sca-root <folder\|zip>` | The source archive root (holds `package.json`/lock). Switches to SCA mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused), the `--diff-to` baseline, and the packaging summary. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
+| `--sca-root <folder\|zip>` | The source archive root (holds `package.json`/lock). Switches to SCA mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused). See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
 | `--sca-source <path>` | The add-on code root, relative to `--sca-root` or an absolute path (e.g. `src` or `addon`). Optional; defaults to `.` (the whole `--sca-root` reviewed as the source - a flat layout with `manifest.json` at the root). Needs `--sca-root`. |
 | `--sca-exp-source <path>` | The Experiment implementation folder, relative to `--sca-root` or an absolute path, and within `--sca-source` (e.g. `addon/experiment-api`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--sca-root`; required when `--allow-experiments` is used in SCA mode. |
 
@@ -103,7 +103,6 @@ is monitored and upstream changes are ported manually.
 | --- | --- |
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
 | `--cdn-lib-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached; an offline run simply finds no match. |
-| `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--verbose` | Verbose logging. |
 
@@ -151,8 +150,8 @@ minified/obfuscated build.
   unpinned `git clone`, a CDN, a postinstall hook), and must be **built from the source**
   (not packaged from committed artifacts).
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
-  manifest, the experiments, the file-completeness checks (bundled / web-accessible
-  / unused / locales), the `--diff-to` baseline, and the packaging summary. The
+  manifest, the experiments and the file-completeness checks (bundled /
+  web-accessible / unused / locales). The
 - `--sca-exp-source` names an Experiment implementation folder - relative to
   `--sca-root` (or absolute), and within `--sca-source` (e.g. `addon/experiment-api`)
   - so its privileged, non-WebExtension code is excluded from the WebExtension checks
@@ -255,7 +254,6 @@ machine.
 | `minified-code` | A JS file (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error). |
 | `obfuscated-code` | A JS file (not a recognized library) shipped obfuscated - recognized by the AST structure of a known obfuscator family via the `obfuscation-detector` library. A strong-family match is an error finding; a weak-family-only match (a structure readable code also has) escalates instead, for the reviewer to judge the file from its own content. High precision, partial recall - some obfuscators evade it. |
 | `privacy-policy` | Data transmitted to a hardcoded remote host by an overt API - routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
-| `strict-max-version-bump-only` | Diff check (needs `--diff-to`): fires (info) when a submission changes only the `version` and the gecko `strict_max_version` vs. the prior version - the developer could raise the max on ATN instead of resubmitting. Runs only with `--diff-to`. |
 | `string-timer` | A code string passed to `setTimeout`/`setInterval` (it is eval'd) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
 | `sync-xhr` | Synchronous `XMLHttpRequest` (`open(..., false)`). |
 | `trademark-violation` | Add-on name (resolved from `_locales` for a `__MSG__` name) using a Mozilla trademark - `Firefox`/`Mozilla`/`MZLA` anywhere, or `Thunderbird` other than as a trailing "for Thunderbird" (error, case-insensitive). The icon is a separate manual check. |
@@ -305,7 +303,7 @@ report's **Standard manual review** to-do list.
 | `icon-trademark-imitation` | The icon for imitation of the Thunderbird or Mozilla logo (an image the automated checks can't inspect). |
 | `missing-atn-description` | The ATN listing page has usage instructions, entry points, and screenshots. |
 | `missing-english-atn-localization` | The ATN listing page also has an English version. |
-| `forked-add-on` | New-submission prompt (`diff: false`, skipped when reviewing against a `--diff-to` baseline): a forked add-on is clearly distinguished from the original and offers a significant difference in functionality and/or code. |
+| `forked-add-on` | A forked add-on is clearly distinguished from the original and offers a significant difference in functionality and/or code. |
 
 
 ## Examples

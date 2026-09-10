@@ -332,16 +332,6 @@ deterministic-phase:
     The following dependencies could not be confirmed to be widely-used. They need to be packaged non-minified with the add-on in order to be reviewed.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
-# Diff check (--diff-to): a version + gecko strict_max_version-only bump that the
-# developer could make on ATN instead of resubmitting.
-- title: 'strict_max_version can be updated on ATN'
-  severity: info
-  check: strict-max-version-bump-only
-  input: xpi
-  diff: true
-  response: |-
-    Instead of submitting a new version that only increases the strict_max_version entry in your manifest, you can update the max version setting of the most recent submission directly on this add-on’s ATN admin page.
-
 # Reports dynamic/aliased API access the static analysis cannot resolve.
 - title: Static analysis coverage
   severity: info
@@ -1243,12 +1233,10 @@ manual-checks:
   response: |-
     The add-on listing page on ATN (addons.thunderbird.net) should also have an English localization. English serves as the default language in Thunderbird, and most users who do not understand the available non-English version will most likely be able to read English.
 
-# Manual (new submissions only): is this a fork of an existing add-on that must be
-# distinguished from the original? `diff: false` skips it when reviewing an update
-# against a --diff-to baseline (an established listing is not a new fork).
+# Manual: is this a fork of an existing add-on that must be distinguished from the
+# original?
 - title: Forked add-on
   check: forked-add-on
-  diff: false
   instructions: |-
     Check if the submission is a fork of an existing add-on. Such forks are only
     allowed on ATN if they are clearly distinguished from the original and

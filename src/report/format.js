@@ -151,8 +151,8 @@ export function formatReviewBody(review) {
 
 /**
  * The Summary tally as its own "── Summary ──" block (leading blank line, like
- * every section). Kept separate from the body so the CLI can print it after the
- * advisory "Summary of add-on" / "Summary of changes" sections.
+ * every section). Kept separate from the body so a caller can place it after
+ * sections of its own.
  * @param {ReviewResult} review
  * @returns {string}
  */

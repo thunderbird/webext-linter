@@ -26,8 +26,7 @@
         Forks are only allowed on ATN when their name clearly distinguishes them
         from the original and they offer a significant difference in
         functionality or code. Exceptions apply when the original is no longer
-        maintained. This item is skipped when reviewing an update against a
-        --diff-to baseline, since an established listing is not a new fork.
+        maintained.
       </p>
 
       <h2>Decision flow</h2>
@@ -36,9 +35,7 @@
 flowchart TD
   A["Every review"] --> X{"A rejected Experiment?<br/>(bundles an unsupported draft,<br/>no --allow-experiments)"}
   X -- yes --> S([skip — the reject phase<br/>runs alone, the whole<br/>to-do list is dropped])
-  X -- no --> G{"Reviewing a new submission?<br/>(diff: false — skipped with a<br/>--diff-to baseline)"}
-  G -- no --> S
-  G -- yes --> M(["listed as a to-do for the reviewer<br/>to settle by hand"])
+  X -- no --> M(["listed as a to-do for the reviewer<br/>to settle by hand"])
 
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;

@@ -126,8 +126,6 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   on a ctx with an empty file corpus (buildXpiCtxs' manifestCtx), for pure-manifest checks. Required for
  *   every check - runChecks routes it to that artifact's context (see buildXpiCtxs /
  *   buildScaCtxs), and it is also what the check's output is labelled as ([XPI]/[SCA]).
- * @property {boolean} [diff]  Diff-mode gate: true = run only with a --diff-to
- *   baseline, false = run only WITHOUT one (new submissions), omitted = always.
  * @property {string} [instructions]  Manual-review message.
  * @property {object[]} [permissionTokens]  The permission-prompts token entries
  *   ({permissions, tokens, version bounds} - prompt text stripped), carried by
@@ -164,7 +162,6 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {{allowExperiments?: boolean,
  *   libraryHashes?: Map<string, {name: string, version: string}>}} options  The only run
  *   options a check reads (experiment-not-allowed, the lazy bundled classifier).
- * @property {import("../addon/load.js").Addon|null} [previous]  Diff baseline.
  * @property {import("../lib/enum.js").ReviewMode} [mode]  Review mode: "xpi" (a built add-on, default) or
  *   "sca" (a source code archive). Gates checks via scaEligible.
  *
@@ -298,19 +295,15 @@ export class Registry {
   }
 
   /**
-   * The by-hand to-do items: every `manual-checks` entry eligible in the current
-   * review mode, already in the rendered {title, instructions, response} shape
-   * (these carry no `{{item}}`). Entries are diff-gated like checks (see
-   * diffEligible): e.g. the "Forked add-on" reminder is `diff: false`, so it
-   * shows only for a new submission, not when reviewing against a --diff-to
-   * baseline. What a check escalates is surfaced by the orchestrator
-   * (escalation.js), not here.
-   * @param {boolean} [inDiffMode]  Reviewing against a --diff-to baseline.
+   * The by-hand to-do items: every `manual-checks` entry, already in the rendered
+   * {title, instructions, response} shape (these carry no `{{item}}`). Emitted
+   * unconditionally for every review - what a check ESCALATES is surfaced by the
+   * orchestrator (escalation.js), not here.
    * @returns {{title: string, instructions?: string, response: ?string}[]}
    */
-  manualChecks(inDiffMode = false) {
+  manualChecks() {
     return (this.doc["manual-checks"] || [])
-      .filter((e) => e && e.title && diffEligible(e, inDiffMode))
+      .filter((e) => e && e.title)
       .map((e) => ({
         title: e.title,
         instructions: e.instructions,
@@ -521,7 +514,7 @@ export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
  * phase is which list it lands in (its registry section), so no LoadedCheck carries one.
  * Every phase in PHASE_SECTIONS gets a list (loadRegistry has already asserted that none of
  * their sections is missing or empty; a list can still come out empty here once the
- * diff/sca gates and --checks/--skip have been applied). A `check:` that names a missing
+ * sca gate and --checks/--skip have been applied). A `check:` that names a missing
  * module, or a module without a `run` export, throws hard - a broken registry should abort
  * the review, not silently drop a check.
  * @param {Registry} registry
@@ -545,7 +538,7 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
     if (skipSet && skipSet.has(id)) {
       continue;
     }
-    // The `--eslint` opt-in gate, applied HERE (unlike diff/sca, which gate in runChecks
+    // The `--eslint` opt-in gate, applied HERE (unlike the sca gate, which gates in runChecks
     // after the import): code-sanity top-level imports the eslint dependency, so skipping it
     // before the import below avoids loading eslint when it will not run.
     if (!eslintEligible(entry, Boolean(eslint))) {
@@ -604,7 +597,6 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
       title: entry.title,
       severity,
       input,
-      diff: typeof entry.diff === "boolean" ? entry.diff : undefined,
       sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
       instructions: entry.instructions,
       // The permission-prompts token entries, like `prompt` and `instructions`
@@ -653,26 +645,8 @@ export function formatNote(file, loc, item, verdict, label = "") {
 }
 
 /**
- * Whether a registry entry runs in the current review mode, per its `diff`
- * field: `diff: true` only with a --diff-to baseline, `diff: false` only without
- * one (a new submission), an omitted `diff` in both. Shared by the check gate
- * (runChecks) and the manual-checks gate (Registry.manualChecks).
- * @param {{diff?: boolean}} entry @param {boolean} inDiffMode
- * @returns {boolean}
- */
-function diffEligible(entry, inDiffMode) {
-  if (entry.diff === true) {
-    return inDiffMode;
-  }
-  if (entry.diff === false) {
-    return !inDiffMode;
-  }
-  return true;
-}
-
-/**
- * Whether a registry entry runs in the current review REVIEW_MODE, per its `sca` field
- * (mirrors diffEligible): `sca: true` only in SCA mode (a source code archive,
+ * Whether a registry entry runs in the current review REVIEW_MODE, per its `sca` field:
+ * `sca: true` only in SCA mode (a source code archive,
  * triggered by `--sca-root`), `sca: false` only in XPI mode (reviewing a built
  * add-on), an omitted `sca` in both. The `--sca-root` build and dependency checks are
  * `sca: true`; nothing declares `sca: false` today - the vendor and library checks did,
@@ -692,9 +666,9 @@ function scaEligible(entry, inScaMode) {
 }
 
 /**
- * Whether a registry entry runs given the `--eslint` flag, per its `eslint` field
- * (mirrors diffEligible): `eslint: true` is opt-in - it runs only with `--eslint` - and an
- * omitted `eslint` runs always. Unlike the diff/sca gates this is applied in loadChecks
+ * Whether a registry entry runs given the `--eslint` flag, per its `eslint` field:
+ * `eslint: true` is opt-in - it runs only with `--eslint` - and an
+ * omitted `eslint` runs always. Unlike the sca gate this is applied in loadChecks
  * (BEFORE the module import), because the sole `eslint: true` check (code-sanity) top-level
  * imports the heavy `eslint` dependency: gating it here skips that import when it will not run.
  * @param {{eslint?: boolean}} entry @param {boolean} inEslintMode
@@ -796,20 +770,11 @@ export async function runChecks(registry, opts = {}, siblings) {
       "runChecks: siblings.source is required (the review-target ctx)."
     );
   }
-  // Two gates pick which checks run. The `diff` gate (a registry field) keys off
-  // the mode: `diff: true` (e.g. strict-max-version-bump-only) needs a --diff-to
-  // baseline (ctx.previous), `diff: false` is new-submission only (the same gate
-  // also applies to manual-checks entries - see diffEligible/manualChecks, used
-  // by the new-submission-only "Forked add-on" reminder), an omitted `diff` runs
-  // in both. A gated-out check never runs and never appears in the feed or
-  // meta.checksRun.
   const byPhase = await loadChecks(registry, opts);
-  const inDiffMode = Boolean(sourceCtx.previous);
-  // The `sca` gate keys off the review mode (ctx.mode): SCA mode reviews a
-  // source-code submission's readable source + its declared deps, so the
-  // XPI-only bundled/vendor checks (`sca: false`) are dropped and the
-  // source-dependency audit (`sca: true`) is added; XPI mode (the default) is
-  // the inverse. An omitted `sca` runs in both.
+  // The `sca` gate keys off the review mode (ctx.mode): the source-dependency and build
+  // checks (`sca: true`) are added for a source-code submission and dropped for an
+  // XPI-only one. An omitted `sca` runs in both, and nothing declares `sca: false`.
+  // A gated-out check never runs and never appears in the feed or meta.checksRun.
   const inScaMode = sourceCtx.mode?.sca;
   // The orchestrator NAMES the phases it runs, in the order it runs them - a check's
   // phase is simply which list it is in, so a phase never asked for here does not run
@@ -817,9 +782,7 @@ export async function runChecks(registry, opts = {}, siblings) {
   // short-circuits the whole review to the reject phase and nothing else; a normal
   // review runs the deterministic phase. The two gates above apply within each phase.
   const inPhase = (phase) =>
-    (byPhase.get(phase) ?? []).filter(
-      (c) => diffEligible(c, inDiffMode) && scaEligible(c, inScaMode)
-    );
+    (byPhase.get(phase) ?? []).filter((c) => scaEligible(c, inScaMode));
   const checks = sourceCtx.invalidExperiment
     ? inPhase("invalid-experiment")
     : inPhase("deterministic");

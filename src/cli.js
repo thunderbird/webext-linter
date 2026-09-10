@@ -170,7 +170,7 @@ function helpText() {
   const sca = [
     [
       "--sca-root <folder|zip>",
-      "The source archive root (holds package.json/lock). Switches to SCA mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the packaging summary.",
+      "The source archive root (holds package.json/lock). Switches to SCA mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused).",
     ],
     [
       "--sca-source <path>",
@@ -190,10 +190,6 @@ function helpText() {
     [
       "--cdn-lib-lookup <true|false>",
       "Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default: true). Results are cached; an offline run simply finds no match.",
-    ],
-    [
-      "--diff-to <xpi|folder>",
-      "Previously published version, to diff against.",
     ],
     [
       "--eslint",
@@ -251,7 +247,6 @@ const OPTIONS = {
   "sca-root": { type: "string" },
   "sca-source": { type: "string" },
   "sca-exp-source": { type: "string" },
-  "diff-to": { type: "string" },
   "report-format": { type: "string" },
   "report-out": { type: "string" },
   // Accepted and ignored. The review is deterministic, so there is nothing for it to
@@ -437,7 +432,6 @@ function pipelineOptsFromValues(values) {
     scaRoot: values["sca-root"],
     scaSource: values["sca-source"],
     scaExpSource: values["sca-exp-source"],
-    diffTo: values["diff-to"],
   };
 }
 

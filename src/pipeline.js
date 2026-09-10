@@ -95,9 +95,9 @@ import { DEFAULT_CACHE } from "./config.js";
  *   archive root (folder or zip) holding package.json/lock. Setting it switches the
  *   review to SCA mode - the readable source (scaSource) is reviewed and its declared
  *   dependencies are audited; the positional XPI is the shipped artifact against which
- *   the manifest, experiments, file-completeness (`input: xpi`) checks, the --diff-to
- *   comparison, and the packaging summary all run (a separate shipped context the
- *   orchestrator routes them to - see buildXpiCtxs in src/checks/context.js).
+ *   the manifest, experiments and file-completeness (`input: xpi`) checks all run (a
+ *   separate shipped context the orchestrator routes them to - see buildXpiCtxs in
+ *   src/checks/context.js).
  * @property {string} [scaSource]  The add-on code root, relative to scaRoot or an
  *   absolute path (e.g. "src" or "addon"). Optional; defaults to "." (the whole scaRoot
  *   reviewed as the source - a flat layout with manifest.json at the root).
@@ -114,7 +114,6 @@ import { DEFAULT_CACHE } from "./config.js";
  *   --cdn-lib-lookup false disables). Set false to skip the per-file CDN request
  *   (offline/privacy).
  * @property {string} [cdnLookupCache]  Where to cache the CDN hash-lookup results.
- * @property {string} [diffTo]  Path to the previous published version.
  * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
  *   network transport for vendor verification (the test harness injects an
  *   offline one); defaults to the real fetch.
@@ -533,9 +532,8 @@ export async function runPipeline(opts) {
 
   // Phase 4: build the sibling RunContexts the checks read - the last step of setup. The
   // review-level singletons are built ONCE here and shared by every sibling ctx, so they can
-  // never drift between artifacts or double-cost: the --diff-to baseline is loaded once here.
-  // Nothing is parsed here: Phase 2/3 parsed each artifact's sources.
-  const previous = opts.diffTo ? loadAddon(opts.diffTo) : null;
+  // never drift between artifacts or double-cost. Nothing is parsed here: Phase 2/3 parsed
+  // each artifact's sources.
 
   // The shared review env every sibling ctx projects (buildXpiCtxs / buildScaCtxs). The
   // manifest/experiments are the SHIPPED artifact's - authoritative like the schema, so no
@@ -552,12 +550,11 @@ export async function runPipeline(opts) {
     manifestLoc: xpiAddon.manifestLoc ?? null,
     manifestText: xpiAddon.manifestText ?? "",
     experiments: xpiAddon.experiments ?? null,
-    previous,
   };
 
   // From the ALWAYS-analysed built XPI: the shipped ctx (siblings.xpi - the input:xpi structure
-  // checks, the diff + packaging summaries) and the manifest ctx (input:manifest checks, an empty
-  // corpus carrying only the shipped manifest).
+  // checks) and the manifest ctx (input:manifest checks, an empty corpus carrying only the
+  // shipped manifest).
   const { xpiCtx, manifestCtx } = buildXpiCtxs(xpiAddon, xpiParsedSources, env);
   // SCA only: from the readable-source analysis, the source ctx (the review target the code
   // checks analyse) and the SCA build corpus ctx (undeclared-build-source). `mode?.sca` implies
@@ -616,9 +613,7 @@ export async function runPipeline(opts) {
             ...m,
             extended: true,
           })),
-          ...registry
-            .manualChecks(Boolean(previous))
-            .map((m) => ({ ...m, extended: false })),
+          ...registry.manualChecks().map((m) => ({ ...m, extended: false })),
         ],
   });
 

@@ -38,7 +38,6 @@ import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 import vendorVulnerableDev from "../../src/checks/rules/vendor-vulnerable-dev.js";
 import { rawSha256 } from "../../src/normalize/hash.js";
 import apiCoverage from "../../src/checks/rules/api-coverage.js";
-import strictMaxBumpOnly from "../../src/checks/rules/strict-max-version-bump-only.js";
 import trademarkViolation from "../../src/checks/rules/trademark-violation.js";
 import coreSymbolInWebext from "../../src/checks/rules/core-symbol-in-webext.js";
 import missingEnglish from "../../src/checks/rules/missing-english-localization.js";
@@ -619,83 +618,6 @@ test("api-coverage flags dynamic limits; unparsable-file flags parse failures", 
   assert.match(unparsable[0].data.detail, /Unexpected token/);
 });
 
-// ---- strict-max-version-bump-only (diff vs --previous) ----
-// With a previous version it fires only when the sole change is a version bump
-// plus the gecko strict_max_version; any other file or manifest change, an
-// unchanged strict_max_version, or a missing baseline keeps it silent.
-test("strict-max-version-bump-only fires only on a pure version+strict_max bump", () => {
-  const manifest = (max, version = "1.0") => ({
-    manifest_version: 3,
-    name: "x",
-    version,
-    browser_specific_settings: {
-      gecko: { id: "a@b", strict_max_version: max },
-    },
-  });
-  const ver = (m, files = {}) => ({
-    manifest: m,
-    files: new Map([
-      ["manifest.json", Buffer.from(JSON.stringify(m))],
-      ...Object.entries(files).map(([k, v]) => [k, Buffer.from(v)]),
-    ]),
-  });
-  const bg = "console.log(1);\n";
-  const prev = ver(manifest("115.0"), { "bg.js": bg });
-  const run = (addon, previous) =>
-    strictMaxBumpOnly.run(withManifest({ addon, previous })).findings;
-
-  // Only version + strict_max_version changed -> fires.
-  assert.equal(
-    run(ver(manifest("128.0", "1.1"), { "bg.js": bg }), prev).length,
-    1
-  );
-  // No baseline -> silent.
-  assert.equal(
-    run(ver(manifest("128.0", "1.1"), { "bg.js": bg }), null).length,
-    0
-  );
-  // A code file also changed -> silent.
-  assert.equal(
-    run(ver(manifest("128.0", "1.1"), { "bg.js": "console.log(2);\n" }), prev)
-      .length,
-    0
-  );
-  // strict_max_version unchanged (only the version bumped) -> silent.
-  assert.equal(
-    run(ver(manifest("115.0", "1.1"), { "bg.js": bg }), prev).length,
-    0
-  );
-  // Another manifest key changed too -> silent.
-  const renamed = { ...manifest("128.0", "1.1"), name: "y" };
-  assert.equal(run(ver(renamed, { "bg.js": bg }), prev).length, 0);
-
-  // The fired finding anchors on the strict_max_version line of the current
-  // manifest text (multi-line, unlike the single-line JSON.stringify helper).
-  const curText =
-    '{\n  "version": "1.1",\n' +
-    '  "browser_specific_settings": { "gecko": { "id": "a@b", "strict_max_version": "128.0" } }\n}\n';
-  const located = run(
-    {
-      manifest: manifest("128.0", "1.1"),
-      files: new Map([
-        ["manifest.json", Buffer.from(curText)],
-        ["bg.js", Buffer.from(bg)],
-      ]),
-    },
-    prev
-  );
-  assert.equal(located.length, 1);
-  assert.equal(located[0].loc.line, 3);
-});
-
-// The diff gate: the registry marks this a diff check (diff: true), so the
-// orchestrator runs it only with a --diff-to baseline (see runChecks).
-test("strict-max-version-bump-only is registered as a diff check", async () => {
-  const checks = allChecks(await loadChecks(loadRegistry()));
-  const c = checks.find((x) => x.id === "strict-max-version-bump-only");
-  assert.equal(c?.diff, true);
-});
-
 // The eslint gate (eslintEligible): code-sanity is eslint:true, so it loads ONLY with the
 // --eslint flag. Gated in loadChecks, before the import, so the eslint dependency is not
 // pulled in when the check will not run.
@@ -839,7 +761,6 @@ test("every check's severity is pinned to its band", async () => {
       "find-lib-on-cdn",
       "minimize-host-permissions",
       "missing-library",
-      "strict-max-version-bump-only",
       "unparsable-file",
       "unrecognized-manifest-key",
       "unsafe-html",
@@ -932,7 +853,6 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "default-locale-unused",
     "minimize-web-accessible-resources",
     "missing-english-localization",
-    "strict-max-version-bump-only",
     "trademark-violation",
     "unrecognized-file-type",
     "unrecognized-manifest-key",
@@ -1207,17 +1127,15 @@ test("committed-node-modules flags each recorded node_modules directory", () => 
   assert.deepEqual(committedNodeModules.run({}).findings, []);
 });
 
-// ---- manual-checks diff gate (the "Forked add-on" reminder) ----
-// "Forked add-on" is now a manual-checks entry marked diff: false, so it shows
-// only for a new submission, not when reviewing against a --diff-to baseline. An
-// ungated manual-checks entry (e.g. the spam check) shows in both modes.
-test("manualChecks gates diff:false entries to new submissions", () => {
+// ---- manual-checks ----
+// Every entry is emitted for every review: the list is the always-by-hand work, with
+// no gate of its own. What a CHECK escalates is surfaced by the orchestrator instead.
+test("manualChecks emits every entry, ungated", () => {
   const reg = loadRegistry();
-  const titles = (inDiff) => reg.manualChecks(inDiff).map((m) => m.title);
-  assert.ok(titles(false).includes("Forked add-on")); // new submission
-  assert.ok(!titles(true).includes("Forked add-on")); // diff review excludes it
-  assert.ok(titles(false).includes("Check the submission for spam"));
-  assert.ok(titles(true).includes("Check the submission for spam"));
+  const titles = reg.manualChecks().map((m) => m.title);
+  assert.ok(titles.includes("Forked add-on"));
+  assert.ok(titles.includes("Check the submission for spam"));
+  assert.equal(titles.length, reg.manualCheckIds().length);
 });
 
 // Every manual-checks entry carries a `check:` id (id metadata, not a runnable
@@ -1227,8 +1145,8 @@ test("manualChecks gates diff:false entries to new submissions", () => {
 test("manual checks have unique, doc-backed check ids distinct from rule ids", () => {
   const reg = loadRegistry();
   const manualIds = reg.manualCheckIds();
-  const manualTitles = reg.manualChecks(false).concat(reg.manualChecks(true));
-  // One id per manual-checks entry (the diff:false "Forked add-on" included).
+  const manualTitles = reg.manualChecks();
+  // One id per manual-checks entry.
   assert.equal(manualIds.length, 10);
   assert.equal(new Set(manualIds).size, manualIds.length, "ids are unique");
   // Manual ids are NOT in the runnable check namespace (no rule module).
@@ -3049,37 +2967,6 @@ test("non-experiment-strict-max-version notes pass / fail / skipped", () => {
       browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
     })[0].verdict,
     VERDICT.SKIPPED // an Experiment is the other check's concern
-  );
-});
-
-test("strict-max-version-bump-only notes fail / pass", () => {
-  const m = (max, version = "1.0") => ({
-    manifest_version: 3,
-    name: "x",
-    version,
-    browser_specific_settings: {
-      gecko: { id: "a@b", strict_max_version: max },
-    },
-  });
-  const ver = (mf, files = {}) => ({
-    manifest: mf,
-    files: new Map([
-      ["manifest.json", Buffer.from(JSON.stringify(mf))],
-      ...Object.entries(files).map(([k, v]) => [k, Buffer.from(v)]),
-    ]),
-  });
-  const bg = "console.log(1);\n";
-  const prev = ver(m("115.0"), { "bg.js": bg });
-  const v = (addon, previous) =>
-    notesFrom(strictMaxBumpOnly, { addon, previous });
-  assert.equal(
-    v(ver(m("128.0", "1.1"), { "bg.js": bg }), prev)[0].verdict,
-    VERDICT.FAIL
-  );
-  assert.equal(
-    v(ver(m("128.0", "1.1"), { "bg.js": "console.log(2);\n" }), prev)[0]
-      .verdict,
-    VERDICT.PASS // a code file also changed
   );
 });
 

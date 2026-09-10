@@ -513,9 +513,8 @@ const withReview = (findings, verdictIntros) => ({
   verdictIntros,
 });
 
-// formatReviewBody is the report without the tally; formatSummary is just the
-// tally. They concatenate back to formatText (formatText
-// additionally inserts the advisory "Summary of add-on"/"Summary of changes"
+// formatReviewBody is the report without the tally; formatSummary is just the tally.
+// They concatenate back to formatText.
 test("formatReviewBody / formatSummary split the report and round-trip", () => {
   const r = {
     findings: [mkFinding("info", "an info finding", "manifest.json", null)],

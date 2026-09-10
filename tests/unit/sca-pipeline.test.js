@@ -595,50 +595,6 @@ test("SCA e2e: unused-files flags the build's dead files, not source scaffolding
   }
 });
 
-test("SCA e2e: --diff-to diffs the built XPI against the baseline XPI, not the source", async () => {
-  // The baseline XPI and the new (positional) XPI differ ONLY in strict_max_version.
-  const manifest = (smax) =>
-    JSON.stringify({
-      manifest_version: 3,
-      name: "SCA Diff",
-      version: "1.0",
-      background: { scripts: ["background.js"] },
-      browser_specific_settings: {
-        gecko: { id: "diff@sca", strict_max_version: smax },
-      },
-    });
-  const oldXpi = tmpDir({
-    "manifest.json": manifest("100.0"),
-    "background.js": `console.log("v1");`,
-  });
-  const newXpi = tmpDir({
-    "manifest.json": manifest("110.0"),
-    "background.js": `console.log("v1");`,
-  });
-  // The readable source is a different layout - the diff must ignore it entirely.
-  const src = tmpDir(SRC_FILES);
-  try {
-    const { findings } = await runPipeline({
-      addonPath: newXpi,
-      scaRoot: src,
-      scaSource: "src",
-      diffTo: oldXpi,
-      ...OFFLINE,
-    });
-    // Only strict_max_version moved between the two XPIs, so the bump-only diff
-    // fires - proving --diff-to compared the built XPIs, not the source tree (whose
-    // files share nothing byte-identical with the XPI and would suppress it).
-    assert.ok(
-      has(findings, "strict-max-version-bump-only"),
-      "expected the version-bump diff to fire against the XPI baseline in SCA"
-    );
-  } finally {
-    [oldXpi, newXpi, src].forEach((d) =>
-      fs.rmSync(d, { recursive: true, force: true })
-    );
-  }
-});
-
 test("SCA e2e: locale checks evaluate _locales against the XPI, not the source", async () => {
   // The XPI ships _locales/en (as a build would); the readable source tree does
   // not (generated, or kept outside --sca-source).

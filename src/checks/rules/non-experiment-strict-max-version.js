@@ -7,7 +7,6 @@
 // Does NOT belong here: detecting Experiment status or reading the max version
 // (-> isExperiment and strictMaxVersion in src/lib/util.js). Requiring a
 // max version on an Experiment (-> experiment-missing-strict-max-version.js).
-// Spotting a bump-only resubmission (-> strict-max-version-bump-only.js).
 // Authored wording (-> assets/registry.yaml). Severity (-> the non-
 // experiment-strict-max-version registry entry, stamped by src/checks/
 // registry.js).
