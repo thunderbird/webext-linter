@@ -115,11 +115,11 @@ export default {
 
 /**
  * Record one site whose containing file matched a published upstream release as a
- * escalation no model can help with. The line is that release's own, so what it
+ * escalation for a person to settle. The line is that release's own, so what it
  * does is not the developer's choice to defend - but nor does it follow that the
  * developer NEEDS this file or could not ship a build without it
  * (verifiedVendorSource states a fact about content, not about intent). Whether the
- * check knows where the load points or not, a model verdict on that question would
+ * check knows where the load points or not, resolving where it points would
  * not change the outcome, so the case is marked `manualReview: true` (which
  * registry.rechecks honours) and the report gives the reviewer both URLs.
  *
@@ -169,8 +169,8 @@ function pushHtml(ctx, findings, sites, forHumans, file, ref, upstream) {
   const undecidable = klass.embedded && kind.script;
   if (upstream && (klass.remote || undecidable)) {
     // Upstream's own line, whether or not we could resolve where it points: the
-    // undecidable ones go here too, because a model verdict could only turn one
-    // into a finding this file is exempt from.
+    // undecidable ones go here too, because resolving one could only turn it into
+    // a finding this file is exempt from.
     pushVendored(ctx, forHumans, file, loc, url, upstream, item);
   } else if (klass.remote) {
     findings.push(finding({ file, loc, item: url }));

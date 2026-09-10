@@ -4,7 +4,7 @@
 // of the raw source, so it sees code and never comments: the atoms come from AST
 // nodes, which carry no comment text, exactly the way every other analysis scanner
 // ignores comments by walking the parse tree rather than the source string. Each
-// atom carries its line so the unused-permission recheck can POINT the model at a
+// atom carries its line so unused-permission can POINT the reviewer at a
 // token occurrence, not only test presence.
 //
 // Belongs here: collecting the code-text atoms (value + line) from a parsed AST.

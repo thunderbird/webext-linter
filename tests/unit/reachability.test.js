@@ -655,7 +655,7 @@ test("minimize-WAR flags over-broad exposure and unloaded resources", () => {
 // An ambiguous file (mentioned but not statically reached) becomes a candidate
 // per suspected loader site; the rule itself decides nothing. With no
 // token each resolves to a manual note on the file F, and every candidate points
-// at the loader site (bg.js) the model would judge.
+// at the loader site (bg.js) the reviewer would follow.
 test("unused-files makes a candidate per ambiguous file's loader site", () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {

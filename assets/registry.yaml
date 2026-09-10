@@ -877,7 +877,7 @@ deterministic-phase:
 # src/lib/obfuscation.js WEAK_FAMILIES) escalates to a reviewer, guided by the
 # prompt below (fail -> finding, unsure -> manual review via the instructions,
 # pass -> drop). The prompt deliberately never mentions the structural detector or
-# what it matched, so the model judges the file cold and cannot be steered into
+# what it matched, so the reviewer judges the file cold and cannot be steered into
 # confirming a detector claim.
 - title: Obfuscated code is not permitted
   severity: error
@@ -1017,7 +1017,7 @@ deterministic-phase:
 # @import/url() in CSS, import()/importScripts()/module imports, runtime <script>
 # injection, remote WASM, and a CSP that permits a remote source. The definite
 # remote loads are flagged deterministically; only the statically-undecidable
-# sources reach the model.
+# sources are escalated.
 - title: Remote resources
   severity: error
   check: remote-resources
@@ -1201,7 +1201,7 @@ permission-prompts:
     tokens:
       - blocking
     # The example event `onAfterSendHeaders` below is DELIBERATELY fictional (real ones are
-    # onBeforeSendHeaders / onSendHeaders / onBeforeRequest / ...): it forces the model to
+    # onBeforeSendHeaders / onSendHeaders / onBeforeRequest / ...): it forces the reviewer to
     # match the PATTERN (a webRequest.on* addListener with "blocking" in an array arg) and
     # apply it to the real event in the code, not echo the example. Do NOT "correct" it.
     prompt: |-

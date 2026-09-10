@@ -203,7 +203,7 @@ test("renderManualItems sets listItem + locus for an item-free instructions ref"
   assert.ok(!m.instructions.includes("{{item}}"));
 });
 
-// A substituted value is submission-derived - an item, a path, a URL, a model's
+// A substituted value is submission-derived - an item, a path, a URL, the developer's
 // words - so fill() cleans each one. That is what keeps the finished `message` safe
 // without stripping the message itself, whose authored line breaks must survive.
 test("a substituted value carries no control characters into the message", () => {

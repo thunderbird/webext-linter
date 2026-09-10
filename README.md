@@ -145,7 +145,7 @@ minified/obfuscated build.
   `node_modules` folder or a built archive (`.xpi` / `.zip` - both are build output,
   never shipped in a source submission), must not point the package registry elsewhere
   (an `.npmrc` `registry=` is rejected), and any `package.json` install hook
-  (`postinstall`, …) is flagged. Then one setup model call classifies the build (over
+  (`postinstall`, …) is flagged. The build corpus is collected once in setup (over
   the files reached from `package.json`), and two checks gate on it: it must **not
   fetch code or a resource from an undeclared source** (a raw URL, `curl|sh`, an
   unpinned `git clone`, a CDN, a postinstall hook), and must be **built from the source**

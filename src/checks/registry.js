@@ -362,7 +362,7 @@ export class Registry {
    * check's `instructions`, or - for a `manualReview` ref - its
    * `manual-review-instructions`. The two are different texts because they ask
    * different things: the normal one asks the reviewer to establish something a
-   * model was going to be asked about, which for these cases is not what is left.
+   * the ordinary case asks about, which for these cases is not what is left.
    *
    * Such a ref whose entry authors no wording RAISES. Nothing at load time can tell
    * which checks raise them - a check decides that per case, at run time - so this
@@ -608,7 +608,7 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
 
 // Tag column width, sized to the widest "[label]" so the file column aligns. The
 // note vocabulary is every VERDICT (fail/pass/unsure judgments + the note-only
-// skipped/info); the model's answer (schema.js WIRE_VERDICTS) is only ever
+// skipped/info); a check's own judgement is only ever
 // fail/pass/unsure.
 const TAG_WIDTH = Math.max(
   ...Object.values(VERDICT).map((v) => verdictLabel(v).length + 2)

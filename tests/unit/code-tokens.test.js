@@ -64,7 +64,7 @@ test("reuses a provided ParseResult", () => {
 });
 
 // Each atom carries its 1-based source line, with lineOffset applied - so the
-// recheck can point the model at a token's real location.
+// escalation can point the reviewer at a token's real location.
 test("atoms carry their source line (lineOffset applied)", () => {
   const code = ["const a = 1;", "messenger.tabs.executeScript(t);"].join("\n");
   const { atoms } = scanCodeText(code, 10);

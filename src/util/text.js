@@ -1,6 +1,6 @@
 // Word-wrap for prose printed to the terminal or report - notably review-authored
 // text (the change summary, escalation explanations), whose lines can be
-// arbitrarily long. Each source line is wrapped independently so the model's
+// arbitrarily long. Each source line is wrapped independently so the text's
 // own structure (bullets, blank lines) is kept, and a leading list marker
 // hanging-indents its continuations.
 //
@@ -75,7 +75,7 @@ export function humanSize(bytes) {
 }
 
 /**
- * Text from the submission - or from a model reading it - made safe to put in front
+ * Text from the submission, made safe to put in front
  * of a person. Control and format characters go: an escape sequence can repaint the
  * terminal around a finding, erasing what sits above it, and a bidi override can make
  * a path read as something it is not. Tab, carriage return and newline stay: they are

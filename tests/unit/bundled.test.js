@@ -171,7 +171,7 @@ test("a minified non-library is non-authored and rejected; identified libraries 
 // A weak-family-only match is not a verdict: the file stays readable authored code
 // (scanned, reviewable), and obfuscated-code turns it into ONE escalation judged
 // from the file's own content - with no hint of what the detector matched, so the
-// model cannot be steered into confirming a detector claim. The resolve maps the
+// reviewer cannot be steered into confirming a detector claim. The escalation names the
 // verdict 1:1: fail -> finding, pass -> drop, unsure -> manual review (also the
 // no-token default).
 test("a weak-family-only file is not obfuscated: authored, one escalation", () => {
@@ -539,7 +539,7 @@ test("classifyInlineSources ignores a source that is not a script body", () => {
   assert.equal(classifyInlineSources(asBody).length, 1);
 });
 
-// A weak-family-only body: obfuscation UNSURE, so obfuscated-code asks the model rather
+// A weak-family-only body: obfuscation UNSURE, so obfuscated-code escalates rather
 // than deciding. Repeated helpers with a shared accessor - the shape the detector
 // half-recognises. >= 1024 bytes so it clears the floor.
 const WEAK_FAMILY =
@@ -553,7 +553,7 @@ const WEAK_FAMILY =
   '  return { run: (i, v) => table[i](v) };\n})();\nM.run(0, "x");\n';
 
 // Two unsure scripts in ONE page are two questions. The candidate must carry the line:
-// the criterion renders `file:line`, so without it the model sees one subject named
+// the entry renders `file:line`, so without it the reviewer sees one subject named
 // twice, and a verdict can be attached to the wrong body.
 test("an inline obfuscation candidate names its site, not just its page", async () => {
   const obfuscated = (await import("../../src/checks/rules/obfuscated-code.js"))

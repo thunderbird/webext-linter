@@ -21,7 +21,7 @@ test("wrapText wraps a long line within the width (including indent)", () => {
   assert.ok(lines.every((l) => l.startsWith("  ")));
 });
 
-// The model's own structure is kept: each source line wraps on its own, blank
+// The text's own structure is kept: each source line wraps on its own, blank
 // lines survive (no re-fill across lines).
 test("wrapText preserves source line breaks and blank lines", () => {
   assert.deepEqual(wrapText("first line\n\nsecond line", "", 80), [

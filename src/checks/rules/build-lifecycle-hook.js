@@ -6,7 +6,7 @@
 // Legitimate uses exist (a husky `prepare`), so this is a warning per hook, not a hard
 // reject - it points the reviewer at each hook to confirm it only touches local files.
 //
-// The setup build analysis (analyzeBuild) also reasons about hooks via the model, but only
+// The setup build analysis (analyzeBuild) also looks at hooks, but only
 // with a token; this is the deterministic, always-on backstop.
 //
 // Belongs here: reading the install-hook scripts and emitting a finding each. Does NOT

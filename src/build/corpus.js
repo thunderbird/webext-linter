@@ -1,5 +1,5 @@
-// Selects the build files the SCA build analysis (analyzeBuild, ./analyze.js) sends to the
-// model, by COLLECTING from package.json (an allowlist), not by pruning the whole build tree. The
+// Selects the build files the SCA build analysis (analyzeBuild, ./analyze.js) reports,
+// by COLLECTING from package.json (an allowlist), not by pruning the whole build tree. The
 // build has a deterministic entry point exactly like the normal review's manifest.json:
 // package.json. We seed from it and follow its `scripts`, so a file is collected only
 // because the build references it. Build OUTPUT (a committed dist/, a built .xpi), docs,
@@ -181,7 +181,7 @@ const PM_SUBCOMMANDS = new Set([
 /**
  * @param {{files: Map<string, Buffer>}} build  The build files (ctx.addon in build ctx).
  * @returns {{corpus: string[], resolved: string[], unresolved: {kind: string, detail: string}[]}}
- *   corpus = the file paths to send the model; resolved = recognized build-tool names;
+ *   corpus = the collected build file paths; resolved = recognized build-tool names;
  *   unresolved = build steps the linter could not statically bound (force human review).
  */
 export function selectBuildCorpus(build) {
@@ -219,7 +219,7 @@ export function selectBuildCorpus(build) {
 
   // Seeds: package.json (the declared deps + scripts) and every .npmrc (registry config).
   // NOT the lock file - it is large, mostly integrity hashes, and adds no build-safety
-  // signal the model can use; the deterministic dep/registry checks read it directly.
+  // build-safety signal of its own; the dep/registry checks read it directly.
   if (files.has("package.json")) {
     keep.add("package.json");
   }
@@ -333,7 +333,7 @@ export function selectBuildCorpus(build) {
     // An opaque, non-npm build orchestrator (make/gradle/...) cannot be followed, so the
     // build corpus is incomplete -> flag. Any OTHER unrecognized command (an npm CLI, a
     // custom bin from a declared dependency) is left alone: it runs from the declared
-    // dependencies and the model still sees the invoking script in package.json.
+    // dependencies, and the invoking script is in package.json either way.
     if (OPAQUE_TOOLS.has(cmd)) {
       flag("tool", cmd);
     }

@@ -10,7 +10,7 @@
 // pipeline-level schema-selection helpers (resolveReviewSchema,
 // selectSchemaChannel, detectManifestVersion).
 //
-// Does NOT belong here: the cache/model defaults and behavior toggles -
+// Does NOT belong here: the cache defaults and behavior toggles -
 // src/config.js. The schema channel set + branch names - src/schema/fetch.js.
 // Argv parse, validation, and printing (src/cli.js and
 // src/report/format.js); each stage's own work - add-on load
@@ -76,13 +76,6 @@ import { DEFAULT_CACHE } from "./config.js";
 
 /** @typedef {import("./report/finding.js").Finding} Finding */
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
-/**
- * An advisory summary already generated during the activity feed: the
- * transmitted byte size and the model's prose (null if the call failed), plus a
- * one-line `error` reason when it failed (shown in the report's summary
- * section). The caller prints the prose after the report.
- * @typedef {{bytes: number, text: ?string, error?: string}} GeneratedSummary
- */
 
 /**
  * @typedef {object} PipelineOpts
@@ -321,7 +314,7 @@ export async function runPipeline(opts) {
   // registered into the schema below.
   let xpiExperimentNamespaces = null;
   // The rest of setup serves a REVIEWABLE add-on, and is skipped WHOLESALE for a rejected
-  // Experiment: it runs only the invalid-experiment phase against the shipped XPI - no model
+  // Experiment: it runs only the invalid-experiment phase against the shipped XPI - no
   // call, no libraries to recognize, no mode to resolve - so none of this would be read.
   if (!invalidExperiment) {
     // A valid Experiment's declared APIs are part of its platform: register their base

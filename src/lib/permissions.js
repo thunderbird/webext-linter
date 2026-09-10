@@ -556,7 +556,7 @@ function locateTokens(ctx, tokens) {
 /**
  * The token sites of one permission, merged across its tokens and deduped by
  * `file:line` (two tokens on the same line collapse to one site), each stamped with
- * an orchestrator-minted id the recheck hands the model to echo a verdict back
+ * an orchestrator-minted id naming the site, so a verdict can be echoed back
  * against. Empty when the permission has no tokens (a token-less permission) or when
  * none of its tokens occur in the reviewed corpus - the recheck then judges it
  * holistically.

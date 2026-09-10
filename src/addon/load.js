@@ -334,7 +334,7 @@ export function loadScaAddon(archive, scaSource, scaRoot) {
  * A pure EXCLUDE rule (no allow-list to maintain): whatever remains after removing the
  * add-on source, the Experiment source, and dot-prefixed paths is the build candidate
  * pool, from which the setup build analysis (analyzeBuild) selects the build-relevant
- * subset to show the model by tracing package.json (src/build/corpus.js). Dotfiles/folders
+ * subset by tracing package.json (src/build/corpus.js). Dotfiles/folders
  * (.git, .github, .idea, .yarnrc, ...) are dropped as VCS/editor/CI noise - EXCEPT .npmrc,
  * the npm/pnpm registry config the build-tooling checks read.
  *

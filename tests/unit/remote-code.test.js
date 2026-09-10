@@ -685,7 +685,7 @@ test("formatNote renders a padded verdict tag and the site", () => {
 // A remote @import inside a file whose content matched a published upstream release
 // is that release's own line. It is not dropped (a reviewer still sees it) and not a
 // finding (it is not the developer's line), and it is marked `manualReview` so
-// registry.rechecks keeps it away from the model - what is left is whether shipping
+// it is a manual-review case - what is left is whether shipping
 // that release here is acceptable, which is a person's call.
 const VENDORED_CSS = {
   "lib/x.css": `@import url("https://fonts.example/f.css");`,
@@ -765,7 +765,7 @@ test("remote-resources refuses the exemption for a file marked untrusted", () =>
 });
 
 // An undecidable site in a verified vendored file goes to the reviewer too, not the
-// model: the only thing a verdict could do there is produce a finding this file is
+// reviewer: the only thing resolving it could do is produce a finding this file is
 // exempt from, so the undecidable question is not asked about it at all.
 test("remote-resources asks a different question about a verified vendored file", () => {
   const ctx = fakeCtx(
