@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/vue-sca-handler/src",
+    "addon": "<root>/tests/addons/sca-vendor-declared/src",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
@@ -97,19 +97,29 @@
   "summary": {
     "error": 0,
     "warning": 0,
-    "info": 1,
+    "info": 2,
     "byRule": {
-      "unsafe-html": 1
+      "unsafe-html": 1,
+      "untrusted-library": 1
     }
   },
   "findings": [
     {
+      "ruleId": "untrusted-library",
+      "severity": "info",
+      "file": "lib/widget.js",
+      "loc": null,
+      "item": "lib/widget.js",
+      "hint": "https://unpkg.com/widget@1.0.0/dist/widget.js",
+      "message": "The following bundled file(s) are third-party libraries whose origin we could not confirm - either the file matches an upstream release whose package is not a widely-used library, or the declared source could not be checked at all (none was given, it is on a host we do not fetch from, or it has no such release). They are therefore not trusted as reviewed dependencies and are reviewed as authored code - the standard checks apply to them, so a finding may be reported against library code here. Confirm that each is a legitimate, appropriate dependency.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
+    },
+    {
       "ruleId": "unsafe-html",
       "severity": "info",
-      "file": "Comp.vue",
+      "file": "lib/widget.js",
       "loc": {
-        "line": 7,
-        "column": 5
+        "line": 3,
+        "column": 0
       },
       "item": ".innerHTML",
       "hint": null,

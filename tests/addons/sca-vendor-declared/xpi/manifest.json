@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "SCA Vendor Declared",
+  "version": "1.0",
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png" }
+}

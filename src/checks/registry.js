@@ -674,9 +674,10 @@ function diffEligible(entry, inDiffMode) {
  * Whether a registry entry runs in the current review REVIEW_MODE, per its `sca` field
  * (mirrors diffEligible): `sca: true` only in SCA mode (a source code archive,
  * triggered by `--sca-root`), `sca: false` only in XPI mode (reviewing a built
- * add-on), an omitted `sca` in both. The XPI bundled/vendor checks are `sca:
- * false` (they need the XPI dependency tree, absent for a source archive); the
- * `--sca-root` dependency audit is `sca: true`.
+ * add-on), an omitted `sca` in both. The `--sca-root` build and dependency checks are
+ * `sca: true`; nothing declares `sca: false` today - the vendor and library checks did,
+ * which exempted a source archive's declared files from review with nothing verifying
+ * the declaration. The gate stays for a check that genuinely cannot run on an archive.
  * @param {{sca?: boolean}} entry @param {boolean} inScaMode
  * @returns {boolean}
  */

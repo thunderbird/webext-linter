@@ -90,6 +90,8 @@ import {
 /**
  * Verify the resolved vendor declarations over the network, appending per-file
  * results to (and extending the skip-set of) the shared `addon.vendor` store.
+ * The shipped-XPI batch: the VENDOR declarations PLUS the declared package.json
+ * dependencies, whose shipped copies are matched against the published tarball.
  * @param {Addon} addon  Must already carry `addon.vendor` from resolveVendor.
  * @param {VendorNet} [net]
  * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist, applied to
@@ -97,6 +99,53 @@ import {
  * @returns {Promise<void>}
  */
 export async function verifyVendor(addon, net = defaultNet, blocks) {
+  await verifyVendorDeclarations(addon, net, blocks);
+  const vendor = addon?.vendor;
+  if (!vendor) {
+    return;
+  }
+  for (const pkg of vendor.packages) {
+    await verifyPackage(pkg, addon, vendor, net);
+    await auditNpm(
+      pkg.name,
+      pkg.version,
+      "package.json",
+      pkg.name,
+      vendor,
+      net,
+      vendor.vulnerabilities,
+      blocks
+    );
+  }
+  // A `not-popular` outcome is reconciled into addon.bundled.untrusted later, by
+  // applyUnverifiedVendor (src/lib/bundled.js), because addon.bundled is
+  // built AFTER this step in the pipeline. It stays in vendor.results until then.
+}
+
+/**
+ * Verify a VENDOR file's declarations, and ONLY those: each declared path is compared
+ * against the bytes its declared source serves, and the outcome recorded on
+ * `vendor.results`. Split out of verifyVendor because it applies to whichever artifact
+ * carries the declarations - a shipped XPI, or a submitted source archive, where the
+ * declared file is likewise committed and present to hash. The package.json half of
+ * verifyVendor does NOT apply to a source archive: dependencies are installed at build
+ * time, so there is nothing there to compare (see verifyPackage).
+ *
+ * Verification is what EARNS a declaration its exemption: an entry that does not verify
+ * leaves a result row that applyUnverifiedVendor reconciles into the untrusted family, so
+ * the file is reviewed as the developer's own code. Without this step the exemption is
+ * granted on the declaration alone.
+ *
+ * @param {Addon} addon  Must already carry `addon.vendor` from resolveVendor.
+ * @param {VendorNet} [net]
+ * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist (see auditNpm).
+ * @returns {Promise<void>}
+ */
+export async function verifyVendorDeclarations(
+  addon,
+  net = defaultNet,
+  blocks
+) {
   const vendor = addon?.vendor;
   if (!vendor) {
     return;
@@ -143,22 +192,6 @@ export async function verifyVendor(addon, net = defaultNet, blocks) {
       await auditGithub(entry, src, addon, vendor, net, blocks);
     }
   }
-  for (const pkg of vendor.packages) {
-    await verifyPackage(pkg, addon, vendor, net);
-    await auditNpm(
-      pkg.name,
-      pkg.version,
-      "package.json",
-      pkg.name,
-      vendor,
-      net,
-      vendor.vulnerabilities,
-      blocks
-    );
-  }
-  // A `not-popular` outcome is reconciled into addon.bundled.untrusted later, by
-  // applyUnverifiedVendor (src/lib/bundled.js), because addon.bundled is
-  // built AFTER this step in the pipeline. It stays in vendor.results until then.
 }
 
 /**

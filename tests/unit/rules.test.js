@@ -712,19 +712,30 @@ test("code-sanity is gated by the --eslint flag", async () => {
   );
 });
 
-// The SCA mode gate (scaEligible, mirrors the diff gate): the XPI bundled/vendor
-// checks are sca:false (skipped for a source-code submission), the source
-// dependency audit is sca:true (XPI-only-skipped), and a code check is untagged
-// (runs in both, the orchestrator just switches the review SOURCE).
-test("checks carry the sca mode tag (false=XPI-only, true=SCA-only, undefined=both)", async () => {
+// The SCA mode gate (scaEligible, mirrors the diff gate): the build and dependency
+// checks are sca:true (they review an archive, absent from an XPI-only submission), and
+// everything else is untagged - it runs in both modes and the orchestrator switches the
+// review SOURCE under it. NO entry declares sca:false today: the vendor and library
+// checks used to, which silently exempted a source archive's declared files from review
+// while nothing verified the declaration. The gate itself remains for a check that
+// genuinely cannot run on a source archive.
+test("checks carry the sca mode tag (true=SCA-only, undefined=both; none is XPI-only)", async () => {
   const checks = allChecks(await loadChecks(loadRegistry()));
   const sca = (id) => checks.find((x) => x.id === id)?.sca;
+  assert.deepEqual(
+    checks.filter((c) => c.sca === false).map((c) => c.id),
+    []
+  );
   // minified-code runs in BOTH modes: a minified file is non-authored and rejected
   // whether it ships in a built XPI or sits in a source-code submission's source.
   assert.equal(sca("minified-code"), undefined);
-  // untrusted-minified-library stays XPI-only: it reads untrustedLibs, populated only
-  // by the CDN-lookup setup step, which SCA skips - it cannot fire in SCA regardless.
-  assert.equal(sca("untrusted-minified-library"), false);
+  // The vendor/library family runs in both too: a source archive may carry its own
+  // VENDOR file, verified the same way (verifyVendorDeclarations), and the CDN/hash
+  // identification runs on the source as well (identifyBundledLibraries, scope source).
+  assert.equal(sca("untrusted-minified-library"), undefined);
+  assert.equal(sca("untrusted-library"), undefined);
+  assert.equal(sca("vendor-modified"), undefined);
+  assert.equal(sca("unpinned-vendor-source"), undefined);
   // unused-files runs in BOTH modes: it describes the shipped XPI (dead files the
   // build ships), like bundled-files / minimize-WAR - all registered `input: xpi`.
   assert.equal(sca("unused-files"), undefined);

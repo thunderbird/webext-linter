@@ -262,7 +262,6 @@ deterministic-phase:
 # release (named after each path) that is not declared in a VENDOR file.
 - title: Missing third-party library reference
   severity: info
-  sca: false
   check: missing-library
   input: source
   response: |-
@@ -273,7 +272,6 @@ deterministic-phase:
 # were found on the jsDelivr CDN - a known third-party library, shipped undeclared.
 - title: Library identified on a CDN
   severity: info
-  sca: false
   check: find-lib-on-cdn
   input: source
   response: |-
@@ -302,7 +300,6 @@ deterministic-phase:
 # was never checked - not declared, an untrusted host, or no such release.
 - title: Source Archive (unverified library) required
   severity: error
-  sca: false
   check: untrusted-minified-library
   input: source
   response: |-
@@ -315,7 +312,6 @@ deterministic-phase:
 # own code rather than trusted as a vendored dependency.
 - title: Library reviewed as authored code
   severity: info
-  sca: false
   check: untrusted-library
   input: source
   response: |-
@@ -444,10 +440,15 @@ deterministic-phase:
 # Third-party (vendored) declarations - a package.json with dependencies, or a
 # VENDOR file listing files and their source URLs - are resolved and verified
 # once before the review (src/vendor/*: parse, pin, fetch, byte-compare,
-# popularity). The vendor checks below read that precomputed result: three
-# reject a submission (an unpinnable dependency, a non-pinned source, or a
-# modified file), one escalates the unverifiable cases to manual review, and one
-# warns when a declared file is missing.
+# popularity), for EACH artifact that carries them: the shipped XPI, and a
+# submitted source archive, whose declared files are likewise committed and
+# present to compare. Verification is what earns a declaration its exemption
+# from content review - an entry that does not verify is reconciled into the
+# untrusted family and the file is reviewed as the developer's own code - so
+# none of these checks is gated on the review mode. The checks below read that
+# precomputed result: three reject a submission (an unpinnable dependency, a
+# non-pinned source, or a modified file), one escalates the unverifiable cases
+# to manual review, and one warns when a declared file is missing.
 - title: Unpinned dependency
   severity: error
   check: unpinned-dependency
@@ -621,7 +622,6 @@ deterministic-phase:
 # (as the finding's item), so the body needs no {{item}}/{{source}} slots.
 - title: Vendored library not vulnerability-checked
   severity: info
-  sca: false
   check: vendor-vuln-unknown
   input: source
   response: |-
@@ -630,7 +630,6 @@ deterministic-phase:
 
 - title: Unpinned vendored source
   severity: error
-  sca: false
   check: unpinned-vendor-source
   input: source
   response: |-
@@ -638,7 +637,6 @@ deterministic-phase:
 
 - title: Modified vendored library
   severity: error
-  sca: false
   check: vendor-modified
   input: source
   response: |-
@@ -646,7 +644,6 @@ deterministic-phase:
 
 - title: Missing vendored file
   severity: warning
-  sca: false
   check: missing-vendor-file
   input: source
   response: |-
@@ -658,7 +655,6 @@ deterministic-phase:
 # developer.
 - title: More than one VENDOR file
   severity: error
-  sca: false
   check: multiple-vendor-files
   input: source
   response: |-
@@ -669,7 +665,6 @@ deterministic-phase:
 # libraries cannot be verified.
 - title: Unparseable VENDOR file
   severity: error
-  sca: false
   check: vendor-unparseable
   input: source
   response: |-
@@ -695,7 +690,6 @@ deterministic-phase:
 # library must be declared as a directory with a single directory source.
 - title: Ambiguous vendored source
   severity: error
-  sca: false
   check: vendor-ambiguous-source
   input: source
   response: |-

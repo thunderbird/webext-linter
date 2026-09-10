@@ -50,6 +50,7 @@ import { headerLines } from "./report/format.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import {
   verifyVendor,
+  verifyVendorDeclarations,
   verifyScaDependencies,
   auditIdentifiedLibraries,
 } from "./vendor/verify.js";
@@ -470,7 +471,17 @@ export async function runPipeline(opts) {
       // 1c. Resolve the source's dependency manifest ONCE (package.json deps + any VENDOR
       // declarations), so the review's checks share one immutable store.
       addon.vendor = resolveVendor({ addon });
-      // 1d. The source's package.json declares its dependencies - audit each for popularity
+      // 1d. A source archive may carry a VENDOR file of its own, and a declaration there
+      // must EARN its exemption exactly as one in a shipped XPI does: each declared path is
+      // compared against the bytes its declared source serves, so an entry that does not
+      // verify leaves a result row for applyUnverifiedVendor to reconcile into the untrusted
+      // family (1e/1f) and the file is reviewed as the developer's own code. Without this the
+      // declaration alone excluded the file from every source-level check, unverified and
+      // unreported. Only the declarations: the package.json half of verifyVendor compares
+      // SHIPPED copies of declared dependencies, which a source archive does not carry.
+      setupStep("Verifying vendored source libraries");
+      await verifyVendorDeclarations(addon, opts.vendorNet, libraryBlocks);
+      // The source's package.json declares its dependencies - audit each for popularity
       // (non-popular -> reject) and OSV. The readable source may ALSO vendor a library as a
       // committed copy, so full identification (Mozilla-hash + CDN + OSV, deduped against the
       // declared audit) runs on it below. An unrecognized minified file the source vendors

@@ -1,0 +1,7 @@
+{
+  "_comment": "A kept SCA review (the shipped background.js is minified) whose SOURCE archive carries a VENDOR.md declaring lib/widget.js as an upstream release it is not. A declaration must EARN its exemption: verifyVendorDeclarations compares the declared path against the bytes its source serves, and offline (as here, and as in any run that cannot reach the host) nothing verifies, so applyUnverifiedVendor reconciles the entry into the untrusted family. Two things follow, and both were absent before: the file is reviewed as the developer's own code, so unsafe-html reports its innerHTML sink; and untrusted-library says WHY, which it could not do while the vendor checks carried sca: false. Previously this one declaration silently removed the file from every source-level check.",
+  "expect": {
+    "unsafe-html": ["lib/widget.js:3"],
+    "untrusted-library": ["lib/widget.js"]
+  }
+}
