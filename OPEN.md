@@ -103,6 +103,25 @@ Assert what the consumer sees.
   `unpinned-vendor-source` and `vendor-unverified`, so the declaration alone never gets
   anything past review.
 
+## Not needed - do not re-report
+
+An audit will find these and call them gaps. They were looked at and judged not
+worth the change. Re-raising one costs a round trip, so the reasoning is here.
+
+- **The CLI exit code is unpinned between 0 and 1.** `cli.js` ends
+  `return hasErrors(result.findings) ? 1 : 0`, and mutating it to a constant `0`
+  or `1` passes the whole suite. A mutation audit will report this as the
+  highest-consequence trivially-true assertion, because JSON is an upload filter
+  and a wrong exit code auto-rejects everything or nothing.
+
+  It is correct today, and consequence is not likelihood: one obvious expression,
+  in one file, that nothing else reads. `cli.test.js` does assert the code is one
+  of `[0, 1]`, so a crash or a stray `return 2` is still caught - only the 0-vs-1
+  discrimination is open. Contrast the severity map, which IS pinned: severity is
+  edited routinely and governed 22 checks that fire in no fixture, so it was a live
+  gap in something we touch. This is neither. Add the two assertions (`clean` -> 0,
+  `all-checks` -> 1) only if that line is ever restructured.
+
 ## Where the removed work went
 
 `20d8c79`, `e60702c`, `1e339c6` and `e11723b` are off the branch and reachable by hash
