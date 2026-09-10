@@ -41,11 +41,13 @@ that no longer exist.
 1. `assets/registry.yaml` — the canonical list of checks, in order, with each
    check's `title`, `severity` (`error` / `warning` / `info` / `auto` - `auto`
    means the check itself picks the severity per finding, and the badge class is
-   `auto`), `check` (the kebab-case id), `response` (developer-facing message),
+   `auto` - and `escalation`, a check that can never emit a finding, only escalations),
+   `check` (the kebab-case id), `response` (developer-facing message),
    `instructions` (the to-do text a reviewer is shown for a case the check could not
-   settle), and often a leading comment block describing intent. Some entries have no
-   `severity` (escalate-only checks and the manual list) or special fields (`input`,
-   `diff`, `sca`, `eslint`, `manual-review-instructions`). The check-bearing sections ARE
+   settle), and often a leading comment block describing intent. EVERY check entry
+   declares a `severity` - the loader refuses one that does not. Only the `manual-checks`
+   entries have none. Entries may also carry `input`, `diff`, `sca`,
+   `eslint` or `manual-review-instructions`. The check-bearing sections ARE
    the phases — a check's phase IS the section it lives in, never a field on the
    entry: `invalid-experiment-phase` (the only phase that runs for an invalid
    Experiment) and `deterministic-phase` (every other check). `manual-checks` is NOT
@@ -79,7 +81,7 @@ that no longer exist.
    list of checks and their metadata. Cover ALL check-bearing sections (= the phases) -
    `invalid-experiment-phase` and `deterministic-phase` - plus the static
    `manual-checks` list - noting the section each lives under (that IS its phase, and
-   the sidebar group) and any check with no severity (escalation-only checks).
+   the sidebar group).
 2. **Diff against the site.** Compare that list to the `CHECKS` array in
    `docs/index.html` and the files in `docs/checks/`. Identify: new checks (need a
    page), removed checks (delete the page + sidebar entry), and existing checks
@@ -100,9 +102,11 @@ that no longer exist.
    - an **Outcome** box paraphrasing the registry `response`;
    - a **source-note** footer pointing at the `.js` file and registry.
 4. **Handle the special cases** the registry encodes:
-   - checks with no `severity` (manual review) — use a neutral badge and let the
-     flowchart terminate in an "escalate to manual review" node rather than an
-     error/warning/info;
+   - the badge is always the entry's declared `severity`, copied verbatim - never
+     inferred from the rule. `escalation` is a severity like the others: it marks a check
+     that can never emit a finding (the loader refuses one from it), so the page must not
+     promise a rejection. `manual-checks` entries have no severity and are badged
+     `manual`;
    - escalating checks — make clear what the scan settles on its own and what it
      hands to the reviewer. **The tool calls no model: there is no verdict step, so a
      diagram must never draw a pass/fail/unsure fan-out.** A check pushes its

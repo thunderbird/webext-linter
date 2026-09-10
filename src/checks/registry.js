@@ -56,12 +56,24 @@ import { collapseUnusedFolders } from "../lib/unused-folders.js";
 // sets none or an invalid value) - see runOneCheck. "auto" is a config-only
 // token: a finding never carries it.
 const AUTO_SEVERITY = "auto";
+// A check that can never emit a finding: every case it raises goes to a person, so it has
+// no band to report at. Declaring `error` there was a value nobody chose - inert today
+// (nothing is stamped), but pre-armed to auto-reject on the JSON upload filter the day the
+// check gained a finding path. Declaring it here instead states the truth AND makes that
+// day loud: runOneCheck refuses a finding from such a check rather than stamping it. Which
+// review bucket the case lands in is NOT this: that is per-case (`manualReview` on the
+// escalation), so several escalation checks land in Extended code review, not manual.
+const ESCALATION_SEVERITY = "escalation";
 const CONCRETE_SEVERITIES = new Set([
   SEVERITY.ERROR,
   SEVERITY.WARNING,
   SEVERITY.INFO,
 ]);
-const VALID_CHECK_SEVERITIES = new Set([...CONCRETE_SEVERITIES, AUTO_SEVERITY]);
+const VALID_CHECK_SEVERITIES = new Set([
+  ...CONCRETE_SEVERITIES,
+  AUTO_SEVERITY,
+  ESCALATION_SEVERITY,
+]);
 
 // The `input` a check entry declares - which add-on artifact is ctx.addon when the
 // check runs. "source" = the REVIEW TARGET, the readable submitted code (the readable
@@ -922,6 +934,15 @@ export async function runOneCheck(ctx, check, label) {
     if (escalations.length) {
       // Cases a person must inspect, straight to manual review.
       manualItems.push(...manualEscalations(check, escalations).manualItems);
+    }
+    if (check.severity === ESCALATION_SEVERITY && produced.length) {
+      // The entry says this check only ever escalates, so it has no band to stamp. A
+      // finding here would otherwise be published at an invented severity - the exact
+      // silent auto-reject the declaration exists to prevent. Fail loudly instead.
+      throw new Error(
+        `${check.id} is severity:escalation but emitted ${produced.length} finding(s) - ` +
+          "give the entry a concrete severity, or return only escalations"
+      );
     }
     const auto = check.severity === AUTO_SEVERITY;
     for (const f of produced) {

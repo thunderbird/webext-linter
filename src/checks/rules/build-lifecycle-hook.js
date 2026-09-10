@@ -3,18 +3,18 @@
 // prepack). These run when the reviewer installs the dependencies - BEFORE the build -
 // so a postinstall that fetches and runs remote code is a supply-chain vector the
 // dependency audit (which only reads declared package.json/lock deps) never sees.
-// Legitimate uses exist (a husky `prepare`), so this is a warning per hook, not a hard
-// reject - it points the reviewer at each hook to confirm it only touches local files.
+// Legitimate uses exist (a husky `prepare`), and only the command itself says which this
+// is, so the scan cannot settle it: each hook escalates for a reviewer to read. The hook
+// and its command ride the locus, so the hooks collapse into one entry.
 //
 // The setup build analysis (analyzeBuild) also looks at hooks, but only
 // with a token; this is the deterministic, always-on backstop.
 //
-// Belongs here: reading the install-hook scripts and emitting a finding each. Does NOT
+// Belongs here: reading the install-hook scripts and escalating each. Does NOT
 // belong here: parsing package.json for anything else (build "scripts" reachability is
 // src/build/corpus.js), or the wording (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
-import { finding } from "../../report/finding.js";
 import { manifestTokenLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -34,23 +34,25 @@ const INSTALL_HOOKS = [
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {import("../../report/finding.js").Finding[]}
+   * @returns {{findings: [], escalations:
+   *   import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
+    const none = { findings: [], escalations: [] };
     const text = ctx.addon?.files?.get("package.json")?.toString("utf8");
     if (!text) {
-      return [];
+      return none;
     }
     let scripts;
     try {
       scripts = JSON.parse(text).scripts;
     } catch {
-      return [];
+      return none;
     }
     if (!scripts || typeof scripts !== "object") {
-      return [];
+      return none;
     }
-    const findings = [];
+    const escalations = [];
     for (const hook of INSTALL_HOOKS) {
       const cmd = scripts[hook];
       if (typeof cmd !== "string" || cmd.trim() === "") {
@@ -59,9 +61,9 @@ export default {
       const line = manifestTokenLine(text, hook);
       const loc = line ? { line } : undefined;
       const item = `${hook}: ${cmd}`;
-      ctx.note?.("package.json", loc, `runs a ${hook} hook`, VERDICT.FAIL);
-      findings.push(finding({ file: "package.json", loc, item }));
+      ctx.note?.("package.json", loc, `runs a ${hook} hook`, VERDICT.UNSURE);
+      escalations.push({ file: "package.json", loc, item });
     }
-    return findings;
+    return { findings: [], escalations };
   },
 };

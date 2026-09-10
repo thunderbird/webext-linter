@@ -391,9 +391,10 @@ deterministic-phase:
 
 # A deterministic check that escalates a whole-add-on manual review for every
 # Experiment submission: Experiments have full access to Thunderbird internals, so
-# they need a careful human review. Emits no findings, so it carries no severity.
+# they need a careful human review. Emits no findings, only the escalation, so the
+# declared severity is never stamped on anything - it is required of every check entry.
 - title: Experiment code review
-  severity: error
+  severity: escalation
   check: experiment-manual-review
   input: manifest
   instructions: |-
@@ -410,10 +411,11 @@ deterministic-phase:
 
 # Escalates a manual review when an Experiment calls a WebExtension API the schema
 # does not recognize - usually a typo in the add-on's OWN experiment schema, which
-# reads like a false-positive unsupported-API finding. Emits no findings (no
-# severity); unknown-api already lists the specific APIs.
+# reads like a false-positive unsupported-API finding. Emits no findings, only the
+# escalation, so the declared severity is never stamped on anything - it is required of
+# every check entry. unknown-api already lists the specific APIs.
 - title: Experiment with unrecognized API usage
-  severity: error
+  severity: escalation
   check: experiment-unknown-api
   input: source
   instructions: |-
@@ -554,20 +556,25 @@ deterministic-phase:
   response: |-
     The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them and resubmit.
 
-# Deterministic (SCA only): a package.json install lifecycle hook (preinstall / install /
-# postinstall / prepare / prepublish) runs arbitrary code when the reviewer installs the
-# dependencies, BEFORE the build - a known supply-chain vector (a postinstall that fetches
-# and runs remote code). Legitimate uses exist (a husky `prepare`), so this is a warning
-# pointing the reviewer at each hook, not a hard reject. The setup build analysis also
-# covers hooks, but only with a token; this is the offline backstop. {{item}} is the hook
-# name and its command.
+# SCA only: a package.json install lifecycle hook (preinstall / install / postinstall /
+# prepare / prepublish) runs arbitrary code when the reviewer installs the dependencies,
+# BEFORE the build - a known supply-chain vector (a postinstall that fetches and runs
+# remote code). Legitimate uses exist (a husky `prepare`), and only the command itself
+# says which this is, so every hook escalates for a reviewer to read rather than being
+# asserted as a finding. The setup build analysis also covers hooks, but only with a
+# token; this is the offline backstop. The hook and its command ride the locus.
 - title: Build install hook
-  severity: warning
+  severity: escalation
   sca: true
   check: build-lifecycle-hook
   input: build
+  instructions: |-
+    The package.json declares the install lifecycle hook(s) below, which run when the
+    reviewer installs the dependencies, before the build. Read each command and
+    confirm it only runs local build steps, fetching or executing nothing remote
+    (curl/wget, a download-and-run, or a git clone of an unpinned repo).
   response: |-
-    The package.json declares the following npm install lifecycle hook(s), which run when the reviewer installs the dependencies, before the build. Confirm they only run local build steps and do not fetch or execute remote code (curl/wget, a download-and-run, or a git clone of an unpinned repo).
+    The package.json declares an npm install lifecycle hook that fetches or executes remote code when the dependencies are installed. Every part of the build must come only from the dependencies declared in package.json/lock. Please remove the remote fetch or execution from the hook.
 
 # SCA only: the build review. selectBuildCorpus finds the build ONCE in setup
 # (src/build/analyze.js), storing addon.buildFiles.buildReview; this check reads it. A build
@@ -579,7 +586,7 @@ deterministic-phase:
 # on. {{unresolvedBuildSteps}} names the steps the linter could not follow and
 # {{buildInstructions}} how the source says to build, both in the manual instructions.
 - title: Build process review
-  severity: error
+  severity: escalation
   sca: true
   check: undeclared-build-source
   input: build
@@ -735,7 +742,7 @@ deterministic-phase:
 # Preflight -> manual review: data sent to a hardcoded remote host means the
 # listing must carry a privacy policy, which is not part of the package.
 - title: Remote data transmission needs a privacy policy
-  severity: error
+  severity: escalation
   check: privacy-policy
   input: source
   response: |-
@@ -753,7 +760,7 @@ deterministic-phase:
 # to a native application. What the listing discloses about that exchange is not in
 # the package, so a person settles it.
 - title: Native messaging needs disclosure
-  severity: error
+  severity: escalation
   check: native-messaging
   input: manifest
   response: |-
@@ -981,7 +988,7 @@ deterministic-phase:
 # checks above. Like them, the shared scan only covers code OUTSIDE the pure
 # WebExtension tree (WebExtension code is CSP-gated, see unsafe-eval/unsafe-inline).
 - title: Remote eval
-  severity: error
+  severity: escalation
   check: remote-eval
   input: source
   instructions: |-
@@ -995,7 +1002,7 @@ deterministic-phase:
 # normal transmission (fetch and friends) to a remote host - allowed
 # only with an options-page opt-in, judged from the options page in evidence.
 - title: User-data exfiltration
-  severity: error
+  severity: escalation
   check: data-exfiltration
   input: source
   instructions: |-
@@ -1017,7 +1024,7 @@ deterministic-phase:
 # the deterministic disguised-* errors; this asks whether the dynamic URL is really
 # an undisclosed data send or just legitimate dynamic URL building.
 - title: Disguised data transmission
-  severity: error
+  severity: escalation
   check: disguised-transmission
   input: source
   instructions: |-

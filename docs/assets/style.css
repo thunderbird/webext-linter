@@ -179,6 +179,11 @@ body {
   background: #6b46c1;
 }
 /* `manual`: no automated severity — escalated to human review. */
+/* A check that can never emit a finding: it only ever hands the case to a person, so it
+   has no severity to show. Distinct from `manual`, which marks the static by-hand list. */
+.badge.escalation {
+  background: #5b626b;
+}
 .badge.manual {
   background: #5b626b;
 }

@@ -1028,9 +1028,11 @@ test("SCA e2e: a minified file in the source is rejected by minified-code", asyn
 });
 
 // A package.json install lifecycle hook runs when the reviewer installs the declared
-// dependencies, before the build - a supply-chain vector the deterministic
-// build-lifecycle-hook check flags offline (no token), pointing the reviewer at the hook.
-test("SCA e2e: a package.json install hook is flagged by build-lifecycle-hook", async () => {
+// dependencies, before the build - a supply-chain vector build-lifecycle-hook finds
+// offline (no token). Only the command says whether it is legitimate, so the hook
+// escalates for a reviewer to read rather than being asserted as a finding: it must
+// reach the manual-review list AND stay out of the findings the upload filter reads.
+test("SCA e2e: a package.json install hook escalates to a reviewer", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
     ...SRC_FILES,
@@ -1041,15 +1043,21 @@ test("SCA e2e: a package.json install hook is flagged by build-lifecycle-hook", 
     }),
   });
   try {
-    const { findings } = await runPipeline({
+    const { findings, meta } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
       ...OFFLINE,
     });
     assert.ok(
-      has(findings, "build-lifecycle-hook", (f) => /postinstall/.test(f.item)),
-      "the postinstall install hook is flagged"
+      meta.manualReview.some(
+        (m) => m.title === "Build install hook" && /postinstall/.test(m.item)
+      ),
+      "the postinstall install hook reaches the reviewer"
+    );
+    assert.ok(
+      !has(findings, "build-lifecycle-hook"),
+      "and carries nothing into the findings the upload filter reads"
     );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));

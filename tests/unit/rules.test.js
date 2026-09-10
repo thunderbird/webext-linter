@@ -733,6 +733,9 @@ test("checks carry the sca mode tag (false=XPI-only, true=SCA-only, undefined=bo
 //
 // The registry also NEVER defaults it (loadChecks throws on a missing severity), so an
 // entry cannot acquire a band by omission - the assertion below is the declared value.
+// `escalation` is the band for a check that can never emit a finding: it has nothing to
+// report at, and runOneCheck refuses a finding from one, so nothing can reach the upload
+// filter at a severity nobody chose.
 test("every check's severity is pinned to its band", async () => {
   // eslint: true so the opt-in code-sanity check is loaded and pinned like the rest.
   const checks = allChecks(await loadChecks(loadRegistry(), { eslint: true }));
@@ -751,22 +754,18 @@ test("every check's severity is pinned to its band", async () => {
       "core-symbol-in-webext",
       "csp-unsafe-eval",
       "csp-unsafe-inline",
-      "data-exfiltration",
       "debugger-statement",
       "default-locale-missing",
       "default-locale-unused",
       "disguised-navigation",
       "disguised-resource",
       "disguised-stylesheet",
-      "disguised-transmission",
       "disguised-window",
       "eval-call",
-      "experiment-manual-review",
       "experiment-missing-strict-max-version",
       "experiment-modified",
       "experiment-not-allowed",
       "experiment-overrides-api",
-      "experiment-unknown-api",
       "function-constructor",
       "manifest-invalid-json",
       "manifest-missing",
@@ -777,17 +776,13 @@ test("every check's severity is pinned to its band", async () => {
       "missing-manifest-key",
       "missing-permission",
       "multiple-vendor-files",
-      "native-messaging",
       "obfuscated-code",
-      "privacy-policy",
-      "remote-eval",
       "remote-resources",
       "strict-max-version-api",
       "strict-min-version-api",
       "string-timer",
       "sync-xhr",
       "trademark-violation",
-      "undeclared-build-source",
       "unknown-api",
       "unpinned-dependency",
       "unpinned-vendor-source",
@@ -804,7 +799,6 @@ test("every check's severity is pinned to its band", async () => {
     ],
     warning: [
       "async-onmessage",
-      "build-lifecycle-hook",
       "minimize-web-accessible-resources",
       "missing-english-localization",
       "missing-vendor-file",
@@ -829,6 +823,17 @@ test("every check's severity is pinned to its band", async () => {
       "vendor-vuln-unknown",
     ],
     auto: ["banned-library", "vendor-vulnerable", "vendor-vulnerable-dev"],
+    escalation: [
+      "build-lifecycle-hook",
+      "data-exfiltration",
+      "disguised-transmission",
+      "experiment-manual-review",
+      "experiment-unknown-api",
+      "native-messaging",
+      "privacy-policy",
+      "remote-eval",
+      "undeclared-build-source",
+    ],
   });
 });
 
@@ -3366,6 +3371,44 @@ test("severity:auto lets the check set each finding's severity", async () => {
     out.findings.map((f) => f.severity),
     ["warning", "info"]
   );
+});
+
+// severity:escalation says the check can never emit a finding, so there is no band to
+// stamp. A finding from one would have to be published at an invented severity - and the
+// JSON report is an upload filter, so an invented `error` auto-rejects. runOneCheck
+// refuses it instead: the breach surfaces as a check-failed error naming the check, not
+// as a silent rejection. The three empty shapes a check may legitimately return
+// (undefined, a bare [], and an explicit findings: []) all pass.
+test("severity:escalation refuses a finding, and accepts every empty shape", async () => {
+  const escalating = (run) => ({ id: "esc", severity: "escalation", run });
+
+  const bad = await runOneCheck(
+    {},
+    escalating(() => [finding({ item: "x" })]),
+    "[1/1]"
+  );
+  assert.equal(bad.findings.length, 1);
+  assert.equal(bad.findings[0].ruleId, "check-failed"); // not published as "esc"
+  assert.equal(bad.findings[0].item, "esc");
+  assert.equal(bad.findings[0].severity, "error");
+
+  for (const empty of [undefined, [], { findings: [] }]) {
+    const out = await runOneCheck(
+      {},
+      escalating(() => empty),
+      "[1/1]"
+    );
+    assert.deepEqual(out.findings, [], `${JSON.stringify(empty)} is accepted`);
+  }
+
+  // The escalation lane itself is untouched: the case still reaches the reviewer.
+  const ok = await runOneCheck(
+    {},
+    escalating(() => ({ findings: [], escalations: [{ item: "site.js" }] })),
+    "[1/1]"
+  );
+  assert.deepEqual(ok.findings, []);
+  assert.equal(ok.manualItems.length, 1);
 });
 
 test("severity:auto fails safe to error when the check sets none/invalid", async () => {
