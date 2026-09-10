@@ -42,50 +42,41 @@ that no longer exist.
    check's `title`, `severity` (`error` / `warning` / `info`), `check` (the
    kebab-case id), `response` (developer-facing message), and often a leading
    comment block describing intent. Some entries have no `severity` (manual /
-   producer checks) or special fields (`input`, `diff`, `sca`, `eslint`,
-   `post-summary-recheck`, `summary-prompt`, `permission-recheck`,
-   `llm-not-needed-instructions`). The
-   check-bearing sections ARE the phases — a check's phase
-   IS the section it lives in, never a field on the entry: `invalid-experiment-phase`
-   (the only phase that runs for an invalid Experiment), `deterministic-phase`,
-   `llm-phase`, and `post-summary-phase` — the last holds every recheck CONSUMER (the
-   target of a producer's `post-summary-recheck:`), which is re-judged by the
-   `--llm-review` summary and declares no `input`. `manual-checks` is NOT a phase: it
-   is the static by-hand to-do list, never run as checks.
+   escalating checks) or special fields (`input`, `diff`, `sca`, `eslint`,
+   `manual-review-instructions`, `permission-tokens`). The check-bearing sections ARE
+   the phases — a check's phase IS the section it lives in, never a field on the
+   entry: `invalid-experiment-phase` (the only phase that runs for an invalid
+   Experiment) and `deterministic-phase` (every other check). `manual-checks` is NOT
+   a phase: it is the static by-hand to-do list, never run as checks.
 2. `src/checks/rules/<id>.js` — the implementation of each check. The header
    comment block describes the decision logic in prose; the `run()` body is the
    ground truth for the branches. Shared logic lives in `src/lib/`
    (e.g. `permissions.js`, `reachability.js`) — read those when a rule delegates
    to them.
-3. `README.md` — overall framing (deterministic vs LLM vs manual checks, the
-   `--llm-review` recheck mechanism, producer/consumer pairs), and the
-   **Standard** vs **Source code archive (SCA)** review modes.
+3. `README.md` — overall framing (findings vs escalations vs manual checks, and
+   the two review buckets an escalation is sorted into), and the **Standard** vs
+   **Source code archive (SCA)** review modes.
 4. `src/pipeline.js` — the review pipeline (`runPipeline`): with
    `src/checks/registry.js`, the ground truth for the review-pipeline page
    (`check-flow.html`). It shows the setup stage order (Phase 1 load + resolve the
-   schema, the experiment classification and the LLM → Phase 2 resolve the review
+   schema and the experiment classification → Phase 2 resolve the review
    target → Phase 3 vendor/library/build setup + parse → Phase 4 build the run
    context → Phase 5 one `runChecks()` call, then render the report) and the
    `mode === "sca"` forks (the source /
    dependency / build / shipped-XPI / shipped-manifest split, routed via `routeCtx`
    over the sibling ctxs built by `buildXpiCtxs` / `buildScaCtxs`).
 5. `src/checks/registry.js` — the orchestrator (`runChecks`), which runs the whole
-   review inside that single Phase-5 call: the deterministic and llm phases in its
-   main loop, then the add-on-summary interleave (`resolveRecheckSummaries`, in
-   `src/checks/summaries.js`) that fills `ctx.recheckVerdicts`, then the
-   post-summary phase (the recheck consumers) that reads them. The summaries and the
-   recheck are NOT pipeline stages — do not draw them as such; the pipeline only
-   calls `runChecks` and assembles the `Review` from what it returns.
+   review inside that single Phase-5 call: the phase's checks in its main loop, then
+   the unused-folder collapse. The pipeline only calls `runChecks` and assembles the
+   `Review` from what it returns.
 
 ## Steps
 
 1. **Enumerate checks.** Parse `assets/registry.yaml` to get the full ordered
    list of checks and their metadata. Cover ALL check-bearing sections (= the phases) -
-   `invalid-experiment-phase`, `deterministic-phase`, `llm-phase`, and
-   `post-summary-phase` - plus the static `manual-checks` list (do not miss the recheck
-   consumers in `post-summary-phase`) - noting the section each lives under (that IS its
-   phase, and the sidebar group) and any check with no severity (manual-review /
-   escalation producers).
+   `invalid-experiment-phase` and `deterministic-phase` - plus the static
+   `manual-checks` list - noting the section each lives under (that IS its phase, and
+   the sidebar group) and any check with no severity (escalation-only checks).
 2. **Diff against the site.** Compare that list to the `CHECKS` array in
    `docs/index.html` and the files in `docs/checks/`. Identify: new checks (need a
    page), removed checks (delete the page + sidebar entry), and existing checks
@@ -108,14 +99,10 @@ that no longer exist.
    - checks with no `severity` (manual review) — use a neutral badge and let the
      flowchart terminate in an "escalate to manual review" node rather than an
      error/warning/info;
-   - producer / recheck pairs — a producer names its consumer in
-     `post-summary-recheck:`, and the consumer's id is the producer's id plus a
-     `-recheck` suffix (`unused-permission` → `unused-permission-recheck`). A
-     producer may be deterministic or an llm check; the consumer always lives in
-     `post-summary-phase`. On both pages describe the escalation and where it is
-     re-judged;
-   - LLM checks — make clear the final branch is a model judgement, and what the
-     deterministic pre-flight narrows down before the model is asked.
+   - escalating checks — make clear what the scan settles on its own and what it
+     hands to the reviewer, and which of the two review buckets the escalation lands
+     in: an entry with `manual-review-instructions` is one reading the code cannot
+     settle (Extended manual review), everything else is Extended code review.
 5. **Update the sidebar.** Rebuild the `CHECKS` array in `docs/index.html` so it
    lists every check in registry order, grouped by category; `NAV` combines
    `GUIDE_PAGES` with `CHECKS`. If there are multiple categories, add the

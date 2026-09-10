@@ -32,9 +32,8 @@
         <code>scripting.executeScript</code> for <code>compose</code>, the property
         name <code>cookieStoreId</code> for <code>cookies</code>) that appear
         nowhere in the add-on's live code (comments excluded) or manifest is
-        deterministically unused — a warning finding, with or without
-        <code>--llm-review</code>. Every remaining permission escalates for human
-        review. Host match patterns are out of scope here — they belong to the
+        deterministically unused — a warning finding. Every remaining permission
+        escalates for human review. Host match patterns are out of scope here — they belong to the
         minimize-host-permissions check.
       </p>
       <p>
@@ -72,16 +71,13 @@
       <p>
         The guard gates only the <em>finding</em>. Token <em>presence</em> is always
         trustworthy — a located occurrence is a real site — so the occurrences are
-        collected in every mode, and the recheck judges them the same way whether or
+        collected in every mode, and a reviewer judges them the same way whether or
         not the scan was decidable.
       </p>
       <p>
-        Under <code>--llm-review</code>, the escalated permissions the
-        registry has a recheck prompt for are handed to the
-        <code>unused-permission-recheck</code> consumer to be re-judged with full
-        context; every other escalated permission stays a manual-review reminder.
-        Without <code>--llm-review</code>, all of them stand as the reminder. This
-        one producer serves every add-on: the version-specific <code>tabs</code>
+        Every escalated permission stands as a manual-review reminder, carrying the
+        sites where its usage tokens occur. This one check serves every add-on: the
+        version-specific <code>tabs</code>
         wording and token lists (the D308076 fix in Thunderbird 154) are selected
         from the add-on's <code>strict_min_version</code>.
       </p>
@@ -96,12 +92,12 @@ flowchart TD
   H -- no --> U{"Provably required by a reachable API call,<br/>a navigator.* Web/DOM call, or a declared<br/>script-injection manifest key?"}
   U -- yes --> OK2([no finding — justified])
   U -- no --> D{"Can the scan see every usage of the SHIPPED code?<br/>shipped code not obfuscated · every file parsed ·<br/>no unresolved dynamic API surface ·<br/>an API-usage view is present"}
-  D -- no --> G{"Does the registry have a recheck<br/>prompt for this permission?"}
+  D -- no --> G{"Could the scan see every usage?"}
   D -- yes --> T{"Prompt entry declares usage tokens,<br/>and none occur in the live code<br/>(comments excluded) or manifest?"}
-  T -- yes --> WARN(["warning finding — deterministically<br/>unused, the model is never asked"])
+  T -- yes --> WARN(["warning finding —<br/>deterministically unused"])
   T -- no --> G
-  G -- yes --> ESC(["handed to the unused-permission-recheck<br/>consumer under --llm-review,<br/>else a manual-review reminder"])
-  G -- no --> MAN(["manual-review reminder only<br/>— never sent to the model"])
+  G -- yes --> ESC(["a manual-review reminder,<br/>naming the token sites"])
+  G -- no --> MAN(["manual-review reminder,<br/>naming the token sites"])
 
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;

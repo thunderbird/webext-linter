@@ -31,7 +31,7 @@
         existence test, a guard clause earlier in the function that returns or throws
         when the API is missing, or a runtime version gate). A call that carries such a
         guard signal is the ambiguous case: only there does the linter ask the
-        model whether the guard truly protects the call. An API used unguarded
+        reviewer whether the guard truly protects the call. An API used unguarded
         anywhere becomes the hard finding outright.
       </p>
 
@@ -49,7 +49,7 @@ flowchart TD
   D -- no --> OK([no finding])
   D -- yes --> E{"Any use of this API<br/>unguarded?"}
   E -- yes --> ERR([ERROR: too-new API<br/>called unconditionally])
-  E -- "no, only guarded uses" --> L{"LLM judges: is the call<br/>truly guarded so it runs only<br/>where the API exists?"}
+  E -- "no, only guarded uses" --> L{"The reviewer judges: is the call<br/>truly guarded so it runs only<br/>where the API exists?"}
   L -- "pass: safely guarded" --> OK
   L -- "fail: runs unconditionally" --> ERR
   L -- unsure --> M([escalate to manual review])

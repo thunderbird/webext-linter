@@ -30,7 +30,7 @@
         deterministic finding. One family — the revealing-module pattern
         (<code>const X = (() =&gt; {…})(); X.init();</code>) — also fits ordinary
         readable code, so a <strong>weak-only</strong> match is not decided outright:
-        the file becomes a single candidate the model judges from its own content,
+        the file escalates, for the reviewer to judge from its own content,
         mapping <code>fail</code> → finding, <code>unsure</code> → manual review,
         <code>pass</code> → drop (with no model configured, every candidate falls to
         manual review). The model is never told which family the detector matched, so
@@ -55,7 +55,7 @@ flowchart TD
   L -- no --> B{"Obfuscator-family match?"}
   B -- "no family" --> OK([no finding — a merely-minified<br/>file is minified-code's concern])
   B -- "STRONG family" --> ERR([ERROR: obfuscated code])
-  B -- "WEAK family only<br/>(a structure readable code also has)" --> J{"LLM judges the file from its<br/>content alone — obfuscated?<br/>(never told what matched)"}
+  B -- "WEAK family only<br/>(a structure readable code also has)" --> J{"The reviewer judges the file from its<br/>content alone — obfuscated?<br/>(never told what matched)"}
   J -- fail --> ERR
   J -- pass --> OK
   J -- "unsure / no model" --> MAN([manual review])
@@ -78,7 +78,7 @@ flowchart TD
         not permitted — whether or not the add-on is hosted on addons.thunderbird.net
         — as it violates the Add-on Policy and is subject to being blocked. It is
         asked to ship the original, human-readable code directly. A weak-family match
-        the model cannot decide (or that no model was configured to judge) is deferred
+        the scan cannot decide is deferred
         to manual review instead.
       </div>
 

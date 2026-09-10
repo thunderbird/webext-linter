@@ -26,7 +26,7 @@
         the content security policy — are handled by separate deterministic
         checks. This check covers only the ambiguous case: a deterministic scan
         finds each fetch-then-execute site, and because whether the executed code
-        is remote cannot be decided statically, each site is handed to the model,
+        is remote cannot be decided statically, each site is escalated,
         which judges whether the code is fetched from a remote source.
       </p>
       <p>
@@ -43,7 +43,7 @@
 flowchart TD
   A["A dynamic-execution site found by the shared<br/>eval scan — outside the WebExtension tree"] --> B{"An ambiguous fetch-then-execute<br/>site, e.g. fetch().then(eval)?"}
   B -- "no, a definite eval/Function/<br/>timer/CSP case" --> S([skip — handled by the<br/>deterministic eval checks])
-  B -- yes --> L{"LLM judges: is the executed<br/>code fetched from a remote<br/>source rather than static and local?"}
+  B -- yes --> L{"The reviewer judges: is the executed<br/>code fetched from a remote<br/>source rather than static and local?"}
   L -- "pass: static and local" --> OK([no finding])
   L -- "fail: remote" --> ERR([ERROR: remote code executed])
   L -- unsure --> M([escalate to manual review])

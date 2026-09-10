@@ -30,12 +30,8 @@
         packaged HTML page — with a language-detection library. Confident English
         passes and confident non-English is a finding. When there is too little
         text to trust, or English nearly ties the top language, the call is too
-        close to make automatically and is escalated. Under
-        <code>--llm-review</code> that escalation is handed to the
-        <code>missing-english-localization-recheck</code> consumer, which has a
-        model re-read all of the user-facing text and resolves it to a finding, a
-        drop, or manual review; without <code>--llm-review</code> it goes straight
-        to manual review.
+        close to make automatically and is escalated, so a reviewer reads the
+        add-on's strings and decides.
       </p>
 
       <h2>Decision flow</h2>
@@ -51,7 +47,7 @@ flowchart TD
   C -- no --> E{"Is there any hardcoded<br/>user-facing text?"}
   E -- no --> OK
   E -- yes --> F{"Too little text, or the<br/>language cannot be told?"}
-  F -- yes --> MAN(["escalate — re-judged by the<br/>missing-english-localization-recheck<br/>consumer under --llm-review,<br/>else manual review"])
+  F -- yes --> MAN(["escalate — the reviewer reads<br/>the add-on's strings"])
   F -- no --> G{"Is the detected language<br/>English?"}
   G -- yes --> OK
   G -- no --> H{"Does English nearly tie<br/>the top language?"}
@@ -74,8 +70,7 @@ flowchart TD
         The add-on is asked to include an English localization, since English is
         Thunderbird's default language and most users who do not understand the
         hardcoded language can read English, with a pointer to the i18n API and an
-        example. Low-confidence cases are instead handed to a human reviewer (and,
-        under <code>--llm-review</code>, re-judged by the recheck consumer below).
+        example. Low-confidence cases are instead handed to a human reviewer.
       </div>
 
       <p class="source-note">

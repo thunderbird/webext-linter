@@ -32,7 +32,7 @@
         policy that permits a remote script source. Each of those definite
         remote loads is a finding directly. Cases static analysis cannot resolve
         — a non-literal URL, or an inline <em>data:</em>/<em>blob:</em> script
-        source — carry the offending file to the model, which judges whether the
+        source — escalate with the offending file, so the reviewer judges whether the
         loaded code is remote.
       </p>
       <p>
@@ -40,7 +40,7 @@
         model: one inside an HTML or CSS file whose content matches a published
         file of a known upstream library release. That line is the release's,
         not something the developer wrote — so it goes to the reviewer (is
-        shipping it as published acceptable here?) and never to a model, since
+        shipping it as published acceptable here?) as a manual-review case, since
         no verdict on where the URL points would change that. It turns on the
         content match, not on the declaration: a file that was declared but
         could not be matched is reviewed as the developer's own code, so its
@@ -68,13 +68,13 @@ flowchart TD
   B -- "skipped JS<br/>(includes every vendored .js)" --> S([skip])
   B -- yes --> C{"Definite remote load?<br/>remote script/link/iframe/media,<br/>@import/url, import/importScripts,<br/>script injection, WASM, or CSP host"}
   C -- yes --> V{"HTML/CSS file whose content<br/>matches a published<br/>upstream release?"}
-  V -- yes --> DEC([reviewer decides: ship the<br/>release as published?<br/>never sent to a model])
+  V -- yes --> DEC([reviewer decides: ship the<br/>release as published?])
   V -- no --> ERR([ERROR: remote code loaded])
   C -- no --> D{"Statically resolvable<br/>to a bundled file?"}
   D -- yes --> OK([no finding — bundled load])
   D -- "no, undecidable URL or<br/>inline data:/blob: source" --> V2{"HTML file whose content<br/>matches a published<br/>upstream release?"}
   V2 -- yes --> DEC
-  V2 -- no --> L{"LLM judges: is the loaded<br/>code remote rather than<br/>a packaged file?"}
+  V2 -- no --> L{"The reviewer judges: is the loaded<br/>code remote rather than<br/>a packaged file?"}
   L -- "pass: bundled" --> OK
   L -- "fail: remote" --> ERR
   L -- unsure --> M([escalate to manual review])

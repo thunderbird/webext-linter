@@ -23,7 +23,7 @@
         Before the review, every GitHub-sourced VENDOR entry is run through a
         resolution step that tries to prove an npm identity for the bundled
         bytes by content-hash match: first the repository name at the declared
-        ref, then, if the model is enabled, an LLM-proposed name re-proved by the
+        ref, proved by the
         same hash. Entries it can resolve are audited against the OSV database by
         the vulnerable-dependency check instead. First-party trusted-org GitHub
         sources are accepted by provenance and produce nothing here. Whatever

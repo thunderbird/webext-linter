@@ -26,9 +26,9 @@
         is a remote or dynamically-built host. Whether a valid opt-in exists — a
         documented options-page setting where the user enters the destination, or
         an explicit off-by-default opt-in for a hard-coded URL — is a judgement
-        call, so each such sink is handed to the model. Its evidence is the
+        call, so each such sink is escalated. Its evidence is the
         transmitting file plus the add-on's options page, where any opt-in would
-        live. The model judges whether user data is transmitted without consent.
+        live. The reviewer judges whether user data is transmitted without consent.
         Disguising transmission as a resource load is a separate, always-error
         concern handled by the disguised-* checks; this check covers only the
         overt channels.
@@ -40,10 +40,10 @@
 flowchart TD
   A["An outbound network sink"] --> B{"An overt channel<br/>to a remote or dynamic host?"}
   B -- no --> S([skip — local or<br/>non-overt sink])
-  B -- yes --> L{"LLM judges from the file and<br/>options page: is user data sent<br/>WITHOUT an explicit opt-in?"}
+  B -- yes --> L{"The reviewer judges from the file and<br/>options page: is user data sent<br/>WITHOUT an explicit opt-in?"}
   L -- "pass: consented or no user data" --> OK([no finding])
   L -- "fail: sent without consent" --> ERR([ERROR: user-data exfiltration])
-  L -- unsure --> M([escalate to manual review<br/>— re-judged by the recheck])
+  L -- unsure --> M([escalate — the reviewer decides])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -61,8 +61,7 @@ flowchart TD
         The add-on is told the listed code locations send user data to a remote
         server without an explicit opt-in, and that user data may be transmitted
         only when the user actively enables it on an options page that discloses
-        what is sent. Locations the model cannot resolve are deferred to the
-        post-summary recheck.
+        what is sent. Locations the scan cannot resolve are escalated instead.
       </div>
 
       <p class="source-note">

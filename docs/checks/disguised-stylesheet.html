@@ -32,7 +32,7 @@
         user-data API call (message content, contacts, credentials and the like)
         sitting in it. The weaker case — merely a runtime value appended to a
         remote URL, common in legitimate code — is left to the
-        disguised-transmission LLM check. A plain static remote background image
+        disguised-transmission check. A plain static remote background image
         with no data attached is not a finding.
       </p>
 
@@ -47,7 +47,7 @@ flowchart TD
   C -- yes --> D{"Covert channel to a<br/>non-local destination?"}
   D -- no --> OK
   D -- yes --> E{"A user-data API call<br/>sits in the URL?<br/>(strong case)"}
-  E -- "no — only a dynamic value" --> T([weak case → disguised-transmission<br/>LLM check])
+  E -- "no — only a dynamic value" --> T([weak case → disguised-transmission<br/>escalating check])
   E -- yes --> ERR([ERROR: disguised data send<br/>via stylesheet url])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
