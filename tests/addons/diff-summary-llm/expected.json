@@ -1,7 +1,0 @@
-{
-  "_comment": "A clean minimal add-on reviewed against a --diff-to baseline (tests/diff-baselines/diff-summary-llm). The only fixture that supplies a diff baseline, so it is what locks the baseline-comparison path. No findings.",
-  "options": {
-    "--diff-to": "tests/diff-baselines/diff-summary-llm"
-  },
-  "expect": {}
-}

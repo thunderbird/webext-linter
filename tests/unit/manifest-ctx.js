@@ -62,8 +62,8 @@ function liftManifest(addon) {
  * A single-artifact siblings map for a hand-built ctx: every input routes to the one ctx,
  * mirroring production's routing when a review has one artifact (in an XPI review the
  * source and xpi siblings are the same ctx). runChecks reads its review-level state
- * (recheck / recheckVerdicts / the base feed note) off siblings.source, so a test that
- * inspects ctx.recheck after a run still observes it.
+ * (the base feed note) off siblings.source, so a test that inspects the ctx after a
+ * run still observes it.
  * @param {object} ctx
  * @returns {Record<string, object>}
  */
@@ -89,15 +89,11 @@ export function withManifest(ctx) {
   if (ctx?.previous) {
     liftManifest(ctx.previous);
   }
-  // Other shipped-authoritative fields the pipeline attaches to the review addon and
-  // the ctx builders hoist onto ctx: the Experiment classification and the summary's
-  // recheck verdicts. Mirror that hoist here for a hand-built ctx (don't clobber a
-  // value a test set directly on ctx).
+  // The other shipped-authoritative field the pipeline attaches to the review addon and
+  // the ctx builders hoist onto ctx: the Experiment classification. Mirror that hoist here
+  // for a hand-built ctx (don't clobber a value a test set directly on ctx).
   if (ctx.experiments === undefined) {
     ctx.experiments = addon.experiments ?? null;
-  }
-  if (ctx.recheckVerdicts === undefined && addon.recheck !== undefined) {
-    ctx.recheckVerdicts = addon.recheck;
   }
   return ctx;
 }

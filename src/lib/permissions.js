@@ -561,8 +561,8 @@ function locateTokens(ctx, tokens) {
  * `file:line` (two tokens on the same line collapse to one site), each stamped with
  * an orchestrator-minted id naming the site, so a verdict can be echoed back
  * against. Empty when the permission has no tokens (a token-less permission) or when
- * none of its tokens occur in the reviewed corpus - the recheck then judges it
- * holistically.
+ * none of its tokens occur in the reviewed corpus - the escalation then names the
+ * permission with no site to point at.
  * @param {string} permission
  * @param {?string[]} tokens  The permission's usage tokens.
  * @param {Map<string, {file: string, line: ?number}[]>} located

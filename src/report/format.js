@@ -50,8 +50,6 @@ const SEV_COLOR = {
  *   legend footer; XPI reviews add neither. See src/report/artifact.js.
  * @property {Map<string, string>} [ruleInputs]  ruleId -> routed input
  *   ("xpi"|"build"|"source"|"manifest"), from registry.checkInputs(); the artifact label reads it.
- * @property {boolean} [verbose]  --verbose: gates the per-site recheck-verdict list under
- *   the add-on summary (hidden when falsy). See summarySectionLines.
  */
 
 /**

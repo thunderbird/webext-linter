@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Permission recheck (SCA)",
+  "name": "Permission escalation (SCA)",
   "version": "1.0",
-  "description": "SCA review: declared permissions escalate to the unused-permission recheck, re-judged per occurrence by the source summary pass.",
+  "description": "SCA review: declared permissions escalate for a person to judge, since the deterministic scan stands down when it cannot see the shipped code.",
   "permissions": ["messagesRead", "accountsRead", "compose"],
   "background": { "scripts": ["background.js"] },
   "icons": { "16": "icon.png", "48": "icon.png" }

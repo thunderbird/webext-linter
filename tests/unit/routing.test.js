@@ -26,8 +26,8 @@ test("routeCtx routes each input to its own sibling, and throws on a missing one
   assert.equal(routeCtx({ input: "source" }, siblings), source);
   assert.equal(routeCtx({ input: "xpi" }, siblings), xpi); // NOT source - a collapse would land here
   assert.equal(routeCtx({ input: "manifest" }, siblings), manifest);
-  // A post-summary recheck consumer declares no input; it routes to the source ctx, where
-  // the review-level recheck state lives.
+  // A check with no declared input falls to the source ctx. loadChecks requires an
+  // input on every check, so this is the floor, not a routing rule any check uses.
   assert.equal(routeCtx({}, siblings), source);
   // A declared input with no sibling (a stray input:build in XPI mode) throws, rather than
   // silently running on the review target.

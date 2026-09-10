@@ -715,7 +715,6 @@ test("checks carry the sca mode tag (false=XPI-only, true=SCA-only, undefined=bo
   // unused-files runs in BOTH modes: it describes the shipped XPI (dead files the
   // build ships), like bundled-files / minimize-WAR - all registered `input: xpi`.
   assert.equal(sca("unused-files"), undefined);
-  assert.equal(sca("unused-files-recheck"), undefined);
   assert.equal(sca("unpopular-source-dependency"), true); // SCA-only dep audit
   assert.equal(sca("undeclared-build-source"), true); // SCA-only build review
   assert.equal(sca("unsupported-build-tool"), true); // SCA-only build policy
@@ -852,20 +851,10 @@ test("loadChecks refuses a check entry with no severity", async () => {
 // Every check declares a valid input, and the (rare, dangerous) input:xpi set is
 // pinned to exactly the structure checks. A new or flipped check trips this test
 // rather than silently reading the wrong artifact.
-test("every non-recheck check declares a valid input (rechecks declare none); the input:xpi set is exactly the pinned structure checks", async () => {
+test("every check declares a valid input; the input:xpi set is exactly the pinned structure checks", async () => {
   const byPhase = await loadChecks(loadRegistry());
   const checks = allChecks(byPhase);
-  // A post-summary-phase consumer declares NO input - it routes to siblings.source and is
-  // labelled by its producer's corpus (see labelInputFor). Its input is undefined.
-  const rechecks = new Set(byPhase.get("post-summary"));
-  for (const c of rechecks) {
-    assert.equal(
-      c.input,
-      undefined,
-      `recheck "${c.id}" must not declare an input`
-    );
-  }
-  for (const c of checks.filter((x) => !rechecks.has(x))) {
+  for (const c of checks) {
     assert.ok(
       c.input === "source" ||
         c.input === "xpi" ||
@@ -1234,9 +1223,8 @@ test("manual checks have unique, doc-backed check ids distinct from rule ids", (
 // ---- unused-permission (producer of permissions to vet) ----
 // It always enumerates the declared NAMED permissions a reachable API call does
 // not provably require, one escalation each (anchored to the manifest line); host
-// match patterns are skipped. When --llm-review runs the orchestrator hands
-// these to the unused-permission-recheck recheck consumer; otherwise they auto-group into
-// the by-hand reminder.
+// match patterns are skipped. Same-bodied cases auto-group into the one by-hand
+// reminder.
 test("unused-permission lists the unprovable declared named permissions", () => {
   const manifest = {
     permissions: ["tabs", "https://example.com/*"],
@@ -1340,7 +1328,7 @@ test("unused-permission decides token-absent permissions deterministically", () 
     "unlimitedStorage",
   ]);
   // cookies escalated because its token is PRESENT in live code but not API-grounded:
-  // the located site rides along so the recheck can judge it per occurrence.
+  // the located site rides along so a reviewer can judge it per occurrence.
   assert.deepEqual(
     out.escalations.find((e) => e.item === "cookies").occurrences,
     [{ id: "cookies#1", file: "bg.js", line: 2, token: "cookieStoreId" }]
@@ -1736,7 +1724,7 @@ test("unused-permission selects token lists by strict_min_version", () => {
 
 // The deterministic analysis is authoritative: a permission a reachable API call
 // provably requires (here messagesRead, via messages.get) is dropped here, so it
-// never reaches the reviewer or the recheck consumer. Only the unprovable rest
+// never reaches the reviewer at all. Only the unprovable rest
 // (messagesUpdate) is escalated.
 test("unused-permission drops permissions proved used by static analysis", () => {
   const manifest = {
@@ -2584,7 +2572,7 @@ test("unused-permission omits permissions a reachable call requires", () => {
 // ---- unused-permission is version-agnostic (D308076) ----
 // The single producer enumerates unused permissions regardless of strict_min_version.
 // The version-specific tabs wording (D308076) moved to the registry's version-bounded
-// tabs permission-prompts, selected at recheck-assembly time (see recheck.test.js).
+// tabs permission-prompts, selected when the escalation is assembled.
 const permProducerCtx = (strictMin) => {
   const manifest = {
     permissions: ["tabs"],

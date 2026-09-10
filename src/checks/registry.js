@@ -70,10 +70,8 @@ const VALID_CHECK_SEVERITIES = new Set([...CONCRETE_SEVERITIES, AUTO_SEVERITY]);
 // that describe what ships; "build" = the SCA build files (the archive minus the review
 // source minus node_modules), for the build review; "manifest" = the shipped manifest
 // ONLY, on a ctx with an EMPTY file corpus (buildXpiCtxs' manifestCtx), for pure-manifest checks
-// that read ctx.manifest and no files. Required on every check EXCEPT a
-// post-summary-recheck (which declares no input - it routes to siblings.source and is
-// labelled by its producer's corpus): runChecks routes each check to its artifact's
-// context, so the check reads one artifact and has no way to reach another (see
+// that read ctx.manifest and no files. Required on every check: runChecks routes each
+// check to its artifact's context, so the check reads one artifact and has no way to reach another (see
 // buildXpiCtxs / buildScaCtxs).
 const VALID_CHECK_INPUTS = new Set(["source", "xpi", "build", "manifest"]);
 
@@ -368,7 +366,8 @@ export class Registry {
    * is the first moment the omission is visible, and both quiet alternatives ship a
    * wrong report: the normal instructions misdescribe the case, an empty one asks a
    * reviewer to decide with nothing to go on. Registry authoring mistakes raise here
-   * for the same reason loadChecks raises for a dangling recheck target.
+   * for the same reason loadChecks raises for a check entry with no severity: a
+   * misconfigured registry must stop the run, not quietly shape the report.
    * @param {string} ruleId
    * @param {boolean} manualReview
    * @returns {?string}
@@ -697,9 +696,9 @@ function eslintEligible(entry, inEslintMode) {
 
 /**
  * The ctx a check runs on: the sibling for its declared `input` artifact. The ONE place
- * artifact routing is decided - shared by runChecks (the main loop) and the deferred
- * post-summary loop, so the two can never drift. Routing is TOTAL and explicit: there is
- * no default artifact to fall through to - `source` is a first-class sibling like the rest.
+ * artifact routing is decided, so no caller can route differently. Routing is TOTAL and
+ * explicit: there is no default artifact to fall through to - `source` is a first-class
+ * sibling like the rest.
  *
  * A check declares an `input` and reads ONLY its routed ctx.addon - it has no way to
  * reach another artifact. What `input` resolves to, per review mode:
@@ -720,8 +719,8 @@ function eslintEligible(entry, inEslintMode) {
  * @returns {RunContext}
  */
 export function routeCtx(check, siblings) {
-  // No `input` => a post-summary recheck consumer (loader-guaranteed): it reads the
-  // review-level recheck state, which lives on the source ctx.
+  // No `input` => the review-level source ctx. loadChecks requires an input on every
+  // check, so this is a floor, not a routing rule.
   if (check.input === undefined) {
     return siblings.source;
   }
@@ -775,8 +774,8 @@ export function ctxForRule(registry, ruleId, siblings) {
  */
 export async function runChecks(registry, opts = {}, siblings) {
   // `siblings` is the whole set of routing ctxs, keyed by input value; there is no separate
-  // review-target argument. The review-level state (recheck / recheckVerdicts / the base feed
-  // note) lives on the source ctx, so name it once here. `source` is required - routing is
+  // review-target argument. The review-level state (the base feed note) lives on the source
+  // ctx, so name it once here. `source` is required - routing is
   // total, so a siblings map without it is a caller bug, not a run to default around.
   const sourceCtx = siblings?.source;
   if (!sourceCtx) {
@@ -803,9 +802,7 @@ export async function runChecks(registry, opts = {}, siblings) {
   // phase is simply which list it is in, so a phase never asked for here does not run
   // (that is what makes an unrecognized registry section inert). An invalid Experiment
   // short-circuits the whole review to the reject phase and nothing else; a normal
-  // review runs the deterministic phase, then the add-on-summary interleave (which
-  // fills ctx.recheckVerdicts), then the post-summary phase. The two gates above
-  // apply within each phase.
+  // review runs the deterministic phase. The two gates above apply within each phase.
   const inPhase = (phase) =>
     (byPhase.get(phase) ?? []).filter(
       (c) => diffEligible(c, inDiffMode) && scaEligible(c, inScaMode)
@@ -900,9 +897,8 @@ export async function runChecks(registry, opts = {}, siblings) {
 /**
  * Run one loaded check and return its findings + manual refs, stamping each
  * finding with the check's id and severity. This is the per-check body of
- * runChecks, extracted so a check can also be run on its own (a post-summary
- * recheck consumer runs after the add-on summary, outside the loop - see
- * runChecks below). Identical behavior either way: a check's `escalations` route to
+ * runChecks, extracted so a check can also be run on its own, outside the loop.
+ * Identical behavior either way: a check's `escalations` route to
  * manual review through escalation.js, and a thrown check becomes a single
  * "check-failed" finding so the rest still run.
  * @param {RunContext} ctx

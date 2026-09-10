@@ -44,8 +44,8 @@ const SEVERITY_RANK = Object.fromEntries(
  * `item` and `hint` are the TWO distinct locus fields - do not conflate them:
  * @property {string} [item]  The finding's SUBJECT: the offending token
  *   (API / permission / manifest-key / host / symbol). It is machine-meaningful -
- *   it fills the response's `{{item}}` slot, is the dedup key (lib/util.js dedupe)
- *   and the post-summary recheck verdict key (lib/recheck.js itemKey). For DISPLAY
+ *   it fills the response's `{{item}}` slot and is the dedup key (lib/util.js
+ *   dedupe). For DISPLAY
  *   it is surfaced on the location line only when the message did not already name
  *   it (the response/instructions has no `{{item}}`; see `listItem`).
  * @property {string} [hint]  A supplementary per-location DETAIL, ALWAYS appended
@@ -55,10 +55,10 @@ const SEVERITY_RANK = Object.fromEntries(
  *   "file:line - <item> - <hint>" (e.g. an unsupported API call AND the version
  *   that added it). Use `item` for the subject (the thing identified/keyed), `hint`
  *   for extra colour about it. THE TEST: a value is an `item` only if it is the
- *   finding's UNIQUE offending identity - what dedup / itemKey would key on (an API
- *   name, a remote URL, a manifest key); everything else is a `hint`. A per-site
- *   recheck descriptor (a transmission method/channel) MUST stay `hint`: its recheck
- *   keys on `file:line` (item left null), so an `item` would collide every site.
+ *   finding's UNIQUE offending identity - what dedup would key on (an API name, a
+ *   remote URL, a manifest key); everything else is a `hint`. A per-site descriptor
+ *   (a transmission method/channel) MUST stay `hint`: every site would otherwise
+ *   carry the same `item` and collapse into one.
  * @property {Record<string, string|number>} [data]  Extra named values for
  *   `{{slot}}` placeholders in the response - additional detail ABOUT this
  *   finding's single `item`/subject (e.g. a source URL, an ajv message), data
@@ -164,8 +164,8 @@ export function sortFindings(findings) {
  *   `response`), printed under the instructions in the report; null when none.
  * @property {string|null} [file]
  * @property {{line?: number, column?: number}|null} [loc]
- * @property {string|null} [item]  The SUBJECT (and recheck verdict key), surfaced
- *   on the locus when the instructions don't name it (see `listItem`); as a Finding.
+ * @property {string|null} [item]  The SUBJECT, surfaced on the locus when the
+ *   instructions don't name it (see `listItem`); as a Finding.
  * @property {string|null} [hint]  A supplementary per-locus DETAIL appended after
  *   `file:line`, always - distinct from `item`/`listItem` (as a Finding's hint).
  * @property {boolean} [listItem]  Surface the SUBJECT (`item`) on the location line

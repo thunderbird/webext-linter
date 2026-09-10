@@ -117,8 +117,8 @@ function detectHardcodedLanguage(ctx, addon) {
   // Too little text, or franc cannot tell - a human decides (manual review).
   if (text.length < MIN_CONFIDENT || topLang === "und") {
     note("too little user-facing text to detect a language", VERDICT.UNSURE);
-    // Anchored to manifest.json (matching the confident finding below) so the
-    // post-summary recheck has a stable key to re-judge with all the text in view.
+    // Anchored to manifest.json, matching the confident finding below, so both
+    // outcomes point the reviewer at the same place.
     return { findings: [], escalations: [{ file: "manifest.json" }] };
   }
   if (topLang === "eng") {
@@ -131,8 +131,8 @@ function detectHardcodedLanguage(ctx, addon) {
       `user-facing text language is ambiguous (${topLang} vs English)`,
       VERDICT.UNSURE
     );
-    // Anchored to manifest.json (matching the confident finding below) so the
-    // post-summary recheck has a stable key to re-judge with all the text in view.
+    // Anchored to manifest.json, matching the confident finding below, so both
+    // outcomes point the reviewer at the same place.
     return { findings: [], escalations: [{ file: "manifest.json" }] };
   }
   note(`non-English user-facing text (${topLang})`, VERDICT.FAIL);

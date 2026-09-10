@@ -1127,7 +1127,7 @@ permission-prompts:
     # api-usage analysis, so only real tabs.*/scripting.* calls count. `attachments` is a
     # bare property token (a menus OnClickData/OnShowData read). The compose_scripts
     # manifest key is NOT a token here: it grounds compose deterministically (its
-    # required_permissions annotation, before this recheck), so it is never escalated.
+    # required_permissions annotation), so it is never escalated.
     tokens:
       - tabs.executeScript
       - tabs.insertCSS

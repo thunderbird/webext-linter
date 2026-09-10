@@ -438,7 +438,6 @@ function pipelineOptsFromValues(values) {
     scaSource: values["sca-source"],
     scaExpSource: values["sca-exp-source"],
     diffTo: values["diff-to"],
-    verbose: values.verbose,
   };
 }
 

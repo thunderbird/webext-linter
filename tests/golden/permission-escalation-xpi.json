@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/diff-summary-llm",
+    "addon": "<root>/tests/addons/permission-escalation-xpi",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
@@ -38,7 +38,6 @@
       "minified-code",
       "untrusted-minified-library",
       "untrusted-library",
-      "strict-max-version-bump-only",
       "api-coverage",
       "unparsable-file",
       "experiment-modified",

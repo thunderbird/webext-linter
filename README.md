@@ -105,7 +105,7 @@ is monitored and upstream changes are ported manually.
 | `--cdn-lib-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached; an offline run simply finds no match. |
 | `--diff-to <xpi\|folder>` | Previously published version, to diff against. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
-| `--verbose` | Verbose logging, and expand the text report with the per-site **"Recheck verdicts:"** list under the add-on summary. |
+| `--verbose` | Verbose logging. |
 
 **Exit codes:** `0` no errors · `1` one or more error-severity findings · `2`
 tool failure.

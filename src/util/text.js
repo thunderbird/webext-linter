@@ -102,8 +102,7 @@ export function displayText(text) {
 }
 
 /**
- * The same guard, for a sink that is ONE line: a locus line, a feed note, a recheck
- * line. There a newline is not text, it is a second line - a packaged file named
+ * The same guard, for a sink that is ONE line: a locus line or a feed note. There a newline is not text, it is a second line - a packaged file named
  * "a.js\n - INJECTED.js" otherwise renders as two loci, indistinguishable from a
  * real second finding. So tab, CR and LF collapse here, where displayText keeps them
  * for prose that is meant to have shape.

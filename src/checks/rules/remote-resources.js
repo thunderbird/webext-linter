@@ -120,8 +120,8 @@ export default {
  * developer NEEDS this file or could not ship a build without it
  * (verifiedVendorSource states a fact about content, not about intent). Whether the
  * check knows where the load points or not, resolving where it points would
- * not change the outcome, so the case is marked `manualReview: true` (which
- * registry.rechecks honours) and the report gives the reviewer both URLs.
+ * not change the outcome, so the case is marked `manualReview: true` and the report
+ * gives the reviewer both URLs.
  *
  * This turns on the content match, not on the declaration: a declared file that
  * could not be verified is reviewed as the developer's own code

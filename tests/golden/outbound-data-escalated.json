@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/obfuscated-code-llm",
+    "addon": "<root>/tests/addons/outbound-data-escalated",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
@@ -87,10 +87,25 @@
     ]
   },
   "summary": {
-    "error": 0,
+    "error": 1,
     "warning": 0,
     "info": 0,
-    "byRule": {}
+    "byRule": {
+      "cleartext-transmission": 1
+    }
   },
-  "findings": []
+  "findings": [
+    {
+      "ruleId": "cleartext-transmission",
+      "severity": "error",
+      "file": "background.js",
+      "loc": {
+        "line": 4,
+        "column": 0
+      },
+      "item": null,
+      "hint": "cleartext send \"http://api.example.com/collect\"",
+      "message": "Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://."
+    }
+  ]
 }

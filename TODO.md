@@ -90,18 +90,16 @@ become exact.
 Concrete instance today: `cookies` is gated only by *setting* `cookieStoreId` on
 `tabs.create` / `windows.create` / `spaces.create`/`update` (an object-literal property
 set on an API argument, per above) - never by reading it. It is the one argument-gated
-recheck permission (it has a `permission-prompts` entry in `assets/registry.yaml`),
-currently routed to the LLM only because the name-only resolver cannot see the argument
-value; once this tracing lands `cookies` becomes deterministic and its prompt can be
-dropped (leaving only property-read / gesture cases). `PERMISSION-GROUNDING-GAPS.md`
-inventories every property/argument gate on the recheck permissions this tracing covers.
+permission (it has a `permission-prompts` entry in `assets/registry.yaml`), and it
+escalates to a reviewer today only because the name-only resolver cannot see the argument
+value. Once this tracing lands `cookies` is decided deterministically, leaving only the
+property-read and gesture cases.
 
 A permission that gates neither an API nor a property - `unlimitedStorage`, which only
 raises the storage quota - falls outside this tracing (there is no gate to look up). It is
 justified by the add-on actually persisting data at runtime, which the type checker cannot
-weigh, so it stays LLM-judged. Its former hand-coded `NO_API_GATE` exemption in
-`src/lib/permissions.js` has been removed in favour of a `permission-prompts` entry
-- the same LLM interim as the property-gated permissions.
+weigh, so it stays a reviewer's judgement. Its former hand-coded `NO_API_GATE` exemption in
+`src/lib/permissions.js` has been removed in favour of a `permission-prompts` entry.
 
 # Unused-files pre-flight backstop (anchored templates + content type)
 
@@ -109,9 +107,9 @@ The deterministic loader pre-flight removes only the false dynamic loaders (an
 inline getURL of a literal passed to a loader slot, a static-file-part template
 such as getURL(`popup.html?id=${x}`), and the loaders inside vendored or library
 files). A genuinely computed loader still falls back to the old blanket, where
-every name-absent unreachable file becomes an LLM candidate against every
-dynamic loader site. This backstop makes that precise, so the LLM is asked only
-about the cases we truly cannot decide deterministically.
+every name-absent unreachable file escalates against every dynamic loader site.
+This backstop makes that precise, so only the cases we truly cannot decide
+deterministically reach a reviewer.
 
 - Capture each dynamic loader site as a path template: the static prefix
   directory and suffix extension pulled from the template literal or string
@@ -119,7 +117,7 @@ about the cases we truly cannot decide deterministically.
   executeScript, css for insertCSS, url for getURL which is type agnostic).
 - Match per file. A file is a candidate for an anchored site only when its path
   fits the prefix and suffix. If no site can load the file, it is a
-  deterministic orphan with no LLM call.
+  deterministic orphan and needs no escalation.
 - For an opaque loader with no static anchor, decide by content. A js or css
   loader cannot load a file whose content is a confirmed binary asset (detect it
   with the magic-bytes.js package: zero runtime dependencies, content based

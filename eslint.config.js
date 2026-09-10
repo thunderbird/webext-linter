@@ -29,8 +29,9 @@ export default [
       curly: ["error", "all"],
       "no-case-declarations": "error",
       // A refactor that moves code between functions can leave an identifier bound in the
-      // old scope and dangling in the new one - a hard ReferenceError that the offline test
-      // suite cannot see, because it only fires on the LLM paths. This rule catches it.
+      // old scope and dangling in the new one - a hard ReferenceError. The offline test
+      // suite cannot see one that sits on a networked path, since it stubs the vendor
+      // fetch and the OSV audit out, so this rule is what catches it there.
       "no-undef": "error",
       // Catches dead code the above cannot - a stale import, or a variable left behind when
       // its consumer's signature changed. A leading `_` marks a deliberately-discarded binding

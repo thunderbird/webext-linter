@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/permission-recheck-sca/src",
+    "addon": "<root>/tests/addons/sca-two-artifact-split/src",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
@@ -85,23 +85,24 @@
   },
   "summary": {
     "error": 0,
-    "warning": 1,
-    "info": 0,
+    "warning": 0,
+    "info": 1,
     "byRule": {
-      "unused-permission": 1
+      "unsafe-html": 1
     }
   },
   "findings": [
     {
-      "ruleId": "unused-permission",
-      "severity": "warning",
-      "file": "manifest.json",
+      "ruleId": "unsafe-html",
+      "severity": "info",
+      "file": "Comp.vue",
       "loc": {
-        "line": 6
+        "line": 7,
+        "column": 5
       },
-      "item": "compose",
+      "item": ".innerHTML",
       "hint": null,
-      "message": "One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it."
+      "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     }
   ]
 }
