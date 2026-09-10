@@ -32,13 +32,13 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Reviewer tests the add-on<br/>in a test profile"] --> B{"Can the review continue<br/>with the available information?"}
-  B -- yes --> OK([no finding])
-  B -- no --> M(["a to-do for the reviewer to settle by hand"])
+  A["Every review"] --> X{"A rejected Experiment?<br/>(bundles an unsupported draft,<br/>no --allow-experiments)"}
+  X -- yes --> S([skip — the reject phase<br/>runs alone, the whole<br/>to-do list is dropped])
+  X -- no --> M(["listed as a to-do for the reviewer<br/>to settle by hand"])
 
-  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
-  class OK ok;
+  class S skip;
   class M manual;
         </pre>
       </div>

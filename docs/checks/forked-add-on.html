@@ -34,18 +34,14 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Submission under review"] --> G{"Reviewing a new submission<br/>(not a --diff-to update)?"}
-  G -- no --> S([skip])
-  G -- yes --> B{"Is it a fork of an existing,<br/>still-actively-maintained add-on?"}
-  B -- no --> OK([no finding])
-  B -- yes --> C{"Clearly distinguished from the original<br/>with a significant difference<br/>in functionality or code?"}
-  C -- yes --> OK
-  C -- no --> M(["a to-do for the reviewer to settle by hand"])
+  A["Every review"] --> X{"A rejected Experiment?<br/>(bundles an unsupported draft,<br/>no --allow-experiments)"}
+  X -- yes --> S([skip — the reject phase<br/>runs alone, the whole<br/>to-do list is dropped])
+  X -- no --> G{"Reviewing a new submission?<br/>(diff: false — skipped with a<br/>--diff-to baseline)"}
+  G -- no --> S
+  G -- yes --> M(["listed as a to-do for the reviewer<br/>to settle by hand"])
 
-  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
-  class OK ok;
   class S skip;
   class M manual;
         </pre>
