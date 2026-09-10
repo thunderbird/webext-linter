@@ -15,7 +15,7 @@
  * @param {unknown} value
  * @returns {unknown}
  */
-export function sortKeys(value) {
+function sortKeys(value) {
   if (Array.isArray(value)) {
     return value.map(sortKeys);
   }

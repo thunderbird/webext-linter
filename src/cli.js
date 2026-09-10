@@ -127,7 +127,7 @@ function optionLine(flag, desc) {
  * printed by `npm run help` and as the --help / usage screen (see main).
  * @returns {string}
  */
-export function helpText() {
+function helpText() {
   const cache = [
     [
       "--cache-clear",

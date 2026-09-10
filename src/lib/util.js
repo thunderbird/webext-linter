@@ -5,7 +5,7 @@
 // orchestrator (escalation.js) routes it to a reviewer or to manual review.
 //
 // Belongs here: generic, dependency-light check helpers - dedupe,
-// the asArray/asObject manifest guards, isMatchPattern/isBroadHost, scheme,
+// the asArray/asObject manifest guards, isMatchPattern/isBroadHost,
 // trunc, manifestTokenLine, isExperiment/strictMaxVersion, the version family
 // (strictMinVersion, parseVersion, cmpVersion, versionInBounds - shared by the
 // unused-permission token selection), the
@@ -410,17 +410,8 @@ export function isBroadHost(p) {
 }
 
 /**
- * The scheme of a URL-ish string (text before the first ":").
- * @param {string} url
- * @returns {string}
- */
-export function scheme(url) {
-  return String(url).split(":")[0];
-}
-
-/**
  * Does a ref begin with an absolute-URL scheme (`http:`, `moz-extension:`, `data:`)?
- * The whole-prefix test - distinct from scheme(), which extracts the scheme name.
+ * A whole-prefix test: it asks whether there is a scheme, not which one.
  */
 export const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 

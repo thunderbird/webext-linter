@@ -470,7 +470,7 @@ export function hasUnreviewableCode(bundled, addon) {
  * @param {string} file
  * @returns {{minified: boolean, obfuscation: import("./enum.js").Verdict}}
  */
-export function classify(text, file, { detectObfuscation = true } = {}) {
+function classify(text, file, { detectObfuscation = true } = {}) {
   // Obfuscation is JS-only (a stylesheet is never obfuscated in this sense); isMinified
   // handles both JS (statement density) and CSS (packed rules). The verdict is three-state:
   // a weak-family-only match is UNSURE (readable, authored, scanned) and escalated by
