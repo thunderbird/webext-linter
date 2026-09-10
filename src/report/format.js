@@ -288,9 +288,7 @@ function groupByMessage(findings) {
 function renderLocusList(items, labelOf) {
   const lines = [];
   for (const x of items.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
-    lines.push(
-      ` - ${locationLine(x, labelOf?.(x))}${x.hint ? ` - ${displayLine(x.hint)}` : ""}`
-    );
+    lines.push(` - ${locationLine(x, labelOf?.(x))}`);
   }
   if (items.length > MAX_ENTRIES_PER_CATEGORY) {
     lines.push(excludedMarker(items.length - MAX_ENTRIES_PER_CATEGORY));
@@ -503,11 +501,19 @@ function section(title) {
 }
 
 /**
- * The location listed under an Issue: "file:line" ("(add-on)" when there is no
- * file, ":line" only when a line is known). When the finding's identifier was
- * not consumed by its message (`listItem`), append it: "file:line - item", or
- * show it alone when there is no file (e.g. a missing manifest key). This is how
- * the item-free, grouped checks surface the offending key/permission/path.
+ * The whole location line listed under an Issue: the path ("file:line", ":line" only
+ * when a line is known), then the finding's identifier when its message did not consume
+ * it (`listItem`), then the supplementary detail (`hint`) - each joined by " - ". With no
+ * path at all whichever of those exists leads instead; hasLocus guarantees at least one
+ * does, so there is nothing to stand in for.
+ *
+ * A segment equal to one already on the line is DROPPED rather than printed twice. A
+ * check whose subject is its own locus repeats the path otherwise - an untrusted library
+ * with no identified name falls back to its path, and the line read
+ * "lib/x.js - lib/x.js - <source>". The guard lives here, not in the rules, so no rule
+ * can reintroduce it and none has to know that its subject might BE the locus. The
+ * finding still carries both fields: this decides what is printed, not what is recorded,
+ * so the JSON report is unchanged.
  *
  * In an SCA review a `[XPI] `/`[SCA] ` artifact label prefixes the file (only when
  * there is a file - an item-only locus names no path to disambiguate).
@@ -516,25 +522,34 @@ function section(title) {
  * @returns {string}
  */
 function locationLine(f, label = "") {
-  // The path comes from an archive entry name and the item from the submission, so
-  // both are made safe to show. The label is ours.
-  const where = f.file
-    ? `${label ? `[${label}] ` : ""}${displayLine(f.file)}${f.loc?.line != null ? `:${f.loc.line}` : ""}`
+  // The path comes from an archive entry name, and the item and hint from the
+  // submission, so all three are made safe to show. The label is ours.
+  const file = f.file ? displayLine(f.file) : null;
+  const where = file
+    ? `${label ? `[${label}] ` : ""}${file}${f.loc?.line != null ? `:${f.loc.line}` : ""}`
     : null;
-  const item = f.listItem ? displayLine(f.item) : null;
-  if (where && item) {
-    return `${where} - ${item}`;
+  // Compared against the bare path, not `where`: the label and :line are ours, and it is
+  // the path a subject repeats.
+  const seen = new Set(file ? [file] : []);
+  const segments = where ? [where] : [];
+  for (const value of [f.listItem ? f.item : null, f.hint]) {
+    const text = value == null ? "" : displayLine(value);
+    if (!text || seen.has(text)) {
+      continue;
+    }
+    seen.add(text);
+    segments.push(text);
   }
-  return where ?? item ?? "(add-on)";
+  return segments.join(" - ");
 }
 
 /**
  * Whether an entry has anything to put on a location line: a file, a subject surfaced
  * for display, or a supplementary detail. One of the three is required because
- * locationLine falls back to "(add-on)", an anchor worth printing only when a detail
- * follows it. An entry with none of them - a finding whose subject is the submission as
- * a whole, and whose message already says everything - is listed with no location line
- * rather than a line naming nothing.
+ * locationLine has nothing to print without them - it is this gate, not a placeholder,
+ * that keeps an empty line out of the report. An entry with none of them - a finding
+ * whose subject is the submission as a whole, and whose message already says everything -
+ * is listed with no location line rather than a line naming nothing.
  * @param {object} x  A finding or manual item.
  * @returns {boolean}
  */

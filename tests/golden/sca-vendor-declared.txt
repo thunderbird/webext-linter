@@ -4,7 +4,7 @@ Thank you for your contribution, it will be approved shortly. We would like to s
 
 1) The following bundled file(s) are third-party libraries whose origin we could not confirm - either the file matches an upstream release whose package is not a widely-used library, or the declared source could not be checked at all (none was given, it is on a host we do not fetch from, or it has no such release). They are therefore not trusted as reviewed dependencies and are reviewed as authored code - the standard checks apply to them, so a finding may be reported against library code here. Confirm that each is a legitimate, appropriate dependency.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
- - [SCA] lib/widget.js - lib/widget.js - https://unpkg.com/widget@1.0.0/dist/widget.js
+ - [SCA] lib/widget.js - https://unpkg.com/widget@1.0.0/dist/widget.js
 
 2) Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.

@@ -231,6 +231,72 @@ test("JSON output omits manual-review items (ATN auto-verification)", () => {
 // The report keeps issues (findings) and manual-review items in separate lists:
 // a manual item shows under Manual review (title: instructions), an issue under
 // Issues, and JSON carries the issue but drops the manual list.
+// The locus line joins path, surfaced subject and detail with " - ", and DROPS a segment
+// equal to one already on it. A check whose subject is its own locus repeats the path
+// otherwise: untrusted-library falls back to the file when no library name was
+// identified, which rendered "lib/x.js - lib/x.js - <source>". Dropped for PRINTING only
+// - the finding still records both fields, so the JSON report is unaffected.
+test("a locus segment that repeats another is not printed, but is still recorded", () => {
+  const locus = (f) => {
+    const r = review();
+    r.meta.reviewed = true;
+    r.findings = [
+      {
+        ruleId: "untrusted-library",
+        severity: "info",
+        message: "m",
+        loc: null,
+        ...f,
+      },
+    ];
+    const line = formatText(r)
+      .split("\n")
+      .find((l) => l.startsWith(" - "));
+    return { line, json: JSON.parse(formatJson(r)).findings[0] };
+  };
+
+  // The subject repeats the path: printed once, recorded twice.
+  const same = locus({
+    file: "lib/x.js",
+    item: "lib/x.js",
+    listItem: true,
+    hint: "https://cdn.example/x.js",
+  });
+  assert.equal(same.line, " - lib/x.js - https://cdn.example/x.js");
+  assert.equal(same.json.item, "lib/x.js"); // the data is untouched
+  assert.equal(same.json.file, "lib/x.js");
+
+  // A subject that ADDS something is kept, and all three segments render.
+  const differs = locus({
+    file: "lib/x.js",
+    item: "x 1.0.0",
+    listItem: true,
+    hint: "https://cdn.example/x.js",
+  });
+  assert.equal(
+    differs.line,
+    " - lib/x.js - x 1.0.0 - https://cdn.example/x.js"
+  );
+
+  // The same guard covers a hint that repeats the subject, or the path.
+  assert.equal(
+    locus({ file: "lib/x.js", item: "dup", listItem: true, hint: "dup" }).line,
+    " - lib/x.js - dup"
+  );
+  assert.equal(
+    locus({ file: "lib/x.js", item: null, hint: "lib/x.js" }).line,
+    " - lib/x.js"
+  );
+
+  // With no path, whichever of subject/detail exists leads - hasLocus guarantees one
+  // does, so there is no placeholder to stand in.
+  assert.equal(
+    locus({ file: null, item: "storage", listItem: true, hint: "why" }).line,
+    " - storage - why"
+  );
+  assert.equal(locus({ file: null, item: null, hint: "why" }).line, " - why");
+});
+
 test("issues render under Issues/JSON; manual items under Manual review", () => {
   const r = {
     findings: [
@@ -365,8 +431,8 @@ test("Issues group findings by identical message into one entry", () => {
 // surfaced item, or a hint. A finding whose subject is the submission as a whole
 // (sca-not-required, manifest-missing) carries none of the three, and its message
 // already says everything - so it is listed with no location line rather than one
-// naming nothing. A hint with no file still prints, anchored at "(add-on)", because
-// finding.js promises a hint is ALWAYS shown.
+// naming nothing. A hint with no file still prints, on its own, because finding.js
+// promises a hint is ALWAYS shown.
 test("Issues print a location line only when it carries something", () => {
   const mk = (extra) => ({
     ruleId: "r",
@@ -388,9 +454,9 @@ test("Issues print a location line only when it carries something", () => {
   };
   // Nothing to say -> no line at all.
   assert.deepEqual(body(mk({})), []);
-  // A hint alone still has to reach the reader, so it gets the whole-add-on anchor.
+  // A hint alone still has to reach the reader; it leads the line by itself.
   assert.deepEqual(body(mk({ hint: "added in Thunderbird 137" })), [
-    " - (add-on) - added in Thunderbird 137",
+    " - added in Thunderbird 137",
   ]);
   // An item the message did not consume is a locus of its own.
   assert.deepEqual(body(mk({ item: "tabs", listItem: true })), [" - tabs"]);

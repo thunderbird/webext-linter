@@ -5,7 +5,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) The following bundled file(s) are third-party libraries whose origin we could not confirm - either the file matches an upstream release whose package is not a widely-used library, or the declared source could not be checked at all (none was given, it is on a host we do not fetch from, or it has no such release). Either way the file is not trusted as a reviewed dependency - and it is minified or otherwise machine-generated, so it cannot be reviewed in this form. Ship the original, human-readable code directly (it need not be minified), or upload the original sources as a source-code submission (with the build instructions and process needed to reproduce the shipped XPI) using the source code upload field during submission or on the version page in the developer hub. Note that the source-archive route slows review down, as it requires manually verifying the build.
 Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 Read more #2: https://extensionworkshop.com/documentation/publish/source-code-submission/
- - lib/widget.min.js - lib/widget.min.js - https://unpkg.com/widget@1.2.3/dist/widget.min.js
+ - lib/widget.min.js - https://unpkg.com/widget@1.2.3/dist/widget.min.js
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
