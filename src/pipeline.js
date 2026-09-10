@@ -39,7 +39,9 @@ import {
   loadScaAddon,
   selectScaBuildFiles,
   scaExpSourceRelative,
+  scaRootRelative,
 } from "./addon/load.js";
+import { isTranspiledSource } from "./util/files.js";
 import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
 import { buildXpiCtxs, buildScaCtxs } from "./checks/context.js";
@@ -223,6 +225,8 @@ export async function runPipeline(opts) {
   // Resolved in Phase 2 from the effective mode (below).
   let addon;
   let scaArchive;
+  /** The submitted archive's paths relative to --sca-source, for the mode decision. */
+  let sourcePaths;
   let scaSource;
   let scaExpSource;
 
@@ -368,14 +372,35 @@ export async function runPipeline(opts) {
     });
     xpiParsedSources = extractReview(xpiAddon, { schema, xpiAddon, setupStep });
 
-    // Resolve the effective mode from that always-built, vendor-aware classification.
-    // resolveReviewMode returns a plain XPI review when there is no --sca-root (a native XPI
-    // submission); with --sca-root it DOWNGRADES to a plain XPI review when the shipped XPI's
-    // own first-party code is directly reviewable (sca-not-required reports it), else keeps SCA.
+    // The submitted archive is read BEFORE the mode is resolved, because the decision asks
+    // what KIND of source it carries (a transpiled kind keeps the SCA - see
+    // resolveReviewMode). Paths only: no contents, no package.json, no build corpus, and
+    // no VENDOR declaration - an unverified claim must not be able to shrink the review.
+    // Everything else the archive drives still happens in Phase 2 below, so a downgrade
+    // still skips every analysis; only the listing is paid for here.
+    if (opts.scaRoot) {
+      scaArchive = loadAddon(opts.scaRoot);
+      const rel = scaRootRelative(
+        opts.scaSource || ".",
+        opts.scaRoot,
+        "--sca-source"
+      );
+      const prefix = rel ? `${rel}/` : "";
+      sourcePaths = [...scaArchive.files.keys()]
+        .filter((p) => p.startsWith(prefix))
+        .map((p) => p.slice(prefix.length));
+    }
+
+    // Resolve the effective mode from that always-built, vendor-aware classification plus
+    // the archive's source kinds. resolveReviewMode returns a plain XPI review when there is
+    // no --sca-root (a native XPI submission); with --sca-root it DOWNGRADES to a plain XPI
+    // review only when the shipped XPI's own first-party code is directly reviewable AND the
+    // archive carries no transpiled source (sca-not-required reports it), else keeps SCA.
     ({ mode, scaNotRequired } = resolveReviewMode(
       opts,
       xpiAddon.bundled,
-      xpiAddon
+      xpiAddon,
+      sourcePaths
     ));
   }
 
@@ -384,10 +409,11 @@ export async function runPipeline(opts) {
   // touches it). The review target `addon`, `scaSource`, `scaExpSource`, the experiment
   // mirror, and `meta` all follow the resolved mode.
   if (mode?.sca) {
-    // Read the whole --sca-root archive ONCE (shared with selectScaBuildFiles below); the
-    // review addon is the source subtree carrying the XPI's manifest.
+    // The archive was read ONCE above, for the mode decision (and is shared with
+    // selectScaBuildFiles below); the review addon is the source subtree carrying the
+    // XPI's manifest.
     scaSource = opts.scaSource || ".";
-    scaArchive = loadAddon(opts.scaRoot);
+    scaArchive = scaArchive ?? loadAddon(opts.scaRoot);
     addon = loadScaAddon(scaArchive, scaSource, opts.scaRoot);
     for (const notice of scaArchive.skipped ?? []) {
       warn(notice);
@@ -833,26 +859,48 @@ export function selectSchemaChannel({ candidates, strictMax }) {
 
 /**
  * Resolve the effective review mode from the submission. A source-code archive
- * (--sca-root) is only needed when the shipped XPI cannot be reviewed directly; if
- * its first-party code is not minified/obfuscated (hasUnreviewableCode false), the
- * source archive adds nothing, so the review is downgraded to a plain XPI review and
- * sca-not-required reports it. The decision reads ONLY the built XPI's own
- * classification - the source content is irrelevant. Not called for a rejected
- * Experiment (which is never downgraded).
+ * (--sca-root) is needed when the shipped XPI is not the source, which is two
+ * questions, not one:
+ *
+ *  - can the shipped bytes be READ? (hasUnreviewableCode - minified, obfuscated, or
+ *    an unreadable untrusted library, on the XPI's own vendor-aware classification)
+ *  - are the shipped bytes THE SOURCE? (isTranspiledSource over the archive's source
+ *    paths - a transpiler's output is perfectly readable and is still not the source)
+ *
+ * Either one keeps the SCA review; only when both say the XPI stands on its own is the
+ * review downgraded to a plain XPI review, with sca-not-required reporting it.
+ *
+ * The transpiled test deliberately breaks the older rule that an SCA is required
+ * exactly when the XPI would be rejected: a transpiled-but-readable add-on submitted
+ * XPI-only passes today, and keeping the SCA for the same add-on when its source IS
+ * offered is the intended asymmetry.
+ *
+ * `sourcePaths` are unverified - they are file names in an archive nobody has vouched
+ * for yet - so they may only ever ADD scrutiny. Nothing in this decision may consult a
+ * VENDOR declaration: verification happens later (Phase 3), and a claim that could
+ * shrink the review before it is checked is a bypass, so a declared-vendored typed file
+ * still keeps the SCA. Not called for a rejected Experiment (never downgraded).
  *
  * @param {object} opts  Pipeline opts; only `opts.scaRoot` is read here.
  * @param {?import("./lib/bundled.js").Bundled} bundled  The built XPI's vendor-aware
  *   classification (xpiAddon.bundled from the Phase 2 classifyReview).
  * @param {import("./addon/load.js").Addon} [addon]  The built XPI itself, so the
  *   decision also sees code shipped inside a page (hasUnreviewableCode).
+ * @param {Iterable<string>} [sourcePaths]  The submitted archive's paths, relative to
+ *   --sca-source. Omitted means none were read, which cannot keep the SCA on its own.
  * @returns {{mode: REVIEW_MODE.XPI|"sca", scaNotRequired: boolean}}
  */
-export function resolveReviewMode(opts, bundled, addon) {
+export function resolveReviewMode(opts, bundled, addon, sourcePaths) {
   if (!opts.scaRoot) {
     return { mode: REVIEW_MODE.XPI, scaNotRequired: false };
   }
   if (hasUnreviewableCode(bundled, addon)) {
     return { mode: REVIEW_MODE.SCA, scaNotRequired: false };
+  }
+  for (const path of sourcePaths ?? []) {
+    if (isTranspiledSource(path)) {
+      return { mode: REVIEW_MODE.SCA, scaNotRequired: false };
+    }
   }
   return { mode: REVIEW_MODE.XPI, scaNotRequired: true };
 }

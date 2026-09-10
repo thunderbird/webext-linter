@@ -1143,6 +1143,63 @@ const READABLE_XPI = {
   "background.js": `console.log("readable shipped code");`,
 };
 
+// The transpiled half of the decision, end to end - and the scope that makes it usable:
+// the scan sees the --sca-source subtree ONLY. Build tooling and tests written in TypeScript
+// sit outside it in most repos, and must not veto the downgrade for a plain-JS add-on whose
+// shipped files are simply copied in.
+test("SCA e2e: a transpiled source keeps the SCA; a typed file outside --sca-source does not", async () => {
+  const xpi = tmpDir(READABLE_XPI);
+  const base = {
+    "package.json": JSON.stringify({ name: "tr", version: "1.0.0" }),
+    "vite.config.ts": `export default {};\n`, // build tooling, OUTSIDE --sca-source
+    "src/manifest.json": JSON.stringify(
+      READABLE_XPI["manifest.json"]
+        ? JSON.parse(READABLE_XPI["manifest.json"])
+        : { manifest_version: 3, name: "tr", version: "1.0" }
+    ),
+    "src/background.js": `console.log("plain js");\n`,
+  };
+  const outside = tmpDir(base);
+  const inside = tmpDir({
+    ...base,
+    "src/app.ts": `export const x: number = 1;\n`,
+  });
+  try {
+    const a = await runPipeline({
+      addonPath: xpi,
+      scaRoot: outside,
+      scaSource: "src",
+      ...OFFLINE,
+    });
+    assert.equal(
+      a.mode,
+      REVIEW_MODE.XPI,
+      "a typed build config does not keep the SCA"
+    );
+    assert.ok(has(a.findings, "sca-not-required"));
+
+    const b = await runPipeline({
+      addonPath: xpi,
+      scaRoot: inside,
+      scaSource: "src",
+      ...OFFLINE,
+    });
+    assert.equal(
+      b.mode,
+      REVIEW_MODE.SCA,
+      "an authored .ts under --sca-source keeps it"
+    );
+    assert.ok(
+      !has(b.findings, "sca-not-required"),
+      "and the redundant-source finding is not reported"
+    );
+  } finally {
+    [xpi, outside, inside].forEach((d) =>
+      fs.rmSync(d, { recursive: true, force: true })
+    );
+  }
+});
+
 test("SCA e2e: a readable-XPI submission is downgraded to a plain XPI review (sca-not-required)", async () => {
   const xpi = tmpDir(READABLE_XPI);
   // The source has a copy-only build (a package.json whose build merely vendors libraries),

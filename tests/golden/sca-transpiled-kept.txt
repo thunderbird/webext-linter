@@ -1,11 +1,16 @@
 ── Issues ──
+The automated review did not find any issues.
 
-Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
+── Extended manual review ──
 
-1) The shipped add-on (the built XPI) is directly reviewable, because its code is not minified, obfuscated or transpiled. A separate source-code archive is therefore not required, and this review was performed on the submitted XPI itself. A source-code submission is needed only when the shipped code is minified, transpiled or otherwise not human-readable, and it moves the add-on into a separate review process that takes considerably longer to complete. For this add-on you can avoid that delay by submitting only the XPI as a standard review.
+Continue manual review for the following checks:
 
-You can run this automated review yourself before submitting:
-https://github.com/thunderbird/webext-linter
+1) Build process review: Confirm by hand that the shipped XPI is produced by
+   this source: reproduce the build and compare the result against the submitted
+   XPI. Confirm the build pulls ONLY from the dependencies declared in
+   package.json/lock - no remote code or resources from a raw URL, curl/wget, a
+   git clone of an unpinned repo, a CDN, or a postinstall hook.
+Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 
 ── Standard manual review ──
 
@@ -76,4 +81,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 1 warning(s), 0 info, 0 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 warning(s), 0 info, 0 extended code review step(s), 1 extended manual review step(s), 10 standard manual review step(s)

@@ -280,3 +280,64 @@ test("resolveReviewMode: --sca-root + a directly-reviewable XPI -> downgrade", (
     scaNotRequired: true,
   });
 });
+
+// The second half of the decision: readable shipped bytes are not the same question as
+// shipped-bytes-are-the-source. A transpiler's output reads perfectly, so the archive's
+// source KINDS are what answer it - and either half alone keeps the SCA.
+const KEEP = { mode: REVIEW_MODE.SCA, scaNotRequired: false };
+const DOWN = { mode: REVIEW_MODE.XPI, scaNotRequired: true };
+const sca = { scaRoot: "src" };
+
+test("resolveReviewMode: a transpiled source kind keeps the SCA, readable XPI or not", () => {
+  for (const kind of [
+    "app.ts",
+    "a/b/Comp.vue",
+    "ui.tsx",
+    "m.svelte",
+    "s.scss",
+  ]) {
+    assert.deepEqual(
+      resolveReviewMode(sca, bundled([]), undefined, ["background.js", kind]),
+      KEEP,
+      `${kind} keeps the SCA`
+    );
+  }
+});
+
+test("resolveReviewMode: a .d.ts is not a transpiled source", () => {
+  // Types only, emits nothing, and plain-JS projects ship them. extname() reads ".ts"
+  // from it, so excluding it by extension would veto exactly those projects.
+  assert.deepEqual(
+    resolveReviewMode(sca, bundled([]), undefined, [
+      "background.js",
+      "types.d.ts",
+    ]),
+    DOWN
+  );
+  // ...but a real .ts alongside one still keeps it.
+  assert.deepEqual(
+    resolveReviewMode(sca, bundled([]), undefined, ["types.d.ts", "app.ts"]),
+    KEEP
+  );
+});
+
+test("resolveReviewMode: plain-JS source paths downgrade, and omitting them keeps today's answer", () => {
+  assert.deepEqual(
+    resolveReviewMode(sca, bundled([]), undefined, [
+      "background.js",
+      "popup.html",
+    ]),
+    DOWN
+  );
+  assert.deepEqual(resolveReviewMode(sca, bundled([]), undefined, []), DOWN);
+  assert.deepEqual(resolveReviewMode(sca, bundled([]), undefined), DOWN);
+});
+
+test("resolveReviewMode: an unreviewable XPI keeps the SCA whatever the source kinds", () => {
+  assert.deepEqual(
+    resolveReviewMode(sca, bundled([MINIFIED_FIRST_PARTY]), undefined, [
+      "a.js",
+    ]),
+    KEEP
+  );
+});

@@ -41,6 +41,47 @@ export const HTML_EXTENSIONS = new Set([".html", ".htm", ".xhtml"]);
  *  spelled inline so the suffix lives in exactly one place, like every other type. */
 export const SFC_EXTENSIONS = new Set([".vue"]);
 
+/** Source kinds that CANNOT ship as they are: a build step compiles them to the JS or
+ *  CSS a browser loads, so the shipped file is generated and the archive is the only real
+ *  source. Their presence is what keeps a source-code review from being downgraded
+ *  (resolveReviewMode) - the readable-shipped-bytes test cannot see the difference, since
+ *  a transpiler's output is perfectly readable. Deliberately by extension only: the
+ *  question is what KIND of source the archive carries, and no file content or build
+ *  config is consulted to answer it. */
+export const TRANSPILED_SOURCE_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts", // TypeScript
+  ".vue",
+  ".svelte",
+  ".astro", // component single-file formats
+  ".jsx", // JSX
+  ".scss",
+  ".sass",
+  ".less",
+  ".styl", // style preprocessors
+  ".coffee",
+  ".elm",
+  ".res",
+  ".purs", // the long tail
+]);
+
+/**
+ * Does this path name a source kind that must be compiled before it can ship?
+ * A `.d.ts` never does: it declares types and emits nothing, and plain-JS projects
+ * carry them - so it is excluded HERE rather than by extension, because extname()
+ * reads `.ts` from `foo.d.ts` and would otherwise veto exactly those projects.
+ * @param {string} file
+ * @returns {boolean}
+ */
+export function isTranspiledSource(file) {
+  if (basename(file).toLowerCase().endsWith(".d.ts")) {
+    return false;
+  }
+  return TRANSPILED_SOURCE_EXTENSIONS.has(extname(file));
+}
+
 /** The file types whose CONTENT this tool reviews: everything a scanner reads, parses,
  *  or extracts sources from. The union is the DEFINITION - consumers spread from it
  *  rather than restating which suffixes count, so a new parser is added to one set and

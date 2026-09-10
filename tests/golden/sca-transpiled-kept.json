@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/sca-not-required/xpi",
+    "addon": "<root>/tests/addons/sca-transpiled-kept/src",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
@@ -33,11 +33,8 @@
       "async-onmessage",
       "minimize-host-permissions",
       "unused-permission",
-      "missing-library",
-      "find-lib-on-cdn",
       "minified-code",
-      "untrusted-minified-library",
-      "untrusted-library",
+      "unpopular-source-dependency",
       "api-coverage",
       "unparsable-file",
       "experiment-modified",
@@ -50,14 +47,14 @@
       "unsupported-dependency",
       "vendor-vulnerable",
       "banned-library",
+      "vendor-vulnerable-dev",
+      "unsupported-build-tool",
+      "build-registry-redirect",
+      "committed-node-modules",
+      "committed-build-artifact",
+      "build-lifecycle-hook",
+      "undeclared-build-source",
       "sca-not-required",
-      "vendor-vuln-unknown",
-      "unpinned-vendor-source",
-      "vendor-modified",
-      "missing-vendor-file",
-      "multiple-vendor-files",
-      "vendor-unparseable",
-      "vendor-ambiguous-source",
       "disguised-resource",
       "disguised-stylesheet",
       "disguised-window",
@@ -88,21 +85,9 @@
   },
   "summary": {
     "error": 0,
-    "warning": 1,
+    "warning": 0,
     "info": 0,
-    "byRule": {
-      "sca-not-required": 1
-    }
+    "byRule": {}
   },
-  "findings": [
-    {
-      "ruleId": "sca-not-required",
-      "severity": "warning",
-      "file": null,
-      "loc": null,
-      "item": null,
-      "hint": null,
-      "message": "The shipped add-on (the built XPI) is directly reviewable, because its code is not minified, obfuscated or transpiled. A separate source-code archive is therefore not required, and this review was performed on the submitted XPI itself. A source-code submission is needed only when the shipped code is minified, transpiled or otherwise not human-readable, and it moves the add-on into a separate review process that takes considerably longer to complete. For this add-on you can avoid that delay by submitting only the XPI as a standard review."
-    }
-  ]
+  "findings": []
 }

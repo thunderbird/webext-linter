@@ -1,0 +1,4 @@
+{
+  "_comment": "The mirror of sca-not-required: same shape, same readable shipped XPI, but the archive's authored source is TypeScript. Readable shipped bytes are not the same question as shipped-bytes-are-the-source, so resolveReviewMode keeps the SCA review on the transpiled source kind and sca-not-required must NOT fire. The src/types.d.ts is the negative control - types-only, emits nothing, and excluded by basename because extname() reads \".ts\" from it. Because the review stays SCA, the source tree IS reviewed: background.ts is the review target and the XPI is the shipped sibling. What proves the mode in the golden is the \"Build process review\" step - undeclared-build-source is sca: true, so it can only appear in a kept SCA review.",
+  "expect": {}
+}

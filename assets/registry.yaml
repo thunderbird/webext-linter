@@ -600,18 +600,20 @@ deterministic-phase:
     The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 
 # Deterministic: a submitted source-code archive (--sca-root) was unnecessary because the shipped
-# XPI is directly reviewable (its first-party code is not minified or obfuscated). The pipeline
-# decides this from the built XPI's own classification (hasUnreviewableCode over xpiAddon.bundled)
-# and downgrades to a plain XPI review, setting ctx.scaNotRequired, which this check reports. A
-# readable XPI whose build merely copies vendored libraries is caught here too - it downgrades
-# before the build review runs. No `sca:` gate - it fires in the downgraded XPI review; silent in
-# every other review.
+# XPI IS the source - readable AND not generated. The pipeline asks both halves
+# (resolveReviewMode): hasUnreviewableCode over xpiAddon.bundled answers whether the shipped
+# bytes can be read, and the archive's source kinds answer whether they are the source, since a
+# transpiler's output reads perfectly and is still generated. Only when both say the XPI stands
+# on its own does it downgrade to a plain XPI review, setting ctx.scaNotRequired, which this
+# check reports. A readable XPI whose build merely copies vendored libraries is caught here too -
+# it downgrades before the build review runs. No `sca:` gate - it fires in the downgraded XPI
+# review; silent in every other review.
 - title: Source archive not required
   severity: warning
   check: sca-not-required
   input: source
   response: |-
-    The shipped add-on (the built XPI) is directly reviewable, because its code is not minified or obfuscated. A separate source-code archive is therefore not required, and this review was performed on the submitted XPI itself. A source-code submission is needed only when the shipped code is minified or otherwise not human-readable, and it moves the add-on into a separate review process that takes considerably longer to complete. For this add-on you can avoid that delay by submitting only the XPI as a standard review.
+    The shipped add-on (the built XPI) is directly reviewable, because its code is not minified, obfuscated or transpiled. A separate source-code archive is therefore not required, and this review was performed on the submitted XPI itself. A source-code submission is needed only when the shipped code is minified, transpiled or otherwise not human-readable, and it moves the add-on into a separate review process that takes considerably longer to complete. For this add-on you can avoid that delay by submitting only the XPI as a standard review.
 
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the repo-name candidate and proves it by content hash);
