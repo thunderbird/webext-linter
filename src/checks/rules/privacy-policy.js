@@ -56,7 +56,7 @@ export default {
     // manualReview: the privacy policy lives in the ATN listing field, not the
     // package, so reading the code cannot settle this - a person must look it up.
     const escalations = (sorted.length ? sorted : ["a remote server"]).map(
-      (host) => ({ item: host, manualReview: true })
+      (host) => ({ item: host })
     );
     return { findings: [], escalations };
   },

@@ -680,13 +680,13 @@ flowchart TB
   RUN -. throws .-> CF["one check-failed finding"]
   RUN -.-> LZ["the lazy caches are computed here, inside run():<br/>permissionAnalysis · apiResolution ·<br/>outboundSinks · evalScan · locales"]
   RUN --> QLANE{{"what did run() return?"}}
-  QLANE -- "escalations" --> ME["manualEscalations()<br/>repack the escalations as manual items<br/>a `manualReview` one: reading the code cannot settle it"]
+  QLANE -- "escalations" --> ME["manualEscalations()<br/>repack the escalations as to-do items<br/>stamping the section from the check's `escalation`"]
   QLANE -- "a plain Finding[]" --> STAMP
 
   ME --> STAMP["stamp the findings —<br/>ruleId + severity (auto → the check sets it)"]
   STAMP --> PUSHF["findings.push(out.findings)"]
   CF --> PUSHF
-  PUSHF --> PUSHM["manualItems.push(out.manualItems)<br/>→ Extended code review, or Extended manual<br/>review for a `manualReview` item"]
+  PUSHF --> PUSHM["manualItems.push(out.manualItems)<br/>→ the section the check declares:<br/>Extended code review or Extended manual review"]
   PUSHM --> NEXT
   NEXT(["next check"]) --> HEAD
 
@@ -720,10 +720,11 @@ flowchart TB
         file of a known library release is the same kind of case: the line is that
         release&rsquo;s, not something the developer wrote, so what is left is
         whether shipping it as published is acceptable here - a judgement a person
-        owns. Those are escalated with <code>manualReview: true</code> and land
-        under <strong>Extended manual review</strong>, rendered from the
-        entry&rsquo;s <code>manual-review-instructions</code> rather than its usual
-        <code>instructions</code>.
+        owns. That is a different question from &ldquo;is this even remote?&rdquo;, so it
+        is a different check - <code>vendored-remote-resources</code>, which declares
+        <code>escalation: manual-review</code> and shares one scan with
+        <code>remote-resources</code>. Which section a check&rsquo;s cases land in is
+        declared on the check, never per case.
       </p>
       <p>
         Either way the entry carries its <strong>suggested response</strong>: once

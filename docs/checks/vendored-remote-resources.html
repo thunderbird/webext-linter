@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Remote load inside an upstream release</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Remote load inside an upstream release
+          <span class="badge manual-review">manual-review</span>
+        </h1>
+        <div class="check-id">vendored-remote-resources</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A remote load — a script, style, frame or media reference — sitting inside a
+        bundled file whose content matches, byte for byte, a published file of a known
+        upstream release. The line is that release's own, so it is not something the
+        developer wrote and not theirs to defend.
+      </p>
+      <p>
+        That does not settle it. Matching upstream is a fact about content, not about
+        intent: it does not follow that the add-on needs this file, or that no build of
+        the library avoids the remote load. So every such site is put to a person.
+      </p>
+      <p>
+        It turns on the content match, never on a declaration. A file declared as
+        vendored but not verified is reviewed as the developer's own code, and its remote
+        loads stay
+        <a href="remote-resources.html">Remote resources</a> findings — which is the
+        whole point: a declaration must never buy an exemption on its own.
+      </p>
+      <p>
+        Both checks read one shared scan, so the add-on is walked once. Two limits are
+        worth knowing: only the shipped XPI carries verified vendor results, so a
+        source-code archive review never reaches this lane, and a vendored
+        <code>.js</code> is dropped from the scan entirely — this applies to HTML and CSS
+        references.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A remote load found by the shared scan<br/>(HTML refs, CSS url()/@import)"] --> B{"Is it inside a file whose CONTENT<br/>matched a published upstream release?"}
+  B -- no --> S([skip — the developer's own line,<br/>so Remote resources reports it])
+  B -- yes --> M(["escalate — a person decides whether<br/>shipping the release as published is<br/>acceptable here"])
+
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class S skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The reviewer is shown each site with the release it was matched against, and
+        decides whether shipping that release as published is acceptable. Nothing is said
+        to the developer unless the reviewer concludes it is not, in which case the
+        entry's suggested response asks for a build of the library that loads nothing
+        remotely, or for the dependency to be removed.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/vendored-remote-resources.js</code> and its entry in
+        <code>assets/registry.yaml</code>. The shared scan lives in
+        <code>src/lib/remote-refs.js</code>.
+      </p>
+    </main>
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

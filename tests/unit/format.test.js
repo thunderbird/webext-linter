@@ -51,7 +51,7 @@ test("manual review splits into code, manual, then standard sections", () => {
           title: "Build process review",
           instructions: "Reproduce the build by hand.",
           extended: true,
-          manualReview: true,
+          section: "manual-review",
         },
         {
           title: "Check the submission for spam",
@@ -183,12 +183,12 @@ test("a manual-review item renders with its own wording and its response", () =>
   const [item] = renderManualItems(
     [
       {
-        ruleId: "remote-resources",
+        ruleId: "vendored-remote-resources",
         item: "https://fonts.example/f.css",
         hint: "https://cdn.example/x@1.0.0/x.css",
         file: "lib/x.css",
         loc: { line: 1 },
-        manualReview: true,
+        section: "manual-review",
       },
     ],
     registry

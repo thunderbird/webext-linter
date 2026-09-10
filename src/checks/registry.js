@@ -16,10 +16,9 @@
 //
 // A check returns `Finding[]`, or an object carrying `escalations` beside its
 // findings: the cases it could not settle. The orchestrator (runChecks) repacks
-// those as manual-review items via escalation.js and is the sole authority on
-// manual review, with one thing it is told rather than infers: an escalation
-// marked `manualReview` is one reading the code cannot settle, so it is listed
-// under Extended manual review instead of Extended code review.
+// those as to-do items via escalation.js and is the sole authority on the to-do
+// sections: which one a check's cases are listed under is the check's own
+// `escalation` field, not a property of the case.
 //
 // The shared `ctx` passed to run() is the RunContext typedef below, which is the
 // one description of it: what a check may read, and from where.
@@ -56,14 +55,12 @@ import { collapseUnusedFolders } from "../lib/unused-folders.js";
 // sets none or an invalid value) - see runOneCheck. "auto" is a config-only
 // token: a finding never carries it.
 const AUTO_SEVERITY = "auto";
-// A check that can never emit a finding: every case it raises goes to a person, so it has
-// no band to report at. Declaring `error` there was a value nobody chose - inert today
-// (nothing is stamped), but pre-armed to auto-reject on the JSON upload filter the day the
-// check gained a finding path. Declaring it here instead states the truth AND makes that
-// day loud: runOneCheck refuses a finding from such a check rather than stamping it. Which
-// review bucket the case lands in is NOT this: that is per-case (`manualReview` on the
-// escalation), so several escalation checks land in Extended code review, not manual.
-const ESCALATION_SEVERITY = "escalation";
+// A check that emits no findings at all: it only ever escalates, so there is no band to
+// report at. Declaring `error` there was a value nobody chose - inert (nothing is stamped)
+// but pre-armed to auto-reject on the JSON upload filter the day the check gained a finding
+// path. Saying `none` states the truth AND makes that day loud: runOneCheck refuses a
+// finding from such a check rather than stamping one.
+const NO_SEVERITY = "none";
 const CONCRETE_SEVERITIES = new Set([
   SEVERITY.ERROR,
   SEVERITY.WARNING,
@@ -72,8 +69,16 @@ const CONCRETE_SEVERITIES = new Set([
 const VALID_CHECK_SEVERITIES = new Set([
   ...CONCRETE_SEVERITIES,
   AUTO_SEVERITY,
-  ESCALATION_SEVERITY,
+  NO_SEVERITY,
 ]);
+
+// Where a check's escalations are listed, declared per entry and INDEPENDENT of severity:
+// the two answer different questions ("what are its findings" vs "who settles what it could
+// not"). "code-review" is settleable by reading the add-on's code; "manual-review" needs
+// information from outside the package, or an act only a person can take. A check's cases
+// all land in the same section - a check that needs both asks two questions and is two
+// checks (see remote-resources / vendored-remote-resources).
+const ESCALATION_SECTIONS = new Set(["code-review", "manual-review"]);
 
 // The `input` a check entry declares - which add-on artifact is ctx.addon when the
 // check runs. "source" = the REVIEW TARGET, the readable submitted code (the readable
@@ -126,7 +131,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   on a ctx with an empty file corpus (buildXpiCtxs' manifestCtx), for pure-manifest checks. Required for
  *   every check - runChecks routes it to that artifact's context (see buildXpiCtxs /
  *   buildScaCtxs), and it is also what the check's output is labelled as ([XPI]/[SCA]).
- * @property {string} [instructions]  Manual-review message.
+ * @property {string} [instructions]  The to-do wording for a case this check escalates.
+ * @property {string} [escalation]  Which to-do section its escalations are listed under
+ *   ("code-review" / "manual-review"); absent when the check never escalates.
  * @property {object[]} [permissionTokens]  The permission-prompts token entries
  *   ({permissions, tokens, version bounds}), carried by every check and read by
  *   the one that scans for them.
@@ -360,33 +367,23 @@ export class Registry {
   }
 
   /**
-   * The manual-review instructions template for a ref of this rule: the owning
-   * check's `instructions`, or - for a `manualReview` ref - its
-   * `manual-review-instructions`. The two are different texts because they ask
-   * different things: the ordinary one asks the reviewer to resolve what the scan
-   * could not, which for a manual-review case is not what is left to decide.
+   * The to-do wording for a ref of this rule: its check's `instructions`. One text per
+   * check, because a check's cases all land in one section (its `escalation`) and so all
+   * ask the same question - a check needing two questions is two checks.
    *
-   * Such a ref whose entry authors no wording RAISES. Nothing at load time can tell
-   * which checks raise them - a check decides that per case, at run time - so this
-   * is the first moment the omission is visible, and both quiet alternatives ship a
-   * wrong report: the normal instructions misdescribe the case, an empty one asks a
-   * reviewer to decide with nothing to go on. Registry authoring mistakes raise here
-   * for the same reason loadChecks raises for a check entry with no severity: a
-   * misconfigured registry must stop the run, not quietly shape the report.
+   * loadChecks already refuses an entry that declares one half without the other, so a
+   * loaded check that escalates has wording. This still raises rather than returning
+   * null, because the alternative ships a to-do item with no text.
    * @param {string} ruleId
-   * @param {boolean} manualReview
-   * @returns {?string}
+   * @returns {string}
    */
-  instructionsFor(ruleId, manualReview) {
+  instructionsFor(ruleId) {
     const entry = this.checkEntry(ruleId);
-    if (!manualReview) {
-      return entry?.instructions ?? null;
-    }
-    const text = entry?.["manual-review-instructions"];
-    if (!text) {
+    const text = entry?.instructions;
+    if (typeof text !== "string" || text === "") {
       throw new Error(
-        `"${entry?.title ?? ruleId}" raised a manual-review item but authors no ` +
-          "`manual-review-instructions` (assets/registry.yaml)"
+        `"${entry?.title ?? ruleId}" raised a to-do item but authors no ` +
+          "`instructions` (assets/registry.yaml)"
       );
     }
     return text;
@@ -568,6 +565,32 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
           `(expected one of: ${[...VALID_CHECK_SEVERITIES].join(", ")})`
       );
     }
+    // `escalation` and `instructions` are one declaration in two halves: the section a
+    // case is listed under, and the wording it is listed with. Either alone is a mistake -
+    // wording with no section is an escalation someone forgot to declare, a section with
+    // no wording asks a reviewer to decide with nothing to go on - and both would surface
+    // only when a case first reached them, which may be never. So both fail here.
+    const escalation = entry.escalation;
+    const wording =
+      typeof entry.instructions === "string" && entry.instructions !== "";
+    if (escalation !== undefined && !ESCALATION_SECTIONS.has(escalation)) {
+      throw new Error(
+        `rules/${id}.js has an invalid escalation ${JSON.stringify(escalation)} ` +
+          `(expected one of: ${[...ESCALATION_SECTIONS].join(", ")})`
+      );
+    }
+    if (escalation !== undefined && !wording) {
+      throw new Error(
+        `rules/${id}.js declares escalation: ${escalation} but authors no ` +
+          "`instructions` (assets/registry.yaml)"
+      );
+    }
+    if (wording && escalation === undefined) {
+      throw new Error(
+        `rules/${id}.js authors \`instructions\` but declares no \`escalation\` section ` +
+          `(expected one of: ${[...ESCALATION_SECTIONS].join(", ")})`
+      );
+    }
     // Every check must declare a valid `input`, which drives runOneCheck's artifact
     // routing (routing is total - there is no default artifact to fall through to).
     const input = entry.input;
@@ -599,6 +622,7 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
       input,
       sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
       instructions: entry.instructions,
+      escalation,
       // The permission-prompts token entries, like `instructions` above: registry
       // data every check carries, read by the one that scans for them. It version-filters at run time (versionInBounds) with the reviewed
       // manifest, so every entry is handed over here.
@@ -754,7 +778,7 @@ export function ctxForRule(registry, ruleId, siblings) {
  *   XPI review), `xpi` = the shipped XPI, `build` = the SCA build files, `manifest` = the
  *   shipped manifest (no file corpus). Consumed via routeCtx (the matrix is documented there).
  * @returns {Promise<{findings: object[],
- *   manualItems: {ruleId: string, item: ?string, manualReview: boolean}[],
+ *   manualItems: {ruleId: string, item: ?string, section: ?string}[],
  *   checksRun: object[]}>}  The finished review: every finding and manual item, and
  *   the checks that ran (for meta.checksRun).
  */
@@ -910,12 +934,12 @@ export async function runOneCheck(ctx, check, label) {
       // Cases a person must inspect, straight to manual review.
       manualItems.push(...manualEscalations(check, escalations).manualItems);
     }
-    if (check.severity === ESCALATION_SEVERITY && produced.length) {
-      // The entry says this check only ever escalates, so it has no band to stamp. A
+    if (check.severity === NO_SEVERITY && produced.length) {
+      // The entry says this check emits no findings, so there is no band to stamp. A
       // finding here would otherwise be published at an invented severity - the exact
       // silent auto-reject the declaration exists to prevent. Fail loudly instead.
       throw new Error(
-        `${check.id} is severity:escalation but emitted ${produced.length} finding(s) - ` +
+        `${check.id} is severity:none but emitted ${produced.length} finding(s) - ` +
           "give the entry a concrete severity, or return only escalations"
       );
     }

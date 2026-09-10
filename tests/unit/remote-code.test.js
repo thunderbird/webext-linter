@@ -14,6 +14,7 @@ import {
 import { scanCssRemoteRefs } from "../../src/scan/css.js";
 import { scanRemoteJs } from "../../src/parse/remote-js.js";
 import remoteScript from "../../src/checks/rules/remote-resources.js";
+import vendoredRemote from "../../src/checks/rules/vendored-remote-resources.js";
 import evalCall from "../../src/checks/rules/eval-call.js";
 import cspUnsafeEval from "../../src/checks/rules/csp-unsafe-eval.js";
 import cspUnsafeInline from "../../src/checks/rules/csp-unsafe-inline.js";
@@ -687,12 +688,12 @@ test("formatNote renders a padded verdict tag and the site", () => {
   );
 });
 
-// ---- verified vendored files: the manual-review lane ----
-// A remote @import inside a file whose content matched a published upstream release
-// is that release's own line. It is not dropped (a reviewer still sees it) and not a
-// finding (it is not the developer's line), and it is marked `manualReview` so
-// it is a manual-review case - what is left is whether shipping
-// that release here is acceptable, which is a person's call.
+// ---- verified vendored files: the vendored-remote-resources lane ----
+// A remote @import inside a file whose content matched a published upstream release is
+// that release's own line. It is not dropped (a reviewer still sees it) and not a finding
+// (it is not the developer's line): it is a SEPARATE check, because it asks a separate
+// question - whether shipping that release here is acceptable, which is a person's call.
+// Both checks read one shared scan, so remote-resources must stay silent on these.
 const VENDORED_CSS = {
   "lib/x.css": `@import url("https://fonts.example/f.css");`,
 };
@@ -702,13 +703,18 @@ const verified = (path = "lib/x.css") => ({
   results: [{ path, source: UPSTREAM, outcome: "verified" }],
 });
 
-test("remote-resources sends a remote load in a VERIFIED vendored file to a person", () => {
-  const ctx = fakeCtx(VENDORED_CSS, { manifest_version: 3 }, verified());
-  const out = remoteScript.run(withManifest(ctx));
+test("vendored-remote-resources sends a remote load in a VERIFIED vendored file to a person", () => {
+  const ctx = withManifest(
+    fakeCtx(VENDORED_CSS, { manifest_version: 3 }, verified())
+  );
+  // The developer's-own-code check says nothing about it: not its question.
+  const own = remoteScript.run(ctx);
+  assert.deepEqual(own.findings, []);
+  assert.deepEqual(own.escalations, []);
+  const out = vendoredRemote.run(ctx);
   assert.deepEqual(out.findings, []);
   assert.equal(out.escalations.length, 1);
   const [e] = out.escalations;
-  assert.equal(e.manualReview, true);
   assert.equal(e.file, "lib/x.css");
   assert.equal(e.hint, UPSTREAM); // which release it was matched against
   // The subject is the WHOLE url, as the finding lane reports it - the reviewer is
@@ -718,17 +724,18 @@ test("remote-resources sends a remote load in a VERIFIED vendored file to a pers
 });
 
 // A definite remote load in HTML takes the same route as one in CSS.
-test("remote-resources routes a remote <script> in a verified file the same way", () => {
-  const ctx = fakeCtx(
-    { "lib/x.html": `<script src="https://cdn.example/evil.js"></script>` },
-    { manifest_version: 3 },
-    verified("lib/x.html")
+test("vendored-remote-resources routes a remote <script> in a verified file the same way", () => {
+  const ctx = withManifest(
+    fakeCtx(
+      { "lib/x.html": `<script src="https://cdn.example/evil.js"></script>` },
+      { manifest_version: 3 },
+      verified("lib/x.html")
+    )
   );
-  const out = remoteScript.run(withManifest(ctx));
-  assert.deepEqual(out.findings, []);
+  assert.deepEqual(remoteScript.run(ctx).findings, []);
   assert.deepEqual(
-    out.escalations.map((e) => [e.item, e.manualReview]),
-    [["https://cdn.example/evil.js", true]]
+    vendoredRemote.run(ctx).escalations.map((e) => e.item),
+    ["https://cdn.example/evil.js"]
   );
 });
 
@@ -773,25 +780,28 @@ test("remote-resources refuses the exemption for a file marked untrusted", () =>
 // An undecidable site in a verified vendored file goes to the reviewer too, not the
 // reviewer: the only thing resolving it could do is produce a finding this file is
 // exempt from, so the undecidable question is not asked about it at all.
-test("remote-resources asks a different question about a verified vendored file", () => {
-  const ctx = fakeCtx(
-    { "lib/x.html": `<script src="data:text/javascript,alert(1)"></script>` },
-    { manifest_version: 3 },
-    verified("lib/x.html")
+test("an undecidable site in a verified vendored file asks the other question too", () => {
+  const ctx = withManifest(
+    fakeCtx(
+      { "lib/x.html": `<script src="data:text/javascript,alert(1)"></script>` },
+      { manifest_version: 3 },
+      verified("lib/x.html")
+    )
   );
-  const out = remoteScript.run(withManifest(ctx));
-  assert.equal(out.escalations.length, 1);
-  assert.equal(out.escalations[0].manualReview, true);
+  // Not asked as "is this remote?" - resolving it could only produce a finding this
+  // file is exempt from - so remote-resources does not raise it at all.
+  assert.deepEqual(remoteScript.run(ctx).escalations, []);
+  assert.equal(vendoredRemote.run(ctx).escalations.length, 1);
 });
 
 // The scanners can report one site twice; the findings lane has always deduped, and a
 // reviewer should be asked once too.
-test("remote-resources dedupes the escalations like the findings", () => {
+test("vendored-remote-resources dedupes its escalations like the findings", () => {
   const dup = `<link rel="stylesheet" href="https://cdn.example/a.css"><link rel="stylesheet" href="https://cdn.example/a.css">`;
   const ctx = fakeCtx(
     { "lib/x.html": dup },
     { manifest_version: 3 },
     verified("lib/x.html")
   );
-  assert.equal(remoteScript.run(withManifest(ctx)).escalations.length, 1);
+  assert.equal(vendoredRemote.run(withManifest(ctx)).escalations.length, 1);
 });

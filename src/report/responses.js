@@ -109,7 +109,7 @@ export function renderFindings(findings, registry) {
  * carried through, and `listItem` is set exactly as for findings - so the report
  * can list "file:line - item" under an item-free instructions message.
  * @param {{ruleId: string, item: ?string, file?: ?string, loc?: object|null,
- *   manualReview?: boolean,
+ *   section?: ?string,
  *   data?: Record<string, string|number>|null}[]} refs
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {import("./finding.js").ManualItem[]}
@@ -117,12 +117,9 @@ export function renderFindings(findings, registry) {
 export function renderManualItems(refs, registry) {
   return refs.map((ref) => {
     const entry = registry.checkEntry(ref.ruleId);
-    // Which text this ref gets is the registry's call, including whether a
-    // manual-review ref's entry authored any (instructionsFor raises if not).
-    const template = registry.instructionsFor(
-      ref.ruleId,
-      ref.manualReview === true
-    );
+    // One text per check: the registry's call, and instructionsFor raises if the entry
+    // authored none (loadChecks already refuses that pairing).
+    const template = registry.instructionsFor(ref.ruleId);
     return {
       title: entry?.title ?? ref.ruleId,
       instructions: fill(template, ref.item, ref.data) ?? "",
@@ -135,9 +132,9 @@ export function renderManualItems(refs, registry) {
       // ([XPI]/[SCA]) via ruleInputs - the corpus the owning check acts on. Without
       // it a non-manifest manual item has no ruleId and defaults to [SCA].
       ruleId: ref.ruleId,
-      // Which of the two extended buckets this belongs to: reading the code can
-      // settle it, or a person must. The report groups on this.
-      manualReview: ref.manualReview === true,
+      // Which of the two extended sections this is listed under, from the owning
+      // check's `escalation` field. The report groups on this.
+      section: ref.section ?? null,
       file: ref.file ?? null,
       loc: ref.loc ?? null,
       item: ref.item ?? null,

@@ -10,13 +10,13 @@ const check = {
   id: "unused-files",
   title: "Unused",
   severity: "error",
+  escalation: "code-review",
 };
 
-// A deterministic check's escalations route straight to manual refs, carrying
-// any per-case data (e.g. a reason) and locus (file/loc) through to the report.
-// The third case carries `manualReview`: the ref is what the report layer reads to
-// pick the wording, so dropping the flag here would render a case no judgement can
-// change as though it were an open question.
+// A deterministic check's escalations route straight to manual refs, carrying any
+// per-case data (e.g. a reason) and locus (file/loc) through to the report. The SECTION
+// is stamped from the check, not read off the case: every case a check raises asks the
+// same question, so a check needing two questions is two checks.
 test("manualEscalations maps each escalation to a manual ref", () => {
   const out = manualEscalations(check, [
     {
@@ -27,7 +27,6 @@ test("manualEscalations maps each escalation to a manual ref", () => {
       data: { reason: "why" },
     },
     { item: null },
-    { item: "d.js", manualReview: true },
   ]);
   assert.deepEqual(out.findings, []);
   assert.deepEqual(out.manualItems, [
@@ -37,7 +36,7 @@ test("manualEscalations maps each escalation to a manual ref", () => {
       hint: "fetch()",
       file: "manifest.json",
       loc: { line: 3 },
-      manualReview: false,
+      section: "code-review",
       data: { reason: "why" },
       occurrences: null,
     },
@@ -47,19 +46,18 @@ test("manualEscalations maps each escalation to a manual ref", () => {
       hint: null,
       file: null,
       loc: null,
-      manualReview: false,
-      data: null,
-      occurrences: null,
-    },
-    {
-      ruleId: "unused-files",
-      item: "d.js",
-      hint: null,
-      file: null,
-      loc: null,
-      manualReview: true,
+      section: "code-review",
       data: null,
       occurrences: null,
     },
   ]);
+});
+
+// The section follows the check: the same cases from a manual-review check land there.
+test("manualEscalations stamps the section from the check", () => {
+  const { manualItems } = manualEscalations(
+    { ...check, id: "privacy-policy", escalation: "manual-review" },
+    [{ item: "example.com" }]
+  );
+  assert.equal(manualItems[0].section, "manual-review");
 });

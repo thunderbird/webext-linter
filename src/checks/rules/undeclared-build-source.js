@@ -41,8 +41,6 @@ export default {
       escalations: [
         {
           ...(anchor ? { file: anchor } : {}),
-          // manualReview: no reading of the code substitutes for doing it.
-          manualReview: true,
           data: {
             buildInstructions:
               typeof buildInstructions === "string" ? buildInstructions : "",

@@ -48,6 +48,7 @@ deterministic-phase:
 - title: Unknown or unsupported WebExtension API
   severity: error
   check: unknown-api
+  escalation: code-review
   input: source
   response: |-
     The following WebExtension APIs are not supported in the targeted Thunderbird version.
@@ -251,6 +252,7 @@ deterministic-phase:
 - title: Possibly unused permissions
   severity: warning
   check: unused-permission
+  escalation: code-review
   input: xpi
   response: |-
     One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
@@ -380,8 +382,9 @@ deterministic-phase:
 # they need a careful human review. Emits no findings, only the escalation, so the
 # declared severity is never stamped on anything - it is required of every check entry.
 - title: Experiment code review
-  severity: escalation
+  severity: none
   check: experiment-manual-review
+  escalation: code-review
   input: manifest
   instructions: |-
     This is an Experiment submission, which requires careful code review since it
@@ -401,8 +404,9 @@ deterministic-phase:
 # escalation, so the declared severity is never stamped on anything - it is required of
 # every check entry. unknown-api already lists the specific APIs.
 - title: Experiment with unrecognized API usage
-  severity: escalation
+  severity: none
   check: experiment-unknown-api
+  escalation: code-review
   input: source
   instructions: |-
     This Experiment calls WebExtension APIs the schema does not recognize (see the
@@ -555,9 +559,10 @@ deterministic-phase:
 # asserted as a finding. The setup build analysis also covers hooks, but only with a
 # token; this is the offline backstop. The hook and its command ride the locus.
 - title: Build install hook
-  severity: escalation
+  severity: none
   sca: true
   check: build-lifecycle-hook
+  escalation: code-review
   input: build
   instructions: |-
     The package.json declares the install lifecycle hook(s) below, which run when the
@@ -577,11 +582,12 @@ deterministic-phase:
 # on. {{unresolvedBuildSteps}} names the steps the linter could not follow and
 # {{buildInstructions}} how the source says to build, both in the manual instructions.
 - title: Build process review
-  severity: escalation
+  severity: none
   sca: true
   check: undeclared-build-source
+  escalation: manual-review
   input: build
-  manual-review-instructions: |-
+  instructions: |-
     Confirm by hand that the shipped XPI is produced by this source: reproduce the
     build and compare the result against the submitted XPI. Confirm the build pulls
     ONLY from the dependencies declared in package.json/lock - no remote code or
@@ -728,15 +734,16 @@ deterministic-phase:
 # Preflight -> manual review: data sent to a hardcoded remote host means the
 # listing must carry a privacy policy, which is not part of the package.
 - title: Remote data transmission needs a privacy policy
-  severity: escalation
+  severity: none
   check: privacy-policy
+  escalation: manual-review
   input: source
   response: |-
     Please add a privacy policy to this add-on that details which user data is being sent and to what services. The critical things to describe in the policy are how your extension collects, uses, stores, shares or discloses information about people. If your add-on makes it apparent to websites that it is installed, this must also be mentioned. The policy should be about the extension only, not a copy of the website’s privacy policy. It should also be the actual text, as opposed to a link to a privacy policy on a website. The privacy policy can be added in the add-on settings under "Manage Authors & License" on addons.thunderbird.net. For more information, please check our Review Policies [1], and Mozilla’s own privacy policy [2] as an example.
 
     [1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
     [2]: https://www.mozilla.org/en-US/privacy/
-  manual-review-instructions: |-
+  instructions: |-
     This add-on transmits data to one or more hardcoded remote servers. Confirm
     the ATN listing carries a privacy policy that discloses what data is
     collected and why. The privacy policy must be pasted into the ATN field
@@ -746,12 +753,13 @@ deterministic-phase:
 # to a native application. What the listing discloses about that exchange is not in
 # the package, so a person settles it.
 - title: Native messaging needs disclosure
-  severity: escalation
+  severity: none
   check: native-messaging
+  escalation: manual-review
   input: manifest
   response: |-
     This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged.
-  manual-review-instructions: |-
+  instructions: |-
     This add-on requests the "nativeMessaging" permission. Confirm the add-on
     listing page on ATN discloses what information is exchanged with the local
     app and that it complies with the No Surprises policy.
@@ -854,6 +862,7 @@ deterministic-phase:
 - title: Missing English localization
   severity: warning
   check: missing-english-localization
+  escalation: code-review
   input: xpi
   instructions: |-
     This add-on ships no English localization, so user-facing text may be
@@ -877,6 +886,7 @@ deterministic-phase:
 - title: Obfuscated code is not permitted
   severity: error
   check: obfuscated-code
+  escalation: code-review
   input: source
   instructions: |-
     The automated analysis could not tell whether the following file(s) are
@@ -901,6 +911,7 @@ deterministic-phase:
 - title: API newer than strict_min_version
   severity: error
   check: strict-min-version-api
+  escalation: code-review
   input: source
   instructions: |-
     The API at each location below exists and is supported, but was added after
@@ -920,6 +931,7 @@ deterministic-phase:
 - title: Unused, hidden or duplicate files or folders
   severity: error
   check: unused-files
+  escalation: code-review
   input: xpi
   instructions: |-
     The following files are reachable from no manifest entry point, so decide
@@ -935,6 +947,7 @@ deterministic-phase:
 - title: Minimize web_accessible_resources
   severity: warning
   check: minimize-web-accessible-resources
+  escalation: code-review
   input: xpi
   instructions: |-
     The following resources are exposed through web_accessible_resources and
@@ -955,27 +968,44 @@ deterministic-phase:
 - title: Remote resources
   severity: error
   check: remote-resources
+  escalation: code-review
   input: source
   instructions: |-
     This site loads or injects a resource - script, style, frame or media - from
     a source static analysis could not resolve to a packaged file. Confirm by
     hand that it comes from a bundled file and not from a remote source.
-  manual-review-instructions: |-
+  response: |-
+    A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed.
+
+# The same scan's other question (src/lib/remote-refs.js, shared with remote-resources
+# above): a remote load inside a file whose CONTENT matched a published upstream release.
+# The line is that release's, so it is not the developer's to defend - but nor does it
+# follow that the add-on needs the file. Emits no findings: every site goes to a person,
+# who decides whether shipping it as published is acceptable. Turns on the content match,
+# never on a declaration - an unverified declared file is reviewed as the developer's own
+# code, so its remote loads stay remote-resources' findings.
+- title: Remote load inside an upstream release
+  severity: none
+  check: vendored-remote-resources
+  escalation: manual-review
+  input: source
+  instructions: |-
     Each of these remote loads is inside a file whose content matches a published
     file of the upstream release listed after it - so the line is that release's,
     not something the developer wrote. That does not by itself mean the add-on
     needs this file, or that no build of the library avoids the remote load.
     Decide whether shipping it as published is acceptable here.
   response: |-
-    A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed.
+    A bundled third-party file loads a resource from a remote source as published upstream. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Please ship a build of the library that does not load anything remotely, or remove the dependency.
 
 # the statically-undecidable fetch().then(eval) case - is the executed
 # code remote? The definite eval/Function/timer/CSP cases are deterministic
 # checks above. Like them, the shared scan only covers code OUTSIDE the pure
 # WebExtension tree (WebExtension code is CSP-gated, see unsafe-eval/unsafe-inline).
 - title: Remote eval
-  severity: escalation
+  severity: none
   check: remote-eval
+  escalation: code-review
   input: source
   instructions: |-
     The following location(s) execute code assembled at run time, such as
@@ -988,8 +1018,9 @@ deterministic-phase:
 # normal transmission (fetch and friends) to a remote host - allowed
 # only with an options-page opt-in, judged from the options page in evidence.
 - title: User-data exfiltration
-  severity: escalation
+  severity: none
   check: data-exfiltration
+  escalation: code-review
   input: source
   instructions: |-
     The following code locations send data to a remote server. User data -
@@ -1010,8 +1041,9 @@ deterministic-phase:
 # the deterministic disguised-* errors; this asks whether the dynamic URL is really
 # an undisclosed data send or just legitimate dynamic URL building.
 - title: Disguised data transmission
-  severity: escalation
+  severity: none
   check: disguised-transmission
+  escalation: code-review
   input: source
   instructions: |-
     The following code locations build a URL to a remote host from a runtime

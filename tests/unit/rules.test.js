@@ -670,6 +670,49 @@ test("checks carry the sca mode tag (true=SCA-only, undefined=both; none is XPI-
   assert.equal(sca("unknown-api"), undefined);
 });
 
+// `escalation` and `instructions` are one declaration in two halves: the section a case is
+// listed under, and the wording it is listed with. loadChecks refuses either alone, because
+// both failures would otherwise surface only when a case first reached them - which may be
+// never. This pins the whole map, so a new escalating check must declare its section.
+test("every escalating check declares a section, and only those", async () => {
+  const checks = allChecks(await loadChecks(loadRegistry(), { eslint: true }));
+  const bySection = {};
+  for (const c of checks) {
+    if (c.escalation) (bySection[c.escalation] ??= []).push(c.id);
+    // The two halves travel together: no check has one without the other.
+    assert.equal(
+      Boolean(c.escalation),
+      Boolean(c.instructions),
+      `${c.id}: escalation and instructions must be declared together`
+    );
+  }
+  for (const k of Object.keys(bySection)) bySection[k].sort();
+  assert.deepEqual(bySection, {
+    "code-review": [
+      "build-lifecycle-hook",
+      "data-exfiltration",
+      "disguised-transmission",
+      "experiment-manual-review",
+      "experiment-unknown-api",
+      "minimize-web-accessible-resources",
+      "missing-english-localization",
+      "obfuscated-code",
+      "remote-eval",
+      "remote-resources",
+      "strict-min-version-api",
+      "unknown-api",
+      "unused-files",
+      "unused-permission",
+    ],
+    "manual-review": [
+      "native-messaging",
+      "privacy-policy",
+      "undeclared-build-source",
+      "vendored-remote-resources",
+    ],
+  });
+});
+
 // Severity is the ONE thing that decides whether a finding rejects a submission, and
 // the JSON report is an upload filter that can auto-reject before a human sees it. It
 // is observable only through a rendered report, and 22 checks fire in no fixture - so
@@ -679,9 +722,10 @@ test("checks carry the sca mode tag (true=SCA-only, undefined=both; none is XPI-
 //
 // The registry also NEVER defaults it (loadChecks throws on a missing severity), so an
 // entry cannot acquire a band by omission - the assertion below is the declared value.
-// `escalation` is the band for a check that can never emit a finding: it has nothing to
-// report at, and runOneCheck refuses a finding from one, so nothing can reach the upload
-// filter at a severity nobody chose.
+// `none` is the band for a check that emits no findings: it has nothing to report at, and
+// runOneCheck refuses a finding from one, so nothing can reach the upload filter at a
+// severity nobody chose. WHERE such a check's cases are listed is a separate field
+// (`escalation`), pinned by its own test.
 test("every check's severity is pinned to its band", async () => {
   // eslint: true so the opt-in code-sanity check is loaded and pinned like the rest.
   const checks = allChecks(await loadChecks(loadRegistry(), { eslint: true }));
@@ -768,7 +812,7 @@ test("every check's severity is pinned to its band", async () => {
       "vendor-vuln-unknown",
     ],
     auto: ["banned-library", "vendor-vulnerable", "vendor-vulnerable-dev"],
-    escalation: [
+    none: [
       "build-lifecycle-hook",
       "data-exfiltration",
       "disguised-transmission",
@@ -778,6 +822,7 @@ test("every check's severity is pinned to its band", async () => {
       "privacy-policy",
       "remote-eval",
       "undeclared-build-source",
+      "vendored-remote-resources",
     ],
   });
 });
@@ -942,8 +987,9 @@ test("undeclared-build-source escalates every SCA, build documented or not", () 
   assert.equal(out.findings.length, 0);
   assert.equal(out.escalations.length, 1);
   assert.equal(out.escalations[0].file, "package.json");
-  // The reviewer must reproduce it themselves, so this is not a code-review question.
-  assert.equal(out.escalations[0].manualReview, true);
+  // WHERE it is listed is the entry's `escalation: manual-review`, not the case's - the
+  // reviewer must reproduce the build themselves, which reading the code cannot replace.
+  assert.equal(out.escalations[0].manualReview, undefined);
   assert.equal(
     out.escalations[0].data.buildInstructions,
     "npm ci && npm run build"
@@ -967,7 +1013,6 @@ test("undeclared-build-source escalates every SCA, build documented or not", () 
   );
   assert.equal(none.findings.length, 0);
   assert.equal(none.escalations.length, 1);
-  assert.equal(none.escalations[0].manualReview, true);
   assert.equal("file" in none.escalations[0], false);
 });
 
@@ -3318,14 +3363,42 @@ test("a check that returns a bare array is refused, not read as findings", async
   assert.deepEqual(none.findings, []);
 });
 
-// severity:escalation says the check can never emit a finding, so there is no band to
-// stamp. A finding from one would have to be published at an invented severity - and the
-// JSON report is an upload filter, so an invented `error` auto-rejects. runOneCheck
-// refuses it instead: the breach surfaces as a check-failed error naming the check, not
-// as a silent rejection. The three empty shapes a check may legitimately return
-// (undefined, a bare [], and an explicit findings: []) all pass.
-test("severity:escalation refuses a finding, and accepts every empty shape", async () => {
-  const escalating = (run) => ({ id: "esc", severity: "escalation", run });
+// severity:none says the check emits no findings, so there is no band to stamp. A finding
+// from one would have to be published at an invented severity - and the JSON report is an
+// upload filter, so an invented `error` auto-rejects. runOneCheck refuses it instead: the
+// breach surfaces as a check-failed error naming the check, not as a silent rejection. The
+// empty shapes a check may legitimately return all pass.
+// The other half of the pairing, at load time: an entry declaring one without the other
+// fails there rather than at the first case that reaches it - which may be never.
+test("loadChecks refuses escalation without instructions, and the reverse", async () => {
+  const doc = loadRegistry();
+  const entry = (id) =>
+    doc.doc["deterministic-phase"].find((e) => e.check === id);
+  const orphanSection = entry("remote-eval");
+  const keepWording = orphanSection.instructions;
+  delete orphanSection.instructions;
+  await assert.rejects(
+    () => loadChecks(doc),
+    /authors no `instructions`/,
+    "a section with no wording"
+  );
+  orphanSection.instructions = keepWording;
+
+  const orphanWording = entry("data-exfiltration");
+  const keepSection = orphanWording.escalation;
+  delete orphanWording.escalation;
+  await assert.rejects(
+    () => loadChecks(doc),
+    /declares no `escalation` section/,
+    "wording with no section"
+  );
+  orphanWording.escalation = keepSection;
+  // Restored: the real registry still loads.
+  await loadChecks(doc);
+});
+
+test("severity:none refuses a finding, and accepts every empty shape", async () => {
+  const escalating = (run) => ({ id: "esc", severity: "none", run });
 
   const bad = await runOneCheck(
     {},

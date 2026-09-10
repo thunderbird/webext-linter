@@ -179,10 +179,14 @@ body {
   background: #6b46c1;
 }
 /* `manual`: no automated severity — escalated to human review. */
-/* A check that can never emit a finding: it only ever hands the case to a person, so it
-   has no severity to show. Distinct from `manual`, which marks the static by-hand list. */
-.badge.escalation {
+/* A check that emits no findings (severity: none): the badge names the to-do section its
+   cases are listed under instead. Distinct from `manual`, which marks the static by-hand
+   list, and from each other so a reader can tell who settles the case. */
+.badge.code-review {
   background: #5b626b;
+}
+.badge.manual-review {
+  background: #4a5568;
 }
 .badge.manual {
   background: #5b626b;

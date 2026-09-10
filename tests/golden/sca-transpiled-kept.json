@@ -89,6 +89,7 @@
       "unused-files",
       "minimize-web-accessible-resources",
       "remote-resources",
+      "vendored-remote-resources",
       "remote-eval",
       "data-exfiltration",
       "disguised-transmission"

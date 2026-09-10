@@ -47,7 +47,7 @@ that no longer exist.
    settle), and often a leading comment block describing intent. EVERY check entry
    declares a `severity` - the loader refuses one that does not. Only the `manual-checks`
    entries have none. Entries may also carry `input`, `diff`, `sca`,
-   `eslint` or `manual-review-instructions`. The check-bearing sections ARE
+   `eslint` or `escalation`. The check-bearing sections ARE
    the phases — a check's phase IS the section it lives in, never a field on the
    entry: `invalid-experiment-phase` (the only phase that runs for an invalid
    Experiment) and `deterministic-phase` (every other check). `manual-checks` is NOT
@@ -111,10 +111,9 @@ that no longer exist.
      hands to the reviewer. **The tool calls no model: there is no verdict step, so a
      diagram must never draw a pass/fail/unsure fan-out.** A check pushes its
      escalation unconditionally, so the escalation is a TERMINAL, not a decision.
-     Name the section it lands in: a check that sets `manualReview: true` on the
-     escalation (see the rule module, and its entry will carry
-     `manual-review-instructions`) lands under **Extended manual review**, everything
-     else under **Extended code review**. Several checks emit NO finding at all -
+     Name the section it lands in: the entry's `escalation` field says which -
+     `manual-review` or `code-review` - and it is a property of the CHECK, so all of its
+     cases land together. A check needing both sections is two checks. Several checks emit NO finding at all -
      check the rule module for a hardcoded `findings: []` before drawing any
      ERROR/WARNING/INFO terminal.
    - `manual-checks` entries have no rule module and no branches at all: the entry is

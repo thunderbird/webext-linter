@@ -195,15 +195,19 @@ findings. A check decides each case in code - as a finding, or as an **escalatio
 of a case it cannot settle, which reaches the reviewer as a to-do.
 
 An escalation is sorted by who can settle it. Most are questions about the add-on's
-own code and land under **Extended code review**. An escalation the code cannot
-answer is marked `manualReview` and lands under **Extended manual review** instead:
-`privacy-policy` (the policy is a field in the ATN listing, not in the package),
-`native-messaging` (likewise, what the listing discloses about the native app),
-`undeclared-build-source` (reproducing the build is the reviewer's own attestation
-that the source produces the shipped XPI), and `remote-resources`' upstream lane (a
-remote `@import` inside a file matching a published release is that release's line,
-not the developer's, so accepting it is a judgement a person owns). Such an entry
-is rendered from the registry's `manual-review-instructions`.
+own code and land under **Extended code review**. A check whose cases the code cannot
+answer declares `escalation: manual-review` instead, and its cases land under
+**Extended manual review**: `privacy-policy` (the policy is a field in the ATN listing,
+not in the package), `native-messaging` (likewise, what the listing discloses about the
+native app), `undeclared-build-source` (reproducing the build is the reviewer's own
+attestation that the source produces the shipped XPI), and `vendored-remote-resources`
+(a remote `@import` inside a file matching a published release is that release's line,
+not the developer's, so accepting it is a judgement a person owns).
+
+Which section a check's cases land in is the check's own property, declared in the
+registry beside its severity - never decided per case. A check that would need both
+sections is asking two questions, and is two checks: `remote-resources` and
+`vendored-remote-resources` are that split, sharing one scan.
 
 Either way the item carries its **suggested response**: once the reviewer settles
 the case against the add-on, that is the text the developer receives.
@@ -279,7 +283,8 @@ handed a concrete `file:line` to look at rather than a verdict the tool guessed.
 | --- | --- |
 | `strict-min-version-api` | Pre-flight: a call to a real, schema-resolved API added in a Thunderbird newer than the declared `strict_min_version`. An unguarded call is a finding straight away; a call carrying a guard signal (optional chaining, a `typeof`/existence test, a `getBrowserInfo` version gate, an earlier guard clause that returned or threw when the API was missing) escalates, for the reviewer to judge from the call's file whether the guard really keeps it off the older versions. A non-existent API is `unknown-api`'s concern. |
 | `remote-eval` | Pre-flight: the statically-undecidable `fetch()->eval` pattern (scanned only outside the WebExtension tree, like the other dynamic-execution checks - WebExtension code is CSP-gated) escalates, for the reviewer to judge from the offending file whether the executed code is fetched remotely. The definite dynamic-execution cases are the deterministic `eval-call`/`function-constructor`/`string-timer`/`csp-unsafe-eval`/`csp-unsafe-inline` checks. |
-| `remote-resources` | Pre-flight: remote `<script>`/`<link>`/`@import`/`url()`/media/imports/`importScripts`/runtime injection/WASM, and a CSP permitting a remote script source → a finding. Statically-undecidable cases (non-literal URLs, inline `data:`/`blob:` script sources) escalate for the reviewer to resolve. In an HTML/CSS file whose content matches a published upstream release, the line is that release's, so it escalates as `manualReview` instead - accepting it is a judgement a person owns (XPI reviews only; an SCA review has no verified result to read). |
+| `remote-resources` | Pre-flight: remote `<script>`/`<link>`/`@import`/`url()`/media/imports/`importScripts`/runtime injection/WASM, and a CSP permitting a remote script source → a finding. Statically-undecidable cases (non-literal URLs, inline `data:`/`blob:` script sources) escalate for the reviewer to resolve. |
+| `vendored-remote-resources` | The same scan's other question: a remote load inside an HTML/CSS file whose content matches a published upstream release. The line is that release's, not the developer's, so it emits no finding and every site goes to a person - accepting it as published is a judgement they own. Turns on the content match, never on a declaration (XPI reviews only; an SCA review has no verified result to read). |
 | `data-exfiltration` | Pre-flight: a normal transmission (`fetch`/XHR/WebSocket/EventSource/`sendBeacon`) to a remote/dynamic host escalates, for the reviewer to judge from the file and the options page whether user data is sent without an explicit opt-in. Covert channels are the separate `disguised-*` errors. |
 | `disguised-transmission` | Pre-flight: the weak residue of the covert channels - a resource URL, a stylesheet `url()`, a `window.open()`, or a page navigation to a remote host built from a runtime value, with no user-data API call in it escalates, for the reviewer to judge whether it really smuggles user data out through that channel or is just legitimate dynamic URL building. The strong cases (a user-data call in the URL) are the deterministic `disguised-*` errors. |
 | `minimize-web-accessible-resources` | Pre-flight: over-broad exposure (a resource pattern like `*`, or MV3 `matches` of `<all_urls>`/`*://*/*`) and concrete resources no content script/page loads → a finding. An ambiguous exposed resource (dynamic loaders, or name mentioned) escalates, for the reviewer to judge whether it is needlessly exposed. |

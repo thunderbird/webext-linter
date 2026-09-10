@@ -420,8 +420,10 @@ function bucketCounts(manual) {
  */
 function buckets(manual) {
   return {
-    code: manual.filter((m) => m.extended && !m.manualReview),
-    extendedManual: manual.filter((m) => m.extended && m.manualReview),
+    code: manual.filter((m) => m.extended && m.section !== "manual-review"),
+    extendedManual: manual.filter(
+      (m) => m.extended && m.section === "manual-review"
+    ),
     standard: manual.filter((m) => !m.extended),
   };
 }

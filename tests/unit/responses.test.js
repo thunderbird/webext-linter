@@ -82,7 +82,7 @@ test("renderManualItems does not cross-splice one slot's value into another", ()
       {
         ruleId: "undeclared-build-source",
         item: null,
-        manualReview: true,
+        section: "manual-review",
         data: {
           unresolvedBuildSteps:
             "a step mentions {{buildInstructions}} verbatim",
@@ -105,7 +105,7 @@ test("renderManualItems does not cross-splice one slot's value into another", ()
       {
         ruleId: "undeclared-build-source",
         item: null,
-        manualReview: true,
+        section: "manual-review",
         data: {
           unresolvedBuildSteps: "cost is $& and $1 and $$",
           buildInstructions: "",
@@ -257,20 +257,21 @@ test("a named slot value carries no control characters", () => {
 });
 
 // ---- manual-review items ----
-// A manual-review item is one reading the code cannot settle, so it takes the entry's
-// `manual-review-instructions` - a different question from the ordinary escalation's.
-// It still carries the suggested response: once the reviewer settles the case against
-// the add-on, that is the text the developer receives.
+// vendored-remote-resources is the check whose cases reading the code cannot settle, so it
+// asks its own question in its own `instructions` - which is why it is a separate check
+// from remote-resources rather than a second wording on it. It still carries the suggested
+// response: once the reviewer settles the case against the add-on, that is the text the
+// developer receives.
 test("renderManualItems renders a manual-review item from its own wording", () => {
   const [item] = renderManualItems(
     [
       {
-        ruleId: "remote-resources",
+        ruleId: "vendored-remote-resources",
         item: "css https://fonts.example/f.css",
         hint: "https://cdn.example/lib@1.0.0/lib.css",
         file: "lib/lib.css",
         loc: { line: 1 },
-        manualReview: true,
+        section: "manual-review",
       },
     ],
     registry
@@ -278,7 +279,7 @@ test("renderManualItems renders a manual-review item from its own wording", () =
   // The reviewer is asked to decide, not to establish what the check established.
   assert.match(item.instructions, /matches a published/);
   assert.ok(!flat(item.instructions).includes("Confirm by hand"));
-  assert.match(item.response, /Remote sources are not allowed/);
+  assert.match(item.response, /must be bundled with the add-on/);
   // Item-free wording, so the site and its upstream are listed per locus.
   assert.equal(item.listItem, true);
   assert.equal(item.hint, "https://cdn.example/lib@1.0.0/lib.css");
@@ -298,38 +299,34 @@ test("renderManualItems renders the same ref without the flag as before", () => 
 // Nothing at load time can tell which checks raise manual-review items, so an entry that
 // raises one without authoring the wording must fail loudly here - the alternatives
 // are a report that misdescribes the case or one that asks for a judgement with no
-// grounds. unsafe-html authors no `manual-review-instructions`.
-test("renderManualItems refuses a manual-review item with no authored wording", () => {
+// grounds. unsafe-html never escalates, so it authors no `instructions` at all.
+test("renderManualItems refuses a to-do item whose check authors no wording", () => {
+  // unsafe-html never escalates, so it authors no `instructions` - a ref naming it is a
+  // bug, and rendering an item with no text would hide it.
   assert.throws(
     () =>
       renderManualItems(
-        [
-          {
-            ruleId: "unsafe-html",
-            item: "x",
-            manualReview: true,
-            kind: "escalation",
-          },
-        ],
+        [{ ruleId: "unsafe-html", item: "x", kind: "escalation" }],
         registry
       ),
-    /manual-review-instructions/
+    /authors no `instructions`/
   );
 });
 
-// The wording choice is the registry's, so the raise belongs to the registry too -
-// responses.js resolves templates and does not police who authored what.
+// One text per check, so the wording follows the ruleId alone - the two questions that
+// used to share an entry are two checks now. The raise belongs to the registry, not to
+// responses.js, which resolves templates and does not police who authored what.
 test("registry.instructionsFor picks the wording and refuses an unauthored one", () => {
   assert.match(
-    flat(registry.instructionsFor("remote-resources", true)),
-    /matches a published/
-  );
-  assert.match(
-    flat(registry.instructionsFor("remote-resources", false)),
+    flat(registry.instructionsFor("remote-resources")),
     /Confirm by hand/
   );
+  assert.match(
+    flat(registry.instructionsFor("vendored-remote-resources")),
+    /matches a published/
+  );
   assert.throws(
-    () => registry.instructionsFor("unsafe-html", true),
-    /manual-review-instructions/
+    () => registry.instructionsFor("unsafe-html"),
+    /authors no `instructions`/
   );
 });
