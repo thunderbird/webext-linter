@@ -197,8 +197,8 @@ export function buildXpiCtxs(xpiAddon, xpiParsedSources, env) {
 
 /**
  * The sibling ctxs derived from the readable SOURCE - SCA reviews only:
- *   - `scaCtx`    the review target (the readable source subtree) the code checks analyse and
- *                 It is siblings.source in an SCA review.
+ *   - `scaCtx`    the review target (the readable source subtree) the code checks
+ *                 analyse. It is siblings.source in an SCA review.
  *   - `buildCtx`  the SCA BUILD files (scripts/configs/package.json outside the review source,
  *                 node_modules/dotfiles excluded) on ctx.addon, for the `input: build` check -
  *                 read off ctx.addon via the same one-place `input` routing, no separate field.

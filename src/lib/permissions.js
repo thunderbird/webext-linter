@@ -363,8 +363,8 @@ export function enumerateUnusedPermissions(ctx, prompts) {
   //    API surface (the sibling-ctx marker) - maximally blind, so it fails
   //    closed rather than reading as fully sighted.
   // This gates only the finding: token PRESENCE is always trustworthy (a located
-  // occurrence IS a real site), so occurrences are collected regardless and the
-  // a reviewer judges them the same in every mode. The obfuscation check is LAST so it
+  // occurrence IS a real site), so occurrences are collected regardless and a
+  // reviewer judges them the same in every mode. The obfuscation check is LAST so it
   // is only reached when the cheap conditions already hold.
   const decidable =
     Array.isArray(ctx.apiUsages) &&
@@ -378,7 +378,7 @@ export function enumerateUnusedPermissions(ctx, prompts) {
   const tokensFor = permissionTokens(ctx.manifest, prompts);
   // One scan over the live code + manifest for the union of every permission's
   // tokens, recording WHERE each occurs; each permission then reads its own subset,
-  // both to decide presence (no occurrence, when decidable = unused) and to hand the
+  // both to decide presence (no occurrence, when decidable = unused) and to hand
   // the reviewer the sites to judge.
   const located = locateTokens(ctx, new Set([...tokensFor.values()].flat()));
   const m = ctx.manifest ?? {};
@@ -475,7 +475,7 @@ function permissionTokens(manifest, prompts) {
  * The manifest is also searched as JSON (no comments there) and a manifest occurrence
  * is located via manifestTokenLine - though the script-injection manifest keys
  * (compose_scripts / message_display_scripts) are NOT tokens: they ground their
- * permission deterministically (analyzePermissions), so the recheck never sees them.
+ * permission deterministically (analyzePermissions), so they never escalate.
  *
  * A token matches on WORD BOUNDARIES (case-sensitive): it must be a whole
  * identifier / key / string word, not a coincidental substring of a longer name -

@@ -55,10 +55,7 @@ flowchart TD
   E -- yes --> OK([no finding])
   E -- no --> F{"Named only by dead code<br/>AND no dynamic loaders?"}
   F -- yes --> ERR2([ERROR: orphan / unused file])
-  F -- no --> L{"The reviewer judges per loader site:<br/>does this site load the file?"}
-  L -- "at least one site loads it" --> OK
-  L -- "no site loads it" --> ERR2
-  L -- "unsure / no verdict" --> M([escalate — the reviewer decides])
+  F -- no --> M(["escalate — the reviewer follows the<br/>suspected loaders and decides"])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;

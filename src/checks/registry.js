@@ -11,8 +11,8 @@
 // only `file`/`loc`/`item`/`hint` - never prose. The registry entry is the
 // check's declarative contract: `severity` (the source of a finding's impact,
 // stamped unconditionally - UNLESS it is `auto`, which delegates the per-finding
-// severity to the check), and the text shown for it (`response`, `instructions`,
-// `prompt`). Neither half leaks into the other.
+// severity to the check), and the text shown for it (`response`, `instructions`).
+// Neither half leaks into the other.
 //
 // A check returns `Finding[]`, or an object carrying `escalations` beside its
 // findings: the cases it could not settle. The orchestrator (runChecks) repacks
@@ -118,7 +118,6 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   buildScaCtxs), and it is also what the check's output is labelled as ([XPI]/[SCA]).
  * @property {boolean} [diff]  Diff-mode gate: true = run only with a --diff-to
  *   baseline, false = run only WITHOUT one (new submissions), omitted = always.
- * @property {string} [prompt]  The rubric stating what settles an ambiguous case.
  * @property {string} [instructions]  Manual-review message.
  * @property {object[]} [permissionTokens]  The permission-prompts token entries
  *   ({permissions, tokens, version bounds} - prompt text stripped), carried by
@@ -205,10 +204,10 @@ export class Registry {
   /**
    * Every check entry that links to a rule module, each tagged with the `phase` it
    * runs in - which IS the section it came from (PHASE_SECTIONS). An escalating entry
-   * additionally carries a `prompt` (the rubric stating what settles the case) and
-   * `instructions` (the manual-review message the reviewer is shown).
-   * @returns {object[]}  Each: { check, title, severity, phase, prompt?,
-   *   instructions?, response? }.
+   * additionally carries `instructions` (the manual-review message shown for a case it
+   * could not settle).
+   * @returns {object[]}  Each: { check, title, severity, phase, instructions?,
+   *   response? }.
    */
   checkEntries() {
     /**
@@ -246,9 +245,9 @@ export class Registry {
 
   /**
    * The permission-prompts token vocabulary, projected for the check that scans the
-   * add-on for it. Deliberately narrow: the token entries only, prompt text stripped -
-   * wording stays the report layer's business - so a check has no window into any
-   * entry's prose or severity.
+   * add-on for it. Deliberately narrow: the token entries only - wording stays the
+   * report layer's business, so a check has no window into any entry's prose or
+   * severity.
    * @returns {object[]}
    */
   permissionTokens() {
@@ -361,8 +360,8 @@ export class Registry {
    * The manual-review instructions template for a ref of this rule: the owning
    * check's `instructions`, or - for a `manualReview` ref - its
    * `manual-review-instructions`. The two are different texts because they ask
-   * different things: the normal one asks the reviewer to establish something a
-   * the ordinary case asks about, which for these cases is not what is left.
+   * different things: the ordinary one asks the reviewer to resolve what the scan
+   * could not, which for a manual-review case is not what is left to decide.
    *
    * Such a ref whose entry authors no wording RAISES. Nothing at load time can tell
    * which checks raise them - a check decides that per case, at run time - so this
@@ -401,24 +400,23 @@ export class Registry {
   }
 
   /**
-   * The per-permission-group recheck prompts (top-level `permission-prompts` list),
+   * The per-permission-group token entries (top-level `permission-prompts` list),
    * with the comma-separated `permissions` parsed to an array, the optional
    * inclusive Thunderbird version bounds surfaced, and the optional usage `tokens`
-   * (code-level spellings of the prompt's justifying usages; an entry without
-   * tokens is deterministically undecidable - the unused-permission producer then
-   * always escalates its permissions).
-   * @returns {{permissions: string[], prompt: string, tokens: string[],
+   * (the code-level spellings that justify the permission; an entry without tokens is
+   * deterministically undecidable - unused-permission then always escalates its
+   * permissions).
+   * @returns {{permissions: string[], tokens: string[],
    *   minStrictVersion: ?string, maxStrictVersion: ?string}[]}
    */
   permissionPrompts() {
     return (this.doc["permission-prompts"] || [])
-      .filter((e) => e && typeof e.prompt === "string")
+      .filter((e) => e && e.permissions != null)
       .map((e) => ({
         permissions: String(e.permissions ?? "")
           .split(",")
           .map((p) => p.trim())
           .filter(Boolean),
-        prompt: e.prompt,
         // Filter BEFORE stringifying: String(null) is the truthy "null", which
         // would match almost any code and silently disable the entry's
         // deterministic verdict.
@@ -593,7 +591,6 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
       input,
       diff: typeof entry.diff === "boolean" ? entry.diff : undefined,
       sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
-      prompt: entry.prompt,
       instructions: entry.instructions,
       // The permission-prompts token entries, like `prompt` and `instructions`
       // above: registry data every check carries, read by the one that scans for
@@ -825,8 +822,7 @@ export async function runChecks(registry, opts = {}, siblings) {
   // each sibling context gets a note bound to its input: the review target is the
   // source archive (source), the shipped context the built XPI, the build context the
   // build files. artifactLabel prepends [XPI]/[SCA] in SCA mode (and always [XPI] for
-  // manifest.json - the shipped manifest); an XPI review adds no label. A caller may
-  // manifest.json - the shipped manifest).
+  // manifest.json - the shipped manifest); an XPI review adds no label.
   const makeNote = (input) => (file, loc, item, verdict) => {
     try {
       const label = artifactLabel({

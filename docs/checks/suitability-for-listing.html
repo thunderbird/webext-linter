@@ -34,7 +34,7 @@
 flowchart TD
   A["Reviewer assesses the<br/>add-on's intended audience"] --> B{"Is the audience limited or<br/>non-public (internal,<br/>single-org, or test-only)?"}
   B -- no --> OK([no finding])
-  B -- yes --> M([flag for the developer / manual finding])
+  B -- yes --> M(["a to-do for the reviewer to settle by hand"])
 
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;

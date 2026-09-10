@@ -30,10 +30,9 @@
         deterministic finding. One family — the revealing-module pattern
         (<code>const X = (() =&gt; {…})(); X.init();</code>) — also fits ordinary
         readable code, so a <strong>weak-only</strong> match is not decided outright:
-        the file escalates, for the reviewer to judge from its own content,
-        mapping <code>fail</code> → finding, <code>unsure</code> → manual review,
-        escalates. The reviewer is never told which family the detector matched, so
-        its judgment cannot be anchored to a detector claim.
+        the file escalates, for the reviewer to judge from its own content. The
+        reviewer is never told which family the detector matched, so that judgement
+        cannot be anchored to a detector claim.
       </p>
       <p>
         A file that looks like a recognised third-party library is excluded here,
@@ -54,10 +53,7 @@ flowchart TD
   L -- no --> B{"Obfuscator-family match?"}
   B -- "no family" --> OK([no finding — a merely-minified<br/>file is minified-code's concern])
   B -- "STRONG family" --> ERR([ERROR: obfuscated code])
-  B -- "WEAK family only<br/>(a structure readable code also has)" --> J{"The reviewer judges the file from its<br/>content alone — obfuscated?<br/>(never told what matched)"}
-  J -- fail --> ERR
-  J -- pass --> OK
-  J -- unsure --> MAN([manual review])
+  B -- "WEAK family only<br/>(a structure readable code also has)" --> MAN(["escalate — the reviewer judges the file<br/>from its content alone<br/>(never told what matched)"])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;

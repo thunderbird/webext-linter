@@ -39,11 +39,13 @@ that no longer exist.
 ## Sources of truth (read these to (re)generate content)
 
 1. `assets/registry.yaml` — the canonical list of checks, in order, with each
-   check's `title`, `severity` (`error` / `warning` / `info`), `check` (the
-   kebab-case id), `response` (developer-facing message), and often a leading
-   comment block describing intent. Some entries have no `severity` (manual /
-   escalating checks) or special fields (`input`, `diff`, `sca`, `eslint`,
-   `manual-review-instructions`, `permission-tokens`). The check-bearing sections ARE
+   check's `title`, `severity` (`error` / `warning` / `info` / `auto` - `auto`
+   means the check itself picks the severity per finding, and the badge class is
+   `auto`), `check` (the kebab-case id), `response` (developer-facing message),
+   `instructions` (the to-do text a reviewer is shown for a case the check could not
+   settle), and often a leading comment block describing intent. Some entries have no
+   `severity` (escalate-only checks and the manual list) or special fields (`input`,
+   `diff`, `sca`, `eslint`, `manual-review-instructions`). The check-bearing sections ARE
    the phases — a check's phase IS the section it lives in, never a field on the
    entry: `invalid-experiment-phase` (the only phase that runs for an invalid
    Experiment) and `deterministic-phase` (every other check). `manual-checks` is NOT
@@ -54,14 +56,15 @@ that no longer exist.
    (e.g. `permissions.js`, `reachability.js`) — read those when a rule delegates
    to them.
 3. `README.md` — overall framing (findings vs escalations vs manual checks, and
-   the two review buckets an escalation is sorted into), and the **Standard** vs
+   the three to-do sections an item is sorted into), and the **Standard** vs
    **Source code archive (SCA)** review modes.
 4. `src/pipeline.js` — the review pipeline (`runPipeline`): with
    `src/checks/registry.js`, the ground truth for the review-pipeline page
-   (`check-flow.html`). It shows the setup stage order (Phase 1 load + resolve the
-   schema and the experiment classification → Phase 2 resolve the review
-   target → Phase 3 vendor/library/build setup + parse → Phase 4 build the run
-   context → Phase 5 one `runChecks()` call, then render the report) and the
+   (`check-flow.html`). Read the stage order OFF THE CODE rather than from this
+   list: the whole shipped-XPI chain (resolveVendor → verifyVendor → classifyReview
+   → identifyBundledLibraries → extractReview) runs BEFORE the review mode is known,
+   because `resolveReviewMode` reads the classification it produces. Getting this
+   backwards inverts the diagram. It also shows the
    `mode === "sca"` forks (the source /
    dependency / build / shipped-XPI / shipped-manifest split, routed via `routeCtx`
    over the sibling ctxs built by `buildXpiCtxs` / `buildScaCtxs`).
@@ -91,8 +94,9 @@ that no longer exist.
      walks the check's _real_ decision path — scope/skip conditions as the first
      gates, decision diamonds for each branch, and terminal nodes for the
      outcomes (`no finding` vs `ERROR` / `WARNING` / `INFO`, or an escalation to
-     manual review). Reuse the shared `classDef` styles (`err` / `ok` / `info` /
-     `skip`) used by the existing pages so colours stay consistent;
+     manual review). Reuse the shared `classDef` styles used by the existing pages
+     so colours stay consistent - `err`, `warn`, `ok`, `info`, `skip`, `manual` -
+     and declare only the ones the diagram actually uses;
    - an **Outcome** box paraphrasing the registry `response`;
    - a **source-note** footer pointing at the `.js` file and registry.
 4. **Handle the special cases** the registry encodes:
@@ -100,9 +104,19 @@ that no longer exist.
      flowchart terminate in an "escalate to manual review" node rather than an
      error/warning/info;
    - escalating checks — make clear what the scan settles on its own and what it
-     hands to the reviewer, and which of the two review buckets the escalation lands
-     in: an entry with `manual-review-instructions` is one reading the code cannot
-     settle (Extended manual review), everything else is Extended code review.
+     hands to the reviewer. **The tool calls no model: there is no verdict step, so a
+     diagram must never draw a pass/fail/unsure fan-out.** A check pushes its
+     escalation unconditionally, so the escalation is a TERMINAL, not a decision.
+     Name the section it lands in: a check that sets `manualReview: true` on the
+     escalation (see the rule module, and its entry will carry
+     `manual-review-instructions`) lands under **Extended manual review**, everything
+     else under **Extended code review**. Several checks emit NO finding at all -
+     check the rule module for a hardcoded `findings: []` before drawing any
+     ERROR/WARNING/INFO terminal.
+   - `manual-checks` entries have no rule module and no branches at all: the entry is
+     emitted unconditionally for every review. Give those pages no invented decision
+     gate and no `no finding` terminal - the only real gate is that an invalid
+     Experiment drops the whole list.
 5. **Update the sidebar.** Rebuild the `CHECKS` array in `docs/index.html` so it
    lists every check in registry order, grouped by category; `NAV` combines
    `GUIDE_PAGES` with `CHECKS`. If there are multiple categories, add the

@@ -84,7 +84,7 @@ function makeEnum(names, label = "enum member") {
 
 /**
  * The canonical status values - shared, immutable, reusable across the review.
- * FAIL/PASS/UNSURE are the three judgment verdicts (obfuscation, a reviewer);
+ * FAIL/PASS/UNSURE are the three judgment verdicts (the obfuscation classifier);
  * SKIPPED/INFO are feed-note statuses only.
  * @type {{FAIL: Verdict, PASS: Verdict, UNSURE: Verdict, SKIPPED: Verdict,
  *   INFO: Verdict}}

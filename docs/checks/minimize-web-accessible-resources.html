@@ -47,10 +47,7 @@ flowchart TD
   C -- yes --> OK([no finding — exposure needed])
   C -- no --> D{"Named only by dead code<br/>AND no dynamic loaders?"}
   D -- yes --> WARN2([WARNING: needless exposure])
-  D -- no --> L{"The reviewer judges per loader site:<br/>does this site load the file<br/>for a web context?"}
-  L -- "at least one site exposes it" --> OK
-  L -- "no site exposes it" --> WARN2
-  L -- "unsure / no verdict" --> M([escalate — the reviewer decides])
+  D -- no --> M(["escalate — the reviewer decides whether<br/>a web context really needs the file"])
 
   classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;

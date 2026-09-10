@@ -12,8 +12,15 @@ Suggested response: Please include an English localization. English serves as th
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
 
-2) Obfuscated code is not permitted: The automated analysis could not determine
-   whether the following file(s) are obfuscated. Inspect them by hand.
+2) Obfuscated code is not permitted: The automated analysis could not tell
+   whether the following file(s) are obfuscated, so judge each one by reading
+   it. Obfuscated means transformed to hide behaviour from a reviewer:
+   machine-mangled identifiers (_0x1a2b), encoded or rotated string tables
+   resolved through a decoder, or flattened control flow. Readable developer
+   code with meaningful names and ordinary structure is not obfuscated even when
+   it is dense or minified, and minification on its own is another check's
+   concern. The detector's reason is deliberately withheld here so the file is
+   judged on its own content.
 Suggested response: The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
 Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
  - module-fail.js

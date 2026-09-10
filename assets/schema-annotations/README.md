@@ -54,7 +54,6 @@ the boundary-crossing check).
 ## `tabs.json` — version-bounded review notes
 
 Adds `note` annotations onto API members (e.g. `tabs.query`), each with an optional
-`min_strict_version`/`max_strict_version` bound. These are dual-purpose (API docs +
-review): a recheck prompt references one with a `{{note:<ns>.<member>}}` placeholder,
-which resolves to the version-matched note(s) (`SchemaIndex.memberNotes`, resolved in
-`src/lib/recheck.js`).
+`min_strict_version`/`max_strict_version` bound. They record a version-dependent fact
+about the member for the API docs. `SchemaIndex.memberNotes` reads them back; no check
+consumes one today.

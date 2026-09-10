@@ -129,8 +129,8 @@ test("the level prefix sits OUTSIDE a color wrap (spaces are colorless)", () => 
   );
 });
 
-// Verbose output is where the submission is quoted most freely - whole prompts, a
-// a path that failed to parse, a provider's error body. The guard sits inside debug rather
+// Verbose output is where the submission is quoted most freely - a file body, a
+// path that failed to parse, a provider's error body. The guard sits inside debug rather
 // than at its ~30 call sites, so a caller added later inherits it. Newlines survive:
 // these dumps have shape and none of them is a single line.
 test("debug removes control characters from what it dumps", () => {

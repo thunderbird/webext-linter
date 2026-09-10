@@ -26,9 +26,9 @@
         is a remote or dynamically-built host. Whether a valid opt-in exists — a
         documented options-page setting where the user enters the destination, or
         an explicit off-by-default opt-in for a hard-coded URL — is a judgement
-        call, so each such sink is escalated. Its evidence is the
-        transmitting file plus the add-on's options page, where any opt-in would
-        live. The reviewer judges whether user data is transmitted without consent.
+        call, so each such sink is escalated for the reviewer to settle. The
+        add-on's own options page, where such an opt-in would live, is named in the
+        to-do. This check emits no finding of its own.
         Disguising transmission as a resource load is a separate, always-error
         concern handled by the disguised-* checks; this check covers only the
         overt channels.
@@ -40,17 +40,10 @@
 flowchart TD
   A["An outbound network sink"] --> B{"An overt channel<br/>to a remote or dynamic host?"}
   B -- no --> S([skip — local or<br/>non-overt sink])
-  B -- yes --> L{"The reviewer judges from the file and<br/>options page: is user data sent<br/>WITHOUT an explicit opt-in?"}
-  L -- "pass: consented or no user data" --> OK([no finding])
-  L -- "fail: sent without consent" --> ERR([ERROR: user-data exfiltration])
-  L -- unsure --> M([escalate — the reviewer decides])
+  B -- yes --> M(["escalate — the reviewer decides whether<br/>an explicit opt-in covers this send"])
 
-  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
-  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
-  class ERR err;
-  class OK ok;
   class S skip;
   class M manual;
         </pre>

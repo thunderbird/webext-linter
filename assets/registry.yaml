@@ -242,7 +242,7 @@ deterministic-phase:
 # Producer of the declared permissions worth a closer look: every declared NAMED
 # permission a reachable API call does not provably require (host patterns are
 # Minimize host permissions' concern). Runs in the main loop. A permission whose
-# prompt entries (see permission-prompts) declare usage `tokens` that appear
+# entries (see permission-prompts) declare usage `tokens` that appear
 # NOWHERE in the add-on's live code (comments excluded) or manifest is
 # deterministically unused - a warning finding (the deterministic path stands
 # down when the scan is blind: an SCA review or unresolved dynamic API surface).
@@ -867,37 +867,29 @@ deterministic-phase:
     An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
 
 # Checks whose scan finds cases it cannot settle: those escalate to a person
-# instead of becoming a finding. Each still carries a `prompt` - the rubric
-# stating what settles the case, which says more than `instructions` does. Only
-# `instructions` is printed; the rubrics are kept as the fuller wording.
+# instead of becoming a finding, and the entry's `instructions` is what the
+# reviewer is shown for each one.
 
 # Flags shipped obfuscated JS that is not a recognized library; asks for the
 # original sources. A strong structural detector match is a deterministic finding;
 # a weak-only match (a structure ordinary readable code also has - see
-# src/lib/obfuscation.js WEAK_FAMILIES) escalates to a reviewer, guided by the
-# prompt below (fail -> finding, unsure -> manual review via the instructions,
-# pass -> drop). The prompt deliberately never mentions the structural detector or
-# what it matched, so the reviewer judges the file cold and cannot be steered into
-# confirming a detector claim.
+# src/lib/obfuscation.js WEAK_FAMILIES) escalates to a reviewer. The entry
+# deliberately never names the structural detector or what it matched, so the
+# reviewer judges the file cold and cannot be steered into confirming a detector
+# claim.
 - title: Obfuscated code is not permitted
   severity: error
   check: obfuscated-code
   input: source
-  prompt: |-
-    Each candidate is one packaged JavaScript file. Read the file and judge only
-    whether it is genuinely obfuscated - code transformed to hide its behavior
-    from a human reviewer.
-    Verdict fail (the file is obfuscated): machine-mangled identifiers (such as
-    _0x1a2b), encoded or rotated string tables resolved through decoder
-    indirection, control-flow flattening, or similar transformations whose
-    purpose is to make the code unreadable.
-    Verdict pass (the file is not obfuscated): readable developer code with
-    meaningful names and ordinary structure - even if it is dense, compact, or
-    minified; minification alone is judged elsewhere and is not obfuscation.
-    Use unsure only when you genuinely cannot tell.
   instructions: |-
-    The automated analysis could not determine whether the following file(s) are
-    obfuscated. Inspect them by hand.
+    The automated analysis could not tell whether the following file(s) are
+    obfuscated, so judge each one by reading it. Obfuscated means transformed to
+    hide behaviour from a reviewer: machine-mangled identifiers (_0x1a2b),
+    encoded or rotated string tables resolved through a decoder, or flattened
+    control flow. Readable developer code with meaningful names and ordinary
+    structure is not obfuscated even when it is dense or minified, and
+    minification on its own is another check's concern. The detector's reason is
+    deliberately withheld here so the file is judged on its own content.
   response: |-
     The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
     Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
@@ -913,28 +905,16 @@ deterministic-phase:
   severity: error
   check: strict-min-version-api
   input: source
-  prompt: |-
-    Each candidate is a call site of a WebExtension API that DOES exist and is
-    supported, but was added in a Thunderbird newer than the add-on's declared
-    strict_min_version (the candidate's note names the API and the version it was
-    added in). Do NOT question whether the API exists - it does. Decide only one
-    thing from the shown file: is the call guarded so it runs ONLY on Thunderbird
-    versions that actually have the API?
-    Verdict pass (safely guarded): the access is protected so it cannot run on older
-    versions - optional chaining on the API path (messenger.foo?.bar), an existence
-    or typeof test (if (messenger.foo.bar) or typeof messenger.foo.bar ===
-    "function"), a guard clause earlier in the function that returned or threw when
-    the API was missing (if (!messenger.foo.bar) return), or a runtime version gate
-    (a messenger.runtime.getBrowserInfo() version comparison), with the feature
-    genuinely optional or a fallback for older versions.
-    Verdict fail (runs unconditionally): the API is called with no such guard, so the
-    call throws on the still-supported versions below the one that added it.
-    Use unsure only when you genuinely cannot tell whether a guard protects this call.
   instructions: |-
-    The "{{item}}" API was added after the declared strict_min_version. Confirm by
-    hand whether the call is safely guarded (feature detection or a version check) so
-    it only runs where the API exists. If it does not, ask the developer to raise
-    strict_min_version or guard the call.
+    "{{item}}" exists and is supported, but was added after the declared
+    strict_min_version, so decide one thing only: is this call guarded so it runs
+    only where the API exists? Any of these counts as guarded, provided the
+    feature is genuinely optional or has a fallback: optional chaining on the API
+    path, a typeof or existence test, an earlier guard clause that returned or
+    threw when the API was missing, or a runtime.getBrowserInfo() version gate.
+    Unguarded, the call throws on the still-supported versions below the one that
+    added it. If it is unguarded, ask the developer to raise strict_min_version or
+    guard the call.
   response: |-
     The add-on is setting strict_min_version to {{min}} but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
 
@@ -944,38 +924,13 @@ deterministic-phase:
   severity: error
   check: unused-files
   input: xpi
-  prompt: |-
-    Each candidate is a site in the add-on, named in its note as "does this site
-    load F", where F is a packaged file not reachable from any manifest entry
-    point. Decide only whether this site loads or uses F at runtime. A candidate is
-    one of two kinds, which you can tell apart from the candidate list:
-    - it has a file:line where the site names F (F's basename appears there); or
-    - it has no line and is a runtime loader: code that builds load paths at
-      runtime (a dynamic import, getURL, executeScript/insertCSS, setIcon, and the
-      like), so it may load F WITHOUT naming F literally.
-
-    Verdict pass (this site loads F): a static or dynamic import, a getURL or
-    executeScript, an HTML or CSS reference, or a data or configuration entry the
-    add-on consumes (for example one entry in a list of selectable sounds, themes,
-    or icons). For a runtime loader, a runtime-built path that could plausibly
-    resolve to F is enough: if the site builds paths like
-    "icons/icon-${theme}-${size}.png" and F is one of those icons (same directory,
-    extension, and naming family), treat F as loaded. It may load F only when a
-    user chooses it, and a valid functional reference is enough.
-
-    Verdict fail (this site does not load F): the mention is incidental (a comment,
-    documentation, or packaging metadata the add-on does not consume), it is
-    unrelated code, or it is a runtime loader whose built paths clearly target a
-    different directory or file type than F (for example a loader that builds
-    "icons/*.png" paths cannot load icon-source.svg).
-
-    Use unsure only as a last resort, when you genuinely cannot tell. Do NOT answer
-    unsure merely because F's literal filename does not appear here: a runtime
-    loader need not name F, and a plausible runtime-path match is a pass. F's own
-    contents do not matter, only whether this site loads it.
   instructions: |-
-    The following files are not reachable from any entry point but may be loaded
-    dynamically. Confirm by hand whether they are unused and safe to remove.
+    The following files are reachable from no manifest entry point, so decide
+    whether anything loads them at runtime. Two shapes reach here: a site that
+    names the file literally, and a runtime loader that builds load paths at run
+    time (a dynamic import, getURL, executeScript, insertCSS, setIcon and the
+    like) and so may load it without naming it. If nothing loads them, they
+    should not ship.
   response: |-
     The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
 
@@ -984,32 +939,14 @@ deterministic-phase:
   severity: warning
   check: minimize-web-accessible-resources
   input: xpi
-  prompt: |-
-    Each candidate is a site (file:line) that references a web_accessible_resources
-    file F, named in the candidate note as "does this site load F for a web
-    context". web_accessible_resources is only needed when something OUTSIDE the
-    add-on reads F: a content script (which runs in the web page's world), a real
-    web page, or another extension. The add-on opening or embedding its own file
-    or page from its own extension contexts (the background, a popup, sidebar,
-    options or tab page, or an iframe of F inside another of the add-on's own
-    pages) never needs it. For that candidate, decide only whether this site
-    exposes F to such an external web context.
-
-    Verdict pass (this site exposes F to a web context): the reference is in a
-    content script, or it builds a URL or markup handed to a web page or another
-    extension - a getURL, a fetch, an HTML or CSS reference, or a dynamic or
-    data-built path reachable from such a context. A reference need not be a
-    manifest entry point.
-
-    Verdict fail (this site does not expose F): the reference is incidental or
-    unrelated code, or F is loaded only by the add-on's own extension code (its
-    background or its own pages, including an iframe of F inside one of them),
-    which does not require web_accessible_resources.
-
-    Use unsure only when you genuinely cannot tell.
   instructions: |-
-    The following resources are exposed via web_accessible_resources but nothing
-    in the add-on loads them. Confirm by hand whether they need to be exposed.
+    The following resources are exposed through web_accessible_resources and
+    nothing in the add-on was found to load them. The key is needed only when
+    something OUTSIDE the add-on reads the file: a content script (which runs in
+    the web page's world), a real web page, or another extension. The add-on
+    opening or embedding its own file from its own contexts - background, popup,
+    sidebar, options, a tab page, or an iframe within one of its own pages -
+    never needs it. Decide on that basis whether each exposure is required.
   response: |-
     One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise, remove these entries to reduce the add-on’s exposed surface.
 
@@ -1022,15 +959,10 @@ deterministic-phase:
   severity: error
   check: remote-resources
   input: source
-  prompt: |-
-    Each candidate is a site (file:line) that loads or injects a resource -
-    script, style, frame, or media - from a source static analysis could not
-    resolve to a bundled file. For each candidate, determine whether the resource
-    comes from a remote source (verdict fail) rather than a packaged file (verdict
-    pass). Use unsure when you genuinely cannot tell.
   instructions: |-
-    This site loads a resource from a source static analysis cannot resolve.
-    Confirm by hand that it is bundled with the add-on and not fetched remotely.
+    This site loads or injects a resource - script, style, frame or media - from
+    a source static analysis could not resolve to a packaged file. Confirm by
+    hand that it comes from a bundled file and not from a remote source.
   manual-review-instructions: |-
     Each of these remote loads is inside a file whose content matches a published
     file of the upstream release listed after it - so the line is that release's,
@@ -1048,14 +980,10 @@ deterministic-phase:
   severity: error
   check: remote-eval
   input: source
-  prompt: |-
-    Each candidate is a site (file:line) that executes code built or fetched at
-    runtime, such as fetch().then(eval). For each candidate, determine whether the
-    executed code is fetched from a remote source (verdict fail) rather than
-    static and local (verdict pass). Use unsure when you genuinely cannot tell.
   instructions: |-
-    "{{item}}" may execute code that is fetched at runtime. Confirm by hand that
-    no remotely fetched code is executed.
+    "{{item}}" executes code assembled at run time, such as fetch().then(eval).
+    Confirm by hand that the executed code is static and local, and that nothing
+    remotely fetched is executed.
   response: |-
     Remotely fetched code is executed at "{{item}}". Remote code execution is not allowed - bundle all code with the add-on so it can be reviewed.
 
@@ -1065,21 +993,16 @@ deterministic-phase:
   severity: error
   check: data-exfiltration
   input: source
-  prompt: |-
-    Each candidate is a site (file:line) that sends data to a remote server (via
-    fetch, XMLHttpRequest, WebSocket, EventSource, or sendBeacon). Sending user
-    data such as message content, attachments, contacts, or credentials to a
-    remote host is allowed ONLY if the user actively enabled it, by entering the
-    destination URL or credentials on an options page that lists what is actually
-    transmitted, or via an explicit off-by-default opt-in for a hard-coded URL.
-    Thunderbird has no built-in data-collection consent prompt. The add-on’s
-    options page, when it has one, is among the files below. For each candidate,
-    determine whether user data is transmitted WITHOUT such consent (verdict fail)
-    or not (verdict pass). Use unsure when you genuinely cannot tell.
   instructions: |-
-    The following code locations transmit data to a remote server. Confirm by
-    hand that any user data they send is gated behind an explicit opt-in (a
-    documented options-page setting) and is never sent without consent.
+    The following code locations send data to a remote server. User data -
+    message content, attachments, contacts, credentials - may be transmitted only
+    if the user actively enabled it: by entering the destination URL or
+    credentials on an options page that states what is sent, or through an
+    explicit off-by-default opt-in for a hard-coded URL. Thunderbird has no
+    built-in data-collection consent prompt, so there is no implicit consent to
+    rely on. The add-on's own options page, if it has one, is where such an
+    opt-in would live. Confirm for each location that consent of that kind
+    exists.
   response: |-
     The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
 
@@ -1092,22 +1015,14 @@ deterministic-phase:
   severity: error
   check: disguised-transmission
   input: source
-  prompt: |-
-    Each candidate is a site (file:line) that builds a covert channel - a resource
-    URL (image/iframe/media src or href), a stylesheet url(), a window.open(), or a
-    page navigation (location.href/assign/replace) - to a remote host using a
-    runtime value, with no obvious user-data API call in it. Disguising data
-    transmission through a channel not meant for it (instead of a normal request)
-    is not allowed, even with consent. But building a remote URL from a runtime
-    value is also extremely common in legitimate code (navigating to a host path,
-    loading a CDN asset by name). For each candidate, determine whether it actually
-    smuggles user data (message content, attachments, contacts, credentials,
-    browsing/usage data) out through this channel (verdict fail) or is a legitimate
-    dynamic URL (verdict pass). Use unsure when you genuinely cannot tell.
   instructions: |-
-    The following code locations build a resource or navigation URL to a remote
-    host with a runtime value. Confirm by hand whether any of them smuggle user
-    data out through that channel rather than a normal, disclosed request.
+    The following code locations build a URL to a remote host from a runtime
+    value on a channel not meant for data transmission - a resource src or href,
+    a stylesheet url(), a window.open(), or a page navigation. Smuggling user
+    data out this way is not allowed even with the user's consent. But building a
+    remote URL from a runtime value is also very common in legitimate code
+    (navigating to a host path, loading a CDN asset by name), so decide for each
+    whether user data actually leaves through it.
   response: |-
     The following code location(s) appear to send data through a resource or navigation URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
@@ -1117,14 +1032,10 @@ deterministic-phase:
 # precision - so "153" covers the whole 153.* series; adjacent major bounds partition
 # with no gap; an unset version is treated as oldest). No entry currently sets a
 # bound; the tabs/activeTab version pivot instead lives in the `tabs.query`
-# schema-annotation notes, pulled in version-matched via the {{note:tabs.query}}
-# placeholder in the single tabs entry's prompt - before Thunderbird 154, filtering
-# tabs.query by url/title needs "tabs" even for the add-on's own pages; at/after 154
-# it does not. Every name in a `permissions` list must appear in that entry's
-# `prompt` (a test enforces this): the prompt states what USES the permission, which
-# is what a reviewer judging a site needs told.
-# An entry may declare `tokens`: the code-level spellings (API property names,
-# manifest keys, literal strings) of every usage its prompt names as justifying.
+# schema-annotation notes - before Thunderbird 154, filtering tabs.query by url/title
+# needs "tabs" even for the add-on's own pages; at/after 154 it does not.
+# An entry declares `tokens`: the code-level spellings (API property names, manifest
+# keys, literal strings) of every usage that justifies the permission.
 # unused-permission scans the add-on's live code (comments excluded) and manifest for
 # them and records WHERE each occurs: a permission whose version-matched entries
 # declare tokens and whose tokens ALL appear nowhere is deterministically unused - a
@@ -1163,19 +1074,9 @@ permission-prompts:
       - overrideDefaultFccFolderId
       - identityId
       - selectedAccount
-    prompt: |-
-      "accountsRead" is justified by reading, setting, or filtering by a folder or
-      account identity: a message header's folder; a composed message's identityId,
-      additionalFccFolderId, or overrideDefaultFccFolderId; the folder a mail tab
-      displays or is set to display (displayedFolder / displayedFolderId); the
-      displayedFolder or selectedFolders a menus context click or show reports; or
-      limiting messages.query to a folder with folderId.
   - permissions: management
     tokens:
       - extensionId
-    prompt: |-
-      "management" is justified by reading the extensionId of a space, or filtering
-      spaces.query by extensionId.
   - permissions: messagesRead
     # `attachments` covers the messagesRead-gated attachments property a menus
     # OnClickData/OnShowData reports.
@@ -1185,18 +1086,9 @@ permission-prompts:
       - onAfterSave
       - selectedMessages
       - attachments
-    prompt: |-
-      "messagesRead" is justified by reading a composed message's relatedMessageId
-      (the original message of a reply, forward, draft or template), the message
-      copies passed to compose.onAfterSend or onAfterSave, or the selectedMessages
-      a menus context click reports.
   - permissions: cookies
     tokens:
       - cookieStoreId
-    prompt: |-
-      "cookies" is justified by opening a tab or window in a specific container by
-      passing cookieStoreId to tabs.create, windows.create, spaces.create or
-      spaces.update (reading cookieStoreId needs no permission).
   - permissions: webRequestBlocking
     tokens:
       - blocking
@@ -1204,23 +1096,10 @@ permission-prompts:
     # onBeforeSendHeaders / onSendHeaders / onBeforeRequest / ...): it forces the reviewer to
     # match the PATTERN (a webRequest.on* addListener with "blocking" in an array arg) and
     # apply it to the real event in the code, not echo the example. Do NOT "correct" it.
-    prompt: |-
-      "webRequestBlocking" is justified by a webRequest.on* addListener call that passes
-      the string "blocking" inside one of its ARRAY arguments (the extraInfoSpec array), e.g.
-      onAfterSendHeaders.addListener(fn, {urls}, ["blocking", "requestHeaders"]). The
-      "blocking" string sits INSIDE that array - it is not a standalone argument and its
-      position varies by event, so look inside the array arguments. A call with no "blocking"
-      entry in any array argument does NOT justify the permission.
   - permissions: unlimitedStorage
-    prompt: |-
-      "unlimitedStorage" gates no API or property; it raises the browser's storage
-      quota. It is justified when the add-on persists non-trivial data - through
-      storage.local, IndexedDB, the Cache API, or the Origin Private File System. It
-      has no single site to point at, so this item is judged holistically: pass if the
-      add-on persists such data anywhere, fail if it does not.
-  # The Thunderbird-154 own-page exemption is version-dependent, so it lives as two
-  # bounded `note` annotations on tabs.query (assets/schema-annotations/tabs.json) and
-  # is pulled in version-matched via {{note:tabs.query}} - one entry, no version bound.
+  # The Thunderbird-154 own-page exemption is version-dependent. It is recorded as two
+  # bounded `note` annotations on tabs.query (assets/schema-annotations/tabs.json), which
+  # nothing reads today - the tokens below hold for both sides of the boundary.
   - permissions: tabs, activeTab
     tokens:
       - query
@@ -1229,14 +1108,6 @@ permission-prompts:
       - favIconUrl
       - overrideContext
       - onUpdated
-    prompt: |-
-      The tabs methods (tabs.query, tabs.create, tabs.update, tabs.remove, tabs.sendMessage,
-      the tabs events) need NO permission by themselves. Reading a tab's privileged url,
-      title, or favIconUrl - or filtering tabs.query by them - needs "tabs" (any tab),
-      a host permission matching the tab's url (matching tabs only), or "activeTab"
-      (for the active tab). {{note:tabs.query}} The "tabs" permission is also required by a
-      tabId passed to menus.overrideContext and by a urls filter on tabs.onUpdated.
-      A broad host permission like "<all_urls>" usually makes "tabs" redundant for reads.
   - permissions: activeTab
     # Namespace-qualified (dotted) tokens: matched against the resolved api-usage
     # (tabs.executeScript vs scripting.executeScript), not a bare `executeScript` word -
@@ -1246,11 +1117,6 @@ permission-prompts:
       - tabs.insertCSS
       - scripting.executeScript
       - scripting.insertCSS
-    prompt: |-
-      The "activeTab" permission is justified, if a script or CSS is injected into an active
-      CONTENT tab (a web page) by ANY of the following methods: tabs.executeScript, tabs.insertCSS,
-      scripting.executeScript or scripting.insertCSS. A host permission matching the tab's url
-      (e.g. "<all_urls>") is the alternative and makes "activeTab" redundant.
   - permissions: compose
     # The injection tokens are namespace-qualified (dotted): resolved against the
     # api-usage analysis, so only real tabs.*/scripting.* calls count. `attachments` is a
@@ -1263,14 +1129,6 @@ permission-prompts:
       - scripting.executeScript
       - scripting.insertCSS
       - attachments
-    prompt: |-
-      The "compose" permission is justified when a script or CSS is injected into a
-      COMPOSE tab (a message being composed) via tabs.executeScript, tabs.insertCSS,
-      scripting.executeScript or scripting.insertCSS. A tab is a compose tab when its
-      tabId comes from compose.* (onComposeStateChanged, beginNew/beginReply/beginForward,
-      getComposeDetails) or a composeAction / compose_action button. The name of the injected
-      tabId argument can corroborate this - e.g. a variable or parameter named composeTabId -
-      though a name alone is a hint, not proof.
   - permissions: messagesModify
     # Namespace-qualified (dotted) injection tokens, resolved against the api-usage
     # analysis. message_display_scripts is NOT a token here: it grounds messagesModify
@@ -1280,22 +1138,13 @@ permission-prompts:
       - tabs.insertCSS
       - scripting.executeScript
       - scripting.insertCSS
-    prompt: |-
-      The "messagesModify" permission is justified when a script or CSS is injected into a
-      MESSAGE-DISPLAY tab (a tab showing a mail message) via tabs.executeScript,
-      tabs.insertCSS, scripting.executeScript or scripting.insertCSS. A tab is a
-      message-display tab when its tabId comes from messageDisplay.* (onMessageDisplayed,
-      getDisplayedMessage[s]), a messageDisplayAction / message_display_action button, or a
-      mailTab whose displayed message is being read. The name of the injected tabId argument
-      can corroborate this - e.g. a variable or parameter named messageTabId - though a name
-      alone is a hint, not proof.
   # No "scripting" entry: unlike compose/messagesModify (which need the semantic judgment
   # of WHICH kind of tab the injection targets), "scripting" is guarded at the namespace
   # level (the scripting schema namespace declares permissions: ["scripting"]), so ANY
   # scripting.* call grounds it deterministically in analyzePermissions - there is no
   # ambiguous case to escalate. It is also grounded by the message_display_scripts
-  # manifest key (before Thunderbird 154). A declared-but-unused scripting therefore has no
-  # prompt here and falls to manual review, like any other permission the recheck cannot judge.
+  # manifest key (before Thunderbird 154). A declared-but-unused scripting therefore has
+  # no entry here and escalates, like any other permission the tokens cannot settle.
 
 
 manual-checks:

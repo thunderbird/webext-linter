@@ -23,9 +23,12 @@ Suggested response: Please include an English localization. English serves as th
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - [XPI] manifest.json
 
-2) Unused, hidden or duplicate files or folders: The following files are not
-   reachable from any entry point but may be loaded dynamically. Confirm by hand
-   whether they are unused and safe to remove.
+2) Unused, hidden or duplicate files or folders: The following files are
+   reachable from no manifest entry point, so decide whether anything loads them
+   at runtime. Two shapes reach here: a site that names the file literally, and
+   a runtime loader that builds load paths at run time (a dynamic import,
+   getURL, executeScript, insertCSS, setIcon and the like) and so may load it
+   without naming it. If nothing loads them, they should not ship.
 Suggested response: The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
  - [XPI] orphan.js
 

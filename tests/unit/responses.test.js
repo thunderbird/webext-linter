@@ -127,6 +127,11 @@ test("renderFindings sets listItem only for item-free responses", () => {
   assert.equal(listed.listItem, true); // generic message -> list it
 });
 
+// Registry prose is hard-wrapped in the yaml and re-collapsed for display
+// (manualBody), so a phrase can straddle a source line break. Assertions about
+// wording go through this rather than pinning where the wrap happens to fall.
+const flat = (t) => String(t).replace(/\s+/g, " ");
+
 // A manual-review escalation ref resolves to the owning entry's title +
 // instructions, carrying its locus (file/loc) for the report to list rather
 // than baking the identifier into the prose.
@@ -136,7 +141,10 @@ test("renderManualItems resolves an escalation to title + instructions + locus",
     registry
   );
   assert.match(item.title, /Unused/);
-  assert.match(item.instructions, /not reachable/);
+  assert.match(
+    flat(item.instructions),
+    /reachable from no manifest entry point/
+  );
   assert.equal(item.file, "stray.js"); // listed by the report, not in the prose
   assert.ok(!item.instructions.includes("{{item}}"));
 });
@@ -261,7 +269,7 @@ test("renderManualItems renders a manual-review item from its own wording", () =
   );
   // The reviewer is asked to decide, not to establish what the check established.
   assert.match(item.instructions, /matches a published/);
-  assert.ok(!item.instructions.includes("Confirm by hand"));
+  assert.ok(!flat(item.instructions).includes("Confirm by hand"));
   assert.match(item.response, /Remote sources are not allowed/);
   // Item-free wording, so the site and its upstream are listed per locus.
   assert.equal(item.listItem, true);
@@ -275,7 +283,7 @@ test("renderManualItems renders the same ref without the flag as before", () => 
     [{ ruleId: "remote-resources", item: "x" }],
     registry
   );
-  assert.match(item.instructions, /Confirm by hand/);
+  assert.match(flat(item.instructions), /Confirm by hand/);
   assert.match(item.response, /Remote sources are not allowed/);
 });
 
@@ -305,11 +313,11 @@ test("renderManualItems refuses a manual-review item with no authored wording", 
 // responses.js resolves templates and does not police who authored what.
 test("registry.instructionsFor picks the wording and refuses an unauthored one", () => {
   assert.match(
-    registry.instructionsFor("remote-resources", true),
+    flat(registry.instructionsFor("remote-resources", true)),
     /matches a published/
   );
   assert.match(
-    registry.instructionsFor("remote-resources", false),
+    flat(registry.instructionsFor("remote-resources", false)),
     /Confirm by hand/
   );
   assert.throws(

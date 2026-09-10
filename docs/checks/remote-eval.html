@@ -43,17 +43,10 @@
 flowchart TD
   A["A dynamic-execution site found by the shared<br/>eval scan — outside the WebExtension tree"] --> B{"An ambiguous fetch-then-execute<br/>site, e.g. fetch().then(eval)?"}
   B -- "no, a definite eval/Function/<br/>timer/CSP case" --> S([skip — handled by the<br/>deterministic eval checks])
-  B -- yes --> L{"The reviewer judges: is the executed<br/>code fetched from a remote<br/>source rather than static and local?"}
-  L -- "pass: static and local" --> OK([no finding])
-  L -- "fail: remote" --> ERR([ERROR: remote code executed])
-  L -- unsure --> M([escalate to manual review])
+  B -- yes --> M(["escalate — the reviewer decides<br/>whether the executed code is remote"])
 
-  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
-  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
-  class ERR err;
-  class OK ok;
   class S skip;
   class M manual;
         </pre>

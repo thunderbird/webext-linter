@@ -94,7 +94,7 @@ import { DEFAULT_CACHE } from "./config.js";
  *   dependencies are audited; the positional XPI is the shipped artifact against which
  *   the manifest, experiments, file-completeness (`input: xpi`) checks, the --diff-to
  *   comparison, and the packaging summary all run (a separate shipped context the
- *   orchestrator routes them to - see buildXpiCtxs in src/checks/context.js). The
+ *   orchestrator routes them to - see buildXpiCtxs in src/checks/context.js).
  * @property {string} [scaSource]  The add-on code root, relative to scaRoot or an
  *   absolute path (e.g. "src" or "addon"). Optional; defaults to "." (the whole scaRoot
  *   reviewed as the source - a flat layout with manifest.json at the root).
@@ -502,8 +502,7 @@ export async function runPipeline(opts) {
 
   // The shared review env every sibling ctx projects (buildXpiCtxs / buildScaCtxs). The
   // manifest/experiments are the SHIPPED artifact's - authoritative like the schema, so no
-  // artifact's own template can shadow them. Only what a check reads goes on `options` (a reviewer
-  // credentials are deliberately absent - the secret token must not sit on the check-facing ctx).
+  // artifact's own template can shadow them. Only what a check reads goes on `options`.
   const env = {
     schema,
     options: { allowExperiments: opts.allowExperiments, libraryHashes },
@@ -532,7 +531,7 @@ export async function runPipeline(opts) {
   // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). Routing is
   // total: `source` is a first-class sibling. siblings.source is the REVIEW TARGET - the readable
   // source in SCA, else the built XPI (xpiCtx doubles as both siblings.xpi and siblings.source in
-  // an XPI review). The orchestrator reads every review-level datum (recheck, the base feed note)
+  // an XPI review). The orchestrator reads every review-level datum (the base feed note)
   // off siblings.source; a check routed to one sibling can never reach another's artifact.
   const siblings = {
     source: mode?.sca ? scaCtx : xpiCtx,

@@ -34,7 +34,7 @@
 flowchart TD
   A["Reviewer reads the<br/>ATN listing page"] --> B{"Does it include usage instructions,<br/>entry points, and screenshots?"}
   B -- yes --> OK([no finding])
-  B -- no --> M([flag for the developer / manual finding])
+  B -- no --> M(["a to-do for the reviewer to settle by hand"])
 
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;

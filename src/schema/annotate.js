@@ -69,8 +69,8 @@ export function applySchemaAnnotations(files, annotations) {
 /**
  * Append a fragment's function/event `annotations` onto the matching loaded member
  * (by name) - how the overlay delivers a `note` on an API member the published
- * schema lacks (e.g. a version-bounded tabs.query note a {{note:tabs.query}} prompt
- * references). Only patches a member the loaded namespace already declares.
+ * schema lacks (e.g. the version-bounded tabs.query notes). Only patches a member the
+ * loaded namespace already declares.
  * @param {SchemaNode} dstNs  Loaded namespace object (mutated).
  * @param {SchemaNode} srcNs  Fragment namespace object.
  */

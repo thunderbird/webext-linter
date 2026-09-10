@@ -675,9 +675,9 @@ export class SchemaIndex {
 
   /**
    * The `note` annotations on a resolved API member (e.g. "tabs.query"), each with
-   * its optional strict-version bound - the dual-purpose doc/review notes a
-   * `{{note:<member>}}` recheck-prompt placeholder pulls in (version-filtered by the
-   * caller). Empty when the member or its notes are absent.
+   * its optional strict-version bound - a version-dependent fact recorded about the
+   * member, for the caller to version-filter. No check consumes one today. Empty when
+   * the member or its notes are absent.
    * @param {string} path  Dotted member path after the browser/messenger root.
    * @returns {{note: string, minStrictVersion: ?string, maxStrictVersion: ?string}[]}
    */
