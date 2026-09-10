@@ -128,8 +128,8 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   buildScaCtxs), and it is also what the check's output is labelled as ([XPI]/[SCA]).
  * @property {string} [instructions]  Manual-review message.
  * @property {object[]} [permissionTokens]  The permission-prompts token entries
- *   ({permissions, tokens, version bounds} - prompt text stripped), carried by
- *   every check and read by the one that scans for them.
+ *   ({permissions, tokens, version bounds}), carried by every check and read by
+ *   the one that scans for them.
  * @property {Function} run
  */
 
@@ -599,9 +599,8 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
       input,
       sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
       instructions: entry.instructions,
-      // The permission-prompts token entries, like `prompt` and `instructions`
-      // above: registry data every check carries, read by the one that scans for
-      // them. It version-filters at run time (versionInBounds) with the reviewed
+      // The permission-prompts token entries, like `instructions` above: registry
+      // data every check carries, read by the one that scans for them. It version-filters at run time (versionInBounds) with the reviewed
       // manifest, so every entry is handed over here.
       permissionTokens: registry.permissionTokens(),
       run,

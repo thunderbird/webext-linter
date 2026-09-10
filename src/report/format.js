@@ -98,7 +98,6 @@ export function formatText(review) {
  * The report body lines - Issues, the three manual-review sections, and the ATN tail
  * - WITHOUT the trailing Summary tally. The findings here are issues only; the
  * manual-review to-dos live in meta.manualReview and are split by buckets().
- * Shared by formatText and by formatReviewBody.
  * @param {ReviewResult} review
  * @returns {string[]}
  */
@@ -132,34 +131,6 @@ function reviewBodyLines(review) {
     ),
     ...manualSection(standard, "Standard manual review", blue, labelOf),
   ];
-}
-
-/**
- * The text report body WITHOUT the Summary tally (Issues + manual sections +
- * ATN tail). The CLI prints this first, then the advisory review summaries, then
- * the tally (formatSummary) last, so the review verdict lands at the very end.
- * @param {ReviewResult} review
- * @returns {string}
- */
-export function formatReviewBody(review) {
-  const lines = reviewBodyLines(review);
-  if (lines[0] === "") {
-    lines.shift();
-  }
-  return lines.join("\n");
-}
-
-/**
- * The Summary tally as its own "── Summary ──" block (leading blank line, like
- * every section). Kept separate from the body so a caller can place it after
- * sections of its own.
- * @param {ReviewResult} review
- * @returns {string}
- */
-export function formatSummary(review) {
-  const manual = review.meta.manualReview ?? [];
-  const counts = bucketCounts(manual);
-  return summaryLines(review.findings, counts).join("\n");
 }
 
 /**

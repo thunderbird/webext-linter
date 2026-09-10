@@ -18,47 +18,27 @@ function fakeAddon(files) {
   return { files: map };
 }
 
-// Without a token the fallback never runs (deterministic only); an unmappable
-// VENDOR file yields an empty set and the transport is not called.
-test("resolveVendor stays deterministic with no token", async () => {
+// A VENDOR file in prose declares nothing: the parse is deterministic, so an entry it
+// cannot map yields an empty manifest and an empty skip set rather than a guess.
+test("resolveVendor maps nothing from a VENDOR file that declares nothing", async () => {
   const addon = fakeAddon({
     VENDOR: "We bundle the Foo library; see our docs for details.",
     "app.js": "x",
   });
-  const callText = async () => {
-    throw new Error("must not be called");
-  };
-  const { set, manifest } = await resolveVendor({
-    addon,
-    parsePrompt: "PARSE",
-    token: undefined,
-    callText,
-  });
+  const { set, manifest } = await resolveVendor({ addon });
   assert.equal(manifest.length, 0);
   assert.equal(set.size, 0);
 });
 
-// When the deterministic parse already maps the file, the fallback is skipped
-// even with a token (no wasted call). The declared file is library-like (.min), as
-// the accepted format requires.
-test("resolveVendor skips the fallback when the deterministic parse succeeds", async () => {
+// The accepted format: "File:" / "Source:" pairs, one declaration each. The declared
+// file is library-like (.min), as the format requires.
+test("resolveVendor maps a declared file to its source", async () => {
   const addon = fakeAddon({
     "VENDOR.md":
       "File: vendor/jszip.min.js\nSource: https://unpkg.com/jszip@3.10.1/dist/jszip.min.js\n",
     "vendor/jszip.min.js": "x",
   });
-  let called = 0;
-  const { manifest } = await resolveVendor({
-    addon,
-    parsePrompt: "PARSE",
-    enabled: true,
-    token: "t",
-    callText: async () => {
-      called++;
-      return "[]";
-    },
-  });
-  assert.equal(called, 0);
+  const { manifest } = await resolveVendor({ addon });
   assert.deepEqual(
     manifest.map((e) => [e.path, e.sourceUrl]),
     [

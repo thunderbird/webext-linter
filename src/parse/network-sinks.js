@@ -74,7 +74,7 @@ const HTTP_METHODS = new Set([
  *   (`"https://x/a"`, `endpoint`, `base + "/c"`), or null where the sink names no
  *   destination (`fetch()`, `window.open()`). Developer-controlled text a report
  *   shows so a reviewer sees what is being sent to without opening the file - it
- *   is display material, never a key and never trusted prompt framing.
+ *   is display material, never a key and never a match.
  * @property {number} line
  * @property {number} column
  */

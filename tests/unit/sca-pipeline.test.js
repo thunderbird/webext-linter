@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { runPipeline } from "../../src/pipeline.js";
-import { formatReviewBody } from "../../src/report/format.js";
+import { formatText } from "../../src/report/format.js";
 import { fixtureCacheOpts } from "../seed-caches.js";
 
 // A cache pre-seeded from the fixtures so the schema / experiments / library-hash
@@ -125,7 +125,7 @@ test("SCA e2e: a flat layout (--sca-source == --sca-root) is accepted and fully 
 
 // The rendered SCA report labels each finding's file:line by artifact and closes the
 // Issues section with the legend footer - proving runPipeline threads `mode` +
-// `ruleInputs` into the report (formatReviewBody). An XPI review has neither.
+// `ruleInputs` into the report. An XPI review has neither.
 test("SCA e2e: the rendered report carries [XPI]/[SCA] labels + the footer", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
@@ -138,7 +138,7 @@ test("SCA e2e: the rendered report carries [XPI]/[SCA] labels + the footer", asy
       scaRoot: src,
       ...OFFLINE,
     });
-    const report = formatReviewBody(result);
+    const report = formatText(result);
     assert.match(
       report,
       /\[SCA\] app\.js/,
@@ -1196,7 +1196,7 @@ test("SCA e2e: a readable-XPI submission is downgraded to a plain XPI review (sc
     // Lock the rendered entry: it must explain the cost of the source-archive route,
     // and it must carry NO locus line - the subject is the submission as a whole, so
     // naming a file there would be noise.
-    const body = formatReviewBody(result);
+    const body = formatText(result);
     assert.match(
       body,
       /separate review process that takes considerably longer/,

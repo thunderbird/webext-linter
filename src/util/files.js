@@ -48,7 +48,7 @@ export const SFC_EXTENSIONS = new Set([".vue"]);
  *  a transpiler's output is perfectly readable. Deliberately by extension only: the
  *  question is what KIND of source the archive carries, and no file content or build
  *  config is consulted to answer it. */
-export const TRANSPILED_SOURCE_EXTENSIONS = new Set([
+const TRANSPILED_SOURCE_EXTENSIONS = new Set([
   ".ts",
   ".tsx",
   ".mts",

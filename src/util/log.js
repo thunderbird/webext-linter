@@ -148,8 +148,8 @@ export function info(...args) {
  */
 export function debug(...args) {
   if (verbose) {
-    // Verbose output is where the submission is quoted most freely - whole prompts,
-    // a path that failed to parse, a provider's error body. Guarded here, once, rather
+    // Verbose output is where the submission is quoted most freely - a path that failed
+    // to parse, a detector's diagnostic, a fetch error body. Guarded here, once, rather
     // than at each of the call sites. Newlines survive: these dumps have shape, and
     // none of them is a single line. No caller colours its text (emit's colour
     // contract is unaffected).

@@ -4,12 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { REVIEW_MODE } from "../../src/lib/enum.js";
 
-import {
-  formatText,
-  formatJson,
-  formatReviewBody,
-  formatSummary,
-} from "../../src/report/format.js";
+import { formatText, formatJson } from "../../src/report/format.js";
 import { renderManualItems } from "../../src/report/responses.js";
 import { loadRegistry } from "../../src/checks/registry.js";
 
@@ -513,22 +508,21 @@ const withReview = (findings, verdictIntros) => ({
   verdictIntros,
 });
 
-// formatReviewBody is the report without the tally; formatSummary is just the tally.
-// They concatenate back to formatText.
-test("formatReviewBody / formatSummary split the report and round-trip", () => {
+// The tally CLOSES the report: it is the last section, so the verdict is the final
+// thing a reader sees. Nothing is printed after it.
+test("the Summary tally is the report's last section", () => {
   const r = {
     findings: [mkFinding("info", "an info finding", "manifest.json", null)],
     meta: { action: "review", addon: "x", reviewed: true, manualReview: [] },
     issueHeadings: { error: "E:", warning: "W:", info: "I:" },
   };
-  const body = formatReviewBody(r);
-  const summary = formatSummary(r);
-  assert.ok(!body.includes("── Summary ──")); // body has no tally
+  const out = formatText(r);
+  const sections = [...out.matchAll(/── (.+?) ──/g)].map((m) => m[1]);
+  assert.equal(sections.at(-1), "Summary");
   assert.match(
-    summary,
-    /── Summary ──\n\n0 error\(s\), 0 warning\(s\), 1 info/
+    out.slice(out.indexOf("── Summary ──")),
+    /^── Summary ──\n\n0 error\(s\), 0 warning\(s\), 1 info[^\n]*$/
   );
-  assert.equal(formatText(r), body + "\n" + summary); // round-trips
 });
 
 test("empty review shows the registry 'none' intro as the Issues body", () => {

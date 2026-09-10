@@ -120,8 +120,7 @@ export function nodeLoc(node, lineOffset = 0) {
  * A node with no offsets - hand-built, or recovered from a parse error - yields
  * null rather than a slice of undefined bounds, which would be the WHOLE file.
  *
- * What survives is display material: never a key, never a match, and never part of
- * the trusted framing of a reviewer prompt.
+ * What survives is display material: never a key and never a match.
  * @param {AstNode} node
  * @param {string} code  The source the node was parsed from.
  * @returns {?string}  The expression as written, or null.
