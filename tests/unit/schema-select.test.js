@@ -12,6 +12,7 @@ import AdmZip from "adm-zip";
 
 import {
   selectSchemaChannel,
+  schemaSnapshotIsStale,
   detectManifestVersion,
   peekBranchMajor,
   resolveReviewSchema,
@@ -340,4 +341,27 @@ test("resolveReviewMode: an unreviewable XPI keeps the SCA whatever the source k
     ]),
     KEEP
   );
+});
+
+// A channel branch is a moving target, so a cached zip is a snapshot that goes stale the
+// moment Thunderbird ships. It only MATTERS when the add-on's cap reaches past every
+// cached train: the schema then cannot know the APIs in between, and a call to one is
+// reported as unknown instead of as needing a newer strict_min_version. The age test is
+// what stops every uncapped add-on from re-downloading six zips on every run.
+test("a schema snapshot is stale only when the add-on outreaches it AND it is old", () => {
+  const stale = (cap, newest, ageDays) =>
+    schemaSnapshotIsStale({ cap, newest, ageDays });
+  // The case from a real run: capped at 157, newest cached train 153, snapshot 2 months old.
+  assert.equal(stale(157, 153, 62), true);
+  // Fresh enough to be the current train, however far the add-on reaches.
+  assert.equal(stale(157, 153, 0.5), false);
+  assert.equal(stale(Infinity, 153, 0.5), false);
+  // Within the cached trains: the schema describes it, so age does not matter.
+  assert.equal(stale(152, 153, 999), false);
+  assert.equal(stale(153, 153, 999), false);
+  // No cap at all reads as reaching past everything, so only age holds it back.
+  assert.equal(stale(Infinity, 153, 2), true);
+  // An unreadable cache asks to be refreshed.
+  assert.equal(stale(140, 153, Infinity), false);
+  assert.equal(stale(Infinity, 153, Infinity), true);
 });

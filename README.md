@@ -64,6 +64,11 @@ The options, grouped as in `--help`:
 downloaded once and reused; the CDN lookup cache fills incrementally as a best-effort
 side-channel.
 
+A channel branch is a moving target, so a cached schema is a snapshot. When an add-on's
+`strict_max_version` reaches past every cached train and the snapshot is more than a day
+old, the schemas are re-downloaded before the review - otherwise an API added since the
+snapshot would be reported as unknown rather than as needing a newer `strict_min_version`.
+
 | Option | Description |
 | --- | --- |
 | `--cache-clear` | Delete every cache directory below before the review, so all fetched sources (schema, library-hash DB, CDN lookups, allowed-experiments) are re-downloaded from scratch — as on a first run. |

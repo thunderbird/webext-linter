@@ -892,6 +892,36 @@ export async function resolveReviewSchema({
     candidates = readAnchors();
   }
 
+  // A channel branch is a MOVING target: release-mv2 means "whatever release is today", so
+  // a cached zip is a snapshot that goes stale the moment Thunderbird ships. Staleness only
+  // matters when the add-on reaches past the snapshot - then the schema cannot know the APIs
+  // of the versions in between, and a call to one is reported as unknown rather than as
+  // needing a newer strict_min_version, which is the wrong reason handed to the developer.
+  //
+  // So: refresh when the add-on's cap is above every cached train AND the snapshot is more
+  // than a day old. The age test is what keeps a run from re-downloading six zips for every
+  // add-on with no cap or a cap on an unreleased train. Best effort - with the network down
+  // the stale cache still reviews, which beats not reviewing at all, and Review Details
+  // names the version either way.
+  const cap = parseVersion(strictMaxVersion(manifest))?.[0] ?? Infinity;
+  const newest = Math.max(...candidates.map((c) => c.major));
+  if (
+    !stepped &&
+    cap > newest &&
+    schemaCacheAgeDays(cacheDir, candidates) > 1
+  ) {
+    setupStep("Refreshing review schemas (add-on targets a newer Thunderbird)");
+    stepped = true;
+    try {
+      await refreshAllSchemas({ cacheDir });
+      candidates = readAnchors();
+    } catch (err) {
+      warn(
+        `Could not refresh the schema cache, reviewing against it as it is: ${err.message}`
+      );
+    }
+  }
+
   // Still short after a full re-download means the schema set itself is unusable -
   // fail loudly rather than review against a wrong or partial schema.
   if (candidates.length < SCHEMA_CHANNELS.length) {
@@ -917,6 +947,39 @@ export async function resolveReviewSchema({
   }
   const { zipPath, source } = await resolveSchemaZip({ branch, cacheDir });
   return { zipPath, source, branch, channel };
+}
+
+/**
+ * Whether the cached schema snapshot is too old to review this add-on against: its cap
+ * reaches past every cached train, so the schema cannot know the APIs in between, AND the
+ * snapshot is more than a day old, so a newer one plausibly exists. An add-on with no cap
+ * has an infinite one, which is why the age test carries the weight - without it every such
+ * add-on would re-download six zips on every run.
+ * @param {{cap: number, newest: number, ageDays: number}} state
+ * @returns {boolean}
+ */
+export function schemaSnapshotIsStale({ cap, newest, ageDays }) {
+  return cap > newest && ageDays > 1;
+}
+
+/**
+ * How old the cached schema snapshot is, in days - the NEWEST of the candidate zips, since
+ * refreshAllSchemas writes them together. Infinity when none can be read, which makes a
+ * refresh the answer.
+ * @param {string} cacheDir
+ * @param {{branch: string}[]} candidates
+ * @returns {number}
+ */
+function schemaCacheAgeDays(cacheDir, candidates) {
+  const times = candidates.map((c) => {
+    try {
+      return fs.statSync(cachedZipPath(cacheDir, c.branch)).mtimeMs;
+    } catch {
+      return null;
+    }
+  });
+  const newest = Math.max(...times.filter((t) => t != null), -Infinity);
+  return newest === -Infinity ? Infinity : (Date.now() - newest) / 86400000;
 }
 
 /**
