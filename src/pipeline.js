@@ -618,6 +618,7 @@ export async function runPipeline(opts) {
   // Its `extended` items are the orchestrator's escalations (resolved to their registry
   // text); the rest are the by-hand manual-checks entries, which every review carries
   // unconditionally. An Experiment reject carries none.
+  const ranIds = new Set(checksRun.map((c) => c.id));
   Object.assign(meta, {
     schemaSource,
     schemaBranch,
@@ -634,6 +635,18 @@ export async function runPipeline(opts) {
           })),
           ...registry.manualChecks().map((m) => ({ ...m, extended: false })),
         ],
+    // The blind-spot sweeps to run BEFORE settling this review: the shared method, then
+    // one bare item per check that authors an instruction for what it cannot detect. ONE
+    // request, not one per check - the sweeps read the same add-on, so what is learned on
+    // one item is already in hand for the next. Registry-sourced and carried by every
+    // review, exactly like the by-hand manual-checks above, which is why it travels on
+    // meta: the text renderer never sees the registry.
+    //
+    // Gated on the checks that actually RAN: sweeping the blind spot of a scan that did
+    // not happen asks a reader to cover for nothing, and this is what makes
+    // --checks-only/--checks-skip carry through. An Experiment reject carries none, for
+    // the same reason it carries no manual review.
+    preSweep: invalidExperiment ? null : preSweepOf(registry, ranIds),
   });
 
   // --llm-review writes the review's items to a file, named in the Review Details section.
@@ -652,6 +665,7 @@ export async function runPipeline(opts) {
   renderFindings(findings, registry);
 
   let appliedLine;
+  let addedLine;
   // Settle the review against the answers a reviewer (or a model) gave it. AFTER
   // renderFindings, because a verdict names an item by its position in the printed
   // report and that order depends on the rendered message - findings are grouped by it,
@@ -669,20 +683,34 @@ export async function runPipeline(opts) {
           `review is of "${xpiAddon.source}" - its item indices mean nothing here`
       );
     }
-    const applied = applyVerdicts({
+    const { applied, added } = applyVerdicts({
       findings,
       manual: meta.manualReview,
       verdicts: settled.verdicts,
+      additions: settled.additions,
       registry,
       labelOf: locusLabeler(mode, registry.checkInputs()),
     });
-    // A reported case became a finding carrying only its locus and slots, so word it
-    // from the registry like any other - the same text either way.
+    // A reported case, and a swept addition, became a finding carrying only its locus and
+    // slots, so word both from the registry like any other - the same text either way.
     renderFindings(findings, registry);
+    // The sweep is settled too, so it stops being asked. A verdict file is the answer to
+    // the whole review - its `additions` ARE what the sweep found - and the settled manual
+    // items have just been spliced out of the list for the same reason. Leaving the sweep
+    // standing would re-ask a reviewer for work whose results are in the report above it,
+    // and leave the two standard sections disagreeing about whether the review was done.
+    meta.preSweep = null;
     // Audible, so a misaimed verdict shows up as one line here instead of being
     // buried in a re-rendered report. Emitted below, under Review Details, because that
     // section names the review these verdicts were applied to.
-    appliedLine = `Applied ${applied.length} verdict(s): ${applied.join(", ")}`;
+    if (applied.length) {
+      appliedLine = `Applied ${applied.length} verdict(s): ${applied.join(", ")}`;
+    }
+    // Counted separately: an addition settles nothing, it ADDS a case no check found, so
+    // folding it into the verdict tally would overstate what was settled.
+    if (added.length) {
+      addedLine = `Added ${added.length} swept finding(s): ${added.join(", ")}`;
+    }
   }
 
   // Settle every provisional hold against the rest of the review - the one moment a
@@ -697,7 +725,7 @@ export async function runPipeline(opts) {
   // resolveHolds settled every band - an array built any earlier would carry a null
   // message and a provisional severity.
   if (meta.itemsFile) {
-    const itemsList = reviewItems(findings, meta.manualReview);
+    const itemsList = reviewItems(findings, meta.manualReview, meta.preSweep);
     fs.writeFileSync(meta.itemsFile, `${JSON.stringify(itemsList, null, 2)}\n`);
   }
 
@@ -713,7 +741,8 @@ export async function runPipeline(opts) {
     for (const line of llmPromptLines(
       registry.llmReviewPrompt(),
       findings,
-      meta.manualReview
+      meta.manualReview,
+      meta.preSweep
     )) {
       report(line);
     }
@@ -721,15 +750,24 @@ export async function runPipeline(opts) {
   for (const line of headerLines(meta)) {
     report(line);
   }
-  if (appliedLine) {
+  if (appliedLine || addedLine) {
     report("");
-    report(appliedLine);
+    if (addedLine) {
+      report(addedLine);
+    }
+    if (appliedLine) {
+      report(appliedLine);
+    }
   }
   // A --llm-review run prints no report, so its Summary is printed here instead: a
   // reviewer has to see from the output alone whether the add-on can be signed off or
   // still has work waiting. Every other run gets it as the report's closing section.
   if (meta.itemsFile) {
-    for (const line of summaryLines(findings, meta.manualReview)) {
+    for (const line of summaryLines(
+      findings,
+      meta.manualReview,
+      meta.preSweep
+    )) {
       report(line);
     }
   }
@@ -958,6 +996,32 @@ export async function resolveReviewSchema({
  * @param {{cap: number, newest: number, ageDays: number}} state
  * @returns {boolean}
  */
+/**
+ * The blind-spot sweep for this review: the shared method plus the bare items, or null
+ * when no check that ran authors one.
+ *
+ * One object rather than a list, because it is ONE request. The intro says how to judge;
+ * each item says only what its own check is looking for. Split the other way - method
+ * repeated on every item - and eight near-identical paragraphs teach a reader to skim the
+ * part that matters.
+ *
+ * Both intros travel: the report prints the human one, the item file carries the agent
+ * one. They differ only in that the agent is also told what to hand back.
+ * @param {import("./checks/registry.js").Registry} registry
+ * @param {Set<string>} ranIds  Ids of the checks that actually ran.
+ * @returns {?{intro: string, agentIntro: string, items: object[]}}
+ */
+function preSweepOf(registry, ranIds) {
+  const items = registry.sweepInstructions().filter((s) => ranIds.has(s.check));
+  return items.length
+    ? {
+        intro: registry.sweepIntro("human"),
+        agentIntro: registry.sweepIntro("llm"),
+        items,
+      }
+    : null;
+}
+
 export function schemaSnapshotIsStale({ cap, newest, ageDays }) {
   return cap > newest && ageDays > 1;
 }

@@ -846,6 +846,86 @@ test("loadChecks refuses a check entry with no severity", async () => {
   await assert.rejects(loadChecks(reg), /missing or invalid severity/);
 });
 
+// A check authors a `sweep-instruction` for a blind spot it cannot close by naming more
+// cases - an enumerated set of transmission APIs says nothing about a sender it does not
+// list. What a reader finds there is filed AS that check, so the set of checks asking is
+// pinned here for the same reason the severity and escalation maps above are: one landing
+// on the wrong check, or lost to a yaml typo, is invisible in every other test.
+test("the checks that sweep their own blind spot are exactly these", () => {
+  const reg = loadRegistry();
+  assert.deepEqual(
+    reg.sweepInstructions().map((s) => [s.check, s.severity]),
+    [
+      ["disguised-resource", "error"],
+      ["disguised-stylesheet", "error"],
+      ["disguised-window", "error"],
+      ["disguised-navigation", "error"],
+      ["cleartext-transmission", "error"],
+      ["privacy-policy", "hold"],
+      ["data-exfiltration", "error"],
+      ["disguised-transmission", "error"],
+    ]
+  );
+  // Every one of them can actually receive what its sweep finds: a band to stamp an
+  // addition with, and a response with no placeholder an addition brings nothing to fill.
+  for (const s of reg.sweepInstructions()) {
+    assert.ok(s.severity, `${s.check} has a band`);
+    assert.ok(
+      !(reg.checkEntry(s.check).response ?? "").includes("{{"),
+      `${s.check} response takes no placeholder`
+    );
+  }
+  assert.equal(reg.sweepInstruction("eval-call"), null);
+});
+
+// The three things that must hold for a sweep instruction to be fileable are config, so
+// they fail at LOAD time rather than when an addition first arrives - which may be never.
+test("loadChecks refuses a sweep-instruction it could not file a finding for", async () => {
+  const entry = (extra) => ({
+    title: "X",
+    check: "sync-xhr",
+    severity: "error",
+    input: "source",
+    ...extra,
+  });
+  await assert.rejects(
+    loadChecks(
+      new Registry({
+        "deterministic-phase": [entry({ "sweep-instruction": "  " })],
+      })
+    ),
+    /invalid `sweep-instruction`/
+  );
+  // `auto` leaves the band to each finding and `none` says the check emits none, so
+  // neither has one to stamp an addition with.
+  for (const severity of ["auto", "none"]) {
+    await assert.rejects(
+      loadChecks(
+        new Registry({
+          "deterministic-phase": [
+            entry({ severity, "sweep-instruction": "look for X" }),
+          ],
+        })
+      ),
+      /gives a reported case no band to carry/
+    );
+  }
+  // An addition carries no item, so a placeholder would reach the developer literally.
+  await assert.rejects(
+    loadChecks(
+      new Registry({
+        "deterministic-phase": [
+          entry({
+            "sweep-instruction": "look for X",
+            response: "Remove {{item}}.",
+          }),
+        ],
+      })
+    ),
+    /carries a {{placeholder}}/
+  );
+});
+
 // The shipped-vs-review-target artifact is chosen in ONE place - runChecks routes
 // each check to its artifact's context on the registry `input` (source = the review
 // target, xpi = the built XPI). A check reads only ctx.addon and the orchestrator

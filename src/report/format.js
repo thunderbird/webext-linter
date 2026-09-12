@@ -77,16 +77,29 @@ const SEV_COLOR = {
  *   `section` (which of the two extended lists it belongs to). The report splits it
  *   into three sections on those two tags - see src/report/order.js. Text-only;
  *   dropped from JSON.
+ * @property {?{intro: string, items: object[]}} [preSweep]  The blind-spot sweep to run
+ *   before settling the review: the shared method, then one bare item per check that
+ *   authors an instruction for what it cannot detect. ONE request, not one per check.
+ *   Carries no finding and no locus - it is the job, not its result. Text-only; dropped
+ *   from JSON.
  */
 
 // The titles the report prints over its sections, keyed by the section a sequence item
 // carries (src/report/order.js). One definition, because the item file names an item's
 // section with the same string the prose prints - and the --llm-review prompt refers to
 // both by that name.
+//
+// `preSweep` is the one title here that names no sequence section: it is not an item of
+// the numbered review (it settles nothing and carries no index), but the report, the item
+// file and the prompt still have to call it one thing, which is what this map is for.
+// It is titled STANDARD because, like the standard manual checks, it is carried by every
+// submission rather than raised by one - the pairing is deliberate: the two standard
+// sections are the review done on everything, by reading and by hand.
 export const SECTION_TITLES = Object.freeze({
   issues: "Found Issues",
   code: "Extended Code Review",
   extendedManual: "Extended Manual Review",
+  preSweep: "Standard Code Review",
   standard: "Standard Manual Review",
 });
 
@@ -101,7 +114,11 @@ export function formatText(review) {
   // closes the report.
   const lines = [
     ...reviewBodyLines(review),
-    ...summaryLines(review.findings, review.meta.manualReview ?? []),
+    ...summaryLines(
+      review.findings,
+      review.meta.manualReview ?? [],
+      review.meta.preSweep ?? null
+    ),
   ];
   // The Review Details section is printed live by the pipeline after the review
   // (src/pipeline.js), not here, so drop the blank that section() prepends to
@@ -150,6 +167,11 @@ function reviewBodyLines(review) {
       brightCyan,
       labelOf
     ),
+    // Beside the standard manual checks, and before them: the two STANDARD sections are
+    // the review carried by every submission - this one done by reading, that one by
+    // hand - so they read as a pair after the extended sections, which are raised by
+    // this submission in particular.
+    ...preSweepSection(meta.preSweep ?? null),
     ...manualSection(todo("standard"), SECTION_TITLES.standard, blue, labelOf),
   ];
 }
@@ -172,10 +194,15 @@ function reviewBodyLines(review) {
  * @param {import("./finding.js").ManualItem[]} manual
  * @returns {string[]}
  */
-export function llmPromptLines(prompt, findings, manual) {
+export function llmPromptLines(prompt, findings, manual, preSweep = null) {
   const asks = [];
   if (findings.length) {
     asks.push(prompt.issues);
+  }
+  // Listed first among the asks, because it is the first thing done: the sweeps add
+  // findings, and everything below settles the review those findings are part of.
+  if (preSweep?.items?.length) {
+    asks.push(prompt.preSweep);
   }
   const sections = new Set(orderReview([], manual).map((x) => x.section));
   if (sections.has("code")) {
@@ -454,6 +481,63 @@ function manualSection(items, title, accent = blue, labelOf) {
 }
 
 /**
+ * The Standard Code Review section: ONE sweep, carried by every submission - the shared
+ * method, then the bare class of code each check cannot detect for itself.
+ *
+ * Unlike every other section here this one lists CHECKS, not cases, and it is printed
+ * whether or not any of them found something: a check that found nothing is exactly the
+ * one whose blind spot is worth reading. It carries no locus and takes no verdict - what
+ * a sweep finds is filed as a finding of the named check, not as an answer to this.
+ *
+ * The same text the --llm-review prompt carries, so the reviewer reading this page and
+ * the agent doing the reading are told the same thing in the same words.
+ *
+ * Blue, like Standard Manual Review and unlike the vivid cyan of the extended sections:
+ * the colour says which pair a section belongs to - carried by every submission, or
+ * raised by this one.
+ * @param {?{intro: string, items: object[]}} sweep
+ * @returns {string[]}
+ */
+function preSweepSection(sweep) {
+  if (!sweep?.items?.length) {
+    return [];
+  }
+  const out = section(SECTION_TITLES.preSweep);
+  // The method first, its authored paragraphs kept: it is prose to be read, not a list
+  // item, and the breaks are how it reads.
+  for (const para of sweep.intro.split("\n\n")) {
+    out.push("");
+    out.push(...wrapText(para.replace(/\s+/g, " ").trim()).map(blue));
+  }
+  let n = 0;
+  for (const entry of sweep.items) {
+    out.push("");
+    // Laid out exactly like a manual-review entry (manualBody): "N) title: body", with
+    // the authored newlines collapsed so the item re-wraps to the report's width instead
+    // of keeping the yaml's. The check id and its band are NOT repeated here - the agent
+    // reads them as fields of the item file, and the title already says which check this
+    // is in the words the rest of the report uses.
+    const body = entry.instruction.replace(/\s+/g, " ").trim();
+    out.push(...wrapText(`${++n}) ${entry.title}: ${body}`).map(blue));
+    // The band and the wording a find would carry, laid out exactly as a manual-review
+    // entry lays them out: this section asks the same kind of question, so it should
+    // answer the same question a reviewer asks of one - if I find this, what happens,
+    // and what does the developer read? An addition is worded from this same text.
+    if (entry.severity) {
+      out.push(grey(`Suggested verdict: ${entry.severity}`));
+    }
+    if (entry.response) {
+      const lines = entry.response.split("\n");
+      lines[0] = `Suggested response: ${lines[0]}`;
+      for (const line of lines) {
+        out.push(grey(line));
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * Summary: issue counts by severity plus one count per to-do section, in the body's
  * section order (code review, manual review, then the always-shown checklist).
  *
@@ -464,27 +548,39 @@ function manualSection(items, title, accent = blue, labelOf) {
  * @param {import("./finding.js").ManualItem[]} [manual]
  * @returns {string[]}
  */
-export function summaryLines(issues, manual = []) {
+export function summaryLines(issues, manual = [], preSweep = null) {
   const out = section("Summary");
   out.push("");
-  out.push(tallyLine(issues, bucketCounts(manual)));
+  out.push(...tallyLines(issues, bucketCounts(manual), preSweep));
   return out;
 }
 
 /**
- * The one counts line: findings by band, then one count per to-do section.
+ * The counts, on three lines: what the review FOUND, then what it raised about this
+ * submission in particular, then what it carries for every submission. One run-on line
+ * read as a first number followed by noise, and the three groups are three different
+ * questions about the review.
+ *
+ * "item(s)", not "step(s)": each one is a thing listed in a section above, and a reader
+ * comparing the tally to those sections is counting entries, not actions.
  * @param {import("./finding.js").Finding[]} issues
  * @param {{code: number, manual: number, standard: number}} counts
- * @returns {string}
+ * @param {?{items: object[]}} [preSweep]
+ * @returns {string[]}
  */
-function tallyLine(issues, counts) {
+function tallyLines(issues, counts, preSweep = null) {
   const c = tally(issues);
-  return (
-    `${c.error} error(s), ${c.hold} hold, ${c.warning} warning(s), ${c.info} info, ` +
-    `${counts.code} extended code review step(s), ` +
-    `${counts.manual} extended manual review step(s), ` +
-    `${counts.standard} standard manual review step(s)`
-  );
+  // What the section actually lists: it numbers its entries 1..N, so the tally counts
+  // them. That the reader answers all of them in one pass is how the sweep is RUN, not
+  // how much is on the page.
+  const sweep = preSweep?.items?.length ?? 0;
+  return [
+    `${c.error} error(s), ${c.hold} hold, ${c.warning} warning(s), ${c.info} info,`,
+    `${counts.code} extended code review item(s), ` +
+      `${counts.manual} extended manual review item(s),`,
+    `${sweep} standard code review item(s), ` +
+      `${counts.standard} standard manual review item(s)`,
+  ];
 }
 
 /**
@@ -514,8 +610,12 @@ function bucketCounts(manual) {
 export function formatJson(review) {
   // The manual-review to-do list is human-only, not
   // machine-verifiable, so they are dropped from JSON (ATN consumes this for
-  // auto-verification). findings are already issues only.
-  const { manualReview: _omitted, ...meta } = review.meta;
+  // auto-verification). findings are already issues only. The pre-sweep list goes for
+  // the same reason and a sharper one: it is an instruction TO A READER, not a statement
+  // about the add-on, so it says nothing this document is for. What a sweep finds does
+  // reach here - as a finding of the check that owns it, indistinguishable from one the
+  // scan made itself, which is the point.
+  const { manualReview: _omitted, preSweep: _sweeps, ...meta } = review.meta;
   const issues = review.findings;
   // `data` (template-resolution input, baked into `message`) and `listItem` (a
   // text-layout flag) are internal, so they are dropped from the machine output.

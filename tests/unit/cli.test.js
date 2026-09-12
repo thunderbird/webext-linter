@@ -227,17 +227,37 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
     fs.readFileSync(named.slice("Review items: ".length), "utf8")
   );
   assert.ok(Array.isArray(items) && items.length > 0);
+  // The numbered review is the head of the array, and a position in it IS the item's
+  // number. The pre-sweep entries are the tail and carry no index at all: they settle
+  // nothing, so there is no number for a verdict to name them by.
+  const numbered = items.filter((x) => x.index !== undefined);
+  const tail = items.slice(numbered.length);
   assert.deepEqual(
-    items.map((x) => x.index),
-    items.map((_, i) => i + 1),
+    numbered.map((x) => x.index),
+    numbered.map((_, i) => i + 1),
     "index is the position in the array"
   );
+  // Exactly one, because the sweep is ONE request: the shared method, then the bare
+  // per-check items it is asking about.
+  assert.deepEqual(
+    tail.map((x) => x.kind),
+    ["pre-sweep"],
+    "one unnumbered pre-sweep entry follows the numbered items"
+  );
+  const sweep = tail[0];
+  assert.equal(sweep.index, undefined, "the sweep carries no index");
+  assert.ok(sweep.intro, "the sweep carries the shared method");
+  assert.ok(
+    sweep.items.length > 0 &&
+      sweep.items.every((s) => s.check && s.severity && s.instruction),
+    "each item names its check, the band it would file at, and what to look for"
+  );
   for (const x of items) {
-    assert.ok(["finding", "todo"].includes(x.kind));
+    assert.ok(["finding", "todo", "pre-sweep"].includes(x.kind));
     // The section is named as the report prints it, not by an internal key.
     assert.match(
       x.section,
-      /^(Found Issues|Extended Code Review|Extended Manual Review|Standard Manual Review)$/
+      /^(Found Issues|Extended Code Review|Extended Manual Review|Standard Code Review|Standard Manual Review)$/
     );
   }
 
@@ -386,4 +406,64 @@ test("retired flags are unknown options", () => {
     assert.equal(r.code, 2, `${flag} should exit 2`);
     assert.match(r.stderr, /Unknown option/, `${flag} should be unknown`);
   }
+});
+
+// The addition path end to end: a swept finding enters through --llm-verdict and comes
+// out the far side as a finding of the check that owns it, worded by that check's
+// registry response. This is the chain the unit tests cannot see - applyVerdicts ->
+// renderFindings -> resolveHolds -> formatText - and it is where a check whose response
+// carried a placeholder, or whose band could not be stamped, would actually break.
+test("a swept addition is reported as a finding of the check that owns it", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-addition-"));
+  const vfile = path.join(dir, "v.json");
+  fs.writeFileSync(
+    vfile,
+    JSON.stringify({
+      addon,
+      additions: [
+        {
+          check: "data-exfiltration",
+          file: "background.js",
+          line: 12,
+          hint: "<a ping> attribute carries the message digest",
+        },
+      ],
+    })
+  );
+
+  const errorsIn = (stdout) =>
+    Number(stdout.match(/(\d+) error\(s\)/)?.[1] ?? -1);
+  const baseline = run([addon, ...OFFLINE_FLAGS]);
+  const out = run([addon, ...OFFLINE_FLAGS, "--llm-verdict", vfile]);
+  assert.equal(out.code, 1, out.stderr);
+  // Exactly one more error than the same review without it: the addition enters the
+  // tally as a finding of data-exfiltration, at the band that check declares.
+  assert.equal(errorsIn(out.stdout), errorsIn(baseline.stdout) + 1);
+  // Counted apart from the verdicts, because an addition settles nothing - it adds.
+  assert.match(out.stdout, /Added 1 swept finding\(s\)/);
+  // The developer reads the owning check's own words, not the reader's.
+  assert.match(
+    out.stdout,
+    /send user data to a remote server without an explicit opt-in/
+  );
+  // The locus and the hint, on the location line where a detected finding puts them.
+  assert.match(
+    out.stdout,
+    /background\.js:12 - <a ping> attribute carries the message digest/
+  );
+
+  // The add-on binding guards an addition as much as a verdict: it CREATES a finding, so
+  // a file written elsewhere would invent one here.
+  fs.writeFileSync(
+    vfile,
+    JSON.stringify({
+      addon: path.join(ROOT, "tests", "addons", "all-checks"),
+      additions: [{ check: "data-exfiltration", file: "a.js", line: 1 }],
+    })
+  );
+  const wrong = run([addon, ...OFFLINE_FLAGS, "--llm-verdict", vfile]);
+  assert.notEqual(wrong.code, 0);
+  assert.match(wrong.stderr + wrong.stdout, /was written for/);
+  fs.rmSync(dir, { recursive: true, force: true });
 });

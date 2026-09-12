@@ -242,3 +242,43 @@ test("a chain rooted on the global object yields one usage, same as the bare nam
 
 // A feature test written on the global object is a guard like any other, so the
 // usages it protects are not reported as unsupported.
+
+// Handing the API object to a function is the same event as aliasing it: the root leaves
+// for a parameter whose uses resolve nowhere, so every check reading the usage set is
+// blind to what happens to it. Recording it is what lets those checks KNOW they are
+// blind - permissions.js fails open on a limitation - so a permission used only through
+// such a parameter escalates instead of being reported unused. Left unrecorded, this and
+// `const api = browser` differ only in syntax while the scan believes itself sighted.
+test("records the API object passed into a call as a limitation", () => {
+  const res = parseApiUsage(`
+        function makeCollector(api) {
+          return { d: (id) => api.messages.getFull(id) };
+        }
+        const collector = makeCollector(browser);
+      `);
+  assert.ok(
+    res.limitations.some((l) => /aliased\/destructured/.test(l.reason)),
+    "the call argument is recorded as a coverage gap"
+  );
+  // The gap is reported where the object left, so a reader is sent to the right line.
+  assert.equal(res.limitations[0].line, 5);
+
+  // `new Wrapper(messenger)` is the same handover.
+  assert.ok(
+    parseApiUsage(`const w = new Wrapper(messenger);`).limitations.some((l) =>
+      /aliased\/destructured/.test(l.reason)
+    )
+  );
+});
+
+// The callee of a chain is not an argument, so an ordinary call through the API object
+// stays a resolved usage and records no gap. Without this the limitation would fire on
+// essentially every add-on and mean nothing.
+test("an ordinary API call is not mistaken for handing the object over", () => {
+  const res = parseApiUsage(`browser.messages.list({ folder: f });`);
+  assert.deepEqual(
+    res.usages.map((u) => `${u.root}.${u.segments.join(".")}`),
+    ["browser.messages.list"]
+  );
+  assert.equal(res.limitations.length, 0);
+});

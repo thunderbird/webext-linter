@@ -70,12 +70,14 @@ const verdicts = (obj) => new Map(Object.entries(obj).map(([k, v]) => [+k, v]));
 // exactly as it words a finding the check emitted itself.
 test("the three verbs edit the review the way the report reads them", () => {
   const r = review();
-  const applied = applyVerdicts({
+  const { applied, added } = applyVerdicts({
     findings: r.findings,
     manual: r.manual,
     verdicts: verdicts({ 2: "withdrawn", 3: "reported", 4: "cleared" }),
     registry,
   });
+  // Counted apart from the verdicts: a file with no additions adds nothing.
+  assert.deepEqual(added, []);
   assert.deepEqual(applied, [
     "2 withdrawn (a.js:2)",
     "3 reported (manifest.json:3 - compose)",
@@ -206,9 +208,10 @@ test("a malformed verdict file is rejected with a reason", () => {
     () => readVerdicts(write('{"verdicts": {"2": "cleared"}}')),
     /names no "addon"/
   );
+  // Either block alone is a legitimate answer, but a file with neither settles nothing.
   assert.throws(
     () => readVerdicts(write('{"addon": "/x/a.xpi"}')),
-    /carries no "verdicts"/
+    /carries neither "verdicts" nor "additions"/
   );
   assert.throws(
     () =>
@@ -224,8 +227,49 @@ test("a malformed verdict file is rejected with a reason", () => {
   );
   assert.deepEqual(readVerdicts(write(ok)), {
     addon: "/x/a.xpi",
+    additions: [],
     verdicts: new Map([[2, "cleared"]]),
   });
+
+  // An addition is addressed by check and locus, never by an index, so it is read into
+  // its own list. `file` is required: a swept finding with nowhere to look is the exact
+  // failure the per-check instructions exist to end.
+  const withAdd = JSON.stringify({
+    addon: "/x/a.xpi",
+    additions: [{ check: "data-exfiltration", file: "bg.js", line: 40 }],
+  });
+  assert.deepEqual(readVerdicts(write(withAdd)), {
+    addon: "/x/a.xpi",
+    additions: [
+      { check: "data-exfiltration", file: "bg.js", line: 40, hint: null },
+    ],
+    verdicts: new Map(),
+  });
+  assert.throws(
+    () =>
+      readVerdicts(
+        write('{"addon": "/x/a.xpi", "additions": [{"check": "x"}]}')
+      ),
+    /names no "file"/
+  );
+  assert.throws(
+    () =>
+      readVerdicts(
+        write(
+          '{"addon": "/x/a.xpi", "additions": [{"check": "x", "file": "a.js", "verdict": "reported"}]}'
+        )
+      ),
+    /may only set "check", "file", "line", "hint"/
+  );
+  assert.throws(
+    () =>
+      readVerdicts(
+        write(
+          `{"addon": "/x/a.xpi", "additions": [{"check": "x", "file": "a.js", "hint": "${"x".repeat(201)}"}]}`
+        )
+      ),
+    /201-character hint/
+  );
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -295,4 +339,131 @@ test("a verdict written from the item file applies", () => {
     ]
   );
   assert.equal(manual.length, 0);
+});
+
+// An ADDITION is the other half of a verdict file: a case no check found, which a
+// check's own sweep instruction sent a reader after. It carries no index - it was never
+// in the numbered review - so it is addressed by the check it belongs to, and is filed
+// as a finding OF that check, in that check's band. Nothing about it is the reader's
+// except where they found it and a phrase naming what is there.
+test("an addition is filed as a finding of the check it names", () => {
+  const r = review();
+  const { applied, added } = applyVerdicts({
+    findings: r.findings,
+    manual: r.manual,
+    verdicts: new Map(),
+    additions: [
+      {
+        check: "data-exfiltration",
+        file: "background/background.js",
+        line: 40,
+        hint: "<a ping> attribute carries the digest",
+      },
+    ],
+    registry,
+  });
+  assert.deepEqual(applied, []);
+  assert.deepEqual(added, [
+    "data-exfiltration (background/background.js:40 - <a ping> attribute carries the digest)",
+  ]);
+  const f = r.findings.at(-1);
+  assert.equal(f.ruleId, "data-exfiltration");
+  // The band is the registry's, never the answer's.
+  assert.equal(f.severity, "error");
+  assert.deepEqual(
+    [f.file, f.loc, f.hint],
+    [
+      "background/background.js",
+      { line: 40 },
+      "<a ping> attribute carries the digest",
+    ]
+  );
+  // No wording of its own: renderFindings gives it the owning check's response, the same
+  // text a finding that check emitted itself would carry.
+  assert.equal(f.message, null);
+  renderFindings(r.findings, registry);
+  assert.match(f.message, /send user data to a remote server/);
+});
+
+// The regression that matters most. orderReview numbers items AFTER sorting findings into
+// severity bands, so an addition filed before the index map is built would push every
+// later item down and silently re-aim each verdict at its neighbour. The map must be
+// built from the review as the reader saw it.
+test("an addition does not move the items a verdict names", () => {
+  const before = review();
+  const plain = applyVerdicts({
+    findings: before.findings,
+    manual: before.manual,
+    verdicts: verdicts({ 4: "cleared" }),
+    registry,
+  });
+  const after = review();
+  const withAddition = applyVerdicts({
+    findings: after.findings,
+    manual: after.manual,
+    verdicts: verdicts({ 4: "cleared" }),
+    // An `error`, so it sorts to the top of the findings and would shift everything.
+    additions: [
+      { check: "data-exfiltration", file: "z.js", line: 1, hint: null },
+    ],
+    registry,
+  });
+  assert.deepEqual(withAddition.applied, plain.applied);
+  assert.match(plain.applied[0], /^4 cleared /);
+});
+
+// An addition answers a question the review actually asked. A check that authors no
+// sweep instruction asked nothing, so a finding filed under it came from nowhere.
+test("an addition for a check that swept nothing refuses the run", () => {
+  const r = review();
+  assert.throws(
+    () =>
+      applyVerdicts({
+        findings: r.findings,
+        manual: r.manual,
+        verdicts: new Map(),
+        additions: [{ check: "eval-call", file: "a.js", line: 1, hint: null }],
+        registry,
+      }),
+    /authors no `sweep-instruction`/
+  );
+  // Refused before anything was edited.
+  assert.equal(r.findings.length, 2);
+  assert.equal(r.manual.length, 2);
+});
+
+// Atomicity, both ways round: the file is checked whole before the review is touched, so
+// a failure anywhere leaves it exactly as it was rather than half-settled.
+test("a file that fails anywhere leaves the review untouched", () => {
+  const r = review();
+  assert.throws(
+    () =>
+      applyVerdicts({
+        findings: r.findings,
+        manual: r.manual,
+        // Valid, and would apply on its own.
+        verdicts: verdicts({ 4: "cleared" }),
+        // Invalid, and comes after every verdict has already been checked.
+        additions: [{ check: "eval-call", file: "a.js", line: 1, hint: null }],
+        registry,
+      }),
+    /authors no `sweep-instruction`/
+  );
+  assert.equal(r.manual.length, 2, "the cleared to-do is still there");
+
+  const r2 = review();
+  assert.throws(
+    () =>
+      applyVerdicts({
+        findings: r2.findings,
+        manual: r2.manual,
+        verdicts: verdicts({ 99: "cleared" }),
+        additions: [
+          { check: "data-exfiltration", file: "z.js", line: 1, hint: null },
+        ],
+        registry,
+      }),
+    /item 99 does not exist/
+  );
+  assert.equal(r2.findings.length, 2, "the addition was not filed either");
 });

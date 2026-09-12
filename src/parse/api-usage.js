@@ -31,7 +31,7 @@
 // src/lib/permissions.js). User-facing wording lives in
 // assets/registry.yaml. Babel access goes through src/parse/ast.js.
 
-import { parseJs, traverse, nodeLoc } from "./ast.js";
+import { parseJs, traverse, nodeLoc, isCallLike } from "./ast.js";
 import { API_ROOTS, apiBasesOf } from "./api-base.js";
 
 /** @typedef {object} BabelPath A @babel/traverse NodePath object. */
@@ -159,14 +159,32 @@ function aliasIsResolved(path) {
 }
 
 /**
- * True when the identifier is the source of an alias, e.g.
- * `const x = browser` or `const { messages } = browser`.
+ * True when the identifier hands the API object to a binding this walker does not
+ * follow, e.g. `const x = browser`, `const { messages } = browser`, or
+ * `makeCollector(browser)`.
+ *
+ * The call-argument form matters as much as the declarator one and is the same event:
+ * the root leaves for a parameter whose uses are resolved nowhere, so every check
+ * reading the usage set is blind to whatever happens to it. Recording it is what lets
+ * those checks know they are blind - permissions.js fails open on a limitation, so a
+ * permission used only through such a parameter escalates instead of being called
+ * unused. Left unrecorded, the two forms differ only in syntax and the scan believes
+ * itself fully sighted.
  * @param {BabelPath} path
  * @returns {boolean}
  */
 function isAliasOrigin(path) {
   const parent = path.parent;
   if (parent.type === "VariableDeclarator" && parent.init === path.node) {
+    return !path.scope.hasBinding(path.node.name);
+  }
+  // Passed straight into a call: `makeCollector(browser)`, `new Wrapper(messenger)`. The
+  // callee itself is not the subject - `browser.foo(x)` is a chain the walker already
+  // resolves, and its identifier is not an argument.
+  if (
+    (isCallLike(parent) || parent.type === "NewExpression") &&
+    parent.arguments?.includes(path.node)
+  ) {
     return !path.scope.hasBinding(path.node.name);
   }
   return false;

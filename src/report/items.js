@@ -15,6 +15,12 @@
 // refused as out of range. The two documents still number identically, because the
 // numbering counts every item on both sides.
 //
+// The one exception to "a position IS the number" is the PRE-SWEEP tail. Those entries
+// are not items of the review: they settle nothing, they are jobs to do BEFORE settling
+// it, and what they produce is addressed by check and locus rather than by a number. So
+// they carry no `index` and no `entry`, and they sit at the END, which keeps positions
+// 0..N-1 aligned with indices 1..N for everything that does have one.
+//
 // Belongs here: the shape of that file, and the temp path it is written to.
 //
 // Does NOT belong here: the ORDER and the numbering (src/report/order.js), the wording
@@ -35,12 +41,14 @@ import { SECTION_TITLES } from "./format.js";
  * by layout and a flat array would otherwise lose - and the fields that decide it.
  * @param {import("./finding.js").Finding[]} findings
  * @param {import("./finding.js").ManualItem[]} manual
+ * @param {?{intro: string, items: object[]}} [preSweep]  The blind-spot sweep, appended
+ *   as the unnumbered tail: one entry carrying the shared method and the bare items.
  * @returns {object[]}
  */
-export function reviewItems(findings, manual) {
+export function reviewItems(findings, manual, preSweep = null) {
   const entryNumbers = new Map();
   const counters = new Map();
-  return orderReview(findings, manual).map((x) => {
+  const items = orderReview(findings, manual).map((x) => {
     const t = x.target;
     // The entry number the report shows for it. Found Issues numbers continuously across
     // its severity bands and each to-do section restarts at 1, so the counter is keyed
@@ -87,6 +95,30 @@ export function reviewItems(findings, manual) {
           suggestedResponse: t.response ?? null,
         };
   });
+  if (!preSweep) {
+    return items;
+  }
+  // The unnumbered tail: ONE entry, because it is one request. `intro` is the AGENT's
+  // framing - how to judge, and what to hand back - and each item is only the class of
+  // code its own check is looking for. The report prints the reviewer's framing instead;
+  // the two differ only in the hand-back contract, which a person does not produce. `check` rather than `ruleId`, deliberately: it is the value
+  // an addition copies verbatim into the verdict file, so both documents spell it the
+  // same way. `severity` is the band an addition for that check would land in, stated up
+  // front so a reader knows the weight of what they are being asked to look for.
+  return [
+    ...items,
+    {
+      kind: "pre-sweep",
+      section: SECTION_TITLES.preSweep,
+      intro: preSweep.agentIntro,
+      items: preSweep.items.map((s) => ({
+        check: s.check,
+        severity: s.severity,
+        title: s.title,
+        instruction: s.instruction,
+      })),
+    },
+  ];
 }
 
 /**

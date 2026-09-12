@@ -395,12 +395,74 @@ export class Registry {
   }
 
   /**
+   * The sweep instruction a check authors for its own blind spot, or null.
+   *
+   * A check scans for what it can name, and code outside that boundary leaves no trace to
+   * key on - an enumerated set of transmission APIs says nothing about the sender it does
+   * not list. Where the boundary cannot be closed by naming more, the check authors an
+   * instruction for a reader instead, and what the reader finds is filed as a finding of
+   * THIS check, in its band and its words. Presence is the whole declaration: a check with
+   * no blind spot authors none.
+   * @param {string} ruleId
+   * @returns {?string}
+   */
+  sweepInstruction(ruleId) {
+    const t = this.checkEntry(ruleId)?.["sweep-instruction"];
+    return typeof t === "string" && t !== "" ? t : null;
+  }
+
+  /**
+   * The sweep framing for one reader: "human" (printed in the report) or "llm" (sent to
+   * the agent that does the reading under --llm-review).
+   *
+   * Two texts rather than one, because the readers part on what happens next: the agent
+   * hands its results back in a fixed shape for the verdict file, a reviewer just writes
+   * the review. Both are required whenever any check authors an instruction - a sweep
+   * read without its framing is a list of subjects with no method, which is the
+   * enumeration the sweeps exist to escape.
+   * @param {"human"|"llm"} reader
+   * @returns {string}
+   */
+  sweepIntro(reader) {
+    const key = `sweep-intro-${reader}`;
+    const t = this.doc[key];
+    if (typeof t !== "string" || t === "") {
+      throw new Error(`registry authors no \`${key}\` (assets/registry.yaml)`);
+    }
+    return t;
+  }
+
+  /**
+   * Every check that authors a sweep instruction, in registry order - which is the order
+   * the report, the item file and the prompt all list them in, so the three agree.
+   * @returns {{check: string, title: string, severity: string, instruction: string}[]}
+   */
+  sweepInstructions() {
+    return this.checkEntries()
+      .map((e) => ({ entry: e, id: stem(e.check) }))
+      .filter(({ id }) => this.sweepInstruction(id))
+      .map(({ entry, id }) => ({
+        check: id,
+        title: entry.title,
+        // Non-null for every entry that reaches here: loadChecks refuses a sweep
+        // instruction on a check with no band to stamp an addition with.
+        severity: this.suggestedVerdict(id),
+        instruction: this.sweepInstruction(id),
+        // What the developer would be told if the sweep finds something - the same text
+        // an addition is worded with once filed. For the REPORT only: the agent hands
+        // back a locus and is filed under this check, so it has no use for the wording
+        // and is told not to produce any.
+        response: entry.response ?? null,
+      }));
+  }
+
+  /**
    * The texts of the --llm-review verification prompt: one per to-do section it can ask
    * about, plus the intro and the outcome. Read only when the flag is set, and all of them
    * are required then - which of them a given review prints depends on what the report
    * contains, so a missing one would silently drop a whole instruction from the prompt
    * instead of failing.
-   * @returns {{intro: string, issues: string, codeReview: string,
+   * @returns {{intro: string, issues: string, preSweep: string, codeReview: string,
    *   extendedManualReview: string, standardManualReview: string, outcome: string}}
    */
   llmReviewPrompt() {
@@ -417,6 +479,7 @@ export class Registry {
     return {
       intro: read("intro"),
       issues: read("issues"),
+      preSweep: read("pre-sweep"),
       codeReview: read("code-review"),
       extendedManualReview: read("extended-manual-review"),
       standardManualReview: read("standard-manual-review"),
@@ -702,6 +765,44 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
           "exists only in an SCA review; without the gate it would run in an XPI review, where " +
           "routeCtx would throw (there is no build sibling there)."
       );
+    }
+    // A `sweep-instruction` sends a reader after what this check cannot detect, and what
+    // they find is filed AS this check. Three things must hold for that to be possible,
+    // and all three are config, so they fail here rather than when an addition first
+    // arrives - which may be never.
+    //
+    // Note what is NOT required: an `escalation`. That pairing exists because an
+    // escalation is a case LISTED in the report for someone to settle. A sweep
+    // instruction lists no case; it produces findings directly, so a check with no
+    // escalation section authors one just as well.
+    const sweepInstruction = entry["sweep-instruction"];
+    if (sweepInstruction !== undefined) {
+      if (
+        typeof sweepInstruction !== "string" ||
+        sweepInstruction.trim() === ""
+      ) {
+        throw new Error(
+          `rules/${id}.js has an invalid \`sweep-instruction\` ` +
+            `${JSON.stringify(sweepInstruction)} (expected a non-empty string)`
+        );
+      }
+      // An addition is stamped with the check's own band. `auto` leaves the band to each
+      // finding and `none` says the check emits none, so neither has one to give - the
+      // sweep would return findings nothing could file.
+      if (!isConcreteSeverity(severity) && severity !== HOLD_OR_ERROR) {
+        throw new Error(
+          `rules/${id}.js authors a \`sweep-instruction\` but its severity ` +
+            `${JSON.stringify(severity)} gives a reported case no band to carry`
+        );
+      }
+      // An addition carries no `item` and no `data`, so a placeholder in the response
+      // would reach the developer literally, or leave the message unfilled entirely.
+      if (typeof entry.response === "string" && entry.response.includes("{{")) {
+        throw new Error(
+          `rules/${id}.js authors a \`sweep-instruction\` but its \`response\` carries a ` +
+            "{{placeholder}} - an addition brings no item to fill it with"
+        );
+      }
     }
     byPhase.get(entry.phase).push({
       id,

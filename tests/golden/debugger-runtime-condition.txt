@@ -9,8 +9,7 @@ Continue manual review for the following checks:
    the schema does not have, or marks unsupported, for the targeted Thunderbird
    version. Check whether this reference is guarded, so the add-on still works
    where the name is missing. A feature detection with a working fallback, a
-   shim, a try/catch all count. Clear it only if you can point at the guard.
-   Otherwise it is a finding.
+   shim, a try/catch all count. Report it unless you can point at the guard.
 Suggested verdict: error
 Suggested response: The following WebExtension APIs are not supported in the targeted Thunderbird version.
 Read more: https://webextension-api.thunderbird.net/.
@@ -33,6 +32,58 @@ Suggested verdict: warning
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
+
+── Standard Code Review ──
+
+Review the add-on for each of the things listed below. Judge by EFFECT, never by
+the METHOD used - an unfamiliar form counts as much as a familiar one.
+
+1) Data smuggled through a resource URL: A resource loaded to be rendered or
+   embedded, carrying data outward in its URL. Consent is no defence.
+Suggested verdict: error
+Suggested response: This add-on appears to send data through a resource URL (image/iframe/media src) - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
+
+2) Data smuggled through a stylesheet: A stylesheet, a CSS rule, or a property
+   resolving to a remote reference, carrying data outward in its URL. Consent is
+   no defence.
+Suggested verdict: error
+Suggested response: This add-on appears to send data through a stylesheet or CSS url() - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
+
+3) Data smuggled through an opened window: A new window or tab the add-on opens,
+   carrying data outward in its URL. Consent is no defence.
+Suggested verdict: error
+Suggested response: This add-on appears to send data through a window.open() to a remote URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
+
+4) Data smuggled through a navigation: An already-open context sent elsewhere,
+   carrying data outward in the URL. Consent is no defence.
+Suggested verdict: error
+Suggested response: This add-on appears to send data through a page navigation - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
+
+5) Unencrypted data transmission: A remote endpoint reached over http://, ws://
+   or ftp://. Whatever the payload: the objection is the transport.
+Suggested verdict: error
+Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
+
+6) Remote data transmission needs a privacy policy: The add-on reaching a
+   service the DEVELOPER chose - fixed in the add-on, not entered by the user -
+   which receives anything about the user or their use of it.
+Suggested verdict: hold
+Suggested response: Please add a privacy policy to this add-on that details which user data is being sent and to what services. The critical things to describe in the policy are how your extension collects, uses, stores, shares or discloses information about people. If your add-on makes it apparent to websites that it is installed, this must also be mentioned. The policy should be about the extension only, not a copy of the website’s privacy policy. It should also be the actual text, as opposed to a link to a privacy policy on a website. The privacy policy can be added in the add-on settings under "Manage Authors & License" on addons.thunderbird.net. For more information, please check our Review Policies [1], and Mozilla’s own privacy policy [2] as an example.
+
+[1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
+[2]: https://www.mozilla.org/en-US/privacy/
+
+7) User-data exfiltration: Message content and headers, attachments, contacts,
+   credentials, or anything derived from them, reaching a remote host without
+   the user asking.
+Suggested verdict: error
+Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
+
+8) Data smuggled through a channel not meant for it: Any other mechanism that
+   presents as loading, rendering, opening or navigating while carrying data
+   outward in its URL. Consent is no defence.
+Suggested verdict: error
+Suggested response: The following code location(s) appear to send data through a channel not meant for data transmission - a URL used for loading, styling, opening or navigating, with data riding in it. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 ── Standard Manual Review ──
 
@@ -120,4 +171,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 0 hold, 0 warning(s), 0 info, 5 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 hold, 0 warning(s), 0 info,
+5 extended code review item(s), 0 extended manual review item(s),
+8 standard code review item(s), 10 standard manual review item(s)

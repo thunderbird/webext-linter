@@ -280,12 +280,77 @@ test("an escalation prints the verdict a reported case carries", () => {
   assert.match(standard, /Suggested verdict: hold\nSuggested response: /);
 });
 
+// One sweep: the shared method, then the bare items it asks about.
+const SWEEP = {
+  intro: "Judge by EFFECT, never by the API used.",
+  items: [
+    {
+      check: "data-exfiltration",
+      title: "User-data exfiltration",
+      severity: "error",
+      instruction: "Read the add-on for other ways data reaches a remote host.",
+    },
+  ],
+};
+
 // JSON render drops manualReview entirely - both the meta key and the item
 // title are absent - since automated consumers should not see manual steps.
 test("JSON output omits manual-review items (ATN auto-verification)", () => {
   const json = JSON.parse(formatJson(review()));
   assert.equal(json.meta.manualReview, undefined);
   assert.ok(!formatJson(review()).includes("Source Archive required"));
+});
+
+// The pre-sweep list is an INSTRUCTION to a reader, not a statement about the add-on, so
+// it says nothing this document is for - and the document is an upload filter ATN can
+// auto-reject against. What a sweep FINDS does reach here, as a finding of the check that
+// owns it; the asking never does.
+test("JSON output omits the pre-sweep list (ATN auto-verification)", () => {
+  const r = review();
+  r.meta.preSweep = SWEEP;
+  const json = JSON.parse(formatJson(r));
+  assert.equal(json.meta.preSweep, undefined);
+  assert.ok(!formatJson(r).includes("other ways data reaches"));
+});
+
+// Printed whether or not any check found something - a check that found nothing is
+// exactly the one whose blind spot is worth reading - and absent entirely when no check
+// that ran declares an instruction, so an ordinary review is unchanged.
+test("the Standard Code Review section is one sweep, listing checks not cases", () => {
+  const r = review();
+  assert.ok(
+    !formatText(r).includes("── Standard Code Review ──"),
+    "absent when there is no sweep"
+  );
+
+  r.meta.preSweep = SWEEP;
+  const out = formatText(r);
+  assert.match(out, /── Standard Code Review ──/);
+  // The shared method comes first: the items say only what each check looks for, so
+  // without it the section is a list of subjects with no way to judge them.
+  assert.match(
+    out.replace(/\s+/g, " "),
+    /Judge by EFFECT, never by the API used/
+  );
+  // "N) title: body", like a manual-review entry. The check id and its band are fields
+  // of the item file, not prose - a reader of the page has the title instead.
+  assert.match(out, /1\) User-data exfiltration: /);
+  assert.ok(
+    !out.includes("[data-exfiltration, error]"),
+    "the rendered line does not repeat the check id or its band"
+  );
+  // Collapsed first: the item is re-wrapped to the report's width, so any phrase in it
+  // can straddle a line break the next wording change happens to move.
+  assert.match(
+    out.replace(/\s+/g, " "),
+    /Read the add-on for other ways data reaches a remote host/
+  );
+  // It sits with the other section carried by every submission, and before it.
+  assert.ok(
+    out.indexOf("── Standard Code Review ──") <
+      out.indexOf("── Standard Manual Review ──"),
+    "the two standard sections read as a pair, code before manual"
+  );
 });
 
 // The report keeps issues (findings) and manual-review items in separate lists:
@@ -394,7 +459,7 @@ test("issues render under Issues/JSON; manual items under Manual review", () => 
   assert.match(issuesSection, /\n - bg\.js:2/);
   assert.match(
     out,
-    /1 error\(s\), 0 hold, 0 warning\(s\), 0 info, 1 extended code review step\(s\), 0 extended manual review step\(s\), 0 standard manual review step\(s\)/
+    /1 error\(s\), 0 hold, 0 warning\(s\), 0 info,\n1 extended code review item\(s\), 0 extended manual review item\(s\),\n0 standard code review item\(s\), 0 standard manual review item\(s\)/
   );
   const json = JSON.parse(formatJson(r));
   assert.equal(json.findings.length, 1);
@@ -447,7 +512,7 @@ test("Issues are grouped by severity under headings with continuous numbering", 
   // A blank line sits between the Summary header and its counts line.
   assert.match(
     out,
-    /── Summary ──\n\n2 error\(s\), 0 hold, 1 warning\(s\), 1 info, 0 extended code review step\(s\), 0 extended manual review step\(s\), 0 standard manual review step\(s\)/
+    /── Summary ──\n\n2 error\(s\), 0 hold, 1 warning\(s\), 1 info,\n0 extended code review item\(s\), 0 extended manual review item\(s\),\n0 standard code review item\(s\), 0 standard manual review item\(s\)/
   );
 });
 
@@ -586,7 +651,7 @@ test("the Summary tally is the report's last section", () => {
   assert.equal(sections.at(-1), "Summary");
   assert.match(
     out.slice(out.indexOf("── Summary ──")),
-    /^── Summary ──\n\n0 error\(s\), 0 hold, 0 warning\(s\), 1 info[^\n]*$/
+    /^── Summary ──\n\n0 error\(s\), 0 hold, 0 warning\(s\), 1 info,\n[^\n]* item\(s\),\n[^\n]* item\(s\)$/
   );
 });
 

@@ -314,6 +314,52 @@ handed a concrete `file:line` to look at rather than a verdict the tool guessed.
 | `minimize-web-accessible-resources` | Pre-flight: over-broad exposure (a resource pattern like `*`, or MV3 `matches` of `<all_urls>`/`*://*/*`) and concrete resources no content script/page loads → a finding. An ambiguous exposed resource (dynamic loaders, or name mentioned) escalates, for the reviewer to judge whether it is needlessly exposed. |
 | `unused-files` | Pre-flight: hidden/junk by name, and files reachable from no manifest entry point (a reference graph over imports/`getURL`/HTML/CSS plus schema-derived file-loading APIs) - a clearly-unreferenced file is a finding. An ambiguous file (string-mentioned, or the add-on uses dynamic loaders) escalates, for the reviewer to follow the suspected loaders and judge whether it is unused. Documentation (any `.md`/`.rst`/`.license`; a `.txt` or extensionless file named like a doc), dependency manifests and `_locales` are exempt; junk by name is reported ahead of any exemption. |
 
+### Blind-spot sweeps
+
+Some checks scan for an enumerated set of forms, and the set cannot be finished:
+the ways data can leave an add-on are a property of the platform, not a bounded
+API surface, so a sender the scan does not name leaves no trace in the report.
+Extending the list moves that boundary without closing it.
+
+Such a check declares a **`sweep-instruction:`** in the yaml, describing the
+*class* of code it cannot see and the test to judge it by - never a list of
+candidate forms, which would only rebuild the same blind spot in prose. Every
+check that declares one is listed in the report's **Pre-Sweep** section, whether
+or not it found anything: a check that found nothing is exactly the one whose
+blind spot is worth reading.
+
+What a reader finds is not a verdict on the sweep. It enters through
+`--llm-verdict` as an **addition**, carrying the check it belongs to and where it
+was found, and is filed as a finding **of that check** - its ruleId, its band, and
+the response text its own registry entry authors:
+
+```json
+{
+  "addon": "/path/to/the-reviewed.xpi",
+  "additions": [
+    { "check": "data-exfiltration", "file": "background.js", "line": 40,
+      "hint": "<a ping> attribute carries the message digest" }
+  ],
+  "verdicts": { "3": "cleared" }
+}
+```
+
+An addition carries no item index - an index belongs to the linter's numbering of
+the document it wrote, and an addition was never in it. The `hint` is a locus
+annotation naming what sits at that line; the paragraph the developer reads stays
+the registry's.
+
+| Check id (`check:`) | The blind spot its sweep covers |
+| --- | --- |
+| `data-exfiltration` | User data leaving the machine by any route the enumerated senders do not name. |
+| `cleartext-transmission` | Anything reaching an `http://`/`ws://`/`ftp://` endpoint by an unlisted route, whatever the payload. |
+| `disguised-transmission` | Data carried outward by a mechanism whose apparent purpose is something else. |
+| `disguised-resource` | Data in the URL of a resource loaded to be rendered or embedded. |
+| `disguised-stylesheet` | Data in a URL consumed as styling. |
+| `disguised-window` | Data in the URL of a window or tab the add-on opens. |
+| `disguised-navigation` | Data in the URL an already-open context is sent to. |
+| `privacy-policy` | The add-on reaching a developer-chosen remote service by an unlisted route. |
+
 ### Manual checks
 
 Some review steps can't be automated - they need hands-on testing or a human's
