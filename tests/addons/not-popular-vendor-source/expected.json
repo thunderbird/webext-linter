@@ -1,0 +1,14 @@
+{
+  "_comment": "The popularity bar, pinned end to end. The declaration is fetchable AND the bytes match exactly - the only thing wrong is that the package is not widely used (12 downloads a month, well under the bar). So verifyUrl returns 'not-popular', the file joins the untrusted family, and because it is minified nothing can review it: untrusted-minified-library rejects. That is the recorded base concept - only popular libraries are trusted, everything else is the developer's own work - and until the network could be faked no fixture could reach this outcome, because a failed fetch produced the same report for a different reason. The triple this completes: verified-vendor-source (matches, popular -> exempt), vendor-modified (fetchable, popular, bytes differ -> reject), this (matches, popular enough? no -> reject).",
+  "network": {
+    "https://unpkg.com/widget@1.2.3/dist/widget.min.js": {
+      "sameAs": "lib/widget.min.js"
+    },
+    "https://api.npmjs.org/downloads/point/last-month/widget": {
+      "json": { "downloads": 12 }
+    }
+  },
+  "expect": {
+    "untrusted-minified-library": ["lib/widget.min.js"]
+  }
+}

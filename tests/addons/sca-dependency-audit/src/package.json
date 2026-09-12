@@ -1,0 +1,10 @@
+{
+  "name": "sca-dependency-audit",
+  "version": "1.0.0",
+  "dependencies": {
+    "tiny-obscure-helper": "1.0.0"
+  },
+  "devDependencies": {
+    "vitest": "1.0.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "_comment": "The first coverage of vendored-remote-resources, which could not be reached until the network could be faked: its lane needs a VERIFIED vendor result, and the harness could only make a fetch fail. lib/theme.css matches the bytes its declared source serves and the package is popular, so the file is that release's - and the remote @import on its first line is the release's own line, not something the developer wrote. So remote-resources does NOT report it as a finding; vendored-remote-resources puts it to a person instead, who decides whether shipping the release as published is acceptable. The locus carries the release it was matched against as its hint. Escalations are not expressible in `expect`, so the golden holds it.",
+  "network": {
+    "https://unpkg.com/theme@2.1.0/dist/theme.css": { "sameAs": "lib/theme.css" },
+    "https://api.npmjs.org/downloads/point/last-month/theme": {
+      "json": { "downloads": 180000 }
+    }
+  },
+  "expect": {}
+}

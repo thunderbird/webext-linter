@@ -1,0 +1,14 @@
+{
+  "_comment": "The declared source is fetchable and the package is popular, but the bytes it serves are NOT the bytes shipped - the packaged copy has an extra line. So verifyUrl returns 'modified' and vendor-modified rejects the submission: a vendored file must be the upstream release exactly, or the review cannot stand on the upstream's behalf. This is that check's first end-to-end coverage; before the network could be faked, no fixture could reach any outcome but 'unfetchable'. The upstream bytes here are literal (body), because the difference IS the point - contrast verified-vendor-source, which serves the packaged bytes back (sameAs).",
+  "network": {
+    "https://unpkg.com/widget@1.2.3/dist/widget.min.js": {
+      "body": "!function(t){\"use strict\";var n={};n.add=function(e,r){return e+r}}(globalThis);\n"
+    },
+    "https://api.npmjs.org/downloads/point/last-month/widget": {
+      "json": { "downloads": 250000 }
+    }
+  },
+  "expect": {
+    "vendor-modified": ["lib/widget.min.js"]
+  }
+}

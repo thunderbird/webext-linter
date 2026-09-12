@@ -53,6 +53,24 @@ export class NetworkGoneError extends Error {
   }
 }
 
+/**
+ * Re-throw when the network itself is gone, and return otherwise. Called at the top of
+ * every catch that swallows a fetch failure into a benign value ("not popular", "no CDN
+ * match", "unfetchable"): those fallbacks are right for ONE load failing and wrong for a
+ * dead route, where they would silently reclassify a popular library as the developer's
+ * own code. The distinction is not the caller's to make - assertNetwork already made it
+ * with a control-point probe - so each swallow site only has to not eat the answer.
+ *
+ * A 404 or a timeout is NOT this: something answered, and the benign fallback stands.
+ * @param {unknown} err  The caught error.
+ * @returns {void}
+ */
+export function rethrowIfNetworkGone(err) {
+  if (err instanceof NetworkGoneError) {
+    throw err;
+  }
+}
+
 // Failures that happen BEFORE any response - the only ones that can mean "no
 // network". ECONNREFUSED is deliberately absent: something answered, so the network
 // works. A timeout is absent for the same reason it is not fatal - a slow or

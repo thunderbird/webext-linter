@@ -33,6 +33,7 @@
 import { createHash } from "node:crypto";
 
 import { classifySource } from "./sources.js";
+import { rethrowIfNetworkGone } from "../util/net.js";
 import { tarballHashes } from "./tarball.js";
 import { zipHashesUnder } from "./archive.js";
 import { isVendored, declaredFiles } from "./resolve.js";
@@ -300,7 +301,8 @@ async function githubPopular(repo, net) {
     const j = await net.fetchJson(`https://api.github.com/repos/${repo}`);
     const n = Number(j?.stargazers_count);
     return Number.isFinite(n) ? n >= VENDOR_GITHUB_MIN_STARS : null;
-  } catch {
+  } catch (err) {
+    rethrowIfNetworkGone(err);
     return null;
   }
 }
@@ -322,7 +324,8 @@ async function npmDownloads(name, net) {
     );
     const n = Number(j?.downloads);
     return Number.isFinite(n) ? n : null;
-  } catch {
+  } catch (err) {
+    rethrowIfNetworkGone(err);
     return null;
   }
 }
@@ -382,7 +385,8 @@ async function auditNpm(name, version, file, token, vendor, net, into, blocks) {
       package: { name, ecosystem: "npm" },
     });
     vulns = Array.isArray(res?.vulns) ? res.vulns : [];
-  } catch {
+  } catch (err) {
+    rethrowIfNetworkGone(err);
     return; // offline / no postJson / OSV unreachable - skip silently
   }
   if (!vulns.length) {
@@ -558,7 +562,8 @@ async function npmHashMatches(name, version, bytes, net) {
   let listing;
   try {
     listing = await net.fetchJson(`https://unpkg.com/${name}@${version}/?meta`);
-  } catch {
+  } catch (err) {
+    rethrowIfNetworkGone(err);
     return false;
   }
   const byHash = indexBySri(listing);
@@ -693,7 +698,8 @@ async function verifyUrl(entry, addon, net) {
   let fetched;
   try {
     fetched = await net.fetchBytes(src.rawUrl);
-  } catch {
+  } catch (err) {
+    rethrowIfNetworkGone(err);
     return "unfetchable";
   }
   if (!eolEqual(mine, fetched)) {
@@ -719,7 +725,8 @@ async function verifyTarball(entry, addon, net) {
   let hashes;
   try {
     hashes = tarballHashes(await net.fetchBytes(src.rawUrl));
-  } catch {
+  } catch (err) {
+    rethrowIfNetworkGone(err);
     return "unfetchable";
   }
   if (!hashes.has(normalizedSha256(mine))) {
@@ -748,7 +755,8 @@ async function verifyFolder(entry, addon, vendor, net) {
       await net.fetchBytes(src.rawUrl),
       src.subpath ?? ""
     );
-  } catch {
+  } catch (err) {
+    rethrowIfNetworkGone(err);
     // One row per covered file, like the success path below - a row naming the
     // DIRECTORY would reach markUntrusted, which cannot withdraw an exemption from
     // a path that is not a packaged file (see declaredFiles).
@@ -803,7 +811,8 @@ async function verifyPackage(pkg, addon, vendor, net) {
   let listing;
   try {
     listing = await net.fetchJson(`${base}/?meta`);
-  } catch {
+  } catch (err) {
+    rethrowIfNetworkGone(err);
     return; // can't list the package - its files (if shipped) are scanned as-is
   }
   // Index the published files by their SRI hash ("<algo>-<base64>" -> path).
@@ -905,7 +914,8 @@ export async function isPopular(src, net) {
       const j = await net.fetchJson(`https://api.github.com/repos/${src.repo}`);
       return Number(j?.stargazers_count) >= VENDOR_GITHUB_MIN_STARS;
     }
-  } catch {
+  } catch (err) {
+    rethrowIfNetworkGone(err);
     return false;
   }
   return false;

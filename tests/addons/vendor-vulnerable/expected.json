@@ -1,0 +1,31 @@
+{
+  "_comment": "A vendored library that verifies AND has a known advisory. The declaration checks out - trusted, pinned, bytes match, package popular - so the file is exempt from content review; the OSV query for marked@4.0.0 then answers with an advisory, and vendor-vulnerable rejects. Verifying and being safe are different questions, and this is the fixture that keeps them apart: the file is trusted as that release's bytes and the release is the problem. severity:auto means the check picks the band from the advisory - 'high' here, per database_specific.severity - so the entry also pins that mapping.",
+  "network": {
+    "https://unpkg.com/marked@4.0.0/lib/marked.js": { "sameAs": "lib/marked.js" },
+    "https://api.npmjs.org/downloads/point/last-month/marked": {
+      "json": { "downloads": 8000000 }
+    },
+    "https://api.osv.dev/v1/query": {
+      "json": {
+        "vulns": [
+          {
+            "id": "GHSA-5v2h-r2cx-5xgj",
+            "aliases": ["CVE-2022-21680"],
+            "database_specific": { "severity": "HIGH" },
+            "affected": [
+              {
+                "package": { "name": "marked", "ecosystem": "npm" },
+                "ranges": [
+                  { "type": "SEMVER", "events": [{ "introduced": "0" }, { "fixed": "4.0.10" }] }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "vendor-vulnerable": ["VENDORS.md:2"]
+  }
+}

@@ -13,6 +13,7 @@ import path from "node:path";
 import { classifyBundled } from "../../src/lib/bundled.js";
 import { VERDICT } from "../../src/lib/enum.js";
 import { resolveCdnLibraries, cdnUrl } from "../../src/lib/cdn-lookup.js";
+import { NetworkGoneError } from "../../src/util/net.js";
 import findLibOnCdn from "../../src/checks/rules/find-lib-on-cdn.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
@@ -665,4 +666,31 @@ test("cdnUrl builds npm and gh source URLs", () => {
     }),
     "https://cdn.jsdelivr.net/gh/owner/repo@v1.2.3/x.js"
   );
+});
+
+// A dead network aborts here too. The CDN identifier's catch turns a lookup failure into
+// "no match", which for a dead route would mean a shipped jQuery is reviewed as the
+// developer's own code and the report reads like a clean review of a different add-on.
+// One dead LOOKUP still means no match - that is what an offline fixture run relies on.
+test("resolveCdnLibraries propagates a dead network but swallows one dead lookup", async () => {
+  const addon = classify(addonWith({ "app/lib.min.js": MINIFIED }));
+  const gone = {
+    fetchJson: async () => {
+      throw new NetworkGoneError("https://data.jsdelivr.com/x", true);
+    },
+  };
+  await assert.rejects(
+    () => resolveCdnLibraries(addon, { net: gone, cacheDir: tmpCacheDir() }),
+    NetworkGoneError
+  );
+
+  const ordinary = {
+    fetchJson: async () => {
+      throw new Error("offline");
+    },
+  };
+  const other = classify(addonWith({ "app/lib.min.js": MINIFIED }));
+  await resolveCdnLibraries(other, { net: ordinary, cacheDir: tmpCacheDir() });
+  const tag = other.bundled.classified.find((c) => c.file === "app/lib.min.js");
+  assert.equal(tag?.cdn ?? null, null); // no match, no abort
 });

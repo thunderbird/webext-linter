@@ -12,9 +12,12 @@ import { classifySource } from "../../src/vendor/sources.js";
 import { VENDOR_TRUSTED_HOSTS } from "../../src/config.js";
 import {
   verifyVendor,
+  verifyVendorDeclarations,
   verifyScaDependencies,
   auditIdentifiedLibraries,
+  isPopular,
 } from "../../src/vendor/verify.js";
+import { NetworkGoneError } from "../../src/util/net.js";
 import { parseLibraryBlocks } from "../../src/lib/library-blocks.js";
 import unpinnedDependency from "../../src/checks/rules/unpinned-dependency.js";
 import unpinnedVendorSource from "../../src/checks/rules/unpinned-vendor-source.js";
@@ -1350,4 +1353,130 @@ test("every unverified outcome becomes untrusted, routed by readability", () => 
   applyUnverifiedVendor(kept);
   assert.equal(kept.bundled.untrusted.length, 0);
   assert.equal(kept.vendor.results.length, 1);
+});
+
+// ---- a dead network aborts, one dead load does not ----
+// Every catch in the vendor and CDN paths turns a fetch failure into a benign value:
+// "not popular", "unfetchable", no CDN match. That is right for ONE load failing and
+// wrong for a dead route - it would silently reclassify a popular library as the
+// developer's own code, and the report would look like a clean review of a different
+// add-on. assertNetwork already tells the two apart with a control-point probe, so each
+// swallow site only has to not eat the answer (rethrowIfNetworkGone).
+//
+// This is the guard against a NEW swallow site forgetting the rule: it asserts at the
+// public entry points, not at the catches.
+const goneNet = () => {
+  const boom = () => {
+    throw new NetworkGoneError("https://registry.example/x", true);
+  };
+  return {
+    fetchBytes: async () => boom(),
+    fetchJson: async () => boom(),
+    postJson: async () => boom(),
+  };
+};
+
+test("a NetworkGoneError propagates out of every vendor entry point", async () => {
+  const vendorStore = () => ({
+    manifest: [
+      {
+        path: "lib/x.js",
+        sourceUrl: "https://unpkg.com/x@1.0.0/x.js",
+        trusted: true,
+        pinned: true,
+        kind: "file",
+      },
+    ],
+    packages: [{ name: "x", version: "1.0.0" }],
+    devPackages: [],
+    githubDeps: [],
+    results: [],
+    vulnerabilities: [],
+    devVulnerabilities: [],
+    unpopularDeps: [],
+    unaudited: [],
+    set: new Set(),
+    folders: new Set(),
+    vendorFile: "VENDOR.md",
+  });
+
+  await assert.rejects(
+    () =>
+      verifyVendor(addonWith({ "lib/x.js": "x" }, vendorStore()), goneNet()),
+    NetworkGoneError,
+    "verifyVendor"
+  );
+  await assert.rejects(
+    () =>
+      verifyVendorDeclarations(
+        addonWith({ "lib/x.js": "x" }, vendorStore()),
+        goneNet()
+      ),
+    NetworkGoneError,
+    "verifyVendorDeclarations"
+  );
+  await assert.rejects(
+    () =>
+      verifyScaDependencies(
+        addonWith({ "lib/x.js": "x" }, vendorStore()),
+        goneNet()
+      ),
+    NetworkGoneError,
+    "verifyScaDependencies"
+  );
+  await assert.rejects(
+    () => isPopular({ kind: "npm", pkg: "x" }, goneNet()),
+    NetworkGoneError,
+    "isPopular - the reclassification this protects"
+  );
+});
+
+// The other half, and the one all 79 goldens rest on: an ORDINARY failure is still
+// swallowed. The offline harness throws plain Errors, so a fixture run must stay a
+// clean review with no matches - never an abort.
+test("an ordinary fetch failure is still swallowed, not fatal", async () => {
+  // A transport that fails every request with an ORDINARY error - what the offline
+  // fixture harness injects.
+  const deadLoad = {
+    fetchBytes: async () => {
+      throw new Error("offline");
+    },
+    fetchJson: async () => {
+      throw new Error("offline");
+    },
+    postJson: async () => {
+      throw new Error("offline");
+    },
+  };
+  assert.equal(await isPopular({ kind: "npm", pkg: "x" }, deadLoad), false);
+  const addon = addonWith(
+    { "lib/x.js": "x" },
+    {
+      manifest: [
+        {
+          path: "lib/x.js",
+          sourceUrl: "https://unpkg.com/x@1.0.0/x.js",
+          trusted: true,
+          pinned: true,
+          kind: "file",
+        },
+      ],
+      packages: [],
+      devPackages: [],
+      githubDeps: [],
+      results: [],
+      vulnerabilities: [],
+      devVulnerabilities: [],
+      unpopularDeps: [],
+      unaudited: [],
+      set: new Set(),
+      folders: new Set(),
+      vendorFile: "VENDOR.md",
+    }
+  );
+  await verifyVendorDeclarations(addon, deadLoad);
+  assert.deepEqual(
+    addon.vendor.results.map((r) => r.outcome),
+    ["unfetchable"]
+  );
 });

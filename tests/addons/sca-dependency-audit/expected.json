@@ -1,0 +1,23 @@
+{
+  "_comment": "The SCA dependency audit, which needed a faked network to reach at all. tiny-obscure-helper is pinned and resolvable but nobody uses it (12 downloads a month), so unpopular-source-dependency rejects: a dependency the reviewer cannot lean on the community for must be shipped readable instead. vitest is a devDependency - never shipped, so popularity does not apply - but the reviewer BUILDS from this source, so a vulnerable build tool runs on their machine and vendor-vulnerable-dev reports it. That asymmetry is why they are two checks. The OSV stub answers ONE body for the endpoint, so both queries see the same advisory and the shipped dependency is reported by vendor-vulnerable as well - which is why the advisory here names no affected package: a fixture cannot claim an advisory belongs to a specific one while answering every query with it. The XPI-side twin (vendor-vulnerable) pins the affected/fixed-version mapping instead.",
+  "network": {
+    "https://api.npmjs.org/downloads/point/last-month/tiny-obscure-helper": {
+      "json": { "downloads": 12 }
+    },
+    "https://api.osv.dev/v1/query": {
+      "json": {
+        "vulns": [
+          {
+            "id": "GHSA-fixture-example",
+            "database_specific": { "severity": "MODERATE" }
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "unpopular-source-dependency": ["package.json:5"],
+    "vendor-vulnerable": ["package.json:5"],
+    "vendor-vulnerable-dev": ["package.json:8"]
+  }
+}

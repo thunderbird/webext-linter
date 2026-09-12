@@ -29,19 +29,73 @@ const ADDONS_DIR = path.join(here, "addons");
 const GOLDEN_DIR = path.join(here, "golden");
 const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 
-// Vendor verification is the only networked stage. Inject a transport that
-// refuses every request so the golden harness never touches the real network: a
-// fetchable declaration deterministically becomes "unfetchable" -> the untrusted
+// The network, faked at the socket. Every fetch in the tool goes through
+// fetchWithTimeout -> globalThis.fetch, so replacing that one function is enough to make
+// the harness hermetic AND to let a fixture decide what a URL serves. It is replaced
+// rather than injecting a transport per stage, because an injected transport SKIPS the
+// production code above it - fetchWithTimeout, readBytes/readJson, the size caps - which
+// then has no golden coverage at all. Here only the socket is faked.
+//
+// A fixture declares what it needs under "network" in its expected.json (see
+// fetchResponse). Anything it does not declare is a 404, deliberately: an unlisted URL
+// must be an HTTP negative and never a transport failure, because a connection-shaped
+// error sends fetchWithTimeout into assertNetwork, which probes the control point and
+// can abort the whole review (NetworkGoneError). A fixture that wants to test THAT
+// declares it.
+//
+// With no "network" map every URL 404s, which is what every fixture written before this
+// existed relies on: a declared vendor source becomes "unfetchable" -> the untrusted
 // family (applyUnverifiedVendor), i.e. reviewed as authored code or rejected as
 // unreadable - never exempt.
-const OFFLINE_NET = {
-  fetchBytes: async () => {
-    throw new Error("offline");
-  },
-  fetchJson: async () => {
-    throw new Error("offline");
-  },
-};
+const REAL_FETCH = globalThis.fetch;
+
+/**
+ * Build the Response a fixture's "network" entry describes.
+ *   { "sameAs": "<path>" }  the bytes of a file in the fixture, read from disk. The way
+ *                           to express "this declaration checks out": a `verified`
+ *                           outcome needs the upstream bytes to equal the packaged ones
+ *                           EXACTLY, and an inline copy would rot the day the fixture
+ *                           file is edited.
+ *   { "body": "<text>" }    literal bytes - the way to express "modified".
+ *   { "json": <value> }     a JSON endpoint (npm downloads, GitHub stars, unpkg ?meta,
+ *                           the OSV audit).
+ *   { "status": <code> }    an HTTP negative, with an empty body.
+ * @param {string} dir  The fixture directory; `sameAs` resolves against it.
+ * @param {object} spec
+ * @returns {Response}
+ */
+function fetchResponse(dir, spec) {
+  const status = spec.status ?? 200;
+  if (spec.sameAs !== undefined) {
+    return new Response(fs.readFileSync(path.join(dir, spec.sameAs)), {
+      status,
+    });
+  }
+  if (spec.json !== undefined) {
+    return new Response(JSON.stringify(spec.json), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return new Response(spec.body ?? "", { status });
+}
+
+/**
+ * Point globalThis.fetch at one fixture's map for the duration of its run, and return
+ * the undo. Per fixture, not once for the suite: the harness runs every fixture in one
+ * process, so one fixture's URLs must not answer another's requests.
+ * @param {string} dir @param {Record<string, object>} network
+ * @returns {() => void}
+ */
+function installFetchMock(dir, network) {
+  globalThis.fetch = async (url) => {
+    const spec = network[String(url)];
+    return spec ? fetchResponse(dir, spec) : new Response("", { status: 404 });
+  };
+  return () => {
+    globalThis.fetch = REAL_FETCH;
+  };
+}
 
 // Each fixture's expected.json holds the expected per-rule locations under
 // "expect", and may carry an optional "options" object keyed by real CLI flags
@@ -50,7 +104,11 @@ const OFFLINE_NET = {
 function loadFixture(dir) {
   const file = path.join(dir, "expected.json");
   const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-  return { expect: parsed.expect ?? {}, options: parsed.options ?? {} };
+  return {
+    expect: parsed.expect ?? {},
+    options: parsed.options ?? {},
+    network: parsed.network ?? {},
+  };
 }
 
 // A fixture is an SCA (source-code archive) review when it holds two artifacts as
@@ -158,18 +216,23 @@ async function main() {
   let failed = 0;
   for (const name of addons) {
     const dir = path.join(ADDONS_DIR, name);
-    const { expect: expected, options } = loadFixture(dir);
+    const { expect: expected, options, network } = loadFixture(dir);
     let problems;
+    const restoreFetch = installFetchMock(dir, network);
     try {
-      // Pure schema review: no pretty-print, no packing — keeps lines stable.
-      // A fixture's flag "options" parse in first; the core review opts win. The
-      // CDN identifier is a networked step that cannot match offline; turn it off
-      // so golden runs are hermetic (no per-run cache file written).
+      // Pure schema review: no pretty-print, no packing — keeps lines stable. A fixture's
+      // flag "options" parse in first; the core review opts win, because
+      // pipelineOptsFromArgv supplies the REAL cache directories as defaults and the
+      // harness must keep its own.
+      //
+      // The CDN identifier is off unless a fixture asks for it: most declare no `network`
+      // answer for the lookup, and leaving it on would have every one of them try it. The
+      // opt-in is read here rather than left to the spread, for the same reason - the
+      // harness has to win on everything else in that object.
       const base = {
         ...pipelineOptsFromArgv(optionsToArgv(options)),
         ...CACHE_OPTS,
-        vendorNet: OFFLINE_NET,
-        cdnLookup: false,
+        cdnLookup: String(options["--cdn-lib-lookup"]) === "true",
       };
       let review;
       if (isScaFixture(dir)) {
@@ -206,6 +269,9 @@ async function main() {
       console.error(`✗ ${name}: threw ${err.message}`);
       failed++;
       continue;
+    } finally {
+      // Per fixture: the next one must not inherit this one's answers.
+      restoreFetch();
     }
     if (problems.length === 0) {
       console.log(`✓ ${name}`);

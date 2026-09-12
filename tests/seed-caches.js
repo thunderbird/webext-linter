@@ -103,5 +103,15 @@ export function seedFixtureCache() {
  */
 export function fixtureCacheOpts() {
   const dir = seedFixtureCache();
-  return { schemaCache: dir, experimentsCache: dir, libraryHashesCache: dir };
+  // cdnLookupCache points at the same throwaway dir, NOT at the repo's real one. The CDN
+  // identifier writes its results back, so a fixture that exercises it would otherwise
+  // pollute `.lib-cdn-lookup-cache` - and then PASS from that cache on the next run, which
+  // hides a regression in the lookup itself (a mutation discarding every hit went
+  // unnoticed exactly once, for this reason).
+  return {
+    schemaCache: dir,
+    experimentsCache: dir,
+    libraryHashesCache: dir,
+    cdnLookupCache: dir,
+  };
 }

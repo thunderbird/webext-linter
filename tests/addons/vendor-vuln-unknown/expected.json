@@ -1,0 +1,14 @@
+{
+  "_comment": "A GitHub-sourced vendored file, which is the one path that can end in 'identity unknown'. The source is trusted and pinned, the bytes match, and the repo clears the stars bar - so the file verifies and is exempt from content review. But an OSV audit needs an npm NAME, and a GitHub URL carries none: auditGithub tries to prove one by hash-matching the bare repo name against that npm package (unpkg thing-lib@1.4.2), which here does not exist - so no advisory audit is possible and vendor-vuln-unknown says so as info. That is the honest outcome: the file is trusted as the release's, and we cannot tell the reviewer whether that release has known vulnerabilities. The owner is deliberately not a VENDOR_TRUSTED_GITHUB_ORGS org, which would skip the audit by provenance instead.",
+  "network": {
+    "https://raw.githubusercontent.com/someone/thing-lib/1.4.2/dist/thing.js": {
+      "sameAs": "lib/thing.js"
+    },
+    "https://api.github.com/repos/someone/thing-lib": {
+      "json": { "stargazers_count": 4200 }
+    }
+  },
+  "expect": {
+    "vendor-vuln-unknown": ["VENDORS.md:2"]
+  }
+}
