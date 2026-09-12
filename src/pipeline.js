@@ -450,6 +450,10 @@ export async function runPipeline(opts) {
     action: "review",
     addon: addon.source,
     addonKind: addon.kind,
+    // Only when the two artifacts differ - an SCA review. In an XPI review the review
+    // target IS the shipped XPI, so recording it twice would add a field that says
+    // nothing.
+    ...(addon === xpiAddon ? {} : { shippedAddon: xpiAddon.source }),
     reviewed: true,
   };
   if (scaNotRequired) {
@@ -595,10 +599,11 @@ export async function runPipeline(opts) {
   );
   findings.push(...reviewFindings);
 
-  // The review-derived half of meta (the base half - action/addon/... - was set in Phase 1):
-  // the schema stamps, the checks that ran, and the manual-review to-do list. Its `extended` items are the orchestrator's escalations (resolved to their registry
-  // text); the rest are the by-hand manual-checks entries, diff-gated like the checks (e.g.
-  // the new-submission-only "Forked add-on" reminder). An Experiment reject carries none.
+  // The review-derived half of meta (the base half - action/addon/... - was set in
+  // Phase 1): the schema stamps, the checks that ran, and the manual-review to-do list.
+  // Its `extended` items are the orchestrator's escalations (resolved to their registry
+  // text); the rest are the by-hand manual-checks entries, which every review carries
+  // unconditionally. An Experiment reject carries none.
   Object.assign(meta, {
     schemaSource,
     schemaBranch,

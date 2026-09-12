@@ -4,7 +4,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { REVIEW_MODE } from "../../src/lib/enum.js";
 
-import { formatText, formatJson } from "../../src/report/format.js";
+import {
+  formatText,
+  formatJson,
+  headerLines,
+} from "../../src/report/format.js";
 import { renderManualItems } from "../../src/report/responses.js";
 import { loadRegistry } from "../../src/checks/registry.js";
 
@@ -764,4 +768,30 @@ test("control characters from the submission never reach the report", () => {
     assert.ok(!formatText(one).includes(ch), JSON.stringify(ch));
     assert.ok(!formatJson(one).includes(ch), JSON.stringify(ch));
   }
+});
+
+// ---- the report header ----
+// An SCA review spans TWO artifacts and labels every locus [XPI]/[SCA], so the header has
+// to say what those are. Naming only the review target left the shipped XPI - the thing
+// users install - unnamed in the header AND in meta. A one-artifact review keeps one line:
+// there is nothing to disambiguate, and a downgraded SCA is one of those, because only the
+// XPI was reviewed.
+test("the header names both artifacts in an SCA review, one otherwise", () => {
+  const base = {
+    schemaBranch: "release-mv3",
+    applicationVersion: "155.0",
+    manifestVersion: 3,
+  };
+  assert.deepEqual(
+    headerLines({ ...base, addon: "/x/src", shippedAddon: "/x/a.xpi" }),
+    [
+      "Reviewed XPI: /x/a.xpi",
+      "Reviewed SCA: /x/src",
+      "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
+    ]
+  );
+  assert.deepEqual(headerLines({ ...base, addon: "/x/a.xpi" }), [
+    "Reviewed XPI: /x/a.xpi",
+    "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
+  ]);
 });

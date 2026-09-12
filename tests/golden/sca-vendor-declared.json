@@ -3,6 +3,7 @@
     "action": "review",
     "addon": "<root>/tests/addons/sca-vendor-declared/src",
     "addonKind": "dir",
+    "shippedAddon": "<root>/tests/addons/sca-vendor-declared/xpi",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

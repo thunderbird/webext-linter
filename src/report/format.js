@@ -55,7 +55,11 @@ const SEV_COLOR = {
 /**
  * @typedef {object} ReviewMeta
  * @property {string} action
- * @property {string} addon
+ * @property {string} addon  The REVIEW TARGET: the readable source archive in an SCA
+ *   review, the built XPI otherwise.
+ * @property {string} [shippedAddon]  The built XPI, when it is a DIFFERENT artifact from
+ *   the review target - i.e. an SCA review. Absent for an XPI review, where `addon` is
+ *   already the shipped artifact and naming it twice would say nothing.
  * @property {"dir"|"zip"} [addonKind]
  * @property {boolean} reviewed
  * @property {string} [schemaBranch]
@@ -85,7 +89,7 @@ export function formatText(review) {
     ...reviewBodyLines(review),
     ...summaryLines(review.findings, counts),
   ];
-  // The "Reviewing …" header is now printed live before the review
+  // The "Reviewed …" header is printed live by the pipeline after the review
   // (src/pipeline.js), not here, so drop the blank that section() prepends to
   // the first (Issues) section, opening the report body at "── Issues ──".
   if (lines[0] === "") {
@@ -139,8 +143,18 @@ function reviewBodyLines(review) {
  * @returns {string[]}
  */
 export function headerLines(meta) {
+  // Past tense throughout: the pipeline prints this header AFTER runChecks, so the
+  // review is over by the time a reader sees it.
+  //
+  // An SCA review spans TWO artifacts and the reader has to know which is which: the
+  // report labels every locus [XPI]/[SCA], so the header says what those are, using those
+  // same two words. Every review names its shipped add-on "XPI" - the label the report and
+  // the reviewer use for it - whether or not a source archive came with it.
+  const what = meta.shippedAddon
+    ? [`Reviewed XPI: ${meta.shippedAddon}`, `Reviewed SCA: ${meta.addon}`]
+    : [`Reviewed XPI: ${meta.addon}`];
   return [
-    `Reviewing ${meta.addon}`,
+    ...what,
     `schema ${meta.schemaBranch} · Thunderbird ${meta.applicationVersion ?? "?"}` +
       (meta.manifestVersion != null
         ? ` · manifest_version ${meta.manifestVersion}`

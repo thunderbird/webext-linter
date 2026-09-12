@@ -3,6 +3,7 @@
     "action": "review",
     "addon": "<root>/tests/addons/vue-sca-handler/src",
     "addonKind": "dir",
+    "shippedAddon": "<root>/tests/addons/vue-sca-handler/xpi",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
