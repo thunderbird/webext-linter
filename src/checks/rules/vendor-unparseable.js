@@ -1,9 +1,11 @@
-// Flags a VENDOR file that exists but could not be parsed into a single valid
-// declaration - no block pairs a library-like packaged file with a source URL that
-// points to a file. The developer declared third-party libraries but in a form the
-// tool cannot verify, so the libraries go unchecked: an error until the documented
-// format is used (a parseable-but-incomplete VENDOR whose declared file is merely
-// absent is missing-vendor-file, not this).
+// Flags a VENDOR file that exists but yielded no declaration. The parse is
+// all-or-nothing (src/normalize/vendor.js): it reads only what the developer MARKED
+// as a declaration, and a fault anywhere - half a declaration, a block naming two
+// items, a source URL no declaration claimed - discards the whole file. So this
+// fires both when nothing was marked at all and when something was, but the file
+// contradicted itself. Either way the libraries go unchecked: an error until the
+// documented format is used (a VENDOR that parsed, whose declared file is merely
+// absent, is missing-vendor-file, not this).
 //
 // Belongs here: turning the resolveVendor `unparsedVendor` flag into a finding.
 // Does NOT belong here: parsing the VENDOR file (src/normalize/vendor.js), the

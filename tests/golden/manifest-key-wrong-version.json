@@ -56,6 +56,7 @@
       "vendor-modified",
       "vendor-unverified",
       "missing-vendor-file",
+      "multiple-vendor-files",
       "vendor-unparseable",
       "vendor-ambiguous-source",
       "disguised-resource",

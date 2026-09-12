@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/experiment-modified-allowed",
+    "addon": "<root>/tests/addons/multiple-vendor-files",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
@@ -94,25 +94,31 @@
     ]
   },
   "summary": {
-    "error": 1,
+    "error": 2,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "experiment-modified": 1
+      "multiple-vendor-files": 2
     }
   },
   "findings": [
     {
-      "ruleId": "experiment-modified",
+      "ruleId": "multiple-vendor-files",
       "severity": "error",
-      "file": "manifest.json",
-      "loc": {
-        "line": 8,
-        "column": 0
-      },
-      "item": "demo",
+      "file": "VENDOR.md",
+      "loc": null,
+      "item": "VENDOR.md, VENDORS.md",
       "hint": null,
-      "message": "\"demo\" is a published Thunderbird Experiment API draft, but this add-on bundles a modified or outdated copy. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments."
+      "message": "This add-on ships more than one file that names itself the VENDOR manifest (VENDOR.md, VENDORS.md). Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different manifest after a rebuild. Keep the one that lists your bundled third-party libraries and remove the others.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
+    },
+    {
+      "ruleId": "multiple-vendor-files",
+      "severity": "error",
+      "file": "VENDORS.md",
+      "loc": null,
+      "item": "VENDOR.md, VENDORS.md",
+      "hint": null,
+      "message": "This add-on ships more than one file that names itself the VENDOR manifest (VENDOR.md, VENDORS.md). Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different manifest after a rebuild. Keep the one that lists your bundled third-party libraries and remove the others.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
     }
   ]
 }

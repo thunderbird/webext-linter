@@ -176,9 +176,14 @@ test("resolveVendor trusts a declared file + source URL", async () => {
 // them on ambiguousSources, while keeping their paths vendored (skip-set).
 test("resolveVendor flags >1 file per source URL as ambiguous", async () => {
   const addon = fakeAddon({
+    // One block per file, both citing the same URL - the shape a developer writes
+    // when one release covers several bundled files. Two file keys in ONE block is
+    // a contradiction the parser refuses outright (tests/unit/vendor.test.js).
     "VENDOR.md":
       "## Bundle\n" +
       "- bundled file: vendor/a.min.js\n" +
+      "- source: https://unpkg.com/bundle@1.0.0/dist/bundle.js\n" +
+      "\n" +
       "- bundled file: vendor/b.min.js\n" +
       "- source: https://unpkg.com/bundle@1.0.0/dist/bundle.js\n",
     "vendor/a.min.js": "x",

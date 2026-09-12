@@ -2,7 +2,22 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) A VENDOR file is present but no third-party library could be parsed from it. List each bundled library in its own block as the packaged file path together with a source URL that points to the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so it can be verified automatically.
+1) A VENDOR file is present but no third-party library could be parsed from it. Declare each bundled library in its own block, separated from the next by a blank line. A block names the packaged file path and a source URL pointing at the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so the file can be verified automatically. A bare repository link is not a source, and a path mentioned in a sentence is not a declaration. For example:
+
+lib/purify.min.js:
+  source: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js
+  licence: Apache-2.0
+
+vendor/jszip.min.js:
+  source: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
+  licence: MIT
+
+A library may also be declared on a single line, and those need no blank line between them:
+
+lib/purify.min.js: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js
+vendor/jszip.min.js: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
+
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
  - VENDOR.md
 
 You can run this automated review yourself before submitting:

@@ -2,40 +2,13 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) A VENDOR file is present but no third-party library could be parsed from it. Declare each bundled library in its own block, separated from the next by a blank line. A block names the packaged file path and a source URL pointing at the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so the file can be verified automatically. A bare repository link is not a source, and a path mentioned in a sentence is not a declaration. For example:
-
-lib/purify.min.js:
-  source: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js
-  licence: Apache-2.0
-
-vendor/jszip.min.js:
-  source: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
-  licence: MIT
-
-A library may also be declared on a single line, and those need no blank line between them:
-
-lib/purify.min.js: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js
-vendor/jszip.min.js: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
-
+1) This add-on ships more than one file that names itself the VENDOR manifest (VENDOR.md, VENDORS.md). Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different manifest after a rebuild. Keep the one that lists your bundled third-party libraries and remove the others.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
- - VENDORS.md
-
-2) A single source URL (https://unpkg.com/pkg@1.0.0/dist/bundle.min.js) is declared as the source of more than one bundled file (lib/a.min.js, lib/b.min.js). A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL.
+ - VENDOR.md
  - VENDORS.md
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
-
-── Extended manual review ──
-
-Continue manual review for the following checks:
-
-1) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
-Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
-An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
- - manifest.json
 
 ── Standard manual review ──
 
@@ -106,4 +79,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-2 error(s), 0 warning(s), 0 info, 1 extended manual review step(s), 10 standard manual review step(s)
+2 error(s), 0 warning(s), 0 info, 0 extended manual review step(s), 10 standard manual review step(s)

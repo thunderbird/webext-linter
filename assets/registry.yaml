@@ -673,6 +673,18 @@ deterministic-phase:
     One or more files listed in "{{item}}" are not present in the submission. Add each file to the submission, or remove its entry from "{{item}}".
 
 # Flags a VENDOR file that exists but yields no parseable entry (no block pairs a
+# More than one file in the package root names itself the VENDOR manifest, so which
+# one the review reads would be decided by the archive's order rather than by the
+# developer.
+- title: More than one VENDOR file
+  severity: error
+  sca: false
+  check: multiple-vendor-files
+  input: source
+  response: |-
+    This add-on ships more than one file that names itself the VENDOR manifest ({{item}}). Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different manifest after a rebuild. Keep the one that lists your bundled third-party libraries and remove the others.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
+
 # bundled library file with a source URL pointing to a file), so the declared
 # libraries cannot be verified.
 - title: Unparseable VENDOR file
@@ -681,7 +693,22 @@ deterministic-phase:
   check: vendor-unparseable
   input: source
   response: |-
-    A VENDOR file is present but no third-party library could be parsed from it. List each bundled library in its own block as the packaged file path together with a source URL that points to the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so it can be verified automatically.
+    A VENDOR file is present but no third-party library could be parsed from it. Declare each bundled library in its own block, separated from the next by a blank line. A block names the packaged file path and a source URL pointing at the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so the file can be verified automatically. A bare repository link is not a source, and a path mentioned in a sentence is not a declaration. For example:
+
+    lib/purify.min.js:
+      source: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js
+      licence: Apache-2.0
+
+    vendor/jszip.min.js:
+      source: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
+      licence: MIT
+
+    A library may also be declared on a single line, and those need no blank line between them:
+
+    lib/purify.min.js: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js
+    vendor/jszip.min.js: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
+
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
 # Flags a single source URL declared as the source of more than one bundled file -
 # a file source can verify only one file, so the pairing is ambiguous. A multi-file

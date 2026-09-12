@@ -809,7 +809,10 @@ async function verifyFolder(entry, addon, vendor, net) {
     });
     return;
   }
-  const prefix = `${entry.path.replace(/\/+$/, "")}/`;
+  // The declared path arrives normalized (src/normalize/vendor.js normalizeToken),
+  // so a trailing slash is already gone - stripping it again here would be a second
+  // place deciding what a folder path looks like.
+  const prefix = `${entry.path}/`;
   let popular = null; // looked up once, lazily, only if a file actually matches
   for (const [addonPath, mine] of addon.files) {
     if (!addonPath.startsWith(prefix)) {

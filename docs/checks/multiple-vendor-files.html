@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>More than one VENDOR file</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          More than one VENDOR file
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">multiple-vendor-files</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        The VENDOR manifest may be named <code>VENDOR</code>, <code>VENDOR.md</code>,
+        <code>VENDORS</code> or <code>VENDORS.md</code>, matched without regard to
+        case, and it lives in the package root. This check fires when more than one
+        of them is present.
+      </p>
+      <p>
+        Which of them the review would read is otherwise decided by the order the
+        archive lists its entries in — so the same submission could be checked
+        against a different manifest after nothing more than a rebuild. Choosing
+        between them is not the tool's to make: the developer says which file is the
+        manifest by shipping one. While it is ambiguous, neither file is read, so no
+        declaration from either is trusted and <em>unparseable VENDOR file</em> does
+        not also fire.
+      </p>
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Files in the package root"] --> B{"How many name themselves<br/>the VENDOR manifest?"}
+  B -- none --> S([skip — no VENDOR file])
+  B -- one --> OK([no finding — it is read<br/>by the other vendor checks])
+  B -- "more than one" --> ERR([ERROR: more than one<br/>VENDOR file])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told which files collide and asked to keep the one that lists
+        its bundled third-party libraries and remove the others. Every candidate is
+        listed as a locus, so the reviewer sees the collision without opening the
+        submission. The wording lives in <code>assets/registry.yaml</code>.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/multiple-vendor-files.js</code> (the
+        accepted names live in <code>src/normalize/vendor.js</code>) and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

@@ -19,15 +19,19 @@
       <h2>What it detects</h2>
       <p class="lead">
         Developers declare every bundled third-party library in a VENDOR file so
-        each can be verified against its upstream source. An entry is a bundled
-        <em>library</em> file paired with a source URL that points to a
-        <em>file</em>, both within one block (separated by headings or blank
-        lines).
+        each can be verified against its upstream source. A declaration is a
+        packaged file paired with a source URL that points to a <em>file</em>,
+        where the developer <em>marked</em> the pairing: a colon, a key, or
+        Markdown link syntax. Adjacency marks nothing, so a path named inside a
+        sentence stays a sentence.
       </p>
       <p>
-        This check fires when a VENDOR file is present but nothing could be parsed
-        out of it — no block pairs a recognised library with a file source URL.
-        The add-on's own modules and the package name are not entries, and a bare
+        This check fires when a VENDOR file is present but yielded no declaration.
+        The parse is all-or-nothing: a fault anywhere — a block naming a file with
+        no source, a block naming two items, a source URL that no declaration
+        claimed — discards the <em>whole</em> file, so the developer is told the
+        file cannot be read rather than the review proceeding on a manifest that
+        is quietly missing libraries. The package name is not a declaration, and a bare
         repository link (such as a <em>github.com/owner/repo</em> page) is not a
         source. When the file declares a library that is merely missing from the
         package, that is the <em>missing vendored file</em> check instead, not this
@@ -40,8 +44,10 @@
 flowchart TD
   A["The add-on's VENDOR file"] --> B{"Is a VENDOR file present?"}
   B -- no --> S([skip — nothing to check])
-  B -- yes --> C{"Did any block pair a bundled<br/>library with a file source URL?"}
-  C -- yes --> OK([no finding — the entry is checked<br/>by the other vendor checks])
+  B -- yes --> C{"Did any block mark a packaged<br/>file with a file source URL?"}
+  C -- yes --> F{"Was every marked source<br/>claimed, and every block<br/>self-consistent?"}
+  F -- yes --> OK([no finding — the entry is checked<br/>by the other vendor checks])
+  F -- no --> ERR
   C -- no --> D{"Did it declare a library file<br/>that is simply absent?"}
   D -- yes --> OK2([no finding — missing vendored<br/>file handles it])
   D -- no --> ERR([ERROR: VENDOR file<br/>could not be parsed])
@@ -59,10 +65,12 @@ flowchart TD
       <div class="outcome">
         <strong>When it fires</strong>
         The add-on is told that a VENDOR file is present but no third-party library
-        could be parsed from it, and is asked to list each bundled library in its
-        own block as the packaged file path plus a source URL that points to the
-        exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so
-        it can be verified automatically.
+        could be parsed from it, and is asked to declare each bundled library in
+        its own block, separated from the next by a blank line, naming the packaged
+        file path and a source URL that points to the exact file (on unpkg,
+        jsDelivr, the npm registry, or a raw GitHub URL). The message shows the
+        accepted shapes and links the vendoring guide; the wording itself lives in
+        <code>assets/registry.yaml</code>.
       </div>
 
       <p class="source-note">

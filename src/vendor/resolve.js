@@ -14,8 +14,7 @@
 // LLM wire protocol (-> src/llm/provider.js + the adapters).
 
 import {
-  parseVendorManifest,
-  missingVendorEntries,
+  readVendorDeclarations,
   readVendorFile,
   buildFileMatcher,
 } from "../normalize/vendor.js";
@@ -134,7 +133,11 @@ export async function resolveVendor({
   budget,
 }) {
   const vendorFile = readVendorFile(addon);
-  const manifest = dedupeByPath(parseVendorManifest(addon));
+  // Both halves of one reading: what the VENDOR file declares that the submission
+  // holds, and what it declares that the submission does not. Taking them together
+  // is why the file is read once rather than once per half.
+  const { resolved, missing } = readVendorDeclarations(addon);
+  const manifest = resolved;
   // The LLM parse fallback is one model request. Count it against the run-wide
   // cap and skip it (deterministic only) once that is spent. Gated on the LLM
   // being enabled, not on a token (Ollama is keyless).
@@ -231,11 +234,6 @@ export async function resolveVendor({
 
   const { packages, unpinned, githubDeps, unsupported, devPackages } =
     resolvePackages(addon);
-  // VENDOR entries (file + source URL) naming a file the package does not
-  // contain. Drives the missing-vendor-file check. Deterministic - the LLM
-  // fallback only adds files that resolve, so it never affects this set.
-  const missing = missingVendorEntries(addon);
-
   return {
     set,
     folders,
@@ -461,12 +459,6 @@ async function llmExtract({
     }
   }
   return out;
-}
-
-/** @param {VendorEntry[]} entries @returns {VendorEntry[]} */
-function dedupeByPath(entries) {
-  const seen = new Set();
-  return entries.filter((e) => !seen.has(e.path) && seen.add(e.path));
 }
 
 /** @param {string} reply @returns {Array<{file?: string, url?: string}>} */

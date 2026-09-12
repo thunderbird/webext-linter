@@ -1,0 +1,6 @@
+{
+  "_comment": "The add-on ships both VENDOR.md and VENDORS.md, each naming the same bundled file with a DIFFERENT source. Which one the review reads would be decided by archive order, so multiple-vendor-files errors and names both. Nothing else reads either file - readVendorFile returns null for an ambiguous manifest - so vendor-unparseable does not also fire, and lib/alpha.min.js is not vendored.",
+  "expect": {
+    "multiple-vendor-files": ["VENDOR.md", "VENDORS.md"]
+  }
+}

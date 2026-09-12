@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Multiple vendor files",
+  "version": "1.0",
+  "description": "Ships two files that both name themselves the VENDOR manifest.",
+  "permissions": [
+    "messagesRead",
+    "accountsRead",
+    "messagesMove"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "compose_action": {
+    "default_title": "Compose"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png"
+  }
+}
