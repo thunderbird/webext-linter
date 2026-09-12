@@ -27,8 +27,18 @@ import { basename, extname } from "../util/files.js";
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
 
 // Documentation file extensions; an extensionless file (LICENSE, AUTHORS) also
-// counts as a doc type.
-const DOC_EXTENSIONS = new Set([".md", ".markdown", ".txt", ".rst"]);
+// counts as a doc type. .license/.licence cover the `<library>.LICENSE`
+// companion convention for vendored files, where the doc name sits in the
+// extension instead of the basename prefix - a legally shipped file we must
+// never tell a developer to strip.
+const DOC_EXTENSIONS = new Set([
+  ".md",
+  ".markdown",
+  ".txt",
+  ".rst",
+  ".license",
+  ".licence",
+]);
 
 // Base NAMES (lowercased) of documentation / project-metadata files an add-on may
 // ship (for tooling, its store listing, or the i18n runtime) but never loads at
@@ -41,6 +51,8 @@ const DOC_NAMES = [
   "changelog",
   "authors",
   "notice",
+  "third_party",
+  "third-party",
   "vendor",
   "description",
   "contributing",

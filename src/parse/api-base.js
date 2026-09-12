@@ -5,12 +5,19 @@
 //   const api = messenger                                  (direct root)
 //   const api = messenger || browser || chrome             (|| / ?? chain)
 //   const api = typeof messenger !== 'undefined' ? messenger : browser  (ternary)
+//   const api = globalThis.browser ?? globalThis.chrome    (global-object spelling)
 //   const m = browser.messages                             (namespace capture)
 //   const m = _api && _api.messages || null                (guarded shim capture)
+// The global-object spelling reads the same written straight off the global
+// object - `globalThis.browser.tabs.create()` is the `browser.tabs.create()`
+// chain, and grounds the same permission - so it resolves wherever it appears,
+// not only where a binding is given its value.
 // Every scanner that roots a member chain at the API object resolves it HERE,
 // through one per-AST index (`apiBasesOf`): a single scoped traverse maps each
-// chain-base identifier that denotes an API object to {root, prefix}, where
-// prefix is the captured segment path (browser.messages -> ["messages"]).
+// chain base that denotes an API object to {root, prefix}, where prefix is the
+// captured segment path (browser.messages -> ["messages"]). A chain base is
+// usually an identifier; a root named on the global object is the exception and
+// is indexed under the member node that names it.
 // Scanners look nodes up by identity instead of matching literal names, so an
 // alias is understood the same way everywhere - and a shadowed local named
 // browser/messenger/chrome (e.g. a function parameter) correctly never matches.
@@ -41,13 +48,20 @@ export { API_ROOTS };
 
 /**
  * @typedef {object} AliasTarget
- * @property {"browser"|"messenger"|"chrome"} root  The real API global the alias
- *   resolves back to.
+ * @property {"browser"|"messenger"|"chrome"} root  The real API global a chain
+ *   base resolves back to.
  * @property {string[]} prefix  The captured segment path between the root and the
- *   alias site (browser.messages -> ["messages"]; a whole-object alias -> []).
+ *   base (browser.messages -> ["messages"]; a whole-object alias, and a root named
+ *   on the global object, -> []).
  */
 
-// ast File node -> Map<Identifier node, AliasTarget>. WeakMap so an index never
+// Identifiers that denote the global object itself: `globalThis.browser` is the
+// global `browser` under its other spelling, not an alias. Deliberately narrower
+// than the eval-sink list in remote-js.js (no top/parent/frames): the API roots
+// live on the extension page's own global, not on other frames' globals.
+const GLOBAL_OBJECTS = new Set(["globalThis", "window", "self"]);
+
+// ast File node -> Map<chain-base node, AliasTarget>. WeakMap so an index never
 // outlives its AST.
 const indexes = new WeakMap();
 
@@ -56,11 +70,17 @@ const indexes = new WeakMap();
 const EMPTY = new Map();
 
 /**
- * The AST's API-base index: every chain-base identifier (the `x` in `x.foo.bar`)
- * that denotes an API object, mapped to its resolved target. Built lazily by one
- * scoped traverse and cached per AST, so all scanners of the same parse share a
- * single resolution; consumers hold plain nodes (no Babel path/scope needed) and
- * look them up by identity.
+ * The AST's API-base index: every chain base that denotes an API object, mapped to
+ * its resolved target. A chain base is the head a member chain hangs off - the `x`
+ * in `x.foo.bar`, or the `globalThis.browser` in `globalThis.browser.foo.bar`,
+ * which names a root through the global object rather than through a binding.
+ * Built lazily by one scoped traverse and cached per AST, so all scanners of the
+ * same parse share a single resolution; consumers hold plain nodes (no Babel
+ * path/scope needed) and look them up by identity.
+ *
+ * Only a global-object member earns an entry of its own - every other member chain
+ * already resolves through the identifier at its head, and indexing those too would
+ * hand a consumer that walks a chain the same usage twice.
  * @param {?AstNode} ast  The parsed File node (ParseResult.ast), or null.
  * @returns {Map<AstNode, AliasTarget>}
  */
@@ -80,10 +100,43 @@ export function apiBasesOf(ast) {
           }
         }
       },
+      "MemberExpression|OptionalMemberExpression"(path) {
+        if (isChainBase(path)) {
+          const target = globalRootOf(path.node, path.scope);
+          if (target) {
+            index.set(path.node, target);
+          }
+        }
+      },
     });
     indexes.set(ast, index);
   }
   return index;
+}
+
+/**
+ * The root a member expression names on the global object, or null when it names
+ * something else: `globalThis.browser` IS the global `browser` under its other
+ * spelling (likewise window./self.), the second spelling every JS global has. The
+ * object identifier must be unbound - a local named window/self (a parameter, say)
+ * is an ordinary object, not the global one.
+ *
+ * The single home of that rule: both the index and the alias resolution below ask
+ * here, so a root written this way is recognized identically wherever it appears.
+ * @param {AstNode} node  A member expression.
+ * @param {object} [scope]  Babel scope at the node, for the shadowing test.
+ * @returns {?AliasTarget}
+ */
+function globalRootOf(node, scope) {
+  if (
+    node.object?.type !== "Identifier" ||
+    !GLOBAL_OBJECTS.has(node.object.name) ||
+    scope?.getBinding(node.object.name)
+  ) {
+    return null;
+  }
+  const key = memberPropName(node);
+  return key !== null && API_ROOTS.has(key) ? { root: key, prefix: [] } : null;
 }
 
 /**
@@ -106,6 +159,13 @@ export function calleeApiPath(callee, bases) {
   const segments = [];
   let cur = callee;
   while (isMemberLike(cur)) {
+    // The chain base can be a member itself (a root named on the global object),
+    // so each link is offered to the index before the walk descends past it -
+    // otherwise its root would be swallowed into the segment list.
+    const base = bases.get(cur);
+    if (base) {
+      return { root: base.root, segments: [...base.prefix, ...segments] };
+    }
     const key = memberPropName(cur);
     if (key === null) {
       return null;
@@ -120,9 +180,9 @@ export function calleeApiPath(callee, bases) {
 }
 
 /**
- * True when this identifier is the base object of a member chain (e.g. the `x` in
- * `x.foo.bar`), not a property name. Says nothing about whether `x` is an API
- * object - just the syntactic position.
+ * True when this node is the base object a member chain hangs off (the `x` in
+ * `x.foo.bar`, or the `a.b` in `a.b.foo.bar`), not a property name. Says nothing
+ * about whether the node denotes an API object - just the syntactic position.
  * @param {BabelPath} path
  * @returns {boolean}
  */
@@ -168,6 +228,13 @@ export function aliasTarget(node, scope, seen) {
     }
     case "MemberExpression":
     case "OptionalMemberExpression": {
+      // A root named on the global object resolves to that root, and to nothing
+      // else - the global object is not itself an API target, so the walk stops
+      // rather than descending into it.
+      const global = globalRootOf(node, scope);
+      if (global) {
+        return global;
+      }
       const base = aliasTarget(node.object, scope, seen);
       if (!base) {
         return null;

@@ -15,11 +15,11 @@
 // wording lives in assets/registry.yaml. Babel access goes through
 // src/parse/ast.js.
 
-import { classifyUrl } from "../scan/url.js";
+import { classifyUrl, worstUrlClass } from "../scan/url.js";
 import { eachElement } from "../scan/html-parse.js";
 import { parseJs, traverse, nodeLoc, isCallLike, isMemberLike } from "./ast.js";
 import { apiBasesOf } from "./api-base.js";
-import { localUrlArg } from "./local-url.js";
+import { localUrlArgs, localUrlVarsOf } from "./local-url.js";
 
 // Identifiers that denote the global object, where window.eval / self.eval /
 // globalThis.eval etc. are the same sinks as the bare forms.
@@ -65,6 +65,10 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
   // Alias index for the API roots: lets the getURL short-circuit see through a
   // captured/feature-detected root (see src/parse/local-url.js).
   const bases = apiBasesOf(ast);
+  // Local-URL variable index: resolves the one-step `const u = getURL("a.js")`
+  // indirection, so a packaged script reached through a variable classifies like
+  // the inline call (see src/parse/local-url.js).
+  const urlVars = localUrlVarsOf(ast);
   /** @param {AstNode} node @returns {{line:number, column:number}} */
   const at = (node) => nodeLoc(node, lineOffset);
   /**
@@ -114,7 +118,7 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
         isMemberProp(left, "src") &&
         isTrackedScriptObj(left.object, scriptVars)
       ) {
-        pushSrc(right, path.node, push, bases);
+        pushSrc(right, path.node, push, bases, urlVars);
       }
       // el.innerHTML / el.outerHTML = "<script src=REMOTE>"
       if (isMemberProp(left, "innerHTML") || isMemberProp(left, "outerHTML")) {
@@ -127,7 +131,14 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
     // Dynamic import() parses as its own ImportExpression node (not a
     // CallExpression), so it gets its own visitor.
     ImportExpression(path) {
-      classifyDynamicRef("import", path.node.source, path.node, push, bases);
+      classifyDynamicRef(
+        "import",
+        path.node.source,
+        path.node,
+        push,
+        bases,
+        urlVars
+      );
     },
     "CallExpression|OptionalCallExpression"(path) {
       const { callee, arguments: args } = path.node;
@@ -147,7 +158,14 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
         isIdent(callee, "importScripts") ||
         isGlobalMember(callee, "importScripts")
       ) {
-        classifyDynamicRef("importscripts", args[0], path.node, push, bases);
+        classifyDynamicRef(
+          "importscripts",
+          args[0],
+          path.node,
+          push,
+          bases,
+          urlVars
+        );
         return;
       }
       // setTimeout/setInterval("code string", …), bare or on a global object.
@@ -184,7 +202,7 @@ export function scanRemoteJs(code, lineOffset = 0, parsed) {
         isStringLiteral(args[0]) &&
         args[0].value.toLowerCase() === "src"
       ) {
-        pushSrc(args[1], path.node, push, bases);
+        pushSrc(args[1], path.node, push, bases, urlVars);
         return;
       }
       // WebAssembly.instantiateStreaming/compileStreaming(fetch("REMOTE"))
@@ -238,18 +256,23 @@ function classifyModuleSource(source, node, push) {
  * @param {AstNode} node
  * @param {Function} push
  * @param {Map<object, object>} bases  The AST's alias index from apiBasesOf.
+ * @param {Map<object, string[]>} urlVars  The AST's local-URL variable index
+ *   from localUrlVarsOf.
  */
-function classifyDynamicRef(which, arg, node, push, bases) {
+function classifyDynamicRef(which, arg, node, push, bases, urlVars) {
   // A getURL(...) reference resolves to the getURL argument (against the extension
   // base): a relative path classifies local (no signal), an absolute one stays
   // remote - so the argument is what the classifier judges, not the getURL call.
-  const url = localUrlArg(arg, bases) ?? literalString(arg);
-  if (url == null) {
+  const urls = refUrls(arg, bases, urlVars);
+  if (urls == null) {
     push(`ambiguous-${which}`, node); // non-literal - can't resolve the host
     return;
   }
-  if (classifyUrl(url).remote) {
-    push(`remote-${which}`, node, url);
+  // Only remote matters here: an embedded (data:/blob:) module source is the
+  // eval checks' concern, not this one.
+  const remote = urls.find((url) => classifyUrl(url).remote);
+  if (remote != null) {
+    push(`remote-${which}`, node, remote);
   }
 }
 
@@ -259,21 +282,49 @@ function classifyDynamicRef(which, arg, node, push, bases) {
  * @param {AstNode} node
  * @param {Function} push
  * @param {Map<object, object>} bases  The AST's alias index from apiBasesOf.
+ * @param {Map<object, string[]>} urlVars  The AST's local-URL variable index
+ *   from localUrlVarsOf.
  */
-function pushSrc(valueNode, node, push, bases) {
+function pushSrc(valueNode, node, push, bases, urlVars) {
   // scriptEl.src = getURL(<relative>) loads a packaged script (local); an absolute
   // getURL argument stays remote, so classify the resolved argument, not the call.
-  const url = localUrlArg(valueNode, bases) ?? literalString(valueNode);
-  if (url == null) {
+  const urls = refUrls(valueNode, bases, urlVars);
+  if (urls == null) {
     push("ambiguous-script-src", node);
     return;
   }
-  const klass = classifyUrl(url);
-  if (klass.remote) {
+  // A src can be any of the three classes, so the gravest one governs and the
+  // hit names the value that earned it.
+  const classes = urls.map(classifyUrl);
+  const worst = worstUrlClass(classes);
+  const url = urls[classes.indexOf(worst)];
+  if (worst.remote) {
     push("remote-script-src", node, url);
-  } else if (klass.embedded) {
+  } else if (worst.embedded) {
     push("embedded-script-src", node, url);
   }
+}
+
+/**
+ * Every URL a code-reference expression can denote - a getURL call resolved
+ * against the extension base, a variable bound to one, or a plain literal - or
+ * null when it cannot be resolved statically (the caller reports it ambiguous).
+ * A bare concatenation or conditional is left to that ambiguous verdict rather
+ * than resolved: an unresolved code reference is still reported and reviewed,
+ * so the precision buys nothing here, unlike a network destination, where an
+ * unresolved value would be weighed against a host.
+ * @param {AstNode} node
+ * @param {Map<object, object>} bases  The AST's alias index from apiBasesOf.
+ * @param {Map<object, string[]>} urlVars  The AST's local-URL variable index.
+ * @returns {?string[]}
+ */
+function refUrls(node, bases, urlVars) {
+  const literal = literalString(node);
+  return (
+    localUrlArgs(node, bases) ??
+    urlVars.get(node) ??
+    (literal == null ? null : [literal])
+  );
 }
 
 // Node helpers.

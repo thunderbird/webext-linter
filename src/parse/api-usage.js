@@ -68,6 +68,36 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
   const loc = (node) => nodeLoc(node, lineOffset);
 
   const bases = apiBasesOf(ast);
+
+  /**
+   * Record the usage a resolved chain base carries: the segments its chain adds
+   * to the base's own prefix, plus how confidently they were read. Shared by both
+   * shapes a base can take, so a root reached through the global object is
+   * reported exactly like one reached by name.
+   * @param {object} path  The chain base's path.
+   * @param {AliasTarget} target  What the base resolves to.
+   */
+  const recordUsage = (path, target) => {
+    const climbed = climbChain(path);
+    const segments = [...target.prefix, ...climbed.segments];
+    const { dynamicTail, dynamicAt, optional } = climbed;
+    const guarded = optional || isGuarded(path);
+    usages.push({
+      root: target.root,
+      segments,
+      dynamicTail,
+      optional,
+      guarded,
+      ...loc(path.node),
+    });
+    if (dynamicTail && dynamicAt) {
+      limitations.push({
+        ...loc(dynamicAt),
+        reason: `computed/dynamic member access on "${target.root}.${segments.join(".")}" not fully resolved`,
+      });
+    }
+  };
+
   traverse(ast, {
     Identifier(path) {
       const name = path.node.name;
@@ -93,24 +123,16 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
         }
         return;
       }
-
-      const climbed = climbChain(path);
-      const segments = [...target.prefix, ...climbed.segments];
-      const { dynamicTail, dynamicAt, optional } = climbed;
-      const guarded = optional || isGuarded(path);
-      usages.push({
-        root: target.root,
-        segments,
-        dynamicTail,
-        optional,
-        guarded,
-        ...loc(path.node),
-      });
-      if (dynamicTail && dynamicAt) {
-        limitations.push({
-          ...loc(dynamicAt),
-          reason: `computed/dynamic member access on "${target.root}.${segments.join(".")}" not fully resolved`,
-        });
+      recordUsage(path, target);
+    },
+    // A root named on the global object (globalThis.browser.tabs.create) is a
+    // chain base in its own right - the index holds it under the member node,
+    // since the identifier at its head denotes the global object, not an API
+    // object. Only such members are indexed, so a chain is never counted twice.
+    "MemberExpression|OptionalMemberExpression"(path) {
+      const target = bases.get(path.node);
+      if (target) {
+        recordUsage(path, target);
       }
     },
   });
@@ -234,13 +256,19 @@ function refsGuardSignal(node, scope) {
       found = true;
       return;
     }
+    const isMember =
+      n.type === "MemberExpression" || n.type === "OptionalMemberExpression";
+    // A member can denote an API object itself (a root named on the global
+    // object), and it is tested here rather than through its parts: the skip
+    // below hides the very property that names the root.
+    if (isMember && aliasTarget(n, scope, new Set()) !== null) {
+      found = true;
+      return;
+    }
     // A non-computed member's `property` is a name, not a value - skip it so a plain
     // `flag.something` never resolves `something` as an alias (only `x[expr]` computed
     // keys and value-position operands are real references).
-    const skipProperty =
-      (n.type === "MemberExpression" ||
-        n.type === "OptionalMemberExpression") &&
-      !n.computed;
+    const skipProperty = isMember && !n.computed;
     for (const key of Object.keys(n)) {
       if (key === "loc" || key === "start" || key === "end") {
         continue;

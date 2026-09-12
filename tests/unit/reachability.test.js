@@ -363,6 +363,12 @@ test("unused-files: junk + orphan are findings; mentioned -> candidate", () => {
     "maybe.js": `console.log(2);`, // string-mentioned in bg.js -> ambiguous
     LICENSE: "MIT",
     "vendor/d3/LICENCE": "ISC", // en-GB spelling, extensionless: allowlisted too
+    // The companion-file convention for a vendored library carries the doc name
+    // in the EXTENSION rather than the basename; such a file is legally shipped
+    // and must never be reported as unused.
+    "vendor/pdf-lib.LICENSE": "MIT",
+    "vendor/jszip.licence": "MIT",
+    "THIRD_PARTY.md": "attributions",
     "README.md": "# x",
     "README_DE.md": "# x", // localized doc variant: allowlisted, not flagged
   };
@@ -379,6 +385,13 @@ test("unused-files: junk + orphan are findings; mentioned -> candidate", () => {
   assert.ok(!found.includes("LICENSE") && !manual.includes("LICENSE"));
   const licence = "vendor/d3/LICENCE";
   assert.ok(!found.includes(licence) && !manual.includes(licence));
+  for (const doc of [
+    "vendor/pdf-lib.LICENSE",
+    "vendor/jszip.licence",
+    "THIRD_PARTY.md",
+  ]) {
+    assert.ok(!found.includes(doc) && !manual.includes(doc), doc);
+  }
   // Localized README variants are docs too, neither flagged nor escalated.
   for (const doc of ["README.md", "README_DE.md"]) {
     assert.ok(!found.includes(doc) && !manual.includes(doc));

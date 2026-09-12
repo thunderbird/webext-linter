@@ -19,7 +19,7 @@ function resolvedCalls(code) {
   const bases = apiBasesOf(ast);
   const out = [];
   traverse(ast, {
-    CallExpression(p) {
+    "CallExpression|OptionalCallExpression"(p) {
       const r = calleeApiPath(p.node.callee, bases);
       if (r) {
         out.push(`${r.root}.${r.segments.join(".")}`);
@@ -46,6 +46,74 @@ test("resolves literal roots and whole-object aliases to the same path", () => {
       "messenger.tabs.create",
       "messenger.runtime.getURL",
     ]
+  );
+});
+
+// globalThis.browser is the global `browser` under its other spelling - the
+// standard cross-browser shim (`globalThis.browser ?? globalThis.chrome`) must
+// resolve like the bare-name chain. A non-root property of the global object
+// stays unresolved, and a bound window/self is a plain local, not the global
+// object, so it must not match either.
+test("resolves the global-object spelling of a root", () => {
+  assert.deepEqual(
+    resolvedCalls(`
+      const api = globalThis.browser ?? globalThis.chrome;
+      api.runtime.getURL("a.html");
+      const w = window.messenger || null;
+      w.messages.getFull(1);
+      const cap = self.browser.runtime;
+      cap.getURL("b.html");
+      const na = globalThis.notAnApi;
+      na.runtime.getURL("c.html");
+      function shadowed(window) {
+        const x = window.browser;
+        x.runtime.getURL("d.html");
+      }
+    `),
+    [
+      "browser.runtime.getURL",
+      "messenger.messages.getFull",
+      "browser.runtime.getURL",
+    ]
+  );
+});
+
+// A root named on the global object reads the same written straight off it, so a
+// chain hanging directly on globalThis./window./self. resolves like the bare-name
+// chain - the index holds that member as a chain base in its own right. What the
+// global object does NOT name is still nothing: a non-root property, another
+// frame's global, the global object reached through itself, and a bound
+// window/self local all stay unresolved.
+test("resolves a root named directly on the global object", () => {
+  assert.deepEqual(
+    resolvedCalls(`
+      globalThis.browser.tabs.create({url: "a"});
+      window.chrome.runtime.getURL("b.html");
+      self.messenger.messages.getFull(1);
+      globalThis.browser?.messages.getFull(2);
+      globalThis["browser"].tabs.create({url: "c"});
+    `),
+    [
+      "browser.tabs.create",
+      "chrome.runtime.getURL",
+      "messenger.messages.getFull",
+      "browser.messages.getFull",
+      "browser.tabs.create",
+    ]
+  );
+  assert.deepEqual(
+    resolvedCalls(`
+      globalThis.notAnApi.runtime.getURL("a.html");
+      top.browser.tabs.create({url: "b"});
+      parent.browser.tabs.create({url: "c"});
+      globalThis.globalThis.browser.tabs.create({url: "d"});
+      function shadowed(window) {
+        window.browser.runtime.getURL("e.html");
+      }
+      const self = { browser: fake };
+      self.browser.runtime.getURL("f.html");
+    `),
+    []
   );
 });
 

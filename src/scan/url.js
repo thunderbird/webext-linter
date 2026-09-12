@@ -3,7 +3,9 @@
 // from the network (remote).
 //
 // Belongs here: pure remote/embedded/local classification of a URL or reference
-// string by its scheme/shape. Shared by every scanner that finds URLs.
+// string by its scheme/shape, and the ranking of those classes by exposure -
+// the one place that decides which of two destinations is the graver one.
+// Shared by every scanner that finds URLs.
 //
 // Does NOT belong here: finding the URLs in the first place - that is the
 // per-format scanners (src/scan/css.js, src/scan/html.js, src/scan/csp.js).
@@ -38,6 +40,31 @@ export function classifyUrl(raw) {
     return URL_CLASS.REMOTE;
   }
   return URL_CLASS.LOCAL;
+}
+
+// The classes ordered by exposure, gravest first: a network destination outranks
+// an inline payload, which outranks a destination we could not pin down, which
+// outranks a packaged resource. DYNAMIC sits above LOCAL because an unknown
+// destination is a reason to look, not a reason to relax.
+const CLASS_BY_EXPOSURE = [
+  URL_CLASS.REMOTE,
+  URL_CLASS.EMBEDDED,
+  URL_CLASS.DYNAMIC,
+  URL_CLASS.LOCAL,
+];
+
+/**
+ * The gravest of the classes an expression could resolve to - what a reference
+ * with several possible values must be judged as, since any one of them is the
+ * value it may take at runtime (see staticValues in src/parse/ast.js).
+ * @param {import("../lib/enum.js").UrlClass[]} classes  At least one class.
+ * @returns {import("../lib/enum.js").UrlClass}  LOCAL for an empty list.
+ */
+export function worstUrlClass(classes) {
+  return (
+    CLASS_BY_EXPOSURE.find((candidate) => classes.includes(candidate)) ??
+    URL_CLASS.LOCAL
+  );
 }
 
 /**

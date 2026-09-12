@@ -314,3 +314,40 @@ test("reports a parse error without throwing", () => {
   assert.equal(res.usages.length, 0);
   assert.ok(res.parseError);
 });
+
+// A root named on the global object grounds its permissions like the bare name:
+// the chain resolves to the same path, and to exactly ONE usage. The count is the
+// point - the index holds the member that names the root, not the identifier for
+// the global object, so a chain climbing from its base cannot collect the root as
+// a segment and report the usage a second time.
+test("a chain rooted on the global object yields one usage, same as the bare name", () => {
+  assert.deepEqual(segments(`globalThis.browser.tabs.create({url: "a"});`), [
+    "browser.tabs.create",
+  ]);
+  assert.deepEqual(segments(`window.chrome.messages.getFull(1);`), [
+    "chrome.messages.getFull",
+  ]);
+  // A bare chain is one usage.
+  assert.deepEqual(segments(`browser.messages.getFull(1);`), [
+    "browser.messages.getFull",
+  ]);
+  // A capture is two sites, so two usages: the namespace where it is taken and
+  // the call made through it.
+  assert.deepEqual(segments(`const m = browser.messages; m.getFull(1);`), [
+    "browser.messages",
+    "browser.messages.getFull",
+  ]);
+});
+
+// A feature test written on the global object is a guard like any other, so the
+// usages it protects are not reported as unsupported.
+test("a feature test on the global object marks the usages it guards", () => {
+  const usages = parseApiUsage(
+    `if (globalThis.browser.messages.future) { globalThis.browser.tabs.create({url: "a"}); }`
+  ).usages;
+  assert.ok(usages.length > 0);
+  assert.ok(
+    usages.every((u) => u.guarded),
+    JSON.stringify(usages)
+  );
+});

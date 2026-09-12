@@ -25,13 +25,12 @@ import {
   memberPropName,
   isCallLike,
   isMemberLike,
-  isStatic,
-  staticValue,
+  staticValues,
 } from "./ast.js";
-import { classifyUrl, isLoopback } from "../scan/url.js";
+import { classifyUrl, isLoopback, worstUrlClass } from "../scan/url.js";
 import { URL_CLASS, OVERTNESS } from "../lib/enum.js";
 import { apiBasesOf } from "./api-base.js";
-import { localUrlArg } from "./local-url.js";
+import { localUrlArgs, localUrlVarsOf } from "./local-url.js";
 import { DATA_APIS } from "./webext-facts.js";
 
 /** @typedef {import("@babel/types").Node} AstNode */
@@ -90,6 +89,7 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
 
   const hits = [];
   const bases = apiBasesOf(ast);
+  const urlVars = localUrlVarsOf(ast);
   /** @param {AstNode} node @returns {{line:number, column:number}} */
   const at = (node) => nodeLoc(node, lineOffset);
 
@@ -103,7 +103,8 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
   const push = (type, channel, urlNode, dataNodes, site) => {
     const { destClass, dataAppended, cleartext, host } = urlInfo(
       urlNode,
-      bases
+      bases,
+      urlVars
     );
     hits.push({
       type,
@@ -323,10 +324,12 @@ function isHttpMethodLiteral(node) {
  * the leading static prefix of a dynamic URL (which still carries the scheme).
  * @param {?AstNode} node
  * @param {Map<object, object>} bases  The AST's alias index from apiBasesOf.
+ * @param {Map<AstNode, string[]>} urlVars  The AST's local-URL variable index
+ *   from localUrlVarsOf.
  * @returns {{destClass: import("../lib/enum.js").UrlClass,
  *   cleartext: boolean, host: ?string, dataAppended: boolean}}
  */
-function urlInfo(node, bases) {
+function urlInfo(node, bases, urlVars) {
   if (!node) {
     return {
       destClass: URL_CLASS.LOCAL,
@@ -340,12 +343,10 @@ function urlInfo(node, bases) {
   // local resource, an absolute one escapes the origin and keeps its remote class
   // (an exfil URL wrapped in getURL is not masked). A dynamic argument stays
   // unresolved and falls through to the conservative prefix branch below.
-  const localArg = localUrlArg(node, bases);
-  if (localArg != null) {
-    return staticUrlInfo(bareUrl(localArg));
-  }
-  if (isStatic(node)) {
-    return staticUrlInfo(bareUrl(staticValue(node)));
+  const values =
+    localUrlArgs(node, bases) ?? urlVars.get(node) ?? staticValues(node);
+  if (values) {
+    return worstStaticUrlInfo(values);
   }
   const prefix = bareUrl(staticPrefix(node));
   const host = urlHost(prefix);
@@ -382,6 +383,27 @@ function staticUrlInfo(url) {
   };
 }
 
+/**
+ * Classify every value a destination expression can take and report the gravest
+ * one. Each value is classified in full BEFORE they are compared, because the
+ * loopback downgrade and the cleartext/host reads are per-value: in
+ * `c ? "http://127.0.0.1/x" : "https://evil/y"` the first arm is genuinely local
+ * while the second decides the sink, and reporting the host of the wrong arm
+ * would name an innocent destination.
+ * @param {string[]} urls  At least one candidate value.
+ * @returns {{destClass: import("../lib/enum.js").UrlClass,
+ *   cleartext: boolean, host: ?string, dataAppended: boolean}}
+ */
+function worstStaticUrlInfo(urls) {
+  const infos = urls.map((url) => staticUrlInfo(bareUrl(url)));
+  const worst = worstUrlClass(infos.map((info) => info.destClass));
+  const gravest = infos.filter((info) => info.destClass === worst);
+  // Among equally grave destinations a cleartext one is the graver still, and
+  // it is the one whose host the report should name: `c ? "https://h/x" :
+  // "http://h/x"` does send in the clear on one of its paths.
+  return gravest.find((info) => info.cleartext) ?? gravest[0];
+}
+
 // A local (non-network) destination: no cleartext/privacy/exfil concern. Shared
 // by the no-URL case and a resolved loopback destination.
 const LOCAL_DEST = {
@@ -416,8 +438,21 @@ function staticPrefix(node) {
       return node.value;
     case "TemplateLiteral":
       return node.quasis[0]?.value.cooked ?? "";
-    case "BinaryExpression":
-      return node.operator === "+" ? staticPrefix(node.left) : "";
+    case "BinaryExpression": {
+      if (node.operator !== "+") {
+        return "";
+      }
+      // A side that has exactly one value contributes ALL of it and the scan
+      // carries on rightwards, so a scheme spelled across several pieces
+      // ("htt" + "ps://host/x" + tail, "/" + "/host/x" + tail) is read whole
+      // instead of being cut off at the first piece and passing for a relative
+      // path. A side with several possible values shares no single prefix, so
+      // the scan stops within it.
+      const left = staticValues(node.left);
+      return left?.length === 1
+        ? left[0] + staticPrefix(node.right)
+        : staticPrefix(node.left);
+    }
     default:
       return "";
   }
@@ -441,7 +476,8 @@ function bareUrl(s) {
  * api-base index - the walk itself is scope-less, but the index was built with
  * scope, so aliases (`api.messages.getFull(id)`) and captured namespaces
  * (`const m = messenger.messages; m.getFull(id)`, where the data API is the
- * capture's prefix) resolve, and a shadowed local named like a root does not.
+ * capture's prefix) resolve, as does a root named on the global object, and a
+ * shadowed local named like a root does not.
  * @param {?AstNode} node
  * @param {Map<AstNode, import("./api-base.js").AliasTarget>} bases
  * @returns {boolean}
@@ -452,7 +488,7 @@ function carriesData(node, bases) {
     if (found || !isMemberLike(n)) {
       return;
     }
-    const target = n.object?.type === "Identifier" ? bases.get(n.object) : null;
+    const target = bases.get(n.object) ?? null;
     if (!target) {
       return;
     }

@@ -199,56 +199,82 @@ function pathBeforeQuery(prefix) {
   return i >= 0 ? prefix.slice(0, i) : null;
 }
 
+// How many values one expression may resolve to before it counts as dynamic. A
+// ternary branches the value set and a "+" multiplies the branches on each side,
+// so a chain of them grows exponentially; past this bound the expression is
+// reported unresolved rather than half-enumerated.
+const MAX_STATIC_VALUES = 32;
+
 /**
- * True if a value carries no dynamic content: a literal, an uninterpolated
- * template, a "+" concatenation of static parts, or a static ternary. Its full
- * string value is then computable with staticValue.
+ * EVERY string value a fully-static expression can take, or null when it carries
+ * dynamic content. Static means a literal, an uninterpolated template, a "+"
+ * concatenation of static parts, or a ternary whose arms are all static.
+ *
+ * A ternary yields the values of BOTH arms, and a concatenation the combinations
+ * of its two sides, because a caller judging the result (is this URL local?) must
+ * see every value it could be: reporting one arm as if it were the whole answer
+ * lets an absolute URL parked in another arm pass for a relative one. A caller
+ * that needs a single answer decides which value governs - this function ranks
+ * nothing. Nesting needs no special case: `a ? x : b ? y : z` parses as
+ * Cond(x, Cond(y, z)), so the two-arm rule already collects the whole chain.
+ *
+ * A missing node resolves to one empty string (an absent argument is the empty
+ * value, not a dynamic one), as does a null literal.
  * @param {AstNode} node
- * @returns {boolean}
+ * @returns {?string[]}  Values (at least one, deduplicated), or null if dynamic.
  */
-export function isStatic(node) {
+export function staticValues(node) {
   if (!node) {
-    return true;
+    return [""];
   }
   switch (node.type) {
     case "StringLiteral":
+      return [node.value];
     case "NumericLiteral":
     case "BooleanLiteral":
+      return [String(node.value)];
     case "NullLiteral":
-      return true;
+      return [""];
     case "TemplateLiteral":
-      return node.expressions.length === 0;
-    case "BinaryExpression":
-      return (
-        node.operator === "+" && isStatic(node.left) && isStatic(node.right)
-      );
-    case "ConditionalExpression":
-      return isStatic(node.consequent) && isStatic(node.alternate);
+      return node.expressions.length === 0
+        ? [node.quasis.map((q) => q.value.cooked ?? "").join("")]
+        : null;
+    case "BinaryExpression": {
+      if (node.operator !== "+") {
+        return null;
+      }
+      const left = staticValues(node.left);
+      const right = staticValues(node.right);
+      if (!left || !right) {
+        return null;
+      }
+      const combined = [];
+      for (const l of left) {
+        for (const r of right) {
+          combined.push(l + r);
+        }
+      }
+      return capped(combined);
+    }
+    case "ConditionalExpression": {
+      const consequent = staticValues(node.consequent);
+      const alternate = staticValues(node.alternate);
+      return consequent && alternate
+        ? capped([...consequent, ...alternate])
+        : null;
+    }
     default:
-      return false;
+      return null;
   }
 }
 
 /**
- * The concatenated string value of a fully-static expression (see isStatic); the
- * empty string for a node with no static text. A ternary takes its consequent.
- * @param {AstNode} node
- * @returns {string}
+ * Deduplicate a value set, or drop it for being too large to enumerate (which
+ * reads as dynamic - the conservative answer, never a truncated one).
+ * @param {string[]} values
+ * @returns {?string[]}
  */
-export function staticValue(node) {
-  switch (node?.type) {
-    case "StringLiteral":
-      return node.value;
-    case "NumericLiteral":
-    case "BooleanLiteral":
-      return String(node.value);
-    case "TemplateLiteral":
-      return node.quasis.map((q) => q.value.cooked ?? "").join("");
-    case "BinaryExpression":
-      return staticValue(node.left) + staticValue(node.right);
-    case "ConditionalExpression":
-      return staticValue(node.consequent);
-    default:
-      return "";
-  }
+function capped(values) {
+  const unique = [...new Set(values)];
+  return unique.length > MAX_STATIC_VALUES ? null : unique;
 }
