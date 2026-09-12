@@ -9,7 +9,7 @@
   <body>
     <main class="page">
       <header class="check-header">
-        <h1>Build process review <span class="badge manual-review">manual-review</span></h1>
+        <h1>Build process review <span class="badge error">error</span></h1>
         <div class="check-id">undeclared-build-source</div>
       </header>
 
@@ -29,7 +29,7 @@
         a resource from an undeclared external source — is the error. It also owns the fallback
         lane: when the build could not be classified with confidence (offline / no token, or a step
         the linter could not statically follow, such as an opaque orchestrator or a network fetch)
-        the whole build routes to extended manual review. The other build classification
+        the whole build routes to Extended Manual Review. The other build classification
         (not-from-source) is owned by its own check; a genuine build, and a submission with no
         manifest to follow, produce nothing here.
       </p>
@@ -58,7 +58,7 @@ flowchart TD
         The add-on is told, with the
         explanation, that every part of the build must come only from the
         dependencies declared in the manifest and lock file. Otherwise the build
-        is escalated to extended manual review, where a reviewer reproduces the
+        is escalated to Extended Manual Review, where a reviewer reproduces the
         build by hand — using the build steps the source documents — and confirms
         it pulls only from the declared dependencies.
       </div>

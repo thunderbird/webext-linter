@@ -200,6 +200,103 @@ test("reviewing a fixture renders to stdout with a severity-based exit", () => {
   assert.ok(Array.isArray(json.findings));
 });
 
+// --llm-review end to end. Its whole output is the prompt, the Review Details section and
+// an item file: the prose report is deliberately absent, because its reader settles the
+// items it can address rather than the report it can see. JSON is refused - that is the
+// machine contract for ATN, which wants neither half of this.
+test("--llm-review prints a prompt and writes the item file, not the report", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const on = run([addon, ...OFFLINE_FLAGS, "--llm-review"]);
+  const lines = on.stdout.split("\n");
+  const intro = lines.findIndex((l) => l.startsWith("Please verify"));
+  const target = lines.findIndex((l) => l.startsWith("Reviewed XPI:"));
+  assert.ok(intro > -1, "prompt is printed");
+  assert.ok(intro < target, "prompt comes before the Review Details section");
+  // Wrapped at 80 columns, so match only single tokens: any phrase can straddle a break
+  // the next wording change happens to move.
+  assert.match(on.stdout, /"Report"/);
+  assert.match(on.stdout, /"Clear"/);
+  // The review itself is in the file, so none of it is printed.
+  assert.ok(!on.stdout.includes("── Found Issues ──"), "no prose report");
+  assert.ok(!on.stdout.includes("── Setup ──"), "no feed");
+
+  // The path is named in the output, and the file behind it is the review as an array.
+  const named = lines.find((l) => l.startsWith("Review items: "));
+  assert.ok(named, "the item file is named");
+  const items = JSON.parse(
+    fs.readFileSync(named.slice("Review items: ".length), "utf8")
+  );
+  assert.ok(Array.isArray(items) && items.length > 0);
+  assert.deepEqual(
+    items.map((x) => x.index),
+    items.map((_, i) => i + 1),
+    "index is the position in the array"
+  );
+  for (const x of items) {
+    assert.ok(["finding", "todo"].includes(x.kind));
+    // The section is named as the report prints it, not by an internal key.
+    assert.match(
+      x.section,
+      /^(Found Issues|Extended Code Review|Extended Manual Review|Standard Manual Review)$/
+    );
+  }
+
+  const off = run([addon, ...OFFLINE_FLAGS]);
+  assert.ok(!off.stdout.includes("Please verify"), "off by default");
+  assert.match(off.stdout, /── Found Issues ──/, "the report prints normally");
+
+  const json = run([
+    addon,
+    ...OFFLINE_FLAGS,
+    "--llm-review",
+    "--report-format",
+    "json",
+  ]);
+  assert.equal(json.code, 2);
+  assert.match(json.stderr, /--llm-review is text only/);
+});
+
+// --llm-review takes an OPTIONAL path, which parseArgs has no option type for: a bare flag
+// writes wherever the linter chooses, a flag with a path writes there and overwrites what
+// was there. The one shape parseArgs cannot disambiguate is the flag BEFORE the add-on,
+// where the add-on becomes the output file - that has to say so rather than read as a
+// missing argument.
+test("--llm-review writes where told, or where it chooses", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const named = (r) =>
+    r.stdout
+      .split("\n")
+      .find((l) => l.startsWith("Review items: "))
+      ?.slice("Review items: ".length);
+
+  const bare = named(run([addon, ...OFFLINE_FLAGS, "--llm-review"]));
+  assert.ok(
+    bare && fs.existsSync(bare),
+    "bare flag picks a path and writes it"
+  );
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-items-"));
+  const mine = path.join(dir, "mine.json");
+  fs.writeFileSync(mine, "STALE");
+  for (const form of [[`--llm-review=${mine}`], ["--llm-review", mine]]) {
+    const at = named(run([addon, ...OFFLINE_FLAGS, ...form]));
+    assert.equal(at, mine, form[0]);
+    // Overwritten, not appended to.
+    assert.ok(Array.isArray(JSON.parse(fs.readFileSync(mine, "utf8"))));
+  }
+  // A following option is not mistaken for the path.
+  assert.equal(
+    named(run([addon, ...OFFLINE_FLAGS, "--llm-review", "--eslint"])),
+    bare
+  );
+
+  // The flag before the add-on: the add-on is taken as the file, which must be said.
+  const swallowed = run([...OFFLINE_FLAGS, "--llm-review", addon]);
+  assert.equal(swallowed.code, 2);
+  assert.match(swallowed.stderr, /was taken as --llm-review's output file/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // The ESLint code-sanity check is opt-in: it runs only when --eslint is passed.
 test("--eslint gates the code-sanity check", () => {
   const addon = path.join(ROOT, "tests", "addons", "all-checks");
@@ -271,12 +368,14 @@ test("--sca-root / --sca-source map to the sca pipeline opts", () => {
   assert.ok(!pipelineOptsFromArgv([]).scaSource);
 });
 
-// --llm-review is accepted and does nothing: the review is deterministic, so the flag
-// has nothing to switch on, but a reviewer who still types it must get their review
-// rather than a usage error. It carries nothing into the pipeline.
-test("--llm-review is accepted and carries nothing into the run", () => {
+// --llm-review switches on the verification prompt and nothing else: the review stays
+// deterministic, so the flag must reach the pipeline as a print decision and leave every
+// other opt alone.
+test("--llm-review carries only the prompt decision into the run", () => {
   const withFlag = pipelineOptsFromArgv(["--llm-review"]);
-  assert.deepEqual(withFlag, pipelineOptsFromArgv([]));
+  assert.equal(withFlag.llmReview, true);
+  assert.equal(pipelineOptsFromArgv([]).llmReview, false);
+  assert.deepEqual({ ...withFlag, llmReview: false }, pipelineOptsFromArgv([]));
 });
 
 // The retired flags parse as unknown options (exit 2), so a stale command line fails

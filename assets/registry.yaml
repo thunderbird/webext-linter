@@ -377,50 +377,51 @@ deterministic-phase:
   response: |-
     The following Experiment API(s) override or extend a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under new, distinct API namespaces.
 
-# A deterministic check that escalates a whole-add-on manual review for every
-# Experiment submission: Experiments have full access to Thunderbird internals, so
-# they need a careful human review. Emits no findings, only the escalation, so the
-# declared severity is never stamped on anything - it is required of every check entry.
-- title: Experiment code review
-  severity: none
+# A whole-add-on review raised for every Experiment submission: Experiments have full
+# access to Thunderbird internals, so nothing here is proved by scanning and a person has
+# to look. The reviewer clears it or it is reported, which is why it carries a real
+# severity - and its response is a SCAFFOLD, leading with the requirement and ending in an
+# empty bullet for the reviewer to list what they found beneath (as no-surprises-policy
+# ends in a placeholder). The response is printed verbatim, so that bullet survives.
+- title: Experiment manual review
+  severity: error
   check: experiment-manual-review
-  escalation: code-review
+  escalation: manual-review
   input: manifest
   instructions: |-
-    This is an Experiment submission, which requires careful code review since it
-    has full access to Thunderbird's internals. The Experiment surface should be
-    kept to a minimum and must not affect Thunderbird's usability, stability,
-    performance, or security. To reduce review time, it may help to review only
-    the differences from the last approved submission.
+    This submission ships an Experiment, which runs with full access to
+    Thunderbird's internals. Verify that its Experiment surface is no larger than
+    the add-on needs, and that it does not affect Thunderbird's usability,
+    stability, performance or security. Reviewing only the differences from the
+    last approved submission can save time. Clear this only if all of that holds.
   response: |-
-    This is an Experiment submission, which requires careful code design and
-    planning, since it has full access to Thunderbird's internals. The Experiment
-    surface should be kept to a minimum and must not affect Thunderbird's
-    usability, stability, performance, or security.
+    This add-on ships an Experiment, which runs with full access to Thunderbird's internals. Its Experiment surface must be kept to what the add-on actually needs, and must not affect Thunderbird's usability, stability, performance or security. The following need to be addressed:
 
-# Escalates a manual review when an Experiment calls a WebExtension API the schema
-# does not recognize - usually a typo in the add-on's OWN experiment schema, which
-# reads like a false-positive unsupported-API finding. Emits no findings, only the
-# escalation, so the declared severity is never stamped on anything - it is required of
-# every check entry. unknown-api already lists the specific APIs.
+    - ...
+
+# Raises a code review when an Experiment calls a WebExtension API the schema does not
+# recognize - usually a typo in the add-on's OWN experiment schema, which reads like a
+# false-positive unsupported-API finding. The two outcomes are EXCLUSIVE, which is why the
+# instructions spell both out: the names are typos, so this is reported and unknown-api's
+# findings for those APIs are withdrawn, or the APIs genuinely do not exist, so this is
+# cleared and those findings stand. Whoever settles it settles both at once, which is what
+# keeps the developer from receiving two contradictory answers.
 - title: Experiment with unrecognized API usage
-  severity: none
+  severity: error
   check: experiment-unknown-api
   escalation: code-review
   input: source
   instructions: |-
     This Experiment calls WebExtension APIs the schema does not recognize (see the
-    "Unknown or unsupported WebExtension API" findings). For an experiment's OWN API,
-    this is usually a typo in that experiment's schema, NOT a genuine unsupported-API
-    rejection: the schema's `namespace` is the sole authority for the API name, so if
-    it does not match the API the code calls (regardless of the manifest's
-    experiment_apis key or parent.paths), the API is effectively undefined. Verify the
-    experiment schemas before treating these as unsupported APIs.
+    "Unknown or unsupported WebExtension API" findings). For an experiment's OWN API
+    this is usually a typo in that experiment's schema: the schema's `namespace` is the
+    sole authority for the API name, so if it does not match the API the code calls
+    (regardless of the manifest's experiment_apis key or parent.paths), the API is
+    undefined. Read every experiment schema. If the names are typos, report this and
+    withdraw the "Unknown or unsupported WebExtension API" findings for those APIs. If
+    the APIs genuinely do not exist, clear this and let those findings stand.
   response: |-
-    This Experiment calls WebExtension APIs that are not defined by any schema. If
-    these are your own Experiment APIs, verify that each experiment's schema declares
-    the matching `namespace` - the schema namespace is authoritative, so a typo there
-    leaves the API undefined even when the manifest declares it.
+    This Experiment calls WebExtension APIs that no schema defines. Where these are your own Experiment APIs, each experiment's schema must declare a `namespace` matching the name the code calls, since the namespace is authoritative and a mismatch leaves the API undefined even when the manifest declares it. Please correct the schema namespaces, or remove the calls to APIs that do not exist.
 
 # Flags a non-Experiment that pins strict_max_version (only blocks newer
 # Thunderbird; the APIs are forward-compatible).
@@ -559,7 +560,7 @@ deterministic-phase:
 # asserted as a finding. The setup build analysis also covers hooks, but only with a
 # token; this is the offline backstop. The hook and its command ride the locus.
 - title: Build install hook
-  severity: none
+  severity: error
   sca: true
   check: build-lifecycle-hook
   escalation: code-review
@@ -582,7 +583,7 @@ deterministic-phase:
 # on. {{unresolvedBuildSteps}} names the steps the linter could not follow and
 # {{buildInstructions}} how the source says to build, both in the manual instructions.
 - title: Build process review
-  severity: none
+  severity: error
   sca: true
   check: undeclared-build-source
   escalation: manual-review
@@ -734,7 +735,7 @@ deterministic-phase:
 # Preflight -> manual review: data sent to a hardcoded remote host means the
 # listing must carry a privacy policy, which is not part of the package.
 - title: Remote data transmission needs a privacy policy
-  severity: none
+  severity: hold-or-error
   check: privacy-policy
   escalation: manual-review
   input: source
@@ -753,7 +754,7 @@ deterministic-phase:
 # to a native application. What the listing discloses about that exchange is not in
 # the package, so a person settles it.
 - title: Native messaging needs disclosure
-  severity: none
+  severity: hold-or-error
   check: native-messaging
   escalation: manual-review
   input: manifest
@@ -980,12 +981,13 @@ deterministic-phase:
 # The same scan's other question (src/lib/remote-refs.js, shared with remote-resources
 # above): a remote load inside a file whose CONTENT matched a published upstream release.
 # The line is that release's, so it is not the developer's to defend - but nor does it
-# follow that the add-on needs the file. Emits no findings: every site goes to a person,
-# who decides whether shipping it as published is acceptable. Turns on the content match,
+# follow that the add-on needs the file. Emits no findings of its own: every site goes to a
+# person, who decides whether shipping it as published is acceptable, and a case settled
+# against the add-on becomes an error like its sibling remote-resources. Turns on the content match,
 # never on a declaration - an unverified declared file is reviewed as the developer's own
 # code, so its remote loads stay remote-resources' findings.
 - title: Remote load inside an upstream release
-  severity: none
+  severity: error
   check: vendored-remote-resources
   escalation: manual-review
   input: source
@@ -1003,7 +1005,7 @@ deterministic-phase:
 # checks above. Like them, the shared scan only covers code OUTSIDE the pure
 # WebExtension tree (WebExtension code is CSP-gated, see unsafe-eval/unsafe-inline).
 - title: Remote eval
-  severity: none
+  severity: error
   check: remote-eval
   escalation: code-review
   input: source
@@ -1018,7 +1020,7 @@ deterministic-phase:
 # normal transmission (fetch and friends) to a remote host - allowed
 # only with an options-page opt-in, judged from the options page in evidence.
 - title: User-data exfiltration
-  severity: none
+  severity: error
   check: data-exfiltration
   escalation: code-review
   input: source
@@ -1041,7 +1043,7 @@ deterministic-phase:
 # the deterministic disguised-* errors; this asks whether the dynamic URL is really
 # an undisclosed data send or just legitimate dynamic URL building.
 - title: Disguised data transmission
-  severity: none
+  severity: error
   check: disguised-transmission
   escalation: code-review
   input: source
@@ -1178,20 +1180,26 @@ permission-prompts:
 
 
 manual-checks:
-# Manual: inspect the listing + add-on for spam, inappropriate, or low-effort
-# content.
-- title: Check the submission for spam
-  check: check-submission-spam
+# Manual: the content the add-on SHIPS. Everything here is inside the submitted
+# package, so every fix needs a new version - which is what separates it from
+# unacceptable-listing-content.
+- title: Check the package for unacceptable content
+  check: unacceptable-package-content
+  severity: error
   instructions: |-
-    Inspect the listing (name, summary, description, screenshots) and the add-on
-    itself. Determine if it looks like spam or contains inappropriate, misleading,
-    or low-effort content.
+    Inspect what the add-on ships: its name and description in manifest.json, its
+    icons, and any text, images or media bundled in the package. Determine whether
+    any of it is spam, inappropriate, misleading, or low-effort, or breaches
+    Mozilla's Acceptable Use Policy
+    (https://www.mozilla.org/about/legal/acceptable-use/). Only content inside the
+    submitted package belongs here. The ATN listing is a separate check.
   response: |-
-    This add-on contains inappropriate content.
+    Content shipped inside this add-on does not meet our content requirements. It must not be spam, inappropriate, misleading, or low-effort, and it must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please correct the affected content and submit a new version.
 
 # Manual: exercise the add-on in a test profile; may need credentials or info.
 - title: Test the add-on and request testing information if needed
   check: test-add-on
+  severity: hold-or-error
   instructions: |-
     Test the add-on’s functionality in a test profile, and check if it needs
     additional information like credentials in order to continue the review.
@@ -1201,6 +1209,7 @@ manual-checks:
 # Manual: behavior not documented on the ATN listing (inspect the version diff).
 - title: Check for "No Surprises" policy violations
   check: no-surprises-policy
+  severity: error
   instructions: |-
     Test the add-on’s functionality in a test profile and inspect the code for
     any unexpected features or behavior that is not documented on the ATN
@@ -1212,6 +1221,7 @@ manual-checks:
 # Manual: payment is required but the ATN "needs payment" flag is off.
 - title: Check for a missing payment disclosure
   check: missing-payment-disclosure
+  severity: hold-or-error
   instructions: |-
     Test the add-on’s functionality in a test profile. Verify whether the
     add-on requires a subscription or other form of payment to function but the
@@ -1222,6 +1232,7 @@ manual-checks:
 # Manual: limited/non-public audience (better self-hosted than publicly listed).
 - title: Check suitability for listing
   check: suitability-for-listing
+  severity: error
   instructions: |-
     Judge whether the add-on targets a limited or non-public audience (for
     example an internal, single-organization, or test-only add-on) and should
@@ -1229,18 +1240,25 @@ manual-checks:
   response: |-
     Due to its limited or non-public audience, this add-on is not suitable for listing on ATN (addons.thunderbird.net). Please consider self-hosting and distributing it yourself.
 
-# Manual: name/summary/description/screenshots vs Mozilla’s Acceptable Use Policy.
-- title: Acceptable Use Policy
-  check: acceptable-use-policy
+# Manual: the content on the ATN LISTING. Nothing here is in the package, so every
+# fix is an edit on addons.thunderbird.net and no new version is needed.
+- title: Check the listing for unacceptable content
+  check: unacceptable-listing-content
+  severity: hold-or-error
   instructions: |-
-    Check the name, summary, description, and screenshots against Mozilla’s
-    Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/).
+    Inspect the add-on listing page on ATN: its summary, description and
+    screenshots. Determine whether any of it is spam, inappropriate, or
+    misleading, or breaches Mozilla's Acceptable Use Policy
+    (https://www.mozilla.org/about/legal/acceptable-use/). The description here is
+    the one on the listing page, not the one in manifest.json. Only the listing
+    belongs here. What the package itself ships is a separate check.
   response: |-
-    The name, summary, description, and/or or screenshot(s) of this extension contain content that does not comply with Mozilla’s Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/).
+    The add-on listing page on ATN (addons.thunderbird.net) does not meet our content requirements. Its summary, description and screenshots must not be spam, inappropriate, or misleading, and they must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please update the listing. A new version of the add-on is not needed.
 
 # Manual: icon imitating the Thunderbird/Mozilla logo (an image checks can’t see).
 - title: Check the icon for trademark or logo imitation
   check: icon-trademark-imitation
+  severity: error
   instructions: |-
     Inspect the add-on’s icon, if it imitates or incorporates the Thunderbird or
     Mozilla logo.
@@ -1250,6 +1268,7 @@ manual-checks:
 # Manual: the ATN listing page lacks usage details/entry points or screenshots.
 - title: Missing ATN description or details
   check: missing-atn-description
+  severity: hold-or-error
   instructions: |-
     Verify that the add-on listing page on ATN includes detailed instructions on
     how to use the add-on and where to find its entry points. It should also
@@ -1260,6 +1279,7 @@ manual-checks:
 # Manual: the ATN listing page should have an English version.
 - title: Missing English ATN localization
   check: missing-english-atn-localization
+  severity: hold-or-error
   instructions: |-
     Verify that the ATN listing page also has an English version.
   response: |-
@@ -1269,6 +1289,7 @@ manual-checks:
 # original?
 - title: Forked add-on
   check: forked-add-on
+  severity: error
   instructions: |-
     Check if the submission is a fork of an existing add-on. Such forks are only
     allowed on ATN if they are clearly distinguished from the original and
@@ -1286,10 +1307,11 @@ manual-checks:
 
     Because the original project is still active, your submission does not meet these requirements. Small-change forks can sometimes cause confusion for users and unnecessary overlap for developers. We encourage you to consider contributing your improvements directly to the original project so that all existing users can benefit from your ideas.
 
-# Headings shown above each severity group in the report’s Issues section
+# Headings shown above each severity group in the report’s Found Issues section
 # (numbering is continuous across the groups).
 issue-headings:
   error: "The following findings caused the submission to be rejected:"
+  hold: "To continue the review, a few issues still need to be addressed:"
   warning: "We kindly ask you to resolve the following issues with your next release:"
   info: "We would like to share the following information with you:"
 
@@ -1300,11 +1322,66 @@ messages:
   check-failed: |-
     The "{{item}}" check could not be run. The other checks still ran.
 
-# The customer-facing preamble at the top of the report’s Issues section: "none"
-# when there are no findings, "rejected" when there is any error finding, and
+# The customer-facing preamble at the top of the report’s Found Issues section:
+# "none" when there are no findings, "rejected" when there is any error finding,
+# "hold" when there is none but the review cannot proceed (a hold finding), and
 # "feedback" otherwise (warnings/info only). With findings, it is glued to the
 # first severity heading; with none, it is the whole Issues body.
 verdict-intros:
   none: "The automated review did not find any issues."
   feedback: "Thank you for your contribution, it will be approved shortly."
+  hold: "Thank you for your contribution."
   rejected: "Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form."
+
+# The verification prompt --llm-review prints, directly above the Review Details section
+# that names the item file it works from. It is the whole output of such a run: the report
+# itself is not printed, so this text and that file are all its reader gets.
+#
+# Three parts, in the order a reader needs them: `intro` says what the job is and where
+# the review IS, each ask is an INVENTORY line naming one section of it, and `outcome` is
+# the PROCEDURE - numbered steps, because a model follows a numbered list far more
+# reliably than prose, and every rule sits on the step it governs instead of being
+# collected at the end.
+#
+# `intro` always, `issues` only when the Found Issues section carries a finding,
+# `code-review` only when the "Extended Code Review" section carries an item, and the two
+# manual ones only when their own section does - a prompt must not ask for work the report
+# does not contain, and must not leave out work it does. `outcome` closes the prompt
+# whenever any ask printed: with nothing to settle there is nothing to hand back.
+# Printed text, so the wording lives here like all the rest.
+llm-review-prompt:
+  intro: |-
+    Please verify this review and settle its manual items with the reviewer. Every item of it is in the JSON array named under "Review Details" below, one entry per item, in report order, each carrying its own "index" and the report section it is listed under.
+  issues: |-
+    The "Found Issues" entries are what the deterministic checks proved. Judge only whether
+    each one is right, never whether it matters.
+  code-review: |-
+    The "Extended Code Review" entries are cases a deterministic check could not settle, so
+    it marked them unsure and left them for inspection. They are settled by reading the
+    add-on, which is your job here, not the reviewer's. The linter keeps the WebExtension
+    schema files in its schema cache, so read them there for the permissions and methods
+    this manifest version has.
+  extended-manual-review: |-
+    The "Extended Manual Review" entries are cases a check could not settle from the package
+    at all. Only the reviewer can answer them.
+  standard-manual-review: |-
+    The "Standard Manual Review" entries are the checks done by hand on every submission.
+    They need the ATN listing page, the add-on exercised in a test profile, or a judgement
+    only a person can make.
+  outcome: |-
+    Work in this order:
+
+    1. Verify each "Found Issues" entry yourself. One that is not a correct finding is "withdrawn". Never put one to the reviewer.
+
+    2. Settle each "Extended Code Review" entry yourself, following that entry's "instructions". A case that holds against the add-on is "reported", one that does not is "cleared".
+
+    3. Put every manual review entry ("Extended Manual Review" and/or "Standard Manual Review") to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each entry's "instructions" as its question, with that entry's "title" as the question's first line followed by a blank line. Label the question with its position among these entries and their total (for example "3/11"). Offer exactly two answers, "Report" and "Clear". "Report" means the case holds against the add-on and the developer is told, "Clear" means there is nothing to tell them.
+
+    4. Write a SEPARATE JSON file naming the reviewed add-on and holding only the settled entries, keyed by their "index". Leave the item file itself untouched. The "addon" is the path printed under "Review Details" as the reviewed XPI, and it is checked: an index means nothing without it, so verdicts cannot be applied to another submission by accident.
+
+    {"addon": "/path/to/the-reviewed.xpi",
+    "verdicts": {"3": "cleared", "4": "reported", "7": "withdrawn"}}
+
+    5. Report your own decisions in two sections: under "Found Issues", each finding you withdrew and why, and under "Extended Code Review", the verdict you reached for each entry and why. The reviewer's own answers need no report.
+
+    6. Run the same webext-linter command again with --llm-verdict <your file> in place of --llm-review, and print the report it produces as a code block, unchanged. Write no report wording of your own, it is the linter's.

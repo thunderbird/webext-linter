@@ -21,6 +21,11 @@
 
 export const SEVERITY = Object.freeze({
   ERROR: "error",
+  // Blocks the review without rejecting the add-on: the fix is outside the package
+  // (a disclosure on the ATN listing, a privacy policy pasted into its field), so no
+  // rebuild would help. Same blocking weight as an error, a different actor - which is
+  // why neither `error` ("the code must change") nor `warning` ("next release") fits.
+  HOLD: "hold",
   WARNING: "warning",
   INFO: "info",
 });
@@ -30,6 +35,7 @@ export const SEVERITY = Object.freeze({
 // changed in exactly one place. SEVERITY_RANK is derived from it.
 export const SEVERITY_ORDER = Object.freeze([
   SEVERITY.ERROR,
+  SEVERITY.HOLD,
   SEVERITY.WARNING,
   SEVERITY.INFO,
 ]);
@@ -123,6 +129,48 @@ export function hasErrors(findings) {
 }
 
 /**
+ * Settle every `hold` in the set against the rest of it - the ONE moment a
+ * hold-or-error check's band is decided, run once before anything reads a severity,
+ * so the text report, the Summary tally and the JSON can never disagree about it.
+ *
+ * A hold is what its check emits provisionally. With any real error present the
+ * submission is rejected anyway, so the hold is not the verdict - it is one more item
+ * on the rejection list, and it becomes an error. On its own it stands, and the
+ * review is on hold. Mutates in place, like renderFindings.
+ * @param {Finding[]} findings
+ * @returns {void}
+ */
+export function resolveHolds(findings) {
+  if (!hasErrors(findings)) {
+    return;
+  }
+  for (const f of findings) {
+    if (f.severity === SEVERITY.HOLD) {
+      f.severity = SEVERITY.ERROR;
+    }
+  }
+}
+
+/**
+ * Which verdict preamble the Issues section opens with: no findings at all, any error
+ * (rejected), any hold and no error (on hold), otherwise warnings/info only. One
+ * definition, so the preamble and the headings below it always tell the same story.
+ * @param {Finding[]} findings
+ * @returns {"none"|"rejected"|"hold"|"feedback"}
+ */
+export function verdictKey(findings) {
+  if (findings.length === 0) {
+    return "none";
+  }
+  if (hasErrors(findings)) {
+    return "rejected";
+  }
+  return findings.some((f) => f.severity === SEVERITY.HOLD)
+    ? "hold"
+    : "feedback";
+}
+
+/**
  * Stable sort: by file, then line, then column, then severity.
  *
  * @param {Finding[]} findings
@@ -162,6 +210,11 @@ export function sortFindings(findings) {
  * @property {string} [instructions]
  * @property {string|null} [response]  Developer-facing wording (the registry
  *   `response`), printed under the instructions in the report; null when none.
+ * @property {Record<string, string|number>|null} [data]  The slot values the item's
+ *   texts were filled from, so a reported case can be resolved as a finding.
+ * @property {string|null} [verdict]  The severity a reported case carries (the
+ *   owning check's `severity`), printed above the response as the suggested
+ *   verdict; null when settling the case produces no finding.
  * @property {string|null} [file]
  * @property {{line?: number, column?: number}|null} [loc]
  * @property {string|null} [item]  The SUBJECT, surfaced on the locus when the
@@ -171,8 +224,8 @@ export function sortFindings(findings) {
  * @property {boolean} [listItem]  Surface the SUBJECT (`item`) on the location line
  *   (the instructions did not consume `{{item}}`); set by the resolver.
  * @property {boolean} [extended]  True for a check that escalated to manual
- *   review (rendered under "Extended manual review"); false/absent for a
- *   registry manual-checks entry (rendered under "Standard manual review"). Set
+ *   review (rendered under "Extended Manual Review"); false/absent for a
+ *   registry manual-checks entry (rendered under "Standard Manual Review"). Set
  *   by the pipeline when it assembles the list.
  */
 

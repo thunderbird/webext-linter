@@ -89,6 +89,13 @@ is monitored and upstream changes are ported manually.
 | `--report-format <text\|json>` | Report output format (default `text`). |
 | `--report-out <file>` | Write the report to a file in addition to stdout. |
 
+**LLM review:** the two halves of one round trip, in the order they run.
+
+| Option | Description |
+| --- | --- |
+| `--llm-review [<file>]` | Print a verification prompt and write the review as a JSON item array instead of the report, to a temp file or to `<file>` (use `--llm-review=<file>` if the add-on path follows). The prompt explains how to settle the items and pass them back. Refused with `--report-format json`. |
+| `--llm-verdict <file>` | Apply settled verdicts and print the settled report, from a JSON file written as the `--llm-review` prompt describes. |
+
 **Source code archive (SCA):**
 
 | Option | Description |
@@ -158,7 +165,7 @@ minified/obfuscated build.
   (required when `--allow-experiments` is used in SCA mode).
 - Because a review spans two artifacts, each finding's `file:line` is prefixed with the
   artifact it lives in - `[XPI]` (the built XPI) or `[SCA]` (the readable source code
-  archive) - so a reviewer knows which one to open; the Issues section closes with a
+  archive) - so a reviewer knows which one to open; the Found Issues section closes with a
   legend, and the same prefix appears on the live activity feed. A plain XPI review
   (one artifact) adds no prefix.
 
@@ -195,9 +202,9 @@ findings. A check decides each case in code - as a finding, or as an **escalatio
 of a case it cannot settle, which reaches the reviewer as a to-do.
 
 An escalation is sorted by who can settle it. Most are questions about the add-on's
-own code and land under **Extended code review**. A check whose cases the code cannot
+own code and land under **Extended Code Review**. A check whose cases the code cannot
 answer declares `escalation: manual-review` instead, and its cases land under
-**Extended manual review**: `privacy-policy` (the policy is a field in the ATN listing,
+**Extended Manual Review**: `privacy-policy` (the policy is a field in the ATN listing,
 not in the package), `native-messaging` (likewise, what the listing discloses about the
 native app), `undeclared-build-source` (reproducing the build is the reviewer's own
 attestation that the source produces the shipped XPI), and `vendored-remote-resources`
@@ -210,7 +217,19 @@ sections is asking two questions, and is two checks: `remote-resources` and
 `vendored-remote-resources` are that split, sharing one scan.
 
 Either way the item carries its **suggested response**: once the reviewer settles
-the case against the add-on, that is the text the developer receives.
+the case against the add-on, that is the text the developer receives, and its
+**suggested verdict**: the band that response lands the submission in.
+
+Most bands are fixed - `error`, `warning`, `info`. Two are decided at run time.
+`auto` lets the check set each finding's band (an advisory's own rating, say).
+`hold-or-error` marks a fault the developer cannot fix in code, because the fix is on
+the ATN listing: a missing privacy policy, an undisclosed native app. On its own such a
+finding puts the review **on hold** - its own section, first, under its own preamble -
+and the run still exits `0`, because nothing is wrong with the add-on and a person
+continues the review. Alongside a real error the submission is rejected anyway, so the
+hold is not the verdict: it becomes one more item on the rejection list. That is settled
+once, before anything reads a severity, so the report, the tally and the JSON always
+agree.
 
 Escalations deliberately reach the human report only - the JSON report omits
 `meta.manualReview` and carries just what the tool is certain of, so escalating
@@ -295,16 +314,16 @@ handed a concrete `file:line` to look at rather than a verdict the tool guessed.
 Some review steps can't be automated - they need hands-on testing or a human's
 judgment over content the tool can't see (the store listing, screenshots, the
 icon). These live under `manual-checks` in the yaml and are surfaced in the
-report's **Standard manual review** to-do list.
+report's **Standard Manual Review** to-do list. They carry a severity like every other entry, so a reviewer settles one exactly as they settle an escalation: the item names the band a confirmed case lands in, and `--llm-verdict` can confirm it into a finding or clear it away.
 
 | Check id (`check:`) | What the reviewer verifies |
 | --- | --- |
-| `check-submission-spam` | The listing and add-on for spam or inappropriate, misleading, or low-effort content. |
+| `unacceptable-package-content` | What the add-on ships - its name and description in `manifest.json`, its icons, and any bundled text, images or media - for spam, inappropriate, misleading or low-effort content, and against Mozilla's Acceptable Use Policy. Every fix here needs a new version. |
 | `test-add-on` | Functionality in a test profile, fail if credentials or other info are needed to continue. |
 | `no-surprises-policy` | The code diff for behavior not documented on the ATN listing that could surprise the user. |
 | `missing-payment-disclosure` | Whether the add-on requires payment but the "needs payment" flag is not set on ATN. |
 | `suitability-for-listing` | Whether the add-on targets a limited or non-public audience (better self-hosted than listed). |
-| `acceptable-use-policy` | The name, summary, description, and screenshots against Mozilla's Acceptable Use Policy. |
+| `unacceptable-listing-content` | The ATN listing page - its summary, description and screenshots - for spam, inappropriate or misleading content, and against Mozilla's Acceptable Use Policy. Every fix here is a listing edit, so no new version is needed. |
 | `icon-trademark-imitation` | The icon for imitation of the Thunderbird or Mozilla logo (an image the automated checks can't inspect). |
 | `missing-atn-description` | The ATN listing page has usage instructions, entry points, and screenshots. |
 | `missing-english-atn-localization` | The ATN listing page also has an English version. |

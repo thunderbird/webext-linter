@@ -3,30 +3,34 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Check the submission for spam</title>
+    <title>Check the package for unacceptable content</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
         <h1>
-          Check the submission for spam
+          Check the package for unacceptable content
           <span class="badge manual">manual</span>
         </h1>
-        <div class="check-id">check-submission-spam</div>
+        <div class="check-id">unacceptable-package-content</div>
       </header>
 
       <h2>What it detects</h2>
       <p class="lead">
         This is a human-review item with no automated logic behind it. A
-        reviewer inspects the listing — name, summary, description and
-        screenshots — together with the add-on itself.
+        reviewer inspects what the add-on ships: its name and description in
+        <code>manifest.json</code>, its icons, and any text, images or media
+        bundled in the package.
       </p>
       <p>
-        The goal is to decide whether the submission looks like spam or carries
-        inappropriate, misleading, or low-effort content. Like the other manual
-        checks it carries no automated severity — a confirmed problem is raised
-        for the developer from the manual-review section.
+        Each is weighed for spam, inappropriate, misleading or low-effort
+        content, and against Mozilla's Acceptable Use Policy. Everything judged
+        here lives inside the submitted package, so every fix needs a new
+        version. The ATN listing is judged separately by
+        <a href="unacceptable-listing-content.html"
+          >unacceptable-listing-content</a
+        >.
       </p>
 
       <h2>Decision flow</h2>
@@ -46,7 +50,9 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The developer is told that the add-on contains inappropriate content.
+        The developer is told that content shipped inside the add-on does not
+        meet our content requirements, and is asked to correct it and submit a
+        new version.
       </div>
 
       <p class="source-note">

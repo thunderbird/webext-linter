@@ -818,7 +818,7 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
 // build analysis (analyzeBuild) + the deterministic undeclared-build-source check. This proves
 // the pipeline wires selectScaBuildFiles -> addon.buildFiles.buildReview -> buildCtx (ctx.addon) ->
 // the check: analyzeBuild stores analyzed:false and the check escalates the
-// build to Extended manual review (graceful offline degradation).
+// build to Extended Manual Review (graceful offline degradation).
 test("SCA e2e: a build script outside the source is reviewed by undeclared-build-source", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({

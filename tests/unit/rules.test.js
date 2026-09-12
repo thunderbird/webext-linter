@@ -692,7 +692,6 @@ test("every escalating check declares a section, and only those", async () => {
       "build-lifecycle-hook",
       "data-exfiltration",
       "disguised-transmission",
-      "experiment-manual-review",
       "experiment-unknown-api",
       "minimize-web-accessible-resources",
       "missing-english-localization",
@@ -705,6 +704,7 @@ test("every escalating check declares a section, and only those", async () => {
       "unused-permission",
     ],
     "manual-review": [
+      "experiment-manual-review",
       "native-messaging",
       "privacy-policy",
       "undeclared-build-source",
@@ -732,10 +732,14 @@ test("every check's severity is pinned to its band", async () => {
   const actual = {};
   for (const c of checks) (actual[c.severity] ??= []).push(c.id);
   for (const k of Object.keys(actual)) actual[k].sort();
+  // No `none` key: every check that escalates declares the band a reported case carries.
+  // The value still exists for a check that emits nothing at all, and runOneCheck still
+  // refuses a finding from one - it simply has no entry today.
   assert.deepEqual(actual, {
     error: [
       "background-module",
       "background-page-module",
+      "build-lifecycle-hook",
       "build-registry-redirect",
       "bundled-files",
       "cleartext-transmission",
@@ -744,18 +748,22 @@ test("every check's severity is pinned to its band", async () => {
       "core-symbol-in-webext",
       "csp-unsafe-eval",
       "csp-unsafe-inline",
+      "data-exfiltration",
       "debugger-statement",
       "default-locale-missing",
       "default-locale-unused",
       "disguised-navigation",
       "disguised-resource",
       "disguised-stylesheet",
+      "disguised-transmission",
       "disguised-window",
       "eval-call",
+      "experiment-manual-review",
       "experiment-missing-strict-max-version",
       "experiment-modified",
       "experiment-not-allowed",
       "experiment-overrides-api",
+      "experiment-unknown-api",
       "function-constructor",
       "manifest-invalid-json",
       "manifest-missing",
@@ -767,12 +775,14 @@ test("every check's severity is pinned to its band", async () => {
       "missing-permission",
       "multiple-vendor-files",
       "obfuscated-code",
+      "remote-eval",
       "remote-resources",
       "strict-max-version-api",
       "strict-min-version-api",
       "string-timer",
       "sync-xhr",
       "trademark-violation",
+      "undeclared-build-source",
       "unknown-api",
       "unpinned-dependency",
       "unpinned-vendor-source",
@@ -786,6 +796,7 @@ test("every check's severity is pinned to its band", async () => {
       "vendor-ambiguous-source",
       "vendor-modified",
       "vendor-unparseable",
+      "vendored-remote-resources",
     ],
     warning: [
       "async-onmessage",
@@ -812,18 +823,9 @@ test("every check's severity is pinned to its band", async () => {
       "vendor-vuln-unknown",
     ],
     auto: ["banned-library", "vendor-vulnerable", "vendor-vulnerable-dev"],
-    none: [
-      "build-lifecycle-hook",
-      "data-exfiltration",
-      "disguised-transmission",
-      "experiment-manual-review",
-      "experiment-unknown-api",
-      "native-messaging",
-      "privacy-policy",
-      "remote-eval",
-      "undeclared-build-source",
-      "vendored-remote-resources",
-    ],
+    // Blocks the review without rejecting the add-on - the fix is on the ATN listing,
+    // so no rebuild would help. Resolves to error only alongside a real one.
+    "hold-or-error": ["native-messaging", "privacy-policy"],
   });
 });
 
@@ -1179,7 +1181,7 @@ test("manualChecks emits every entry, ungated", () => {
   const reg = loadRegistry();
   const titles = reg.manualChecks().map((m) => m.title);
   assert.ok(titles.includes("Forked add-on"));
-  assert.ok(titles.includes("Check the submission for spam"));
+  assert.ok(titles.includes("Check the package for unacceptable content"));
   assert.equal(titles.length, reg.manualCheckIds().length);
 });
 
@@ -3315,6 +3317,21 @@ test("a fixed-severity check cannot override its finding severity", async () => 
   const out = await runOneCheck({}, check, "[1/1]");
   assert.equal(out.findings.length, 1);
   assert.equal(out.findings[0].severity, "warning"); // entry wins; check ignored
+});
+
+// severity:hold-or-error stamps the HOLD, not the error. Which of the two a finding
+// really is depends on what every OTHER check found, and runOneCheck cannot know that -
+// so it stamps the band the check knows on its own and resolveHolds settles it after the
+// run. Stamping error here would auto-reject a submission whose only fault is a missing
+// disclosure on the ATN listing.
+test("severity:hold-or-error stamps a hold, leaving the rest to resolveHolds", async () => {
+  const check = {
+    id: "held",
+    severity: "hold-or-error",
+    run: () => ({ findings: [finding({ item: "x" })] }),
+  };
+  const out = await runOneCheck({}, check, "[1/1]");
+  assert.equal(out.findings[0].severity, "hold");
 });
 
 test("severity:auto lets the check set each finding's severity", async () => {

@@ -32,6 +32,7 @@ import {
   info,
   setVerbose,
   setProgress,
+  setFeed,
   setQuiet,
   setCapture,
   getCapture,
@@ -167,6 +168,21 @@ function helpText() {
     ],
   ];
 
+  // The two halves of one round trip, in the order they run: --llm-review asks, then
+  // --llm-verdict applies the answers. Their own section, because neither is a report
+  // format - the first replaces the report with a prompt and a file, the second rebuilds
+  // it from settled verdicts.
+  const llm = [
+    [
+      "--llm-review [<file>]",
+      "Print a verification prompt and write the review as a JSON item array instead of the report, to a temp file or to <file>. The prompt explains how to settle the items and pass them back with --llm-verdict. Refused with --report-format json.",
+    ],
+    [
+      "--llm-verdict <file>",
+      "Apply settled verdicts and print the settled report, from a JSON file written as the --llm-review prompt describes.",
+    ],
+  ];
+
   const sca = [
     [
       "--sca-root <folder|zip>",
@@ -221,6 +237,9 @@ function helpText() {
     "Report output:",
     ...report.map(([flag, desc]) => optionLine(flag, desc)),
     "",
+    "LLM review:",
+    ...llm.map(([flag, desc]) => optionLine(flag, desc)),
+    "",
     "Source code archive (SCA):",
     ...sca.map(([flag, desc]) => optionLine(flag, desc)),
     "",
@@ -249,12 +268,32 @@ const OPTIONS = {
   "sca-exp-source": { type: "string" },
   "report-format": { type: "string" },
   "report-out": { type: "string" },
-  // Accepted and ignored. The review is deterministic, so there is nothing for it to
-  // switch on, and rejecting it would break the reviewers who still type it.
-  "llm-review": { type: "boolean" },
+  "llm-review": { type: "string" },
+  "llm-verdict": { type: "string" },
   verbose: { type: "boolean" },
   help: { type: "boolean" },
 };
+
+// --llm-review takes an OPTIONAL path: bare it writes the item file where the linter
+// chooses, with a path it writes that file. parseArgs has no option type for that - a
+// string option demands a value and a boolean one refuses every value - so a bare
+// occurrence is rewritten to an empty value before parsing. It refuses
+// `--llm-review --other` on its own ("argument is ambiguous"), which is why only the bare
+// case needs rewriting: the last token, or one followed by another option.
+const OPTIONAL_VALUE = new Set(["--llm-review"]);
+
+/**
+ * @param {string[]} argv
+ * @returns {string[]}
+ */
+function withOptionalValues(argv) {
+  return argv.map((arg, i) =>
+    OPTIONAL_VALUE.has(arg) &&
+    (i === argv.length - 1 || argv[i + 1].startsWith("-"))
+      ? `${arg}=`
+      : arg
+  );
+}
 
 /**
  * @param {string[]} argv
@@ -264,7 +303,7 @@ export async function main(argv) {
   let parsed;
   try {
     parsed = parseArgs({
-      args: argv,
+      args: withOptionalValues(argv),
       options: OPTIONS,
       allowPositionals: true,
     });
@@ -284,6 +323,11 @@ export async function main(argv) {
   setQuiet(format === "json");
   setVerbose(values.verbose);
   setProgress(format === "text");
+  // --llm-review hands the report to a model and --llm-verdict produces the settled
+  // report a reviewer sends on. Either way the output IS the document, so the record of
+  // how it was produced - the Setup and Activity sections - is noise in it. The report's
+  // own header and prompt are not feed and still print.
+  setFeed(values["llm-review"] === undefined && !values["llm-verdict"]);
   setCapture(format === "text" && Boolean(values["report-out"]));
   // Color only on an interactive text screen. Piped/redirected runs and JSON
   // stay plain, and the --report-out copy is stripped below either way.
@@ -294,6 +338,18 @@ export async function main(argv) {
   // below so --help and validation errors all carry it too.
   emitBanner(argv);
 
+  // parseArgs cannot tell --llm-review's optional value from the add-on path, so
+  // `--llm-review <addon>` takes the add-on as the output file and leaves nothing to
+  // review. Say that, instead of printing the whole help for what looks like a missing
+  // argument.
+  if (!values.help && positionals.length === 0 && values["llm-review"]) {
+    process.stderr.write(
+      `"${values["llm-review"]}" was taken as --llm-review's output file, so no add-on ` +
+        "was given. Put the add-on first, or write --llm-review=<file>.\n"
+    );
+    return 2;
+  }
+
   if (values.help || positionals.length === 0) {
     process.stdout.write(helpText());
     return values.help ? 0 : 2;
@@ -302,6 +358,29 @@ export async function main(argv) {
   if (format !== "text" && format !== "json") {
     process.stderr.write(
       `Invalid --report-format "${format}" (expected text or json).\n`
+    );
+    return 2;
+  }
+
+  // --llm-review's whole output is a prompt and an item file. JSON is the machine
+  // contract for ATN, which wants neither, and asking for both leaves nothing coherent to
+  // print - so say so rather than silently favouring one.
+  if (values["llm-review"] !== undefined && format === "json") {
+    process.stderr.write(
+      "--llm-review is text only: it prints a prompt and writes an item file, which is " +
+        "not what --report-format json produces.\n"
+    );
+    return 2;
+  }
+
+  // The two halves of one round trip, one run each: --llm-review asks the questions,
+  // --llm-verdict applies the answers. Together they would print a prompt asking for
+  // verdicts on a report that already has them, so the answer file would be written
+  // against a review nobody ran. Refuse rather than pick one.
+  if (values["llm-review"] !== undefined && values["llm-verdict"]) {
+    process.stderr.write(
+      "--llm-review and --llm-verdict are the two halves of one round trip and cannot " +
+        "be used together: run --llm-review first, then --llm-verdict with the answers.\n"
     );
     return 2;
   }
@@ -384,14 +463,22 @@ export async function main(argv) {
   // The full report comes from the report layer: formatReview assembles the body, the advisory
   // review summaries (text only), and the verdict tally LAST, in the shipped order. The CLI just
   // writes it.
-  const rendered = formatReview(result, format);
-  process.stdout.write(rendered + "\n");
+  //
+  // Except under --llm-review, which produced the item file INSTEAD: the prompt tells its
+  // reader to work from that array, and printing the same review as prose alongside it
+  // would invite them to settle the report they can see rather than the items they can
+  // address. The settled report comes from the --llm-verdict run that follows.
+  const rendered = result.meta.itemsFile ? "" : formatReview(result, format);
+  if (rendered) {
+    process.stdout.write(rendered + "\n");
+  }
 
-  // --report-out saves a carbon copy of stdout: the captured feed and the full report. Color
-  // codes are stripped so the saved file is plain even when the screen was colored.
+  // --report-out saves a carbon copy of stdout: the captured narration and the report, if
+  // one was printed. Color codes are stripped so the saved file is plain even when the
+  // screen was colored.
   const reportOut = values["report-out"];
   if (reportOut) {
-    const copy = stripColor(getCapture() + rendered + "\n");
+    const copy = stripColor(getCapture() + (rendered ? `${rendered}\n` : ""));
     fs.writeFileSync(path.resolve(reportOut), copy);
   }
 
@@ -432,6 +519,10 @@ function pipelineOptsFromValues(values) {
     scaRoot: values["sca-root"],
     scaSource: values["sca-source"],
     scaExpSource: values["sca-exp-source"],
+    llmReview: values["llm-review"] !== undefined,
+    // The path given with the flag, if any. Empty means "you choose".
+    llmReviewOut: values["llm-review"] || undefined,
+    llmVerdict: values["llm-verdict"],
   };
 }
 
@@ -443,7 +534,7 @@ function pipelineOptsFromValues(values) {
  */
 export function pipelineOptsFromArgv(argv) {
   const { values } = parseArgs({
-    args: argv,
+    args: withOptionalValues(argv),
     options: OPTIONS,
     allowPositionals: true,
   });

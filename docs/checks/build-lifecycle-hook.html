@@ -11,7 +11,7 @@
       <header class="check-header">
         <h1>
           Build install hook
-          <span class="badge code-review">code-review</span>
+          <span class="badge error">error</span>
         </h1>
         <div class="check-id">build-lifecycle-hook</div>
       </header>
@@ -32,7 +32,7 @@
         escalates: it always runs, with no token. Legitimate hooks exist (a husky
         <code>prepare</code>, a local codegen step) and only the command itself says
         which kind this is, so the scan cannot settle it. Each declared install hook
-        escalates to <strong>Extended code review</strong>, anchored at its line in
+        escalates to <strong>Extended Code Review</strong>, anchored at its line in
         package.json, with the hook and its command on the locus — so the hooks
         collapse into a single entry the reviewer reads command by command.
       </p>

@@ -61,6 +61,12 @@ const AUTO_SEVERITY = "auto";
 // path. Saying `none` states the truth AND makes that day loud: runOneCheck refuses a
 // finding from such a check rather than stamping one.
 const NO_SEVERITY = "none";
+// A check whose findings block the review but do not reject the add-on, UNLESS the
+// review already rejects it for something else - then they are one more item on that
+// list. Which of the two it is depends on what every OTHER check found, so it cannot be
+// decided here: like "auto" this is a config-only token, and resolveHolds settles each
+// finding once, after the run (src/report/finding.js).
+const HOLD_OR_ERROR = "hold-or-error";
 const CONCRETE_SEVERITIES = new Set([
   SEVERITY.ERROR,
   SEVERITY.WARNING,
@@ -69,6 +75,7 @@ const CONCRETE_SEVERITIES = new Set([
 const VALID_CHECK_SEVERITIES = new Set([
   ...CONCRETE_SEVERITIES,
   AUTO_SEVERITY,
+  HOLD_OR_ERROR,
   NO_SEVERITY,
 ]);
 
@@ -239,13 +246,22 @@ export class Registry {
   }
 
   /**
-   * The check entry for a ruleId (the check filename stem), or undefined.
+   * The registry entry for a ruleId - a rule-backed check, or one of the by-hand
+   * `manual-checks`. Undefined if neither has it.
+   *
+   * Both kinds are included because this is the report's lookup: a to-do item asks for
+   * its title, its instructions, its suggested response and the band a reported case
+   * lands in, and a by-hand entry answers all four exactly as an escalating check does.
+   * What separates them is whether a rule module RUNS, which is checkEntries() and
+   * checkIds() - not this.
    * @param {string} ruleId
    * @returns {object|undefined}
    */
   checkEntry(ruleId) {
     return (this._byId ??= new Map(
-      this.checkEntries().map((e) => [stem(e.check), e])
+      [...this.checkEntries(), ...(this.doc["manual-checks"] || [])]
+        .filter((e) => e && typeof e.check === "string" && e.check)
+        .map((e) => [stem(e.check), e])
     )).get(ruleId);
   }
 
@@ -315,6 +331,11 @@ export class Registry {
         title: e.title,
         instructions: e.instructions,
         response: e.response ?? null,
+        // The same two fields a rendered escalation carries, so the three to-do
+        // sections are one kind of item with three origins: settling any of them
+        // shows the band it lands in, and a verdict can report or clear it.
+        ruleId: e.check,
+        verdict: this.suggestedVerdict(e.check),
       }));
   }
 
@@ -333,7 +354,7 @@ export class Registry {
   }
 
   /**
-   * The headings shown above each severity group in the Issues section, as a
+   * The headings shown above each severity group in the Found Issues section, as a
    * { error?, warning?, info? } -> string map (a missing key renders that group
    * with no heading).
    * @returns {Record<string, string>}
@@ -344,7 +365,7 @@ export class Registry {
   }
 
   /**
-   * The customer-facing verdict preamble for the Issues section, as a
+   * The customer-facing verdict preamble for the Found Issues section, as a
    * { none?, feedback?, rejected? } -> string map: `none` when there are no
    * findings, `rejected` when any finding is an error, `feedback` otherwise.
    * @returns {Record<string, string>}
@@ -355,7 +376,56 @@ export class Registry {
   }
 
   /**
-   * The Issues response template for a finding's ruleId: the owning check's
+   * The severity a REPORTED case of this check carries: its entry's `severity`, or
+   * null when that is `none` (nothing to suggest - settling the case produces no
+   * finding) or a value no finding can carry. The report prints it beside the
+   * escalation's suggested response, so whoever settles the case can see which band
+   * it lands in before they send that text.
+   * @param {string} ruleId
+   * @returns {?string}
+   */
+  suggestedVerdict(ruleId) {
+    const s = this.checkEntry(ruleId)?.severity;
+    // A hold-or-error case is suggested as the hold it is on its own. It only becomes
+    // an error alongside a real one, and that is not this case's own weight.
+    if (s === HOLD_OR_ERROR) {
+      return SEVERITY.HOLD;
+    }
+    return isConcreteSeverity(s) ? s : null;
+  }
+
+  /**
+   * The texts of the --llm-review verification prompt: one per to-do section it can ask
+   * about, plus the intro and the outcome. Read only when the flag is set, and all of them
+   * are required then - which of them a given review prints depends on what the report
+   * contains, so a missing one would silently drop a whole instruction from the prompt
+   * instead of failing.
+   * @returns {{intro: string, issues: string, codeReview: string,
+   *   extendedManualReview: string, standardManualReview: string, outcome: string}}
+   */
+  llmReviewPrompt() {
+    const p = this.doc["llm-review-prompt"];
+    const read = (key) => {
+      const text = p && typeof p === "object" ? p[key] : null;
+      if (typeof text !== "string" || text === "") {
+        throw new Error(
+          `llm-review-prompt authors no \`${key}\` (assets/registry.yaml)`
+        );
+      }
+      return text;
+    };
+    return {
+      intro: read("intro"),
+      issues: read("issues"),
+      codeReview: read("code-review"),
+      extendedManualReview: read("extended-manual-review"),
+      standardManualReview: read("standard-manual-review"),
+      outcome: read("outcome"),
+    };
+  }
+
+  /**
+   * The Found Issues response template for a finding's ruleId: the owning check's
    * `response`, or a system `messages` entry for an orchestrator-emitted ruleId
    * (e.g. "check-failed"). Null if neither exists.
    * @param {string} ruleId
@@ -470,6 +540,24 @@ export function assertRequiredPhaseSections(doc, registryPath) {
           "Every phase in PHASE_SECTIONS must declare its checks - an absent section " +
           "would silently drop that whole phase from every review."
       );
+    }
+  }
+  // A by-hand entry is a to-do item like an escalation, so it needs the same two things:
+  // an id to be addressed by, and the band a reported case lands in. Without them the
+  // item still prints, but a reviewer settling it against the add-on has nothing to
+  // settle it INTO - and that would only surface the first time someone tried.
+  for (const entry of doc["manual-checks"] || []) {
+    for (const [field, valid] of [
+      ["check", typeof entry?.check === "string" && entry.check],
+      ["severity", VALID_CHECK_SEVERITIES.has(entry?.severity)],
+    ]) {
+      if (!valid) {
+        throw new Error(
+          `Registry ${registryPath}: the manual-checks entry ` +
+            `"${entry?.title ?? "(untitled)"}" declares no valid \`${field}\` ` +
+            `(severity: one of ${[...VALID_CHECK_SEVERITIES].join(", ")})`
+        );
+      }
     }
   }
 }
@@ -873,9 +961,6 @@ export async function runChecks(registry, opts = {}, siblings) {
     findings.push(...out.findings);
     manualItems.push(...out.manualItems);
   }
-  // Close the activity list with a blank line. A no-op when progress is off.
-  progress("");
-
   const checksRun = [...checks];
 
   // Condense the unused-files report: when every packaged file under a folder is unused,
@@ -944,12 +1029,16 @@ export async function runOneCheck(ctx, check, label) {
       );
     }
     const auto = check.severity === AUTO_SEVERITY;
+    // Provisional: hold is what this check knows on its own. resolveHolds settles it
+    // against the rest of the review once every check has run.
+    const stamp =
+      check.severity === HOLD_OR_ERROR ? SEVERITY.HOLD : check.severity;
     for (const f of produced) {
       f.ruleId = check.id;
       if (!auto) {
         // Fixed severity: the entry is the sole authority. Whatever the check
         // may have set on f.severity is ignored (overwritten) here.
-        f.severity = check.severity;
+        f.severity = stamp;
       } else if (!isConcreteSeverity(f.severity)) {
         // The severity:auto case - the check owns each finding's severity, but
         // it must produce a concrete one. A missing/invalid value is a check

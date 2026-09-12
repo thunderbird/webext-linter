@@ -19,6 +19,8 @@
 // (src/checks/registry.js and src/checks/context.js), and all user-facing text
 // (src/checks/registry.js plus src/report/responses.js).
 
+import fs from "node:fs";
+import path from "node:path";
 import {
   resolveSchemaZip,
   refreshAllSchemas,
@@ -46,7 +48,11 @@ import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
 import { buildXpiCtxs, buildScaCtxs } from "./checks/context.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
-import { headerLines } from "./report/format.js";
+import { headerLines, llmPromptLines, summaryLines } from "./report/format.js";
+import { resolveHolds } from "./report/finding.js";
+import { locusLabeler } from "./report/format.js";
+import { readVerdicts, applyVerdicts } from "./report/verdicts.js";
+import { reviewItems, itemsFilePath } from "./report/items.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import {
   verifyVendor,
@@ -74,7 +80,7 @@ import {
 import { isExperiment, parseVersion, strictMaxVersion } from "./lib/util.js";
 import { experimentApiNamespaces } from "./lib/experiments.js";
 import { verifyExperiments } from "./experiments/verify.js";
-import { debug, progress, warn, FEED } from "./util/log.js";
+import { debug, progress, report, warn, FEED } from "./util/log.js";
 import { DEFAULT_CACHE } from "./config.js";
 
 /** @typedef {import("./report/finding.js").Finding} Finding */
@@ -121,6 +127,14 @@ import { DEFAULT_CACHE } from "./config.js";
  *   test harness injects one to drop its expected.json sidecar).
  * @property {import("./checks/registry.js").Registry} [registry]  Parsed
  *   registry threaded from the caller, parsed once here otherwise.
+ * @property {string} [llmVerdict]  Path to a verdict file (--llm-verdict) settling the
+ *   questions this review asks: findings withdrawn, to-do items reported or cleared.
+ *   The answers carry no wording - a reported case is worded by its own check.
+ * @property {string} [llmReviewOut]  Where --llm-review writes the item file, when the
+ *   flag named a path. Absent means the linter chooses one (a temp file).
+ * @property {boolean} [llmReview]  Print the verification prompt above the review
+ *   header (--llm-review), addressing the report to a model that is asked to check
+ *   it. Changes nothing about the review, only what is printed before it.
  */
 
 /**
@@ -622,22 +636,104 @@ export async function runPipeline(opts) {
         ],
   });
 
-  // Surface the review header now - before the ATN review-page lookup below, a
-  // network call that can stall the feed for seconds - so the reviewer sees what
-  // was reviewed the moment the Activity feed ends, instead of staring at a
-  // frozen screen. It is removed from the report body (src/report/format.js) so
-  // it is not printed twice. A no-op when progress is off (JSON, the golden
-  // harness).
-  progress("");
-  for (const line of headerLines(meta)) {
-    progress(line);
+  // --llm-review writes the review's items to a file, named in the Review Details section.
+  // Claim it now, empty: a directory we cannot write to has to fail here rather than after
+  // the whole review has run.
+  if (opts.llmReview) {
+    meta.itemsFile = opts.llmReviewOut
+      ? path.resolve(opts.llmReviewOut)
+      : itemsFilePath(xpiAddon);
+    fs.writeFileSync(meta.itemsFile, "");
   }
-  progress("");
 
   // Fill each finding's display message from its registry response (with the
-  // {{item}} placeholder), so the Issues section reports the ready-to-send
+  // {{item}} placeholder), so the Found Issues section reports the ready-to-send
   // wording. The registry is the only source of this text.
   renderFindings(findings, registry);
+
+  let appliedLine;
+  // Settle the review against the answers a reviewer (or a model) gave it. AFTER
+  // renderFindings, because a verdict names an item by its position in the printed
+  // report and that order depends on the rendered message - findings are grouped by it,
+  // and a locus shows its subject only when the message did not. BEFORE the holds
+  // resolve, because a reported case can be a hold itself and has to be counted among
+  // the findings that decide whether any hold stands.
+  if (opts.llmVerdict) {
+    const settled = readVerdicts(opts.llmVerdict);
+    // An index means nothing on its own, so the file has to name the submission its
+    // verdicts were reached on. Compared against the shipped add-on, which is the path
+    // the Review Details section printed as "Reviewed XPI".
+    if (path.resolve(settled.addon) !== path.resolve(xpiAddon.source)) {
+      throw new Error(
+        `--llm-verdict ${opts.llmVerdict} was written for "${settled.addon}", but this ` +
+          `review is of "${xpiAddon.source}" - its item indices mean nothing here`
+      );
+    }
+    const applied = applyVerdicts({
+      findings,
+      manual: meta.manualReview,
+      verdicts: settled.verdicts,
+      registry,
+      labelOf: locusLabeler(mode, registry.checkInputs()),
+    });
+    // A reported case became a finding carrying only its locus and slots, so word it
+    // from the registry like any other - the same text either way.
+    renderFindings(findings, registry);
+    // Audible, so a misaimed verdict shows up as one line here instead of being
+    // buried in a re-rendered report. Emitted below, under Review Details, because that
+    // section names the review these verdicts were applied to.
+    appliedLine = `Applied ${applied.length} verdict(s): ${applied.join(", ")}`;
+  }
+
+  // Settle every provisional hold against the rest of the review - the one moment a
+  // hold-or-error check's band is decided. After any verdict has been applied and
+  // before anything reads a severity, so the report, the tally and the JSON all see
+  // the same value.
+  resolveHolds(findings);
+
+  // Fill the file claimed above: the review as an array in the order the report lists
+  // them, so whoever settles it addresses an item by reading its index instead of counting
+  // lines. Written HERE, after renderFindings gave every finding its wording and
+  // resolveHolds settled every band - an array built any earlier would carry a null
+  // message and a provisional severity.
+  if (meta.itemsFile) {
+    const itemsList = reviewItems(findings, meta.manualReview);
+    fs.writeFileSync(meta.itemsFile, `${JSON.stringify(itemsList, null, 2)}\n`);
+  }
+
+  // Narrate the document's own opening, now that the review is final. It has to come after
+  // resolveHolds, because the Review Details tally counts bands and a hold is not settled
+  // until then. Under --llm-review the prompt goes first, so a model handed the review
+  // reads what to do with it before anything else.
+  //
+  // report(), not feed: these belong to the document, so they reach a --report-out copy and
+  // survive --llm-review switching the Setup and Activity sections off. Absent from JSON (a
+  // machine contract) and from the golden harness for free, like the rest of the narration.
+  if (opts.llmReview) {
+    for (const line of llmPromptLines(
+      registry.llmReviewPrompt(),
+      findings,
+      meta.manualReview
+    )) {
+      report(line);
+    }
+  }
+  for (const line of headerLines(meta)) {
+    report(line);
+  }
+  if (appliedLine) {
+    report("");
+    report(appliedLine);
+  }
+  // A --llm-review run prints no report, so its Summary is printed here instead: a
+  // reviewer has to see from the output alone whether the add-on can be signed off or
+  // still has work waiting. Every other run gets it as the report's closing section.
+  if (meta.itemsFile) {
+    for (const line of summaryLines(findings, meta.manualReview)) {
+      report(line);
+    }
+  }
+  report("");
 
   return {
     findings,

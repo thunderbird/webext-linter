@@ -8,6 +8,8 @@ import assert from "node:assert/strict";
 
 import {
   progress,
+  report,
+  setFeed,
   warn,
   info,
   debug,
@@ -119,6 +121,27 @@ test("capture records the indented line even when nothing is shown", () => {
   assert.deepEqual(shown, [], "not printed while progress is off");
   assert.equal(getCapture(), "      n\n", "recorded with its DETAIL indent");
   setCapture(false);
+});
+
+// setFeed governs the ACTIVITY FEED - the Setup and Activity sections - and is switched
+// off for --llm-review / --llm-verdict, where the output is the document itself. A line
+// nobody saw must not reach a --report-out copy either, or the file would stop being a
+// carbon copy of the screen. report() is not feed and survives.
+test("setFeed(false) silences the feed, in the file as well as on screen", () => {
+  setProgress(true);
+  setFeed(false);
+  setCapture(true);
+  const feed = emitted(() => progress("step", FEED.STEP));
+  const doc = emitted(() => report("Reviewed XPI: x"));
+  assert.deepEqual(feed, [], "feed line not printed");
+  assert.deepEqual(
+    doc,
+    ["Reviewed XPI: x"],
+    "the report's own line still prints"
+  );
+  assert.equal(getCapture(), "Reviewed XPI: x\n", "and only it is recorded");
+  setCapture(false);
+  setFeed(true);
 });
 
 test("the level prefix sits OUTSIDE a color wrap (spaces are colorless)", () => {

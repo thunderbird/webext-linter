@@ -90,6 +90,7 @@
   },
   "summary": {
     "error": 15,
+    "hold": 0,
     "warning": 2,
     "info": 8,
     "byRule": {

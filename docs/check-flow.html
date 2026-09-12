@@ -686,7 +686,7 @@ flowchart TB
   ME --> STAMP["stamp the findings —<br/>ruleId + severity (auto → the check sets it)"]
   STAMP --> PUSHF["findings.push(out.findings)"]
   CF --> PUSHF
-  PUSHF --> PUSHM["manualItems.push(out.manualItems)<br/>→ the section the check declares:<br/>Extended code review or Extended manual review"]
+  PUSHF --> PUSHM["manualItems.push(out.manualItems)<br/>→ the section the check declares:<br/>Extended Code Review or Extended Manual Review"]
   PUSHM --> NEXT
   NEXT(["next check"]) --> HEAD
 
@@ -712,7 +712,7 @@ flowchart TB
       </p>
       <p>
         Most are questions about the add-on&rsquo;s own code, and land under
-        <strong>Extended code review</strong>. Some cannot be answered by reading
+        <strong>Extended Code Review</strong>. Some cannot be answered by reading
         the package at all - what the ATN listing discloses about a privacy policy
         or a native application, or whether the build really produces the shipped
         XPI, which only reproducing it settles. A remote font

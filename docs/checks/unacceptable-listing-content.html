@@ -3,27 +3,33 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Acceptable Use Policy</title>
+    <title>Check the listing for unacceptable content</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
         <h1>
-          Acceptable Use Policy
+          Check the listing for unacceptable content
           <span class="badge manual">manual</span>
         </h1>
-        <div class="check-id">acceptable-use-policy</div>
+        <div class="check-id">unacceptable-listing-content</div>
       </header>
 
       <h2>What it detects</h2>
       <p class="lead">
         This is a human-review item with no automated logic behind it. A
-        reviewer reads the listing's name, summary, description and screenshots.
+        reviewer reads the add-on listing page on ATN: its summary, description
+        and screenshots.
       </p>
       <p>
-        Each of these is weighed against Mozilla's Acceptable Use Policy. The
-        item catches listings whose visible content breaches that policy.
+        Each is weighed for spam, inappropriate or misleading content, and
+        against Mozilla's Acceptable Use Policy. Nothing judged here is in the
+        package, so every fix is an edit on addons.thunderbird.net and no new
+        version is needed. What the add-on itself ships is judged separately by
+        <a href="unacceptable-package-content.html"
+          >unacceptable-package-content</a
+        >.
       </p>
 
       <h2>Decision flow</h2>
@@ -43,9 +49,8 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The developer is told that the name, summary, description, and/or
-        screenshots contain content that does not comply with Mozilla's
-        Acceptable Use Policy.
+        The developer is told that the ATN listing page does not meet our
+        content requirements, and is asked to update the listing.
       </div>
 
       <p class="source-note">

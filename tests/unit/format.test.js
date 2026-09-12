@@ -8,9 +8,14 @@ import {
   formatText,
   formatJson,
   headerLines,
+  llmPromptLines,
+  locusLabeler,
+  locationLine,
 } from "../../src/report/format.js";
+import { orderReview, hasLocus } from "../../src/report/order.js";
 import { renderManualItems } from "../../src/report/responses.js";
 import { loadRegistry } from "../../src/checks/registry.js";
+import { resolveHolds, hasErrors } from "../../src/report/finding.js";
 
 function review() {
   return {
@@ -29,8 +34,8 @@ function review() {
   };
 }
 
-// Manual review splits into three sections in order - Extended code review (an
-// escalation a reviewer settles by reading the code), Extended manual review (one
+// Manual review splits into three sections in order - Extended Code Review (an
+// escalation a reviewer settles by reading the code), Extended Manual Review (one
 // needing a person to act or to own the decision), then Standard (the always-by-hand
 // manual-checks) - each with its "continue manual review" intro and enumerated
 // "N) title: instructions" entries.
@@ -66,15 +71,15 @@ test("manual review splits into code, manual, then standard sections", () => {
     },
   };
   const out = formatText(r);
-  const code = out.indexOf("── Extended code review ──");
-  const ext = out.indexOf("── Extended manual review ──");
-  const std = out.indexOf("── Standard manual review ──");
+  const code = out.indexOf("── Extended Code Review ──");
+  const ext = out.indexOf("── Extended Manual Review ──");
+  const std = out.indexOf("── Standard Manual Review ──");
   assert.ok(code !== -1 && ext !== -1 && std !== -1);
   assert.ok(code < ext && ext < std); // code, then manual, then standard
   // A blank line sits between each header and its "Continue ..." intro.
-  assert.match(out, /── Extended code review ──\n\nContinue manual review/);
-  assert.match(out, /── Extended manual review ──\n\nContinue manual review/);
-  assert.match(out, /── Standard manual review ──\n\nContinue manual review/);
+  assert.match(out, /── Extended Code Review ──\n\nContinue manual review/);
+  assert.match(out, /── Extended Manual Review ──\n\nContinue manual review/);
+  assert.match(out, /── Standard Manual Review ──\n\nContinue manual review/);
   // The code-settleable escalation (with its locus) first, the one a person must own
   // second, the always-by-hand checklist item last.
   assert.match(
@@ -124,9 +129,9 @@ test("Manual review groups by message and lists each item's locus", () => {
   };
   const out = formatText(r);
   const extended = out
-    .split("── Extended code review ──")[1]
-    .split("── Standard manual review ──")[0];
-  const standard = out.split("── Standard manual review ──")[1];
+    .split("── Extended Code Review ──")[1]
+    .split("── Standard Manual Review ──")[0];
+  const standard = out.split("── Standard Manual Review ──")[1];
   // The two exfiltration items (Extended) collapse into ONE entry with both loci.
   assert.equal(
     extended.match(/User-data exfiltration: Confirm opt-in\./g).length,
@@ -167,7 +172,7 @@ test("Manual review prints the response between instructions and the locus list"
       ],
     },
   };
-  const manual = formatText(r).split("── Extended code review ──")[1];
+  const manual = formatText(r).split("── Extended Code Review ──")[1];
   // Response: after the instructions, before the locus, flush-left, verbatim.
   assert.match(
     manual,
@@ -206,7 +211,7 @@ test("a manual-review item renders with its own wording and its response", () =>
       manualReview: [{ ...item, extended: true }],
     },
   });
-  const manual = out.split("── Extended manual review ──")[1];
+  const manual = out.split("── Extended Manual Review ──")[1];
   assert.match(manual, /matches a published file of the upstream release/);
   // The suggested response rides along: if the reviewer settles the case against the
   // add-on, that is the text the developer receives.
@@ -217,6 +222,62 @@ test("a manual-review item renders with its own wording and its response", () =>
     manual,
     / - lib\/x\.css:1 - https:\/\/fonts\.example\/f\.css - https:\/\/cdn\.example\/x@1\.0\.0\/x\.css/
   );
+});
+
+// A to-do item asks a reviewer to settle a case, and the answer has weight: the band a
+// reported case lands in is printed above the response that would be sent. It comes from
+// the owning entry's registry severity, never from the reviewer, so it is the same band a
+// deterministic finding would have carried. All three sections work this way - an
+// escalation and a by-hand manual-checks reminder are one kind of item with two origins.
+test("an escalation prints the verdict a reported case carries", () => {
+  const registry = loadRegistry();
+  const items = renderManualItems(
+    [
+      // error + code-review
+      { ruleId: "data-exfiltration", file: "a.js", loc: { line: 1 } },
+      // warning + code-review
+      { ruleId: "unused-permission", item: "compose", file: "manifest.json" },
+      // hold-or-error + manual-review, suggested as the hold it is on its own
+      {
+        ruleId: "privacy-policy",
+        file: "b.js",
+        loc: { line: 2 },
+        section: "manual-review",
+      },
+    ],
+    registry
+  );
+  assert.deepEqual(
+    items.map((i) => i.verdict),
+    ["error", "warning", "hold"]
+  );
+
+  const out = formatText({
+    findings: [],
+    meta: {
+      action: "review",
+      addon: "x",
+      reviewed: true,
+      manualReview: [
+        ...items.map((i) => ({ ...i, extended: true })),
+        ...registry.manualChecks().map((m) => ({ ...m, extended: false })),
+      ],
+    },
+  });
+  const extended = out.split("── Extended Code Review ──")[1];
+  assert.match(extended, /Suggested verdict: error\nSuggested response: /);
+  assert.match(extended, /Suggested verdict: warning\nSuggested response: /);
+  // A hold-or-error case is suggested as the hold it is on its own, not as the error it
+  // would become beside a real one.
+  const manualSection = out.split("── Extended Manual Review ──")[1];
+  assert.match(
+    manualSection.split("── Standard")[0],
+    /Suggested verdict: hold\nSuggested response: /
+  );
+  // The by-hand reminders carry both, from their own registry entries.
+  const standard = out.split("── Standard Manual Review ──")[1];
+  assert.match(standard, /Suggested verdict: error\nSuggested response: /);
+  assert.match(standard, /Suggested verdict: hold\nSuggested response: /);
 });
 
 // JSON render drops manualReview entirely - both the meta key and the item
@@ -325,15 +386,15 @@ test("issues render under Issues/JSON; manual items under Manual review", () => 
   const out = formatText(r);
   assert.match(out, /old\.js: old\.js may be loaded dynamically/); // Manual review
   const issuesSection = out
-    .split("── Issues ──")[1]
-    .split("── Extended code review ──")[0];
+    .split("── Found Issues ──")[1]
+    .split("── Extended Code Review ──")[0];
   assert.ok(!issuesSection.includes("old.js")); // not in Issues
   // Message first, then the "- file:line" location beneath it.
   assert.match(issuesSection, /1\) eval used/);
   assert.match(issuesSection, /\n - bg\.js:2/);
   assert.match(
     out,
-    /1 error\(s\), 0 warning\(s\), 0 info, 1 extended code review step\(s\), 0 extended manual review step\(s\), 0 standard manual review step\(s\)/
+    /1 error\(s\), 0 hold, 0 warning\(s\), 0 info, 1 extended code review step\(s\), 0 extended manual review step\(s\), 0 standard manual review step\(s\)/
   );
   const json = JSON.parse(formatJson(r));
   assert.equal(json.findings.length, 1);
@@ -386,7 +447,7 @@ test("Issues are grouped by severity under headings with continuous numbering", 
   // A blank line sits between the Summary header and its counts line.
   assert.match(
     out,
-    /── Summary ──\n\n2 error\(s\), 1 warning\(s\), 1 info, 0 extended code review step\(s\), 0 extended manual review step\(s\), 0 standard manual review step\(s\)/
+    /── Summary ──\n\n2 error\(s\), 0 hold, 1 warning\(s\), 1 info, 0 extended code review step\(s\), 0 extended manual review step\(s\), 0 standard manual review step\(s\)/
   );
 });
 
@@ -413,7 +474,7 @@ test("Issues group findings by identical message into one entry", () => {
     meta: { action: "review", addon: "x", reviewed: true },
   };
   const out = formatText(r);
-  const issues = out.split("── Issues ──")[1].split("── Summary ──")[0];
+  const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
   // The shared prose appears exactly once, as one entry listing all 3 locations.
   assert.equal(issues.match(/same message/g).length, 1);
   assert.match(
@@ -448,7 +509,7 @@ test("Issues print a location line only when it carries something", () => {
     const out = formatText({
       findings: [f],
       meta: { action: "review", addon: "x", reviewed: true },
-    }).split("── Issues ──")[1];
+    }).split("── Found Issues ──")[1];
     return out.split("\n").filter((l) => l.trim().startsWith("- "));
   };
   // Nothing to say -> no line at all.
@@ -485,7 +546,7 @@ test("Issues list the identifier on the location line when listItem is set", () 
     ],
     meta: { action: "review", addon: "x", reviewed: true },
   };
-  const issues = formatText(r).split("── Issues ──")[1];
+  const issues = formatText(r).split("── Found Issues ──")[1];
   assert.match(issues, /\n - manifest\.json:13 - frobnicate\n/);
   assert.match(issues, /\n - name\n/);
   assert.match(issues, /\n - bg\.js:4\n/);
@@ -525,13 +586,13 @@ test("the Summary tally is the report's last section", () => {
   assert.equal(sections.at(-1), "Summary");
   assert.match(
     out.slice(out.indexOf("── Summary ──")),
-    /^── Summary ──\n\n0 error\(s\), 0 warning\(s\), 1 info[^\n]*$/
+    /^── Summary ──\n\n0 error\(s\), 0 hold, 0 warning\(s\), 1 info[^\n]*$/
   );
 });
 
 test("empty review shows the registry 'none' intro as the Issues body", () => {
   const out = formatText(withReview([], { none: "NONE-MSG" }));
-  assert.match(out, /── Issues ──\nNONE-MSG/);
+  assert.match(out, /── Found Issues ──\nNONE-MSG/);
 });
 
 test("an error finding glues the 'rejected' intro to the first heading", () => {
@@ -591,7 +652,7 @@ test("Issues cap a grouped list at 25 locations with a 'more' marker", () => {
     meta: { action: "review", addon: "x", reviewed: true },
   };
   const out = formatText(r);
-  const issues = out.split("── Issues ──")[1].split("── Summary ──")[0];
+  const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
   // Exactly 25 location lines render, then the marker for the other 5.
   assert.equal((issues.match(/^ - f\d+\.js:/gm) || []).length, 25);
   assert.match(issues, /- … and 5 more, excluded from this list/);
@@ -615,7 +676,7 @@ test("Issues add no marker for a list of 25 or fewer", () => {
     findings,
     meta: { action: "review", addon: "x", reviewed: true },
   });
-  const issues = out.split("── Issues ──")[1].split("── Summary ──")[0];
+  const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
   assert.equal((issues.match(/^ - f\d+\.js:/gm) || []).length, 25);
   assert.ok(!issues.includes("excluded from this list"));
 });
@@ -642,12 +703,12 @@ test("Manual review caps a grouped locus list at 25 with a marker", () => {
     meta: { action: "review", addon: "x", reviewed: true, manualReview },
   });
   const extended = out
-    .split("── Extended code review ──")[1]
-    .split("── Standard manual review ──")[0];
+    .split("── Extended Code Review ──")[1]
+    .split("── Standard Manual Review ──")[0];
   assert.equal((extended.match(/^ - manifest\.json:/gm) || []).length, 25);
   assert.match(extended, /- … and 5 more, excluded from this list/);
   // The standalone reminder (Standard) is unaffected by the Extended cap.
-  const standard = out.split("── Standard manual review ──")[1];
+  const standard = out.split("── Standard Manual Review ──")[1];
   assert.match(standard, /Spam check: Inspect it\./);
 });
 
@@ -770,8 +831,311 @@ test("control characters from the submission never reach the report", () => {
   }
 });
 
-// ---- the report header ----
-// An SCA review spans TWO artifacts and labels every locus [XPI]/[SCA], so the header has
+// ---- the item enumeration a verdict file indexes into ----
+// A verdict names an item by its position in the printed report, so the enumeration has
+// to BE the printed order - not merely resemble it. This asserts that against the report
+// itself: every locus line the renderer emits, in order, is what the sequence numbered.
+// Grouping reorders findings (they collapse by message), the to-do sections follow the
+// body groups, and the display cap hides the tail of a long list - all three are ways the
+// two could drift, and all three are covered here.
+test("the enumeration is exactly the order the report prints", () => {
+  const registry = loadRegistry();
+  const mk = (ruleId, severity, message, file, line, item) => ({
+    ruleId,
+    severity,
+    message,
+    file,
+    loc: line == null ? null : { line },
+    item: item ?? null,
+    listItem: Boolean(item),
+    hint: null,
+  });
+  // Two checks interleaved by file order, so collapsing by message MUST reorder them.
+  const findings = [
+    mk("a", "error", "A", "a.js", 1),
+    mk("b", "error", "B", "b.js", 2),
+    mk("a", "error", "A", "c.js", 3),
+    mk("c", "info", "C", "d.js", 4),
+  ];
+  // One long group, past the display cap, plus a reminder that prints no locus at all.
+  const manual = [
+    ...Array.from({ length: 30 }, (_, i) => ({
+      extended: true,
+      section: "code-review",
+      ruleId: "p",
+      title: "P",
+      instructions: "inspect",
+      file: `f${String(i).padStart(2, "0")}.js`,
+      loc: { line: i },
+    })),
+    { extended: false, title: "Standing", instructions: "do it" },
+  ];
+  const out = formatText({
+    findings,
+    meta: {
+      action: "review",
+      addon: "x",
+      reviewed: true,
+      manualReview: manual,
+    },
+    issueHeadings: registry.issueHeadings(),
+    verdictIntros: registry.verdictIntros(),
+  });
+  const printed = out
+    .split("\n")
+    .filter((l) => l.startsWith(" - "))
+    .map((l) => l.slice(3))
+    // The "and N more" marker is chrome, not an item - nothing can be said about a
+    // locus the report withheld.
+    .filter((l) => !l.startsWith("… and "));
+  const label = locusLabeler();
+  const enumerated = orderReview(findings, manual);
+  // Numbered items are exactly the printed ones, in the printed order. A withheld item
+  // carries no number at all, so it cannot push a later one out of step.
+  assert.deepEqual(
+    enumerated
+      .filter((x) => x.index != null && hasLocus(x.target))
+      .map((x) => locationLine(x.target, label(x.target))),
+    printed
+  );
+  assert.deepEqual(
+    enumerated.filter((x) => x.index != null).map((x) => x.index),
+    enumerated.filter((x) => x.index != null).map((_, i) => i + 1)
+  );
+  // The collapse really did reorder: c.js is listed second, not third.
+  assert.deepEqual(printed.slice(0, 3), ["a.js:1", "c.js:3", "b.js:2"]);
+  // The cap really did bite: 30 loci, 25 listed.
+  assert.equal(printed.filter((l) => l.startsWith("f")).length, 25);
+  // The locus-less reminder is still a numbered item - it IS printed, as an entry with
+  // no location line - so a verdict can address it.
+  assert.equal(hasLocus(enumerated.at(-1).target), false);
+  assert.equal(enumerated.at(-1).kind, "todo");
+  assert.equal(typeof enumerated.at(-1).index, "number");
+  // The five the cap withheld are in the sequence but carry no number.
+  assert.equal(enumerated.filter((x) => x.index == null).length, 5);
+});
+
+// The regression that forced the one-sequence design. A finding with no locus used to
+// join the entry of findings that DO have one, where it contributed no line: an item in
+// the sequence that the page never showed, silently pushing every later number out of
+// step with what a reader counts. Locus status is now part of the entry key, so such a
+// finding is its own entry and IS printed - as its message alone, which is how a
+// whole-add-on finding has always rendered.
+test("a locus-less finding is its own entry, so every item is on the page", () => {
+  const registry = loadRegistry();
+  const f = (message, file) => ({
+    ruleId: "r",
+    severity: "error",
+    message,
+    file,
+    loc: file ? { line: 1 } : null,
+    item: null,
+    hint: null,
+    listItem: false,
+  });
+  // Same message, one with a location and one without - the shape that used to hide it.
+  const findings = [f("A", "a.js"), f("A", null), f("B", "b.js")];
+  const out = formatText({
+    findings,
+    meta: { action: "review", addon: "x", reviewed: true },
+    issueHeadings: registry.issueHeadings(),
+    verdictIntros: registry.verdictIntros(),
+  });
+  const issues = out.split("── Found Issues ──")[1];
+  // Three entries, not two: the locus-less one is listed in its own right.
+  assert.match(issues, /1\) A\n\n2\) A\n - a\.js:1\n\n3\) B\n - b\.js:1/);
+  const ordered = orderReview(findings);
+  assert.equal(ordered.length, 3);
+  assert.deepEqual(
+    ordered.map((x) => x.index),
+    [1, 2, 3]
+  );
+  // What a reader counts - location lines, plus entries showing none - is what the
+  // sequence numbered.
+  const countable =
+    issues.split("\n").filter((l) => l.startsWith(" - ")).length +
+    ordered.filter((x) => !hasLocus(x.target)).length;
+  assert.equal(countable, ordered.filter((x) => x.index != null).length);
+});
+
+// ---- the hold band ----
+// A hold blocks the review without rejecting the add-on: the fix is on the ATN listing,
+// not in the package, so no rebuild would help. On its own it IS the verdict - its own
+// intro, its own heading, and it leads the sections so warning/info follow it.
+test("a hold alone opens the section with the hold verdict", () => {
+  const registry = loadRegistry();
+  const findings = [
+    {
+      ruleId: "privacy-policy",
+      severity: "hold",
+      message: "POLICY",
+      file: "a.js",
+    },
+    { ruleId: "eval-call", severity: "warning", message: "WARN", file: "b.js" },
+  ];
+  resolveHolds(findings);
+  assert.deepEqual(
+    findings.map((f) => f.severity),
+    ["hold", "warning"]
+  );
+  const out = formatText({
+    findings,
+    meta: { action: "review", addon: "x", reviewed: true },
+    issueHeadings: registry.issueHeadings(),
+    verdictIntros: registry.verdictIntros(),
+  });
+  const issues = out.split("── Found Issues ──")[1];
+  assert.match(
+    issues,
+    /Thank you for your contribution\. To continue the review, a few issues still need to be addressed:/
+  );
+  // Hold leads, warning follows.
+  assert.ok(issues.indexOf("POLICY") < issues.indexOf("WARN"));
+  assert.match(out, /0 error\(s\), 1 hold, 1 warning\(s\)/);
+  // It is not a rejection, so the run does not fail - a human continues the review.
+  assert.equal(hasErrors(findings), false);
+});
+
+// With a real error the submission is rejected anyway, so the hold is not the verdict:
+// it becomes one more item on the rejection list. Settled ONCE, before anything reads a
+// severity, so the heading, the tally and the JSON cannot tell different stories.
+test("a hold beside an error becomes an error, everywhere at once", () => {
+  const registry = loadRegistry();
+  const findings = [
+    {
+      ruleId: "privacy-policy",
+      severity: "hold",
+      message: "POLICY",
+      file: "a.js",
+    },
+    {
+      ruleId: "unused-files",
+      severity: "error",
+      message: "DEAD",
+      file: "b.js",
+    },
+  ];
+  resolveHolds(findings);
+  assert.deepEqual(
+    findings.map((f) => f.severity),
+    ["error", "error"]
+  );
+  const review = {
+    findings,
+    meta: { action: "review", addon: "x", reviewed: true },
+    issueHeadings: registry.issueHeadings(),
+    verdictIntros: registry.verdictIntros(),
+  };
+  const out = formatText(review);
+  assert.match(out, /cannot be accepted and hosted/); // the rejected intro
+  assert.ok(!out.includes("To continue the review")); // no hold heading
+  assert.match(out, /2 error\(s\), 0 hold/); // counted where they are printed
+  assert.equal(JSON.parse(formatJson(review)).summary.hold, 0);
+});
+
+// ---- the --llm-review verification prompt ----
+// The prompt asks for the work the report contains and for all of it: the issues ask needs
+// a finding, the code-review ask needs an Extended Code Review item, and the manual ask
+// needs an item in either of the other two to-do sections. Asking for an absent section
+// sends the reader hunting for something never printed; leaving one out hands over a
+// section of the review unasked.
+test("the prompt asks only for the sections the report actually has", () => {
+  const prompt = {
+    intro: "INTRO.",
+    issues: "ISSUES.",
+    codeReview: "CODE.",
+    extendedManualReview: "EXT.",
+    standardManualReview: "STD.",
+    outcome: "OUT.",
+  };
+  const finding = { ruleId: "r", severity: "error", message: "m" };
+  const codeItem = { extended: true, section: "code-review", title: "t" };
+  const manualItem = { extended: true, section: "manual-review", title: "t" };
+  const standardItem = { extended: false, section: null, title: "t" };
+
+  // Its own section, like every other block in the report. `outcome` - how the verdicts
+  // come back - closes it whenever something was asked, and is absent when nothing was.
+  const head = ["", "── LLM Prompt ──", "", "INTRO.", ""];
+  const tail = ["", "OUT."];
+  assert.deepEqual(llmPromptLines(prompt, [], []), head);
+  assert.deepEqual(llmPromptLines(prompt, [finding], []), [
+    ...head,
+    "- ISSUES.",
+    ...tail,
+  ]);
+  assert.deepEqual(llmPromptLines(prompt, [], [codeItem]), [
+    ...head,
+    "- CODE.",
+    ...tail,
+  ]);
+  assert.deepEqual(llmPromptLines(prompt, [finding], [codeItem]), [
+    ...head,
+    "- ISSUES.",
+    "- CODE.",
+    ...tail,
+  ]);
+  // One ask per to-do section, so a review with no Extended Manual Review items is not
+  // told to work them.
+  assert.deepEqual(llmPromptLines(prompt, [], [manualItem]), [
+    ...head,
+    "- EXT.",
+    ...tail,
+  ]);
+  assert.deepEqual(llmPromptLines(prompt, [], [standardItem]), [
+    ...head,
+    "- STD.",
+    ...tail,
+  ]);
+  // All four at once, in the order the report prints their sections.
+  assert.deepEqual(
+    llmPromptLines(prompt, [finding], [codeItem, manualItem, standardItem]),
+    [...head, "- ISSUES.", "- CODE.", "- EXT.", "- STD.", ...tail]
+  );
+});
+
+// The registry is the only place this wording lives, and all three texts are needed the
+// moment the flag is used - which one a review prints depends on its own content, so a
+// missing text would quietly drop an instruction instead of failing.
+test("the prompt texts come from the registry and all three are required", () => {
+  const prompt = loadRegistry().llmReviewPrompt();
+  for (const key of [
+    "intro",
+    "issues",
+    "codeReview",
+    "extendedManualReview",
+    "standardManualReview",
+    "outcome",
+  ]) {
+    assert.equal(typeof prompt[key], "string");
+    assert.ok(prompt[key].length > 0, key);
+  }
+  const registry = loadRegistry();
+  delete registry.doc["llm-review-prompt"].issues;
+  assert.throws(() => registry.llmReviewPrompt(), /authors no `issues`/);
+});
+
+// A registry text is authored as wrapped YAML, so its source line breaks must not survive
+// into the prompt - the bullet is re-wrapped to the report width, hanging-indented under
+// its marker like every other wrapped list in the report.
+test("a prompt bullet is re-wrapped and hanging-indented", () => {
+  const prompt = {
+    intro: "Go.",
+    issues: "one two\nthree " + "w".repeat(70) + " tail",
+    codeReview: "c",
+    outcome: "o",
+  };
+  const lines = llmPromptLines(prompt, [{ ruleId: "r" }], []).slice(3);
+  assert.deepEqual(lines[0], "Go.");
+  assert.equal(lines[1], "");
+  assert.equal(lines[2], "- one two three");
+  assert.equal(lines[3], "  " + "w".repeat(70) + " tail");
+  for (const line of lines) {
+    assert.ok(!line.includes("\n"));
+  }
+});
+
+// ---- the Review Details section ----
+// An SCA review spans TWO artifacts and labels every locus [XPI]/[SCA], so the section has
 // to say what those are. Naming only the review target left the shipped XPI - the thing
 // users install - unnamed in the header AND in meta. A one-artifact review keeps one line:
 // there is nothing to disambiguate, and a downgraded SCA is one of those, because only the
@@ -782,16 +1146,29 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
     applicationVersion: "155.0",
     manifestVersion: 3,
   };
+  const head = ["", "── Review Details ──", ""];
   assert.deepEqual(
     headerLines({ ...base, addon: "/x/src", shippedAddon: "/x/a.xpi" }),
     [
+      ...head,
       "Reviewed XPI: /x/a.xpi",
       "Reviewed SCA: /x/src",
       "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
     ]
   );
   assert.deepEqual(headerLines({ ...base, addon: "/x/a.xpi" }), [
+    ...head,
     "Reviewed XPI: /x/a.xpi",
     "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
   ]);
+  // --llm-review writes an item file, and this section is where the review says what it
+  // consists of - so the path is named here, not only in the prompt. The counts are NOT
+  // here: they are the Summary's, which closes every run.
+  const llm = headerLines({
+    ...base,
+    addon: "/x/a.xpi",
+    itemsFile: "/tmp/i.json",
+  });
+  assert.equal(llm.at(-1), "Review items: /tmp/i.json");
+  assert.ok(!llm.some((l) => l.includes("error(s)")));
 });

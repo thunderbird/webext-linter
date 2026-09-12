@@ -18,6 +18,7 @@ import { displayText } from "./text.js";
 
 let verbose = false;
 let progressOn = false;
+let feedOn = true;
 let quiet = false;
 /** @type {string[]|null} Recorded lines while capturing, else null. */
 let captured = null;
@@ -40,6 +41,21 @@ export function setVerbose(v) {
  */
 export function setProgress(v) {
   progressOn = Boolean(v);
+}
+
+/**
+ * Enable or disable the ACTIVITY FEED - the Setup and Activity sections, the narration
+ * of what the run is doing. Distinct from setProgress, which governs the narration
+ * stream as a whole: the report's own sections (its header, the --llm-review prompt)
+ * ride that stream too and are NOT feed, so they survive this being off.
+ *
+ * The CLI turns it off for --llm-review and --llm-verdict, where the output exists to be
+ * read or handed on, and a record of how it was produced is noise in it.
+ *
+ * @param {boolean|undefined} v
+ */
+export function setFeed(v) {
+  feedOn = Boolean(v);
 }
 
 /**
@@ -112,8 +128,10 @@ export function feedIndent(level) {
  * @param {unknown[]} args
  * @param {boolean} show
  * @param {number} [level]  A FEED value; defaults to SECTION (column 0).
+ * @param {boolean} [record]  False for a line the feed is switched off for: a
+ *   --report-out copy is a carbon copy of the screen, so a line nobody saw is not in it.
  */
-function emit(args, show, level = FEED.SECTION) {
+function emit(args, show, level = FEED.SECTION, record = true) {
   if (quiet) {
     return;
   }
@@ -123,7 +141,7 @@ function emit(args, show, level = FEED.SECTION) {
   if (show) {
     console.log(...out);
   }
-  if (captured) {
+  if (captured && record) {
     captured.push(out.map(String).join(" "));
   }
 }
@@ -178,5 +196,16 @@ export function warn(...args) {
  * @param {number} [level]  A FEED value; defaults to SECTION (column 0).
  */
 export function progress(text, level = FEED.SECTION) {
-  emit([text], progressOn, level);
+  emit([text], progressOn && feedOn, level, feedOn);
+}
+
+/**
+ * Narrate a line that belongs to the REPORT rather than to the feed - its header, the
+ * --llm-review prompt. Emitted with the report and recorded like it, so a --report-out
+ * copy still matches the screen, and unaffected by setFeed.
+ *
+ * @param {string} text  One line.
+ */
+export function report(text) {
+  emit([text], progressOn);
 }

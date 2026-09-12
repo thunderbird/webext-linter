@@ -33,7 +33,7 @@ export default {
       VERDICT.UNSURE
     );
     // A whole-add-on reminder: no locus, so it renders as the instruction +
-    // suggested response alone under Extended manual review.
+    // suggested response alone under Extended Manual Review.
     return { findings: [], escalations: [{}] };
   },
 };

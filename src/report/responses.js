@@ -24,7 +24,7 @@ const PLACEHOLDER = "{{item}}";
 
 /**
  * Tidy a filled registry template for display: collapse runs of spaces/tabs to a
- * single space and trim, but PRESERVE newlines. Issues responses are printed
+ * single space and trim, but PRESERVE newlines. Found Issues responses are printed
  * VERBATIM (src/report/format.js renderFinding), so a line break authored in the
  * response - e.g. the deliberate one before "Read more:" - shows in the report.
  * Keep each registry response on one physical line except such breaks.
@@ -80,7 +80,7 @@ function fill(template, item, data) {
 }
 
 /**
- * Fill each Issues finding's display `message` from the registry, keyed by its
+ * Fill each Found Issues finding's display `message` from the registry, keyed by its
  * ruleId: substitute the finding's `item` into the entry's `response` `{{item}}`
  * and any `data` values into the response's named `{{slot}}`s. Mutates in place.
  *
@@ -128,6 +128,13 @@ export function renderManualItems(refs, registry) {
       // case against the add-on, this is the text that goes to the developer, so
       // withholding it would leave them with a decision and nothing to send.
       response: fill(entry?.response, ref.item, ref.data),
+      // The band a reported case lands in, printed above that response. Null for a
+      // check whose cases produce no finding however they are settled.
+      verdict: registry.suggestedVerdict(ref.ruleId),
+      // The slot values behind {{name}} in the texts above. Kept so a CONFIRMED case
+      // can be re-resolved as a finding from the same inputs (src/report/verdicts.js)
+      // rather than from the already-rendered prose.
+      data: ref.data ?? null,
       // Carried so the text report can label the item's file:line by artifact
       // ([XPI]/[SCA]) via ruleInputs - the corpus the owning check acts on. Without
       // it a non-manifest manual item has no ruleId and defaults to [SCA].

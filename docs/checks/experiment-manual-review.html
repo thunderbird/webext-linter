@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Experiment code review</title>
+    <title>Experiment manual review</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
-        <h1>Experiment code review <span class="badge code-review">code-review</span></h1>
+        <h1>Experiment manual review <span class="badge error">error</span></h1>
         <div class="check-id">experiment-manual-review</div>
       </header>
 
@@ -49,13 +49,14 @@ flowchart TD
         careful code review because it has full access to Thunderbird's
         internals, that the Experiment surface should be kept to a minimum and
         must not harm usability, stability, performance, or security, and that
-        reviewing only the differences from the last approved submission can save
-        time.
+        reviewing only the differences from the last approved submission can
+        save time.
       </div>
 
       <p class="source-note">
-        Source of truth: <code>src/checks/rules/experiment-manual-review.js</code>
-        and its entry in <code>assets/registry.yaml</code>.
+        Source of truth:
+        <code>src/checks/rules/experiment-manual-review.js</code> and its entry
+        in <code>assets/registry.yaml</code>.
       </p>
     </main>
 

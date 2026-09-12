@@ -19,12 +19,12 @@ import {
   SEVERITY_ORDER,
   sortFindings,
   countByRule,
-  hasErrors,
+  verdictKey,
 } from "./finding.js";
+import { orderReview, hasLocus, manualBody } from "./order.js";
 import { artifactLabel } from "./artifact.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
 import { displayLine, wrapText } from "../util/text.js";
-import { MAX_ENTRIES_PER_CATEGORY } from "../config.js";
 
 /** @param {string} s @returns {string} */
 const identity = (s) => s;
@@ -33,6 +33,8 @@ const identity = (s) => s;
 // stays plain). A no-op unless the CLI enabled color (color.js).
 const SEV_COLOR = {
   [SEVERITY.ERROR]: red,
+  // A hold stops the submission as an error does, so it is read with that weight.
+  [SEVERITY.HOLD]: red,
   [SEVERITY.WARNING]: yellow,
   [SEVERITY.INFO]: identity,
 };
@@ -44,9 +46,9 @@ const SEV_COLOR = {
  * @property {Record<string, string>} [issueHeadings]  Per-severity Issues
  *   headings ({ error?, warning?, info? }), registry-owned.
  * @property {Record<string, string>} [verdictIntros]  Issues-section preamble
- *   ({ none?, feedback?, rejected? }), registry-owned.
+ *   ({ none?, feedback?, hold?, rejected? }), registry-owned.
  * @property {string} [mode]  Review mode ("sca" | "xpi"). In "sca" each finding's
- *   file:line is labelled by artifact ([XPI]/[SCA]) and the Issues section gets a
+ *   file:line is labelled by artifact ([XPI]/[SCA]) and the Found Issues section gets a
  *   legend footer; XPI reviews add neither. See src/report/artifact.js.
  * @property {Map<string, string>} [ruleInputs]  ruleId -> routed input
  *   ("xpi"|"build"|"source"|"manifest"), from registry.checkInputs(); the artifact label reads it.
@@ -68,11 +70,25 @@ const SEV_COLOR = {
  * @property {string} [applicationVersion]
  * @property {number} [manifestVersion]
  * @property {string[]} [checksRun]  Ids of the checks that ran.
+ * @property {string} [itemsFile]  Path of the machine-readable item file, when one was
+ *   written (--llm-review). Named in the Review Details section.
  * @property {import("./finding.js").ManualItem[]} [manualReview]  The manual-review
  *   to-do list, each item tagged with `extended` (it escalated from a check) and
- *   `manualReview` (reading the code cannot settle it). The report splits it into
- *   three sections on those two tags - see buckets(). Text-only; dropped from JSON.
+ *   `section` (which of the two extended lists it belongs to). The report splits it
+ *   into three sections on those two tags - see src/report/order.js. Text-only;
+ *   dropped from JSON.
  */
+
+// The titles the report prints over its sections, keyed by the section a sequence item
+// carries (src/report/order.js). One definition, because the item file names an item's
+// section with the same string the prose prints - and the --llm-review prompt refers to
+// both by that name.
+export const SECTION_TITLES = Object.freeze({
+  issues: "Found Issues",
+  code: "Extended Code Review",
+  extendedManual: "Extended Manual Review",
+  standard: "Standard Manual Review",
+});
 
 /**
  * Render the review result as human-readable text.
@@ -81,17 +97,15 @@ const SEV_COLOR = {
  * @returns {string}
  */
 export function formatText(review) {
-  const manual = review.meta.manualReview ?? [];
-  const counts = bucketCounts(manual);
   // The complete text report: the body, then the verdict tally LAST, so the verdict
   // closes the report.
   const lines = [
     ...reviewBodyLines(review),
-    ...summaryLines(review.findings, counts),
+    ...summaryLines(review.findings, review.meta.manualReview ?? []),
   ];
-  // The "Reviewed …" header is printed live by the pipeline after the review
+  // The Review Details section is printed live by the pipeline after the review
   // (src/pipeline.js), not here, so drop the blank that section() prepends to
-  // the first (Issues) section, opening the report body at "── Issues ──".
+  // the first section, opening the report body at "── Found Issues ──".
   if (lines[0] === "") {
     lines.shift();
   }
@@ -99,9 +113,12 @@ export function formatText(review) {
 }
 
 /**
- * The report body lines - Issues, the three manual-review sections, and the ATN tail
- * - WITHOUT the trailing Summary tally. The findings here are issues only; the
- * manual-review to-dos live in meta.manualReview and are split by buckets().
+ * The report body lines - Found Issues, the three to-do sections, and the ATN tail -
+ * WITHOUT the trailing Summary tally.
+ *
+ * The order, the entry grouping and the numbering all come from orderReview: this
+ * function only draws what that sequence already decided, so the numbers a reader sees
+ * are the numbers --llm-verdict resolves (src/report/order.js).
  * @param {ReviewResult} review
  * @returns {string[]}
  */
@@ -114,31 +131,77 @@ function reviewBodyLines(review) {
     mode,
     ruleInputs,
   } = review;
-  const manual = meta.manualReview ?? [];
-  // Three buckets. An escalation a reviewer can settle by reading the code is a code
-  // review step; one needing information from outside the package, an action only a
-  // person can take, or a decision a person must own is a manual one. The standard
-  // list is the checks done by hand on every submission, escalated or not.
-  const { code, extendedManual, standard } = buckets(manual);
-  // The artifact label ([XPI]/[SCA]) for one finding/manual item's file:line - "" in
-  // an XPI review (one artifact). Applied wherever locationLine renders a locus.
-  const labelOf = (f) =>
-    artifactLabel({ file: f.file, input: ruleInputs?.get(f.ruleId), mode });
+  const ordered = orderReview(issues, meta.manualReview ?? []);
+  const todo = (section) =>
+    ordered.filter((x) => x.kind === "todo" && x.section === section);
+  const labelOf = locusLabeler(mode, ruleInputs);
   return [
-    ...issuesLines(issues, issueHeadings, verdictIntros, labelOf, mode),
-    ...manualSection(code, "Extended code review", brightCyan, labelOf),
+    ...issuesLines(
+      ordered.filter((x) => x.kind === "finding"),
+      issueHeadings,
+      verdictIntros,
+      labelOf,
+      mode
+    ),
+    ...manualSection(todo("code"), SECTION_TITLES.code, brightCyan, labelOf),
     ...manualSection(
-      extendedManual,
-      "Extended manual review",
+      todo("extendedManual"),
+      SECTION_TITLES.extendedManual,
       brightCyan,
       labelOf
     ),
-    ...manualSection(standard, "Standard manual review", blue, labelOf),
+    ...manualSection(todo("standard"), SECTION_TITLES.standard, blue, labelOf),
   ];
 }
 
 /**
- * Header: what ran, against which schema.
+ * The --llm-review verification prompt, printed above the header so the model that
+ * is handed the report reads its instructions before the report itself.
+ *
+ * Only the instructions the report can actually be checked against are printed, and every
+ * one it can: the issues ask needs a finding to verify, and each to-do ask needs an item in
+ * its OWN section. One ask per section, because a review that happens to have no Extended
+ * Manual Review items must not be told to work them. Both tests come from the same place the
+ * report's own sections do - `findings` and the ordered sequence - so the prompt cannot
+ * ask for a section the reader will not find. `outcome` - how the verdicts come back - closes the
+ * prompt whenever either was asked, and is absent when neither was: with nothing to
+ * settle there is nothing to hand back.
+ * @param {{intro: string, issues: string, codeReview: string,
+ *   extendedManualReview: string, standardManualReview: string, outcome: string}} prompt
+ * @param {import("./finding.js").Finding[]} findings
+ * @param {import("./finding.js").ManualItem[]} manual
+ * @returns {string[]}
+ */
+export function llmPromptLines(prompt, findings, manual) {
+  const asks = [];
+  if (findings.length) {
+    asks.push(prompt.issues);
+  }
+  const sections = new Set(orderReview([], manual).map((x) => x.section));
+  if (sections.has("code")) {
+    asks.push(prompt.codeReview);
+  }
+  if (sections.has("extendedManual")) {
+    asks.push(prompt.extendedManualReview);
+  }
+  if (sections.has("standard")) {
+    asks.push(prompt.standardManualReview);
+  }
+  const lines = [...section("LLM Prompt"), "", ...wrapText(prompt.intro), ""];
+  for (const ask of asks) {
+    lines.push(...wrapText(`- ${ask.replace(/\s+/g, " ").trim()}`));
+  }
+  if (asks.length) {
+    // Not collapsed like the asks above: this one carries a literal example, so its
+    // authored line breaks are the layout and wrapText keeps them.
+    lines.push("", ...wrapText(prompt.outcome));
+  }
+  return lines;
+}
+
+/**
+ * Review Details: what was reviewed, against which schema, and - when --llm-review wrote
+ * one - where the machine-readable item file is.
  * @param {ReviewMeta} meta
  * @returns {string[]}
  */
@@ -154,27 +217,33 @@ export function headerLines(meta) {
     ? [`Reviewed XPI: ${meta.shippedAddon}`, `Reviewed SCA: ${meta.addon}`]
     : [`Reviewed XPI: ${meta.addon}`];
   return [
+    ...section("Review Details"),
+    "",
     ...what,
     `schema ${meta.schemaBranch} · Thunderbird ${meta.applicationVersion ?? "?"}` +
       (meta.manifestVersion != null
         ? ` · manifest_version ${meta.manifestVersion}`
         : ""),
+    // Only --llm-review writes one. It is named here rather than only in the prompt so
+    // the section stays the one place that says what this review consists of.
+    ...(meta.itemsFile ? [`Review items: ${meta.itemsFile}`] : []),
   ];
 }
 
 /**
- * Issues: one numbered entry per distinct message (see renderGroup and
- * groupByMessage) - the response printed VERBATIM, then its "- file:line"
- * locations. Grouped by severity under registry-defined headings (numbering
- * continuous across the severity groups) when headings are supplied, otherwise
- * a single flat list.
+ * Found Issues: one numbered entry per distinct message - the response printed
+ * VERBATIM, then its "- file:line" locations. Grouped by severity under
+ * registry-defined headings (numbering continuous across the severity groups) when
+ * headings are supplied, otherwise a single flat list. The entries and their order are
+ * read off the sequence, never decided here (src/report/order.js).
  *
  * A registry-owned verdict preamble opens the section: with no findings it is
  * the whole body (`verdictIntros.none`). With findings it is `rejected` (any
  * error) or `feedback` (warnings/info only), glued directly to the FIRST
  * severity heading - one space, no blank line - and printed verbatim (no
  * rewrap), like the findings below it.
- * @param {import("./finding.js").Finding[]} issues
+ * @param {import("./order.js").OrderedItem[]} items  The findings half of the ordered
+ *   sequence (src/report/order.js), which owns the order, the grouping and the numbers.
  * @param {Record<string, string>} [issueHeadings]
  * @param {Record<string, string>} [verdictIntros]
  * @param {(f: import("./finding.js").Finding) => string} [labelOf]  Artifact label
@@ -182,45 +251,37 @@ export function headerLines(meta) {
  * @param {string} [mode]  Review mode; "sca" appends the label legend footer.
  * @returns {string[]}
  */
-function issuesLines(issues, issueHeadings, verdictIntros, labelOf, mode) {
-  const out = section("Issues");
+function issuesLines(items, issueHeadings, verdictIntros, labelOf, mode) {
+  const out = section(SECTION_TITLES.issues);
   const intros = verdictIntros ?? {};
+  const issues = items.map((x) => x.target);
   if (issues.length === 0) {
     out.push(intros.none ?? "The automated review did not find any issues.");
     return out;
   }
   // One preamble for the whole section, glued onto the first rendered heading.
-  const intro = hasErrors(issues) ? intros.rejected : intros.feedback;
-  if (issueHeadings) {
-    let n = 0;
-    let first = true;
-    for (const sev of SEVERITY_ORDER) {
-      const group = sortFindings(issues.filter((f) => f.severity === sev));
-      if (group.length === 0) {
-        continue;
-      }
-      const tint = SEV_COLOR[sev] ?? identity;
-      out.push("");
-      const heading = issueHeadings[sev];
-      const text = first && intro ? `${intro} ${heading ?? ""}` : heading;
-      if (text) {
-        // Verbatim, like the findings: no 80-column rewrap. The registry owns
-        // the intro/heading wording on one line. Any authored break is kept.
-        out.push(...text.split("\n").map(tint));
-      }
-      first = false;
-      for (const entry of groupByMessage(group)) {
+  const intro = intros[verdictKey(issues)];
+  let n = 0;
+  let band = null;
+  for (const entry of entriesOf(items)) {
+    if (issueHeadings) {
+      if (entry.section !== band) {
+        band = entry.section;
+        const tint = SEV_COLOR[band] ?? identity;
         out.push("");
-        out.push(...renderGroup(++n, entry, labelOf));
+        const heading = issueHeadings[band];
+        const text = n === 0 && intro ? `${intro} ${heading ?? ""}` : heading;
+        if (text) {
+          // Verbatim, like the findings: no 80-column rewrap. The registry owns
+          // the intro/heading wording on one line. Any authored break is kept.
+          out.push(...text.split("\n").map(tint));
+        }
       }
+      out.push("");
+    } else if (n > 0) {
+      out.push(""); // blank line between entries
     }
-  } else {
-    groupByMessage(sortFindings(issues)).forEach((entry, i) => {
-      if (i > 0) {
-        out.push(""); // blank line between entries
-      }
-      out.push(...renderGroup(i + 1, entry, labelOf));
-    });
+    out.push(...renderGroup(++n, entry, labelOf));
   }
   // In an SCA review a finding's file:line is prefixed with the artifact it lives in;
   // a legend explains the labels. XPI reviews (one artifact) omit it.
@@ -240,43 +301,57 @@ function issuesLines(issues, issueHeadings, verdictIntros, labelOf, mode) {
 }
 
 /**
- * Group findings that share an identical rendered `message` so a check that
- * fires many times (e.g. dozens of innerHTML sinks) shows its prose once, not
- * once per site. A Map preserves first-appearance order, and the input is
- * already sortFindings-ordered, so the groups and the locations within them
- * stay sorted. Findings whose message embeds the file (e.g. missing-library)
- * are simply singleton groups.
- * @param {import("./finding.js").Finding[]} findings
- * @returns {import("./finding.js").Finding[][]}
+ * Cut an ordered sequence into the entries it prints: a run of consecutive items
+ * sharing an entry key. The sequence already decided the order, the grouping and the
+ * numbering (src/report/order.js), so this only finds the boundaries - there is no
+ * second opinion here about what goes where.
+ * @param {import("./order.js").OrderedItem[]} items
+ * @returns {{section: string, members: object[], shown: object[], withheld: number}[]}
  */
-function groupByMessage(findings) {
-  const byMessage = new Map();
-  for (const f of findings) {
-    const bucket = byMessage.get(f.message);
-    if (bucket) {
-      bucket.push(f);
-    } else {
-      byMessage.set(f.message, [f]);
+function entriesOf(items) {
+  const out = [];
+  for (const item of items) {
+    const last = out.at(-1);
+    if (last && last.key === item.entry && last.section === item.section) {
+      last.members.push(item.target);
+      if (item.index == null) {
+        last.withheld++;
+      } else {
+        last.shown.push(item.target);
+      }
+      continue;
     }
+    out.push({
+      key: item.entry,
+      section: item.section,
+      members: [item.target],
+      shown: item.index == null ? [] : [item.target],
+      withheld: item.index == null ? 1 : 0,
+    });
   }
-  return [...byMessage.values()];
+  return out;
 }
 
 /**
- * The display-capped locus lines for a group: ` - file:line` (with the artifact
- * label and any per-locus hint), then an "(+N more)" marker when the count exceeds
- * the per-category cap. Shared by the Issues entries and the manual-review sections.
- * @param {object[]} items  Findings or manual items, each with file/loc(/hint).
+ * The locus lines of one entry: ` - file:line` (with the artifact label and any
+ * per-locus hint) for each item the sequence numbered, then an "and N more" marker
+ * standing for the ones it withheld. Shared by the Found Issues entries and the to-do
+ * sections. What is shown and what is withheld was decided in src/report/order.js - the
+ * cap is not applied a second time here, because a second opinion about it is exactly
+ * how the printed numbers and the addressable ones came apart.
+ * @param {{shown: object[], withheld: number}} entry
  * @param {(x: object) => string} [labelOf]  Artifact label prefix (SCA only).
  * @returns {string[]}
  */
-function renderLocusList(items, labelOf) {
+function renderLocusList(entry, labelOf) {
   const lines = [];
-  for (const x of items.slice(0, MAX_ENTRIES_PER_CATEGORY)) {
-    lines.push(` - ${locationLine(x, labelOf?.(x))}`);
+  for (const x of entry.shown) {
+    if (hasLocus(x)) {
+      lines.push(` - ${locationLine(x, labelOf?.(x))}`);
+    }
   }
-  if (items.length > MAX_ENTRIES_PER_CATEGORY) {
-    lines.push(excludedMarker(items.length - MAX_ENTRIES_PER_CATEGORY));
+  if (entry.withheld) {
+    lines.push(excludedMarker(entry.withheld));
   }
   return lines;
 }
@@ -295,14 +370,14 @@ function renderLocusList(items, labelOf) {
  * @param {(f: import("./finding.js").Finding) => string} [labelOf]  Artifact label.
  * @returns {string[]}
  */
-function renderGroup(n, findings, labelOf) {
-  const [first, ...rest] = findings[0].message.split("\n");
+function renderGroup(n, entry, labelOf) {
+  const [first, ...rest] = entry.members[0].message.split("\n");
   const lines = [`${n}) ${first}`, ...rest];
-  lines.push(...renderLocusList(findings.filter(hasLocus), labelOf));
+  lines.push(...renderLocusList(entry, labelOf));
   // Tint the whole entry by severity (error red, warning yellow) - a no-op
   // unless the CLI enabled color. Each line is tinted on its own, so the color
   // resets per line and stripColor cleans the --report-out copy.
-  const tint = SEV_COLOR[findings[0].severity] ?? identity;
+  const tint = SEV_COLOR[entry.members[0].severity] ?? identity;
   return lines.map(tint);
 }
 
@@ -319,17 +394,6 @@ function excludedMarker(n) {
 }
 
 /**
- * The "Title: instructions" line of a manual item (its grouping key).
- * @param {import("./finding.js").ManualItem} m
- * @returns {string}
- */
-function manualBody(m) {
-  return m.instructions
-    ? `${m.title}: ${m.instructions.replace(/\s+/g, " ").trim()}`
-    : m.title;
-}
-
-/**
  * One manual-review section under `title`. Items sharing a "Title: instructions"
  * body collapse into one numbered entry (like Issues) - the body is still
  * 80-column wrapped. When the entry has a developer-facing `response`, it is
@@ -340,7 +404,7 @@ function manualBody(m) {
  * reminders (no locus) carry no list. Returns [] when there are no items, so an
  * absent section prints nothing.
  * @param {import("./finding.js").ManualItem[]} items
- * @param {string} title  Section heading, e.g. "Extended manual review".
+ * @param {string} title  Section heading, e.g. "Extended Manual Review".
  * @returns {string[]}
  */
 function manualSection(items, title, accent = blue, labelOf) {
@@ -354,26 +418,24 @@ function manualSection(items, title, accent = blue, labelOf) {
   // from Standard's blue, so the two are easy to tell apart. Each line is tinted on
   // its own for stripColor.
   out.push(accent("Continue manual review for the following checks:"));
-  const byBody = new Map();
-  for (const m of items) {
-    const body = manualBody(m);
-    const bucket = byBody.get(body);
-    if (bucket) {
-      bucket.push(m);
-    } else {
-      byBody.set(body, [m]);
-    }
-  }
   let n = 0;
-  for (const [body, group] of byBody) {
+  for (const entry of entriesOf(items)) {
+    const group = entry.members;
+    const body = manualBody(group[0]);
     out.push("");
     // The reviewer-facing instructions (the section's accent, 80-col wrapped).
     out.push(...wrapText(`${++n}) ${body}`).map(accent));
     // The developer-facing response, if any: labelled "Suggested response:" and
-    // printed in dim grey, flush-left at column 0 (verbatim, like the Issues
+    // printed in dim grey, flush-left at column 0 (verbatim, like the Found Issues
     // responses), sitting between the instructions and the locus list so it
     // reads as a ready-to-send block without pulling focus from the blue
     // instructions. Shared across the group, so taken from the first item.
+    // The band a confirmed case lands in, above the response so its weight is known
+    // before the text is sent. Absent for a check that produces no finding either way.
+    const verdict = group[0].verdict;
+    if (verdict) {
+      out.push(grey(`Suggested verdict: ${verdict}`));
+    }
     const response = group[0].response;
     if (response) {
       const lines = response.split("\n");
@@ -386,59 +448,60 @@ function manualSection(items, title, accent = blue, labelOf) {
     // reminders have no file/item and render as the wrapped body alone. The
     // list is display-capped like Issues (see renderGroup). Tinted in the same
     // grey as the response (not the instructions' blue), so it reads as detail.
-    const loci = group.filter(hasLocus);
-    out.push(...renderLocusList(loci, labelOf).map(grey));
+    out.push(...renderLocusList(entry, labelOf).map(grey));
   }
   return out;
 }
 
 /**
- * Summary: issue counts by severity plus one count per manual-review section, in the
- * body's section order (code review, manual review, then the always-shown checklist).
+ * Summary: issue counts by severity plus one count per to-do section, in the body's
+ * section order (code review, manual review, then the always-shown checklist).
+ *
+ * Also printed on its own by a --llm-review run, which has no report body for it to close:
+ * without it that run's output would not say whether the add-on is ready to sign off or
+ * still has work waiting.
  * @param {import("./finding.js").Finding[]} issues
- * @param {{code: number, manual: number, standard: number}} counts
+ * @param {import("./finding.js").ManualItem[]} [manual]
  * @returns {string[]}
  */
-function summaryLines(issues, counts) {
-  const c = tally(issues);
+export function summaryLines(issues, manual = []) {
   const out = section("Summary");
   out.push("");
-  out.push(
-    `${c.error} error(s), ${c.warning} warning(s), ${c.info} info, ` +
-      `${counts.code} extended code review step(s), ` +
-      `${counts.manual} extended manual review step(s), ` +
-      `${counts.standard} standard manual review step(s)`
-  );
+  out.push(tallyLine(issues, bucketCounts(manual)));
   return out;
 }
 
 /**
- * How many to-dos fall in each of the three buckets, for the Summary tally.
+ * The one counts line: findings by band, then one count per to-do section.
+ * @param {import("./finding.js").Finding[]} issues
+ * @param {{code: number, manual: number, standard: number}} counts
+ * @returns {string}
+ */
+function tallyLine(issues, counts) {
+  const c = tally(issues);
+  return (
+    `${c.error} error(s), ${c.hold} hold, ${c.warning} warning(s), ${c.info} info, ` +
+    `${counts.code} extended code review step(s), ` +
+    `${counts.manual} extended manual review step(s), ` +
+    `${counts.standard} standard manual review step(s)`
+  );
+}
+
+/**
+ * How many to-dos fall in each of the three sections, for the Summary tally. Counted
+ * off the same ordered sequence the sections are printed from, so the tally and the
+ * lists above it cannot disagree about which section an item is in.
  * @param {import("./finding.js").ManualItem[]} manual
  * @returns {{code: number, manual: number, standard: number}}
  */
 function bucketCounts(manual) {
-  const b = buckets(manual);
+  const ordered = orderReview([], manual);
+  const count = (section) =>
+    ordered.filter((x) => x.section === section).length;
   return {
-    code: b.code.length,
-    manual: b.extendedManual.length,
-    standard: b.standard.length,
-  };
-}
-
-/**
- * Split the to-do list into its three sections. The ONE definition of the buckets, so
- * the printed sections and the Summary tally can never disagree about them.
- * @param {import("./finding.js").ManualItem[]} manual
- * @returns {{code: ManualItem[], extendedManual: ManualItem[], standard: ManualItem[]}}
- */
-function buckets(manual) {
-  return {
-    code: manual.filter((m) => m.extended && m.section !== "manual-review"),
-    extendedManual: manual.filter(
-      (m) => m.extended && m.section === "manual-review"
-    ),
-    standard: manual.filter((m) => !m.extended),
+    code: count("code"),
+    manual: count("extendedManual"),
+    standard: count("standard"),
   };
 }
 
@@ -478,6 +541,19 @@ export function formatJson(review) {
 }
 
 /**
+ * The artifact label ([XPI]/[SCA]) for one finding/manual item's file:line - "" in an
+ * XPI review (one artifact). Applied wherever locationLine renders a locus, and by the
+ * verdict enumeration, so an item's reference string is the line the report printed.
+ * @param {string} [mode]
+ * @param {Map<string, string>} [ruleInputs]
+ * @returns {(x: object) => string}
+ */
+export function locusLabeler(mode, ruleInputs) {
+  return (f) =>
+    artifactLabel({ file: f.file, input: ruleInputs?.get(f.ruleId), mode });
+}
+
+/**
  * Return a titled section header preceded by a blank line.
  *
  * @param {string} title
@@ -508,7 +584,7 @@ function section(title) {
  * @param {string} [label]  Artifact label ("XPI"/"SCA"), or "" for none.
  * @returns {string}
  */
-function locationLine(f, label = "") {
+export function locationLine(f, label = "") {
   // The path comes from an archive entry name, and the item and hint from the
   // submission, so all three are made safe to show. The label is ours.
   const file = f.file ? displayLine(f.file) : null;
@@ -531,27 +607,15 @@ function locationLine(f, label = "") {
 }
 
 /**
- * Whether an entry has anything to put on a location line: a file, a subject surfaced
- * for display, or a supplementary detail. One of the three is required because
- * locationLine has nothing to print without them - it is this gate, not a placeholder,
- * that keeps an empty line out of the report. An entry with none of them - a finding
- * whose subject is the submission as a whole, and whose message already says everything -
- * is listed with no location line rather than a line naming nothing.
- * @param {object} x  A finding or manual item.
- * @returns {boolean}
- */
-function hasLocus(x) {
-  return Boolean(x.file || (x.listItem && x.item) || x.hint);
-}
-
-/**
  * Count findings by severity.
  *
  * @param {import("./finding.js").Finding[]} findings
  * @returns {{error: number, warning: number, info: number}}
  */
 function tally(findings) {
-  const counts = { error: 0, warning: 0, info: 0 };
+  // Keyed off the one severity ordering, so a new band is counted the day it exists
+  // rather than silently missing from the tally and the JSON summary.
+  const counts = Object.fromEntries(SEVERITY_ORDER.map((s) => [s, 0]));
   for (const f of findings) {
     counts[f.severity] = (counts[f.severity] ?? 0) + 1;
   }

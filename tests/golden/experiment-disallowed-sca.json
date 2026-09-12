@@ -15,6 +15,7 @@
   },
   "summary": {
     "error": 1,
+    "hold": 0,
     "warning": 0,
     "info": 0,
     "byRule": {
