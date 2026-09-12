@@ -126,7 +126,7 @@ export default {
 /**
  * Lint a source, trying module then script parsing. Returns non-fatal messages.
  * A file unparseable under both is skipped (the parse failure is surfaced as an
- * api-coverage finding elsewhere).
+ * unparsable-file finding elsewhere).
  * @param {string} code
  * @param {string} filename
  * @param {Record<string, string>} rules

@@ -75,7 +75,7 @@ format that only exists pre-build.
 
 | Add-on | Exercises |
 | --- | --- |
-| `all-checks` | Triggers every deterministic violation check at once - the broad smoke test. (`missing-library` / `obfuscated-code` need a bundled or minified file, and `api-coverage` a parse/resolution gap, so those three don't show here.) |
+| `all-checks` | Triggers every deterministic violation check at once - the broad smoke test. (`missing-library` / `obfuscated-code` need a bundled or minified file, so neither shows here.) |
 | `clean` | A well-formed add-on - expects zero findings. |
 | `unknown-api` | `unknown-api`: an unknown namespace + an unknown member. |
 | `deprecated` | `deprecated-api`: a deprecated member + an API newer than the target Thunderbird. |

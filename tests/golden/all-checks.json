@@ -39,7 +39,6 @@
       "minified-code",
       "untrusted-minified-library",
       "untrusted-library",
-      "api-coverage",
       "unparsable-file",
       "experiment-modified",
       "experiment-missing-strict-max-version",

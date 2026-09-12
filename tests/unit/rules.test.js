@@ -37,7 +37,6 @@ import {
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 import vendorVulnerableDev from "../../src/checks/rules/vendor-vulnerable-dev.js";
 import { rawSha256 } from "../../src/normalize/hash.js";
-import apiCoverage from "../../src/checks/rules/api-coverage.js";
 import trademarkViolation from "../../src/checks/rules/trademark-violation.js";
 import coreSymbolInWebext from "../../src/checks/rules/core-symbol-in-webext.js";
 import missingEnglish from "../../src/checks/rules/missing-english-localization.js";
@@ -585,42 +584,19 @@ test("vendor-vulnerable-dev yields nothing when devVulnerabilities is empty", ()
   assert.deepEqual(vendorVulnerableDev.run(withManifest(ctx)).findings, []);
 });
 
-// ---- api-coverage (static-analysis self-report) ----
-// api-coverage reports the runner's own blind spots: a file that failed to
-// parse, and each unresolved dynamic/aliased access (with its location). A
-// source that parsed cleanly with no limitations yields nothing. Severity is
-// left unset - runChecks stamps the yaml entry's type ("info").
-test("api-coverage flags dynamic limits; unparsable-file flags parse failures", () => {
+// ---- unparsable-file (static-analysis self-report) ----
+// A file that failed to parse had every AST-based check skipped over it, so the parse
+// error is reported with the parser's own wording. A source that parsed cleanly yields
+// nothing. Severity is left unset - runChecks stamps the yaml entry's type ("info").
+test("unparsable-file flags parse failures", () => {
   const apiUsages = [
     { file: "broken.js", parseError: "Unexpected token (3:5)" },
-    {
-      file: "dyn.js",
-      limitations: [
-        { reason: "dynamic browser[x] access", line: 7, column: 2 },
-      ],
-    },
     { file: "ok.js", limitations: [] },
   ];
-  // dyn.js must be in the pure WebExtension tree for api-coverage to report it.
-  const cov = apiCoverage.run(
-    withManifest({
-      apiUsages,
-      addon: {
-        manifest: { background: { scripts: ["dyn.js"] } },
-        files: new Map([["dyn.js", Buffer.from("")]]),
-      },
-    })
-  ).findings;
-  assert.equal(cov.length, 1);
-  const dyn = cov[0];
-  assert.equal(dyn.file, "dyn.js");
-  assert.equal(dyn.severity, null);
-  assert.equal(dyn.item, "dynamic browser[x] access"); // reason passed through
-  assert.equal(dyn.loc.line, 7); // carries the source location
-
   const unparsable = unparsableFile.run(withManifest({ apiUsages })).findings;
   assert.equal(unparsable.length, 1);
   assert.equal(unparsable[0].file, "broken.js");
+  assert.equal(unparsable[0].severity, null);
   // The "could not be parsed" wording lives in the registry; the check emits the
   // parser error as data.
   assert.match(unparsable[0].data.detail, /Unexpected token/);
@@ -818,7 +794,6 @@ test("every check's severity is pinned to its band", async () => {
     ],
     info: [
       "addon-icon-missing",
-      "api-coverage",
       "code-sanity",
       "deprecated-api",
       "find-lib-on-cdn",

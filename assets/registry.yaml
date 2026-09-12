@@ -341,15 +341,6 @@ deterministic-phase:
     The following dependencies could not be confirmed to be widely-used. They need to be packaged non-minified with the add-on in order to be reviewed.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
-# Reports dynamic/aliased API access the static analysis cannot resolve.
-- title: Static analysis coverage
-  severity: info
-  check: api-coverage
-  input: source
-  response: |-
-    Limited static-analysis coverage at the following location(s).
-
-# Reports a file that failed to parse, so its API checks were skipped.
 - title: Unparsable file
   severity: info
   check: unparsable-file

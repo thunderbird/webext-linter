@@ -243,7 +243,6 @@ machine.
 
 | Check | What it flags |
 | --- | --- |
-| `api-coverage` | Dynamic/aliased API access static analysis can't resolve (info). Files that fail to parse are `unparsable-file`. |
 | `async-onmessage` | An async listener passed to the `addListener()` of an event that answers with its listener's return value (`runtime.onMessage`, `onMessageExternal`, `onUserScriptMessage`), derived from the schema. |
 | `background-module` | A background script (`background.scripts`/`service_worker`) that uses static ES module syntax (`import`/`export`) while the manifest's background is not declared `"type": "module"` - it won't load as a module (error). Background pages and content scripts are out of scope. |
 | `bundled-files` | Referenced files that aren't packaged. Both halves come from the schema, not a hardcoded list: every manifest key the schema types as an extension-relative path (scripts, pages, popups, `icons` and every `default_icon`/`theme_icons`, ruleset paths, theme images, Experiment schema and parent scripts), and packaged-file paths passed to file-loading API calls (script registration, `setIcon`, `executeScript`/`insertCSS`, `getURL`, ...) - the same schema-derived loader set that fuels the reference graph. |

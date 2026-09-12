@@ -19,7 +19,7 @@
 // unrelated file look mentioned.
 //
 // `pureWebExtensionReachable` is the positive "this is WebExtension code" set the
-// API/permission validators (unknown-api, deprecated-api, api-coverage, strict-
+// API/permission validators (unknown-api, deprecated-api, strict-
 // min/max-version-api, permissions, core-symbol-in-webext) check against: the
 // closure from the manifest WebExtension entry points over standard edges, PLUS
 // any plain `.html` file passed as an Experiment-API parameter (a content page),

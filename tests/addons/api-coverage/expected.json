@@ -1,7 +1,0 @@
-{
-  "_comment": "The two static-analysis coverage gaps api-usage.js records, one each, so api-coverage reports two findings and their collapse behaviour is observable: a computed member access (browser.runtime[which]) the resolver cannot follow to a name, and an API object destructured into a binding (const { tabs } = browser) whose later use it cannot track. Both namespaces are permission-free, so the gaps are all that fires here apart from the missing icons key. api-coverage reports only gaps inside the pure WebExtension tree.",
-  "expect": {
-    "api-coverage": ["background.js:7", "background.js:9"],
-    "addon-icon-missing": ["manifest.json"]
-  }
-}

@@ -40,7 +40,6 @@
       "untrusted-minified-library",
       "untrusted-library",
       "unpopular-source-dependency",
-      "api-coverage",
       "unparsable-file",
       "experiment-modified",
       "experiment-missing-strict-max-version",
