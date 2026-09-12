@@ -14,10 +14,19 @@ Continue manual review for the following checks:
 Suggested verdict: error
 Suggested response: The following WebExtension APIs are not supported in the targeted Thunderbird version.
 Read more: https://webextension-api.thunderbird.net/.
- - background.js:3 - browser.contextMenus - unknown namespace
- - background.js:5 - browser.messages.frobnicate - unknown member
+ - background.js:4 - browser.messageDisplay - unknown namespace
 
-2) Missing English localization: This add-on ships no English localization, so
+2) Debugger statement: A debugger statement is acceptable only when it is
+   guarded by a build or configuration flag, or by a setting in the add-on's
+   options. Read the enclosing condition, if any, and decide whether it is
+   properly guarded and does not run unconditionally.
+Suggested verdict: error
+Suggested response: Debugger statement left in shipped code. Please remove it or move it behind a build or configuration flag.
+ - background.js:6
+ - background.js:11
+ - background.js:22
+
+3) Missing English localization: This add-on ships no English localization, so
    user-facing text may be hardcoded in another language. Review its strings by
    hand and confirm if an English localization is provided.
 Suggested verdict: warning
@@ -111,4 +120,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 0 hold, 0 warning(s), 0 info, 3 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 hold, 0 warning(s), 0 info, 5 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)

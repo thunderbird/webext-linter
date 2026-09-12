@@ -1,19 +1,22 @@
 ── Found Issues ──
-
-Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
-
-1) The following WebExtension APIs are not supported in the targeted Thunderbird version.
-Read more: https://webextension-api.thunderbird.net/.
- - background.js:5 - browser.runtime.onRestartRequired.addListener
-
-You can run this automated review yourself before submitting:
-https://github.com/thunderbird/webext-linter
+The automated review did not find any issues.
 
 ── Extended Code Review ──
 
 Continue manual review for the following checks:
 
-1) Missing English localization: This add-on ships no English localization, so
+1) Unknown or unsupported WebExtension API: Each reference below is to a name
+   the schema does not have, or marks unsupported, for the targeted Thunderbird
+   version. Check whether this reference is guarded, so the add-on still works
+   where the name is missing. A feature detection with a working fallback, a
+   shim, a try/catch all count. Clear it only if you can point at the guard.
+   Otherwise it is a finding.
+Suggested verdict: error
+Suggested response: The following WebExtension APIs are not supported in the targeted Thunderbird version.
+Read more: https://webextension-api.thunderbird.net/.
+ - background.js:5 - browser.runtime.onRestartRequired.addListener - unsupported
+
+2) Missing English localization: This add-on ships no English localization, so
    user-facing text may be hardcoded in another language. Review its strings by
    hand and confirm if an English localization is provided.
 Suggested verdict: warning
@@ -107,4 +110,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 hold, 0 warning(s), 0 info, 1 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 hold, 0 warning(s), 0 info, 2 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)

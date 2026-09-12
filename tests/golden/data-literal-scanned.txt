@@ -1,18 +1,19 @@
 ── Found Issues ──
-
-Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
-
-1) Unconditional debugger statement. Please remove it or move it behind a config flag.
- - icons.js:5
-
-You can run this automated review yourself before submitting:
-https://github.com/thunderbird/webext-linter
+The automated review did not find any issues.
 
 ── Extended Code Review ──
 
 Continue manual review for the following checks:
 
-1) Missing English localization: This add-on ships no English localization, so
+1) Debugger statement: A debugger statement is acceptable only when it is
+   guarded by a build or configuration flag, or by a setting in the add-on's
+   options. Read the enclosing condition, if any, and decide whether it is
+   properly guarded and does not run unconditionally.
+Suggested verdict: error
+Suggested response: Debugger statement left in shipped code. Please remove it or move it behind a build or configuration flag.
+ - icons.js:5
+
+2) Missing English localization: This add-on ships no English localization, so
    user-facing text may be hardcoded in another language. Review its strings by
    hand and confirm if an English localization is provided.
 Suggested verdict: warning
@@ -106,4 +107,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 hold, 0 warning(s), 0 info, 1 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 hold, 0 warning(s), 0 info, 2 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)

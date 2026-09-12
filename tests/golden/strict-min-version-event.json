@@ -88,28 +88,15 @@
     ]
   },
   "summary": {
-    "error": 1,
+    "error": 0,
     "hold": 0,
     "warning": 1,
     "info": 0,
     "byRule": {
-      "non-experiment-strict-max-version": 1,
-      "strict-min-version-api": 1
+      "non-experiment-strict-max-version": 1
     }
   },
   "findings": [
-    {
-      "ruleId": "strict-min-version-api",
-      "severity": "error",
-      "file": "background.js",
-      "loc": {
-        "line": 5,
-        "column": 0
-      },
-      "item": "browser.compose.onAfterSend.addListener",
-      "hint": "added in Thunderbird 105",
-      "message": "The add-on is setting strict_min_version to 102.0 but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly."
-    },
     {
       "ruleId": "non-experiment-strict-max-version",
       "severity": "warning",

@@ -13,15 +13,12 @@ Suggested response: Please include an English localization. English serves as th
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
 
-2) API newer than strict_min_version: The API at each location below exists and
-   is supported, but was added after the declared strict_min_version, so decide
-   one thing only: is that call guarded so it runs only where the API exists?
-   Any of these counts as guarded, provided the feature is genuinely optional or
-   has a fallback: optional chaining on the API path, a typeof or existence
-   test, an earlier guard clause that returned or threw when the API was
-   missing, or a runtime.getBrowserInfo() version gate. Unguarded, the call
-   throws on the still-supported versions below the one that added it. If it is
-   unguarded, ask the developer to raise strict_min_version or guard the call.
+2) API newer than strict_min_version: Each call below is to an API that was
+   introduced after the add-on's strict_min_version, so it throws on the
+   versions in between. Check whether the call is guarded for those versions.
+   This could be a feature detection, a cached flag, an early return, a
+   try/catch or an explicit version gate, among others. Clear it only if you can
+   point at the guard. Otherwise ask for a higher strict_min_version.
 Suggested verdict: error
 Suggested response: The add-on is setting strict_min_version to 115.0 but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
  - background.js:9 - browser.messages.tags.list() - added in Thunderbird 121

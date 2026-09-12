@@ -1,0 +1,4 @@
+{
+  "_comment": "Three debugger statements, none of them unconditional. Two are gated on RUNTIME DATA, a message author and a tab id, so they fire for ordinary users on ordinary mail. The third is gated on a build-time constant and is the acceptable shape. All three are raised, because telling a build flag or an add-on option from a test on user data means reading the file, and a check that answered it from the shape of the `if` would clear the first two in silence at severity error. `expect` is empty because none is a finding: the golden's Extended Code Review hints pin this, and their disappearance would mean the statements are being cleared without anyone seeing them.",
+  "expect": {}
+}

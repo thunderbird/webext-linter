@@ -42,11 +42,13 @@ test("review: read-only; line numbers match the submitted source", async () => {
     ...OFFLINE,
   });
 
-  const finding = result.findings.find(
-    (f) => f.ruleId === "debugger-statement"
+  // debugger-statement escalates rather than rejecting, so the probe reads the item
+  // list - the line is what matters here either way.
+  const item = (result.meta.manualReview ?? []).find(
+    (m) => m.ruleId === "debugger-statement"
   );
-  assert.ok(finding, "expected a debugger-statement finding");
-  assert.equal(finding.loc.line, 1);
+  assert.ok(item, "expected a debugger-statement item");
+  assert.equal(item.loc.line, 1);
   assert.equal(result.meta.reviewed, true);
   // The source file on disk is untouched.
   assert.equal(

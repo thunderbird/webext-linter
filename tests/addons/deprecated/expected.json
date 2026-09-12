@@ -1,7 +1,8 @@
 {
-  "_comment": "oldOne is deprecated (deprecated-api); future was added in TB 200, newer than the declared strict_min_version 128.0 (strict-min-version-api).",
+  "_comment": "oldOne is deprecated (deprecated-api, a finding - a deprecated API still exists and still runs, so no construction makes it a non-issue); future was added in TB 200, newer than the declared strict_min_version 128.0, which strict-min-version-api raises for a reader rather than rejecting.",
   "expect": {
-    "deprecated-api": ["background.js:2"],
-    "strict-min-version-api": ["background.js:3"]
+    "deprecated-api": [
+      "background.js:2"
+    ]
   }
 }

@@ -89,12 +89,11 @@
     ]
   },
   "summary": {
-    "error": 15,
+    "error": 11,
     "hold": 0,
     "warning": 2,
     "info": 8,
     "byRule": {
-      "unknown-api": 2,
       "deprecated-api": 2,
       "missing-permission": 3,
       "missing-manifest-key": 1,
@@ -103,41 +102,15 @@
       "bundled-files": 1,
       "sync-xhr": 1,
       "unsafe-html": 1,
-      "debugger-statement": 1,
       "async-onmessage": 2,
       "code-sanity": 2,
       "minimize-host-permissions": 1,
       "addon-icon-missing": 1,
-      "strict-min-version-api": 1,
       "unused-files": 2,
       "remote-resources": 2
     }
   },
   "findings": [
-    {
-      "ruleId": "unknown-api",
-      "severity": "error",
-      "file": "background.js",
-      "loc": {
-        "line": 4,
-        "column": 0
-      },
-      "item": "browser.bogusApi",
-      "hint": null,
-      "message": "The following WebExtension APIs are not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
-    },
-    {
-      "ruleId": "unknown-api",
-      "severity": "error",
-      "file": "background.js",
-      "loc": {
-        "line": 5,
-        "column": 0
-      },
-      "item": "browser.messages.frobnicate",
-      "hint": null,
-      "message": "The following WebExtension APIs are not supported in the targeted Thunderbird version.\nRead more: https://webextension-api.thunderbird.net/."
-    },
     {
       "ruleId": "missing-permission",
       "severity": "error",
@@ -161,18 +134,6 @@
       "item": "messages.oldOne",
       "hint": "Use list() instead.",
       "message": "The following APIs are deprecated in the targeted Thunderbird version. Please migrate to supported APIs.\nRead more: https://webextension-api.thunderbird.net/."
-    },
-    {
-      "ruleId": "strict-min-version-api",
-      "severity": "error",
-      "file": "background.js",
-      "loc": {
-        "line": 10,
-        "column": 0
-      },
-      "item": "browser.messages.future()",
-      "hint": "added in Thunderbird 200",
-      "message": "The add-on is setting strict_min_version to 128.0 but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly."
     },
     {
       "ruleId": "deprecated-api",
@@ -245,18 +206,6 @@
       "item": ".innerHTML",
       "hint": null,
       "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
-    },
-    {
-      "ruleId": "debugger-statement",
-      "severity": "error",
-      "file": "background.js",
-      "loc": {
-        "line": 32,
-        "column": 0
-      },
-      "item": null,
-      "hint": null,
-      "message": "Unconditional debugger statement. Please remove it or move it behind a config flag."
     },
     {
       "ruleId": "async-onmessage",

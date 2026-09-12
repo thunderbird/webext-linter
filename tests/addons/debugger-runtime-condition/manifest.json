@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Debugger Runtime Condition Demo",
+  "version": "1.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "debugger-runtime-condition@example.com"
+    }
+  },
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png"
+  }
+}

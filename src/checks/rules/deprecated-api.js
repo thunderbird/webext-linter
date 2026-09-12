@@ -1,9 +1,8 @@
 // Warns about deprecated APIs. Reads the shared resolution and reports a
-// deprecated function/event/property once. Unlike unknown-api / strict-min-version-api,
-// it deliberately does NOT honor usage.guarded: a deprecated API still EXISTS and still
-// runs, so feature-detecting it does not make the migration note moot - a guarded
-// deprecated call is flagged like any other. (Contrast an absent/too-new API, whose
-// guard determines whether the code runs at all.)
+// deprecated function/event/property once. Unlike unknown-api / strict-min-version-api
+// this is a FINDING and not a question for a reader: a deprecated API still exists and
+// still runs, so no construction around the call makes the migration note moot. There is
+// nothing here for anyone to judge, which is what a deterministic finding requires.
 //
 // Belongs here: deciding that a resolved function/event/property is deprecated,
 // and dedup of repeated hits. A deprecated finding carries the schema's own

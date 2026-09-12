@@ -1,13 +1,5 @@
 ── Found Issues ──
-
-Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
-
-1) The add-on is setting strict_min_version to 115.0 but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
- - background.js:5 - browser.messages.tags.list() - added in Thunderbird 121
- - background.js:6 - browser.messages.tags.create() - added in Thunderbird 121
-
-You can run this automated review yourself before submitting:
-https://github.com/thunderbird/webext-linter
+The automated review did not find any issues.
 
 ── Extended Code Review ──
 
@@ -20,6 +12,18 @@ Suggested verdict: warning
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
+
+2) API newer than strict_min_version: Each call below is to an API that was
+   introduced after the add-on's strict_min_version, so it throws on the
+   versions in between. Check whether the call is guarded for those versions.
+   This could be a feature detection, a cached flag, an early return, a
+   try/catch or an explicit version gate, among others. Clear it only if you can
+   point at the guard. Otherwise ask for a higher strict_min_version.
+Suggested verdict: error
+Suggested response: The add-on is setting strict_min_version to 115.0 but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
+ - background.js:5 - browser.messages.tags.list() - added in Thunderbird 121
+ - background.js:6 - browser.messages.tags.create() - added in Thunderbird 121
+ - background.js:13 - browser.messages.tags.list() - added in Thunderbird 121
 
 ── Standard Manual Review ──
 
@@ -107,4 +111,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-2 error(s), 0 hold, 0 warning(s), 0 info, 1 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 hold, 0 warning(s), 0 info, 4 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)

@@ -148,19 +148,27 @@ test("sync-xhr flags open(..., false), not async/omitted", () => {
 });
 
 // ---- debugger ----
-// A debugger that always runs (top level, in a function body, or inside a loop)
-// is flagged, but one guarded by any if/else branch is treated as intentional.
-test("debugger-statement flags unconditional debugger, allows if-guarded", () => {
-  const n = (code) =>
-    debuggerStatement.run(withManifest(jsCtx(code))).findings.length;
-  // Unconditional (always executes) -> flagged.
-  assert.equal(n(`debugger;`), 1);
-  assert.equal(n(`function f() { doStuff(); debugger; }`), 1);
-  assert.equal(n(`for (const x of xs) { debugger; }`), 1); // a loop is not a flag
-  // Conditional (behind an if / config flag) -> allowed.
-  assert.equal(n(`if (DEBUG) debugger;`), 0);
-  assert.equal(n(`if (config.debug) { debugger; }`), 0);
-  assert.equal(n(`if (x) {} else { debugger; }`), 0);
+// Every shipped `debugger` is a question for a reader and none is a finding. The rows
+// that matter are the CONDITIONAL ones: an `if` used to be read as a config flag and
+// silently cleared the statement, so `if (message.author.includes("@")) { debugger; }` -
+// which halts Thunderbird for any user who receives such a message - was reported to
+// nobody. An enclosing `if` is a shape, not evidence about who can reach the statement.
+test("debugger-statement raises every statement, conditional or not", () => {
+  const run = (code) => debuggerStatement.run(withManifest(jsCtx(code)));
+  for (const code of [
+    `debugger;`,
+    `function f() { doStuff(); debugger; }`,
+    `for (const x of xs) { debugger; }`,
+    `if (DEBUG) debugger;`,
+    `if (config.debug) { debugger; }`,
+    `if (x) {} else { debugger; }`,
+    `if (message.author.includes("@")) { debugger; }`,
+    `if (tab.id > 0) { for (const x of xs) { if (x) { debugger; } } }`,
+  ]) {
+    const out = run(code);
+    assert.deepEqual(out.findings, [], code);
+    assert.equal(out.escalations.length, 1, code);
+  }
 });
 
 // ---- async onMessage ----
@@ -257,15 +265,16 @@ test("sync-xhr / debugger / async-onmessage skip non-authored code", () => {
         }
       : {},
   });
-  // A hash-identified library -> non-authored -> all three checks skip it.
+  // A hash-identified library -> non-authored -> all three checks skip it. debugger
+  // escalates rather than rejecting, so its silence is measured on the other array.
   const lib = ctxFor("vendor/lib.min.js", true);
   assert.equal(syncXhr.run(withManifest(lib)).findings.length, 0);
-  assert.equal(debuggerStatement.run(withManifest(lib)).findings.length, 0);
+  assert.equal(debuggerStatement.run(withManifest(lib)).escalations.length, 0);
   assert.equal(asyncOnMessage.run(withManifest(lib)).findings.length, 0);
-  // The same code, not a known library, is still flagged by each.
+  // The same code, not a known library, is still reported by each.
   const app = ctxFor("src/app.js");
   assert.equal(syncXhr.run(withManifest(app)).findings.length, 1);
-  assert.equal(debuggerStatement.run(withManifest(app)).findings.length, 1);
+  assert.equal(debuggerStatement.run(withManifest(app)).escalations.length, 1);
   assert.equal(asyncOnMessage.run(withManifest(app)).findings.length, 1);
 });
 
@@ -690,6 +699,7 @@ test("every escalating check declares a section, and only those", async () => {
     "code-review": [
       "build-lifecycle-hook",
       "data-exfiltration",
+      "debugger-statement",
       "disguised-transmission",
       "experiment-unknown-api",
       "minimize-web-accessible-resources",
@@ -1903,17 +1913,18 @@ test("unknown-api flags version_added:false as unsupported", () => {
     ],
   };
   const out = unknownApi.run(withManifest(ctx));
-  assert.equal(out.findings.length, 1);
-  assert.equal(out.findings[0].item, "browser.t.gone");
+  assert.deepEqual(out.findings, []);
+  assert.equal(out.escalations.length, 1);
+  assert.equal(out.escalations[0].item, "browser.t.gone");
 });
 
-// A FEATURE-DETECTED (guarded) reference to an unknown MEMBER or an unsupported API
-// goes to a human: the fallback probably runs where it is missing, but the guard signal
-// is coarse, so the site is read rather than dropped. A guarded unknown NAMESPACE needs
-// more than the guard - with nothing known named beside it (no guardRefs here) the
-// functionality is absent whatever the intent, so it stays a finding - and any
-// UNGUARDED unavailable API is a finding.
-test("unknown-api escalates guarded members/unsupported, flags guarded namespaces", () => {
+// Every unavailable API is a question for a reader, whatever the surrounding code looks
+// like: the check locates, it does not judge. EVERY reference is listed, including a
+// second use of a name already listed - what a reader settles is whether the add-on copes
+// at that line, so a clear granted where they looked must not cover a site they never
+// saw. Nothing becomes a finding, so no add-on is rejected on a reading of its control
+// flow.
+test("unknown-api escalates every unavailable reference", () => {
   const local = buildSchemaIndex({
     files: {
       t: [
@@ -1927,12 +1938,11 @@ test("unknown-api escalates guarded members/unsupported, flags guarded namespace
       ],
     },
   });
-  const g = (segments, line, guarded) => ({
+  const g = (segments, line) => ({
     root: "browser",
     segments,
     line,
     column: 0,
-    guarded,
   });
   const ctx = withManifest({
     schema: local,
@@ -1944,42 +1954,40 @@ test("unknown-api escalates guarded members/unsupported, flags guarded namespace
       {
         file: "bg.js",
         usages: [
-          g(["t", "gone"], 1, true), // unsupported, guarded -> skipped
-          g(["t", "nope"], 2, true), // unknown member, guarded -> skipped
-          g(["nope", "x"], 3, true), // unknown NAMESPACE, guarded -> FLAGGED
-          g(["t", "gone"], 4, false), // unsupported, UNGUARDED -> flagged
+          g(["t", "gone"], 1), // unsupported
+          g(["t", "nope"], 2), // unknown member
+          g(["nope", "x"], 3), // unknown namespace
+          g(["t", "gone"], 4), // the same api, a second site to look at
         ],
       },
     ],
   });
   const out = unknownApi.run(ctx);
-  // Only the guarded namespace (line 3 -> browser.nope) and the unguarded unsupported
-  // (line 4 -> browser.t.gone) are findings.
-  assert.deepEqual(out.findings.map((f) => `${f.loc.line}:${f.item}`).sort(), [
-    "3:browser.nope",
-    "4:browser.t.gone",
-  ]);
-  // The guarded member and the guarded unsupported are not dropped - they are handed
-  // to manual review, so nothing leaves the report silently.
+  assert.deepEqual(out.findings, []);
+  // Line 4 names line 1's api, and is listed: the fallback covering line 1 need not
+  // cover line 4, and nobody can tell without being shown it.
   assert.deepEqual(
-    out.escalations.map((e) => `${e.loc.line}:${e.item}`).sort(),
-    ["1:browser.t.gone", "2:browser.t.nope"]
+    out.escalations.map((e) => `${e.loc.line}:${e.item}`),
+    [
+      "1:browser.t.gone",
+      "2:browser.t.nope",
+      "3:browser.nope",
+      "4:browser.t.gone",
+    ]
   );
 });
 
-// A whole unknown namespace is safe when the SAME guard also names a namespace that
-// exists: that pairing is a cross-browser shim (browser.menus ?? browser.contextMenus)
-// whose working path is right there, so the add-on functions and there is nothing to
-// report. Paired with nothing that resolves, the namespace is absent however it is
-// written, and stays a finding.
-test("unknown-api skips an unknown namespace vouched for by a live one", () => {
-  const usage = (segments, line, guardRefs) => ({
+// The cross-browser shim (browser.menus ?? browser.contextMenus) is a reader's question
+// like any other. It used to be settled here, by reading the other arm of the
+// short-circuit - which is the same silent clear this check no longer makes anywhere. An
+// LLM reads a shim without help, and the one that turns out not to be a shim is exactly
+// the case a reader is needed for.
+test("unknown-api escalates a shim rather than settling it", () => {
+  const usage = (segments, line) => ({
     root: "browser",
     segments,
     line,
     column: 0,
-    guarded: true,
-    guardRefs,
   });
   const out = unknownApi.run(
     withManifest({
@@ -1993,94 +2001,90 @@ test("unknown-api skips an unknown namespace vouched for by a live one", () => {
           file: "bg.js",
           usages: [
             // browser.messages ?? browser.nope - the shim shape.
-            usage(["nope", "x"], 1, [["messages"]]),
-            // Guarded, but nothing the schema has is named alongside.
-            usage(["alsoNope", "x"], 2, [["alsoNope"]]),
-            // A guard that names no API at all (a typeof probe) vouches for nothing.
-            usage(["stillNope", "x"], 3, []),
+            usage(["nope", "x"], 1),
+            usage(["alsoNope", "x"], 2),
+            usage(["stillNope", "x"], 3),
           ],
         },
       ],
     })
   );
-  assert.deepEqual(out.findings.map((f) => `${f.loc.line}:${f.item}`).sort(), [
-    "2:browser.alsoNope",
-    "3:browser.stillNope",
-  ]);
-  // The vouched-for one is settled here, so it needs no human either.
-  assert.deepEqual(out.escalations, []);
+  assert.deepEqual(out.findings, []);
+  assert.deepEqual(
+    out.escalations.map((e) => `${e.loc.line}:${e.item}`),
+    ["1:browser.nope", "2:browser.alsoNope", "3:browser.stillNope"]
+  );
 });
 
-// End-to-end through the real parser, which is where the shim rule has to hold: only
-// the arm a short-circuit offers in place of the unknown namespace vouches for it.
-// Standing NEAR a live namespace buys nothing - an existence test names what must be
-// present to arrive, and reaching through a missing namespace throws rather than
-// falling back - so neither shape may launder a name the schema does not have.
-test("unknown-api: only the offered alternative vouches, end-to-end", () => {
+// End-to-end through the real parser: a name the schema does not have reaches a reader
+// whatever surrounds it. These shapes used to be partitioned - the first three settled as
+// shims, the rest rejected - and the partition is what produced both failure directions.
+// Now the report says the same thing about all of them, and none of them rejects.
+test("unknown-api: every shape around an absent namespace escalates, none rejects", () => {
   const run = (src) => {
     const { usages } = parseApiUsage(src);
-    return unknownApi
-      .run(
-        withManifest({
-          schema, // `messages` is a real namespace; `nope` is not
-          addon: {
-            manifest: { background: { scripts: ["bg.js"] } },
-            files: new Map([["bg.js", Buffer.from(src)]]),
-          },
-          apiUsages: [{ file: "bg.js", usages }],
-        })
-      )
-      .findings.map((f) => f.item);
+    const out = unknownApi.run(
+      withManifest({
+        schema, // `messages` is a real namespace; `nope` is not
+        addon: {
+          manifest: { background: { scripts: ["bg.js"] } },
+          files: new Map([["bg.js", Buffer.from(src)]]),
+        },
+        apiUsages: [{ file: "bg.js", usages }],
+      })
+    );
+    assert.deepEqual(out.findings, [], src);
+    return out.escalations.map((e) => e.item);
   };
-  // The shim: the fallback is what runs where the namespace is missing, and it
-  // reads the same written either way round.
-  assert.deepEqual(run(`const m = browser.messages ?? browser.nope;`), []);
-  assert.deepEqual(run(`const m = browser.nope ?? browser.messages;`), []);
-  assert.deepEqual(run(`const m = browser.messages || browser.nope;`), []);
-  // Merely guarded by a live namespace, with no alternative offered.
-  assert.deepEqual(run(`if (browser.messages) { browser.nope.x(); }`), [
-    "browser.nope",
-  ]);
-  assert.deepEqual(run(`browser.messages && browser.nope.x();`), [
-    "browser.nope",
-  ]);
-  // Reaching through the missing namespace throws; it is no one's fallback.
-  assert.deepEqual(run(`browser.nope.x() || browser.messages.list();`), [
-    "browser.nope",
-  ]);
-  // A version gate says nothing about a namespace no version has.
+  for (const src of [
+    `const m = browser.messages ?? browser.nope;`,
+    `const m = browser.nope ?? browser.messages;`,
+    `const m = browser.messages || browser.nope;`,
+    `if (browser.messages) { browser.nope.x(); }`,
+    `browser.messages && browser.nope.x();`,
+    `browser.nope.x() || browser.messages.list();`,
+  ]) {
+    assert.deepEqual(run(src), ["browser.nope"], src);
+  }
+  // A version gate is not special either. This fixture's schema has no
+  // runtime.getBrowserInfo, so the gate itself names an absent member - raised on its
+  // own account rather than treated as something that vouches for what follows.
   assert.deepEqual(
     run(`if (browser.runtime.getBrowserInfo()) { browser.nope.x(); }`),
-    ["browser.nope"]
+    ["browser.runtime.getBrowserInfo", "browser.nope"]
   );
 });
 
 // End-to-end, the markdown_here shape: feature detection written as a guard clause,
 // parsed for real. The too-new API must be handed to judgement rather than rejecting
 // the add-on - the point of the whole change.
-test("a guard clause defers a too-new API to judgement, not rejection", () => {
+test("a too-new API is a judgement whether or not it looks guarded", () => {
   const src =
     `async function f(id){ if (messenger.messages?.future === undefined) { return null }\n` +
     ` return await messenger.messages.future(id) }`;
   const { usages } = parseApiUsage(src);
   const out = strictMinVersionApi.run(withManifest(minCtx("60.0", usages)));
   assert.deepEqual(out.findings, []); // not a rejection
-  assert.equal(out.escalations.length, 1); // a judgement instead
-  // Without the guard clause it stays the hard finding it was.
+  // Two references: the existence test and the call it protects. Both are listed,
+  // because nothing here reads one as a guard for the other - and a reader seeing the
+  // detection on the line above the call is seeing exactly what settles it.
+  assert.equal(out.escalations.length, 2);
+  // And the bare call is the SAME question, not a rejection: whether a call is protected
+  // is what the reader decides, so the check must not answer it either way. This is the
+  // assertion that pins the routing rather than any detector.
   const bare = strictMinVersionApi.run(
     withManifest(
       minCtx("60.0", parseApiUsage(`messenger.messages.future(1);`).usages)
     )
   );
-  assert.equal(bare.findings.length, 1);
-  assert.deepEqual(bare.escalations, []);
+  assert.deepEqual(bare.findings, []);
+  assert.equal(bare.escalations.length, 1);
 });
 
-// End-to-end (the thinbox folders shape): a namespace captured into a local, then a
-// call to a non-existent member feature-detected with an if-guard. Parses to a guarded
-// usage of an unknown member, which unknown-api escalates - a manual item, no finding.
-// RED before the alias-aware guard fix (m.nope() would be guarded:false -> flagged).
-test("unknown-api: alias-guarded call to an unknown member goes to review end-to-end", () => {
+// End-to-end (the thinbox folders shape): a namespace captured into a local, then a call
+// to a non-existent member behind an if. The alias must resolve, otherwise the member is
+// invisible to the check entirely - and both references are listed, the test and the call.
+test("unknown-api: an aliased unknown member is listed at each site", () => {
   const src = `const m = browser.messages; if (m.nope) m.nope();`;
   const { usages } = parseApiUsage(src);
   const out = unknownApi.run(
@@ -2094,7 +2098,6 @@ test("unknown-api: alias-guarded call to an unknown member goes to review end-to
     })
   );
   assert.deepEqual(out.findings, []);
-  // Not a finding, but not silence either - one per site, as findings would be.
   assert.deepEqual(
     out.escalations.map((e) => e.item),
     ["browser.messages.nope", "browser.messages.nope"]
@@ -2266,13 +2269,15 @@ test("strict-min-version-api flags APIs added after strict_min_version", () => {
       ])
     )
   );
-  assert.equal(out.findings.length, 2); // 200 and 66 both > 60, both unguarded
-  assert.deepEqual(out.escalations, []); // nothing guarded -> nothing deferred
-  const f = out.findings.find((x) => x.item === "messenger.messages.future()");
-  assert.equal(f.hint, "added in Thunderbird 200");
-  assert.equal(f.data.min, "60.0");
-  assert.equal(f.file, "bg.js");
-  assert.deepEqual(f.loc, { line: 12, column: 4 });
+  assert.deepEqual(out.findings, []); // this check never rejects
+  assert.equal(out.escalations.length, 2); // 200 and 66 are both > 60
+  const e = out.escalations.find(
+    (x) => x.item === "messenger.messages.future()"
+  );
+  assert.equal(e.hint, "added in Thunderbird 200");
+  assert.equal(e.data.min, "60.0");
+  assert.equal(e.file, "bg.js");
+  assert.deepEqual(e.loc, { line: 12, column: 4 });
 });
 
 test("strict-min-version-api passes when strict_min_version >= version_added", () => {
@@ -2341,15 +2346,15 @@ test("strict-min-version-api compares minor/patch components", () => {
         ],
       })
     );
-  assert.equal(run("140.4.0").findings.length, 1); // 140.4.1 > 140.4.0 -> flag
-  assert.equal(run("140.4.1").findings.length, 0); // equal -> not flagged
-  assert.equal(run("140.5.0").findings.length, 0); // 140.4.1 < 140.5.0 -> not flagged
+  assert.equal(run("140.4.0").escalations.length, 1); // 140.4.1 > 140.4.0 -> raised
+  assert.equal(run("140.4.1").escalations.length, 0); // equal -> not raised
+  assert.equal(run("140.5.0").escalations.length, 0); // 140.4.1 < 140.5.0 -> not raised
 });
 
-// A too-new API carrying a guard signal (usage.guarded, set by api-usage.js for
-// optional chaining / a feature-detection or version gate) is not a hard error: it
-// escalates, for a reviewer to judge from the call's file.
-test("strict-min-version-api escalates a guarded too-new API", () => {
+// The escalation has to carry enough for the reader to settle it without the check
+// having judged anything: which API, where, when it was added, and what the add-on
+// claims to support.
+test("a too-new API escalates with everything needed to settle it", () => {
   const out = strictMinVersionApi.run(
     withManifest(
       minCtx("60.0", [
@@ -2358,8 +2363,7 @@ test("strict-min-version-api escalates a guarded too-new API", () => {
           segments: ["messages", "future"],
           line: 5,
           column: 2,
-          guarded: true,
-        }, // va 200, guarded
+        }, // va 200
       ])
     )
   );
@@ -2374,11 +2378,11 @@ test("strict-min-version-api escalates a guarded too-new API", () => {
   assert.match(e.hint, /added in Thunderbird/);
 });
 
-// End-to-end: alias-guarded source parses to a GUARDED usage (via api-usage's alias-aware
-// guard detection), which strict-min-version-api escalates rather than making a hard
-// finding. RED before the fix: `m.future()` would parse guarded:false -> a finding.
-// An if-guard (no typeof) is used so it exercises the alias path, not the typeof shortcut.
-test("strict-min-version-api: alias-guarded source escalates, not a finding", () => {
+// End-to-end: a namespace captured into a local, then feature-detected and called through
+// that alias. The ALIAS is what matters here - `m.future` has to resolve to
+// messages.future, or the check sees nothing at all and the too-new call is invisible.
+// Both references are listed, the test and the call.
+test("strict-min-version-api: an aliased too-new API resolves and is listed", () => {
   const src = `const m = browser.messages; if (m.future) m.future();`;
   const { usages } = parseApiUsage(src);
   const out = strictMinVersionApi.run(
@@ -2394,14 +2398,17 @@ test("strict-min-version-api: alias-guarded source escalates, not a finding", ()
       apiUsages: [{ file: "bg.js", usages }],
     })
   );
-  assert.equal(out.findings.length, 0); // guarded -> not a hard finding
-  assert.equal(out.escalations.length, 1); // deferred to a reviewer
-  assert.match(out.escalations[0].item, /messages\.future/);
+  assert.equal(out.findings.length, 0); // never a hard finding
+  assert.equal(out.escalations.length, 2); // the test and the call
+  assert.ok(out.escalations.every((e) => /messages\.future/.test(e.item)));
 });
 
 // An API used UNGUARDED anywhere is a hard error, even if another site is guarded:
 // the unguarded site wins and nothing is escalated for it.
-test("strict-min-version-api: an unguarded site wins over a guarded one", () => {
+// EVERY call site is listed, not one per api. Whether a call is kept off the versions
+// lacking the API is a property of that call - a capability flag can cover one use and
+// not the next - and a site nobody is shown is a site nobody can settle.
+test("strict-min-version-api lists every call site of a too-new api", () => {
   const out = strictMinVersionApi.run(
     withManifest(
       minCtx("60.0", [
@@ -2410,41 +2417,40 @@ test("strict-min-version-api: an unguarded site wins over a guarded one", () => 
           segments: ["messages", "future"],
           line: 5,
           column: 2,
-          guarded: true,
         },
         {
           root: "messenger",
           segments: ["messages", "future"],
           line: 9,
           column: 0,
-        }, // unguarded
+        },
       ])
     )
   );
-  assert.deepEqual(out.escalations, []); // nothing deferred - it is a hard finding
-  assert.equal(out.findings.length, 1);
-  assert.deepEqual(out.findings[0].loc, { line: 9, column: 0 });
+  assert.deepEqual(out.findings, []);
+  assert.deepEqual(
+    out.escalations.map((e) => e.loc.line),
+    [5, 9]
+  );
 });
 
-// strict-min-version-api ignores a non-existent API entirely (never a candidate).
-// unknown-api owns it, and per policy still flags a guarded unknown NAMESPACE (a whole
-// missing namespace is likely a hallucination) - only a guarded unknown MEMBER /
-// unsupported API is skipped there (covered by the guarded-skip test above).
-test("a guarded non-existent namespace: strict-min ignores it, unknown-api still flags it", () => {
+// The two checks divide the ground: strict-min only ever sees REAL, schema-resolved APIs,
+// so a non-existent namespace is never its candidate and it says nothing at all.
+// unknown-api owns it and raises it for a reader.
+test("a non-existent namespace: strict-min ignores it, unknown-api raises it", () => {
   const usages = [
     {
       root: "messenger",
       segments: ["fake", "nope"],
       line: 1,
       column: 0,
-      guarded: true,
     },
   ];
   const out = strictMinVersionApi.run(withManifest(minCtx("60.0", usages)));
-  assert.equal(out.findings.length, 0);
-  assert.deepEqual(out.escalations, []); // never deferred
+  assert.deepEqual(out.findings, []);
+  assert.deepEqual(out.escalations, []); // not its ground at all
 
-  const flagged = unknownApi.run(
+  const raised = unknownApi.run(
     withManifest({
       schema,
       addon: {
@@ -2454,8 +2460,9 @@ test("a guarded non-existent namespace: strict-min ignores it, unknown-api still
       apiUsages: [{ file: "bg.js", usages }],
     })
   );
-  assert.equal(flagged.findings.length, 1); // guarded unknown NAMESPACE is still flagged
-  assert.match(flagged.findings[0].item, /^messenger\.fake/);
+  assert.deepEqual(raised.findings, []);
+  assert.equal(raised.escalations.length, 1);
+  assert.match(raised.escalations[0].item, /^messenger\.fake/);
 });
 
 // ---- permission analysis: dead files are ignored ----
@@ -2902,14 +2909,14 @@ test("sync-xhr notes each open() site (sync=fail, async=pass)", () => {
   );
 });
 
-test("debugger-statement notes guarded (pass) and unconditional (fail)", () => {
+test("debugger-statement notes every site as unsettled", () => {
   const notes = notesFrom(
     debuggerStatement,
     jsCtx(`debugger;\nif (D) debugger;`)
   );
   assert.deepEqual(
-    new Set(notes.map((n) => n.verdict)),
-    new Set([VERDICT.FAIL, VERDICT.PASS])
+    notes.map((n) => n.verdict),
+    [VERDICT.UNSURE, VERDICT.UNSURE]
   );
 });
 

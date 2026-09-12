@@ -54,10 +54,11 @@ deterministic-phase:
     The following WebExtension APIs are not supported in the targeted Thunderbird version.
     Read more: https://webextension-api.thunderbird.net/.
   instructions: |-
-    The following API references are not supported in the targeted Thunderbird
-    version, but each sits behind a feature detection. Read the site and confirm
-    the add-on really falls back where the API is missing. If it does not, the
-    reference is a finding.
+    Each reference below is to a name the schema does not have, or marks
+    unsupported, for the targeted Thunderbird version. Check whether this
+    reference is guarded, so the add-on still works where the name is missing. A
+    feature detection with a working fallback, a shim, a try/catch all count.
+    Clear it only if you can point at the guard. Otherwise it is a finding.
 
 # Flags deprecated APIs.
 - title: Deprecated WebExtension API
@@ -207,9 +208,15 @@ deterministic-phase:
 - title: Debugger statement
   severity: error
   check: debugger-statement
+  escalation: code-review
   input: source
+  instructions: |-
+    A debugger statement is acceptable only when it is guarded by a build or
+    configuration flag, or by a setting in the add-on's options. Read the
+    enclosing condition, if any, and decide whether it is properly guarded and
+    does not run unconditionally.
   response: |-
-    Unconditional debugger statement. Please remove it or move it behind a config flag.
+    Debugger statement left in shipped code. Please remove it or move it behind a build or configuration flag.
 
 # Flags an async listener passed to the addListener() of a runtime message event -
 # one that answers the sender with whatever its listener returns.
@@ -904,15 +911,12 @@ deterministic-phase:
   escalation: code-review
   input: source
   instructions: |-
-    The API at each location below exists and is supported, but was added after
-    the declared strict_min_version, so decide one thing only: is that call guarded
-    so it runs only where the API exists? Any of these counts as guarded, provided the
-    feature is genuinely optional or has a fallback: optional chaining on the API
-    path, a typeof or existence test, an earlier guard clause that returned or
-    threw when the API was missing, or a runtime.getBrowserInfo() version gate.
-    Unguarded, the call throws on the still-supported versions below the one that
-    added it. If it is unguarded, ask the developer to raise strict_min_version or
-    guard the call.
+    Each call below is to an API that was introduced after the add-on's
+    strict_min_version, so it throws on the versions in between. Check whether
+    the call is guarded for those versions. This could be a feature detection, a
+    cached flag, an early return, a try/catch or an explicit version gate, among
+    others. Clear it only if you can point at the guard. Otherwise ask for a
+    higher strict_min_version.
   response: |-
     The add-on is setting strict_min_version to {{min}} but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
 

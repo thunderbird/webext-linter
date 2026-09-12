@@ -63,6 +63,11 @@ const SRC_FILES = {
 const has = (findings, ruleId, pred = () => true) =>
   findings.some((f) => f.ruleId === ruleId && pred(f));
 
+// unknown-api escalates rather than rejecting, so a probe asking "did the code checks
+// review this file" reads the escalation list. Same shape as `has`, other array.
+const hasItem = (meta, ruleId, pred = () => true) =>
+  (meta.manualReview ?? []).some((m) => m.ruleId === ruleId && pred(m));
+
 // A FLAT layout: manifest.json + the source + the build tooling all sit at --sca-root,
 // with no nested subfolder to name. --sca-source is then "." (or an absolute path equal
 // to --sca-root). The whole submission is accepted and fully reviewed: the code checks
@@ -103,10 +108,10 @@ test("SCA e2e: a flat layout (--sca-source == --sca-root) is accepted and fully 
       );
       // The code checks review the root source: the fake API in app.js is caught.
       assert.ok(
-        has(
-          findings,
+        hasItem(
+          meta,
           "unknown-api",
-          (f) => f.file === "app.js" && /totallyFakeNamespace/.test(f.item)
+          (m) => m.file === "app.js" && /totallyFakeNamespace/.test(m.item)
         ),
         "the root source file is reviewed by the code checks"
       );
@@ -219,10 +224,10 @@ test("SCA e2e: --sca-root without --sca-source defaults the source to '.'", asyn
     assert.equal(meta.reviewed, true, "SCA mode engaged from --sca-root alone");
     // The root source is reviewed (proves mode === "sca", source === the root).
     assert.ok(
-      has(
-        findings,
+      hasItem(
+        meta,
         "unknown-api",
-        (f) => f.file === "app.js" && /totallyFakeNamespace/.test(f.item)
+        (m) => m.file === "app.js" && /totallyFakeNamespace/.test(m.item)
       ),
       "the root source file is reviewed"
     );
@@ -434,10 +439,10 @@ test("SCA e2e: code checks review the source; manifest/WAR resolve against the X
     // XPI manifest never names (so it is unreachable from the built entry points) -
     // is still caught, because the SCA code checks review every source file.
     assert.ok(
-      has(
-        findings,
+      hasItem(
+        result.meta,
         "unknown-api",
-        (f) => f.file === "main.js" && /totallyFakeNamespace/.test(f.item)
+        (m) => m.file === "main.js" && /totallyFakeNamespace/.test(m.item)
       ),
       "expected unknown-api on the non-entry source file main.js"
     );
@@ -506,7 +511,7 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
       "with --sca-exp-source the experiment subtree is excluded"
     );
     assert.ok(
-      has(withExp.findings, "unknown-api", (f) => f.file === "main.js"),
+      hasItem(withExp.meta, "unknown-api", (m) => m.file === "main.js"),
       "the WebExtension code is still reviewed with --sca-exp-source"
     );
 
@@ -545,7 +550,7 @@ test("SCA e2e: --sca-exp-source may be a sibling of --sca-source under --sca-roo
       const res = await runPipeline({ ...base, scaExpSource });
       // The review source is still reviewed...
       assert.ok(
-        has(res.findings, "unknown-api", (f) => f.file === "main.js"),
+        hasItem(res.meta, "unknown-api", (m) => m.file === "main.js"),
         "the WebExtension source is reviewed with a sibling --sca-exp-source"
       );
       // ...and the out-of-source Experiment is never reviewed as WebExtension code (it is
@@ -926,7 +931,7 @@ test("SCA e2e: TypeScript and Vue source is parsed and its defects are caught", 
     "src/Comp.vue": `<script setup lang="ts">\nconst raw: string = get();\n</script>\n\n<template>\n  <div v-html="raw"></div>\n</template>\n`,
   });
   try {
-    const { findings } = await runPipeline({
+    const { findings, meta } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
       scaSource: "src",
@@ -934,10 +939,10 @@ test("SCA e2e: TypeScript and Vue source is parsed and its defects are caught", 
     });
     // (1) The .ts file is parsed and API-resolved.
     assert.ok(
-      has(
-        findings,
+      hasItem(
+        meta,
         "unknown-api",
-        (f) => f.file === "api.ts" && /totallyFakeNamespace/.test(f.item)
+        (m) => m.file === "api.ts" && /totallyFakeNamespace/.test(m.item)
       ),
       "the .ts source is parsed and its fake API is flagged"
     );
@@ -1188,8 +1193,8 @@ test("SCA e2e: a readable-XPI submission is downgraded to a plain XPI review (sc
       "the redundant source submission is reported"
     );
     assert.ok(
-      !has(findings, "unknown-api", (f) =>
-        /totallyFakeNamespace/.test(f.item ?? "")
+      !hasItem(result.meta, "unknown-api", (m) =>
+        /totallyFakeNamespace/.test(m.item ?? "")
       ),
       "the source content is not reviewed after the downgrade - the XPI is"
     );
@@ -1261,7 +1266,7 @@ test("SCA e2e: a downgrade excludes VENDOR-declared readable files from content 
     "package.json": JSON.stringify({ name: "d", version: "1.0.0" }),
   });
   try {
-    const { findings, mode } = await runPipeline({
+    const { findings, mode, meta } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
       scaSource: ".",
@@ -1270,7 +1275,7 @@ test("SCA e2e: a downgrade excludes VENDOR-declared readable files from content 
     assert.equal(mode, REVIEW_MODE.XPI, "the readable XPI downgrades");
     assert.ok(has(findings, "sca-not-required"));
     assert.ok(
-      !has(findings, "unknown-api", (f) => /widget\.js/.test(f.file ?? "")),
+      !hasItem(meta, "unknown-api", (m) => /widget\.js/.test(m.file ?? "")),
       "the VENDOR-declared library is excluded from content review (vendor-aware classify)"
     );
   } finally {

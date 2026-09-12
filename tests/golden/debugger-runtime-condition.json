@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/strict-min-version-api",
+    "addon": "<root>/tests/addons/debugger-runtime-condition",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

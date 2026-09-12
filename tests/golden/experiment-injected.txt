@@ -1,20 +1,23 @@
 ── Found Issues ──
-
-Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
-
-1) The following WebExtension APIs are not supported in the targeted Thunderbird version.
-Read more: https://webextension-api.thunderbird.net/.
- - background.js:4 - browser.controlBogus
- - content/uipage.js:3 - browser.bogusApi
-
-You can run this automated review yourself before submitting:
-https://github.com/thunderbird/webext-linter
+The automated review did not find any issues.
 
 ── Extended Code Review ──
 
 Continue manual review for the following checks:
 
-1) Experiment with unrecognized API usage: This Experiment calls WebExtension
+1) Unknown or unsupported WebExtension API: Each reference below is to a name
+   the schema does not have, or marks unsupported, for the targeted Thunderbird
+   version. Check whether this reference is guarded, so the add-on still works
+   where the name is missing. A feature detection with a working fallback, a
+   shim, a try/catch all count. Clear it only if you can point at the guard.
+   Otherwise it is a finding.
+Suggested verdict: error
+Suggested response: The following WebExtension APIs are not supported in the targeted Thunderbird version.
+Read more: https://webextension-api.thunderbird.net/.
+ - background.js:4 - browser.controlBogus - unknown namespace
+ - content/uipage.js:3 - browser.bogusApi - unknown namespace
+
+2) Experiment with unrecognized API usage: This Experiment calls WebExtension
    APIs the schema does not recognize (see the "Unknown or unsupported
    WebExtension API" findings). For an experiment's OWN API this is usually a
    typo in that experiment's schema: the schema's `namespace` is the sole
@@ -27,7 +30,7 @@ Continue manual review for the following checks:
 Suggested verdict: error
 Suggested response: This Experiment calls WebExtension APIs that no schema defines. Where these are your own Experiment APIs, each experiment's schema must declare a `namespace` matching the name the code calls, since the namespace is authoritative and a mismatch leaves the API undefined even when the manifest declares it. Please correct the schema namespaces, or remove the calls to APIs that do not exist.
 
-2) Missing English localization: This add-on ships no English localization, so
+3) Missing English localization: This add-on ships no English localization, so
    user-facing text may be hardcoded in another language. Review its strings by
    hand and confirm if an English localization is provided.
 Suggested verdict: warning
@@ -136,4 +139,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-2 error(s), 0 hold, 0 warning(s), 0 info, 2 extended code review step(s), 1 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 hold, 0 warning(s), 0 info, 4 extended code review step(s), 1 extended manual review step(s), 10 standard manual review step(s)

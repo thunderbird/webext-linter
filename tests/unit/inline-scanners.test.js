@@ -52,14 +52,21 @@ test("scanSyncXhr ignores open() without an explicit boolean third arg", () => {
   assert.equal(scanSyncXhr('x.open("GET", u, flag);').hits.length, 0);
 });
 
-test("scanDebugger tags an enclosing-if as guarded", () => {
+// The extractor locates, it does not judge: an enclosing `if` says nothing about whether
+// the statement can reach a user, so both shapes are reported the same way and at their
+// own line. Reading the condition is the reader's job.
+test("scanDebugger locates every statement, conditional or not", () => {
   assert.deepEqual(
-    scanDebugger("debugger;").hits.map((h) => h.guarded),
-    [false]
+    scanDebugger("debugger;").hits.map((h) => h.line),
+    [1]
   );
   assert.deepEqual(
-    scanDebugger("if (dev) { debugger; }").hits.map((h) => h.guarded),
-    [true]
+    scanDebugger("if (dev) { debugger; }").hits.map((h) => h.line),
+    [1]
+  );
+  assert.deepEqual(
+    scanDebugger("if (msg.author) {\n  debugger;\n}").hits.map((h) => h.line),
+    [2]
   );
 });
 

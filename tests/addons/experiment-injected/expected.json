@@ -1,7 +1,7 @@
 {
-  "_comment": "The .html-parameter rule, reviewed with --allow-experiments. Only a plain .html parameter to an Experiment API joins the WebExtension tree: ui is handed content/uipage.html, so it + its content/uipage.js script are CHECKED (browser.bogusApi IS flagged at uipage.js:3). The .js/.xhtml parameters to wl and mystery (content/legacy-entry.js, content/maybe.js) and the experiment implementation files (experiments/*/parent.js, content/legacy-core.js) are NOT in the WebExtension tree -> NOT validated (their bogus/core APIs are not flagged). Control: browser.controlBogus in the WebExtension background.js IS flagged.",
-  "options": { "--allow-experiments": true },
-  "expect": {
-    "unknown-api": ["background.js:4", "content/uipage.js:3"]
-  }
+  "_comment": "The .html-parameter rule, reviewed with --allow-experiments. Only a plain .html parameter to an Experiment API joins the WebExtension tree: ui is handed content/uipage.html, so it + its content/uipage.js script are CHECKED (browser.bogusApi IS raised at uipage.js:3). The .js/.xhtml parameters to wl and mystery (content/legacy-entry.js, content/maybe.js) and the experiment implementation files (experiments/*/parent.js, content/legacy-core.js) are NOT in the WebExtension tree -> NOT validated (their bogus/core APIs are not raised). Control: browser.controlBogus in the WebExtension background.js IS raised. unknown-api escalates rather than rejecting, so the GOLDEN is what pins which files were reviewed - every line above is an Extended Code Review hint there, and the absences are absences from it.",
+  "options": {
+    "--allow-experiments": true
+  },
+  "expect": {}
 }
