@@ -1,23 +1,18 @@
 ── Issues ──
 
-Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
+Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
-1) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
- - [XPI] orphan.js
-
-We would like to share the following information with you:
-
-2) Inserting markup via ".innerHTML" will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
+1) Inserting markup via ".innerHTML" will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
  - [SCA] Comp.vue:7
 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
 
-You can run this automated review yourself before submitting (this review was performed using the --llm-review option):
+You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
-── Extended manual review ──
+── Extended code review ──
 
 Continue manual review for the following checks:
 
@@ -27,6 +22,23 @@ Continue manual review for the following checks:
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - [XPI] manifest.json
+
+2) Unused, hidden or duplicate files or folders: The following files are not
+   reachable from any entry point but may be loaded dynamically. Confirm by hand
+   whether they are unused and safe to remove.
+Suggested response: The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
+ - [XPI] orphan.js
+
+── Extended manual review ──
+
+Continue manual review for the following checks:
+
+1) Build process review: Reproduce the build from the source by hand and confirm
+   it pulls ONLY from the dependencies declared in package.json/lock - no remote
+   code or resources from a raw URL, curl/wget, a git clone of an unpinned repo,
+   a CDN, or a postinstall hook.
+Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+ - [SCA] package.json
 
 ── Standard manual review ──
 
@@ -95,10 +107,6 @@ Suggested response: The submission appears to be a fork of an existing add-on th
 
 Because the original project is still active, your submission does not meet these requirements. Small-change forks can sometimes cause confusion for users and unnecessary overlap for developers. We encourage you to consider contributing your improvements directly to the original project so that all existing users can benefit from your ideas.
 
-── Summary of add-on ──
-
-  SCA two-pass demo: a Vue component built into a background script.
-
 ── Summary ──
 
-1 error(s), 0 warning(s), 1 info, 1 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 warning(s), 1 info, 2 extended code review step(s), 1 extended manual review step(s), 10 standard manual review step(s)

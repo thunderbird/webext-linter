@@ -4,7 +4,7 @@
 //      expected.json (a human-readable spec of which rules fire where), and
 //   2. the FULL rendered report (text + JSON) against a golden snapshot in
 //      tests/golden/ (a byte-level regression lock for the orchestrator,
-//      formatter and LLM plumbing - the layers thin unit tests barely cover).
+//      formatter and report plumbing - the layers thin unit tests barely cover).
 // Exits non-zero on any mismatch. Regenerate goldens with UPDATE_GOLDEN=1.
 //
 //   node tests/run-tests.js
@@ -12,14 +12,13 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { runPipeline } from "../src/pipeline.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { loadAddon } from "../src/addon/load.js";
 import { formatReview } from "../src/report/format.js";
 import { fixtureCacheOpts } from "./seed-caches.js";
-import { makeFakeTransport } from "./fake-llm.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..");
@@ -65,21 +64,6 @@ function isScaFixture(dir) {
       fs.existsSync(path.join(dir, sub)) &&
       fs.statSync(path.join(dir, sub)).isDirectory()
   );
-}
-
-// A fixture opts into --llm-review coverage by shipping an `llm.js` beside its
-// expected.json: the module declares the model's canned answers (see tests/fake-llm.js),
-// which become a deterministic, offline llmTransport. Its presence is the switch - the
-// harness then turns --llm-review on with a dummy claude key (no network probe, so
-// llmVerified goes true offline) and injects the transport. Fixtures without it review
-// offline as usual. Returns the transport, or null when absent.
-async function loadLlmTransport(dir) {
-  const file = path.join(dir, "llm.js");
-  if (!fs.existsSync(file)) {
-    return null;
-  }
-  const mod = await import(pathToFileURL(file).href);
-  return makeFakeTransport(mod.default ?? mod);
 }
 
 // Turn a fixture's flag-keyed "options" object into a CLI argv: a `true` value
@@ -181,24 +165,11 @@ async function main() {
       // A fixture's flag "options" parse in first; the core review opts win. The
       // CDN identifier is a networked step that cannot match offline; turn it off
       // so golden runs are hermetic (no per-run cache file written).
-      const llmTransport = await loadLlmTransport(dir);
       const base = {
         ...pipelineOptsFromArgv(optionsToArgv(options)),
         ...CACHE_OPTS,
         vendorNet: OFFLINE_NET,
         cdnLookup: false,
-        // An llm.js fixture turns --llm-review on with a dummy claude key (validateLlmConfig
-        // passes, checkModelAvailable makes no probe) and the deterministic fake transport,
-        // so the LLM paths run fully offline. Undefined llmTransport leaves the run offline.
-        ...(llmTransport
-          ? {
-              llmReview: true,
-              llmApiType: "claude",
-              llmApiKey: "test",
-              llmModel: "test",
-              llmTransport,
-            }
-          : {}),
       };
       let review;
       if (isScaFixture(dir)) {
@@ -214,10 +185,8 @@ async function main() {
         // XPI mode: load the add-on ourselves and drop the expected.json sidecar so
         // it is not seen as an (unused) add-on file by the review.
         const addon = loadAddon(dir);
-        // Drop the harness sidecars so they are not reviewed as add-on files: the
-        // expected.json spec and, for an LLM fixture, its llm.js answer module.
+        // Drop the harness sidecar so it is not reviewed as an add-on file.
         addon.files.delete("expected.json");
-        addon.files.delete("llm.js");
         review = await runPipeline({ ...base, addon });
       }
       problems = diff(expected, locationsByRule(review.findings));
@@ -225,9 +194,8 @@ async function main() {
         ["txt", "text"],
         ["json", "json"],
       ]) {
-        // formatReview is the single source of the shipped report: for text it already
-        // includes the advisory LLM summaries in position (before the tally), the same
-        // string the CLI writes - so an LLM fixture's golden locks its summary prose too.
+        // formatReview is the single source of the shipped report - the same string the
+        // CLI writes.
         const body = formatReview(review, fmt);
         const p = checkGolden(name, ext, normalize(body));
         if (p) {

@@ -342,18 +342,13 @@ test("reachability resolves tabs.executeScript file against the host page dir", 
   assert.ok(reach.reachable.has("src/message-unescape.js"));
 });
 
-// unused-files pre-flight: junk and a clearly-orphaned file are findings (the
-// registry stamps their severity); a file whose name is only string-mentioned
-// is an ambiguous case the rule escalates (the orchestrator decides its fate);
-// allowlisted and reachable files are left alone entirely.
-// With no token every candidate is "unsure"; the check's resolve then yields the
-// manual notes (one per ambiguous file F) the orchestrator routes to a human.
-const allUnsure = (candidates) =>
-  new Map((candidates ?? []).map((c) => [c.id, { verdict: VERDICT.UNSURE }]));
-const manualItems = (result) =>
-  result.llm ? result.llm.resolve(allUnsure(result.llm.candidates)).manual : [];
+// unused-files: junk and a clearly-orphaned file are findings (the registry stamps
+// their severity); a file whose name is only string-mentioned is an ambiguous case
+// the rule escalates to a reviewer; allowlisted and reachable files are left alone
+// entirely.
+const manualItems = (result) => result.escalations ?? [];
 
-test("unused-files: junk + orphan are findings; mentioned -> candidate", () => {
+test("unused-files: junk + orphan are findings; mentioned -> escalation", () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -549,7 +544,7 @@ test("unused-files: markdown inside a junk directory is still junk", () => {
 });
 
 // The pre-flight narrates each unreachable candidate it assesses to the feed via
-// ctx.note, carrying its deterministic verdict (unsure = escalated to the LLM,
+// ctx.note, carrying its deterministic verdict (unsure = escalated to a reviewer,
 // fail = a clear orphan) and the loaders (file:line) it examined - so a reviewer
 // can re-check them even though the report shows only the final outcome.
 test("unused-files notes the loaders it examined per candidate", () => {
@@ -658,7 +653,7 @@ test("minimize-WAR flags over-broad exposure and unloaded resources", () => {
 });
 
 // An ambiguous file (mentioned but not statically reached) becomes a candidate
-// per suspected loader site; the rule itself never touches the LLM. With no
+// per suspected loader site; the rule itself decides nothing. With no
 // token each resolves to a manual note on the file F, and every candidate points
 // at the loader site (bg.js) the model would judge.
 test("unused-files makes a candidate per ambiguous file's loader site", () => {
@@ -677,11 +672,10 @@ test("unused-files makes a candidate per ambiguous file's loader site", () => {
       .sort(),
     ["bad.js", "good.js"]
   );
-  assert.ok(result.llm.candidates.every((c) => c.file === "bg.js"));
 });
 
-// An ambiguous exposed resource becomes a per-loader-site candidate too.
-test("minimize-WAR makes a candidate for an ambiguous exposed resource", () => {
+// An ambiguous exposed resource escalates too, named by the exposed file.
+test("minimize-WAR escalates an ambiguous exposed resource", () => {
   const manifest = {
     manifest_version: 3,
     content_scripts: [{ js: ["cs.js"], matches: ["https://example.com/*"] }],
@@ -699,8 +693,8 @@ test("minimize-WAR makes a candidate for an ambiguous exposed resource", () => {
 });
 
 // A file referenced only by another UNREACHABLE file (with no live dynamic
-// loader) is a clear orphan, settled deterministically as a finding - the LLM is
-// not asked, because dead code cannot load it.
+// loader) is a clear orphan, settled deterministically as a finding - no reviewer
+// is asked, because dead code cannot load it.
 test("unused-files: a file named only by dead code is a finding", () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
@@ -713,11 +707,11 @@ test("unused-files: a file named only by dead code is a finding", () => {
   const found = result.findings.map((f) => f.file);
   assert.ok(found.includes("dead.html"));
   assert.ok(found.includes("dead.js"));
-  assert.ok(!result.llm); // no ambiguous candidates -> no LLM step
+  assert.deepEqual(result.escalations, []); // nothing ambiguous -> nothing escalated
 });
 
 // A dynamic loader that sits in unreachable code never runs, so it must not set
-// hasDynamicLoaders nor drag unrelated orphans to the LLM.
+// hasDynamicLoaders nor drag unrelated orphans to a reviewer.
 test("unused-files: a dynamic loader in dead code does not force escalation", () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
@@ -730,7 +724,7 @@ test("unused-files: a dynamic loader in dead code does not force escalation", ()
   assert.equal(reach.hasDynamicLoaders, false); // the dead loader is dropped
   const result = unusedFiles.run(ctxFrom(files, manifest));
   assert.ok(result.findings.map((f) => f.file).includes("asset.png"));
-  assert.ok(!result.llm);
+  assert.deepEqual(result.escalations, []);
 });
 
 // minimize-WAR: a resource named only by dead code, with no live dynamic loader,

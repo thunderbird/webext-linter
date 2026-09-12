@@ -76,46 +76,6 @@ export const CDN_LOOKUP_CACHE = ".lib-cdn-lookup-cache";
  */
 export const CDN_LOOKUP_READABLE_MIN_BYTES = 16384;
 
-// The model knowledge is NOT here: it lives in assets/llm/<LLM_API_TYPE>.yaml, read
-// by src/llm/settings.js - which model a run defaults to, how many requests it may
-// make, and, per model, the endpoint and the request parameters (the output-token
-// cap among them). It is a hand-curated asset rather than constants here because a
-// reviewer must be able to point the tool at a new model without touching code.
-
-/**
- * Directory where the LLM adapters cache what they negotiated with a server: the
- * endpoint and parameter name a model actually accepted, when the shipped table
- * guessed wrong (see src/llm/negotiated.js). Unlike the caches above it takes no
- * --cache-*-dir flag - it is read by the adapters, which are handed a token and a
- * model, not the pipeline's options - but --cache-clear wipes it with the rest.
- */
-export const LLM_MODEL_CACHE = ".llm-model-cache";
-
-/**
- * How long one LLM request may run, and how many times the SDK retries it, before
- * the review gives up. These bound a client that connects but never answers -
- * without them a hung server blocks the whole run (the SDK defaults are 10 min x 3
- * attempts). Client transport, not model knowledge, so they live here rather than in
- * the YAML tables; both the OpenAI and Anthropic SDK constructors accept them.
- * 5 minutes is deliberately generous - a batched verdict call finishes in well under
- * a minute normally, but a max-reasoning model can legitimately take minutes, so this
- * bounds a true hang without clipping a live call. Lower it for faster models.
- */
-export const LLM_REQUEST_TIMEOUT_MS = 300000;
-export const LLM_MAX_RETRIES = 2;
-
-/**
- * Max distinct add-on files an LLM check sends in one batched request. A check
- * collects all its candidates (each an id pointing at a file:line site) and asks
- * the model for a verdict per id in one call. The corpus is the union of the
- * files those candidates need. When that union would exceed this many files the
- * candidates are split across several calls (a single candidate whose own corpus
- * is larger still gets its own call). The bound is files, not bytes, because the
- * files are the real work the model reads. A call that still overruns the
- * context window errors and its candidates fall back to manual review. Tunable.
- */
-export const MAX_FILES_PER_BATCH = 12;
-
 /** Max characters of a truncated display label (e.g. a long URL). */
 export const DISPLAY_TRUNCATE_LENGTH = 80;
 
@@ -124,7 +84,7 @@ export const DISPLAY_TRUNCATE_LENGTH = 80;
  * Issues or Manual-review entry with many "- file:line" locations). Beyond this,
  * the rest are replaced by one "... more, excluded from this list" marker. This
  * is a rendering limit only (see src/report/format.js) - the summary counts,
- * JSON output, and LLM logic still see every finding.
+ * JSON output still sees every finding.
  */
 export const MAX_ENTRIES_PER_CATEGORY = 25;
 

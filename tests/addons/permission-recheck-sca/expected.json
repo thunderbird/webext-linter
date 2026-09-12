@@ -1,6 +1,8 @@
 {
-  "_comment": "SCA review (src/ + xpi/, the XPI's first-party code minified so SCA is required). unused-permission is input:xpi, so it judges the SHIPPED build (xpi/background.js), not the readable source. The minified build reads relatedMessageId (messagesRead) and displayedFolder (accountsRead) as bare property tokens found by the raw scan -> both escalate and are re-judged PER OCCURRENCE by the shipped-package summary pass (messagesRead#1 pass -> dropped; accountsRead#1 unsure -> manual). compose's dotted injection token never appears in the shipped build, and the scan is decidable (minified but NOT obfuscated, no parse/limitation/dynamic gap), so compose is a DETERMINISTIC unused-permission finding with no LLM - the win of judging the shipped XPI directly. Covers: input:xpi permission scan in SCA, the shipped-package recheck pass, per-occurrence aggregation, and the deterministic-on-XPI path.",
+  "_comment": "SCA review (src/ + xpi/, the XPI's first-party code minified so SCA is required). unused-permission is input:xpi, so it judges the SHIPPED build (xpi/background.js), not the readable source. The minified build reads relatedMessageId (messagesRead) and displayedFolder (accountsRead) as bare property tokens found by the raw scan, so both escalate. compose's dotted injection token never appears in the shipped build, and the scan is decidable (minified but NOT obfuscated, no parse/limitation/dynamic gap), so compose is a DETERMINISTIC unused-permission finding - the win of judging the shipped XPI directly. Covers: input:xpi permission scan in SCA, and the deterministic-on-XPI path.",
   "expect": {
-    "unused-permission": ["manifest.json:6"]
+    "unused-permission": [
+      "manifest.json:6"
+    ]
   }
 }

@@ -1,8 +1,8 @@
 // Deterministic preflight -> manual review: an add-on that declares the
 // nativeMessaging permission can exchange messages with a native application
-// outside Thunderbird. The native host is not part of the package, so a reviewer
-// must confirm the listing discloses what is exchanged (the No Surprises
-// policy). The permission is the identity - runtime.connectNative /
+// outside Thunderbird. Whether the listing discloses what is exchanged (the No
+// Surprises policy) is answered by the ATN listing, not by the package, so this
+// escalates as a manual-review case. The permission is the identity - runtime.connectNative /
 // sendNativeMessage do not work without it - so the check keys purely off
 // whether it is declared (in permissions or optional_permissions), with no JS
 // scan needed.
@@ -42,6 +42,6 @@ export default {
     );
     // A single whole-add-on reminder: no item/locus to list (the instructions
     // name the permission), so it renders as the wrapped message alone.
-    return { findings: [], escalations: [{}] };
+    return { findings: [], escalations: [{ manualReview: true }] };
   },
 };

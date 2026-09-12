@@ -5,13 +5,12 @@
 # The check-bearing sections below ARE the phases: a check's phase IS the section it
 # lives in, so no entry declares one. The orchestrator (runChecks) knows this closed set
 # and looks up the phases it wants, in the order it runs them - invalid-experiment (which
-# short-circuits the whole review), then deterministic, then llm, then post-summary (run
-# by the pipeline after the AI add-on summary). A section it never asks for is inert, so
+# short-circuits the whole review), then deterministic. A section it never asks for is inert, so
 # every other top-level section here (permission-prompts, manual-checks, messages, ...) is
 # simply not a phase.
 
 # The reject phase: when the add-on is an invalid Experiment, this is the ONLY phase that
-# runs - no other check, no LLM, no summaries, no manual list.
+# runs - no other check, no manual list.
 invalid-experiment-phase:
 # Aborts the review of an Experiment that uses an UNSUPPORTED experiment (an
 # unknown API draft, or one shadowing a built-in). A recognised but modified draft
@@ -245,18 +244,14 @@ deterministic-phase:
 # Minimize host permissions' concern). Runs in the main loop. A permission whose
 # prompt entries (see permission-prompts) declare usage `tokens` that appear
 # NOWHERE in the add-on's live code (comments excluded) or manifest is
-# deterministically unused - a warning finding, with or without --llm-review
-# (the deterministic path stands down when the scan is blind: an SCA review or
-# unresolved dynamic API surface). Every other case is scheduled as a
-# manual-review escalation; same-bodied cases auto-group into the one reminder
-# here. When --llm-review runs, the escalations are handed to the Unused
-# permission recheck consumer (post-summary-recheck) instead, to be re-judged
-# against the whole add-on.
+# deterministically unused - a warning finding (the deterministic path stands
+# down when the scan is blind: an SCA review or unresolved dynamic API surface).
+# Every other case is scheduled as a manual-review escalation; same-bodied cases
+# auto-group into the one reminder here.
 - title: Possibly unused permissions
   severity: warning
   check: unused-permission
   input: xpi
-  post-summary-recheck: unused-permission-recheck
   response: |-
     One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
   instructions: |-
@@ -572,41 +567,27 @@ deterministic-phase:
   response: |-
     The package.json declares an npm install lifecycle hook ({{item}}) that runs when the reviewer installs the dependencies, before the build. Confirm it only runs local build steps and does not fetch or execute remote code (curl/wget, a download-and-run, or a git clone of an unpinned repo).
 
-# Deterministic (SCA only): MISSION 1 of the build review. analyzeBuild classifies the build
-# ONCE in setup (src/build/analyze.js), storing addon.buildFiles.buildReview; this
-# check reads it. classification "remote-fetch" -> an error finding: the build fetches or
-# executes code/resources from an UNDECLARED external source (a raw URL, curl|sh, a git clone of
-# an unpinned repo, a CDN, a postinstall hook). Only installing the declared dependencies (npm
-# ci from node_modules, importing a declared package) is allowed. This check also owns the
-# FALLBACK lane: a build that could not be classified with confidence - offline / no token
-# (analyzed = false), or a step the linter could not statically bound (unresolved) - escalates
-# the whole build to extended manual review. Neutral title: the one entry drives BOTH the
-# remote-fetch error and the fallback advisory; {{explanation}} carries the specifics, and
-# {{buildInstructions}} + {{unresolvedBuildSteps}} render only in the manual instructions.
+# SCA only: the build review. selectBuildCorpus finds the build ONCE in setup
+# (src/build/analyze.js), storing addon.buildFiles.buildReview; this check reads it. A build
+# must not fetch or execute code/resources from an UNDECLARED external source (a raw URL,
+# curl|sh, a git clone of an unpinned repo, a CDN, a postinstall hook) - only installing the
+# declared dependencies (npm ci from node_modules, importing a declared package) is allowed.
+# Nothing decides that from the files, so every build escalates and the reviewer reproduces
+# it: their attestation that the source produces the shipped XPI is what the SCA review rests
+# on. {{unresolvedBuildSteps}} names the steps the linter could not follow and
+# {{buildInstructions}} how the source says to build, both in the manual instructions.
 - title: Build process review
   severity: error
   sca: true
   check: undeclared-build-source
   input: build
-  instructions: |-
+  manual-review-instructions: |-
     Reproduce the build from the source by hand and confirm it pulls ONLY from the
     dependencies declared in package.json/lock - no remote code or resources from a raw
     URL, curl/wget, a git clone of an unpinned repo, a CDN, or a postinstall hook.
     {{unresolvedBuildSteps}} {{buildInstructions}}
   response: |-
-    {{explanation}} The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
-
-# Deterministic (SCA only): MISSION 2 of the build review. Reads the setup classification
-# (addon.buildFiles.buildReview). classification "not-from-source" -> error: the build does not
-# build - it only copies/zips files already in the submission into the XPI, so the shipped add-on
-# is not derived from the reviewed source. {{explanation}} is analyzeBuild's reason.
-- title: Build not derived from source
-  severity: error
-  sca: true
-  check: build-not-from-source
-  input: build
-  response: |-
-    {{explanation}} The shipped XPI must be BUILT from the reviewed source. A build that only copies or zips files already present in the submission produces an add-on that is not derived from the source under review. Provide a build that compiles/bundles the add-on from its source.
+    The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 
 # Deterministic: a submitted source-code archive (--sca-root) was unnecessary because the shipped
 # XPI is directly reviewable (its first-party code is not minified or obfuscated). The pipeline
@@ -623,9 +604,8 @@ deterministic-phase:
     The shipped add-on (the built XPI) is directly reviewable, because its code is not minified or obfuscated. A separate source-code archive is therefore not required, and this review was performed on the submitted XPI itself. A source-code submission is needed only when the shipped code is minified or otherwise not human-readable, and it moves the add-on into a separate review process that takes considerably longer to complete. For this add-on you can avoid that delay by submitting only the XPI as a standard review.
 
 # A vendored library the pre-step could not match to an npm package (src/vendor/
-# verify.js auditGithub tries the deterministic repo-name candidate, then an
-# LLM-proposed name, each re-proved by content hash); surfaced as info so the
-# reviewer knows it went unaudited. The source URL renders on the location line
+# verify.js auditGithub tries the repo-name candidate and proves it by content hash);
+# surfaced as info so the reviewer knows it went unaudited. The source URL renders on the location line
 # (as the finding's item), so the body needs no {{item}}/{{source}} slots.
 - title: Vendored library not vulnerability-checked
   severity: info
@@ -759,24 +739,24 @@ deterministic-phase:
 
     [1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
     [2]: https://www.mozilla.org/en-US/privacy/
-  instructions: |-
+  manual-review-instructions: |-
     This add-on transmits data to one or more hardcoded remote servers. Confirm
     the ATN listing carries a privacy policy that discloses what data is
     collected and why. The privacy policy must be pasted into the ATN field
     directly (links to remotely hosted policies are not allowed).
 
 # Preflight -> manual review: the nativeMessaging permission lets the add-on talk
-# to a native application that is not part of the package.
+# to a native application. What the listing discloses about that exchange is not in
+# the package, so a person settles it.
 - title: Native messaging needs disclosure
   check: native-messaging
   input: manifest
   response: |-
-    This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged. The native host itself does not need to be part of the package.
-  instructions: |-
+    This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged.
+  manual-review-instructions: |-
     This add-on requests the "nativeMessaging" permission. Confirm the add-on
     listing page on ATN discloses what information is exchanged with the local
-    app and that it complies with the No Surprises policy. The native host
-    itself does not need to be part of the package.
+    app and that it complies with the No Surprises policy.
 
 # A packaged _locales directory requires a default_locale key, or Thunderbird
 # will not load the add-on.
@@ -827,7 +807,7 @@ deterministic-phase:
 
 # Dynamic code execution: the definite cases are deterministic (eval / Function
 # constructor / code-string timers, and unsafe-eval/unsafe-inline in the CSP);
-# the ambiguous fetch().then(eval) case is the remote-eval llm check below. All
+# the ambiguous fetch().then(eval) case is the remote-eval check below. All
 # read the shared dynamic-execution scan. The eval/Function/timer/fetch-eval file
 # scan only covers code OUTSIDE the pure WebExtension tree: a WebExtension sandbox
 # cannot run these without a permissive CSP (the unsafe-eval/unsafe-inline checks
@@ -877,7 +857,6 @@ deterministic-phase:
   severity: warning
   check: missing-english-localization
   input: xpi
-  post-summary-recheck: missing-english-localization-recheck
   instructions: |-
     This add-on ships no English localization, so user-facing text may be
     hardcoded in another language. Review its strings by hand and confirm if an
@@ -886,33 +865,273 @@ deterministic-phase:
     Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
     An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
 
-# Grounding for the unused-permission recheck consumer (permission-recheck: true).
-# The --llm-review pass assembles its rubric as: framing.preamble + the prompt of
-# every permission-prompts entry whose `permissions` intersects the permissions
-# actually handed over (deduped, in order) + a "sites to judge" list + framing.closing.
-# So the model is only ever sent grounding for the permissions in play - not the whole
-# catalogue. Each entry may carry min_strict_version / max_strict_version (an INCLUSIVE
-# bound on the add-on's strict_min_version, compared at the bound's own precision - so
-# "153" covers the whole 153.* series; adjacent major bounds partition with no gap; an
-# unset version is treated as oldest). No entry currently sets a bound; the
-# tabs/activeTab version pivot instead lives in the `tabs.query` schema-annotation
-# notes, pulled in version-matched via the {{note:tabs.query}} placeholder in the single
-# tabs entry's prompt - before Thunderbird 154, filtering tabs.query by url/title needs
-# "tabs" even for the add-on's own pages; at/after 154 it does not. Every name in a
-# `permissions`
-# list must appear in that entry's `prompt` (a test enforces this - an ungrounded
-# permission just reintroduces guessing).
+# Checks whose scan finds cases it cannot settle: those escalate to a person
+# instead of becoming a finding. Each still carries a `prompt` - the rubric
+# stating what settles the case, which says more than `instructions` does. Only
+# `instructions` is printed; the rubrics are kept as the fuller wording.
+
+# Flags shipped obfuscated JS that is not a recognized library; asks for the
+# original sources. A strong structural detector match is a deterministic finding;
+# a weak-only match (a structure ordinary readable code also has - see
+# src/lib/obfuscation.js WEAK_FAMILIES) escalates to a reviewer, guided by the
+# prompt below (fail -> finding, unsure -> manual review via the instructions,
+# pass -> drop). The prompt deliberately never mentions the structural detector or
+# what it matched, so the model judges the file cold and cannot be steered into
+# confirming a detector claim.
+- title: Obfuscated code is not permitted
+  severity: error
+  check: obfuscated-code
+  input: source
+  prompt: |-
+    Each candidate is one packaged JavaScript file. Read the file and judge only
+    whether it is genuinely obfuscated - code transformed to hide its behavior
+    from a human reviewer.
+    Verdict fail (the file is obfuscated): machine-mangled identifiers (such as
+    _0x1a2b), encoded or rotated string tables resolved through decoder
+    indirection, control-flow flattening, or similar transformations whose
+    purpose is to make the code unreadable.
+    Verdict pass (the file is not obfuscated): readable developer code with
+    meaningful names and ordinary structure - even if it is dense, compact, or
+    minified; minification alone is judged elsewhere and is not obfuscation.
+    Use unsure only when you genuinely cannot tell.
+  instructions: |-
+    The automated analysis could not determine whether the following file(s) are
+    obfuscated. Inspect them by hand.
+  response: |-
+    The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
+    Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
+
+# functions/events added after the declared strict_min_version. The
+# deterministic pre-flight (strict-min-version-api.js) emits an UNGUARDED too-new
+# call as a finding directly; a call carrying a guard signal (optional chaining, a
+# typeof/existence check, an earlier guard clause, a getBrowserInfo version gate)
+# escalates instead, for the reviewer to judge from the call's file whether the guard
+# really keeps the call off the versions that lack the API. Only real, schema-resolved
+# APIs reach here; a non-existent API is unknown-api's concern.
+- title: API newer than strict_min_version
+  severity: error
+  check: strict-min-version-api
+  input: source
+  prompt: |-
+    Each candidate is a call site of a WebExtension API that DOES exist and is
+    supported, but was added in a Thunderbird newer than the add-on's declared
+    strict_min_version (the candidate's note names the API and the version it was
+    added in). Do NOT question whether the API exists - it does. Decide only one
+    thing from the shown file: is the call guarded so it runs ONLY on Thunderbird
+    versions that actually have the API?
+    Verdict pass (safely guarded): the access is protected so it cannot run on older
+    versions - optional chaining on the API path (messenger.foo?.bar), an existence
+    or typeof test (if (messenger.foo.bar) or typeof messenger.foo.bar ===
+    "function"), a guard clause earlier in the function that returned or threw when
+    the API was missing (if (!messenger.foo.bar) return), or a runtime version gate
+    (a messenger.runtime.getBrowserInfo() version comparison), with the feature
+    genuinely optional or a fallback for older versions.
+    Verdict fail (runs unconditionally): the API is called with no such guard, so the
+    call throws on the still-supported versions below the one that added it.
+    Use unsure only when you genuinely cannot tell whether a guard protects this call.
+  instructions: |-
+    The "{{item}}" API was added after the declared strict_min_version. Confirm by
+    hand whether the call is safely guarded (feature detection or a version check) so
+    it only runs where the API exists. If it does not, ask the developer to raise
+    strict_min_version or guard the call.
+  response: |-
+    The add-on is setting strict_min_version to {{min}} but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
+
+# hidden/junk files and files reachable from no entry point; the
+# ambiguous (dynamically-loadable) ones are escalated to a reviewer.
+- title: Unused, hidden or duplicate files or folders
+  severity: error
+  check: unused-files
+  input: xpi
+  prompt: |-
+    Each candidate is a site in the add-on, named in its note as "does this site
+    load F", where F is a packaged file not reachable from any manifest entry
+    point. Decide only whether this site loads or uses F at runtime. A candidate is
+    one of two kinds, which you can tell apart from the candidate list:
+    - it has a file:line where the site names F (F's basename appears there); or
+    - it has no line and is a runtime loader: code that builds load paths at
+      runtime (a dynamic import, getURL, executeScript/insertCSS, setIcon, and the
+      like), so it may load F WITHOUT naming F literally.
+
+    Verdict pass (this site loads F): a static or dynamic import, a getURL or
+    executeScript, an HTML or CSS reference, or a data or configuration entry the
+    add-on consumes (for example one entry in a list of selectable sounds, themes,
+    or icons). For a runtime loader, a runtime-built path that could plausibly
+    resolve to F is enough: if the site builds paths like
+    "icons/icon-${theme}-${size}.png" and F is one of those icons (same directory,
+    extension, and naming family), treat F as loaded. It may load F only when a
+    user chooses it, and a valid functional reference is enough.
+
+    Verdict fail (this site does not load F): the mention is incidental (a comment,
+    documentation, or packaging metadata the add-on does not consume), it is
+    unrelated code, or it is a runtime loader whose built paths clearly target a
+    different directory or file type than F (for example a loader that builds
+    "icons/*.png" paths cannot load icon-source.svg).
+
+    Use unsure only as a last resort, when you genuinely cannot tell. Do NOT answer
+    unsure merely because F's literal filename does not appear here: a runtime
+    loader need not name F, and a plausible runtime-path match is a pass. F's own
+    contents do not matter, only whether this site loads it.
+  instructions: |-
+    The following files are not reachable from any entry point but may be loaded
+    dynamically. Confirm by hand whether they are unused and safe to remove.
+  response: |-
+    The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
+
+# over-broad or unloaded web_accessible_resources exposure.
+- title: Minimize web_accessible_resources
+  severity: warning
+  check: minimize-web-accessible-resources
+  input: xpi
+  prompt: |-
+    Each candidate is a site (file:line) that references a web_accessible_resources
+    file F, named in the candidate note as "does this site load F for a web
+    context". web_accessible_resources is only needed when something OUTSIDE the
+    add-on reads F: a content script (which runs in the web page's world), a real
+    web page, or another extension. The add-on opening or embedding its own file
+    or page from its own extension contexts (the background, a popup, sidebar,
+    options or tab page, or an iframe of F inside another of the add-on's own
+    pages) never needs it. For that candidate, decide only whether this site
+    exposes F to such an external web context.
+
+    Verdict pass (this site exposes F to a web context): the reference is in a
+    content script, or it builds a URL or markup handed to a web page or another
+    extension - a getURL, a fetch, an HTML or CSS reference, or a dynamic or
+    data-built path reachable from such a context. A reference need not be a
+    manifest entry point.
+
+    Verdict fail (this site does not expose F): the reference is incidental or
+    unrelated code, or F is loaded only by the add-on's own extension code (its
+    background or its own pages, including an iframe of F inside one of them),
+    which does not require web_accessible_resources.
+
+    Use unsure only when you genuinely cannot tell.
+  instructions: |-
+    The following resources are exposed via web_accessible_resources but nothing
+    in the add-on loads them. Confirm by hand whether they need to be exposed.
+  response: |-
+    One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise, remove these entries to reduce the add-on’s exposed surface.
+
+# remote resources - <script>/<link>/<iframe>/media in HTML,
+# @import/url() in CSS, import()/importScripts()/module imports, runtime <script>
+# injection, remote WASM, and a CSP that permits a remote source. The definite
+# remote loads are flagged deterministically; only the statically-undecidable
+# sources reach the model.
+- title: Remote resources
+  severity: error
+  check: remote-resources
+  input: source
+  prompt: |-
+    Each candidate is a site (file:line) that loads or injects a resource -
+    script, style, frame, or media - from a source static analysis could not
+    resolve to a bundled file. For each candidate, determine whether the resource
+    comes from a remote source (verdict fail) rather than a packaged file (verdict
+    pass). Use unsure when you genuinely cannot tell.
+  instructions: |-
+    This site loads a resource from a source static analysis cannot resolve.
+    Confirm by hand that it is bundled with the add-on and not fetched remotely.
+  manual-review-instructions: |-
+    Each of these remote loads is inside a file whose content matches a published
+    file of the upstream release listed after it - so the line is that release's,
+    not something the developer wrote. That does not by itself mean the add-on
+    needs this file, or that no build of the library avoids the remote load.
+    Decide whether shipping it as published is acceptable here.
+  response: |-
+    A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed.
+
+# the statically-undecidable fetch().then(eval) case - is the executed
+# code remote? The definite eval/Function/timer/CSP cases are deterministic
+# checks above. Like them, the shared scan only covers code OUTSIDE the pure
+# WebExtension tree (WebExtension code is CSP-gated, see unsafe-eval/unsafe-inline).
+- title: Remote eval
+  severity: error
+  check: remote-eval
+  input: source
+  prompt: |-
+    Each candidate is a site (file:line) that executes code built or fetched at
+    runtime, such as fetch().then(eval). For each candidate, determine whether the
+    executed code is fetched from a remote source (verdict fail) rather than
+    static and local (verdict pass). Use unsure when you genuinely cannot tell.
+  instructions: |-
+    "{{item}}" may execute code that is fetched at runtime. Confirm by hand that
+    no remotely fetched code is executed.
+  response: |-
+    Remotely fetched code is executed at "{{item}}". Remote code execution is not allowed - bundle all code with the add-on so it can be reviewed.
+
+# normal transmission (fetch and friends) to a remote host - allowed
+# only with an options-page opt-in, judged from the options page in evidence.
+- title: User-data exfiltration
+  severity: error
+  check: data-exfiltration
+  input: source
+  prompt: |-
+    Each candidate is a site (file:line) that sends data to a remote server (via
+    fetch, XMLHttpRequest, WebSocket, EventSource, or sendBeacon). Sending user
+    data such as message content, attachments, contacts, or credentials to a
+    remote host is allowed ONLY if the user actively enabled it, by entering the
+    destination URL or credentials on an options page that lists what is actually
+    transmitted, or via an explicit off-by-default opt-in for a hard-coded URL.
+    Thunderbird has no built-in data-collection consent prompt. The add-on’s
+    options page, when it has one, is among the files below. For each candidate,
+    determine whether user data is transmitted WITHOUT such consent (verdict fail)
+    or not (verdict pass). Use unsure when you genuinely cannot tell.
+  instructions: |-
+    The following code locations transmit data to a remote server. Confirm by
+    hand that any user data they send is gated behind an explicit opt-in (a
+    documented options-page setting) and is never sent without consent.
+  response: |-
+    The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
+
+# the WEAK disguised-transmission residue - a covert channel (resource
+# URL, stylesheet url(), window.open, or page navigation) built with a runtime
+# value but no user-data API call. The strong case (a user-data call in the URL) is
+# the deterministic disguised-* errors; this asks whether the dynamic URL is really
+# an undisclosed data send or just legitimate dynamic URL building.
+- title: Disguised data transmission
+  severity: error
+  check: disguised-transmission
+  input: source
+  prompt: |-
+    Each candidate is a site (file:line) that builds a covert channel - a resource
+    URL (image/iframe/media src or href), a stylesheet url(), a window.open(), or a
+    page navigation (location.href/assign/replace) - to a remote host using a
+    runtime value, with no obvious user-data API call in it. Disguising data
+    transmission through a channel not meant for it (instead of a normal request)
+    is not allowed, even with consent. But building a remote URL from a runtime
+    value is also extremely common in legitimate code (navigating to a host path,
+    loading a CDN asset by name). For each candidate, determine whether it actually
+    smuggles user data (message content, attachments, contacts, credentials,
+    browsing/usage data) out through this channel (verdict fail) or is a legitimate
+    dynamic URL (verdict pass). Use unsure when you genuinely cannot tell.
+  instructions: |-
+    The following code locations build a resource or navigation URL to a remote
+    host with a runtime value. Confirm by hand whether any of them smuggle user
+    data out through that channel rather than a normal, disclosed request.
+  response: |-
+    The following code location(s) appear to send data through a resource or navigation URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
+
+# The token vocabulary the unused-permission check scans for, one entry per
+# permission group. Each entry may carry min_strict_version / max_strict_version (an
+# INCLUSIVE bound on the add-on's strict_min_version, compared at the bound's own
+# precision - so "153" covers the whole 153.* series; adjacent major bounds partition
+# with no gap; an unset version is treated as oldest). No entry currently sets a
+# bound; the tabs/activeTab version pivot instead lives in the `tabs.query`
+# schema-annotation notes, pulled in version-matched via the {{note:tabs.query}}
+# placeholder in the single tabs entry's prompt - before Thunderbird 154, filtering
+# tabs.query by url/title needs "tabs" even for the add-on's own pages; at/after 154
+# it does not. Every name in a `permissions` list must appear in that entry's
+# `prompt` (a test enforces this): the prompt states what USES the permission, which
+# is what a reviewer judging a site needs told.
 # An entry may declare `tokens`: the code-level spellings (API property names,
 # manifest keys, literal strings) of every usage its prompt names as justifying.
-# The unused-permission producer scans the add-on's live code (comments excluded)
-# and manifest for them and records WHERE each occurs: a permission whose
-# version-matched entries declare tokens and whose tokens ALL appear nowhere is
-# deterministically unused - a warning finding without any model involvement. When a
-# token DOES occur, each occurrence is a SITE the model judges one by one (does the
-# permission get exercised there?), so the model reasons about a concrete line, never
-# a bare yes/no over the whole add-on. An entry WITHOUT tokens (unlimitedStorage:
-# quota/OPFS use is not token-detectable) has no site to point at, so its permissions
-# escalate to a single holistic verdict over the full add-on.
+# unused-permission scans the add-on's live code (comments excluded) and manifest for
+# them and records WHERE each occurs: a permission whose version-matched entries
+# declare tokens and whose tokens ALL appear nowhere is deterministically unused - a
+# warning finding. When a token DOES occur, the permission escalates with each
+# occurrence named, so the reviewer reads concrete lines rather than answering a bare
+# yes/no over the whole add-on. An entry WITHOUT tokens (unlimitedStorage: quota/OPFS
+# use is not token-detectable) has no site to point at, so its permissions escalate
+# with nothing to anchor on.
 # Token matching is CASE-SENSITIVE and on WORD BOUNDARIES (\btoken\b) over each
 # source's code atoms and the manifest serialized as JSON (key names and values,
 # including the permissions array itself - a test enforces that no token matches
@@ -923,39 +1142,6 @@ deterministic-phase:
 # permission - including each camelCase gated PROPERTY name - is listed
 # explicitly. A missed spelling turns a used permission into a false "unused"
 # finding, while an extra spelling merely widens escalation, so list generously.
-permission-prompt-framing:
-  preamble: |-
-    The permissions below are declared in this add-on's manifest but static analysis
-    could not confirm they are used. The full add-on code is shown above, each source
-    line-numbered. Under "Sites to judge" you are given the concrete items to verdict.
-    An item is one of two kinds:
-    - A code SITE, written `<id>: "<permission>" token "<tok>" at <file>:<line>`. The
-      token at that line is already known to be strongly associated with the permission,
-      so the site is a genuine CANDIDATE - do not dismiss it as unrelated or "not really
-      using the permission". The only open question is the discriminator: does THIS site
-      meet the permission's specific criteria below? For an injection permission that is
-      whether the injection targets the right kind of tab (a compose tab for "compose", a
-      message-display tab for "messagesModify"); for a property permission it is whether
-      the code really reads the gated data. Look at the line and the surrounding code and
-      answer only that.
-    - A HOLISTIC item, written `<permission>: no specific site ...`: the permission has
-      no pinpointable token, so judge from the whole add-on whether it is exercised at
-      all.
-
-    Return one recheck entry per id. verdict pass = this site meets the criteria (the
-    permission IS exercised here; for a holistic item, anywhere in the add-on); fail = it
-    does not (e.g. the injection targets a normal web/content tab, not the required tab
-    kind); unsure = you genuinely cannot tell from the code. unsure is the default whenever
-    the criteria do not clearly settle it. But "the tab kind is not visible at the injection
-    line" is not itself grounds for unsure if the tabId's origin is traceable elsewhere in
-    the code - trace it. unsure already routes the permission to manual review, so the reason
-    must not ask for manual or "main" review; just pick the verdict. Ignore comments, TODOs,
-    documentation, and any stated or implied intention of future use.
-  closing: |-
-    For each id, take the candidate as given and answer only the discriminator: does the
-    current code at that site (or, for a holistic item, anywhere in the add-on) actually
-    meet the matching permission's criteria?
-
 permission-prompts:
   - permissions: accountsRead
     # Every name the schema gates on accountsRead, listed explicitly: tokens match
@@ -1069,7 +1255,7 @@ permission-prompts:
     # api-usage analysis, so only real tabs.*/scripting.* calls count. `attachments` is a
     # bare property token (a menus OnClickData/OnShowData read). The compose_scripts
     # manifest key is NOT a token here: it grounds compose deterministically (its
-    # required_permissions annotation, before this recheck), so the LLM never judges it.
+    # required_permissions annotation, before this recheck), so it is never escalated.
     tokens:
       - tabs.executeScript
       - tabs.insertCSS
@@ -1087,7 +1273,7 @@ permission-prompts:
   - permissions: messagesModify
     # Namespace-qualified (dotted) injection tokens, resolved against the api-usage
     # analysis. message_display_scripts is NOT a token here: it grounds messagesModify
-    # deterministically (its required_permissions annotation), so the LLM never judges it.
+    # deterministically (its required_permissions annotation), so it is never escalated.
     tokens:
       - tabs.executeScript
       - tabs.insertCSS
@@ -1106,407 +1292,10 @@ permission-prompts:
   # of WHICH kind of tab the injection targets), "scripting" is guarded at the namespace
   # level (the scripting schema namespace declares permissions: ["scripting"]), so ANY
   # scripting.* call grounds it deterministically in analyzePermissions - there is no
-  # ambiguous case for the LLM to judge. It is also grounded by the message_display_scripts
+  # ambiguous case to escalate. It is also grounded by the message_display_scripts
   # manifest key (before Thunderbird 154). A declared-but-unused scripting therefore has no
   # prompt here and falls to manual review, like any other permission the recheck cannot judge.
 
-# An llm-check carries a `prompt` (the rubric sent to the LLM for an ambiguous
-# case) and an `instructions` (the message printed when the case is routed to
-# manual review instead - no token, the LLM is unsure, or it errored). A
-# confident LLM "fail" emits a normal finding rendered from `response`.
-llm-phase:
-# Flags shipped obfuscated JS that is not a recognized library; asks for the
-# original sources. A strong structural detector match is a deterministic finding;
-# a weak-only match (a structure ordinary readable code also has - see
-# src/lib/obfuscation.js WEAK_FAMILIES) becomes an LLM candidate judged by the
-# prompt below (fail -> finding, unsure -> manual review via the instructions,
-# pass -> drop). The prompt deliberately never mentions the structural detector or
-# what it matched, so the model judges the file cold and cannot be steered into
-# confirming a detector claim.
-- title: Obfuscated code is not permitted
-  severity: error
-  check: obfuscated-code
-  input: source
-  prompt: |-
-    Each candidate is one packaged JavaScript file. Read the file and judge only
-    whether it is genuinely obfuscated - code transformed to hide its behavior
-    from a human reviewer.
-    Verdict fail (the file is obfuscated): machine-mangled identifiers (such as
-    _0x1a2b), encoded or rotated string tables resolved through decoder
-    indirection, control-flow flattening, or similar transformations whose
-    purpose is to make the code unreadable.
-    Verdict pass (the file is not obfuscated): readable developer code with
-    meaningful names and ordinary structure - even if it is dense, compact, or
-    minified; minification alone is judged elsewhere and is not obfuscation.
-    Use unsure only when you genuinely cannot tell.
-  instructions: |-
-    The automated analysis could not determine whether the following file(s) are
-    obfuscated. Inspect them by hand.
-  response: |-
-    The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
-    Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
-
-# LLM check: functions/events added after the declared strict_min_version. The
-# deterministic pre-flight (strict-min-version-api.js) emits an UNGUARDED too-new
-# call as a finding directly; a call carrying a guard signal (optional chaining, a
-# typeof/existence check, an earlier guard clause, a getBrowserInfo version gate)
-# becomes one candidate the
-# LLM judges from the call's file: pass (safely guarded) -> drop, fail (runs
-# unconditionally) -> finding, unsure -> manual. Only real, schema-resolved APIs
-# reach here; a non-existent API is unknown-api's concern.
-- title: API newer than strict_min_version
-  severity: error
-  check: strict-min-version-api
-  input: source
-  prompt: |-
-    Each candidate is a call site of a WebExtension API that DOES exist and is
-    supported, but was added in a Thunderbird newer than the add-on's declared
-    strict_min_version (the candidate's note names the API and the version it was
-    added in). Do NOT question whether the API exists - it does. Decide only one
-    thing from the shown file: is the call guarded so it runs ONLY on Thunderbird
-    versions that actually have the API?
-    Verdict pass (safely guarded): the access is protected so it cannot run on older
-    versions - optional chaining on the API path (messenger.foo?.bar), an existence
-    or typeof test (if (messenger.foo.bar) or typeof messenger.foo.bar ===
-    "function"), a guard clause earlier in the function that returned or threw when
-    the API was missing (if (!messenger.foo.bar) return), or a runtime version gate
-    (a messenger.runtime.getBrowserInfo() version comparison), with the feature
-    genuinely optional or a fallback for older versions.
-    Verdict fail (runs unconditionally): the API is called with no such guard, so the
-    call throws on the still-supported versions below the one that added it.
-    Use unsure only when you genuinely cannot tell whether a guard protects this call.
-  instructions: |-
-    The "{{item}}" API was added after the declared strict_min_version. Confirm by
-    hand whether the call is safely guarded (feature detection or a version check) so
-    it only runs where the API exists. If it does not, ask the developer to raise
-    strict_min_version or guard the call.
-  response: |-
-    The add-on is setting strict_min_version to {{min}} but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
-
-# LLM check: hidden/junk files and files reachable from no entry point; the
-# ambiguous (dynamically-loadable) ones are escalated to the LLM.
-- title: Unused, hidden or duplicate files or folders
-  severity: error
-  check: unused-files
-  input: xpi
-  post-summary-recheck: unused-files-recheck
-  prompt: |-
-    Each candidate is a site in the add-on, named in its note as "does this site
-    load F", where F is a packaged file not reachable from any manifest entry
-    point. Decide only whether this site loads or uses F at runtime. A candidate is
-    one of two kinds, which you can tell apart from the candidate list:
-    - it has a file:line where the site names F (F's basename appears there); or
-    - it has no line and is a runtime loader: code that builds load paths at
-      runtime (a dynamic import, getURL, executeScript/insertCSS, setIcon, and the
-      like), so it may load F WITHOUT naming F literally.
-
-    Verdict pass (this site loads F): a static or dynamic import, a getURL or
-    executeScript, an HTML or CSS reference, or a data or configuration entry the
-    add-on consumes (for example one entry in a list of selectable sounds, themes,
-    or icons). For a runtime loader, a runtime-built path that could plausibly
-    resolve to F is enough: if the site builds paths like
-    "icons/icon-${theme}-${size}.png" and F is one of those icons (same directory,
-    extension, and naming family), treat F as loaded. It may load F only when a
-    user chooses it, and a valid functional reference is enough.
-
-    Verdict fail (this site does not load F): the mention is incidental (a comment,
-    documentation, or packaging metadata the add-on does not consume), it is
-    unrelated code, or it is a runtime loader whose built paths clearly target a
-    different directory or file type than F (for example a loader that builds
-    "icons/*.png" paths cannot load icon-source.svg).
-
-    Use unsure only as a last resort, when you genuinely cannot tell. Do NOT answer
-    unsure merely because F's literal filename does not appear here: a runtime
-    loader need not name F, and a plausible runtime-path match is a pass. F's own
-    contents do not matter, only whether this site loads it.
-  instructions: |-
-    The following files are not reachable from any entry point but may be loaded
-    dynamically. Confirm by hand whether they are unused and safe to remove.
-  response: |-
-    The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
-
-# LLM check: over-broad or unloaded web_accessible_resources exposure.
-- title: Minimize web_accessible_resources
-  severity: warning
-  check: minimize-web-accessible-resources
-  input: xpi
-  post-summary-recheck: minimize-web-accessible-resources-recheck
-  prompt: |-
-    Each candidate is a site (file:line) that references a web_accessible_resources
-    file F, named in the candidate note as "does this site load F for a web
-    context". web_accessible_resources is only needed when something OUTSIDE the
-    add-on reads F: a content script (which runs in the web page's world), a real
-    web page, or another extension. The add-on opening or embedding its own file
-    or page from its own extension contexts (the background, a popup, sidebar,
-    options or tab page, or an iframe of F inside another of the add-on's own
-    pages) never needs it. For that candidate, decide only whether this site
-    exposes F to such an external web context.
-
-    Verdict pass (this site exposes F to a web context): the reference is in a
-    content script, or it builds a URL or markup handed to a web page or another
-    extension - a getURL, a fetch, an HTML or CSS reference, or a dynamic or
-    data-built path reachable from such a context. A reference need not be a
-    manifest entry point.
-
-    Verdict fail (this site does not expose F): the reference is incidental or
-    unrelated code, or F is loaded only by the add-on's own extension code (its
-    background or its own pages, including an iframe of F inside one of them),
-    which does not require web_accessible_resources.
-
-    Use unsure only when you genuinely cannot tell.
-  instructions: |-
-    The following resources are exposed via web_accessible_resources but nothing
-    in the add-on loads them. Confirm by hand whether they need to be exposed.
-  response: |-
-    One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise, remove these entries to reduce the add-on’s exposed surface.
-
-# LLM check: remote resources - <script>/<link>/<iframe>/media in HTML,
-# @import/url() in CSS, import()/importScripts()/module imports, runtime <script>
-# injection, remote WASM, and a CSP that permits a remote source. The definite
-# remote loads are flagged deterministically; only the statically-undecidable
-# sources reach the model.
-- title: Remote resources
-  severity: error
-  check: remote-resources
-  input: source
-  prompt: |-
-    Each candidate is a site (file:line) that loads or injects a resource -
-    script, style, frame, or media - from a source static analysis could not
-    resolve to a bundled file. For each candidate, determine whether the resource
-    comes from a remote source (verdict fail) rather than a packaged file (verdict
-    pass). Use unsure when you genuinely cannot tell.
-  instructions: |-
-    This site loads a resource from a source static analysis cannot resolve.
-    Confirm by hand that it is bundled with the add-on and not fetched remotely.
-  llm-not-needed-instructions: |-
-    Each of these remote loads is inside a file whose content matches a published
-    file of the upstream release listed after it - so the line is that release's,
-    not something the developer wrote. That does not by itself mean the add-on
-    needs this file, or that no build of the library avoids the remote load.
-    Decide whether shipping it as published is acceptable here.
-  response: |-
-    A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed.
-
-# LLM check: the statically-undecidable fetch().then(eval) case - is the executed
-# code remote? The definite eval/Function/timer/CSP cases are deterministic
-# checks above. Like them, the shared scan only covers code OUTSIDE the pure
-# WebExtension tree (WebExtension code is CSP-gated, see unsafe-eval/unsafe-inline).
-- title: Remote eval
-  severity: error
-  check: remote-eval
-  input: source
-  prompt: |-
-    Each candidate is a site (file:line) that executes code built or fetched at
-    runtime, such as fetch().then(eval). For each candidate, determine whether the
-    executed code is fetched from a remote source (verdict fail) rather than
-    static and local (verdict pass). Use unsure when you genuinely cannot tell.
-  instructions: |-
-    "{{item}}" may execute code that is fetched at runtime. Confirm by hand that
-    no remotely fetched code is executed.
-  response: |-
-    Remotely fetched code is executed at "{{item}}". Remote code execution is not allowed - bundle all code with the add-on so it can be reviewed.
-
-# LLM check: normal transmission (fetch and friends) to a remote host - allowed
-# only with an options-page opt-in, judged from the options page in evidence.
-- title: User-data exfiltration
-  severity: error
-  check: data-exfiltration
-  input: source
-  post-summary-recheck: data-exfiltration-recheck
-  prompt: |-
-    Each candidate is a site (file:line) that sends data to a remote server (via
-    fetch, XMLHttpRequest, WebSocket, EventSource, or sendBeacon). Sending user
-    data such as message content, attachments, contacts, or credentials to a
-    remote host is allowed ONLY if the user actively enabled it, by entering the
-    destination URL or credentials on an options page that lists what is actually
-    transmitted, or via an explicit off-by-default opt-in for a hard-coded URL.
-    Thunderbird has no built-in data-collection consent prompt. The add-on’s
-    options page, when it has one, is among the files below. For each candidate,
-    determine whether user data is transmitted WITHOUT such consent (verdict fail)
-    or not (verdict pass). Use unsure when you genuinely cannot tell.
-  instructions: |-
-    The following code locations transmit data to a remote server. Confirm by
-    hand that any user data they send is gated behind an explicit opt-in (a
-    documented options-page setting) and is never sent without consent.
-  response: |-
-    The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
-
-# LLM check: the WEAK disguised-transmission residue - a covert channel (resource
-# URL, stylesheet url(), window.open, or page navigation) built with a runtime
-# value but no user-data API call. The strong case (a user-data call in the URL) is
-# the deterministic disguised-* errors; this asks whether the dynamic URL is really
-# an undisclosed data send or just legitimate dynamic URL building.
-- title: Disguised data transmission
-  severity: error
-  check: disguised-transmission
-  input: source
-  post-summary-recheck: disguised-transmission-recheck
-  prompt: |-
-    Each candidate is a site (file:line) that builds a covert channel - a resource
-    URL (image/iframe/media src or href), a stylesheet url(), a window.open(), or a
-    page navigation (location.href/assign/replace) - to a remote host using a
-    runtime value, with no obvious user-data API call in it. Disguising data
-    transmission through a channel not meant for it (instead of a normal request)
-    is not allowed, even with consent. But building a remote URL from a runtime
-    value is also extremely common in legitimate code (navigating to a host path,
-    loading a CDN asset by name). For each candidate, determine whether it actually
-    smuggles user data (message content, attachments, contacts, credentials,
-    browsing/usage data) out through this channel (verdict fail) or is a legitimate
-    dynamic URL (verdict pass). Use unsure when you genuinely cannot tell.
-  instructions: |-
-    The following code locations build a resource or navigation URL to a remote
-    host with a runtime value. Confirm by hand whether any of them smuggle user
-    data out through that channel rather than a normal, disclosed request.
-  response: |-
-    The following code location(s) appear to send data through a resource or navigation URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
-
-# Post-summary recheck consumers. Each is the recheck TARGET named by a producer's
-# `post-summary-recheck:` above. It is re-judged by the --llm-review add-on summary
-# (phase post-summary), always runs on the main ctx - so it declares no `input` - and
-# is labelled by its producer's corpus (see labelInputFor). Its run() is resolveRecheck.
-post-summary-phase:
-# The recheck consumer for the permissions handed over above. `permission-recheck`
-# makes the --llm-review pass assemble a rubric from the permission-prompt-framing
-# and permission-prompts sections, including only the sections for the permissions
-# actually handed over and the tabs variant matching the add-on's strict_min_version.
-# The model's verdict maps to justified (drop), unused (this warning), or unsure
-# (manual review); it runs in the post-summary phase, inferred from being named as
-# the post-summary-recheck target above. Both texts are deliberately item-free and
-# reason-free: same-bodied findings collapse into one numbered entry with the
-# permissions on the locus lines (like the producer's manual reminder), and the
-# model's per-permission reasons appear only in the AI summary bullets.
-- title: Unused permission
-  severity: warning
-  check: unused-permission-recheck
-  permission-recheck: true
-  response: |-
-    One or more declared permissions are unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If a permission is in fact used, please specify which part of your add-on stops working if it is removed.
-  instructions: |-
-    One or more declared permissions may be unused. Confirm whether the add-on
-    actually needs them, and if not, ask the developer to remove them.
-
-# Recheck consumer for missing-english-localization (above): re-judges the
-# low-confidence language case (too little text, or a near-tie with English) with a
-# model reading ALL the user-facing text. pass -> English / nothing to localize
-# (drop), fail -> a finding, unsure -> manual. Same wording as the producer;
-# post-summary phase inferred.
-- title: Missing English localization
-  severity: warning
-  check: missing-english-localization-recheck
-  summary-prompt: |-
-    The listed item (manifest.json) stands for the add-on's user-facing text - the
-    manifest name and description plus the visible text of its HTML pages, all
-    quoted among the sources above. Reading all of it together, decide: verdict fail
-    = the user-facing text is hardcoded in a non-English language (an English
-    localization should be added), pass = it is English, or there is nothing to
-    localize, unsure = you genuinely cannot tell. Return a verdict for this item only.
-  instructions: |-
-    This add-on ships no English localization, so user-facing text may be
-    hardcoded in another language. Review its strings by hand and confirm if an
-    English localization is provided.
-  response: |-
-    Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
-    An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
-
-# Recheck consumer for unused-files (above): re-judges the files it could not
-# resolve from a single site, now with the whole add-on in view. Its summary-prompt
-# is appended to the --llm-review pass; pass -> loaded (drop), fail -> an unused
-# finding, unsure -> manual review. Same wording as unused-files (its findings read
-# identically); the post-summary phase is inferred from being its recheck target.
-- title: Unused, hidden or duplicate files or folders
-  severity: error
-  check: unused-files-recheck
-  summary-prompt: |-
-    Each listed item is a packaged file not reachable from any manifest entry point
-    that the per-file analysis could not resolve to a loader. With the whole add-on
-    in view, decide whether ANYTHING in it loads or uses each file at runtime: a
-    static or dynamic import, a getURL or executeScript/insertCSS, an HTML or CSS
-    reference, a data or configuration entry the add-on consumes, or a runtime-built
-    path that plausibly resolves to it (for example code building
-    "icons/icon-${theme}-${size}.png" loads the icons in that family). Verdict pass
-    = it is loaded somewhere (keep it), fail = nothing in the add-on loads it (it is
-    unused and safe to remove), unsure = you genuinely cannot tell. Base each verdict on
-    the provided add-on corpus; return one per listed file, by its packaged
-    path, and add no others.
-  instructions: |-
-    The following files are not reachable from any entry point but may be loaded
-    dynamically. Confirm by hand whether they are unused and safe to remove.
-  response: |-
-    The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
-
-# Recheck consumer for minimize-web-accessible-resources (above): re-judges the
-# entries it could not clear from a single referencing site, now with the whole
-# add-on in view. pass -> needed (drop), fail -> a needless-exposure finding,
-# unsure -> manual. Same wording as the producer; post-summary phase inferred.
-- title: Minimize web_accessible_resources
-  severity: warning
-  check: minimize-web-accessible-resources-recheck
-  summary-prompt: |-
-    Each listed item is a web_accessible_resources entry the per-site analysis
-    could not clear. web_accessible_resources is only needed when something OUTSIDE
-    the add-on reads the file: a content script (it runs in the web page's world), a
-    real web page, or another extension. The add-on opening or embedding its own
-    file or page from its own extension contexts (background, popup, sidebar,
-    options or tab page, or an iframe of it inside another of the add-on's own
-    pages) never needs it. With the whole add-on in view, decide for each entry:
-    verdict pass = something external reads it (keep it), fail = nothing external
-    reads it (it is needless and should be removed), unsure = you cannot tell. Base each
-    verdict on the provided add-on corpus; return one per listed entry and
-    add no others.
-  instructions: |-
-    The following resources are exposed via web_accessible_resources but nothing
-    in the add-on loads them. Confirm by hand whether they need to be exposed.
-  response: |-
-    One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise, remove these entries to reduce the add-on’s exposed surface.
-
-# Recheck consumer for data-exfiltration (above): re-judges each transmission site
-# it could not clear, now with the whole add-on in view, so a user opt-in defined in
-# any settings or background module is visible (not only the options page in the
-# narrow corpus). pass -> consented (drop), fail -> an exfiltration finding, unsure
-# -> manual. Same wording as the producer; post-summary phase inferred.
-- title: User-data exfiltration
-  severity: error
-  check: data-exfiltration-recheck
-  summary-prompt: |-
-    Each listed item is a code location (file:line) that sends data to a remote
-    server (fetch, XMLHttpRequest, WebSocket, EventSource, or sendBeacon). Sending
-    user data such as message content, attachments, contacts, or credentials to a
-    remote host is allowed ONLY if the user actively enabled it - by entering the
-    destination URL or credentials on an options page that lists what is
-    transmitted, or via an explicit off-by-default opt-in for a hard-coded URL.
-    Thunderbird has no built-in data-collection consent prompt. With the whole
-    add-on in view (every settings page, background flag, and stored preference),
-    decide for each location: verdict fail = user data is transmitted WITHOUT such
-    consent, pass = it is not, unsure = you cannot tell. Base each verdict on the
-    provided add-on corpus; return one per listed location and add no
-    others.
-  instructions: |-
-    The following code locations transmit data to a remote server. Confirm by
-    hand that any user data they send is gated behind an explicit opt-in (a
-    documented options-page setting) and is never sent without consent.
-  response: |-
-    The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
-
-# Recheck consumer for disguised-transmission (above): re-judges each weak covert
-# sink it could not clear, now with the whole add-on in view. pass -> legitimate
-# dynamic URL (drop), fail -> a disguised-transmission finding, unsure -> manual.
-- title: Disguised data transmission
-  severity: error
-  check: disguised-transmission-recheck
-  summary-prompt: |-
-    Each listed item is a code location (file:line) that builds a covert channel - a
-    resource URL, a stylesheet url(), a window.open(), or a page navigation - to a
-    remote host using a runtime value, with no obvious user-data API call. With the
-    whole add-on in view, decide for each location: verdict fail = it smuggles user
-    data out through this channel, pass = it is a legitimate dynamic URL, unsure =
-    you cannot tell. Base each verdict on the provided add-on corpus;
-    return one per listed location and add no others.
-  instructions: |-
-    The following code locations build a resource or navigation URL to a remote
-    host with a runtime value. Confirm by hand whether any of them smuggle user
-    data out through that channel rather than a normal, disclosed request.
-  response: |-
-    The following code location(s) appear to send data through a resource or navigation URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 manual-checks:
 # Manual: inspect the listing + add-on for spam, inappropriate, or low-effort
@@ -1632,8 +1421,6 @@ issue-headings:
 messages:
   check-failed: |-
     The "{{item}}" check could not be run. The other checks still ran.
-  llm-unavailable: |-
-    "{{item}}" could not be evaluated automatically. Review this step by hand.
 
 # The customer-facing preamble at the top of the report’s Issues section: "none"
 # when there are no findings, "rejected" when there is any error finding, and
@@ -1643,147 +1430,3 @@ verdict-intros:
   none: "The automated review did not find any issues."
   feedback: "Thank you for your contribution, it will be approved shortly."
   rejected: "Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form."
-
-# Tool-defining prompts the registry owns, like check rubrics and `messages`, so
-# every model-facing string lives in this one file.
-#   system-intro:   the fixed reviewer role prompt - the first system block of
-#                   every LLM check call. It explains the fail/pass/unsure
-#                   verdicts whose structured shape (the forced result tool) lives
-#                   in src/llm/schema.js (RESULT_SCHEMA).
-#   change-summary: the AI "Summary of changes" prompt. The orchestrator emits it
-#                   only with --diff-to under --llm-review (which needs a configured
-#                   LLM provider); the model’s prose is shown verbatim as an
-#                   advisory aid (not a finding).
-#   add-on-summary: the AI "Summary of add-on" prompt. Emitted only with
-#                   --llm-review and a token; via the forced report_addon_review
-#                   tool it returns prose (what the (almost) full current add-on
-#                   does, with security notes and a permission review) plus the
-#                   structured list of permissions that appear unused. The prose is
-#                   advisory; the unused-permission list feeds the
-#                   unused-permission check, which raises it as Issues. In SCA mode
-#                   this pass judges only the source-anchored rechecks; the packaging
-#                   rechecks go to shipped-package-summary below.
-#   shipped-package-summary: the packaging-only "Summary of add-on" pass. In SCA
-#                   mode it runs over the BUILT, shipped XPI corpus (only when an
-#                   XPI-anchored recheck escalated) and judges just the packaging
-#                   rechecks - reachable files, web_accessible_resources, English
-#                   localization, and unused permissions (unused-permission is
-#                   input:xpi, so it judges the shipped bytes). Its prose is not
-#                   shown to the reviewer; only its recheck verdicts are consumed.
-#   vendor-parse:   the LLM fallback that parses a free-form VENDOR file into
-#                   structured {file, url} declarations, used during vendor
-#                   resolution when the deterministic scan comes up empty and a
-#                   token is set (token-less stays deterministic).
-#   vendor-npm-resolve: the LLM fallback that proposes the npm package a github-
-#                   sourced vendored library is published as, so it can be OSV-
-#                   audited. Used by verify.js when the deterministic repo-name
-#                   match misses; the proposal is re-proved by content hash before
-#                   any audit, so a wrong guess is harmless.
-#   build-analysis: the SCA build review's one classification, run in setup
-#                   (analyzeBuild) over the selected build corpus; returns
-#                   {classification, reason, buildInstructions} stored on
-#                   addon.buildFiles.buildReview for the three input:build checks.
-prompts:
-  system-intro: >-
-    You are a Thunderbird WebExtension add-on reviewer. Each request gives you
-    one review step (a rubric) and a numbered list of CANDIDATES, each an id
-    pointing at a file:line site, together with the FILES they appear in. Judge
-    every candidate and report by calling the report_verdicts tool with one entry
-    per candidate id. For each id, return verdict='fail' when you are confident
-    the issue this step looks for is present at that candidate, 'pass' when you
-    are confident it is absent, and 'unsure' when you cannot be confident either
-    way (a human then reviews it). Only give a definite verdict when you are
-    genuinely confident, and prefer 'unsure' over guessing. Use the exact ids
-    from the CANDIDATES list and never invent ids.
-  change-summary: |-
-    You are comparing two versions of a Thunderbird WebExtension add-on. Below is
-    what changed from the previous to the current version (a file-level diff).
-    Summarize the changes for a reviewer as a few concise bullet points: new or
-    removed features, changed behavior, new permissions or APIs, and anything
-    security- or privacy-relevant. Be factual and specific, and call out anything
-    a user might find surprising. If nothing meaningful changed, say so.
-  add-on-summary: |-
-    Review this Thunderbird WebExtension add-on from its (almost complete) current
-    sources below and report by calling the report_addon_review tool.
-    The "summary" field is prose for a reviewer. Cover, as a few concise bullet
-    points: what the add-on does (its main features), the notable APIs it uses, and
-    how it interacts with the network or the user’s data. Then list any security- or
-    privacy-relevant observations. Be factual and specific.
-    Do not judge whether the add-on's permissions are used, unused, needed, or
-    excessive - that review belongs to the formal findings and the permission
-    recheck, not this summary. Describing behavior the manifest enables ("modifies
-    messages") is fine; adjudicating a permission's usage is not. Assess a permission
-    only when a "recheck:" section below lists it, and only the ones it lists; if no
-    recheck section lists permissions, do not remark on any permission's usage at all.
-    If the sources below end with one or more "recheck:" sections, also fill the
-    "recheck" field. Each section names a check id and lists items to judge against
-    that section's rubric; return one "recheck" entry per listed item, giving the
-    matching check id, the exact item text, your verdict, and a one-sentence reason.
-    Judge only the listed items and never add others.
-    Each recheck section says how to surface its verdicts as a labeled bullet in the
-    prose summary; follow that instruction for every section, so flagged items appear
-    in the overview and not only in the structured result.
-    This is an advisory overview. The formal findings in the review report above are
-    authoritative, not this summary.
-  shipped-package-summary: |-
-    Review the BUILT, SHIPPED package of this Thunderbird WebExtension add-on from its
-    files below and report by calling the report_addon_review tool. This pass judges
-    only the PACKAGING questions about the shipped artifact that the "recheck:" sections
-    below list - which packaged files are reachable at runtime, whether each
-    web_accessible_resources entry is needed, and whether the user-facing text is
-    localized. Do NOT assess the add-on's behavior, security, data flow, or permissions:
-    that review is done separately over the readable source.
-    Each recheck section names a check id and lists items to judge against that section's
-    rubric; fill the "recheck" field with one entry per listed item, giving the matching
-    check id, the exact item text, your verdict, and a one-sentence reason. Judge only
-    the listed items and never add others. The "summary" prose field is not shown to the
-    reviewer, so keep it brief.
-  vendor-parse: |-
-    The text below is an add-on’s VENDOR file: a developer’s free-form list of the
-    bundled third-party library files it ships, each with the source URL it was
-    copied from. Extract those declarations. Respond with ONLY a JSON array of
-    objects, each {"file": "<add-on-relative path of the bundled file>", "url":
-    "<source URL, or null if none is given>"}. Use forward slashes in paths and do
-    not invent files or URLs that are not in the text. Return [] if it lists none.
-  vendor-npm-resolve: |-
-    The data below describes ONE third-party library file an add-on bundled,
-    copied from a GitHub repository: its repo ("owner/name"), the git ref it was
-    taken at, the bundled file's add-on-relative path, and the source URL.
-    Identify the npm package this library is published as, so it can be audited
-    for known vulnerabilities. Respond with ONLY a JSON object {"name": "<the exact
-    npm package name>", "version": "<the npm version matching the ref, or null>"}.
-    Use the exact npm package name, including an "@scope/" prefix for a scoped
-    package. If you cannot confidently identify a corresponding npm package,
-    respond {"name": null}. Do not invent a package name.
-  build-analysis: |-
-    You are shown the build files of a source code archive the reviewer will BUILD from the
-    readable source: the build scripts, the config files of the build tools they run, and
-    package.json (its "scripts" and the declared dependencies). The reviewer runs `npm ci` to
-    install the declared dependencies, then the build. Some files a script names may be absent -
-    those are inert assets (icons, docs) the linter dropped; do NOT treat an absent file as a
-    problem. A "LINTER SIGNALS" block, if present, lists build steps the linter could not
-    statically follow - weigh them.
-
-    Classify the build into EXACTLY ONE category and respond with ONLY a JSON object
-    {"classification": "<value>", "reason": "<one sentence for the developer>",
-    "buildInstructions": "<one short note on how the XPI is built>"}.
-
-    classification values (choose the MOST SEVERE that applies; remote-fetch outranks the rest):
-    - "remote-fetch": a build step fetches or executes code or a resource from a source that is
-      NOT a declared dependency - a raw http(s) URL, curl / wget / Invoke-WebRequest, a
-      download-and-run of a remote blob, a `git clone` of a repo not pinned in the lock file, a
-      <script>/CDN tag, or an install hook that fetches remote code. Installing the declared
-      dependencies (npm ci/install resolving the lock file, importing a declared package, copying
-      from node_modules) is NOT a remote fetch.
-    - "not-from-source": the build does not actually build - it only copies or zips files that are
-      ALREADY in the submission into the XPI, so the shipped add-on is not derived from the
-      reviewed source (phantom artifacts).
-    - "ok": a genuine build that compiles or bundles the authored source and pulls only from the
-      declared dependencies (this includes a build whose only real work is copying installed
-      libraries from node_modules into the add-on).
-
-    In "reason" explain the classification in one or two sentences (shown to the developer). In
-    "buildInstructions" state how the XPI is built as one short self-contained note ("Build the
-    XPI with: ..." or "The source documents no build steps."), taking the steps from the scanned
-    files (a README/BUILD/CONTRIBUTING or the package.json scripts) and calling out any dedicated
-    Thunderbird build instructions. Judge only the build's sources - not code quality.

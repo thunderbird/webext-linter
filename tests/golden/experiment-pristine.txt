@@ -1,7 +1,7 @@
 ── Issues ──
 The automated review did not find any issues.
 
-── Extended manual review ──
+── Extended code review ──
 
 Continue manual review for the following checks:
 
@@ -92,4 +92,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 0 warning(s), 0 info, 2 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 warning(s), 0 info, 2 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)

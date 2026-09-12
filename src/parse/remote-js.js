@@ -9,7 +9,7 @@
 // script element's remote src, and fetch -> eval/wasm - each tagged with a
 // `type`.
 //
-// Does NOT belong here: the verdict, severity, and any LLM escalation - those
+// Does NOT belong here: the verdict, severity, and any review escalation - those
 // live in the eval checks (via src/lib/eval-scan.js) and
 // src/checks/rules/remote-resources.js with src/checks/escalation.js. User-facing
 // wording lives in assets/registry.yaml. Babel access goes through

@@ -121,7 +121,7 @@ export function nodeLoc(node, lineOffset = 0) {
  * null rather than a slice of undefined bounds, which would be the WHOLE file.
  *
  * What survives is display material: never a key, never a match, and never part of
- * the trusted framing of an LLM prompt.
+ * the trusted framing of a reviewer prompt.
  * @param {AstNode} node
  * @param {string} code  The source the node was parsed from.
  * @returns {?string}  The expression as written, or null.

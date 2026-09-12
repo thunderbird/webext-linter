@@ -11,7 +11,6 @@ import {
   warn,
   info,
   debug,
-  llmErrorText,
   setVerbose,
   FEED,
   feedIndent,
@@ -138,7 +137,7 @@ test("debug removes control characters from what it dumps", () => {
   const ESC = "\u001B";
   setVerbose(true);
   try {
-    const lines = emitted(() => debug(`[llm] reply:\n${ESC}[2K${ESC}[1Afake`));
+    const lines = emitted(() => debug(`[scan] reply:\n${ESC}[2K${ESC}[1Afake`));
     assert.equal(lines.length, 1);
     assert.ok(!lines[0].includes(ESC), "no escape reached the feed");
     assert.ok(lines[0].includes("\n"), "the dump kept its shape");
@@ -146,13 +145,4 @@ test("debug removes control characters from what it dumps", () => {
   } finally {
     setVerbose(false);
   }
-});
-
-// The provider's error body can echo the submission - or the operator's own
-// --llm-url proxy composes it - and all five callers print it on one feed line, so
-// the guard is inside llmErrorText rather than at each of them.
-test("llmErrorText guards the provider's message", () => {
-  const ESC = "\u001B";
-  assert.equal(llmErrorText({ message: `a${ESC}[2Kb` }), "a [2Kb");
-  assert.equal(llmErrorText({ message: `a\nb`, status: 400 }), "HTTP 400: a b");
 });

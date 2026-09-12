@@ -8,7 +8,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
-── Extended manual review ──
+── Extended code review ──
 
 Continue manual review for the following checks:
 
@@ -18,7 +18,26 @@ Continue manual review for the following checks:
 Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
  - manifest.json:5 - nativeMessaging
 
-2) Remote data transmission needs a privacy policy: This add-on transmits data
+2) Missing English localization: This add-on ships no English localization, so
+   user-facing text may be hardcoded in another language. Review its strings by
+   hand and confirm if an English localization is provided.
+Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
+An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
+ - manifest.json
+
+3) User-data exfiltration: The following code locations transmit data to a
+   remote server. Confirm by hand that any user data they send is gated behind
+   an explicit opt-in (a documented options-page setting) and is never sent
+   without consent.
+Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
+ - background.js:4 - fetch() "http://api.example.com/collect"
+ - background.js:7 - fetch() "https://metrics.example.com/p"
+
+── Extended manual review ──
+
+Continue manual review for the following checks:
+
+1) Remote data transmission needs a privacy policy: This add-on transmits data
    to one or more hardcoded remote servers. Confirm the ATN listing carries a
    privacy policy that discloses what data is collected and why. The privacy
    policy must be pasted into the ATN field directly (links to remotely hosted
@@ -30,26 +49,11 @@ Suggested response: Please add a privacy policy to this add-on that details whic
  - api.example.com
  - metrics.example.com
 
-3) Native messaging needs disclosure: This add-on requests the "nativeMessaging"
+2) Native messaging needs disclosure: This add-on requests the "nativeMessaging"
    permission. Confirm the add-on listing page on ATN discloses what information
    is exchanged with the local app and that it complies with the No Surprises
-   policy. The native host itself does not need to be part of the package.
-Suggested response: This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged. The native host itself does not need to be part of the package.
-
-4) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
-Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
-An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
- - manifest.json
-
-5) User-data exfiltration: The following code locations transmit data to a
-   remote server. Confirm by hand that any user data they send is gated behind
-   an explicit opt-in (a documented options-page setting) and is never sent
-   without consent.
-Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
- - background.js:4 - fetch() "http://api.example.com/collect"
- - background.js:7 - fetch() "https://metrics.example.com/p"
+   policy.
+Suggested response: This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged.
 
 ── Standard manual review ──
 
@@ -120,4 +124,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 warning(s), 0 info, 7 extended manual review step(s), 10 standard manual review step(s)
+1 error(s), 0 warning(s), 0 info, 4 extended code review step(s), 3 extended manual review step(s), 10 standard manual review step(s)

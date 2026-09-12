@@ -1,30 +1,24 @@
 ── Issues ──
+The automated review did not find any issues.
 
-Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
-
-1) The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
-Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
- - module-fail.js
-
-You can run this automated review yourself before submitting (this review was performed using the --llm-review option):
-https://github.com/thunderbird/webext-linter
-
-── Extended manual review ──
+── Extended code review ──
 
 Continue manual review for the following checks:
 
-1) Obfuscated code is not permitted: The automated analysis could not determine
-   whether the following file(s) are obfuscated. Inspect them by hand.
-Suggested response: The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
-Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
- - module-unsure.js
-
-2) Missing English localization: This add-on ships no English localization, so
+1) Missing English localization: This add-on ships no English localization, so
    user-facing text may be hardcoded in another language. Review its strings by
    hand and confirm if an English localization is provided.
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
+
+2) Obfuscated code is not permitted: The automated analysis could not determine
+   whether the following file(s) are obfuscated. Inspect them by hand.
+Suggested response: The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
+Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
+ - module-fail.js
+ - module-pass.js
+ - module-unsure.js
 
 ── Standard manual review ──
 
@@ -93,10 +87,6 @@ Suggested response: The submission appears to be a fork of an existing add-on th
 
 Because the original project is still active, your submission does not meet these requirements. Small-change forks can sometimes cause confusion for users and unnecessary overlap for developers. We encourage you to consider contributing your improvements directly to the original project so that all existing users can benefit from your ideas.
 
-── Summary of add-on ──
-
-  Weak Obfuscation Signal Demo ships three module-pattern background scripts.
-
 ── Summary ──
 
-1 error(s), 0 warning(s), 0 info, 2 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 warning(s), 0 info, 4 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)

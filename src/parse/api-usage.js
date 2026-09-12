@@ -43,7 +43,7 @@ import { API_ROOTS, aliasTarget, apiBasesOf } from "./api-base.js";
  *   object - a root or an alias/captured namespace - or getBrowserInfo, or a `typeof`
  *   probe, or an earlier guard clause in the same statement list whose test names such
  *   an object and whose consequent always exits (`if (!api.foo) return;`). A coarse
- *   "might be feature-detected" signal a consumer can hand to the LLM.
+ *   "might be feature-detected" signal a consumer can hand to a reviewer.
  * @property {string[][]} guardRefs    The API paths that guard names, as segment
  *   lists after the root. Empty when the guard names none (a `typeof` probe), and an
  *   empty list stands for a reference carrying no namespace (a bare root,

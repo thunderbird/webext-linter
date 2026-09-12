@@ -6,7 +6,7 @@
 // manual-review escalation rather than a finding.
 //
 // Overt transmissions to a literal remote host only: a pure-dynamic destination
-// is left to the data-exfiltration LLM check (it asks about consent), and a
+// is left to the data-exfiltration escalating check (it asks about consent), and a
 // covert disguised channel is already a hard error (the disguised-* checks).
 // This is the disclosure angle, and it needs no token. The two run independently
 // and may both fire on one fetch (disclosure vs consent).
@@ -53,8 +53,10 @@ export default {
     // the hosts group under one entry and list as the "where" - a plain list of
     // remote hosts the reviewer must confirm a privacy policy covers.
     const sorted = [...hosts].sort();
+    // manualReview: the privacy policy lives in the ATN listing field, not the
+    // package, so reading the code cannot settle this - a person must look it up.
     const escalations = (sorted.length ? sorted : ["a remote server"]).map(
-      (host) => ({ item: host })
+      (host) => ({ item: host, manualReview: true })
     );
     return { findings: [], escalations };
   },

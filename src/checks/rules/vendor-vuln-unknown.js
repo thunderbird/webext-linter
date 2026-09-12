@@ -1,8 +1,7 @@
 // Flags a vendored library that could not be checked for known vulnerabilities.
 // The network pre-step (src/vendor/verify.js auditGithub) already tried to prove
-// an npm identity for every github-sourced VENDOR entry - by content-hash
-// matching the bundled bytes against a candidate npm package, deterministically
-// and then via an LLM-proposed name - and audited the ones it could. The entries
+// an npm identity for every github-sourced VENDOR entry, by content-hash matching
+// the bundled bytes against the repo-name candidate, and audited the ones it could. The entries
 // it could NOT resolve are recorded on addon.vendor.unaudited; this check just
 // reads that and surfaces one info per entry, so the reviewer knows the library
 // went unaudited and the developer is nudged toward an npm-hosted source.

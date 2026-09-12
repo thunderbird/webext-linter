@@ -159,7 +159,7 @@ export function runExtractionPass(
       );
       // The code-text atoms (identifiers/strings/templates, comments excluded)
       // with their source lines - the unused-permission token scan tests presence
-      // AND points the recheck at each occurrence. Authored only: a non-authored
+      // AND points the reviewer at each occurrence. Authored only: a non-authored
       // bundle is searched raw (see permissions.js), where including comments only
       // pushes toward escalation, the safe direction.
       extracted.codeAtoms = scanCodeText(

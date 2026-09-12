@@ -1,69 +1,48 @@
-// Deterministic (SCA only): mission 1 of the build review - the build must NOT load or fetch
-// remote resources. Everything must ship in the source; the only allowed copy-in is installed
-// libraries via `npm ci` (from node_modules). A curl/wget/git-clone/CDN fetch is a reject.
+// SCA only: the build review - the build must NOT load or fetch remote resources.
+// Everything must ship in the source; the only allowed copy-in is installed libraries via
+// `npm ci` (from node_modules). A curl/wget/git-clone/CDN fetch is a reject.
 //
-// The classification is produced ONCE in the setup phase (analyzeBuild -> addon.buildFiles
-// .buildReview, the vendor pattern); this check just reads it. `classification === "remote-fetch"`
-// is the error finding (its {{explanation}} is the model's reason). This check also owns the
-// FALLBACK lane: when the build could not be classified with confidence - offline / no token
-// (analyzed === false), or a build step the linter could not statically bound (unresolved: an
-// opaque orchestrator or a network fetch) - the whole build routes to extended manual review,
-// so a human reproduces it. The "not-from-source" classification is owned by its own check;
-// "ok"/"none" produce nothing.
+// Nothing classifies what a build does, so every build with a corpus takes this check's
+// escalation lane: the reviewer reproduces it from the source by hand, which is the
+// attestation the SCA review rests on. The deterministic `unresolved` signals from
+// ride along, so the entry names what could not be followed. A build with no corpus
+// ("none") produces nothing - there is no build to reproduce.
 //
-// Belongs here: mapping the stored classification to a finding / manual escalation. Does NOT
+// Belongs here: mapping the stored classification to a manual escalation. Does NOT
 // belong here: the analysis (-> src/build/analyze.js), the corpus policy
 // (-> build-corpus.js), or the wording (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
-import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../escalation.js").Escalation} Escalation */
 
-// Classifications each owned by their own check - not this check's fallback lane.
-const OWNED_ELSEWHERE = new Set(["not-from-source"]);
-
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {{findings: import("../../report/finding.js").Finding[], escalations?: Escalation[]}}
+   * @returns {{findings: [], escalations: Escalation[]}}
    */
   run(ctx) {
     const review = ctx.addon?.buildReview;
     if (!review) {
       return { findings: [] };
     }
-    const { classification, reason, buildInstructions, unresolved, analyzed } =
-      review;
+    const { classification, buildInstructions, unresolved } = review;
     const anchor = review.anchor ?? "package.json";
-    const explanation = typeof reason === "string" ? reason : "";
 
-    // Mission 1: the build fetches from an undeclared/remote source.
-    if (classification === "remote-fetch") {
-      ctx.note?.(
-        anchor,
-        null,
-        "the build fetches from a remote source",
-        VERDICT.FAIL
-      );
-      return { findings: [finding({ file: anchor, data: { explanation } })] };
-    }
-
-    // Fallback lane: a build that exists (not "none") but could not be classified with
-    // confidence - offline, or with a step the linter could not statically bound - and is
-    // not already a reject another check owns -> extended manual review.
-    const anotherRejectOwnsIt = OWNED_ELSEWHERE.has(classification);
-    const couldNotVerify = !analyzed || (unresolved?.length ?? 0) > 0;
-    if (classification !== "none" && !anotherRejectOwnsIt && couldNotVerify) {
+    // A build that exists (not "none") goes to the reviewer to reproduce.
+    if (classification !== "none") {
       ctx.note?.(anchor, null, "the build configuration", VERDICT.UNSURE);
       return {
         findings: [],
         escalations: [
           {
             file: anchor,
+            // manualReview: reproducing the build is the reviewer's own attestation
+            // that the source produces the shipped XPI. No reading of the code
+            // substitutes for doing it.
+            manualReview: true,
             data: {
-              explanation,
               buildInstructions:
                 typeof buildInstructions === "string" ? buildInstructions : "",
               unresolvedBuildSteps: formatUnresolved(unresolved),

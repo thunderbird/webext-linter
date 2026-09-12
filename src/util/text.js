@@ -1,4 +1,4 @@
-// Word-wrap for prose printed to the terminal or report - notably LLM-authored
+// Word-wrap for prose printed to the terminal or report - notably review-authored
 // text (the change summary, escalation explanations), whose lines can be
 // arbitrarily long. Each source line is wrapped independently so the model's
 // own structure (bullets, blank lines) is kept, and a leading list marker
@@ -59,7 +59,7 @@ export function wrapText(text, indent = "", width = 80) {
 
 /**
  * A byte count as a short human string: "812 B", "4.5 KB", "2.4 MB" (one
- * decimal for KB/MB). Used for the LLM-payload size in the summary status lines.
+ * decimal for KB/MB). Used for a reviewer-payload size in the summary status lines.
  * @param {number} bytes
  * @returns {string}
  */
@@ -87,7 +87,7 @@ export function humanSize(bytes) {
  * The single definition of that rule. Everything the review shows a user passes
  * through here: the substituted {{slot}} values (src/report/responses.js), the locus
  * line and the machine-readable report (src/report/format.js), the per-check feed
- * notes (src/checks/registry.js) and the LLM verdict narration
+ * notes (src/checks/registry.js) and a reviewer verdict narration
  * (src/checks/escalation.js). Guarding those sinks rather than the hundreds of places
  * a check composes a finding is what makes a check added later inherit it.
  *

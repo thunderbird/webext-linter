@@ -169,12 +169,12 @@ test("a minified non-library is non-authored and rejected; identified libraries 
 });
 
 // A weak-family-only match is not a verdict: the file stays readable authored code
-// (scanned, reviewable), and obfuscated-code turns it into ONE LLM candidate judged
+// (scanned, reviewable), and obfuscated-code turns it into ONE escalation judged
 // from the file's own content - with no hint of what the detector matched, so the
 // model cannot be steered into confirming a detector claim. The resolve maps the
 // verdict 1:1: fail -> finding, pass -> drop, unsure -> manual review (also the
 // no-token default).
-test("a weak-family-only file is not obfuscated: authored, one LLM candidate", () => {
+test("a weak-family-only file is not obfuscated: authored, one escalation", () => {
   const file = "modules/signature.js";
   const addon = addonWith({ [file]: MODULE_PATTERN });
   const bundled = classifyBundled(addon);
@@ -190,27 +190,17 @@ test("a weak-family-only file is not obfuscated: authored, one LLM candidate", (
     "a weak-only match does not force a source review"
   );
 
+  // No finding: a weak-only match is not proof. The reviewer is asked instead, and
+  // the entry names the file and NOTHING about what the detector matched.
   const out = obfuscatedCode.run({ addon: { ...addon, bundled } });
   assert.deepEqual(out.findings, []);
-  assert.equal(out.llm.candidates.length, 1);
-  const cand = out.llm.candidates[0];
-  assert.equal(cand.file, file);
-  assert.deepEqual(cand.corpus, [file]); // the model reads that single file
+  assert.deepEqual(
+    out.escalations.map((e) => e.file),
+    [file]
+  );
   assert.ok(
-    !JSON.stringify(out.llm.candidates).includes("function_to_array"),
-    "the candidate carries no detector hint"
-  );
-
-  const resolveWith = (verdict) =>
-    out.llm.resolve(new Map([[cand.id, { verdict, reason: null }]]));
-  assert.deepEqual(
-    resolveWith(VERDICT.FAIL).findings.map((f) => f.file),
-    [file]
-  );
-  assert.deepEqual(resolveWith(VERDICT.PASS), { findings: [], manual: [] });
-  assert.deepEqual(
-    resolveWith(VERDICT.UNSURE).manual.map((m) => m.file),
-    [file]
+    !JSON.stringify(out.escalations).includes("function_to_array"),
+    "the escalation carries no detector hint"
   );
 });
 
@@ -573,7 +563,7 @@ test("an inline obfuscation candidate names its site, not just its page", async 
       { file: "p.html", code: WEAK_FAMILY, lineOffset: 0, inline: true },
     ])[0].obfuscation.unsure,
     true,
-    "fixture must be UNSURE, else there are no candidates to name"
+    "fixture must be UNSURE, else there is nothing to escalate"
   );
   const jsSources = [
     { file: "p.html", code: WEAK_FAMILY, lineOffset: 1, inline: true },
@@ -581,7 +571,7 @@ test("an inline obfuscation candidate names its site, not just its page", async 
   ];
   const out = obfuscated.run({ addon: { files: new Map() }, jsSources });
   assert.deepEqual(
-    out.llm.candidates.map((c) => `${c.file}:${c.line}`),
+    out.escalations.map((e) => `${e.file}:${e.loc.line}`),
     ["p.html:2", "p.html:41"]
   );
 });

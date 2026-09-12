@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { VERDICT, REVIEW_MODE } from "../../src/lib/enum.js";
+import { REVIEW_MODE } from "../../src/lib/enum.js";
 
 import {
   formatText,
@@ -30,10 +30,12 @@ function review() {
   };
 }
 
-// Manual review splits into two sections - Extended (escalated checks) FIRST,
-// then Standard (the always-by-hand manual-checks) - each with its "continue
-// manual review" intro and enumerated "N) title: instructions" entries.
-test("manual review splits into Extended then Standard sections", () => {
+// Manual review splits into three sections in order - Extended code review (an
+// escalation a reviewer settles by reading the code), Extended manual review (one
+// needing a person to act or to own the decision), then Standard (the always-by-hand
+// manual-checks) - each with its "continue manual review" intro and enumerated
+// "N) title: instructions" entries.
+test("manual review splits into code, manual, then standard sections", () => {
   const r = {
     findings: [],
     meta: {
@@ -51,6 +53,12 @@ test("manual review splits into Extended then Standard sections", () => {
           extended: true,
         },
         {
+          title: "Build process review",
+          instructions: "Reproduce the build by hand.",
+          extended: true,
+          manualReview: true,
+        },
+        {
           title: "Check the submission for spam",
           instructions: "Inspect it.",
           extended: false,
@@ -59,22 +67,30 @@ test("manual review splits into Extended then Standard sections", () => {
     },
   };
   const out = formatText(r);
+  const code = out.indexOf("── Extended code review ──");
   const ext = out.indexOf("── Extended manual review ──");
   const std = out.indexOf("── Standard manual review ──");
-  assert.ok(ext !== -1 && std !== -1 && ext < std); // Extended precedes Standard
+  assert.ok(code !== -1 && ext !== -1 && std !== -1);
+  assert.ok(code < ext && ext < std); // code, then manual, then standard
   // A blank line sits between each header and its "Continue ..." intro.
+  assert.match(out, /── Extended code review ──\n\nContinue manual review/);
   assert.match(out, /── Extended manual review ──\n\nContinue manual review/);
   assert.match(out, /── Standard manual review ──\n\nContinue manual review/);
-  // The escalated item (with its locus) under Extended, the checklist item
-  // (standalone reminder) under Standard.
-  const extended = out.slice(ext, std);
-  const standard = out.slice(std);
+  // The code-settleable escalation (with its locus) first, the one a person must own
+  // second, the always-by-hand checklist item last.
   assert.match(
-    extended,
+    out.slice(code, ext),
     /1\) Source Archive required: Confirm sources were uploaded and rebuild matches\./
   );
-  assert.match(extended, /\n - x\.js:1/);
-  assert.match(standard, /1\) Check the submission for spam: Inspect it\./);
+  assert.match(out.slice(code, ext), /\n - x\.js:1/);
+  assert.match(
+    out.slice(ext, std),
+    /1\) Build process review: Reproduce the build by hand\./
+  );
+  assert.match(
+    out.slice(std),
+    /1\) Check the submission for spam: Inspect it\./
+  );
 });
 
 // Manual review uses the Issues grouping: items sharing a "Title: instructions"
@@ -109,7 +125,7 @@ test("Manual review groups by message and lists each item's locus", () => {
   };
   const out = formatText(r);
   const extended = out
-    .split("── Extended manual review ──")[1]
+    .split("── Extended code review ──")[1]
     .split("── Standard manual review ──")[0];
   const standard = out.split("── Standard manual review ──")[1];
   // The two exfiltration items (Extended) collapse into ONE entry with both loci.
@@ -152,7 +168,7 @@ test("Manual review prints the response between instructions and the locus list"
       ],
     },
   };
-  const manual = formatText(r).split("── Extended manual review ──")[1];
+  const manual = formatText(r).split("── Extended code review ──")[1];
   // Response: after the instructions, before the locus, flush-left, verbatim.
   assert.match(
     manual,
@@ -163,11 +179,11 @@ test("Manual review prints the response between instructions and the locus list"
   assert.ok(!manual.includes("undefined"));
 });
 
-// What a reviewer actually reads for a llm-not-needed item, end to end from the real
-// registry: the llm-not-needed wording, the site and the release it was matched against on
+// What a reviewer actually reads for a manual-review item, end to end from the real
+// registry: the manual-review wording, the site and the release it was matched against on
 // the locus line, and NO "Suggested response:" - the entry's response is the wording
 // for rejecting this rule, and these cases are not a rejection anyone has made.
-test("a llm-not-needed item renders with its own wording and no suggested response", () => {
+test("a manual-review item renders with its own wording and its response", () => {
   const registry = loadRegistry();
   const [item] = renderManualItems(
     [
@@ -177,8 +193,7 @@ test("a llm-not-needed item renders with its own wording and no suggested respon
         hint: "https://cdn.example/x@1.0.0/x.css",
         file: "lib/x.css",
         loc: { line: 1 },
-        llmNotNeeded: true,
-        kind: "escalation",
+        manualReview: true,
       },
     ],
     registry
@@ -194,7 +209,9 @@ test("a llm-not-needed item renders with its own wording and no suggested respon
   });
   const manual = out.split("── Extended manual review ──")[1];
   assert.match(manual, /matches a published file of the upstream release/);
-  assert.ok(!manual.includes("Suggested response:"));
+  // The suggested response rides along: if the reviewer settles the case against the
+  // add-on, that is the text the developer receives.
+  assert.match(manual, /Suggested response: /);
   // Both URLs survive whole onto the locus line - the site being judged, then the
   // release it was matched against.
   assert.match(
@@ -244,14 +261,14 @@ test("issues render under Issues/JSON; manual items under Manual review", () => 
   assert.match(out, /old\.js: old\.js may be loaded dynamically/); // Manual review
   const issuesSection = out
     .split("── Issues ──")[1]
-    .split("── Extended manual review ──")[0];
+    .split("── Extended code review ──")[0];
   assert.ok(!issuesSection.includes("old.js")); // not in Issues
   // Message first, then the "- file:line" location beneath it.
   assert.match(issuesSection, /1\) eval used/);
   assert.match(issuesSection, /\n - bg\.js:2/);
   assert.match(
     out,
-    /1 error\(s\), 0 warning\(s\), 0 info, 1 extended manual review step\(s\), 0 standard manual review step\(s\)/
+    /1 error\(s\), 0 warning\(s\), 0 info, 1 extended code review step\(s\), 0 extended manual review step\(s\), 0 standard manual review step\(s\)/
   );
   const json = JSON.parse(formatJson(r));
   assert.equal(json.findings.length, 1);
@@ -304,7 +321,7 @@ test("Issues are grouped by severity under headings with continuous numbering", 
   // A blank line sits between the Summary header and its counts line.
   assert.match(
     out,
-    /── Summary ──\n\n2 error\(s\), 1 warning\(s\), 1 info, 0 extended manual review step\(s\), 0 standard manual review step\(s\)/
+    /── Summary ──\n\n2 error\(s\), 1 warning\(s\), 1 info, 0 extended code review step\(s\), 0 extended manual review step\(s\), 0 standard manual review step\(s\)/
   );
 });
 
@@ -431,9 +448,8 @@ const withReview = (findings, verdictIntros) => ({
 });
 
 // formatReviewBody is the report without the tally; formatSummary is just the
-// tally. For a no-LLM review they concatenate back to formatText (formatText
+// tally. They concatenate back to formatText (formatText
 // additionally inserts the advisory "Summary of add-on"/"Summary of changes"
-// sections between the two when --llm-review produced them).
 test("formatReviewBody / formatSummary split the report and round-trip", () => {
   const r = {
     findings: [mkFinding("info", "an info finding", "manifest.json", null)],
@@ -563,7 +579,7 @@ test("Manual review caps a grouped locus list at 25 with a marker", () => {
     meta: { action: "review", addon: "x", reviewed: true, manualReview },
   });
   const extended = out
-    .split("── Extended manual review ──")[1]
+    .split("── Extended code review ──")[1]
     .split("── Standard manual review ──")[0];
   assert.equal((extended.match(/^ - manifest\.json:/gm) || []).length, 25);
   assert.match(extended, /- … and 5 more, excluded from this list/);
@@ -629,127 +645,6 @@ test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () =
   assert.doesNotMatch(xpi, /\[XPI\]|\[SCA\]/);
   assert.match(xpi, /orphan\.js:2/); // the bare file:line still renders
   assert.match(xpi, /run this automated review yourself/);
-});
-
-// The "run this yourself" pointer notes the --llm-review option only when the
-// LLM review was active (meta.llmReviewed); the flag stays out of JSON.
-test("run-it-yourself pointer reflects whether the LLM review ran", () => {
-  const base = {
-    findings: [
-      {
-        ruleId: "eval-usage",
-        severity: "error",
-        message: "eval used",
-        file: "bg.js",
-        loc: { line: 2 },
-        item: null,
-        hint: null,
-      },
-    ],
-    meta: { action: "review", addon: "x", reviewed: true },
-  };
-  const off = formatText(base);
-  assert.match(off, /run this automated review yourself before submitting:/);
-  assert.doesNotMatch(off, /--llm-review option/);
-
-  const on = formatText({ ...base, meta: { ...base.meta, llmReviewed: true } });
-  assert.match(
-    on,
-    /run this automated review yourself before submitting \(this review was performed using the --llm-review option\):/
-  );
-
-  // Human-only: the flag never leaks into the machine JSON.
-  const json = JSON.parse(
-    formatJson({ ...base, meta: { ...base.meta, llmReviewed: true } })
-  );
-  assert.equal(json.meta.llmReviewed, undefined);
-});
-
-// The recheck-verdict list: below the "Summary of add-on" prose, one bullet per verdict
-// (`* <check> - [LABEL] file:line - <subject> - <verdict>`) with the real source line beneath.
-// Subject present for permission verdicts, omitted when null. Shown only with --verbose
-// (review.verbose), so the fixture sets it.
-function verdictReview() {
-  return {
-    findings: [],
-    mode: REVIEW_MODE.SCA,
-    verbose: true,
-    meta: { action: "review", addon: "x", reviewed: true },
-    summarizeAddon: { text: "Prose overview of the add-on." },
-    recheckVerdictRows: [
-      {
-        check: "Unused permission",
-        label: "source",
-        file: "bg.js",
-        line: 3,
-        subject: "compose",
-        verdict: VERDICT.PASS,
-        content: "messenger.scripting.executeScript(t);",
-      },
-      {
-        check: "Unused files",
-        label: "xpi",
-        file: "lib/x.js",
-        line: 2,
-        subject: null,
-        verdict: VERDICT.UNSURE,
-        content: "const UNUSED = 1;",
-      },
-      // A row with no content (unlocatable line) renders without the `->` line.
-      {
-        check: "Unused permission",
-        label: "source",
-        file: "gen.js",
-        line: 9,
-        subject: "tabs",
-        verdict: VERDICT.UNSURE,
-        content: null,
-      },
-    ],
-  };
-}
-
-test("renders the recheck-verdict list under the add-on summary", () => {
-  const out = formatText(verdictReview());
-  const block = out.split("── Summary of add-on ──")[1];
-  assert.match(block, /Prose overview of the add-on\./);
-  assert.match(block, /Recheck verdicts:/);
-  // permission verdict: [SCA] (source input in an sca review), subject = the permission.
-  assert.match(
-    block,
-    /\* Unused permission - \[SCA\] bg\.js:3 - compose - pass/
-  );
-  assert.match(block, /-> messenger\.scripting\.executeScript\(t\);/);
-  // non-permission verdict: [XPI] (xpi input), no subject segment.
-  assert.match(block, /\* Unused files - \[XPI\] lib\/x\.js:2 - unsure/);
-  assert.match(block, /-> const UNUSED = 1;/);
-  // a null-content row: the bullet renders, no `->` line follows it.
-  assert.match(
-    block,
-    /\* Unused permission - \[SCA\] gen\.js:9 - tabs - unsure\n(?! *->)/
-  );
-});
-
-test("no verdicts adds nothing under the summary", () => {
-  const r = verdictReview();
-  r.recheckVerdictRows = [];
-  assert.match(formatText(r), /── Summary of add-on ──/); // the prose still shows
-  assert.doesNotMatch(formatText(r), /Recheck verdicts:/);
-});
-
-test("the recheck-verdict list is hidden without --verbose", () => {
-  const r = verdictReview();
-  r.verbose = false; // rows present, but not verbose
-  assert.match(formatText(r), /── Summary of add-on ──/); // the prose still shows
-  assert.doesNotMatch(formatText(r), /Recheck verdicts:/);
-});
-
-test("an XPI review omits the artifact label", () => {
-  const r = verdictReview();
-  r.mode = REVIEW_MODE.XPI;
-  const block = formatText(r).split("── Summary of add-on ──")[1];
-  assert.match(block, /\* Unused permission - bg\.js:3 - compose - pass/); // no [SCA]
-  assert.doesNotMatch(block, /\[SCA\]|\[XPI\]/);
 });
 
 // Submission text reaches a person through four sinks - a substituted {{slot}}, the

@@ -8,7 +8,7 @@
 //     (HTML visible text + manifest name/description) with franc: confident
 //     English passes, confident non-English is a finding, and too little or
 //     ambiguous text escalates to manual review (the orchestrator routes a
-//     deterministic check's escalation straight to a manual note, no LLM).
+//     deterministic check's escalation straight to a manual note, no judgement).
 //
 // Belongs here: collecting the _locales set, gathering the user-facing text, and
 // turning a franc verdict into pass / finding / manual escalation. Does NOT

@@ -5,24 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { parseVersion, cmpVersion } from "../../src/lib/util.js";
-import { llmErrorText } from "../../src/util/log.js";
 import { extname, basename } from "../../src/util/files.js";
-
-// A failed LLM step reports this one-liner (in the feed and the summary notice):
-// the HTTP status when the SDK error carries one (e.g. 400 for an over-long
-// prompt), else the bare message.
-test("llmErrorText prefixes the HTTP status when present", () => {
-  assert.equal(
-    llmErrorText({ status: 400, message: "maximum context length is 128000" }),
-    "HTTP 400: maximum context length is 128000"
-  );
-  assert.equal(
-    llmErrorText({ statusCode: 503, message: "down" }),
-    "HTTP 503: down"
-  );
-  assert.equal(llmErrorText(new Error("boom")), "boom");
-  assert.equal(llmErrorText("nope"), "nope");
-});
 
 // Version parsing: numeric tuples per component, leading non-digits dropped, and
 // null for nothing-numeric or the "≤"/"<"-prefixed pre-WebExtension marker.

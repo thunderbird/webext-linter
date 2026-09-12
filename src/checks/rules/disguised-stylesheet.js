@@ -1,6 +1,6 @@
 // Data smuggled out through a stylesheet or CSS url() that carries a user-data API
 // call - the strong covert-exfil case, a hard error regardless of consent. The
-// weaker appended-runtime-value case goes to the disguised-transmission LLM check.
+// weaker appended-runtime-value case goes to the disguised-transmission escalating check.
 //
 // Belongs here: turning style-url covert sinks into findings. Does NOT belong
 // here: the sink scan and the shared exfil gate (-> getOutboundSinks/

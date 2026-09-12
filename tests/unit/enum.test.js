@@ -4,7 +4,7 @@
 // cross-case accesses (VERDICT.fail, v.FAIL) throw; and - the load-bearing one - a
 // verdict can NEVER be string-compared (`v == "fail"`, String(v), `${v}` all throw),
 // so code cannot silently regress to string checks. Also covers the container's
-// strictness, the console.log debug rendering, and the wire boundary wireVerdict
+// strictness and the console.log debug rendering
 // (string -> VERDICT, hostile input -> UNSURE).
 
 import { test } from "node:test";
@@ -12,7 +12,6 @@ import assert from "node:assert/strict";
 import util from "node:util";
 
 import { VERDICT } from "../../src/lib/enum.js";
-import { wireVerdict } from "../../src/llm/schema.js";
 
 // VERDICT.<NAME> hands back the SAME reference every time - that stable identity is
 // what makes reference comparison (and `switch`) work.
@@ -81,33 +80,4 @@ test("the container does not leak prototype members", () => {
 test("console.log renders a debug label", () => {
   assert.equal(util.inspect(VERDICT.FAIL), "<ENUM(verdict) = FAIL>");
   assert.equal(util.inspect(VERDICT.SKIPPED), "<ENUM(verdict) = SKIPPED>");
-});
-
-// wireVerdict is the ONE string -> VERDICT boundary (the model's raw JSON string).
-// Valid lowercase wire values map to their verdict; anything off-protocol - an
-// unknown string, an uppercase spelling, a note-only status, a non-string, or
-// absent - defaults to the safe UNSURE. It never throws and never admits a
-// note-only status (skipped/info) from the wire.
-test("wireVerdict maps wire strings and defaults hostile input to UNSURE", () => {
-  assert.equal(wireVerdict("fail"), VERDICT.FAIL);
-  assert.equal(wireVerdict("pass"), VERDICT.PASS);
-  assert.equal(wireVerdict("unsure"), VERDICT.UNSURE);
-  for (const bad of [
-    "maybe",
-    "FAIL",
-    "skipped",
-    "info",
-    "",
-    5,
-    null,
-    undefined,
-    {},
-    NaN,
-  ]) {
-    assert.equal(
-      wireVerdict(bad),
-      VERDICT.UNSURE,
-      `wireVerdict(${util.inspect(bad)})`
-    );
-  }
 });

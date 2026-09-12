@@ -83,23 +83,15 @@
       "remote-resources",
       "remote-eval",
       "data-exfiltration",
-      "disguised-transmission",
-      "unused-permission-recheck",
-      "missing-english-localization-recheck",
-      "unused-files-recheck",
-      "minimize-web-accessible-resources-recheck",
-      "data-exfiltration-recheck",
-      "disguised-transmission-recheck"
+      "disguised-transmission"
     ]
   },
   "summary": {
-    "error": 3,
+    "error": 1,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "cleartext-transmission": 1,
-      "data-exfiltration": 1,
-      "data-exfiltration-recheck": 1
+      "cleartext-transmission": 1
     }
   },
   "findings": [
@@ -114,30 +106,6 @@
       "item": "api.example.com",
       "hint": "cleartext send \"http://api.example.com/collect\"",
       "message": "Data is sent over an unencrypted connection to api.example.com. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://."
-    },
-    {
-      "ruleId": "data-exfiltration",
-      "severity": "error",
-      "file": "background.js",
-      "loc": {
-        "line": 4,
-        "column": 0
-      },
-      "item": null,
-      "hint": "fetch() \"http://api.example.com/collect\"",
-      "message": "The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent."
-    },
-    {
-      "ruleId": "data-exfiltration-recheck",
-      "severity": "error",
-      "file": "background.js",
-      "loc": {
-        "line": 8,
-        "column": 0
-      },
-      "item": null,
-      "hint": "fetch() \"https://logs.example.com/l\"",
-      "message": "The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent."
     }
   ]
 }

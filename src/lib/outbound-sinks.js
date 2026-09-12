@@ -1,6 +1,6 @@
 // Every outbound network sink in the add-on's authored JavaScript, scanned once
 // and shared. The disguised-* and cleartext-transmission (deterministic),
-// privacy-policy, and data-exfiltration (LLM) checks read this one list, so the
+// privacy-policy, and data-exfiltration (review) checks read this one list, so the
 // AST scan runs a single time per review - the same "compute once, checks read
 // it" pattern as addon.bundled / addon.vendor.
 //
@@ -67,7 +67,7 @@ export function isStrongCovertExfil(sink) {
  * WEAK disguised exfiltration: a covert remote channel that merely builds the URL
  * with a runtime value (dataAppended) and carries no user-data API call. Common
  * in legitimate code (e.g. navigating to `host/${id}`), so it is not a hard error
- * but an LLM/manual candidate - the gate for the disguised-transmission check.
+ * but an escalation - the gate for the disguised-transmission check.
  * @param {FileSink} sink
  * @returns {boolean}
  */

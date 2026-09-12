@@ -2,14 +2,14 @@
 // message - runChecks stamps every finding with its registry entry's severity,
 // and the report resolver fills its text, so the yaml is the single source of
 // both. A check that cannot settle a case returns an escalation. Only the
-// orchestrator (escalation.js) routes it to the LLM or to manual review.
+// orchestrator (escalation.js) routes it to a reviewer or to manual review.
 //
 // Belongs here: generic, dependency-light check helpers - dedupe,
 // the asArray/asObject manifest guards, isMatchPattern/isBroadHost, scheme,
 // trunc, manifestTokenLine, isExperiment/strictMaxVersion, the version family
 // (strictMinVersion, parseVersion, cmpVersion, versionInBounds - shared by the
 // recheck rubric assembler and the unused-permission token selection), the
-// suspected-loader helpers referrerSupported/loaderSites, and the feed-note
+// suspected-loader helper referrerSupported, and the feed-note
 // builder loaderTrace.
 //
 // Does NOT belong here: anything with a heavier dependency or a single home -
@@ -156,46 +156,6 @@ export function referrerSupported(reach, f) {
   return (
     reach.isLive(f) || reach.mentionsOf(f).some((m) => reach.isLive(m.file))
   );
-}
-
-/**
- * The suspected loader sites of an unreachable file F, for per-site LLM judging:
- * when live code names F, the live mention sites (file:line), otherwise the live
- * runtime-loader sites (file, no line). Deduped. The caller excludes F from
- * `mentions`.
- * @param {Reachability} reach
- * @param {{file: string, line: number}[]} mentions  Referrers of F's basename.
- * @param {boolean} supported  Whether any referrer is itself reachable.
- * @returns {{file: string, line: ?number}[]}
- */
-export function loaderSites(reach, mentions, supported) {
-  const seen = new Set();
-  const out = [];
-  /**
-   * Record one loader site, skipping a file:line already seen.
-   * @param {string} file
-   * @param {?number} line
-   * @returns {void}
-   */
-  const add = (file, line) => {
-    const key = `${file}:${line ?? ""}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push({ file, line });
-    }
-  };
-  if (supported) {
-    for (const m of mentions) {
-      if (referrerSupported(reach, m.file)) {
-        add(m.file, m.line);
-      }
-    }
-  } else {
-    for (const s of reach.dynamicLoaderSites) {
-      add(s.file, null);
-    }
-  }
-  return out;
 }
 
 /** @param {string} a @param {string} b  Stable ascending string compare. */

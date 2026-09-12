@@ -383,7 +383,7 @@ function compute(ctx) {
   // passed as a parameter to an Experiment API is a content page - i.e. a WebExtension
   // page (privileged UI would be `.xhtml`, privileged logic a `.js` script). So such
   // files seed the WebExtension tree (their standard closure follows); everything else
-  // an experiment loads stays outside it. Deterministic, no classification, no LLM.
+  // an experiment loads stays outside it. Deterministic, no classification, no judgement.
   const htmlInjectedSeeds = new Set();
   if (isExperiment(manifest)) {
     for (const src of ctx.jsSources || []) {

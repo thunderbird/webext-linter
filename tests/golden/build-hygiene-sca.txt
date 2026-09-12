@@ -16,6 +16,17 @@ We kindly ask you to resolve the following issues with your next release:
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
+── Extended code review ──
+
+Continue manual review for the following checks:
+
+1) Missing English localization: This add-on ships no English localization, so
+   user-facing text may be hardcoded in another language. Review its strings by
+   hand and confirm if an English localization is provided.
+Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
+An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
+ - [XPI] manifest.json
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:
@@ -28,13 +39,6 @@ Continue manual review for the following checks:
    may be incomplete - reproduce the build by hand.
 Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
  - [SCA] package.json
-
-2) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
-Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
-An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
- - [XPI] manifest.json
 
 ── Standard manual review ──
 
@@ -105,4 +109,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 1 warning(s), 0 info, 2 extended manual review step(s), 10 standard manual review step(s)
+1 error(s), 1 warning(s), 0 info, 1 extended code review step(s), 1 extended manual review step(s), 10 standard manual review step(s)

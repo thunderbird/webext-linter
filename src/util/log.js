@@ -1,6 +1,6 @@
-import { displayLine, displayText } from "./text.js";
+import { displayText } from "./text.js";
 // Minimal logger for the tool's narration - the live "what is going on" feed
-// (setup notices, progress, LLM activity). This is standard output: the feed is
+// (setup notices, progress, review activity). This is standard output: the feed is
 // one of the run's phases and goes to stdout, alongside the report. Only REAL
 // tool errors go to stderr, and those are written directly by the CLI (not
 // here). In quiet mode (--report-format json) nothing is emitted, so stdout
@@ -32,7 +32,7 @@ export function setVerbose(v) {
 }
 
 /**
- * Enable or disable the live progress feed (which check is running, LLM
+ * Enable or disable the live progress feed (which check is running, review
  * escalations). The CLI turns it on for text runs. JSON and test runs leave it
  * off so they stay quiet.
  *
@@ -77,8 +77,8 @@ export function getCapture() {
  * The feed's indentation levels, applied by emit() so callers narrate at a
  * semantic level and never hand-code spaces. SECTION headings sit at column 0
  * (── Setup ──, blank separators); STEP is one feed step ([i/total], the
- * per-check line, an LLM-generating line); DETAIL is a line nested under its
- * step (an investigation note, a skipped-file notice, an LLM verdict). The
+ * per-check line, a reviewer-generating line); DETAIL is a line nested under its
+ * step (an investigation note, a skipped-file notice, a reviewer verdict). The
  * 6-space DETAIL width matches the `• [verdict]` findings the checks emit.
  *
  * @readonly
@@ -92,7 +92,7 @@ const PREFIX = ["", "  ", "      "];
 
 /**
  * The indent string for a feed level, for a caller that must build the prefix
- * into a wrapText() call so wrapped continuation lines hang-align (the LLM
+ * into a wrapText() call so wrapped continuation lines hang-align (a reviewer
  * verdict list, the escalation header). A plain line passes the level to
  * progress()/warn() instead of prefixing by hand.
  *
@@ -179,22 +179,4 @@ export function warn(...args) {
  */
 export function progress(text, level = FEED.SECTION) {
   emit([text], progressOn, level);
-}
-
-/**
- * A concise one-line reason from a thrown LLM/SDK error, for narrating a failed
- * LLM step in the feed (and the summary's report notice). Includes the HTTP
- * status when the provider SDK attached one (e.g. 400 for an over-long prompt -
- * whose message carries the model's token limit).
- *
- * @param {unknown} err
- * @returns {string}
- */
-export function llmErrorText(err) {
-  const status = err?.status ?? err?.statusCode;
-  // A provider's error body can echo the submission - or the operator's own
-  // --llm-url proxy can compose it - and every caller prints this on one feed line.
-  // Guarded here so none of them has to remember.
-  const msg = displayLine(err?.message ?? String(err));
-  return status ? `HTTP ${status}: ${msg}` : msg;
 }

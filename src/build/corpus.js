@@ -17,8 +17,8 @@
 // (eslint/rimraf/jest/a bundler) are NOT flagged - they run from the declared dependencies.
 //
 // Belongs here: the collection policy and the script scan. Does NOT belong here: loading
-// the build files (-> src/addon/load.js selectScaBuildFiles), running the analysis / model
-// transport (-> ./analyze.js + src/llm/provider.js), the finding/manual mapping or wording
+// the build files (-> src/addon/load.js selectScaBuildFiles), running the analysis
+// (-> ./analyze.js), the finding/manual mapping or wording
 // (-> src/checks/rules/undeclared-build-source.js + assets/registry.yaml).
 
 import { ARCHIVE_EXTENSIONS, basename, extname } from "../util/files.js";

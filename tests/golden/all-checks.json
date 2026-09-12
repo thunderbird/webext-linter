@@ -84,13 +84,7 @@
       "remote-resources",
       "remote-eval",
       "data-exfiltration",
-      "disguised-transmission",
-      "unused-permission-recheck",
-      "missing-english-localization-recheck",
-      "unused-files-recheck",
-      "minimize-web-accessible-resources-recheck",
-      "data-exfiltration-recheck",
-      "disguised-transmission-recheck"
+      "disguised-transmission"
     ]
   },
   "summary": {

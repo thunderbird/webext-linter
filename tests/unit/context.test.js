@@ -32,7 +32,6 @@ const envWith = (over = {}) => ({
   manifestText: "",
   experiments: null,
   previous: null,
-  llm: undefined,
   nonce: "0123456789abcdef",
   ...over,
 });
@@ -165,30 +164,10 @@ test("buildScaCtxs throws when the source arrives with no parsed sources", () =>
   );
 });
 
-// The load-bearing invariant of building the client ONCE up front: every sibling ctx carries the
-// SAME untrusted-content nonce (env.nonce), which the pipeline also built the LLM client with. If
-// two siblings could mint their own, a summary's wrapped content and the client's framing would
-// disagree and the injection guard would break.
-test("every sibling ctx shares the one review nonce", () => {
-  const source = addonWith({ "src/app.js": "export const x = 1;" });
-  const xpi = addonWith({ "app.js": "export const x = 1;" });
-  const env = envWith({ mode: REVIEW_MODE.SCA, nonce: "deadbeefdeadbeef" });
-  const { xpiCtx, manifestCtx } = buildXpiCtxs(xpi, parsed(xpi), env);
-  const { scaCtx, buildCtx } = buildScaCtxs(
-    source,
-    parsed(source),
-    { files: new Map() },
-    env
-  );
-  for (const ctx of [xpiCtx, manifestCtx, scaCtx, buildCtx]) {
-    assert.equal(ctx.__nonce, env.nonce);
-  }
-});
-
 // reviewView is an ALLOWLIST: ctx.addon carries ONLY the intrinsic fields a check reads, so a
 // field on the underlying Addon (manifest, experiments, and crucially buildFiles - the SCA build
-// tree) can never leak onto the check-facing surface. And the LLM credentials are NEVER on the
-// ctx: the token stays in the pipeline (it builds the client); env carries only the built llm
+// tree) can never leak onto the check-facing surface. And no credentials are on the
+// ctx: the token stays in the pipeline (it builds the client); env carries only the review-level
 // and the check-facing options.
 test("ctx.addon allowlists intrinsic fields; no manifest/experiments/buildFiles/creds leak", () => {
   const xpi = addonWith({ "app.js": "export const x = 1;" });
@@ -206,7 +185,7 @@ test("ctx.addon allowlists intrinsic fields; no manifest/experiments/buildFiles/
   assert.equal(xpiCtx.addon.experiments, undefined);
   assert.ok(xpiCtx.addon.files); // the intrinsic corpus IS there
   // No secret token anywhere on the check-facing ctx (the builder never receives one).
-  assert.equal("llmApiKey" in xpiCtx.options, false);
+  assert.equal("apiKey" in xpiCtx.options, false);
   assert.equal(xpiCtx.options.allowExperiments, true); // a real option stays
 });
 

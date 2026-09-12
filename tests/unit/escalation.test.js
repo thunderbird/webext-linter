@@ -1,92 +1,22 @@
-// Unit tests for the escalation orchestration: runLlmCheck (gather one verdict
-// per candidate id, then hand them to the check's resolve) and manualEscalations
-// (a deterministic check's cases straight to manual refs). No network: ctx.llm
-// is faked, returning a per-id verdict Map.
+// Unit tests for the escalation orchestration: manualEscalations turns a check's
+// cases straight into manual refs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { runLlmCheck, manualEscalations } from "../../src/checks/escalation.js";
-import { VERDICT } from "../../src/lib/enum.js";
+import { manualEscalations } from "../../src/checks/escalation.js";
 
 const check = {
   id: "unused-files",
   title: "Unused",
   severity: "error",
-  prompt: "PROMPT",
 };
-
-// With no token, every candidate defaults to "unsure"; the check's resolve
-// decides what that means (here, a manual note). The model is never called.
-test("runLlmCheck with no token defaults every candidate to unsure", async () => {
-  const seen = [];
-  const step = {
-    candidates: [
-      { id: "U1", file: "a.js" },
-      { id: "U2", file: "b.js" },
-    ],
-    resolve: (verdicts) => {
-      for (const [id, v] of verdicts) {
-        assert.equal(v.verdict, VERDICT.UNSURE);
-        seen.push(id);
-      }
-      return { findings: [], manual: [{ item: "a.js" }] };
-    },
-  };
-  const out = await runLlmCheck({}, check, step);
-  assert.deepEqual(seen.sort(), ["U1", "U2"]);
-  assert.deepEqual(out.findings, []);
-  assert.deepEqual(out.manualItems, [
-    {
-      ruleId: "unused-files",
-      item: "a.js",
-      hint: null,
-      file: null,
-      loc: null,
-      llmNotNeeded: false,
-      kind: "escalation",
-      data: null,
-      occurrences: null,
-    },
-  ]);
-});
-
-// With a token, the per-id verdicts from evaluate reach resolve unchanged, and
-// the rubric sent to the model is the check's prompt plus its candidates.
-test("runLlmCheck sends prompt + candidates + the routed addon to evaluate", async () => {
-  let sent;
-  // ctx is the ROUTED context; runLlmCheck must hand ctx.addon to evaluate so the
-  // model reads the artifact this check runs over (not a captured one).
-  const routedAddon = { files: new Map(), manifest: {} };
-  const ctx = {
-    addon: routedAddon,
-    llm: {
-      evaluate: async (req) => {
-        sent = req;
-        return new Map([["U1", { verdict: VERDICT.FAIL, reason: "r" }]]);
-      },
-    },
-  };
-  const step = {
-    candidates: [{ id: "U1", file: "a.js" }],
-    resolve: (verdicts) => ({
-      findings: verdicts.get("U1").verdict.fail ? [{ file: "a.js" }] : [],
-      manual: [],
-    }),
-  };
-  const out = await runLlmCheck(ctx, check, step);
-  assert.equal(sent.rubric, "PROMPT");
-  assert.deepEqual(sent.candidates, [{ id: "U1", file: "a.js" }]);
-  assert.equal(sent.addon, routedAddon); // the routed artifact reached evaluate
-  assert.equal(out.findings.length, 1);
-  assert.deepEqual(out.manualItems, []);
-});
 
 // A deterministic check's escalations route straight to manual refs, carrying
 // any per-case data (e.g. a reason) and locus (file/loc) through to the report.
-// The third case carries `llmNotNeeded`: the ref is what registry.rechecks reads, so
-// if manualRef dropped the flag a case no model verdict could change would become
-// recheckable with nothing else to catch it.
+// The third case carries `manualReview`: the ref is what the report layer reads to
+// pick the wording, so dropping the flag here would render a case no judgement can
+// change as though it were an open question.
 test("manualEscalations maps each escalation to a manual ref", () => {
   const out = manualEscalations(check, [
     {
@@ -97,7 +27,7 @@ test("manualEscalations maps each escalation to a manual ref", () => {
       data: { reason: "why" },
     },
     { item: null },
-    { item: "d.js", llmNotNeeded: true },
+    { item: "d.js", manualReview: true },
   ]);
   assert.deepEqual(out.findings, []);
   assert.deepEqual(out.manualItems, [
@@ -107,8 +37,7 @@ test("manualEscalations maps each escalation to a manual ref", () => {
       hint: "fetch()",
       file: "manifest.json",
       loc: { line: 3 },
-      llmNotNeeded: false,
-      kind: "escalation",
+      manualReview: false,
       data: { reason: "why" },
       occurrences: null,
     },
@@ -118,8 +47,7 @@ test("manualEscalations maps each escalation to a manual ref", () => {
       hint: null,
       file: null,
       loc: null,
-      llmNotNeeded: false,
-      kind: "escalation",
+      manualReview: false,
       data: null,
       occurrences: null,
     },
@@ -129,8 +57,7 @@ test("manualEscalations maps each escalation to a manual ref", () => {
       hint: null,
       file: null,
       loc: null,
-      llmNotNeeded: true,
-      kind: "escalation",
+      manualReview: true,
       data: null,
       occurrences: null,
     },

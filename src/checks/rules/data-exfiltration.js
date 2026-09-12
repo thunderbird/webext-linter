@@ -1,27 +1,22 @@
-// LLM check: normal data transmission (fetch, XMLHttpRequest, WebSocket,
-// EventSource, navigator.sendBeacon) to a remote host is allowed only if the
-// user actively enabled it - by entering the destination URL/credentials on an
-// options page that lists what is transmitted, or via an explicit
-// off-by-default opt-in for a hard-coded URL. Thunderbird has no built-in
-// data-collection prompt. Whether a valid opt-in exists needs judgement, so each
-// overt sink to a remote/dynamic destination is one LLM candidate; its corpus is
-// the transmitting file plus the options page (where an opt-in would live). The
-// orchestrator gathers a verdict per sink and this check maps it 1:1 (fail ->
-// finding, unsure -> manual, pass -> drop).
+// Normal data transmission (fetch, XMLHttpRequest, WebSocket, EventSource,
+// navigator.sendBeacon) to a remote host is allowed only if the user actively
+// enabled it - by entering the destination URL/credentials on an options page
+// that lists what is transmitted, or via an explicit off-by-default opt-in for a
+// hard-coded URL. Thunderbird has no built-in data-collection prompt. Whether a
+// valid opt-in exists is a judgement the source does not settle, so each overt
+// sink to a remote/dynamic destination escalates to a reviewer.
 //
 // Disguising transmission as a resource load is a separate, always-error
 // concern (-> the disguised-* checks); this check is only the overt channels.
 //
-// Belongs here: the candidate per overt remote sink (file:line + the consent
-// corpus) and the 1:1 verdict mapping. Does NOT belong here: the sink scan (->
-// src/parse/network-sinks.js, aggregated by src/lib/outbound-sinks.js),
-// the model transport (-> src/checks/llm-client.js), the resolve pattern (->
-// src/lib/verdict-resolve.js), and authored wording (-> registry).
+// Belongs here: one escalation per overt remote sink, carrying file:line and the
+// channel it sends on. Does NOT belong here: the sink scan (->
+// src/parse/network-sinks.js, aggregated by src/lib/outbound-sinks.js), the
+// deterministic->manual routing (-> src/checks/registry.js +
+// src/checks/escalation.js), and authored wording (-> registry).
 
 import { VERDICT } from "../../lib/enum.js";
 import { getOutboundSinks, sinkLabel } from "../../lib/outbound-sinks.js";
-import { normalizeRef } from "../../lib/manifest-refs.js";
-import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -39,14 +34,12 @@ const METHOD = {
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {{findings: [], llm?: import("../escalation.js").LlmStep}}
+   * @returns {{findings: [], escalations:
+   *   import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
-    const optionsPath = optionsPagePath(ctx);
-    const candidates = [];
-    const cases = [];
+    const escalations = [];
     const seen = new Set();
-    let n = 0;
     for (const sink of getOutboundSinks(ctx)) {
       const remote = sink.destClass.remote || sink.destClass.dynamic;
       const key = `${sink.file}:${sink.line}`;
@@ -55,46 +48,14 @@ export default {
       }
       seen.add(key);
       const loc = { line: sink.line, column: sink.column };
-      const id = `X${++n}`;
       const method = METHOD[sink.type] ?? sink.type;
-      candidates.push({
-        id,
-        file: sink.file,
-        line: sink.line,
-        note: `transmits to a remote host via ${method}`,
-        corpus: optionsPath ? [sink.file, optionsPath] : [sink.file],
-      });
-      // The finding lists file:line via its location; `hint` (the transmission
-      // method and where it sends) rides along so it survives the
-      // unsure->manual->recheck hand-off and is shown on the locus. `item` stays
-      // absent so the recheck key is file:line.
+      // The escalation lists file:line via its location; `hint` (the transmission
+      // method and where it sends) rides along and is shown on the locus. `item`
+      // stays absent, so every site groups under the one manual entry.
       const label = sinkLabel(sink, method);
-      cases.push({ id, finding: { file: sink.file, loc, hint: label } });
+      escalations.push({ file: sink.file, loc, hint: label });
       ctx.note?.(sink.file, loc, label, VERDICT.UNSURE);
     }
-    if (!candidates.length) {
-      return { findings: [] };
-    }
-    return {
-      findings: [],
-      llm: { candidates, resolve: perCandidateResolve(cases) },
-    };
+    return { findings: [], escalations };
   },
 };
-
-/**
- * The add-on's packaged options page path (where an opt-in would live), or null
- * when none is declared or packaged. options_ui.page is current, options_page
- * legacy.
- * @param {RunContext} ctx
- * @returns {string|null}
- */
-function optionsPagePath(ctx) {
-  const manifest = ctx.manifest ?? {};
-  const ref = manifest.options_ui?.page ?? manifest.options_page;
-  if (!ref) {
-    return null;
-  }
-  const path = normalizeRef(ref);
-  return ctx.addon?.files?.has(path) ? path : null;
-}

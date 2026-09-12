@@ -1,27 +1,27 @@
-// LLM check: the add-on must bundle everything it loads. The deterministic
-// pre-flight flags the definite remote loads - <script>/<link>/<iframe>/media in
-// HTML, @import/url() in CSS, import()/importScripts()/module imports, runtime
-// <script> injection, remote WASM, and a content_security_policy that permits a
-// remote script source. Statically-undecidable cases (non-literal URLs, inline
-// data:/blob: script sources) are escalated, carrying the offending file so the
-// orchestrator can ask the LLM whether the source is remote (else manual
-// review). A ref inside a file whose content matched a published upstream release
-// is neither: it is that release's own line, so it goes to a reviewer and never to
-// the model (see pushVendored). Two limits worth knowing: only the
-// shipped XPI carries verified results (verifyVendor runs on it alone), so an SCA
-// review never reaches that lane; and the JS lane below never does either, because
-// a vendored .js is dropped from it entirely.
+// The add-on must bundle everything it loads. The scan flags the definite remote
+// loads - <script>/<link>/<iframe>/media in HTML, @import/url() in CSS,
+// import()/importScripts()/module imports, runtime <script> injection, remote
+// WASM, and a content_security_policy that permits a remote script source.
+// Statically-undecidable cases (non-literal URLs, inline data:/blob: script
+// sources) escalate for a reviewer to read the site and decide. A ref inside a
+// file whose content matched a published upstream release escalates too, but as a
+// different question: it is that release's own line, so what it does is not the
+// developer's choice to defend (see pushVendored), and the entry says so. Two
+// limits worth knowing: only the shipped XPI carries verified results
+// (verifyVendor runs on it alone), so an SCA review never reaches that lane; and
+// the JS lane below never does either, because a vendored .js is dropped from it
+// entirely.
 //
 // Belongs here: classifying each scanned ref as definite-remote (-> finding),
-// undecidable (-> escalation with file evidence) or upstream's (-> escalation a
-// model cannot help with) across HTML, CSS, JS, and CSP.
+// undecidable (-> escalation) or upstream's (-> escalation marked manualReview)
+// across HTML, CSS, JS, and CSP.
 // Does NOT belong here: the scanners themselves - HTML refs (-> src/scan/
 // html.js), CSS refs (-> src/scan/css.js), JS import/inject hits (-> src/parse/
-// remote-js.js), CSP hosts (-> src/scan/csp.js) - the LLM-or-manual verdict on
-// escalations (-> src/checks/escalation.js), missing local files (->
-// bundled-files.js), authored wording (-> assets/registry.yaml), severity
-// (-> that registry entry, stamped by src/checks/registry.js), and report
-// formatting (-> src/report/format.js).
+// remote-js.js), CSP hosts (-> src/scan/csp.js) - the deterministic->manual
+// routing (-> src/checks/registry.js + src/checks/escalation.js), missing local
+// files (-> bundled-files.js), authored wording (-> assets/registry.yaml),
+// severity (-> that registry entry, stamped by src/checks/registry.js), and
+// report formatting (-> src/report/format.js).
 
 import { VERDICT } from "../../lib/enum.js";
 import { scanHtmlRemoteRefs, scanHtmlInlineCssRefs } from "../../scan/html.js";
@@ -30,8 +30,7 @@ import { remoteJsOf } from "../extract.js";
 import { analyzeCsp } from "../../scan/csp.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
 import { verifiedVendorSource } from "../../vendor/resolve.js";
-import { dedupe, scheme, trunc } from "../../lib/util.js";
-import { perCandidateResolve } from "../../lib/verdict-resolve.js";
+import { dedupe, trunc } from "../../lib/util.js";
 import { finding } from "../../report/finding.js";
 import { extname, HTML_EXTENSIONS } from "../../util/files.js";
 
@@ -45,14 +44,15 @@ export default {
   /**
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[],
-   *   llm?: import("../escalation.js").LlmStep, escalations?: Escalation[]}}
+   *   escalations: Escalation[]}}
    */
   run(ctx) {
     const { addon } = ctx;
     const findings = [];
-    // Collector for the undecidable sites: one candidate + 1:1 case per site.
-    const esc = { candidates: [], cases: [], n: 0 };
-    // Sites in a file matched against upstream, which no model can help with
+    // The undecidable sites. Each carries only its locus: the site has no
+    // resolvable URL, so the authored wording is generic (no {{item}} slot).
+    const undecidable = [];
+    // Sites in a file matched against upstream, which are a different question
     // (see pushVendored).
     const forHumans = [];
 
@@ -65,7 +65,7 @@ export default {
         const upstream = verifiedVendorSource(addon, file);
         const html = buf.toString("utf8");
         for (const ref of scanHtmlRemoteRefs(html)) {
-          pushHtml(ctx, findings, esc, forHumans, file, ref, upstream);
+          pushHtml(ctx, findings, undecidable, forHumans, file, ref, upstream);
         }
         // CSS inside the HTML (<style> blocks, style= attrs) is scanned with the
         // same css.js scanner as a .css file, so a remote @import/url() there is
@@ -95,7 +95,7 @@ export default {
       }
       const { hits } = remoteJsOf(src);
       for (const hit of hits) {
-        pushJs(ctx, findings, esc, src.file, hit);
+        pushJs(ctx, findings, undecidable, src.file, hit);
       }
     }
 
@@ -104,38 +104,14 @@ export default {
       ctx.note?.("manifest.json", null, `CSP script-src ${host}`, VERDICT.FAIL);
     }
 
-    const result = { findings: dedupe(findings) };
-    if (esc.candidates.length) {
-      result.llm = {
-        candidates: esc.candidates,
-        resolve: perCandidateResolve(esc.cases),
-      };
-    }
-    if (forHumans.length) {
-      // Deduped like the findings above: the scanners can report one site twice
-      // (see dedupe), and a reviewer should be asked once.
-      result.escalations = dedupe(forHumans);
-    }
-    return result;
+    return {
+      findings: dedupe(findings),
+      // The upstream sites are deduped like the findings above: the scanners can
+      // report one site twice (see dedupe), and a reviewer should be asked once.
+      escalations: [...undecidable, ...dedupe(forHumans)],
+    };
   },
 };
-
-/**
- * Record one undecidable site as an LLM candidate (file:line, with the construct
- * `note`) plus its 1:1 case (a `fail` verdict becomes a finding at that site).
- * @param {{candidates: object[], cases: object[], n: number}} esc
- * @param {string} file
- * @param {number} line
- * @param {{line: number, column: number}} loc
- * @param {string} note  What the site does (the construct description).
- */
-function addCandidate(esc, file, line, loc, note) {
-  const id = `R${++esc.n}`;
-  esc.candidates.push({ id, file, line, note, corpus: [file] });
-  // The undecidable site carries no resolvable URL, so its finding shows only the
-  // locus (file:line); the response/instructions wording is generic (no {{item}}).
-  esc.cases.push({ id, finding: { file, loc } });
-}
 
 /**
  * Record one site whose containing file matched a published upstream release as a
@@ -144,7 +120,7 @@ function addCandidate(esc, file, line, loc, note) {
  * developer NEEDS this file or could not ship a build without it
  * (verifiedVendorSource states a fact about content, not about intent). Whether the
  * check knows where the load points or not, a model verdict on that question would
- * not change the outcome, so the case is marked `llmNotNeeded: true` (which
+ * not change the outcome, so the case is marked `manualReview: true` (which
  * registry.rechecks honours) and the report gives the reviewer both URLs.
  *
  * This turns on the content match, not on the declaration: a declared file that
@@ -164,7 +140,7 @@ function pushVendored(ctx, forHumans, file, loc, url, upstream, note) {
     item: url,
     file,
     loc,
-    llmNotNeeded: true,
+    manualReview: true,
     // The upstream goes in the HINT, not a wording slot: it is per-locus detail,
     // so every such site stays in ONE manual-review group and each line still says
     // which release it was matched against.
@@ -180,13 +156,13 @@ function pushVendored(ctx, forHumans, file, loc, url, upstream, note) {
 /**
  * @param {RunContext} ctx
  * @param {import("../../report/finding.js").Finding[]} findings
- * @param {{candidates: object[], cases: object[], n: number}} esc
+ * @param {Escalation[]} sites  Collector for the undecidable sites.
  * @param {Escalation[]} forHumans
  * @param {string} file
  * @param {HtmlRef} ref
  * @param {?string} upstream  Set when this file is a verified vendored copy.
  */
-function pushHtml(ctx, findings, esc, forHumans, file, ref, upstream) {
+function pushHtml(ctx, findings, sites, forHumans, file, ref, upstream) {
   const { tag, kind, url, klass, line } = ref;
   const loc = { line, column: 0 };
   const item = `<${tag}> ${trunc(url)}`;
@@ -200,13 +176,7 @@ function pushHtml(ctx, findings, esc, forHumans, file, ref, upstream) {
     findings.push(finding({ file, loc, item: url }));
     ctx.note?.(file, loc, item, VERDICT.FAIL);
   } else if (undecidable) {
-    addCandidate(
-      esc,
-      file,
-      line,
-      loc,
-      `has a <script> with an inline ${scheme(url)} URL`
-    );
+    sites.push({ file, loc });
     ctx.note?.(file, loc, item, VERDICT.UNSURE);
   } else if (klass.local && (kind.script || kind.content)) {
     // A bundled script/iframe load - cleared, but on the trail of "what runs".
@@ -259,11 +229,11 @@ const UNDECIDABLE_JS = {
 /**
  * @param {RunContext} ctx
  * @param {import("../../report/finding.js").Finding[]} findings
- * @param {{candidates: object[], cases: object[], n: number}} esc
+ * @param {Escalation[]} sites  Collector for the undecidable sites.
  * @param {string} file
  * @param {RemoteJsHit} hit
  */
-function pushJs(ctx, findings, esc, file, hit) {
+function pushJs(ctx, findings, sites, file, hit) {
   const loc = { line: hit.line, column: hit.column };
   if (REMOTE_JS.has(hit.type)) {
     findings.push(finding({ file, loc, item: hit.url ?? null }));
@@ -274,7 +244,7 @@ function pushJs(ctx, findings, esc, file, hit) {
       VERDICT.FAIL
     );
   } else if (UNDECIDABLE_JS[hit.type]) {
-    addCandidate(esc, file, hit.line, loc, UNDECIDABLE_JS[hit.type]);
+    sites.push({ file, loc });
     ctx.note?.(file, loc, UNDECIDABLE_JS[hit.type], VERDICT.UNSURE);
   }
 }

@@ -6,28 +6,20 @@
 // main(argv) below. `npm run help` is an alias for `verify.js --help`.
 //
 // Belongs here: the front-end only - the OPTIONS table, usage/help text, argv
-// parse and flag validation, --llm-list-models, the values -> PipelineOpts
+// parse and flag validation, the values -> PipelineOpts
 // mapping, stream/capture routing, and exit codes.
 //
 // Does NOT belong here: running the stages (opts -> Review is pipeline.js
 // runPipeline); report layout and rendering (src/report/format.js formatReview
-// and src/report/responses.js); the model listing call (src/llm/provider.js);
-// the check ids and registry text (src/checks/registry.js).
+// and src/report/responses.js); the check ids and registry text
+// (src/checks/registry.js).
 
 import fs from "node:fs";
 import path from "node:path";
-import readline from "node:readline/promises";
 import { parseArgs } from "node:util";
 
 import { runPipeline } from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
-import {
-  getProvider,
-  defaultModelFor,
-  defaultBaseUrlFor,
-  validateLlmConfig,
-  DEFAULT_LLM_TYPE,
-} from "./llm/provider.js";
 import { hasErrors } from "./report/finding.js";
 import { formatReview } from "./report/format.js";
 import {
@@ -35,7 +27,6 @@ import {
   EXPERIMENTS_CACHE,
   LIBRARY_HASHES_CACHE,
   CDN_LOOKUP_CACHE,
-  LLM_MODEL_CACHE,
 } from "./config.js";
 import {
   info,
@@ -132,38 +123,6 @@ function optionLine(flag, desc) {
 }
 
 /**
- * Resolve the LLM config for this run. `--llm-review` is the SOLE enabler
- * (`wants`) of the LLM CHECKS. The LLM_API_* env vars only configure the client
- * and never turn the checks on. The config is forwarded only when `wants`, and
- * validated later, hard-failing at the pipeline's Setup pre-flight if it is
- * unusable. LLM_API_TYPE picks the provider (claude | chatgpt | ollama, default
- * claude) and hence the default model (LLM_API_MODEL override) and default base
- * URL. LLM_API_URL overrides that base URL, and Ollama defaults to its localhost
- * endpoint. The key is the real LLM_API_KEY or undefined - a keyless provider
- * (Ollama) needs none, so it is never a fabricated placeholder here.
- * @param {Record<string, string|boolean|string[]>} values
- * @returns {{wants: boolean, apiKey?: string, apiUrl?: string, apiType?: string,
- *   model?: string}}
- */
-function resolveLlm(values) {
-  const wants = values["llm-review"] === true;
-  if (!wants) {
-    // Nothing is resolved for a run that will not call a model: reading the model
-    // table (defaultModelFor) would make a hand-editing typo in assets/llm sink a
-    // deterministic review that never wanted an LLM at all.
-    return { wants };
-  }
-  const apiType = (process.env.LLM_API_TYPE || DEFAULT_LLM_TYPE).toLowerCase();
-  return {
-    wants,
-    apiType,
-    apiKey: process.env.LLM_API_KEY || undefined,
-    apiUrl: process.env.LLM_API_URL || defaultBaseUrlFor(apiType),
-    model: process.env.LLM_API_MODEL || defaultModelFor(apiType),
-  };
-}
-
-/**
  * The central help screen: a one-line command summary and the shared options,
  * printed by `npm run help` and as the --help / usage screen (see main).
  * @returns {string}
@@ -208,34 +167,10 @@ export function helpText() {
     ],
   ];
 
-  const llmFlags = [
-    [
-      "--llm-review",
-      "Run the AI review (off by default): the model re-judges escalated 'unsure' items, and a Summary of add-on (plus a Summary of changes with --diff-to) is added. Cloud (Claude/ChatGPT) or a local model (Ollama), configured via the LLM_API_* environment variables; see the README.",
-    ],
-    ["--llm-list-models", "List the models your token can use, then exit."],
-  ];
-
-  const llmEnv = [
-    ["LLM_API_TYPE", "Provider: claude (default), chatgpt, or ollama (local)."],
-    [
-      "LLM_API_KEY",
-      "Provider API key. Required for claude/chatgpt, unused by ollama.",
-    ],
-    [
-      "LLM_API_MODEL",
-      "Model for the LLM checks (default: the one named in assets/llm/<type>.yaml, which also holds each model's request settings).",
-    ],
-    [
-      "LLM_API_URL",
-      "Override the provider's API base URL (proxy, or a remote Ollama host).",
-    ],
-  ];
-
   const sca = [
     [
       "--sca-root <folder|zip>",
-      "The source archive root (holds package.json/lock). Switches to SCA mode - the readable source is reviewed for code defects (and is the subject of the behavioral --llm-review), its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the packaging summary.",
+      "The source archive root (holds package.json/lock). Switches to SCA mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused), the --diff-to baseline comparison, and the packaging summary.",
     ],
     [
       "--sca-source <path>",
@@ -258,17 +193,14 @@ export function helpText() {
     ],
     [
       "--diff-to <xpi|folder>",
-      "Previously published version, to diff against. With --llm-review, adds an AI Summary of the changes.",
+      "Previously published version, to diff against.",
     ],
     [
       "--eslint",
       "Run the ESLint code-sanity checks on authored JS (off by default).",
     ],
     ["--help", "Show this help."],
-    [
-      "--verbose",
-      "Verbose logging, and expand the text report with the per-site recheck-verdict list under the add-on summary.",
-    ],
+    ["--verbose", "Verbose logging."],
   ];
 
   const commands = [
@@ -292,12 +224,6 @@ export function helpText() {
     "",
     "Report output:",
     ...report.map(([flag, desc]) => optionLine(flag, desc)),
-    "",
-    "LLM checks:",
-    ...llmFlags.map(([flag, desc]) => optionLine(flag, desc)),
-    "",
-    "Environment (LLM checks):",
-    ...llmEnv.map(([flag, desc]) => optionLine(flag, desc)),
     "",
     "Source code archive (SCA):",
     ...sca.map(([flag, desc]) => optionLine(flag, desc)),
@@ -328,37 +254,12 @@ const OPTIONS = {
   "diff-to": { type: "string" },
   "report-format": { type: "string" },
   "report-out": { type: "string" },
-  "llm-list-models": { type: "boolean" },
+  // Accepted and ignored. The review is deterministic, so there is nothing for it to
+  // switch on, and rejecting it would break the reviewers who still type it.
   "llm-review": { type: "boolean" },
   verbose: { type: "boolean" },
   help: { type: "boolean" },
 };
-
-/**
- * The interactive "the LLM request cap was reached - run more?" prompt, handed
- * to the pipeline's request budget (src/llm/budget.js). Reads stdin and writes
- * the question to stderr so it never mixes into the stdout report. Only wired up
- * for an interactive text run. A non-"y" answer (or EOF) stops, and the run's
- * remaining LLM work escalates to manual review.
- * @param {number} used  Requests already made this run.
- * @param {number} step  How many more a yes grants (the model's maxRequests).
- * @returns {Promise<boolean>}  Whether to allow `step` more.
- */
-async function confirmMoreLlmRequests(used, step) {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stderr,
-  });
-  try {
-    const answer = await rl.question(
-      `\nReached the LLM request limit (${used} requests this run). ` +
-        `Run ${step} more? [y/N] `
-    );
-    return /^y(es)?$/i.test(answer.trim());
-  } finally {
-    rl.close();
-  }
-}
 
 /**
  * @param {string[]} argv
@@ -395,12 +296,8 @@ export async function main(argv) {
 
   // Open every direct run with the npm-style banner (suppressed for npm runs,
   // which print their own, and for JSON via quiet). Emitted before the branches
-  // below so --help, list-models, and validation errors all carry it too.
+  // below so --help and validation errors all carry it too.
   emitBanner(argv);
-
-  if (values["llm-list-models"]) {
-    return runListModels();
-  }
 
   if (values.help || positionals.length === 0) {
     process.stdout.write(helpText());
@@ -458,54 +355,39 @@ export async function main(argv) {
     return 2;
   }
 
-  // The LLM is opt-in (--llm-review). Its config (key requirement, an unknown
-  // type, a missing/unreachable local model) is validated at the pipeline's
-  // Setup pre-flight, which hard-fails there - so there is nothing to check
-  // here.
-
-  // The run-wide LLM request cap prompts to continue only at an interactive text
-  // terminal. JSON/piped/CI runs have no one to ask, so they hard-stop at the
-  // cap (remaining LLM work escalates to manual review).
-  const interactive =
-    format === "text" && Boolean(process.stdin.isTTY && process.stdout.isTTY);
-
   let result;
   try {
-    // Reading the options can fail the same way the review can - an LLM_API_MODEL
-    // whose model table does not parse is a bad config, not a bad add-on - so it is
-    // inside the catch below and reported like one, rather than as a stack trace
-    // from verify.js's last-resort handler.
+    // Reading the options can fail the same way the review can - a bad option value
+    // is a bad config, not a bad add-on - so it is inside the catch below and reported
+    // like one, rather than as a stack trace from verify.js's last-resort handler.
     const opts = pipelineOptsFromValues(values);
     // --cache-clear: wipe every cache dir up front so the resolvers re-fetch each
     // source from scratch during this review, exactly as on a first run. Lists every
     // cache dir opt - a new cache added to pipelineOptsFromValues must be added here
-    // too, or --cache-clear would silently skip it. LLM_MODEL_CACHE is named
-    // directly: it is the one cache with no --cache-*-dir flag (see src/config.js).
+    // too, or --cache-clear would silently skip it.
     if (values["cache-clear"]) {
       clearCaches([
         opts.schemaCache,
         opts.libraryHashesCache,
         opts.cdnLookupCache,
         opts.experimentsCache,
-        LLM_MODEL_CACHE,
       ]);
     }
     result = await runPipeline({
       addonPath: positionals[0],
       ...opts,
-      confirmMore: interactive ? confirmMoreLlmRequests : undefined,
       registry,
     });
   } catch (err) {
     // A pipeline throw is a tool failure the review could not run through (an
-    // unreachable/unusable schema, a bad LLM config, an unreadable add-on): state
+    // unreachable/unusable schema, a bad review config, an unreadable add-on): state
     // it plainly and exit 2, distinct from a completed review that found errors.
     process.stderr.write(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
 
   // The full report comes from the report layer: formatReview assembles the body, the advisory
-  // LLM summaries (text only), and the verdict tally LAST, in the shipped order. The CLI just
+  // review summaries (text only), and the verdict tally LAST, in the shipped order. The CLI just
   // writes it.
   const rendered = formatReview(result, format);
   process.stdout.write(rendered + "\n");
@@ -541,7 +423,6 @@ function clearCaches(dirs) {
  * @returns {Partial<PipelineOpts>}
  */
 function pipelineOptsFromValues(values) {
-  const llm = resolveLlm(values);
   return {
     schemaCache: values["cache-schema-dir"] || DEFAULT_CACHE,
     libraryHashesCache: values["cache-hash-db-dir"] || LIBRARY_HASHES_CACHE,
@@ -557,11 +438,6 @@ function pipelineOptsFromValues(values) {
     scaSource: values["sca-source"],
     scaExpSource: values["sca-exp-source"],
     diffTo: values["diff-to"],
-    llmReview: llm.wants,
-    llmApiKey: llm.apiKey,
-    llmModel: llm.model,
-    llmApiUrl: llm.apiUrl,
-    llmApiType: llm.apiType,
     verbose: values.verbose,
   };
 }
@@ -579,43 +455,6 @@ export function pipelineOptsFromArgv(argv) {
     allowPositionals: true,
   });
   return pipelineOptsFromValues(values);
-}
-
-/**
- * Print the models the configured provider's token can use, then exit (the
- * --llm-list-models command). Needs a token, but no add-on path. The provider is
- * LLM_API_TYPE (default claude). LLM_API_URL overrides the endpoint.
- *
- * @returns {Promise<number>} process exit code
- */
-async function runListModels() {
-  const type = (process.env.LLM_API_TYPE || DEFAULT_LLM_TYPE).toLowerCase();
-  const token = process.env.LLM_API_KEY || undefined;
-  // The provider owns the requirements: an unknown type, or a key required but
-  // missing (Ollama is keyless, so it lists without one).
-  const configError = validateLlmConfig(type, { apiKey: token });
-  if (configError) {
-    process.stderr.write(`${configError}\n`);
-    return 2;
-  }
-  const baseURL = process.env.LLM_API_URL || defaultBaseUrlFor(type);
-  let models;
-  try {
-    models = await getProvider(type).listModels({ token, baseURL });
-  } catch (err) {
-    process.stderr.write(`Could not list models: ${err.message}\n`);
-    return 2;
-  }
-  const defaultModel = defaultModelFor(type);
-  const lines = models.map((m) => {
-    const name = m.displayName ? `  (${m.displayName})` : "";
-    const def = m.id === defaultModel ? "  [default]" : "";
-    return `  ${m.id}${name}${def}`;
-  });
-  process.stdout.write(
-    `Available ${type} models (default: ${defaultModel}):\n${lines.join("\n")}\n`
-  );
-  return 0;
 }
 
 /**

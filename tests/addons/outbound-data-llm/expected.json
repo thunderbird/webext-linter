@@ -1,8 +1,8 @@
 {
-  "_comment": "outbound-data reviewed with --llm-review (turned on by the sibling llm.js). Exercises both LLM lanes and all three recheck verdicts: data-exfiltration evaluate (bg:4 fail -> a direct finding; bg:7/bg:8 unsure -> diverted), then the add-on summary re-judges the diverted sinks (bg:7 pass -> dropped, bg:8 fail -> a finding) and the missing-english-localization-recheck item (unsure -> manual). See llm.js for the canned answers.",
+  "_comment": "outbound-data's three hardcoded sinks. cleartext-transmission is the deterministic finding (background.js:4 is http). Whether any of the three sends user data without an opt-in is a judgement the scan cannot make, so all three escalate to a person.",
   "expect": {
-    "cleartext-transmission": ["background.js:4"],
-    "data-exfiltration": ["background.js:4"],
-    "data-exfiltration-recheck": ["background.js:8"]
+    "cleartext-transmission": [
+      "background.js:4"
+    ]
   }
 }

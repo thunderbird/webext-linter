@@ -3,7 +3,7 @@
 // the reviewable build surface small (yarn's .yarnrc.yml / PnP / plugins / committed
 // yarnPath binary and bun's runtime are a much larger surface). A disallowed manager
 // is identified deterministically by its committed FINGERPRINT - a lockfile or the
-// package.json "packageManager" field - so no LLM or network is needed. Pinning and
+// package.json "packageManager" field - so no judgement or network is needed. Pinning and
 // the open-ended "undeclared source" review are owned by other checks
 // (unpinned-dependency, undeclared-build-source).
 //

@@ -36,21 +36,3 @@ test("routeCtx routes each input to its own sibling, and throws on a missing one
     /no ctx for input "build"/
   );
 });
-
-test("ctxForRule labels output by the acted-on corpus, the producer's for a recheck consumer", () => {
-  const registry = loadRegistry();
-  const source = { tag: "source" };
-  const xpi = { tag: "xpi" };
-  const siblings = { source, xpi };
-
-  // A normal check labels by its own input.
-  assert.equal(ctxForRule(registry, "missing-permission", siblings), source); // input: source
-  assert.equal(ctxForRule(registry, "unused-permission", siblings), xpi); // input: xpi
-  assert.equal(ctxForRule(registry, "bundled-files", siblings), xpi); // input: xpi
-  // A recheck CONSUMER labels by its PRODUCER's corpus, not siblings.source: the producer
-  // (missing-english-localization) is input:xpi, so the re-judged items are the XPI's.
-  assert.equal(
-    ctxForRule(registry, "missing-english-localization-recheck", siblings),
-    xpi
-  );
-});

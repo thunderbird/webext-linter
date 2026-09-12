@@ -16,7 +16,7 @@
 // separates entries in a nested list written with no blank lines between them.
 //
 // The file is read whole and any fault discards ALL of it, so the developer is told
-// their VENDOR file is unparseable (and the LLM fallback in src/vendor/resolve.js gets
+// their VENDOR file is unparseable (and a reviewer fallback in src/vendor/resolve.js gets
 // the text) instead of the review proceeding on half a manifest. Half a manifest is the
 // worse outcome by far: the declarations that were missed simply look undeclared, and
 // come back to the developer as "undeclared third-party library" for a library they
@@ -27,19 +27,17 @@
 // unparseable finding quotes the accepted shapes (assets/registry.yaml).
 //
 // Belongs here: the deterministic VENDOR parse only - locating the file
-// (readVendorFile), the packaged-file matcher (buildFileMatcher), the
+// (readVendorFile), the
 // {path, sourceUrl} extraction (parseVendorManifest), and the entries whose
-// declared file is absent (missingVendorEntries). It is LLM-free and pure.
+// declared file is absent (missingVendorEntries). It is review-free and pure.
 //
-// Does NOT belong here: the LLM parse fallback and the canonical resolved set
+// Does NOT belong here: a reviewer parse fallback and the canonical resolved set
 // (-> src/vendor/resolve.js). Nor any verdict about what was parsed: ONE source
 // covering several files is reported faithfully here and judged by
 // vendor-ambiguous-source. The consumers of the set: prettyprint.js skips
 // vendored files from reformatting, bundled.js skips them from scanning, and
 // unused-files exempts them. Fetching/verifying the declared source is the
 // vendor verification pre-step + the vendor checks. This file makes no verdict.
-
-import { basename } from "../util/files.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /** @typedef {{path: string, sourceUrl: ?string, kind?: string}} VendorEntry */
@@ -114,32 +112,6 @@ function normalizeToken(token) {
 // for a filename.
 const LOOSE_EXT = /\.[a-z0-9]+$/i;
 const STRONG_EXT = /\.[a-z][a-z0-9]*$/i;
-
-/**
- * A matcher resolving a free-form token to a packaged add-on path, or null: by exact
- * posix path or an unambiguous basename, normalizing "\\" separators, surrounding
- * quotes and trailing punctuation. Used to validate an LLM-suggested path, so a
- * hallucinated file is dropped. The deterministic parse does NOT use it - a
- * declaration written by hand is a path, matched exactly (resolveDeclarations).
- * @param {Addon} addon
- * @returns {(token: string) => ?string}
- */
-export function buildFileMatcher(addon) {
-  const paths = new Set(addon.files.keys());
-  const byBase = new Map();
-  for (const p of addon.files.keys()) {
-    const b = basename(p);
-    byBase.set(b, [...(byBase.get(b) ?? []), p]);
-  }
-  return (token) => {
-    const norm = normalizeToken(token);
-    if (paths.has(norm)) {
-      return norm;
-    }
-    const hits = byBase.get(basename(norm));
-    return hits && hits.length === 1 ? hits[0] : null;
-  };
-}
 
 // Code-hosting roots: github.com/owner/repo (<= 2 path segments) is a repository,
 // not a file, even when the repo name ends in ".js" - so it is never a source URL.

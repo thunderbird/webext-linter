@@ -1,23 +1,18 @@
-// LLM check: files that should not ship in a published add-on. The deterministic
-// pre-flight (reachability.js follows import/getURL/HTML/CSS plus file-loading
-// API edges) resolves the clear cases as findings: hidden/junk by name, and a
-// clearly-unreferenced file (its basename appears in no other file AND the
-// add-on uses no dynamic loaders). For an ambiguous file (its name appears in
-// live code, or the add-on builds load paths at runtime) we cannot tell
-// statically whether any of those sites really loads it, so each suspected
-// loader SITE becomes an LLM candidate ("does this site load F?"). The
-// orchestrator gathers one verdict per site (or routes to manual with no token);
-// this check then aggregates per file F: if any site loads it, F is used; if
-// none does, F is unused.
+// Files that should not ship in a published add-on. The scan (reachability.js
+// follows import/getURL/HTML/CSS plus file-loading API edges) resolves the clear
+// cases as findings: hidden/junk by name, and a clearly-unreferenced file (its
+// basename appears in no other file AND the add-on uses no dynamic loaders). For
+// an ambiguous file (its name appears in live code, or the add-on builds load
+// paths at runtime) we cannot tell statically whether any of those sites really
+// loads it, so the file escalates for a reviewer to follow the suspected loaders
+// and decide whether anything loads it.
 //
-// Belongs here: the ALLOW / JUNK name lists, classifying each packaged file as a
-// finding / candidate / clean against reachability, the per-site candidate set,
-// and the per-F aggregation in resolve. Does NOT belong here: the reachability
-// graph, dynamic-loader sites, and mention lookups -> src/lib/
+// Belongs here: the ALLOW / JUNK name lists, and classifying each packaged file as
+// a finding / escalation / clean against reachability. Does NOT belong here: the
+// reachability graph, dynamic-loader sites, and mention lookups -> src/lib/
 // reachability.js. The non-authored (library / minified / bundled) classification
-// -> nonAuthoredJs in src/lib/bundled.js. The model
-// transport (batched verdicts) -> src/checks/llm-client.js. The LLM-or-manual
-// orchestration -> src/checks/escalation.js. Authored wording ->
+// -> nonAuthoredJs in src/lib/bundled.js. The deterministic->manual routing ->
+// src/checks/registry.js + src/checks/escalation.js. Authored wording ->
 // assets/registry.yaml. Severity -> that registry entry, stamped by runChecks.
 
 import { VERDICT } from "../../lib/enum.js";
@@ -25,10 +20,8 @@ import { finding } from "../../report/finding.js";
 import { ARCHIVE_EXTENSIONS, extname } from "../../util/files.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
 import { buildReachability } from "../../lib/reachability.js";
-import { aggregateGroups } from "../../lib/verdict-resolve.js";
 import {
   referrerSupported,
-  loaderSites,
   loaderTrace,
   isDocMetadataFile,
   isExperiment,
@@ -58,7 +51,7 @@ export default {
   /**
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[],
-   *   llm?: import("../escalation.js").LlmStep}}
+   *   escalations: import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
     // Registry `input: xpi`: ctx.addon is the built XPI. A file bundled but reached
@@ -84,12 +77,7 @@ export default {
     // (out of scope) prompts the manual pass.
     const experiment = isExperiment(ctx.manifest);
     const findings = [];
-    const candidates = [];
-    /**
-     * @type {{ids: string[], finding: object}[]} one per file F.
-     */
-    const groups = [];
-    let n = 0;
+    const escalations = [];
 
     for (const file of addon.files.keys()) {
       // Junk outranks every exemption: a leaked .git/ or .vscode/ is debris
@@ -116,8 +104,8 @@ export default {
       if (reach.reachable.has(file)) {
         continue;
       }
-      // Unreachable. A reference from live code (whether it is a real load is
-      // the model's call) or a live dynamic loader makes it ambiguous. A file
+      // Unreachable. A reference from live code (whether it is a real load is the
+      // reviewer's call) or a live dynamic loader makes it ambiguous. A file
       // named only by dead code with no live loader is a clear orphan.
       const mentions = reach.mentionsOf(file);
       const supported = mentions.some((m) => referrerSupported(reach, m.file));
@@ -132,26 +120,11 @@ export default {
         findings.push(finding({ file }));
         continue;
       }
-      // One candidate per suspected loader site of this file.
-      const ids = [];
-      for (const site of loaderSites(reach, mentions, supported)) {
-        const id = `U${++n}`;
-        ids.push(id);
-        candidates.push({
-          id,
-          file: site.file,
-          line: site.line ?? undefined,
-          note: `does this site load ${file}?`,
-          corpus: [site.file],
-        });
-      }
-      // The finding lists `file` via its location (the recheck key is the file).
-      groups.push({ ids, finding: { file } });
+      // The entry names `file` as its locus; the suspected loader sites reached it
+      // and are narrated to the feed above, so the reviewer has where to look.
+      escalations.push({ file });
     }
 
-    if (!candidates.length) {
-      return { findings };
-    }
-    return { findings, llm: { candidates, resolve: aggregateGroups(groups) } };
+    return { findings, escalations };
   },
 };

@@ -1,4 +1,4 @@
-// Unit tests for resolveVendor: the deterministic parse plus the token-gated LLM
+// Unit tests for resolveVendor: the deterministic parse
 // parse fallback (transport injected, so no network).
 
 import { test } from "node:test";
@@ -17,36 +17,6 @@ function fakeAddon(files) {
   }
   return { files: map };
 }
-
-// With a token, a VENDOR file the deterministic scan can't map is parsed by the
-// LLM; every returned path is re-validated, so a hallucinated file is dropped.
-test("resolveVendor uses the LLM fallback and drops hallucinated paths", async () => {
-  const addon = fakeAddon({
-    VENDOR: "We bundle the Foo library; see our docs for details.",
-    "app.js": "x",
-  });
-  let called = 0;
-  const callText = async () => {
-    called++;
-    return '[{"file":"app.js","url":"https://unpkg.com/foo@1/app.js"},{"file":"ghost.js","url":"y"}]';
-  };
-  const { set, manifest, vulnerabilities, unaudited } = await resolveVendor({
-    addon,
-    parsePrompt: "PARSE",
-    enabled: true,
-    token: "t",
-    model: "m",
-    callText,
-  });
-  assert.equal(called, 1);
-  assert.deepEqual(
-    manifest.map((e) => [e.path, e.sourceUrl]),
-    [["app.js", "https://unpkg.com/foo@1/app.js"]]
-  );
-  assert.deepEqual([...set], ["app.js"]);
-  // The network step fills these; resolveVendor leaves them empty.
-  assert.deepEqual([vulnerabilities, unaudited], [[], []]);
-});
 
 // Without a token the fallback never runs (deterministic only); an unmappable
 // VENDOR file yields an empty set and the transport is not called.

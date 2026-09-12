@@ -22,9 +22,8 @@ import {
   hasErrors,
 } from "./finding.js";
 import { artifactLabel } from "./artifact.js";
-import { verdictLabel } from "./verdict-label.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
-import { displayLine, displayText, wrapText } from "../util/text.js";
+import { displayLine, wrapText } from "../util/text.js";
 import { MAX_ENTRIES_PER_CATEGORY } from "../config.js";
 
 /** @param {string} s @returns {string} */
@@ -67,13 +66,10 @@ const SEV_COLOR = {
  * @property {string} [applicationVersion]
  * @property {number} [manifestVersion]
  * @property {string[]} [checksRun]  Ids of the checks that ran.
- * @property {boolean} [llmReviewed]  The review ran with the LLM (--llm-review)
- *   active, so the "run this yourself" pointer notes the option was used.
- * @property {import("./finding.js").ManualItem[]} [manualReview]  The
- *   manual-review to-do list, each item tagged with `extended`. The report
- *   splits it into an "Extended manual review" section (items that escalated -
- *   whole-check and per-item escalations) followed by a "Standard manual review"
- *   section (the always-by-hand manual-checks). Text-only; dropped from JSON.
+ * @property {import("./finding.js").ManualItem[]} [manualReview]  The manual-review
+ *   to-do list, each item tagged with `extended` (it escalated from a check) and
+ *   `manualReview` (reading the code cannot settle it). The report splits it into
+ *   three sections on those two tags - see buckets(). Text-only; dropped from JSON.
  */
 
 /**
@@ -84,14 +80,12 @@ const SEV_COLOR = {
  */
 export function formatText(review) {
   const manual = review.meta.manualReview ?? [];
-  const extended = manual.filter((m) => m.extended).length;
-  // The complete text report: the body, then the advisory LLM summaries (present only with
-  // --llm-review), then the verdict tally LAST. The summaries sit before the tally so the
-  // verdict closes the report. JSON drops the summaries (formatJson), so they live here.
+  const counts = bucketCounts(manual);
+  // The complete text report: the body, then the verdict tally LAST, so the verdict
+  // closes the report.
   const lines = [
     ...reviewBodyLines(review),
-    ...summarySectionLines(review),
-    ...summaryLines(review.findings, extended, manual.length - extended),
+    ...summaryLines(review.findings, counts),
   ];
   // The "Reviewing …" header is now printed live before the review
   // (src/pipeline.js), not here, so drop the blank that section() prepends to
@@ -103,81 +97,10 @@ export function formatText(review) {
 }
 
 /**
- * The advisory "Summary of add-on" / "Summary of changes" sections, each a
- * `── <title> ──` block over the model's prose (wrapped, 2-space indent), or an
- * "unavailable" note when the call failed. The per-verdict recheck list (recheckVerdictLines) is
- * appended below the "Summary of add-on" prose ONLY with --verbose (review.verbose). Empty ([])
- * unless --llm-review produced one - so a non-LLM report is unchanged. Text-only; JSON omits these.
- * @param {ReviewResult} review
- * @returns {string[]}
- */
-function summarySectionLines(review) {
-  const out = [];
-  for (const [title, s] of [
-    ["Summary of add-on", review.summarizeAddon],
-    ["Summary of changes", review.summarize],
-  ]) {
-    if (!s) {
-      continue;
-    }
-    const body =
-      s.text != null
-        ? wrapText(displayText(s.text), "  ").join("\n")
-        : s.error
-          ? `  (summary unavailable - ${displayText(s.error)})`
-          : "  (summary unavailable)";
-    out.push(...section(title), "", body);
-    if (title === "Summary of add-on" && review.verbose) {
-      out.push(...recheckVerdictLines(review));
-    }
-  }
-  return out;
-}
-
-/**
- * The per-site recheck list, shown below the "Summary of add-on" prose: one bullet per candidate site
- * handed to the summary, `* <check> - [LABEL] file:line - <subject> - <verdict>` with the real
- * source line beneath, so a reviewer sees exactly what the model decided and where. Shown only with
- * --verbose (the caller in summarySectionLines gates on review.verbose). Empty unless candidates were
- * handed (review.recheckVerdictRows, precomputed in runChecks); a handed site with no returned verdict
- * still appears, defaulting to unsure. The `[XPI]/[SCA]` label uses each row's own input + the review
- * mode (a no-op in an XPI review). No model reason here - reasons live only in the prose summary above.
- * @param {ReviewResult} review
- * @returns {string[]}
- */
-function recheckVerdictLines(review) {
-  const rows = review.recheckVerdictRows ?? [];
-  if (!rows.length) {
-    return [];
-  }
-  const lines = ["", "  Recheck verdicts:"];
-  for (const r of rows) {
-    const label = artifactLabel({
-      file: r.file,
-      input: r.label,
-      mode: review.mode,
-    });
-    const locus = r.file
-      ? `${label ? `[${label}] ` : ""}${displayLine(r.file)}${r.line != null ? `:${r.line}` : ""}`
-      : "(add-on)";
-    const subject = r.subject ? ` - ${displayLine(r.subject)}` : "";
-    lines.push(
-      `  * ${r.check} - ${locus}${subject} - ${verdictLabel(r.verdict)}`
-    );
-    if (r.content) {
-      // A line lifted verbatim out of the submission, shown on one line here.
-      lines.push(`     -> ${displayLine(r.content)}`);
-    }
-  }
-  return lines;
-}
-
-/**
- * The report body lines - Issues, the Extended/Standard manual-review sections,
- * and the ATN tail - WITHOUT the trailing Summary tally. The findings here are
- * issues only; the manual-review to-dos live in meta.manualReview, each tagged
- * with `extended` (Extended = checks that escalated, Standard = always-by-hand
- * manual-checks). Shared by formatText and by formatReviewBody.
+ * The report body lines - Issues, the three manual-review sections, and the ATN tail
+ * - WITHOUT the trailing Summary tally. The findings here are issues only; the
+ * manual-review to-dos live in meta.manualReview and are split by buckets().
+ * Shared by formatText and by formatReviewBody.
  * @param {ReviewResult} review
  * @returns {string[]}
  */
@@ -191,29 +114,31 @@ function reviewBodyLines(review) {
     ruleInputs,
   } = review;
   const manual = meta.manualReview ?? [];
-  const extended = manual.filter((m) => m.extended);
-  const standard = manual.filter((m) => !m.extended);
+  // Three buckets. An escalation a reviewer can settle by reading the code is a code
+  // review step; one needing information from outside the package, an action only a
+  // person can take, or a decision a person must own is a manual one. The standard
+  // list is the checks done by hand on every submission, escalated or not.
+  const { code, extendedManual, standard } = buckets(manual);
   // The artifact label ([XPI]/[SCA]) for one finding/manual item's file:line - "" in
   // an XPI review (one artifact). Applied wherever locationLine renders a locus.
   const labelOf = (f) =>
     artifactLabel({ file: f.file, input: ruleInputs?.get(f.ruleId), mode });
   return [
-    ...issuesLines(
-      issues,
-      issueHeadings,
-      verdictIntros,
-      labelOf,
-      mode,
-      meta.llmReviewed
+    ...issuesLines(issues, issueHeadings, verdictIntros, labelOf, mode),
+    ...manualSection(code, "Extended code review", brightCyan, labelOf),
+    ...manualSection(
+      extendedManual,
+      "Extended manual review",
+      brightCyan,
+      labelOf
     ),
-    ...manualSection(extended, "Extended manual review", brightCyan, labelOf),
     ...manualSection(standard, "Standard manual review", blue, labelOf),
   ];
 }
 
 /**
  * The text report body WITHOUT the Summary tally (Issues + manual sections +
- * ATN tail). The CLI prints this first, then the advisory LLM summaries, then
+ * ATN tail). The CLI prints this first, then the advisory review summaries, then
  * the tally (formatSummary) last, so the review verdict lands at the very end.
  * @param {ReviewResult} review
  * @returns {string}
@@ -235,10 +160,8 @@ export function formatReviewBody(review) {
  */
 export function formatSummary(review) {
   const manual = review.meta.manualReview ?? [];
-  const extended = manual.filter((m) => m.extended).length;
-  return summaryLines(review.findings, extended, manual.length - extended).join(
-    "\n"
-  );
+  const counts = bucketCounts(manual);
+  return summaryLines(review.findings, counts).join("\n");
 }
 
 /**
@@ -276,14 +199,7 @@ export function headerLines(meta) {
  * @param {string} [mode]  Review mode; "sca" appends the label legend footer.
  * @returns {string[]}
  */
-function issuesLines(
-  issues,
-  issueHeadings,
-  verdictIntros,
-  labelOf,
-  mode,
-  llmReviewed
-) {
+function issuesLines(issues, issueHeadings, verdictIntros, labelOf, mode) {
   const out = section("Issues");
   const intros = verdictIntros ?? {};
   if (issues.length === 0) {
@@ -334,11 +250,7 @@ function issuesLines(
   // submitting and fix the findings above first. Shown in both modes.
   out.push("");
   out.push(
-    grey(
-      llmReviewed
-        ? "You can run this automated review yourself before submitting (this review was performed using the --llm-review option):"
-        : "You can run this automated review yourself before submitting:"
-    )
+    grey("You can run this automated review yourself before submitting:")
   );
   out.push(grey("https://github.com/thunderbird/webext-linter"));
   return out;
@@ -500,25 +412,51 @@ function manualSection(items, title, accent = blue, labelOf) {
 }
 
 /**
- * Summary: issue counts by severity plus the extended and standard manual-review
- * step counts, kept as separate entries (Extended = per-add-on escalations,
- * Standard = the always-shown boilerplate checklist). Extended is listed first, to
- * match the body's section order.
+ * Summary: issue counts by severity plus one count per manual-review section, in the
+ * body's section order (code review, manual review, then the always-shown checklist).
  * @param {import("./finding.js").Finding[]} issues
- * @param {number} extendedCount
- * @param {number} standardCount
+ * @param {{code: number, manual: number, standard: number}} counts
  * @returns {string[]}
  */
-function summaryLines(issues, extendedCount, standardCount) {
+function summaryLines(issues, counts) {
   const c = tally(issues);
   const out = section("Summary");
   out.push("");
   out.push(
     `${c.error} error(s), ${c.warning} warning(s), ${c.info} info, ` +
-      `${extendedCount} extended manual review step(s), ` +
-      `${standardCount} standard manual review step(s)`
+      `${counts.code} extended code review step(s), ` +
+      `${counts.manual} extended manual review step(s), ` +
+      `${counts.standard} standard manual review step(s)`
   );
   return out;
+}
+
+/**
+ * How many to-dos fall in each of the three buckets, for the Summary tally.
+ * @param {import("./finding.js").ManualItem[]} manual
+ * @returns {{code: number, manual: number, standard: number}}
+ */
+function bucketCounts(manual) {
+  const b = buckets(manual);
+  return {
+    code: b.code.length,
+    manual: b.extendedManual.length,
+    standard: b.standard.length,
+  };
+}
+
+/**
+ * Split the to-do list into its three sections. The ONE definition of the buckets, so
+ * the printed sections and the Summary tally can never disagree about them.
+ * @param {import("./finding.js").ManualItem[]} manual
+ * @returns {{code: ManualItem[], extendedManual: ManualItem[], standard: ManualItem[]}}
+ */
+function buckets(manual) {
+  return {
+    code: manual.filter((m) => m.extended && !m.manualReview),
+    extendedManual: manual.filter((m) => m.extended && m.manualReview),
+    standard: manual.filter((m) => !m.extended),
+  };
 }
 
 /**
@@ -528,10 +466,10 @@ function summaryLines(issues, extendedCount, standardCount) {
  * @returns {string}
  */
 export function formatJson(review) {
-  // The manual-review to-do list and the llmReviewed pointer flag are human-only, not
+  // The manual-review to-do list is human-only, not
   // machine-verifiable, so they are dropped from JSON (ATN consumes this for
   // auto-verification). findings are already issues only.
-  const { manualReview: _omitted, llmReviewed: _llm, ...meta } = review.meta;
+  const { manualReview: _omitted, ...meta } = review.meta;
   const issues = review.findings;
   // `data` (template-resolution input, baked into `message`) and `listItem` (a
   // text-layout flag) are internal, so they are dropped from the machine output.

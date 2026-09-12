@@ -1,5 +1,5 @@
 // Unit tests for the text utilities: the wrapText width-wrapper (reflowing
-// printed LLM prose to a column width) and the humanSize byte formatter.
+// printed prose to a column width) and the humanSize byte formatter.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

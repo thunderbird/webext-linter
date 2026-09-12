@@ -1,7 +1,7 @@
 // Data smuggled out through a window.open() to a remote URL that carries a
 // user-data API call - the strong covert-exfil case, a hard error regardless of
 // consent. The weaker appended-runtime-value case goes to the disguised-
-// transmission LLM check.
+// transmission escalating check.
 //
 // Belongs here: turning window-open covert sinks into findings. Does NOT belong
 // here: the sink scan and the shared exfil gate (-> getOutboundSinks/

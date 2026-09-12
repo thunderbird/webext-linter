@@ -43,8 +43,6 @@ import {
 import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
 import { buildXpiCtxs, buildScaCtxs } from "./checks/context.js";
-import { createLlmClient } from "./checks/llm-client.js";
-import { newNonce } from "./lib/untrusted.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
 import { headerLines } from "./report/format.js";
 import { resolveVendor } from "./vendor/resolve.js";
@@ -53,7 +51,6 @@ import {
   verifyScaDependencies,
   auditIdentifiedLibraries,
 } from "./vendor/verify.js";
-import { validateLlmConfig, checkModelAvailable } from "./llm/provider.js";
 import {
   classifyFiles,
   assembleBundled,
@@ -74,8 +71,6 @@ import {
 import { isExperiment, parseVersion, strictMaxVersion } from "./lib/util.js";
 import { experimentApiNamespaces } from "./lib/experiments.js";
 import { verifyExperiments } from "./experiments/verify.js";
-import { createLlmBudget } from "./llm/budget.js";
-import { modelSettings } from "./llm/settings.js";
 import { debug, progress, warn, FEED } from "./util/log.js";
 import { DEFAULT_CACHE } from "./config.js";
 
@@ -107,7 +102,6 @@ import { DEFAULT_CACHE } from "./config.js";
  *   the manifest, experiments, file-completeness (`input: xpi`) checks, the --diff-to
  *   comparison, and the packaging summary all run (a separate shipped context the
  *   orchestrator routes them to - see buildXpiCtxs in src/checks/context.js). The
- *   behavioral --llm-review reviews the readable source instead.
  * @property {string} [scaSource]  The add-on code root, relative to scaRoot or an
  *   absolute path (e.g. "src" or "addon"). Optional; defaults to "." (the whole scaRoot
  *   reviewed as the source - a flat layout with manifest.json at the root).
@@ -125,30 +119,13 @@ import { DEFAULT_CACHE } from "./config.js";
  *   (offline/privacy).
  * @property {string} [cdnLookupCache]  Where to cache the CDN hash-lookup results.
  * @property {string} [diffTo]  Path to the previous published version.
- * @property {boolean} [llmReview]  The sole LLM on-switch (--llm-review).
- * @property {string} [llmApiKey]  Real API key, or undefined (a keyless
- *   provider).
- * @property {string} [llmModel]
- * @property {string} [llmApiUrl]  Override the LLM API base URL (LLM_API_URL).
- * @property {string} [llmApiType]  LLM_API_TYPE (claude | chatgpt | ollama).
  * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
  *   network transport for vendor verification (the test harness injects an
  *   offline one); defaults to the real fetch.
- * @property {{callVerdicts?: Function, callText?: Function, callReview?: Function}}
- *   [llmTransport]  Injectable model transports (else the provider's own), threaded to
- *   the review client and the setup-time model calls (resolveVendor / verifyVendor /
- *   analyzeBuild). The LLM counterpart of vendorNet: the offline test harness injects
- *   deterministic fakes so an --llm-review run makes no network request; production
- *   never sets it, so every site defaults to the real provider.
  * @property {import("./addon/load.js").Addon} [addon]  Pre-loaded add-on (the
  *   test harness injects one to drop its expected.json sidecar).
  * @property {import("./checks/registry.js").Registry} [registry]  Parsed
  *   registry threaded from the caller, parsed once here otherwise.
- * @property {(used: number, step: number) => boolean | Promise<boolean>}
- *   [confirmMore]  Asked when the run hits the LLM request cap (the model's
- *   `maxRequests` in assets/llm): truthy runs that many more, falsy stops. The CLI
- *   supplies an interactive prompt only at a terminal. Omitted means hard-stop at
- *   the cap (see src/llm/budget.js).
  */
 
 /**
@@ -157,13 +134,6 @@ import { DEFAULT_CACHE } from "./config.js";
  * @property {ReviewMeta} meta
  * @property {Record<string, string>} [issueHeadings]
  * @property {Record<string, string>} [verdictIntros]
- * @property {GeneratedSummary} [summarize]
- * @property {GeneratedSummary} [summarizeAddon]
- * @property {{check: string, label: string, file: ?string, line: ?number,
- *   subject: ?string, verdict: import("./lib/enum.js").Verdict, content: ?string}[]} [recheckVerdictRows]  The
- *   per-site recheck rows shown under the add-on summary in the text report.
- * @property {boolean} [verbose]  --verbose: expands the text report with the per-site
- *   recheck-verdict list under the add-on summary (hidden otherwise).
  */
 
 /**
@@ -180,7 +150,7 @@ export async function runPipeline(opts) {
   //
   //   xpiAddon - the built XPI (the positional addonPath). The SHIPPED artifact,
   //     authoritative in BOTH modes for the manifest, the experiments, and the
-  //     behavioral LLM summary (what actually runs on a user's machine).
+  //     behavioral review summary (what actually runs on a user's machine).
   //   addon    - the deterministic review target (becomes ctx.addon): the readable
   //     code the source-level checks scan. In XPI mode it simply IS xpiAddon; in
   //     SCA mode it is the readable source at scaSource - a synthetic addon whose
@@ -226,8 +196,8 @@ export async function runPipeline(opts) {
   // running (a no-op when progress is off - JSON, the golden harness). The total is
   // sized from what the fast .xpi read already gives us: mode (SCA analyses BOTH
   // artifacts - the always-run built-XPI analysis PLUS the readable source and its
-  // build - so it is longer), --llm-review, and whether it is an Experiment (which adds
-  // a bundled-experiment verification step). Exact for every path EXCEPT a REJECTED
+  // build - so it is longer) and whether it is an Experiment (which adds a
+  // bundled-experiment verification step). Exact for every path EXCEPT a REJECTED
   // Experiment (an experiment add-on run WITHOUT --allow-experiments whose bundled draft
   // is unrecognised): it skips the whole vendor block, so its counter stops MID-count
   // (e.g. [4/8]) rather than completing. Sizing the total for that short path would need
@@ -236,10 +206,7 @@ export async function runPipeline(opts) {
   // (the reviewer's --allow-experiments flow) is exact. A false SCA that is downgraded to
   // an XPI review (below) likewise OVER-runs the SCA-sized total by the source-only steps
   // it then skips - the same accepted inexactness, no re-sizing.
-  const setupTotal =
-    (preliminaryMode === "sca" ? 12 : 7) +
-    (opts.llmReview ? 1 : 0) +
-    (isExp ? 1 : 0);
+  const setupTotal = (preliminaryMode === "sca" ? 12 : 7) + (isExp ? 1 : 0);
   let setupDone = 0;
   /**
    * Emit the next numbered "Setup" feed line.
@@ -300,7 +267,7 @@ export async function runPipeline(opts) {
   // The flag governs only rejection, not classification. Without
   // --allow-experiments an Experiment add-on is rejected outright (the review
   // short-circuits to the single experiment-not-allowed check, no other checks,
-  // no LLM, no manual reminders, and the vendor pre-processing below is skipped)
+  // no judgement, no manual reminders, and the vendor pre-processing below is skipped)
   // UNLESS every bundled experiment is a recognised upstream draft - a
   // recognised-but-modified one does NOT abort, so the full review runs and
   // experiment-modified flags it. With --allow-experiments the reviewer accepts
@@ -325,15 +292,6 @@ export async function runPipeline(opts) {
   }
 
   const findings = [];
-
-  // Run-wide model-request cap, shared by every LLM site this run: the vendor parse,
-  // the LLM checks (each candidate batch is one request), and the summaries. Built
-  // by the LLM pre-flight below, from the chosen model's own `maxRequests`
-  // (assets/llm) - a slower or dearer model is worth fewer calls. It stays null for
-  // a run that calls no model, and every site that consumes it is reached only when
-  // the model IS called (`enabled: llmVerified` / `ctx.llm`), so a null one is never
-  // consumed rather than quietly permitting requests. See src/llm/budget.js.
-  let llmBudget = null;
 
   // The review target: the SHIPPED XPI unless an SCA survives the downgrade below. Pinned to
   // `xpi` for a rejected Experiment, whose rejection is decided entirely from the shipped XPI's
@@ -362,50 +320,10 @@ export async function runPipeline(opts) {
   // The XPI's Experiment API namespaces (null for a non-Experiment). Computed ONCE when
   // registered into the schema below.
   let xpiExperimentNamespaces = null;
-  // MAY THIS RUN CALL THE MODEL? Asked exactly once, here, because this is the only place that
-  // can answer it: --llm-review requests the model, the pre-flight below proves the config can
-  // actually serve one, and a rejected Experiment calls none at all (this is set inside that
-  // gate). Phase 4 turns it into ctx.llm - the verified client - and everything downstream reads
-  // THAT. Nothing re-derives the answer from --llm-review and invalidExperiment again.
-  let llmVerified = false;
-
   // The rest of setup serves a REVIEWABLE add-on, and is skipped WHOLESALE for a rejected
   // Experiment: it runs only the invalid-experiment phase against the shipped XPI - no model
   // call, no libraries to recognize, no mode to resolve - so none of this would be read.
   if (!invalidExperiment) {
-    // The LLM pre-flight: shown in the Setup feed with the chosen type + model, and a HARD FAIL
-    // on a bad config - a review that WILL call the model must not get halfway in and then
-    // discover the token is wrong. A throw here is surfaced by main()'s catch as a stderr
-    // message + exit 2. It sits inside the gate because a rejected Experiment calls no model
-    // at all, so its config is never used and a bad one must not sink the rejection.
-    if (opts.llmReview) {
-      setupStep(`Checking the LLM (${opts.llmApiType}, ${opts.llmModel})`);
-      const configError = validateLlmConfig(opts.llmApiType, {
-        apiKey: opts.llmApiKey,
-      });
-      if (configError) {
-        throw new Error(configError);
-      }
-      const availabilityError = await checkModelAvailable(opts.llmApiType, {
-        model: opts.llmModel,
-        token: opts.llmApiKey,
-        baseURL: opts.llmApiUrl,
-      });
-      if (availabilityError) {
-        throw new Error(availabilityError);
-      }
-      // Requested, and proven usable. The request budget is the chosen model's, and
-      // is read only now - the config it is read for has just been validated, so a
-      // bogus type or an unlistable model is reported as itself rather than as a
-      // failure to find a model table.
-      llmBudget = createLlmBudget({
-        step: modelSettings(opts.llmApiType, opts.llmApiUrl, opts.llmModel)
-          .maxRequests,
-        confirmMore: opts.confirmMore,
-      });
-      llmVerified = true;
-    }
-
     // A valid Experiment's declared APIs are part of its platform: register their base
     // namespaces so the developer's calls into them (e.g. browser.calendar.*) resolve
     // instead of tripping unknown-api. Registered from the XPI (in SCA the experiment
@@ -443,33 +361,9 @@ export async function runPipeline(opts) {
     // vendored library is not miscounted as unreviewable first-party code. In a native XPI
     // review the XPI IS the review target, so this is that review's own analysis (Phase 3 then
     // only reuses xpiParsedSources rather than parsing again).
-    xpiAddon.vendor = await resolveVendor({
-      addon: xpiAddon,
-      parsePrompt: registry.prompt("vendor-parse"),
-      enabled: llmVerified,
-      token: opts.llmApiKey,
-      model: opts.llmModel,
-      url: opts.llmApiUrl,
-      type: opts.llmApiType,
-      callText: opts.llmTransport?.callText,
-      budget: llmBudget,
-    });
+    xpiAddon.vendor = resolveVendor({ addon: xpiAddon });
     setupStep("Verifying vendored libraries");
-    await verifyVendor(
-      xpiAddon,
-      opts.vendorNet,
-      {
-        enabled: llmVerified,
-        resolvePrompt: registry.prompt("vendor-npm-resolve"),
-        token: opts.llmApiKey,
-        model: opts.llmModel,
-        url: opts.llmApiUrl,
-        type: opts.llmApiType,
-        callText: opts.llmTransport?.callText,
-        budget: llmBudget,
-      },
-      libraryBlocks
-    );
+    await verifyVendor(xpiAddon, opts.vendorNet, libraryBlocks);
     classifyReview(xpiAddon, { libraryHashes });
     await identifyBundledLibraries(xpiAddon, {
       net: opts.vendorNet,
@@ -556,17 +450,7 @@ export async function runPipeline(opts) {
     if (mode?.sca) {
       // 1c. Resolve the source's dependency manifest ONCE (package.json deps + any VENDOR
       // declarations), so the review's checks share one immutable store.
-      addon.vendor = await resolveVendor({
-        addon,
-        parsePrompt: registry.prompt("vendor-parse"),
-        enabled: llmVerified,
-        token: opts.llmApiKey,
-        model: opts.llmModel,
-        url: opts.llmApiUrl,
-        type: opts.llmApiType,
-        callText: opts.llmTransport?.callText,
-        budget: llmBudget,
-      });
+      addon.vendor = resolveVendor({ addon });
       // 1d. The source's package.json declares its dependencies - audit each for popularity
       // (non-popular -> reject) and OSV. The readable source may ALSO vendor a library as a
       // committed copy, so full identification (Mozilla-hash + CDN + OSV, deduped against the
@@ -604,21 +488,12 @@ export async function runPipeline(opts) {
         opts.scaRoot,
         opts.scaExpSource
       );
-      // Classify the build ONCE here (the vendor pattern): one model request over the build
-      // corpus, stored on addon.buildFiles.buildReview for the input:build checks to read
-      // deterministically. Offline / no token -> analyzed:false (routed to manual review).
+      // Look at the build ONCE here (the vendor pattern), storing what was found on
+      // addon.buildFiles.buildReview for the input:build checks to read. Nothing
+      // classifies what the build does, so it routes to the reviewer, who reproduces
+      // it from the source by hand.
       setupStep("Analyzing the build");
-      addon.buildFiles.buildReview = await analyzeBuild({
-        build: addon.buildFiles,
-        analysisPrompt: registry.prompt("build-analysis"),
-        enabled: llmVerified,
-        token: opts.llmApiKey,
-        model: opts.llmModel,
-        url: opts.llmApiUrl,
-        type: opts.llmApiType,
-        callText: opts.llmTransport?.callText,
-        budget: llmBudget,
-      });
+      addon.buildFiles.buildReview = analyzeBuild({ build: addon.buildFiles });
     } else {
       // XPI review (native, or a downgraded false SCA): the built XPI IS the review target and
       // was fully analysed in Phase 2. Its parsed sources ARE the review's sources.
@@ -626,43 +501,15 @@ export async function runPipeline(opts) {
     }
   }
 
-  // 2. Schema review. runChecks (called inline below, Phase 5) also generates the advisory
-  // AI summaries at the tail of the activity feed (the add-on summary's recheck verdicts feed
-  // the post-summary recheck consumers, which run there too).
   // Phase 4: build the sibling RunContexts the checks read - the last step of setup. The
   // review-level singletons are built ONCE here and shared by every sibling ctx, so they can
-  // never drift between artifacts or double-cost: the --diff-to baseline (loaded once), the
-  // untrusted-content nonce, and the single LLM client. createLlmClient needs only the SHIPPED
-  // manifest + that nonce (both review-level), so it is built here - before any ctx - and handed
-  // to both ctx builders. Nothing is parsed here: Phase 2/3 parsed each artifact's sources.
-  const nonce = newNonce();
+  // never drift between artifacts or double-cost: the --diff-to baseline is loaded once here.
+  // Nothing is parsed here: Phase 2/3 parsed each artifact's sources.
   const previous = opts.diffTo ? loadAddon(opts.diffTo) : null;
-  // Phase 1's verdict (llmVerified: --llm-review asked, config proven, not a rejected Experiment)
-  // is the SOLE gate on the client - this does not re-ask it. The secret token stays in this
-  // scope; only the built client reaches the check-facing ctx, never the credentials.
-  const llm = llmVerified
-    ? createLlmClient({
-        reviewMeta: {
-          manifest: xpiAddon.manifest ?? null,
-          manifestText: xpiAddon.manifestText ?? "",
-          __nonce: nonce,
-        },
-        token: opts.llmApiKey,
-        systemIntro: registry.prompt("system-intro"),
-        type: opts.llmApiType,
-        model: opts.llmModel,
-        url: opts.llmApiUrl,
-        budget: llmBudget,
-        // Injectable transports (else the provider's own): undefined in production, deterministic
-        // fakes under the offline test harness.
-        callVerdicts: opts.llmTransport?.callVerdicts,
-        callText: opts.llmTransport?.callText,
-        callReview: opts.llmTransport?.callReview,
-      })
-    : undefined;
+
   // The shared review env every sibling ctx projects (buildXpiCtxs / buildScaCtxs). The
   // manifest/experiments are the SHIPPED artifact's - authoritative like the schema, so no
-  // artifact's own template can shadow them. Only what a check reads goes on `options` (the LLM
+  // artifact's own template can shadow them. Only what a check reads goes on `options` (a reviewer
   // credentials are deliberately absent - the secret token must not sit on the check-facing ctx).
   const env = {
     schema,
@@ -677,8 +524,6 @@ export async function runPipeline(opts) {
     manifestText: xpiAddon.manifestText ?? "",
     experiments: xpiAddon.experiments ?? null,
     previous,
-    llm,
-    nonce,
   };
 
   // From the ALWAYS-analysed built XPI: the shipped ctx (siblings.xpi - the input:xpi structure
@@ -703,37 +548,29 @@ export async function runPipeline(opts) {
     manifest: manifestCtx,
   };
 
-  // Phase 5: run the review, then finalize. runChecks orchestrates all four phases -
-  // deterministic, llm, the add-on-summary interleave (which fills ctx.recheckVerdicts), and
-  // post-summary - and returns the finished findings, manual items, the checks that ran, and
-  // the advisory summaries. Each throwing check is isolated so one failure can't abort all.
+  // Phase 5: run the review, then finalize. runChecks runs the phase this review calls
+  // for - invalid-experiment for a rejected Experiment, deterministic otherwise - and
+  // returns the finished findings, manual items and the checks that ran. Each throwing
+  // check is isolated so one failure can't abort all.
   // The `--eslint` opt-in gates code-sanity inside loadChecks (eslintEligible).
   progress(""); // close the Setup section before runChecks prints "── Activity ──"
   const {
     findings: reviewFindings,
     manualItems,
     checksRun,
-    summarizeAddon,
-    summarize,
-    recheckVerdictRows,
   } = await runChecks(
     registry,
     {
       only: opts.checksOnly,
       skip: opts.checksSkip,
       eslint: opts.eslint,
-      budget: llmBudget,
-      // Whether the add-on summary will run to re-judge post-summary-recheck items:
-      // the summary runs only with an LLM client attached.
-      recheckActive: Boolean(llm),
     },
     siblings
   );
   findings.push(...reviewFindings);
 
   // The review-derived half of meta (the base half - action/addon/... - was set in Phase 1):
-  // the schema stamps, the checks that ran, the LLM-review flag, and the manual-review to-do
-  // list. Its `extended` items are the orchestrator's escalations (resolved to their registry
+  // the schema stamps, the checks that ran, and the manual-review to-do list. Its `extended` items are the orchestrator's escalations (resolved to their registry
   // text); the rest are the by-hand manual-checks entries, diff-gated like the checks (e.g.
   // the new-submission-only "Forked add-on" reminder). An Experiment reject carries none.
   Object.assign(meta, {
@@ -743,7 +580,6 @@ export async function runPipeline(opts) {
     applicationVersion: schema.applicationVersion,
     manifestVersion: xpiAddon.manifest?.manifest_version ?? null,
     checksRun: checksRun.map((c) => c.id),
-    llmReviewed: Boolean(llm),
     manualReview: invalidExperiment
       ? []
       : [
@@ -786,17 +622,6 @@ export async function runPipeline(opts) {
     // section.
     issueHeadings: registry.issueHeadings(),
     verdictIntros: registry.verdictIntros(),
-    // AI summaries generated above (each undefined unless its flag + a token
-    // warrant it). The caller prints the prose after the report - see
-    // src/cli.js.
-    summarize,
-    summarizeAddon,
-    // The per-site recheck rows (both SCA passes), shown under the add-on summary in the
-    // text report ONLY with --verbose (verbose below). Empty unless candidates were handed
-    // to the summary; a handed site with no returned verdict still appears, defaulting to unsure.
-    recheckVerdictRows,
-    // --verbose: the report layer gates the per-site recheck-verdict list on this.
-    verbose: opts.verbose ?? false,
   };
 }
 

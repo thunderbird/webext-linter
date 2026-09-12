@@ -2,7 +2,7 @@
 // setAttribute("src"|"href", ...)) that carries a user-data API call - the strong
 // covert-exfil case, a hard error regardless of consent. The weaker "a runtime
 // value is merely appended to the URL" case (common in legitimate code) goes to
-// the disguised-transmission LLM check instead.
+// the disguised-transmission escalating check instead.
 //
 // Belongs here: turning resource-load covert sinks into findings. Does NOT
 // belong here: the sink scan and the shared exfil gate (-> src/parse/

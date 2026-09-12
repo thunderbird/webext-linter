@@ -35,7 +35,6 @@
     "assets/library-blocks.yaml",
     "assets/webext-facts.yaml",
     "assets/schema-annotations",
-    "assets/llm",
     "README.md",
     "LICENSE"
   ],
@@ -49,7 +48,6 @@
     "test:unit": "node --test tests/unit/*.test.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.110.0",
     "@babel/parser": "^8.0.4",
     "@babel/traverse": "^8.0.4",
     "@babel/types": "^8.0.4",
@@ -61,7 +59,6 @@
     "json5": "^2.2.3",
     "jsonc-parser": "^3.3.1",
     "obfuscation-detector": "^3.0.0",
-    "openai": "^6.45.0",
     "parse5": "^8.0.1",
     "postcss": "^8.5.16",
     "postcss-value-parser": "^4.2.0",

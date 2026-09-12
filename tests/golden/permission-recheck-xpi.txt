@@ -1,22 +1,17 @@
 ── Issues ──
+The automated review did not find any issues.
 
-Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
-
-1) One or more declared permissions are unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If a permission is in fact used, please specify which part of your add-on stops working if it is removed.
- - manifest.json:6 - compose
-
-You can run this automated review yourself before submitting (this review was performed using the --llm-review option):
-https://github.com/thunderbird/webext-linter
-
-── Extended manual review ──
+── Extended code review ──
 
 Continue manual review for the following checks:
 
-1) Unused permission: One or more declared permissions may be unused. Confirm
-   whether the add-on actually needs them, and if not, ask the developer to
-   remove them.
-Suggested response: One or more declared permissions are unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If a permission is in fact used, please specify which part of your add-on stops working if it is removed.
+1) Possibly unused permissions: Review whether the following declared
+   permissions are used, and ask the developer to remove any that are not
+   needed.
+Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
+ - manifest.json:6 - messagesRead
  - manifest.json:6 - accountsRead
+ - manifest.json:6 - compose
 
 ── Standard manual review ──
 
@@ -85,21 +80,6 @@ Suggested response: The submission appears to be a fork of an existing add-on th
 
 Because the original project is still active, your submission does not meet these requirements. Small-change forks can sometimes cause confusion for users and unnecessary overlap for developers. We encourage you to consider contributing your improvements directly to the original project so that all existing users can benefit from your ideas.
 
-── Summary of add-on ──
-
-  Per-occurrence recheck: three declared permissions judged at their token
-  sites.
-
-  Recheck verdicts:
-  * Unused permission - bg.js:10 - accountsRead - unsure
-     -> function describe(msg, folder, details) {
-  * Unused permission - bg.js:11 - messagesRead - pass
-     -> const rel = msg.relatedMessageId;
-  * Unused permission - bg.js:12 - accountsRead - unsure
-     -> const box = folder.displayedFolder;
-  * Unused permission - bg.js:13 - compose - fail
-     -> messenger.scripting.executeScript(details);
-
 ── Summary ──
 
-0 error(s), 1 warning(s), 0 info, 1 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 warning(s), 0 info, 3 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)

@@ -1,5 +1,5 @@
 // JSON canonicalization shared by the schema merger, the bump-only diff check,
-// and the LLM context builder: deep-sort object keys so deeply-equal values
+// and a reviewer context builder: deep-sort object keys so deeply-equal values
 // serialize to identical bytes.
 //
 // Belongs here: deterministic JSON shaping (sortKeys, canonicalJson) and the

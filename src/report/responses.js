@@ -15,7 +15,7 @@
 // Does NOT belong here: the authored wording itself, which lives in
 // assets/registry.yaml. Section chrome, ordering and text/JSON output belong to
 // src/report/format.js. The finding data shape is in src/report/finding.js.
-// Whether a check escalates to manual review (vs the LLM) is decided in
+// Whether a check escalates to manual review (vs a reviewer) is decided in
 // src/checks/escalation.js - here a manual ref is only rendered, not chosen.
 
 import { displayLine, displayText } from "../util/text.js";
@@ -104,12 +104,12 @@ export function renderFindings(findings, registry) {
 
 /**
  * Resolve manual-review refs to ManualItems: the owning entry's title plus its
- * `instructions` (or the `llm-unavailable` system message), filled with the case
+ * `instructions`, filled with the case
  * item and any `data` slots (e.g. a reason). The ref's locus (file/loc/item) is
  * carried through, and `listItem` is set exactly as for findings - so the report
  * can list "file:line - item" under an item-free instructions message.
  * @param {{ruleId: string, item: ?string, file?: ?string, loc?: object|null,
- *   kind: string, llmNotNeeded?: boolean,
+ *   manualReview?: boolean,
  *   data?: Record<string, string|number>|null}[]} refs
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {import("./finding.js").ManualItem[]}
@@ -118,27 +118,26 @@ export function renderManualItems(refs, registry) {
   return refs.map((ref) => {
     const entry = registry.checkEntry(ref.ruleId);
     // Which text this ref gets is the registry's call, including whether a
-    // llm-not-needed ref's entry authored any (instructionsFor raises if not). The
-    // kind test comes first: an llm-error ref shows the system message whatever
-    // else it carries.
-    const template =
-      ref.kind === "llm-error"
-        ? registry.message("llm-unavailable")
-        : registry.instructionsFor(ref.ruleId, ref.llmNotNeeded === true);
+    // manual-review ref's entry authored any (instructionsFor raises if not).
+    const template = registry.instructionsFor(
+      ref.ruleId,
+      ref.manualReview === true
+    );
     return {
       title: entry?.title ?? ref.ruleId,
       instructions: fill(template, ref.item, ref.data) ?? "",
-      // The developer-facing response (printed under the instructions). Filled
-      // like the instructions. Null when the entry has no response - and always
-      // null for a llm-not-needed ref: the entry's response is the wording for
-      // REJECTING this rule, and these cases are not a rejection we have made.
-      response: ref.llmNotNeeded
-        ? null
-        : fill(entry?.response, ref.item, ref.data),
+      // The developer-facing response (printed under the instructions). Filled like
+      // the instructions. Every escalation carries one: once a reviewer settles the
+      // case against the add-on, this is the text that goes to the developer, so
+      // withholding it would leave them with a decision and nothing to send.
+      response: fill(entry?.response, ref.item, ref.data),
       // Carried so the text report can label the item's file:line by artifact
       // ([XPI]/[SCA]) via ruleInputs - the corpus the owning check acts on. Without
       // it a non-manifest manual item has no ruleId and defaults to [SCA].
       ruleId: ref.ruleId,
+      // Which of the two extended buckets this belongs to: reading the code can
+      // settle it, or a person must. The report groups on this.
+      manualReview: ref.manualReview === true,
       file: ref.file ?? null,
       loc: ref.loc ?? null,
       item: ref.item ?? null,

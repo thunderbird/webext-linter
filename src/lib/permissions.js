@@ -27,8 +27,7 @@
 // argument object (opts[key] = v; browser.tabs.create(opts)) is equally
 // invisible to it, since the walker resolves member chains rooted at the API
 // object, not arbitrary object-literal keys. A token read from a runtime data
-// file is the same class of gap. Everything undecided escalates; the optional
-// --llm-review pass assesses those advisorily.
+// file is the same class of gap. Everything undecided escalates to a reviewer.
 //
 // The schema expresses "this API needs a manifest key" via pseudo-permissions
 // of the form "manifest:<key>" (e.g. browserAction needs "manifest:action" OR
@@ -42,7 +41,7 @@
 // the manifest-key grounding that proves a script-injection key's implied
 // permission used (and missing when undeclared), and enumerateUnusedPermissions
 // with its live-code token scan (locateTokens) - the unused-permission producer's
-// deterministic verdicts, plus the token occurrences the recheck judges per site.
+// deterministic verdicts, plus the token occurrences a reviewer judges per site.
 //
 // Does NOT belong here: the rules' wiring and any severity or text - that lives
 // in the missing-permission / missing-manifest-key rules under
@@ -331,22 +330,20 @@ function scanIsBlindToObfuscation(ctx) {
  * line. A permission a reachable call provably requires (usedPermissions) is
  * justified and dropped. A permission whose (version-matched) permission-prompts
  * entries declare usage `tokens` that appear NOWHERE in the add-on's live code
- * (comments excluded) or manifest is deterministically unused - a finding, with
- * or without --llm-review (see the blindness guard below for when this path
- * stands down). Every other permission escalates as a manual-review case, to be
- * re-judged by the LLM recheck when the registry has a prompt for it (see
- * registry.rechecks) or reviewed by hand otherwise. Host match patterns are
+ * (comments excluded) or manifest is deterministically unused - a finding (see the
+ * blindness guard below for when this path stands down). Every other permission
+ * escalates as a case for a reviewer to settle (see
+ * escalation) . Host match patterns are
  * minimize-host-permissions' concern and are skipped. Backs the unused-permission
  * producer.
  * @param {RunContext} ctx
- * @param {?{permissionPrompts?: object[]}} [recheckData]  The producer's linked
- *   consumer data (LoadedCheck.recheckData): the permission-prompts entries
+ * @param {?object[]} [prompts]  LoadedCheck.permissionTokens: the permission-prompts entries
  *   carrying the usage tokens. Absent/empty -> no deterministic verdicts,
  *   escalate all.
  * @returns {{findings: {item: string, file: string, loc: ?object}[], escalations:
  *   {item: string, file: string, loc: ?object}[]}}
  */
-export function enumerateUnusedPermissions(ctx, recheckData) {
+export function enumerateUnusedPermissions(ctx, prompts) {
   const used = getPermissionAnalysis(ctx).usedPermissions;
   // A deterministic "unused" FINDING claims "nothing this permission gates can be in
   // use" - only tenable when the scan can see every usage in the SHIPPED add-on (the
@@ -367,7 +364,7 @@ export function enumerateUnusedPermissions(ctx, recheckData) {
   //    closed rather than reading as fully sighted.
   // This gates only the finding: token PRESENCE is always trustworthy (a located
   // occurrence IS a real site), so occurrences are collected regardless and the
-  // recheck judges them the same in every mode. The obfuscation check is LAST so it
+  // a reviewer judges them the same in every mode. The obfuscation check is LAST so it
   // is only reached when the cheap conditions already hold.
   const decidable =
     Array.isArray(ctx.apiUsages) &&
@@ -378,14 +375,11 @@ export function enumerateUnusedPermissions(ctx, recheckData) {
         u.usages?.some((x) => x.dynamicTail)
     ) &&
     !scanIsBlindToObfuscation(ctx);
-  const tokensFor = permissionTokens(
-    ctx.manifest,
-    recheckData?.permissionPrompts
-  );
+  const tokensFor = permissionTokens(ctx.manifest, prompts);
   // One scan over the live code + manifest for the union of every permission's
   // tokens, recording WHERE each occurs; each permission then reads its own subset,
   // both to decide presence (no occurrence, when decidable = unused) and to hand the
-  // recheck the sites to judge.
+  // the reviewer the sites to judge.
   const located = locateTokens(ctx, new Set([...tokensFor.values()].flat()));
   const m = ctx.manifest ?? {};
   const seen = new Set();
@@ -417,11 +411,9 @@ export function enumerateUnusedPermissions(ctx, recheckData) {
         return;
       }
       // Everything else escalates (a token was found, the entry declares no tokens,
-      // the scan was not decidable, or the permission has no prompt entry). Whether it
-      // is re-judged by the LLM or stays manual-only is decided later, at the divert,
-      // by registry.rechecks - the check does not know. The token sites (empty for a
-      // token-less permission, or when no token is visible) ride along so the recheck
-      // can point the model at each one; with none it is judged holistically.
+      // the scan was not decidable, or the permission has no prompt entry). The token
+      // sites ride along on the escalation, empty for a token-less permission or when
+      // no token is visible.
       ctx.note?.("manifest.json", loc, p, VERDICT.UNSURE);
       escalations.push({ item: p, file: "manifest.json", loc, occurrences });
     });
@@ -437,7 +429,7 @@ export function enumerateUnusedPermissions(ctx, recheckData) {
  * permissions to [] even when another entry contributes tokens, because that
  * entry's usages are declared token-undetectable.
  * @param {?object} manifest
- * @param {?object[]} prompts  LoadedCheck.recheck.permissionPrompts.
+ * @param {?object[]} prompts  LoadedCheck.permissionTokens.
  * @returns {Map<string, string[]>}
  */
 function permissionTokens(manifest, prompts) {
@@ -464,7 +456,7 @@ function permissionTokens(manifest, prompts) {
  * Every occurrence of each of `tokens` in the add-on's code or manifest, keyed by
  * token: `{file, line}` per site (line null only when a manifest occurrence cannot
  * be located). Both the presence decision (a token with no occurrences is unused)
- * and the recheck (each occurrence is a site the model judges) read this.
+ * and the escalation (each occurrence is a site to judge) read this.
  *
  * A token comes in two forms. A DOTTED token `ns.member` (e.g. `tabs.executeScript`)
  * is an API CALL: it is resolved against the api-usage analysis (resolveApiUsages),

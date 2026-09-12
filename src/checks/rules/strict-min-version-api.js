@@ -4,15 +4,14 @@
 // But the same API may be used safely behind feature detection (optional chaining, a
 // typeof/existence check, an earlier guard clause that bailed out when the API was
 // missing, or a getBrowserInfo version gate) so it only runs where
-// it exists. Whether a site is really guarded is a local judgement, so this is an
-// LLM check with a deterministic pre-flight (like data-exfiltration):
+// it exists. Whether a site is really guarded is a local judgement, so the scan
+// splits two ways:
 //   - a too-new API used with no guard signal -> a deterministic finding (a hard
-//     error even with no LLM token);
+//     error);
 //   - a too-new API whose only use carries a guard signal (usage.guarded from
-//     api-usage.js) -> one LLM candidate, judged with the call's file as corpus:
-//     pass (safely guarded) -> drop, fail (runs unconditionally) -> finding, unsure
-//     -> manual review.
-// An API used unguarded ANYWHERE wins: it becomes the hard finding, not a candidate.
+//     api-usage.js) -> an escalation, for a reviewer to read the call and decide
+//     whether the guard really keeps it off the versions that lack the API.
+// An API used unguarded ANYWHERE wins: it becomes the hard finding, not an escalation.
 //
 // Scope: this only ever sees REAL, schema-resolved APIs (kind function|event with a
 // version_added). A hallucinated/unsupported API resolves to neither and is left to
@@ -37,12 +36,12 @@ import { finding } from "../../report/finding.js";
 import { SchemaIndex } from "../../schema/index.js";
 import { strictMinVersion, parseVersion, cmpVersion } from "../../lib/util.js";
 import { resolveApiUsages } from "../../lib/api-resolution.js";
-import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 
 export default {
   /**
    * @param {import("../registry.js").RunContext} ctx
-   * @returns {{findings: object[], llm?: import("../escalation.js").LlmStep}}
+   * @returns {{findings: object[],
+   *   escalations: import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
     const minStr = ctx.manifest ? strictMinVersion(ctx.manifest) : undefined;
@@ -59,7 +58,7 @@ export default {
 
     // One entry per api (namespace.member), at its first site. An unconditional
     // (unguarded) site wins over a guarded one, so an api used unguarded anywhere
-    // is a hard finding rather than an LLM candidate.
+    // is a hard finding rather than an escalation.
     const byApi = new Map();
     for (const { file, usage, res } of resolveApiUsages(ctx)) {
       if (res.kind !== "function" && res.kind !== "event") {
@@ -93,9 +92,7 @@ export default {
     }
 
     const findings = [];
-    const candidates = [];
-    const cases = [];
-    let n = 0;
+    const escalations = [];
     for (const e of byApi.values()) {
       const args = {
         file: e.file,
@@ -114,30 +111,16 @@ export default {
         findings.push(finding(args));
         continue;
       }
-      // Possibly feature-detected: let the LLM decide from the call's file.
-      const id = `V${++n}`;
+      // Possibly feature-detected: the reviewer decides from the call's file.
       ctx.note?.(
         e.file,
         e.loc,
         `${e.display} (added in TB ${e.va})`,
         VERDICT.UNSURE
       );
-      candidates.push({
-        id,
-        file: e.file,
-        line: e.loc.line,
-        note: `${e.display} was added in Thunderbird ${e.va}, newer than the declared strict_min_version ${minStr}`,
-        corpus: [e.file],
-      });
-      cases.push({ id, finding: args, item: e.display });
+      escalations.push(args);
     }
 
-    if (!candidates.length) {
-      return { findings };
-    }
-    return {
-      findings,
-      llm: { candidates, resolve: perCandidateResolve(cases) },
-    };
+    return { findings, escalations };
   },
 };

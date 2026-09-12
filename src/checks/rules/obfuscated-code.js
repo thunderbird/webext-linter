@@ -5,43 +5,39 @@
 // shape of a known obfuscator family (see src/lib/obfuscation.js); it cannot
 // catch every obfuscator (high precision, partial recall). A STRONG family is a
 // deterministic finding. A WEAK-family-only match (a structure that ordinary
-// readable code also has) is the UNSURE verdict: the file becomes one LLM candidate,
-// judged from its own content alone (fail -> finding, unsure -> manual review,
-// pass -> drop; with no LLM token every candidate falls to manual review).
-// Deliberately, neither the model nor the manual-review text is told what the
-// detector matched - a hint could anchor the judgment, and the file's content
-// must speak for itself. The families appear only in the --debug log. A file that
+// readable code also has) is the UNSURE verdict: the file escalates to a reviewer,
+// who judges it from its own content alone. Deliberately, the manual-review text
+// is NOT told what the detector matched - a hint could anchor the judgment, and
+// the file's content must speak for itself. The families appear only in the
+// --debug log. A file that
 // is merely minified (not obfuscated) is minified-code's job; a file that is both
 // is reported here, since obfuscation is the stronger signal.
 //
 // Belongs here: selecting the classifier verdicts that are obfuscated AND not a
-// library, emitting one finding per such file, and the weak-only LLM candidates
-// with their 1:1 verdict mapping.
+// library, emitting one finding per such file, and escalating the weak-only
+// matches.
 //
 // Does NOT belong here: the classification heuristics themselves (->
 // src/checks/ lib/bundled.js, classifyAddonJs), the library-signal verdict and
 // its finding (-> missing-library.js), the minified-only verdict (->
-// minified-code.js), the model transport (-> src/checks/llm-client.js), the
-// resolve pattern (-> src/lib/verdict-resolve.js), authored wording (->
+// minified-code.js), the deterministic->manual routing (->
+// src/checks/registry.js + src/checks/escalation.js), authored wording (->
 // assets/registry.yaml), severity (-> that registry entry, stamped by
 // src/checks/registry.js), and report formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
 import { classifyAddonJs, classifyInlineScripts } from "../../lib/bundled.js";
-import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {
   /**
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[],
-   *   llm?: import("../escalation.js").LlmStep}}
+   *   escalations: import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
     const findings = [];
-    const candidates = [];
-    const cases = [];
-    let n = 0;
+    const escalations = [];
     for (const c of classifyAddonJs(ctx)) {
       if (c.library || c.untrusted) {
         // a recognized library is missing-library's concern; an untrusted (not-popular)
@@ -49,12 +45,10 @@ export default {
         continue;
       }
       // An "unsure" verdict (a weak-family-only match - the detector's families stay
-      // inside src/lib/obfuscation.js): one LLM candidate, judged from the file's own
+      // inside src/lib/obfuscation.js): the reviewer judges the file from its own
       // content, which carries no hint of what the detector matched.
       if (c.obfuscation.unsure) {
-        const id = `V${++n}`;
-        candidates.push({ id, file: c.file, corpus: [c.file] });
-        cases.push({ id, finding: { file: c.file }, item: c.file });
+        escalations.push({ file: c.file });
         ctx.note?.(c.file, null, "possible obfuscation", c.obfuscation);
         continue;
       }
@@ -76,21 +70,10 @@ export default {
     // developer's own code (see classifyInlineScripts).
     for (const site of classifyInlineScripts(ctx)) {
       if (site.obfuscation.unsure) {
-        const id = `V${++n}`;
         // The LINE is what distinguishes two scripts in one page: without it both
-        // candidates render as the same subject, the model is asked one question about
-        // two bodies, and a verdict can land on the wrong one.
-        candidates.push({
-          id,
-          file: site.file,
-          line: site.loc.line,
-          corpus: [site.file],
-        });
-        cases.push({
-          id,
-          finding: { file: site.file, loc: site.loc },
-          item: site.file,
-        });
+        // bodies render as the same subject and the reviewer cannot tell which one
+        // the entry means.
+        escalations.push({ file: site.file, loc: site.loc });
         ctx.note?.(
           site.file,
           site.loc,
@@ -109,12 +92,6 @@ export default {
         findings.push(finding({ file: site.file, loc: site.loc }));
       }
     }
-    if (!candidates.length) {
-      return { findings };
-    }
-    return {
-      findings,
-      llm: { candidates, resolve: perCandidateResolve(cases) },
-    };
+    return { findings, escalations };
   },
 };

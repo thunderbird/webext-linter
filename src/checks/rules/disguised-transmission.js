@@ -1,20 +1,19 @@
-// LLM check: a covert channel (a resource/stylesheet src/href, a CSS url(), a
-// window.open, or a page navigation) whose URL is built with a runtime value but
-// carries NO user-data API call. Smuggling data through such a channel is
-// disguised exfiltration, but "a remote URL with a dynamic piece" on its own is a
-// weak signal - extremely common in legitimate code (navigating to `host/${id}`,
+// A covert channel (a resource/stylesheet src/href, a CSS url(), a window.open,
+// or a page navigation) whose URL is built with a runtime value but carries NO
+// user-data API call. Smuggling data through such a channel is disguised
+// exfiltration, but "a remote URL with a dynamic piece" on its own is a weak
+// signal - extremely common in legitimate code (navigating to `host/${id}`,
 // loading `cdn/${name}.png`). The STRONG case (a messages/contacts/... call sits
 // in the URL) is the hard-error disguised-* checks; this check takes the weak
-// residue and asks whether it is really an undisclosed data send. One LLM
-// candidate per site; the orchestrator maps each verdict 1:1 (fail -> finding,
-// unsure -> manual, pass -> drop).
+// residue, which the source does not settle, and escalates each site to a
+// reviewer.
 //
-// Belongs here: the candidate per weak covert sink and the verdict mapping. Does
-// NOT belong here: the sink scan (-> src/parse/network-sinks.js, aggregated by
+// Belongs here: one escalation per weak covert sink. Does NOT belong here: the
+// sink scan (-> src/parse/network-sinks.js, aggregated by
 // getOutboundSinks/isWeakCovertExfil in src/lib/outbound-sinks.js), the
-// hard-error strong case (-> the disguised-*.js checks), the model transport (->
-// src/checks/llm-client.js), the resolve pattern (-> src/lib/
-// verdict-resolve.js), and authored wording (-> assets/registry.yaml).
+// hard-error strong case (-> the disguised-*.js checks), the
+// deterministic->manual routing (-> src/checks/registry.js +
+// src/checks/escalation.js), and authored wording (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
 import {
@@ -22,7 +21,6 @@ import {
   isWeakCovertExfil,
   sinkLabel,
 } from "../../lib/outbound-sinks.js";
-import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -39,13 +37,12 @@ const CHANNEL = {
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {{findings: [], llm?: import("../escalation.js").LlmStep}}
+   * @returns {{findings: [], escalations:
+   *   import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
-    const candidates = [];
-    const cases = [];
+    const escalations = [];
     const seen = new Set();
-    let n = 0;
     for (const sink of getOutboundSinks(ctx)) {
       if (!isWeakCovertExfil(sink)) {
         continue;
@@ -56,28 +53,14 @@ export default {
       }
       seen.add(key);
       const loc = { line: sink.line, column: sink.column };
-      const id = `D${++n}`;
       const channel = CHANNEL[sink.type] ?? sink.type;
-      candidates.push({
-        id,
-        file: sink.file,
-        line: sink.line,
-        note: `builds ${channel} to a remote host with a runtime value`,
-        corpus: [sink.file],
-      });
-      // file:line via the location; `hint` (the channel) rides along so it
-      // survives the unsure->manual->recheck hand-off. `item` stays absent so the
-      // recheck key is file:line.
+      // file:line via the location; `hint` (the channel) rides along and is shown
+      // on the locus. `item` stays absent, so every site groups under the one
+      // manual entry.
       const label = sinkLabel(sink, channel);
-      cases.push({ id, finding: { file: sink.file, loc, hint: label } });
+      escalations.push({ file: sink.file, loc, hint: label });
       ctx.note?.(sink.file, loc, label, VERDICT.UNSURE);
     }
-    if (!candidates.length) {
-      return { findings: [] };
-    }
-    return {
-      findings: [],
-      llm: { candidates, resolve: perCandidateResolve(cases) },
-    };
+    return { findings: [], escalations };
   },
 };

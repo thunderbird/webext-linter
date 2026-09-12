@@ -11,7 +11,7 @@ Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
-── Extended manual review ──
+── Extended code review ──
 
 Continue manual review for the following checks:
 
@@ -91,4 +91,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 0 warning(s), 3 info, 1 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 warning(s), 3 info, 1 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)

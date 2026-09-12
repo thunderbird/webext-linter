@@ -8,18 +8,30 @@ Thank you for your contribution, it will be approved shortly. We kindly ask you 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
 
-You can run this automated review yourself before submitting (this review was performed using the --llm-review option):
+You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
+
+── Extended code review ──
+
+Continue manual review for the following checks:
+
+1) Possibly unused permissions: Review whether the following declared
+   permissions are used, and ask the developer to remove any that are not
+   needed.
+Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
+ - [XPI] manifest.json:6 - messagesRead
+ - [XPI] manifest.json:6 - accountsRead
 
 ── Extended manual review ──
 
 Continue manual review for the following checks:
 
-1) Unused permission: One or more declared permissions may be unused. Confirm
-   whether the add-on actually needs them, and if not, ask the developer to
-   remove them.
-Suggested response: One or more declared permissions are unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If a permission is in fact used, please specify which part of your add-on stops working if it is removed.
- - [XPI] manifest.json:6 - accountsRead
+1) Build process review: Reproduce the build from the source by hand and confirm
+   it pulls ONLY from the dependencies declared in package.json/lock - no remote
+   code or resources from a raw URL, curl/wget, a git clone of an unpinned repo,
+   a CDN, or a postinstall hook.
+Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+ - [SCA] package.json
 
 ── Standard manual review ──
 
@@ -88,11 +100,6 @@ Suggested response: The submission appears to be a fork of an existing add-on th
 
 Because the original project is still active, your submission does not meet these requirements. Small-change forks can sometimes cause confusion for users and unnecessary overlap for developers. We encourage you to consider contributing your improvements directly to the original project so that all existing users can benefit from your ideas.
 
-── Summary of add-on ──
-
-  Shipped-package recheck: per-occurrence for the property tokens in the built
-  XPI.
-
 ── Summary ──
 
-0 error(s), 1 warning(s), 0 info, 1 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 1 warning(s), 0 info, 2 extended code review step(s), 1 extended manual review step(s), 10 standard manual review step(s)

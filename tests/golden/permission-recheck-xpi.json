@@ -83,34 +83,14 @@
       "remote-resources",
       "remote-eval",
       "data-exfiltration",
-      "disguised-transmission",
-      "unused-permission-recheck",
-      "missing-english-localization-recheck",
-      "unused-files-recheck",
-      "minimize-web-accessible-resources-recheck",
-      "data-exfiltration-recheck",
-      "disguised-transmission-recheck"
+      "disguised-transmission"
     ]
   },
   "summary": {
     "error": 0,
-    "warning": 1,
+    "warning": 0,
     "info": 0,
-    "byRule": {
-      "unused-permission-recheck": 1
-    }
+    "byRule": {}
   },
-  "findings": [
-    {
-      "ruleId": "unused-permission-recheck",
-      "severity": "warning",
-      "file": "manifest.json",
-      "loc": {
-        "line": 6
-      },
-      "item": "compose",
-      "hint": null,
-      "message": "One or more declared permissions are unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. If a permission is in fact used, please specify which part of your add-on stops working if it is removed."
-    }
-  ]
+  "findings": []
 }

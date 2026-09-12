@@ -48,7 +48,7 @@ import { isMinified, isMinifiedJs } from "./minified.js";
  *   identifier considers it for a jsDelivr match. `obfuscation` is the three-state VERDICT
  *   from src/lib/obfuscation.js: FAIL (a STRONG-family match - the obfuscated-code finding,
  *   non-authored), UNSURE (a weak-family-only match - readable, authored, scanned, and
- *   referred to obfuscated-code's LLM/manual adjudication), or PASS. `cdn` is set later
+ *   referred to obfuscated-code's a reviewer's judgement), or PASS. `cdn` is set later
  *   (src/lib/cdn-lookup.js) when such a bundle is matched on the jsDelivr CDN:
  *   it holds the jsDelivr source URL (and its type) for the find-lib-on-cdn finding
  *   plus `popular` - whether the matched package cleared the popularity trust bar.
@@ -474,7 +474,7 @@ export function classify(text, file, { detectObfuscation = true } = {}) {
   // Obfuscation is JS-only (a stylesheet is never obfuscated in this sense); isMinified
   // handles both JS (statement density) and CSS (packed rules). The verdict is three-state:
   // a weak-family-only match is UNSURE (readable, authored, scanned) and referred to the
-  // obfuscated-code check's LLM/manual adjudication, never a deterministic finding.
+  // obfuscated-code check's a reviewer's judgement, never a deterministic finding.
   return {
     minified: isMinified(text, file),
     obfuscation:

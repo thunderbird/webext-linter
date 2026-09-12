@@ -592,11 +592,12 @@ test("remote-resources + eval checks: no findings for a clean bundled add-on", (
     { manifest_version: 3, name: "x", version: "1" }
   );
   assert.equal(remoteScript.run(withManifest(ctx)).findings.length, 0);
-  assert.ok(!remoteScript.run(withManifest(ctx)).llm); // no undecidable sites -> no LLM step
+  // no undecidable sites -> nothing escalated either
+  assert.deepEqual(remoteScript.run(withManifest(ctx)).escalations, []);
   assert.equal(evalCall.run(withManifest(ctx)).length, 0);
   const re = remoteEval.run(withManifest(ctx));
   assert.equal(re.findings.length, 0);
-  assert.ok(!re.llm);
+  assert.deepEqual(re.escalations, []);
 });
 
 // ---- investigation notes (ctx.note) ----
@@ -680,10 +681,10 @@ test("formatNote renders a padded verdict tag and the site", () => {
   );
 });
 
-// ---- verified vendored files: the llm-not-needed lane ----
+// ---- verified vendored files: the manual-review lane ----
 // A remote @import inside a file whose content matched a published upstream release
 // is that release's own line. It is not dropped (a reviewer still sees it) and not a
-// finding (it is not the developer's line), and it is marked `llmNotNeeded` so
+// finding (it is not the developer's line), and it is marked `manualReview` so
 // registry.rechecks keeps it away from the model - what is left is whether shipping
 // that release here is acceptable, which is a person's call.
 const VENDORED_CSS = {
@@ -701,7 +702,7 @@ test("remote-resources sends a remote load in a VERIFIED vendored file to a pers
   assert.deepEqual(out.findings, []);
   assert.equal(out.escalations.length, 1);
   const [e] = out.escalations;
-  assert.equal(e.llmNotNeeded, true);
+  assert.equal(e.manualReview, true);
   assert.equal(e.file, "lib/x.css");
   assert.equal(e.hint, UPSTREAM); // which release it was matched against
   // The subject is the WHOLE url, as the finding lane reports it - the reviewer is
@@ -720,7 +721,7 @@ test("remote-resources routes a remote <script> in a verified file the same way"
   const out = remoteScript.run(withManifest(ctx));
   assert.deepEqual(out.findings, []);
   assert.deepEqual(
-    out.escalations.map((e) => [e.item, e.llmNotNeeded]),
+    out.escalations.map((e) => [e.item, e.manualReview]),
     [["https://cdn.example/evil.js", true]]
   );
 });
@@ -741,7 +742,7 @@ test("remote-resources still flags a remote load in a declared but unverified fi
     );
     const out = remoteScript.run(withManifest(ctx));
     assert.equal(out.findings.length, 1, outcome);
-    assert.equal(out.escalations, undefined, outcome);
+    assert.deepEqual(out.escalations, [], outcome);
   }
   // ... and a file with no vendor store at all (the SCA / undeclared case).
   const bare = fakeCtx(VENDORED_CSS, { manifest_version: 3 });
@@ -760,22 +761,21 @@ test("remote-resources refuses the exemption for a file marked untrusted", () =>
   });
   const out = remoteScript.run(withManifest(ctx));
   assert.equal(out.findings.length, 1);
-  assert.equal(out.escalations, undefined);
+  assert.deepEqual(out.escalations, []);
 });
 
 // An undecidable site in a verified vendored file goes to the reviewer too, not the
 // model: the only thing a verdict could do there is produce a finding this file is
-// exempt from, so asking would spend a model call to reach the same place.
-test("remote-resources does not ask the model about a verified vendored file", () => {
+// exempt from, so the undecidable question is not asked about it at all.
+test("remote-resources asks a different question about a verified vendored file", () => {
   const ctx = fakeCtx(
     { "lib/x.html": `<script src="data:text/javascript,alert(1)"></script>` },
     { manifest_version: 3 },
     verified("lib/x.html")
   );
   const out = remoteScript.run(withManifest(ctx));
-  assert.equal(out.llm, undefined);
   assert.equal(out.escalations.length, 1);
-  assert.equal(out.escalations[0].llmNotNeeded, true);
+  assert.equal(out.escalations[0].manualReview, true);
 });
 
 // The scanners can report one site twice; the findings lane has always deduped, and a

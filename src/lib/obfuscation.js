@@ -8,7 +8,7 @@
 // of a token-presence heuristic. One family is the exception (WEAK_FAMILIES below):
 // its structure also matches ordinary readable code, so it never decides the verdict
 // on its own - a weak-only match is only a trigger for the obfuscated-code check's
-// LLM/manual adjudication, which the classification carries as the "unsure" verdict.
+// a reviewer's judgement, which the classification carries as the "unsure" verdict.
 //
 // Minification is a SEPARATE, geometric signal (src/lib/bundled.js classify) and
 // is deliberately not decided here: a minified-but-clean library is allowed with source,
@@ -17,7 +17,7 @@
 // Belongs here: the library import, the family list + weak/strong split, and the
 // obfuscation verdict. The family names never leave this module - callers branch on the
 // verdict, not the families. Does NOT belong here: the per-file library/minified tagging and the
-// non-authored skip set (src/lib/bundled.js), the obfuscated-code finding and its LLM
+// non-authored skip set (src/lib/bundled.js), the obfuscated-code finding and its review
 // step (src/checks/rules/obfuscated-code.js), or the library's own AST parse (it
 // parses internally, offline and pure - no network).
 
@@ -66,7 +66,7 @@ function detectFamilies(text, file) {
 /**
  * Whether a detectFamilies result decides obfuscation on its own: at least one strong
  * family matched. A weak-only result returns false - it marks a candidate for the
- * obfuscated-code check's LLM/manual adjudication, never a verdict. Pure, so callers
+ * obfuscated-code check's a reviewer's judgement, never a verdict. Pure, so callers
  * derive both the families and the verdict from one parse.
  * @param {string[]} families  A detectFamilies result.
  * @returns {boolean}
@@ -79,7 +79,7 @@ function hasStrongFamily(families) {
  * The obfuscation verdict for one JavaScript file, a shared VERDICT: FAIL (a strong-family
  * structural match; a deterministic finding), UNSURE (a weak-family-only match, whose
  * structure ordinary readable code also has - judged by the obfuscated-code check's
- * LLM/manual adjudication, never a verdict on its own), or PASS (no family matched, or
+ * a reviewer's judgement, never a verdict on its own), or PASS (no family matched, or
  * source the detector could not parse). The family list stays inside this module - callers
  * branch on the verdict, not the families.
  * @param {string} text  JavaScript source.

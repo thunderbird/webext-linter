@@ -1,7 +1,8 @@
 {
-  "_comment": "SCA (src/ + xpi/) reviewed with --llm-review (via llm.js). Exercises the SCA two-pass add-on summary: the SOURCE pass over src/ (the displayed Summary of add-on) plus the PACKAGING pass over the built XPI, which re-judges the XPI-anchored unused-files recheck (orphan.js, made an LLM candidate by loader.js's dynamic loader, judged unused -> a finding). analyzeBuild also runs (callText classifies the build 'ok'). unsafe-html is the deterministic source finding (Comp.vue's innerHTML sink).",
+  "_comment": "SCA (src/ + xpi/) covering the two-artifact split: unsafe-html is the deterministic SOURCE finding (Comp.vue's innerHTML sink), while orphan.js is XPI-anchored and reached only through loader.js's dynamic loader, so whether it ships unused is a judgement the scan cannot make and it escalates to a person.",
   "expect": {
-    "unsafe-html": ["Comp.vue:7"],
-    "unused-files-recheck": ["orphan.js"]
+    "unsafe-html": [
+      "Comp.vue:7"
+    ]
   }
 }

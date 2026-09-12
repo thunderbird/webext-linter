@@ -1,33 +1,28 @@
-// LLM check: minimize web_accessible_resources. The deterministic pre-flight
-// resolves the clear cases as findings, with two concerns. (a) Over-broad
-// exposure - a resource pattern like "*" exposes the whole add-on. (b) A
-// concrete exposed resource that no content script or page loads (not
-// web-reachable via getURL/HTML/CSS) is a finding when clearly unloaded. When a
-// resource is ambiguous (live code names it, or the add-on uses dynamic
-// loaders) each suspected loader SITE becomes an LLM candidate ("does this site
-// load F for a web context?"); this check aggregates per exposed file F (any
-// site loads it -> the exposure is needed; none does -> needless).
+// Minimize web_accessible_resources. The scan resolves the clear cases as
+// findings, with two concerns. (a) Over-broad exposure - a resource pattern like
+// "*" exposes the whole add-on. (b) A concrete exposed resource that no content
+// script or page loads (not web-reachable via getURL/HTML/CSS) is a finding when
+// clearly unloaded. When a resource is ambiguous (live code names it, or the
+// add-on uses dynamic loaders) the exposed file escalates, for a reviewer to
+// follow the suspected loaders and decide whether a web context really loads it.
 //
-// Belongs here: classifying each web_accessible_resources entry as a finding, a
-// candidate, or clean, the per-site candidate set, and the per-F aggregation.
-// Does NOT belong here: parsing the entry list and the broad/over-broad
-// predicates (warResourceList, expandResourcePattern, isOverBroadResource) ->
-// src/lib/web-accessible-resources.js. The web-reachability graph and
-// mention/loader-site lookups -> src/lib/reachability.js + util.js. The
-// model transport -> src/checks/llm-client.js. The resolve pattern ->
-// src/lib/verdict-resolve.js. Authored wording -> assets/registry.yaml.
-// Severity -> that registry entry, stamped by runChecks. Report formatting ->
-// src/report/format.js.
+// Belongs here: classifying each web_accessible_resources entry as a finding, an
+// escalation, or clean. Does NOT belong here: parsing the entry list and the
+// broad/over-broad predicates (warResourceList, expandResourcePattern,
+// isOverBroadResource) -> src/lib/web-accessible-resources.js. The
+// web-reachability graph and mention/loader-site lookups -> src/lib/
+// reachability.js + util.js. The deterministic->manual routing ->
+// src/checks/registry.js + src/checks/escalation.js. Authored wording ->
+// assets/registry.yaml. Severity -> that registry entry, stamped by runChecks.
+// Report formatting -> src/report/format.js.
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import {
   referrerSupported,
   loaderTrace,
-  loaderSites,
   manifestTokenLine,
 } from "../../lib/util.js";
-import { aggregateGroups } from "../../lib/verdict-resolve.js";
 import { buildReachability } from "../../lib/reachability.js";
 import {
   warResourceList,
@@ -41,7 +36,7 @@ export default {
   /**
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[],
-   *   llm?: import("../escalation.js").LlmStep}}
+   *   escalations: import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
     // Registry `input: xpi`: ctx.addon is the built XPI. web_accessible_resources -
@@ -63,10 +58,8 @@ export default {
       return line ? { line } : null;
     };
     const findings = [];
-    const candidates = [];
     /** @type {{ids: string[], finding: object}[]} per WAR file. */
-    const groups = [];
-    let n = 0;
+    const escalations = [];
     const seen = new Set();
     /**
      * Emit one finding per key. `item` is the displayed entry; `locItem` is the
@@ -124,25 +117,14 @@ export default {
           );
           const trace = `${file} - ${loaderTrace(reach, mentions, supported)}`;
           // A web context plausibly loads it (a reference from live code, or a
-          // live dynamic loader) -> ask per site whether it really does. Named
-          // only by dead code with no live loader -> plainly needless.
+          // live dynamic loader) -> the reviewer decides whether one really does.
+          // Named only by dead code with no live loader -> plainly needless.
           if (supported || reach.hasDynamicLoaders) {
             ctx.note?.("manifest.json", null, trace, VERDICT.UNSURE);
-            const ids = [];
-            for (const site of loaderSites(reach, mentions, supported)) {
-              const id = `W${++n}`;
-              ids.push(id);
-              candidates.push({
-                id,
-                file: site.file,
-                line: site.line ?? undefined,
-                note: `does this site load ${file} for a web context?`,
-                corpus: [site.file],
-              });
-            }
-            groups.push({
-              ids,
-              finding: { file: "manifest.json", loc: lineOf(pat), item: file },
+            escalations.push({
+              file: "manifest.json",
+              loc: lineOf(pat),
+              item: file,
             });
           } else {
             ctx.note?.("manifest.json", null, trace, VERDICT.FAIL);
@@ -152,10 +134,6 @@ export default {
       }
     }
 
-    const result = { findings };
-    if (candidates.length) {
-      result.llm = { candidates, resolve: aggregateGroups(groups) };
-    }
-    return result;
+    return { findings, escalations };
   },
 };

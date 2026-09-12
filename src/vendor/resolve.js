@@ -1,6 +1,6 @@
 // Resolves the add-on's vendored declarations ONCE, at the top of the pipeline,
 // before anything reformats or reviews files. This is the OFFLINE half: it
-// parses the VENDOR file (with an LLM fallback) and the package.json dependency
+// parses the VENDOR file and the package.json dependency
 // manifest (pinning each via an exact spec or a lock file), classifies each
 // declared source, and builds the shared `addon.vendor` store. The network half
 // (fetch + compare + popularity) is verifyVendor (src/vendor/verify.js), which
@@ -10,20 +10,11 @@
 // offline `addon.vendor` (set, manifest, packages, unpinned, offline results).
 // Does NOT belong here: the network verification (-> verify.js), the
 // deterministic VENDOR parse (-> src/normalize/vendor.js), lock parsing (->
-// src/vendor/locks.js), URL classification (-> src/vendor/sources.js), and the
-// LLM wire protocol (-> src/llm/provider.js + the adapters).
+// src/vendor/locks.js), and URL classification (-> src/vendor/sources.js).
 
-import {
-  readVendorDeclarations,
-  readVendorFile,
-  buildFileMatcher,
-} from "../normalize/vendor.js";
+import { readVendorDeclarations, readVendorFile } from "../normalize/vendor.js";
 import { classifySource } from "./sources.js";
 import { lockedVersion } from "./locks.js";
-import { getProvider } from "../llm/provider.js";
-import { progress, FEED, llmErrorText } from "../util/log.js";
-import { red } from "../util/color.js";
-import { newNonce, wrap, framing } from "../lib/untrusted.js";
 import { SCHEME_RE } from "../lib/util.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
@@ -191,64 +182,15 @@ export function verifiedVendorSource(addon, file) {
  * Resolve the offline vendored declarations into `addon.vendor`.
  * @param {object} params
  * @param {Addon} params.addon
- * @param {?string} [params.parsePrompt]  The registry prompts.vendor-parse text.
- * @param {boolean} [params.enabled]  Whether the LLM is enabled
- *   (--llm-review); gates the LLM parse fallback. Decoupled from the token (a
- *   keyless provider has none).
- * @param {?string} [params.token]  LLM token (a real key, or undefined keyless).
- * @param {string} [params.model]
- * @param {string} [params.url]  Override the LLM API base URL (LLM_API_URL).
- * @param {string} [params.type]  LLM_API_TYPE (claude | chatgpt | ollama).
- * @param {Function} [params.callText]  Injectable transport (else the
- *   provider's).
- * @param {import("../llm/budget.js").LlmBudget} [params.budget]  Run-wide model
- *   request cap; the parse fallback is skipped once it is exhausted.
- * @returns {Promise<VendorStore>}
+ * @returns {VendorStore}
  */
-export async function resolveVendor({
-  addon,
-  parsePrompt,
-  enabled = false,
-  token,
-  model,
-  url,
-  type,
-  callText = getProvider(type).callText,
-  budget,
-}) {
+export function resolveVendor({ addon }) {
   const vendorFile = readVendorFile(addon);
   // Both halves of one reading: what the VENDOR file declares that the submission
   // holds, and what it declares that the submission does not. Taking them together
   // is why the file is read once rather than once per half.
   const { resolved, missing } = readVendorDeclarations(addon);
   const manifest = resolved;
-  // The LLM parse fallback is one model request. Count it against the run-wide
-  // cap and skip it (deterministic only) once that is spent. Gated on the LLM
-  // being enabled, not on a token (Ollama is keyless).
-  const wantLlmParse =
-    Boolean(vendorFile) && manifest.length === 0 && enabled && parsePrompt;
-  if (wantLlmParse && (!budget || (await budget.consume()))) {
-    try {
-      manifest.push(
-        ...(await llmExtract({
-          text: vendorFile.text,
-          addon,
-          parsePrompt,
-          token,
-          model,
-          url,
-          callText,
-        }))
-      );
-    } catch (err) {
-      // Report the failure at this step (visible without --verbose). The
-      // deterministic parse still stands, so the review continues.
-      progress(
-        red(`vendor parse: LLM fallback failed - ${llmErrorText(err)}`),
-        FEED.STEP
-      );
-    }
-  }
 
   const set = new Set();
   const folders = new Set();
@@ -501,65 +443,4 @@ function parseGithubSpec(spec) {
     return split(scp[1]);
   }
   return null;
-}
-
-/**
- * Extract {path, sourceUrl} from a free-form VENDOR file via the LLM, keeping
- * only paths that resolve to a real packaged file.
- * @param {object} params
- * @param {string} params.text @param {Addon} params.addon
- * @param {string} params.parsePrompt @param {string} params.token
- * @param {string} params.model @param {string} [params.url]  LLM base URL.
- * @param {Function} params.callText
- * @returns {Promise<VendorEntry[]>}
- */
-async function llmExtract({
-  text,
-  addon,
-  parsePrompt,
-  token,
-  model,
-  url,
-  callText,
-}) {
-  // The VENDOR file is free-form, attacker-controlled text - the highest-risk
-  // injection vector. Trusted instructions go in system; the file is wrapped in
-  // nonce markers as user data (see src/lib/untrusted.js).
-  const nonce = newNonce();
-  const reply = await callText({
-    token,
-    model,
-    baseURL: url,
-    system: `${framing(nonce)}\n\n${parsePrompt}`,
-    prompt: wrap(nonce, "VENDOR", text),
-  });
-  const match = buildFileMatcher(addon);
-  const out = [];
-  const seen = new Set();
-  for (const item of parseJsonArray(reply)) {
-    const path =
-      item && typeof item.file === "string" ? match(item.file) : null;
-    if (path && !seen.has(path)) {
-      seen.add(path);
-      out.push({
-        path,
-        sourceUrl: typeof item.url === "string" ? item.url : null,
-      });
-    }
-  }
-  return out;
-}
-
-/** @param {string} reply @returns {Array<{file?: string, url?: string}>} */
-function parseJsonArray(reply) {
-  const m = String(reply).match(/\[[\s\S]*\]/);
-  if (!m) {
-    return [];
-  }
-  try {
-    const value = JSON.parse(m[0]);
-    return Array.isArray(value) ? value : [];
-  } catch {
-    return [];
-  }
 }

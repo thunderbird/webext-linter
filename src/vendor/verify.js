@@ -13,9 +13,8 @@
 //     records the covered files as unfetchable, which applyUnverifiedVendor
 //     reconciles into the untrusted family. An npm-sourced entry is also OSV-audited
 //     (auditNpm); a github-sourced one (bar a first-party org) is run through
-//     auditGithub, which tries to PROVE an npm twin by content-hash match (the
-//     deterministic repo-name candidate, then an optional LLM-proposed name,
-//     always re-proved by hash) and audit it, recording the rest as unaudited.
+//     auditGithub, which tries to PROVE an npm twin by content-hash matching the
+//     repo-name candidate, and audits it, recording the rest as unaudited.
 //   - package.json dependencies pinned to a version: fetch the published file
 //     listing from unpkg ONCE (it carries a per-file sha256 integrity) and mark
 //     vendored any packaged file whose content hash matches a published file's
@@ -41,8 +40,6 @@ import { npmNameForLibrary } from "../lib/library-hashes.js";
 import { matchLibraryBlock } from "../lib/library-blocks.js";
 import { normalizedSha256, eolNormalize } from "../normalize/hash.js";
 import { fetchWithTimeout } from "../util/net.js";
-import { getProvider } from "../llm/provider.js";
-import { newNonce, wrap, framing } from "../lib/untrusted.js";
 import {
   VENDOR_NPM_MIN_DOWNLOADS,
   VENDOR_GITHUB_MIN_STARS,
@@ -91,32 +88,15 @@ import {
  */
 
 /**
- * @typedef {object} VendorLlm  The LLM params for the github->npm resolution
- *   fallback, threaded from the pipeline (mirrors resolveVendor's LLM inputs).
- *   When absent or `enabled` is false, github entries resolve deterministically
- *   only (offline runs and the golden harness pass nothing).
- * @property {boolean} [enabled]  Whether the LLM is enabled (--llm-review).
- * @property {?string} [resolvePrompt]  The registry prompts.vendor-npm-resolve
- *   text (the rubric for proposing an npm package).
- * @property {?string} [token]  LLM token (a real key, or undefined keyless).
- * @property {string} [model] @property {string} [url]  LLM base URL override.
- * @property {string} [type]  LLM_API_TYPE (claude | chatgpt | ollama).
- * @property {Function} [callText]  Injectable transport (else the provider's).
- * @property {import("../llm/budget.js").LlmBudget} [budget]  Run-wide model cap.
- */
-
-/**
  * Verify the resolved vendor declarations over the network, appending per-file
  * results to (and extending the skip-set of) the shared `addon.vendor` store.
  * @param {Addon} addon  Must already carry `addon.vendor` from resolveVendor.
  * @param {VendorNet} [net]
- * @param {VendorLlm} [llm]  LLM params for the github->npm resolution fallback;
- *   defaults to "no LLM" (deterministic resolution only).
  * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist, applied to
  *   these shipped/declared libraries (see auditNpm).
  * @returns {Promise<void>}
  */
-export async function verifyVendor(addon, net = defaultNet, llm = {}, blocks) {
+export async function verifyVendor(addon, net = defaultNet, blocks) {
   const vendor = addon?.vendor;
   if (!vendor) {
     return;
@@ -160,7 +140,7 @@ export async function verifyVendor(addon, net = defaultNet, llm = {}, blocks) {
         blocks
       );
     } else if (src.kind === "github") {
-      await auditGithub(entry, src, addon, vendor, net, llm, blocks);
+      await auditGithub(entry, src, addon, vendor, net, blocks);
     }
   }
   for (const pkg of vendor.packages) {
@@ -469,23 +449,22 @@ export async function auditIdentifiedLibraries(
  * Try to audit a github-sourced VENDOR entry via its npm twin. A first-party
  * trusted org (VENDOR_TRUSTED_GITHUB_ORGS) stays completely silent - no audit,
  * no unaudited record. Otherwise an npm identity is PROVEN by content-hash
- * matching the bundled bytes against a candidate package's published files
- * (npmHashMatches - path-independent, no bytes downloaded): the deterministic
- * candidate first (repo name @ ref-without-v), then, only if that fails and the
- * LLM is enabled, an LLM-proposed name that is RE-VERIFIED by the same hash match
- * before any audit (the hash is the proof; a wrong guess is rejected, never
- * audited). A proven identity is audited (auditNpm, anchored at the VENDOR-file
+ * matching the bundled bytes against the candidate package's published files
+ * (npmHashMatches - path-independent, no bytes downloaded), the candidate being
+ * repo name @ ref-without-v. The hash is the proof, so a package whose name differs
+ * from its repo (a scoped or renamed one) stays unresolved rather than guessed at.
+ * A proven identity is audited (auditNpm, anchored at the VENDOR-file
  * source line - the developer sees the declared github URL, never the resolved
  * npm one); an unresolved entry is recorded on vendor.unaudited for the
  * vendor-vuln-unknown check.
  * @param {VendorEntry & {trusted: boolean, pinned: boolean}} entry
  * @param {VendorSource} src  The classified github source (carries repo + ref).
  * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
- * @param {VendorLlm} llm @param {?Map<string, object>} [blocks]  The Mozilla policy
- *   blocklist (applied to a proven npm twin; see auditNpm).
+ * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist (applied to a
+ *   proven npm twin; see auditNpm).
  * @returns {Promise<void>}
  */
-async function auditGithub(entry, src, addon, vendor, net, llm, blocks) {
+async function auditGithub(entry, src, addon, vendor, net, blocks) {
   const owner = String(src.repo ?? "")
     .split("/")[0]
     .toLowerCase();
@@ -521,32 +500,8 @@ async function auditGithub(entry, src, addon, vendor, net, llm, blocks) {
     return;
   }
 
-  // (b) LLM fallback: the model only PROPOSES a name (handling scoped/renamed
-  // packages the bare repo name misses); the hash match below re-proves it.
-  if (
-    llm.enabled &&
-    llm.resolvePrompt &&
-    (!llm.budget || (await llm.budget.consume()))
-  ) {
-    const proposal = await llmProposeNpm(entry, src, llm).catch(() => null);
-    const name = proposal?.name;
-    const ver = String(proposal?.version ?? version).replace(/^v/i, "");
-    if (name && ver && (await npmHashMatches(name, ver, bundled, net))) {
-      await auditNpm(
-        name,
-        ver,
-        vendor.vendorFile,
-        entry.sourceUrl,
-        vendor,
-        net,
-        vendor.vulnerabilities,
-        blocks
-      );
-      return;
-    }
-  }
-
-  // (c) Unresolved - hand to vendor-vuln-unknown.
+  // (b) Unresolved - hand to vendor-vuln-unknown. A scoped or renamed package the
+  // bare repo name misses lands here: nothing else proposes a name to hash-check.
   vendor.unaudited.push({
     path: entry.path,
     source: entry.sourceUrl,
@@ -605,49 +560,6 @@ function indexBySri(listing) {
     }
   }
   return byHash;
-}
-
-/**
- * Ask the LLM for the npm package (and version) a github-sourced library
- * corresponds to. The reply is UNTRUSTED and only a hint - auditGithub re-proves
- * it by hash before any audit. The repo/ref/file/source describing the library
- * are wrapped in nonce markers as USER data, with the trusted rubric in the
- * SYSTEM prompt (src/lib/untrusted.js), exactly like resolveVendor's parse
- * fallback.
- * @param {VendorEntry} entry @param {VendorSource} src @param {VendorLlm} llm
- * @returns {Promise<?{name: string, version: ?string}>}
- */
-async function llmProposeNpm(entry, src, llm) {
-  const callText = llm.callText ?? getProvider(llm.type).callText;
-  const nonce = newNonce();
-  const body = JSON.stringify({
-    repo: src.repo,
-    ref: src.ref,
-    file: entry.path,
-    source: entry.sourceUrl,
-  });
-  const reply = await callText({
-    token: llm.token,
-    model: llm.model,
-    baseURL: llm.url,
-    system: `${framing(nonce)}\n\n${llm.resolvePrompt}`,
-    prompt: wrap(nonce, "VENDOR", body),
-  });
-  const m = String(reply).match(/\{[\s\S]*\}/);
-  if (!m) {
-    return null;
-  }
-  try {
-    const j = JSON.parse(m[0]);
-    return typeof j?.name === "string" && j.name
-      ? {
-          name: j.name,
-          version: typeof j.version === "string" ? j.version : null,
-        }
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 /**

@@ -2,7 +2,7 @@
 // "Mozilla", and "MZLA" are never allowed in the name, and "Thunderbird" only as
 // the trailing "<name> for Thunderbird" form. All matching is case-insensitive.
 // A localized __MSG__ name is resolved from _locales (which a deterministic
-// check can read, unlike the LLM). The icon - the other trademark vector - is an
+// check can read, unlike a reviewer). The icon - the other trademark vector - is an
 // image, so it is left to the manual-review list instead. This check returns
 // Finding[] directly - it does not escalate.
 //

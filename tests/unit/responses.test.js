@@ -61,21 +61,21 @@ test("renderFindings uses the generic find-lib-on-cdn template (real library lis
   assert.equal(f.listItem, true);
 });
 
-// Slots are filled in ONE pass from a fixed snapshot, so a model-supplied value that
-// itself contains another slot's "{{placeholder}}" is emitted literally, never
-// replaced by that slot's value. undeclared-build-source is the first check with two
-// model-controlled slots (explanation + buildInstructions) in one item, which exposes
-// this: a stray {{buildInstructions}} inside the explanation must NOT splice in the
-// real build steps.
-test("renderManualItems does not cross-splice one model slot's value into another", () => {
+// Slots are filled in ONE pass from a fixed snapshot, so a submission-derived value
+// that itself contains another slot's "{{placeholder}}" is emitted literally, never
+// replaced by that slot's value. undeclared-build-source carries two such slots in one
+// item (unresolvedBuildSteps + buildInstructions), which exposes this: a stray
+// {{buildInstructions}} inside the unresolved steps must NOT splice in the real ones.
+test("renderManualItems does not cross-splice one slot's value into another", () => {
   const items = renderManualItems(
     [
       {
         ruleId: "undeclared-build-source",
         item: null,
-        kind: "escalation",
+        manualReview: true,
         data: {
-          explanation: "the reason mentions {{buildInstructions}} verbatim",
+          unresolvedBuildSteps:
+            "a step mentions {{buildInstructions}} verbatim",
           buildInstructions: "npm ci && npm run build",
         },
       },
@@ -83,10 +83,10 @@ test("renderManualItems does not cross-splice one model slot's value into anothe
     registry
   );
   assert.match(
-    items[0].response,
+    items[0].instructions,
     /mentions \{\{buildInstructions\}\} verbatim/
   );
-  assert.doesNotMatch(items[0].response, /mentions npm ci/);
+  assert.doesNotMatch(items[0].instructions, /mentions npm ci/);
 
   // A slot value containing "$&"/"$1" (String.replace special patterns) renders
   // literally - fill() uses a function replacer, not a string replacement.
@@ -95,16 +95,16 @@ test("renderManualItems does not cross-splice one model slot's value into anothe
       {
         ruleId: "undeclared-build-source",
         item: null,
-        kind: "escalation",
+        manualReview: true,
         data: {
-          explanation: "cost is $& and $1 and $$",
+          unresolvedBuildSteps: "cost is $& and $1 and $$",
           buildInstructions: "",
         },
       },
     ],
     registry
   );
-  assert.match(dollar[0].response, /cost is \$& and \$1 and \$\$/);
+  assert.match(dollar[0].instructions, /cost is \$& and \$1 and \$\$/);
 });
 
 // An orchestrator system finding (ruleId "check-failed") renders from the
@@ -152,30 +152,6 @@ test("renderManualItems carries the ruleId through for the artifact label", () =
   assert.equal(item.ruleId, "unused-files");
 });
 
-// End-to-end: a recheck consumer's manual item flows renderManualItems (ruleId) ->
-// checkInputs/labelInputFor (its producer's corpus) -> artifactLabel. unused-files-recheck's
-// producer (unused-files) is input: xpi, so its item must render [XPI], not [SCA] - the bug
-// this change fixed. (Its OWN kind is post-summary-recheck with no input; the label follows
-// the producer, proving the report never falls back to the consumer's absent input.)
-test("a recheck consumer's XPI-corpus manual item labels [XPI] end-to-end", () => {
-  const [item] = renderManualItems(
-    [
-      {
-        ruleId: "unused-files-recheck",
-        file: "assets/x.png",
-        kind: "escalation",
-      },
-    ],
-    registry
-  );
-  const label = artifactLabel({
-    file: item.file,
-    input: registry.checkInputs().get(item.ruleId),
-    mode: REVIEW_MODE.SCA,
-  });
-  assert.equal(label, "XPI");
-});
-
 // A manual-review escalation can carry extra `data` slots, filled into the
 // instructions alongside {{item}} - the mechanism any entry with a data-keyed
 // placeholder rides on.
@@ -206,60 +182,6 @@ test("renderManualItems fills a data slot from the ref's data", () => {
   assert.ok(!item.instructions.includes("{{reason}}"));
 });
 
-// The unused-permission-recheck recheck consumer deliberately renders item-free and
-// reason-free on BOTH verdict paths, so its entries collapse like the producer's
-// manual reminder: fail findings share one identical message (groupByMessage
-// merges them into a single numbered entry) and the permissions surface on the
-// locus lines via listItem; the model's reason never reaches the report body.
-test("unused-permission-recheck findings share one reason-free message and collapse", () => {
-  const findings = [
-    {
-      ruleId: "unused-permission-recheck",
-      item: "compose",
-      file: "manifest.json",
-      loc: { line: 17 },
-      message: null,
-      data: { reason: "no compose-tab injection found" },
-    },
-    {
-      ruleId: "unused-permission-recheck",
-      item: "tabs",
-      file: "manifest.json",
-      loc: { line: 25 },
-      message: null,
-      data: { reason: "no privileged tab reads found" },
-    },
-  ];
-  renderFindings(findings, registry);
-  assert.equal(findings[0].message, findings[1].message); // one group in the report
-  assert.equal(findings[0].listItem, true); // permission on the locus line
-  // LLM-confirmed: the finding states the verdict plainly, no "appears" hedging
-  // (the hedged wording belongs to the unsure/manual paths).
-  assert.match(findings[0].message, /permissions are unused/);
-  assert.ok(!findings[0].message.includes("compose-tab injection"));
-  assert.ok(!findings[0].message.includes("{{"));
-});
-
-test("an unsure unused-permission-recheck ref renders reason-free and item-listed", () => {
-  const [m] = renderManualItems(
-    [
-      {
-        ruleId: "unused-permission-recheck",
-        item: "tabs",
-        file: "manifest.json",
-        loc: { line: 25 },
-        kind: "escalation",
-        data: { reason: "no privileged tab reads found" },
-      },
-    ],
-    registry
-  );
-  assert.equal(m.listItem, true);
-  assert.equal(m.item, "tabs");
-  assert.ok(!m.instructions.includes("no privileged tab reads found"));
-  assert.ok(!m.instructions.includes("{{"));
-});
-
 // A manual ref whose instructions are item-free (e.g. unused-permission)
 // carries listItem=true + its locus, so the report lists "file:line - item".
 test("renderManualItems sets listItem + locus for an item-free instructions ref", () => {
@@ -279,16 +201,6 @@ test("renderManualItems sets listItem + locus for an item-free instructions ref"
   assert.equal(m.item, "tabs");
   assert.equal(m.file, "manifest.json");
   assert.ok(!m.instructions.includes("{{item}}"));
-});
-
-// An llm-error ref uses the llm-unavailable system message (not the entry's
-// instructions), still under the owning entry's title.
-test("renderManualItems uses llm-unavailable for an llm-error ref", () => {
-  const [item] = renderManualItems(
-    [{ ruleId: "missing-english-localization", item: "x", kind: "llm-error" }],
-    registry
-  );
-  assert.match(item.instructions, /could not be evaluated/i);
 });
 
 // A substituted value is submission-derived - an item, a path, a URL, a model's
@@ -328,11 +240,12 @@ test("a named slot value carries no control characters", () => {
   assert.match(f.message, /https:\/\/x\/ \[1Aa\.js/);
 });
 
-// ---- llm-not-needed items ----
-// A llm-not-needed item is one no model verdict could change the outcome of, so it takes
-// the entry's `llm-not-needed-instructions` and carries NO response: the entry's response is
-// the wording for rejecting the rule, and this case is not a rejection.
-test("renderManualItems renders a llm-not-needed item from its own wording", () => {
+// ---- manual-review items ----
+// A manual-review item is one reading the code cannot settle, so it takes the entry's
+// `manual-review-instructions` - a different question from the ordinary escalation's.
+// It still carries the suggested response: once the reviewer settles the case against
+// the add-on, that is the text the developer receives.
+test("renderManualItems renders a manual-review item from its own wording", () => {
   const [item] = renderManualItems(
     [
       {
@@ -341,8 +254,7 @@ test("renderManualItems renders a llm-not-needed item from its own wording", () 
         hint: "https://cdn.example/lib@1.0.0/lib.css",
         file: "lib/lib.css",
         loc: { line: 1 },
-        llmNotNeeded: true,
-        kind: "escalation",
+        manualReview: true,
       },
     ],
     registry
@@ -350,7 +262,7 @@ test("renderManualItems renders a llm-not-needed item from its own wording", () 
   // The reviewer is asked to decide, not to establish what the check established.
   assert.match(item.instructions, /matches a published/);
   assert.ok(!item.instructions.includes("Confirm by hand"));
-  assert.equal(item.response, null);
+  assert.match(item.response, /Remote sources are not allowed/);
   // Item-free wording, so the site and its upstream are listed per locus.
   assert.equal(item.listItem, true);
   assert.equal(item.hint, "https://cdn.example/lib@1.0.0/lib.css");
@@ -360,18 +272,18 @@ test("renderManualItems renders a llm-not-needed item from its own wording", () 
 // makes the assertions above about the flag rather than about this entry.
 test("renderManualItems renders the same ref without the flag as before", () => {
   const [item] = renderManualItems(
-    [{ ruleId: "remote-resources", item: "x", kind: "escalation" }],
+    [{ ruleId: "remote-resources", item: "x" }],
     registry
   );
   assert.match(item.instructions, /Confirm by hand/);
   assert.match(item.response, /Remote sources are not allowed/);
 });
 
-// Nothing at load time can tell which checks raise llm-not-needed items, so an entry that
+// Nothing at load time can tell which checks raise manual-review items, so an entry that
 // raises one without authoring the wording must fail loudly here - the alternatives
 // are a report that misdescribes the case or one that asks for a judgement with no
-// grounds. unsafe-html authors no `llm-not-needed-instructions`.
-test("renderManualItems refuses a llm-not-needed item with no authored wording", () => {
+// grounds. unsafe-html authors no `manual-review-instructions`.
+test("renderManualItems refuses a manual-review item with no authored wording", () => {
   assert.throws(
     () =>
       renderManualItems(
@@ -379,13 +291,13 @@ test("renderManualItems refuses a llm-not-needed item with no authored wording",
           {
             ruleId: "unsafe-html",
             item: "x",
-            llmNotNeeded: true,
+            manualReview: true,
             kind: "escalation",
           },
         ],
         registry
       ),
-    /llm-not-needed-instructions/
+    /manual-review-instructions/
   );
 });
 
@@ -402,6 +314,6 @@ test("registry.instructionsFor picks the wording and refuses an unauthored one",
   );
   assert.throws(
     () => registry.instructionsFor("unsafe-html", true),
-    /llm-not-needed-instructions/
+    /manual-review-instructions/
   );
 });

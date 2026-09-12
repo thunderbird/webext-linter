@@ -2,7 +2,7 @@
 // FAIL only for the AST STRUCTURE of a recognized STRONG obfuscator family; PASS for
 // readable code, plain-minified-but-clean code, and unparseable input; and UNSURE for a
 // weak-family-only match (a structure ordinary readable code also has, so it is deferred
-// to the obfuscated-code check's LLM/manual adjudication rather than decided outright).
+// to the obfuscated-code check's escalation rather than decided outright).
 // The family mechanics are private to the module - only the verdict is observable. This
 // is the property that keeps legitimate libraries (readable pdf.js, minified JSZip) and
 // module-pattern first-party code from being mislabeled: obfuscation is recognized by
@@ -74,7 +74,7 @@ test("unparseable input is PASS, not obfuscated (the catch path)", () => {
 });
 
 // A weak-family-only match is not decided outright: it is the UNSURE verdict, deferred to
-// the obfuscated-code check's LLM/manual adjudication - never a FAIL on its own.
+// the obfuscated-code check's escalation - never a FAIL on its own.
 test("a weak-family-only match (the revealing module) is UNSURE", () => {
   assert.ok(obfuscationVerdict(MODULE_PATTERN).unsure);
 });
