@@ -611,6 +611,100 @@ test("registry.rechecks gates permission items by whether a prompt exists", () =
   assert.equal(registry.rechecks("unused-permission", { item: "x" }), true);
 });
 
+// The other half of the gate, and the whole of the human-only lane: a check marks an
+// escalation `llmNotNeeded` when no model verdict could change what happens to it, and
+// no consumer takes it. The divert is the only writer of ctx.recheck, so refusing here
+// is refusing every route from this item to a model.
+test("registry.rechecks refuses a llm-not-needed item whatever the consumer", () => {
+  const registry = loadRegistry();
+  // ... one it would otherwise hand over (a permission with a prompt),
+  assert.equal(
+    registry.rechecks("unused-permission-recheck", {
+      item: "tabs",
+      llmNotNeeded: true,
+    }),
+    false
+  );
+  // ... and one from a consumer that otherwise takes everything.
+  assert.equal(
+    registry.rechecks("unused-permission", { item: "x", llmNotNeeded: true }),
+    false
+  );
+});
+
+// The gate through the REAL orchestrator, not just as a predicate. No shipped check
+// both raises one and names a recheck consumer, so the combination is built the
+// only way that needs no injection seam: a hand-written registry doc pointing at the
+// real rules/remote-resources.js, with a real recheck consumer attached to it. One
+// run, two manual items from that one check - a llm-not-needed one (a remote load in a file
+// whose content matched upstream) and an ordinary unsure escalation (an undecidable
+// data: script source in the add-on's own page) - so the assertion is about the flag
+// and not about which check produced it.
+test("runChecks never diverts a llm-not-needed item to a recheck consumer", async () => {
+  const upstream = "https://cdn.example/x@1.0.0/x.css";
+  const manifest = { manifest_version: 3, permissions: [] };
+  const ctx = {
+    jsSources: parsed([]),
+    addon: {
+      manifest,
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest))],
+        [
+          "lib/x.css",
+          Buffer.from(`@import url("https://fonts.example/f.css");`),
+        ],
+        [
+          "own.html",
+          Buffer.from(`<script src="data:text/javascript,x"></script>`),
+        ],
+      ]),
+      vendor: {
+        set: new Set(["lib/x.css"]),
+        results: [{ path: "lib/x.css", source: upstream, outcome: "verified" }],
+      },
+    },
+  };
+  const registry = new Registry({
+    "deterministic-phase": [
+      {
+        title: "Remote resources",
+        severity: "error",
+        check: "remote-resources",
+        input: "source",
+        "post-summary-recheck": "unused-files-recheck",
+        instructions: "Confirm by hand.",
+        "llm-not-needed-instructions": "Decide.",
+      },
+    ],
+    "post-summary-phase": [
+      {
+        title: "Recheck",
+        severity: "error",
+        check: "unused-files-recheck",
+        "summary-prompt": "judge these",
+      },
+    ],
+  });
+  const out = await runChecks(
+    registry,
+    { recheckActive: true },
+    siblingsOf(withManifest(ctx))
+  );
+  // The item reached manual review under its OWN check, never the consumer.
+  assert.deepEqual(
+    out.manualItems
+      .filter((m) => m.ruleId === "remote-resources")
+      .map((m) => [m.item, m.llmNotNeeded]),
+    [["https://fonts.example/f.css", true]]
+  );
+  // ... and the bucket the consumer reads holds the other item, not this one. Both
+  // halves matter: without the second the test would also pass if the divert had
+  // stopped running at all.
+  const held = ctx.recheck.get("unused-files-recheck");
+  assert.equal(held.length, 1);
+  assert.equal(held[0].llmNotNeeded, false);
+});
+
 // The registry is the single source of truth for which permissions the recheck can
 // judge: every permission-prompts entry must name each of its `permissions` in its own
 // `prompt`, or the model judges that permission with no grounding - the guessing this

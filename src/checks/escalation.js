@@ -8,7 +8,10 @@
 //     using its own id->data table. The model only ever returns verdicts keyed
 //     to ids we minted, so it can never name a subject we did not ask about.
 //   - Deterministic checks return `escalations` of cases a human must inspect;
-//     manualEscalations routes them straight to manual review (never the model).
+//     manualEscalations repacks them as manual items. That alone does NOT keep them
+//     from a model - a check naming a post-summary-recheck consumer has its manual
+//     items re-judged by the add-on-summary pass (unused-permission does). An
+//     escalation marked `llmNotNeeded` is the one that does: registry.rechecks refuses it.
 //
 // Belongs here: runLlmCheck, manualEscalations, the ManualRef shape, and
 // narrating each batch to the live feed. Does NOT belong here: judging verdicts
@@ -35,6 +38,11 @@ import { verdictLabel } from "../report/verdict-label.js";
  * @property {string} [file]  Locus, listed under the manual entry (like a
  *   finding) so the reviewer sees where; the report groups by message.
  * @property {{line?: number, column?: number}} [loc]
+ * @property {boolean} [llmNotNeeded]  A model verdict could not change what happens
+ *   to this case - either the check already knows the answer, or it cannot tell and
+ *   asking would not settle it either, because the outcome does not turn on the
+ *   answer. Carried onto the manual ref and refused by registry.rechecks, so the
+ *   case reaches a reviewer and no model, whatever the check declares.
  */
 
 /**
@@ -46,6 +54,10 @@ import { verdictLabel } from "../report/verdict-label.js";
  *   finding's hint), independent of `item`/the recheck key. Null when none.
  * @property {?string} file  Locus path, listed under the manual entry, or null.
  * @property {{line?: number, column?: number}|null} loc  Locus line, or null.
+ * @property {boolean} llmNotNeeded  True when no model verdict could change this
+ *   case's outcome (see Escalation). The one thing between the check and
+ *   registry.rechecks, which is what refuses it - drop it here and the item becomes
+ *   recheckable.
  * @property {"escalation"|"llm-error"} kind  Picks the registry message used.
  * @property {Record<string, string|number>|null} data  Extra `{{slot}}` values
  *   for the instructions template (null when the case carries none).
@@ -124,6 +136,7 @@ function manualRef(check, c, kind) {
     hint: c.hint ?? null,
     file: c.file ?? null,
     loc: c.loc ?? null,
+    llmNotNeeded: c.llmNotNeeded === true,
     kind,
     data: c.data ?? null,
     occurrences: c.occurrences ?? null,
@@ -131,9 +144,10 @@ function manualRef(check, c, kind) {
 }
 
 /**
- * Route a deterministic check's escalations straight to manual review. The LLM
- * is the authority for judgment cases. A deterministic check escalates only
- * cases a human must inspect, so they never reach the model.
+ * Repack a check's escalations as manual refs. The LLM is the authority for
+ * judgment cases, so nothing is adjudicated here - but see the header: reaching
+ * manual review is not the same as never reaching a model, and only a `llmNotNeeded`
+ * escalation carries that guarantee.
  * @param {LoadedCheck} check
  * @param {Escalation[]} escalations
  * @returns {{findings: object[], manualItems: ManualRef[]}}

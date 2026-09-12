@@ -1274,6 +1274,12 @@ llm-phase:
   instructions: |-
     This site loads a resource from a source static analysis cannot resolve.
     Confirm by hand that it is bundled with the add-on and not fetched remotely.
+  llm-not-needed-instructions: |-
+    Each of these remote loads is inside a file whose content matches a published
+    file of the upstream release listed after it - so the line is that release's,
+    not something the developer wrote. That does not by itself mean the add-on
+    needs this file, or that no build of the library avoids the remote load.
+    Decide whether shipping it as published is acceptable here.
   response: |-
     A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed.
 

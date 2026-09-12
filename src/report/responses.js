@@ -109,23 +109,32 @@ export function renderFindings(findings, registry) {
  * carried through, and `listItem` is set exactly as for findings - so the report
  * can list "file:line - item" under an item-free instructions message.
  * @param {{ruleId: string, item: ?string, file?: ?string, loc?: object|null,
- *   kind: string, data?: Record<string, string|number>|null}[]} refs
+ *   kind: string, llmNotNeeded?: boolean,
+ *   data?: Record<string, string|number>|null}[]} refs
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {import("./finding.js").ManualItem[]}
  */
 export function renderManualItems(refs, registry) {
   return refs.map((ref) => {
     const entry = registry.checkEntry(ref.ruleId);
+    // Which text this ref gets is the registry's call, including whether a
+    // llm-not-needed ref's entry authored any (instructionsFor raises if not). The
+    // kind test comes first: an llm-error ref shows the system message whatever
+    // else it carries.
     const template =
       ref.kind === "llm-error"
         ? registry.message("llm-unavailable")
-        : entry?.instructions;
+        : registry.instructionsFor(ref.ruleId, ref.llmNotNeeded === true);
     return {
       title: entry?.title ?? ref.ruleId,
       instructions: fill(template, ref.item, ref.data) ?? "",
       // The developer-facing response (printed under the instructions). Filled
-      // like the instructions. Null when the entry has no response.
-      response: fill(entry?.response, ref.item, ref.data),
+      // like the instructions. Null when the entry has no response - and always
+      // null for a llm-not-needed ref: the entry's response is the wording for
+      // REJECTING this rule, and these cases are not a rejection we have made.
+      response: ref.llmNotNeeded
+        ? null
+        : fill(entry?.response, ref.item, ref.data),
       // Carried so the text report can label the item's file:line by artifact
       // ([XPI]/[SCA]) via ruleInputs - the corpus the owning check acts on. Without
       // it a non-manifest manual item has no ruleId and defaults to [SCA].

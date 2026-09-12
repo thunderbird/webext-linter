@@ -503,7 +503,7 @@ test("HTML scan flags remote module/script preload links", () => {
 });
 
 // ---- check + manifest CSP ----
-function fakeCtx(files, manifest) {
+function fakeCtx(files, manifest, vendor, bundled) {
   const map = new Map();
   for (const [k, v] of Object.entries(files)) {
     map.set(k, Buffer.from(v));
@@ -515,7 +515,7 @@ function fakeCtx(files, manifest) {
     }
   }
   return {
-    addon: { files: map, manifest },
+    addon: { files: map, manifest, vendor, bundled },
     jsSources: parsed(jsSources),
     options: {},
   };
@@ -678,4 +678,114 @@ test("formatNote renders a padded verdict tag and the site", () => {
     formatNote("bg.js", { line: 4 }, "fetch x", VERDICT.FAIL, ""),
     "• [fail]    bg.js:4 - fetch x"
   );
+});
+
+// ---- verified vendored files: the llm-not-needed lane ----
+// A remote @import inside a file whose content matched a published upstream release
+// is that release's own line. It is not dropped (a reviewer still sees it) and not a
+// finding (it is not the developer's line), and it is marked `llmNotNeeded` so
+// registry.rechecks keeps it away from the model - what is left is whether shipping
+// that release here is acceptable, which is a person's call.
+const VENDORED_CSS = {
+  "lib/x.css": `@import url("https://fonts.example/f.css");`,
+};
+const UPSTREAM = "https://cdn.example/x@1.0.0/x.css";
+const verified = (path = "lib/x.css") => ({
+  set: new Set([path]),
+  results: [{ path, source: UPSTREAM, outcome: "verified" }],
+});
+
+test("remote-resources sends a remote load in a VERIFIED vendored file to a person", () => {
+  const ctx = fakeCtx(VENDORED_CSS, { manifest_version: 3 }, verified());
+  const out = remoteScript.run(withManifest(ctx));
+  assert.deepEqual(out.findings, []);
+  assert.equal(out.escalations.length, 1);
+  const [e] = out.escalations;
+  assert.equal(e.llmNotNeeded, true);
+  assert.equal(e.file, "lib/x.css");
+  assert.equal(e.hint, UPSTREAM); // which release it was matched against
+  // The subject is the WHOLE url, as the finding lane reports it - the reviewer is
+  // asked to judge where this points, so it must not reach the report truncated the
+  // way the feed note is.
+  assert.equal(e.item, "https://fonts.example/f.css");
+});
+
+// A definite remote load in HTML takes the same route as one in CSS.
+test("remote-resources routes a remote <script> in a verified file the same way", () => {
+  const ctx = fakeCtx(
+    { "lib/x.html": `<script src="https://cdn.example/evil.js"></script>` },
+    { manifest_version: 3 },
+    verified("lib/x.html")
+  );
+  const out = remoteScript.run(withManifest(ctx));
+  assert.deepEqual(out.findings, []);
+  assert.deepEqual(
+    out.escalations.map((e) => [e.item, e.llmNotNeeded]),
+    [["https://cdn.example/evil.js", true]]
+  );
+});
+
+// The distinction is the CONTENT MATCH, not the declaration: every other outcome
+// leaves the file reviewed as the developer's own code (applyUnverifiedVendor), so
+// its remote loads stay findings. Without this the feature would exempt any declared
+// file, which is exactly what a declaration must never buy.
+test("remote-resources still flags a remote load in a declared but unverified file", () => {
+  for (const outcome of ["modified", "not-popular", "unfetchable", "no-url"]) {
+    const ctx = fakeCtx(
+      VENDORED_CSS,
+      { manifest_version: 3 },
+      {
+        set: new Set(["lib/x.css"]),
+        results: [{ path: "lib/x.css", source: UPSTREAM, outcome }],
+      }
+    );
+    const out = remoteScript.run(withManifest(ctx));
+    assert.equal(out.findings.length, 1, outcome);
+    assert.equal(out.escalations, undefined, outcome);
+  }
+  // ... and a file with no vendor store at all (the SCA / undeclared case).
+  const bare = fakeCtx(VENDORED_CSS, { manifest_version: 3 });
+  assert.equal(remoteScript.run(withManifest(bare)).findings.length, 1);
+});
+
+// A submission can say two contradictory things about one file - a not-popular FOLDER
+// declaration covering it, plus its own declaration against a source that verifies.
+// applyUnverifiedVendor DELETES the not-popular row, so the results alone no longer
+// carry the contradiction; the untrusted list is what still remembers it. Reading
+// only the results would tell the reviewer both "reviewed as authored code" and
+// "matched upstream" about one file, with the exempting half winning.
+test("remote-resources refuses the exemption for a file marked untrusted", () => {
+  const ctx = fakeCtx(VENDORED_CSS, { manifest_version: 3 }, verified(), {
+    untrusted: [{ file: "lib/x.css", source: UPSTREAM, unreadable: false }],
+  });
+  const out = remoteScript.run(withManifest(ctx));
+  assert.equal(out.findings.length, 1);
+  assert.equal(out.escalations, undefined);
+});
+
+// An undecidable site in a verified vendored file goes to the reviewer too, not the
+// model: the only thing a verdict could do there is produce a finding this file is
+// exempt from, so asking would spend a model call to reach the same place.
+test("remote-resources does not ask the model about a verified vendored file", () => {
+  const ctx = fakeCtx(
+    { "lib/x.html": `<script src="data:text/javascript,alert(1)"></script>` },
+    { manifest_version: 3 },
+    verified("lib/x.html")
+  );
+  const out = remoteScript.run(withManifest(ctx));
+  assert.equal(out.llm, undefined);
+  assert.equal(out.escalations.length, 1);
+  assert.equal(out.escalations[0].llmNotNeeded, true);
+});
+
+// The scanners can report one site twice; the findings lane has always deduped, and a
+// reviewer should be asked once too.
+test("remote-resources dedupes the escalations like the findings", () => {
+  const dup = `<link rel="stylesheet" href="https://cdn.example/a.css"><link rel="stylesheet" href="https://cdn.example/a.css">`;
+  const ctx = fakeCtx(
+    { "lib/x.html": dup },
+    { manifest_version: 3 },
+    verified("lib/x.html")
+  );
+  assert.equal(remoteScript.run(withManifest(ctx)).escalations.length, 1);
 });

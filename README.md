@@ -274,12 +274,24 @@ complete, registry-synced list of every check with its own page, see
 Each `deterministic-phase` entry links to a module in
 [src/checks/rules/](src/checks/rules/) and supplies the severity for its
 findings. A deterministic check decides each case in code - as a finding, or as an
-escalation of a case it cannot settle. An escalation goes straight to manual review
-(e.g. `native-messaging`, `privacy-policy`), unless the check names a
-post-summary recheck consumer (`unused-permission`,
+escalation of a case it cannot settle. An escalation goes to manual review
+(e.g. `native-messaging`, `privacy-policy`) unless one of two things is true. It
+may name a post-summary recheck consumer (`unused-permission`,
 `missing-english-localization`): under `--llm-review` those cases are re-judged by
-the model instead, and only then fall back to manual review. The LLM checks
+the model instead, and only then fall back to manual review. Or the escalation may
+be marked `llmNotNeeded`, described next, which no consumer takes. The LLM checks
 escalate only their ambiguous residue.
+
+A check can also escalate a case **no model verdict would change the outcome of** -
+the way a remote font `@import` inside a file whose content matches a published
+upstream release is that release's line, not the developer's, so what a model could
+say about the URL settles nothing (`remote-resources`). Such an escalation is marked
+`llmNotNeeded`, which `registry.rechecks()` refuses: it reaches a reviewer even under
+`--llm-review`, whatever recheck consumer the check names. The reviewer reads the
+entry's `llm-not-needed-instructions` and gets no suggested response, because nothing
+was rejected. Such an item deliberately reaches the human report only - the JSON report
+omits `meta.manualReview` and carries just what the tool is certain of, so escalating rather than
+finding is what puts the submission in front of a person instead of a machine.
 
 | Check | What it flags |
 | --- | --- |
@@ -361,7 +373,7 @@ unsure case there goes to manual review directly.
 | --- | --- |
 | `strict-min-version-api` | Pre-flight: a call to a real, schema-resolved API added in a Thunderbird newer than the declared `strict_min_version`. An unguarded call is a finding straight away; a call carrying a guard signal (optional chaining, a `typeof`/existence test, a `getBrowserInfo` version gate, an earlier guard clause that returned or threw when the API was missing) → the LLM judges, from the call's file, whether the guard really keeps it off the older versions. A non-existent API is `unknown-api`'s concern. |
 | `remote-eval` | Pre-flight: the statically-undecidable `fetch()->eval` pattern (scanned only outside the WebExtension tree, like the other dynamic-execution checks - WebExtension code is CSP-gated) → the LLM judges (given the offending file) whether the executed code is fetched remotely. The definite dynamic-execution cases are the deterministic `eval-call`/`function-constructor`/`string-timer`/`csp-unsafe-eval`/`csp-unsafe-inline` checks. |
-| `remote-resources` | Pre-flight: remote `<script>`/`<link>`/`@import`/`url()`/media/imports/`importScripts`/runtime injection/WASM, and a CSP permitting a remote script source → a finding. Statically-undecidable cases (non-literal URLs, inline `data:`/`blob:` script sources) → the LLM judges whether the source is remote. |
+| `remote-resources` | Pre-flight: remote `<script>`/`<link>`/`@import`/`url()`/media/imports/`importScripts`/runtime injection/WASM, and a CSP permitting a remote script source → a finding. Statically-undecidable cases (non-literal URLs, inline `data:`/`blob:` script sources) → the LLM judges whether the source is remote. In an HTML/CSS file whose content matches a published upstream release, neither: the line is that release's, so it goes to a reviewer with `llmNotNeeded` (XPI reviews only - an SCA review has no verified result to read). |
 | `data-exfiltration` | Pre-flight: a normal transmission (`fetch`/XHR/WebSocket/EventSource/`sendBeacon`) to a remote/dynamic host → the LLM judges, given the file and the options page, whether user data is sent without an explicit opt-in. Covert channels are the separate `disguised-*` errors. |
 | `disguised-transmission` | Pre-flight: the weak residue of the covert channels - a resource URL, a stylesheet `url()`, a `window.open()`, or a page navigation to a remote host built from a runtime value, with no user-data API call in it → the LLM judges whether it really smuggles user data out through that channel or is just legitimate dynamic URL building. The strong cases (a user-data call in the URL) are the deterministic `disguised-*` errors. |
 | `minimize-web-accessible-resources` | Pre-flight: over-broad exposure (a resource pattern like `*`, or MV3 `matches` of `<all_urls>`/`*://*/*`) and concrete resources no content script/page loads → a finding. An ambiguous exposed resource (dynamic loaders, or name mentioned) → the LLM judges whether it is needlessly exposed. |

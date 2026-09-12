@@ -5,10 +5,16 @@
 // remote script source. Statically-undecidable cases (non-literal URLs, inline
 // data:/blob: script sources) are escalated, carrying the offending file so the
 // orchestrator can ask the LLM whether the source is remote (else manual
-// review).
+// review). A ref inside a file whose content matched a published upstream release
+// is neither: it is that release's own line, so it goes to a reviewer and never to
+// the model (see pushVendored). Two limits worth knowing: only the
+// shipped XPI carries verified results (verifyVendor runs on it alone), so an SCA
+// review never reaches that lane; and the JS lane below never does either, because
+// a vendored .js is dropped from it entirely.
 //
-// Belongs here: classifying each scanned ref as definite-remote (-> finding) or
-// undecidable (-> escalation with file evidence) across HTML, CSS, JS, and CSP.
+// Belongs here: classifying each scanned ref as definite-remote (-> finding),
+// undecidable (-> escalation with file evidence) or upstream's (-> escalation a
+// model cannot help with) across HTML, CSS, JS, and CSP.
 // Does NOT belong here: the scanners themselves - HTML refs (-> src/scan/
 // html.js), CSS refs (-> src/scan/css.js), JS import/inject hits (-> src/parse/
 // remote-js.js), CSP hosts (-> src/scan/csp.js) - the LLM-or-manual verdict on
@@ -23,6 +29,7 @@ import { scanCssRemoteRefs } from "../../scan/css.js";
 import { remoteJsOf } from "../extract.js";
 import { analyzeCsp } from "../../scan/csp.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
+import { verifiedVendorSource } from "../../vendor/resolve.js";
 import { dedupe, scheme, trunc } from "../../lib/util.js";
 import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 import { finding } from "../../report/finding.js";
@@ -38,36 +45,49 @@ export default {
   /**
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[],
-   *   llm?: import("../escalation.js").LlmStep}}
+   *   llm?: import("../escalation.js").LlmStep, escalations?: Escalation[]}}
    */
   run(ctx) {
     const { addon } = ctx;
     const findings = [];
     // Collector for the undecidable sites: one candidate + 1:1 case per site.
     const esc = { candidates: [], cases: [], n: 0 };
+    // Sites in a file matched against upstream, which no model can help with
+    // (see pushVendored).
+    const forHumans = [];
 
     for (const [file, buf] of addon.files) {
       const ext = extname(file);
       if (HTML_EXTENSIONS.has(ext)) {
+        // Resolved once per file, not per ref: every ref below is judged against
+        // the same answer, so a file cannot be upstream's for one ref and the
+        // developer's for the next.
+        const upstream = verifiedVendorSource(addon, file);
         const html = buf.toString("utf8");
         for (const ref of scanHtmlRemoteRefs(html)) {
-          pushHtml(ctx, findings, esc, file, ref);
+          pushHtml(ctx, findings, esc, forHumans, file, ref, upstream);
         }
         // CSS inside the HTML (<style> blocks, style= attrs) is scanned with the
         // same css.js scanner as a .css file, so a remote @import/url() there is
         // not missed.
         for (const ref of scanHtmlInlineCssRefs(html)) {
-          pushCss(ctx, findings, file, ref);
+          pushCss(ctx, findings, forHumans, file, ref, upstream);
         }
       } else if (ext === ".css") {
+        const upstream = verifiedVendorSource(addon, file);
         for (const ref of scanCssRemoteRefs(buf.toString("utf8"))) {
-          pushCss(ctx, findings, file, ref);
+          pushCss(ctx, findings, forHumans, file, ref, upstream);
         }
       }
     }
 
-    // Skip non-authored JS (see nonAuthoredJs). Remote refs in HTML/CSS and the
-    // CSP check below still apply - those are not per-file JS scans.
+    // Skip non-authored JS (see nonAuthoredJs). A vendored .js is in that set, so
+    // this lane DROPS it - silently, with no finding and no escalation. That is not
+    // the rule the HTML/CSS lanes above follow, and the asymmetry is deliberate
+    // only in that the vendored JS skip is declaration-based by an earlier call; a
+    // remote load inside a verified vendored .js is therefore never surfaced.
+    // Remote refs in HTML/CSS and the CSP check below still apply - those are not
+    // per-file JS scans, and nothing skips a vendored .html/.css.
     const skip = nonAuthoredJs(ctx);
     for (const src of ctx.jsSources) {
       if (skip.has(src.file)) {
@@ -91,6 +111,11 @@ export default {
         resolve: perCandidateResolve(esc.cases),
       };
     }
+    if (forHumans.length) {
+      // Deduped like the findings above: the scanners can report one site twice
+      // (see dedupe), and a reviewer should be asked once.
+      result.escalations = dedupe(forHumans);
+    }
     return result;
   },
 };
@@ -113,20 +138,68 @@ function addCandidate(esc, file, line, loc, note) {
 }
 
 /**
+ * Record one site whose containing file matched a published upstream release as a
+ * escalation no model can help with. The line is that release's own, so what it
+ * does is not the developer's choice to defend - but nor does it follow that the
+ * developer NEEDS this file or could not ship a build without it
+ * (verifiedVendorSource states a fact about content, not about intent). Whether the
+ * check knows where the load points or not, a model verdict on that question would
+ * not change the outcome, so the case is marked `llmNotNeeded: true` (which
+ * registry.rechecks honours) and the report gives the reviewer both URLs.
+ *
+ * This turns on the content match, not on the declaration: a declared file that
+ * could not be verified is reviewed as the developer's own code
+ * (applyUnverifiedVendor), so its remote loads stay findings.
+ * @param {RunContext} ctx
+ * @param {Escalation[]} forHumans
+ * @param {string} file @param {{line: number, column: number}} loc
+ * @param {string} url  Where the site loads from. Passed WHOLE - it is the fact the
+ *   judgement turns on, so it must not reach the report truncated the way the feed
+ *   note below is.
+ * @param {string} upstream  The matched release URL (shown per locus as the hint).
+ * @param {string} note  The site as the Activity feed narrates it.
+ */
+function pushVendored(ctx, forHumans, file, loc, url, upstream, note) {
+  forHumans.push({
+    item: url,
+    file,
+    loc,
+    llmNotNeeded: true,
+    // The upstream goes in the HINT, not a wording slot: it is per-locus detail,
+    // so every such site stays in ONE manual-review group and each line still says
+    // which release it was matched against.
+    hint: upstream,
+  });
+  // INFO, not UNSURE: nothing here is uncertain in the way the undecidable sites
+  // below are - the check reached a verdict and is recording it rather than acting
+  // on it. Same nature as an info finding; only the destination differs, and where
+  // an item lands is not what this tag narrates.
+  ctx.note?.(file, loc, note, VERDICT.INFO);
+}
+
+/**
  * @param {RunContext} ctx
  * @param {import("../../report/finding.js").Finding[]} findings
  * @param {{candidates: object[], cases: object[], n: number}} esc
+ * @param {Escalation[]} forHumans
  * @param {string} file
  * @param {HtmlRef} ref
+ * @param {?string} upstream  Set when this file is a verified vendored copy.
  */
-function pushHtml(ctx, findings, esc, file, ref) {
+function pushHtml(ctx, findings, esc, forHumans, file, ref, upstream) {
   const { tag, kind, url, klass, line } = ref;
   const loc = { line, column: 0 };
   const item = `<${tag}> ${trunc(url)}`;
-  if (klass.remote) {
+  const undecidable = klass.embedded && kind.script;
+  if (upstream && (klass.remote || undecidable)) {
+    // Upstream's own line, whether or not we could resolve where it points: the
+    // undecidable ones go here too, because a model verdict could only turn one
+    // into a finding this file is exempt from.
+    pushVendored(ctx, forHumans, file, loc, url, upstream, item);
+  } else if (klass.remote) {
     findings.push(finding({ file, loc, item: url }));
     ctx.note?.(file, loc, item, VERDICT.FAIL);
-  } else if (klass.embedded && kind.script) {
+  } else if (undecidable) {
     addCandidate(
       esc,
       file,
@@ -144,17 +217,24 @@ function pushHtml(ctx, findings, esc, file, ref) {
 /**
  * @param {RunContext} ctx
  * @param {import("../../report/finding.js").Finding[]} findings
+ * @param {Escalation[]} forHumans
  * @param {string} file
  * @param {CssRef} ref
+ * @param {?string} upstream  Set when this file is a verified vendored copy.
  */
-function pushCss(ctx, findings, file, ref) {
+function pushCss(ctx, findings, forHumans, file, ref, upstream) {
   const { url, klass, line } = ref;
   if (!klass.remote) {
     return; // local CSS url()/imports are bundled assets - benign, not noted
   }
   const loc = { line, column: 0 };
+  const item = `css ${trunc(url)}`;
+  if (upstream) {
+    pushVendored(ctx, forHumans, file, loc, url, upstream, item);
+    return;
+  }
   findings.push(finding({ file, loc, item: url }));
-  ctx.note?.(file, loc, `css ${trunc(url)}`, VERDICT.FAIL);
+  ctx.note?.(file, loc, item, VERDICT.FAIL);
 }
 
 // Remote-JS hit types that are definite remote loads (vs the undecidable ones,

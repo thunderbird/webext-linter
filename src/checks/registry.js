@@ -14,13 +14,15 @@
 // severity to the check), and the text shown for it (`response`, `instructions`,
 // `prompt`). Neither half leaks into the other.
 //
-// A deterministic check returns `Finding[]`. An llm check runs a deterministic
-// pre-flight and returns `{ findings, escalations }`, where each escalation is a
-// case it could not settle. The orchestrator (runChecks) - the sole authority on
-// manual review - resolves every escalation via escalation.js: with a token it
-// asks the LLM, otherwise (or on unsure/error) it routes the case to manual
-// review. So only llm checks can defer to manual, and only the orchestrator
-// decides.
+// A check returns `Finding[]`, or an object with up to two DEFERRAL lanes beside
+// its findings - and one run may use both. `llm` (candidates + a resolve closure)
+// holds what it could not settle: the orchestrator (runChecks) resolves it via
+// escalation.js, asking the LLM with a token and routing to manual review
+// otherwise, or on unsure/error. `escalations` holds cases for a person. The
+// orchestrator remains the sole authority on manual review, with one exception it
+// is told about rather than infers: an escalation marked `llmNotNeeded` is one no
+// model verdict could change the outcome of, and registry.rechecks refuses to hand
+// it to any recheck consumer.
 //
 // The shared `ctx` passed to run() is the RunContext typedef below, which is the
 // one description of it: what a check may read, and from where.
@@ -374,6 +376,38 @@ export class Registry {
   }
 
   /**
+   * The manual-review instructions template for a ref of this rule: the owning
+   * check's `instructions`, or - for a `llmNotNeeded` ref - its
+   * `llm-not-needed-instructions`. The two are different texts because they ask
+   * different things: the normal one asks the reviewer to establish something a
+   * model was going to be asked about, which for these cases is not what is left.
+   *
+   * Such a ref whose entry authors no wording RAISES. Nothing at load time can tell
+   * which checks raise them - a check decides that per case, at run time - so this
+   * is the first moment the omission is visible, and both quiet alternatives ship a
+   * wrong report: the normal instructions misdescribe the case, an empty one asks a
+   * reviewer to decide with nothing to go on. Registry authoring mistakes raise here
+   * for the same reason loadChecks raises for a dangling recheck target.
+   * @param {string} ruleId
+   * @param {boolean} llmNotNeeded
+   * @returns {?string}
+   */
+  instructionsFor(ruleId, llmNotNeeded) {
+    const entry = this.checkEntry(ruleId);
+    if (!llmNotNeeded) {
+      return entry?.instructions ?? null;
+    }
+    const text = entry?.["llm-not-needed-instructions"];
+    if (!text) {
+      throw new Error(
+        `"${entry?.title ?? ruleId}" raised a llm-not-needed item but authors no ` +
+          "`llm-not-needed-instructions` (assets/registry.yaml)"
+      );
+    }
+    return text;
+  }
+
+  /**
    * A system-notice template (the top-level `messages` map), or null.
    * @param {string} key
    * @returns {?string}
@@ -467,11 +501,21 @@ export class Registry {
    * knowledge in the registry, not the orchestrator. This is the permissive,
    * version-independent gate: a handed permission may still fall to manual at assembly
    * if no version-matching prompt grounds it (see recheckablePermissions).
+   *
+   * A `llmNotNeeded` item is refused whatever the consumer: no model verdict could
+   * change what happens to it, so spending a recheck on it buys nothing and risks a
+   * model answer being read as one. The guarantee lives HERE, on the question every
+   * writer of ctx.recheck has to ask, rather than in today's single divert -
+   * precisely so that a second writer cannot be added that forgets it. A check states
+   * the fact on the item; no caller has to remember anything.
    * @param {string} consumerId
-   * @param {{item: ?string}} item
+   * @param {{item: ?string, llmNotNeeded?: boolean}} item
    * @returns {boolean}
    */
   rechecks(consumerId, item) {
+    if (item.llmNotNeeded) {
+      return false;
+    }
     if (!this.checkEntry(consumerId)?.["permission-recheck"]) {
       return true;
     }
@@ -972,7 +1016,8 @@ export function ctxForRule(registry, ruleId, siblings) {
  *   shipped manifest (no file corpus). Consumed via routeCtx (the matrix is documented there);
  *   `siblings.source` also carries the review-level recheck state.
  * @returns {Promise<{findings: object[],
- *   manualItems: {ruleId: string, item: ?string, kind: string}[],
+ *   manualItems: {ruleId: string, item: ?string, kind: string,
+ *     llmNotNeeded: boolean}[],
  *   checksRun: object[],
  *   summarizeAddon: (import("../pipeline.js").GeneratedSummary|undefined),
  *   summarize: (import("../pipeline.js").GeneratedSummary|undefined)}>}  The finished
@@ -1192,10 +1237,10 @@ export async function runChecks(registry, opts = {}, siblings) {
  * finding with the check's id and severity. This is the per-check body of
  * runChecks, extracted so a check can also be run on its own (a post-summary
  * recheck consumer runs after the add-on summary, outside the loop - see
- * runChecks below). Identical behavior either way: an LLM check's candidates go
- * through escalation.js, a deterministic check's escalations route to manual
- * review, and a thrown check becomes a single "check-failed" finding so the rest
- * still run.
+ * runChecks below). Identical behavior either way: a check may defer in two
+ * INDEPENDENT ways and one run may use both - an `llm` step whose candidates go
+ * through escalation.js, and `escalations` that route to manual review - and a
+ * thrown check becomes a single "check-failed" finding so the rest still run.
  * @param {RunContext} ctx
  * @param {LoadedCheck} check
  * @param {string} label  The feed prefix before the id, e.g. "[3/12]".
@@ -1214,16 +1259,21 @@ export async function runOneCheck(ctx, check, label) {
     const escalations = Array.isArray(result) ? [] : (result.escalations ?? []);
     const llmStep = Array.isArray(result) ? null : (result.llm ?? null);
     const produced = [...direct];
+    // The two lanes are INDEPENDENT and a check may use both in one run: cases a
+    // model can settle go to it, cases no model verdict would change go to a person.
+    // Running only the first would drop the second without a word.
     if (llmStep) {
-      // An LLM check: judge its candidates (one verdict per id, batched), then
-      // let the check map those verdicts to findings / manual via its own
-      // id->data table. The model never names a subject, so it cannot drift.
+      // The cases it could not settle: judge its candidates (one verdict per id,
+      // batched), then let the check map those verdicts to findings / manual via its
+      // own id->data table. The model never names a subject, so it cannot drift.
       const out = await runLlmCheck(ctx, check, llmStep);
       produced.push(...out.findings);
       manualItems.push(...out.manualItems);
-    } else if (escalations.length) {
-      // A deterministic check may escalate cases a human must inspect - these
-      // go straight to manual review (never the LLM, which is for judgment).
+    }
+    if (escalations.length) {
+      // Cases a human must inspect. Straight to manual review - and an escalation
+      // marked `llmNotNeeded` is refused by registry.rechecks, so it reaches a
+      // reviewer and no model even if this check declares a recheck consumer.
       manualItems.push(...manualEscalations(check, escalations).manualItems);
     }
     const auto = check.severity === AUTO_SEVERITY;

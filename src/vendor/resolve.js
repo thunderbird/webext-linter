@@ -137,6 +137,57 @@ export function declaredFiles(addon, entry) {
 }
 
 /**
+ * The upstream release a packaged file's content was matched against, or null.
+ * Two paths reach a `verified` result and both are legitimate grounds:
+ *   - a VENDOR declaration whose source was fetched and whose content matched
+ *     (verifyUrl / verifyTarball / verifyFolder - the compare is EOL-normalized,
+ *     so CRLF/LF and trailing-newline differences do not count as a change);
+ *   - an UNDECLARED file whose exact content hash matches a published file of a
+ *     pinned package.json dependency (verifyPackage's SRI match, which fetches
+ *     only the package listing). Here the developer claimed nothing - we
+ *     recognized the bytes - so the file need not be integral to the release.
+ * Either way the statement is about CONTENT, not about intent: this file's bytes
+ * are a published file of that release. It says nothing about whether the
+ * developer needs this particular file, or could ship a different build.
+ *
+ * A file the untrusted reconciliation touched is refused whatever its results say
+ * (applyUnverifiedVendor -> markUntrusted): a contradictory submission - a file
+ * covered by a FOLDER declaration that did not verify and separately declared
+ * against a source that did - would otherwise be told to the reviewer twice, once
+ * as "reviewed as authored code" and once as vouched for. The stricter half wins.
+ * An untrusted entry names whatever the failing DECLARATION named, so a folder
+ * entry covers everything under it, exactly as isVendored reads a folder.
+ *
+ * Distinct from isVendored, which asks the DECLARATION question ("skip scanning
+ * this file") and is deliberately verification-independent. Use this one only
+ * where the content match itself is the argument.
+ * @param {?import("../addon/load.js").Addon} addon  The routed artifact. Read
+ *   whole because the answer spans its vendor results AND its untrusted list.
+ * @param {string} file  Add-on-relative path.
+ * @returns {?string}  The upstream source URL, or null. With more than one
+ *   verified row for a path (a file and a folder declaration can both produce
+ *   one) the last wins - any of them is a true statement about the content.
+ */
+export function verifiedVendorSource(addon, file) {
+  for (const entry of addon?.bundled?.untrusted ?? []) {
+    if (entry.file === file || file.startsWith(`${entry.file}/`)) {
+      return null;
+    }
+  }
+  let source = null;
+  for (const result of addon?.vendor?.results ?? []) {
+    if (result.path !== file) {
+      continue;
+    }
+    if (result.outcome !== "verified") {
+      return null; // anything else said about this file withdraws the vouching
+    }
+    source = result.source;
+  }
+  return source;
+}
+
+/**
  * Resolve the offline vendored declarations into `addon.vendor`.
  * @param {object} params
  * @param {Addon} params.addon

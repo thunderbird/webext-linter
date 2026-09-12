@@ -4,7 +4,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveVendor, declaredFiles } from "../../src/vendor/resolve.js";
+import {
+  resolveVendor,
+  declaredFiles,
+  verifiedVendorSource,
+} from "../../src/vendor/resolve.js";
 
 function fakeAddon(files) {
   const map = new Map();
@@ -402,4 +406,85 @@ test("an unpinned folder declaration yields ONE row, naming the declaration", as
     vendor.results.map((r) => [r.path, r.outcome]),
     [["lib", "unpinned-source"]]
   );
+});
+
+// ---- verifiedVendorSource ----
+// The one strong statement the vendor pipeline makes about a file's CONTENT. Read by
+// remote-resources to decide whether a remote load is upstream's line or the
+// developer's, so every way it can be wrong is a wrongly-granted exemption.
+const row = (path, outcome, source = "https://cdn.example/x@1.0.0/x.css") => ({
+  path,
+  source,
+  outcome,
+});
+
+test("verifiedVendorSource answers only for a verified content match", () => {
+  const yes = { vendor: { results: [row("a.css", "verified")] } };
+  assert.equal(
+    verifiedVendorSource(yes, "a.css"),
+    "https://cdn.example/x@1.0.0/x.css"
+  );
+  // A different file, no store, no results, no addon: all null, never a throw.
+  assert.equal(verifiedVendorSource(yes, "b.css"), null);
+  assert.equal(verifiedVendorSource({ vendor: {} }, "a.css"), null);
+  assert.equal(verifiedVendorSource({}, "a.css"), null);
+  assert.equal(verifiedVendorSource(null, "a.css"), null);
+  for (const outcome of [
+    "modified",
+    "unpinned-source",
+    "not-popular",
+    "no-url",
+    "untrusted",
+  ]) {
+    assert.equal(
+      verifiedVendorSource(
+        { vendor: { results: [row("a.css", outcome)] } },
+        "a.css"
+      ),
+      null,
+      outcome
+    );
+  }
+});
+
+// A file declaration and a folder declaration covering the same path both push a row,
+// so one path can carry two. Any non-verified row withdraws the vouching WHATEVER its
+// position - otherwise the order two passes happened to run in would decide whether a
+// modified file is exempt.
+test("verifiedVendorSource is order-independent across two rows for one path", () => {
+  for (const results of [
+    [row("a.css", "verified"), row("a.css", "modified")],
+    [row("a.css", "modified"), row("a.css", "verified")],
+  ]) {
+    assert.equal(verifiedVendorSource({ vendor: { results } }, "a.css"), null);
+  }
+});
+
+// The untrusted reconciliation (applyUnverifiedVendor -> markUntrusted) DELETES the
+// unverified rows it consumed, so results alone cannot see that contradiction. The
+// untrusted list is what still remembers it, and the stricter half must win.
+test("verifiedVendorSource refuses a file the untrusted reconciliation touched", () => {
+  const addon = {
+    vendor: { results: [row("a.css", "verified")] },
+    bundled: { untrusted: [{ file: "a.css", unreadable: false }] },
+  };
+  assert.equal(verifiedVendorSource(addon, "a.css"), null);
+  // ... and leaves every other file alone.
+  addon.vendor.results.push(row("b.css", "verified"));
+  assert.ok(verifiedVendorSource(addon, "b.css"));
+});
+
+// An untrusted entry names whatever the failing DECLARATION named. A folder
+// declaration that could not be fetched is recorded under the FOLDER path, so an
+// exact-path test would miss every file inside it - which is exactly the shape a
+// contradictory submission takes (folder + a file under it declared separately).
+test("verifiedVendorSource refuses a file under an untrusted FOLDER entry", () => {
+  const addon = {
+    vendor: { results: [row("lib/panel.html", "verified")] },
+    bundled: { untrusted: [{ file: "lib", unreadable: false }] },
+  };
+  assert.equal(verifiedVendorSource(addon, "lib/panel.html"), null);
+  // A sibling path that merely shares the prefix as a substring is NOT covered.
+  addon.vendor.results.push(row("library.css", "verified"));
+  assert.ok(verifiedVendorSource(addon, "library.css"));
 });

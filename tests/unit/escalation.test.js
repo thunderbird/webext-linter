@@ -43,6 +43,7 @@ test("runLlmCheck with no token defaults every candidate to unsure", async () =>
       hint: null,
       file: null,
       loc: null,
+      llmNotNeeded: false,
       kind: "escalation",
       data: null,
       occurrences: null,
@@ -83,6 +84,9 @@ test("runLlmCheck sends prompt + candidates + the routed addon to evaluate", asy
 
 // A deterministic check's escalations route straight to manual refs, carrying
 // any per-case data (e.g. a reason) and locus (file/loc) through to the report.
+// The third case carries `llmNotNeeded`: the ref is what registry.rechecks reads, so
+// if manualRef dropped the flag a case no model verdict could change would become
+// recheckable with nothing else to catch it.
 test("manualEscalations maps each escalation to a manual ref", () => {
   const out = manualEscalations(check, [
     {
@@ -93,6 +97,7 @@ test("manualEscalations maps each escalation to a manual ref", () => {
       data: { reason: "why" },
     },
     { item: null },
+    { item: "d.js", llmNotNeeded: true },
   ]);
   assert.deepEqual(out.findings, []);
   assert.deepEqual(out.manualItems, [
@@ -102,6 +107,7 @@ test("manualEscalations maps each escalation to a manual ref", () => {
       hint: "fetch()",
       file: "manifest.json",
       loc: { line: 3 },
+      llmNotNeeded: false,
       kind: "escalation",
       data: { reason: "why" },
       occurrences: null,
@@ -112,6 +118,18 @@ test("manualEscalations maps each escalation to a manual ref", () => {
       hint: null,
       file: null,
       loc: null,
+      llmNotNeeded: false,
+      kind: "escalation",
+      data: null,
+      occurrences: null,
+    },
+    {
+      ruleId: "unused-files",
+      item: "d.js",
+      hint: null,
+      file: null,
+      loc: null,
+      llmNotNeeded: true,
       kind: "escalation",
       data: null,
       occurrences: null,

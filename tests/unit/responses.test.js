@@ -327,3 +327,81 @@ test("a named slot value carries no control characters", () => {
   // into a working URL, so the pieces stay visibly apart.
   assert.match(f.message, /https:\/\/x\/ \[1Aa\.js/);
 });
+
+// ---- llm-not-needed items ----
+// A llm-not-needed item is one no model verdict could change the outcome of, so it takes
+// the entry's `llm-not-needed-instructions` and carries NO response: the entry's response is
+// the wording for rejecting the rule, and this case is not a rejection.
+test("renderManualItems renders a llm-not-needed item from its own wording", () => {
+  const [item] = renderManualItems(
+    [
+      {
+        ruleId: "remote-resources",
+        item: "css https://fonts.example/f.css",
+        hint: "https://cdn.example/lib@1.0.0/lib.css",
+        file: "lib/lib.css",
+        loc: { line: 1 },
+        llmNotNeeded: true,
+        kind: "escalation",
+      },
+    ],
+    registry
+  );
+  // The reviewer is asked to decide, not to establish what the check established.
+  assert.match(item.instructions, /matches a published/);
+  assert.ok(!item.instructions.includes("Confirm by hand"));
+  assert.equal(item.response, null);
+  // Item-free wording, so the site and its upstream are listed per locus.
+  assert.equal(item.listItem, true);
+  assert.equal(item.hint, "https://cdn.example/lib@1.0.0/lib.css");
+});
+
+// The same ref without the flag is the ordinary escalation, unchanged - which is what
+// makes the assertions above about the flag rather than about this entry.
+test("renderManualItems renders the same ref without the flag as before", () => {
+  const [item] = renderManualItems(
+    [{ ruleId: "remote-resources", item: "x", kind: "escalation" }],
+    registry
+  );
+  assert.match(item.instructions, /Confirm by hand/);
+  assert.match(item.response, /Remote sources are not allowed/);
+});
+
+// Nothing at load time can tell which checks raise llm-not-needed items, so an entry that
+// raises one without authoring the wording must fail loudly here - the alternatives
+// are a report that misdescribes the case or one that asks for a judgement with no
+// grounds. unsafe-html authors no `llm-not-needed-instructions`.
+test("renderManualItems refuses a llm-not-needed item with no authored wording", () => {
+  assert.throws(
+    () =>
+      renderManualItems(
+        [
+          {
+            ruleId: "unsafe-html",
+            item: "x",
+            llmNotNeeded: true,
+            kind: "escalation",
+          },
+        ],
+        registry
+      ),
+    /llm-not-needed-instructions/
+  );
+});
+
+// The wording choice is the registry's, so the raise belongs to the registry too -
+// responses.js resolves templates and does not police who authored what.
+test("registry.instructionsFor picks the wording and refuses an unauthored one", () => {
+  assert.match(
+    registry.instructionsFor("remote-resources", true),
+    /matches a published/
+  );
+  assert.match(
+    registry.instructionsFor("remote-resources", false),
+    /Confirm by hand/
+  );
+  assert.throws(
+    () => registry.instructionsFor("unsafe-html", true),
+    /llm-not-needed-instructions/
+  );
+});

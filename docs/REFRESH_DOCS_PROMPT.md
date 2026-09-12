@@ -43,7 +43,8 @@ that no longer exist.
    kebab-case id), `response` (developer-facing message), and often a leading
    comment block describing intent. Some entries have no `severity` (manual /
    producer checks) or special fields (`input`, `diff`, `sca`, `eslint`,
-   `post-summary-recheck`, `summary-prompt`, `permission-recheck`). The
+   `post-summary-recheck`, `summary-prompt`, `permission-recheck`,
+   `llm-not-needed-instructions`). The
    check-bearing sections ARE the phases — a check's phase
    IS the section it lives in, never a field on the entry: `invalid-experiment-phase`
    (the only phase that runs for an invalid Experiment), `deterministic-phase`,
@@ -96,7 +97,7 @@ that no longer exist.
    - a **What it detects** section: 2-4 sentences of plain English, **no code**,
      derived from the `.js` header comment + the registry comment/`response`;
    - a **Decision flow** section: a `<pre class="mermaid">` `flowchart TD` that
-     walks the check's *real* decision path — scope/skip conditions as the first
+     walks the check's _real_ decision path — scope/skip conditions as the first
      gates, decision diamonds for each branch, and terminal nodes for the
      outcomes (`no finding` vs `ERROR` / `WARNING` / `INFO`, or an escalation to
      manual review). Reuse the shared `classDef` styles (`err` / `ok` / `info` /

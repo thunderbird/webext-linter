@@ -89,13 +89,13 @@
       </header>
 
       <p class="lead">
-        A review is a single call to <code>runPipeline()</code>
-        (<code>src/pipeline.js</code>), the tool's core: it performs an analysis of
-        the provided add-on and returns a <code>Review</code> - the findings and
-        manual-review notes. The call loads and resolves the add-on, builds the
-        run context, then
-        hands off to the orchestrator, which runs the checks. Everything below
-        happens inside it.
+        A review is a single call to
+        <code>runPipeline()</code> (<code>src/pipeline.js</code>), the tool's
+        core: it performs an analysis of the provided add-on and returns a
+        <code>Review</code> - the findings and manual-review notes. The call
+        loads and resolves the add-on, builds the run context, then hands off to
+        the orchestrator, which runs the checks. Everything below happens inside
+        it.
       </p>
 
       <h2>Setup</h2>
@@ -107,9 +107,10 @@
         <code>invalidExperiment</code>, the <code>mode</code> (with
         <code>scaNotRequired</code>), <code>llmVerified</code>, and the
         <strong>review target</strong> - and everything after them, every check,
-        keys off those. After Phase&nbsp;4, Phase&nbsp;5 runs the review (a single
-        <code>runChecks()</code> call, detailed in <em>The orchestrator</em>) then
-        finalizes the <code>Review</code> for the report.
+        keys off those. After Phase&nbsp;4, Phase&nbsp;5 runs the review (a
+        single <code>runChecks()</code> call, detailed in
+        <em>The orchestrator</em>) then finalizes the <code>Review</code> for
+        the report.
       </p>
       <div class="flow">
         <pre class="mermaid">
@@ -254,36 +255,37 @@ flowchart TB
         Phase&nbsp;2 runs the full XPI analysis - vendor, classify, identify,
         parse - <em>before</em> the mode is known, yielding
         <code>xpiAddon.bundled</code> and the XPI's parsed sources; Phase&nbsp;4
-        then projects those into the <strong>shipped ctx</strong>
-        (<code>siblings.xpi</code>) that every <code>input: xpi</code> check
-        reads. Because the XPI is analysed the same way in both modes, an
-        <code>input: xpi</code> check sees the identical artifact whether the run
-        is SCA or XPI - the reason for the rework. There is no separate
-        &ldquo;light&rdquo; classification pass any more: the
-        <strong>SCA&nbsp;→&nbsp;XPI downgrade</strong> reads that same
+        then projects those into the
+        <strong>shipped ctx</strong> (<code>siblings.xpi</code>) that every
+        <code>input: xpi</code> check reads. Because the XPI is analysed the
+        same way in both modes, an <code>input: xpi</code> check sees the
+        identical artifact whether the run is SCA or XPI - the reason for the
+        rework. There is no separate &ldquo;light&rdquo; classification pass any
+        more: the <strong>SCA&nbsp;→&nbsp;XPI downgrade</strong> reads that same
         <code>xpiAddon.bundled</code>. A source archive is only worth reviewing
         when the shipped XPI cannot be, so <code>resolveReviewMode()</code>
         decides from the XPI&rsquo;s own code alone: if its first-party code is
         not minified or obfuscated the source adds nothing, the review is
         downgraded to a plain XPI review, the source archive is never read, and
         <code>sca-not-required</code> reports it. In SCA the readable source is
-        then analysed on its own in Phase&nbsp;3
-        (<code>siblings.source</code>); in an XPI review there is no second
-        artifact, so <code>siblings.source</code> simply aliases the shipped ctx.
-        An invalid Experiment skips the analysis entirely (it reads no code), so
-        it is never downgraded.
+        then analysed on its own in Phase&nbsp;3 (<code>siblings.source</code>);
+        in an XPI review there is no second artifact, so
+        <code>siblings.source</code> simply aliases the shipped ctx. An invalid
+        Experiment skips the analysis entirely (it reads no code), so it is
+        never downgraded.
       </div>
       <p>
         The invalid-Experiment path is not an early exit - it runs on to the
-        orchestrator, which reviews the shipped XPI with the single reject check.
-        It only <em>skips work</em>, in one step: setting
-        <code>invalidExperiment</code> pins the mode and bypasses everything after
-        it - the LLM (pre-flight and client, even under <code>--llm-review</code>),
-        the library hashes, the classification, the vendor block, the parse. Not
-        one line of the add-on's code is read, so <code>ctx.jsSources</code> is
-        empty; the reject check judges from the manifest, the experiment
-        classification and the schema - which is resolved <em>before</em> the
-        decision because the check resolves API paths through it.
+        orchestrator, which reviews the shipped XPI with the single reject
+        check. It only <em>skips work</em>, in one step: setting
+        <code>invalidExperiment</code> pins the mode and bypasses everything
+        after it - the LLM (pre-flight and client, even under
+        <code>--llm-review</code>), the library hashes, the classification, the
+        vendor block, the parse. Not one line of the add-on's code is read, so
+        <code>ctx.jsSources</code> is empty; the reject check judges from the
+        manifest, the experiment classification and the schema - which is
+        resolved <em>before</em> the decision because the check resolves API
+        paths through it.
       </p>
 
       <h2>The stores</h2>
@@ -306,7 +308,8 @@ flowchart TB
         the extraction pass ran throws "a check is a pure reader, it never
         parses"). The small unlabeled circles are <strong>relays</strong> - pure
         layout, so a store a check reads directly still lines up in the last
-        column. Solid arrows are "produces / derives from"; dashed are "read by".
+        column. Solid arrows are "produces / derives from"; dashed are "read
+        by".
       </p>
       <div class="flow">
         <pre class="mermaid">
@@ -574,9 +577,9 @@ flowchart LR
         </tbody>
       </table>
       <p>
-        In an XPI review there is one artifact, so <code>siblings.source</code>
-        and <code>siblings.xpi</code> are the same ctx. The
-        <strong>one input-less case</strong> is a
+        In an XPI review there is one artifact, so
+        <code>siblings.source</code> and <code>siblings.xpi</code> are the same
+        ctx. The <strong>one input-less case</strong> is a
         <strong>post-summary recheck consumer</strong>: the loader forbids it an
         <code>input</code>, so <code>routeCtx</code> routes it to
         <code>siblings.source</code> - it needs the review-level
@@ -747,13 +750,13 @@ flowchart TB
   ROUTE --> RUN["runOneCheck(checkCtx, check) → check.run()"]
   RUN -. throws .-> CF["one check-failed finding"]
   RUN -.-> LZ["the lazy caches are computed here, inside run():<br/>permissionAnalysis · apiResolution ·<br/>outboundSinks · evalScan · locales"]
-  RUN --> QLANE{{"what did run() return?"}}
+  RUN --> QLANE{{"what did run() return?<br/>the two deferral lanes are independent -<br/>one check may use both in one run"}}
   QLANE -- "llm: { candidates, resolve }" --> QT{{"ctx.llm attached, and the run-wide<br/>LLM budget allows another call?"}}
   QT -- yes --> EV[/"ctx.llm.evaluate()<br/>one verdict per candidate"/]
   QT -- no --> UN["verdict = unsure for every candidate"]
   EV --> RES["the check's resolve(verdicts)<br/>+ findings · + manual items"]
   UN --> RES
-  QLANE -- "escalations (deterministic)" --> ME["manualEscalations()<br/>repack the escalations as manual items"]
+  QLANE -- "escalations (any check)" --> ME["manualEscalations()<br/>repack the escalations as manual items<br/>a `llmNotNeeded` one: a model verdict would change nothing"]
   QLANE -- "a plain Finding[]" --> STAMP
 
   ME --> STAMP["stamp the produced findings — the check's<br/>direct findings + any the llm lane added<br/>ruleId + severity (auto → the check sets it)"]
@@ -764,7 +767,7 @@ flowchart TB
   QANY -- no --> NEXT
   QANY -- yes --> QDIV{{"check.postSummaryRecheck<br/>&& recheckActive?"}}
   QDIV -- no --> PUSHM["manualItems.push(out.manualItems)<br/>→ manual review"]
-  QDIV -- "yes · per manual item" --> QRUB{{"registry.rechecks(consumer, item)?<br/>a rubric for it?"}}
+  QDIV -- "yes · per manual item" --> QRUB{{"registry.rechecks(consumer, item)?<br/>not a `llmNotNeeded` item, and a rubric for it?"}}
   QRUB -- no --> PUSHM
   QRUB -- yes --> HELD["ctx.recheck[consumer].push(item)<br/>held for the AI summary to re-judge"]
 
@@ -812,6 +815,26 @@ flowchart TB
           permission (see below).
         </li>
       </ul>
+
+      <p>
+        A check has a third thing it can say, and it is the one the funnel below
+        does not cover:
+        <em>no answer a model could give would change what happens here.</em> A
+        remote font <code>@import</code> inside a stylesheet whose content
+        matches a published file of a known library release is that
+        release&rsquo;s own line, not something the developer wrote. Nothing is
+        unresolved there, so there is nothing to ask a model; what is left is
+        whether shipping it as published is acceptable here, which is a
+        reviewer&rsquo;s call. Such a case is escalated with
+        <code>llmNotNeeded: true</code>, and
+        <code>registry.rechecks()</code> refuses it whatever the check declares.
+        Since the divert is the only writer of <code>ctx.recheck</code>, and
+        that bucket is the only route from a manual item to a model, refusing it
+        there is refusing every route. The reviewer reads the entry&rsquo;s
+        <code>llm-not-needed-instructions</code> rather than its usual
+        <code>instructions</code>, and no suggested response is printed -
+        nothing here is a rejection anyone has made.
+      </p>
 
       <p>
         These two seams are not separate worlds - they form a
@@ -869,16 +892,19 @@ flowchart LR
 
       <p>
         With <code>--verbose</code>, the text report surfaces the model&rsquo;s
-        structured answer: below the &ldquo;Summary of add-on&rdquo; prose it prints
-        a <code>Recheck verdicts:</code> list, one bullet per candidate site (the
-        consumer&rsquo;s title, the <code>[XPI]</code>/<code>[SCA]</code> label,
-        <code>file:line</code>, the subject, and the verdict) with the real source
-        line beneath it. A handed site the model returned no verdict for still
-        appears, as <code>unsure</code>. No model reason is printed - those live in
-        the prose summary above. <code>buildRecheckVerdictReport</code> assembles
-        the rows in <code>runChecks</code>, where each consumer&rsquo;s corpus is
-        in scope so every source line is read from the right artifact; the renderer
-        only prints them.
+        structured answer: below the &ldquo;Summary of add-on&rdquo; prose it
+        prints a <code>Recheck verdicts:</code> list, one bullet per candidate
+        site (the consumer&rsquo;s title, the <code>[XPI]</code>/<code
+          >[SCA]</code
+        >
+        label, <code>file:line</code>, the subject, and the verdict) with the
+        real source line beneath it. A handed site the model returned no verdict
+        for still appears, as <code>unsure</code>. No model reason is printed -
+        those live in the prose summary above.
+        <code>buildRecheckVerdictReport</code> assembles the rows in
+        <code>runChecks</code>, where each consumer&rsquo;s corpus is in scope
+        so every source line is read from the right artifact; the renderer only
+        prints them.
       </p>
 
       <p class="source-note">

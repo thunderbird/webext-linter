@@ -3498,6 +3498,37 @@ test("loadChecks rejects an invalid severity token", async () => {
   }
 });
 
+// ---- the two deferral lanes ----
+// A check may defer in two ways in one run: `llm` for what it could not settle, and
+// `escalations` for what it settled but may not decide. They are independent, so both
+// results must come back - the shape that would silently drop the escalations is the
+// branch running only the first lane.
+test("a check that defers both ways gets both lanes run", async () => {
+  const check = {
+    id: "both",
+    severity: "warning",
+    run: () => ({
+      findings: [],
+      llm: {
+        candidates: [{ id: "U1", file: "a.js" }],
+        // No token in this ctx, so every candidate comes back unsure; what matters
+        // here is that resolve ran at all.
+        resolve: () => ({ findings: [], manual: [{ item: "unsettled" }] }),
+      },
+      escalations: [{ item: "undecided", llmNotNeeded: true }],
+    }),
+  };
+  const out = await runOneCheck({}, check, "[1/1]");
+  assert.deepEqual(
+    out.manualItems.map((m) => m.item),
+    ["unsettled", "undecided"]
+  );
+  assert.deepEqual(
+    out.manualItems.map((m) => m.llmNotNeeded),
+    [false, true]
+  );
+});
+
 // ---- severity stamping (the orchestrator is the gatekeeper) ----
 // A check under a FIXED registry severity cannot choose its own: any f.severity
 // it sets is overwritten with the entry's. Only severity:auto delegates the

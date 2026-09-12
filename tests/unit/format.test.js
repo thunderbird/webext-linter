@@ -10,6 +10,8 @@ import {
   formatReviewBody,
   formatSummary,
 } from "../../src/report/format.js";
+import { renderManualItems } from "../../src/report/responses.js";
+import { loadRegistry } from "../../src/checks/registry.js";
 
 function review() {
   return {
@@ -159,6 +161,46 @@ test("Manual review prints the response between instructions and the locus list"
   // The entry with no response carries no extra line.
   assert.match(manual, /Forked add-on: Check for a fork\./);
   assert.ok(!manual.includes("undefined"));
+});
+
+// What a reviewer actually reads for a llm-not-needed item, end to end from the real
+// registry: the llm-not-needed wording, the site and the release it was matched against on
+// the locus line, and NO "Suggested response:" - the entry's response is the wording
+// for rejecting this rule, and these cases are not a rejection anyone has made.
+test("a llm-not-needed item renders with its own wording and no suggested response", () => {
+  const registry = loadRegistry();
+  const [item] = renderManualItems(
+    [
+      {
+        ruleId: "remote-resources",
+        item: "https://fonts.example/f.css",
+        hint: "https://cdn.example/x@1.0.0/x.css",
+        file: "lib/x.css",
+        loc: { line: 1 },
+        llmNotNeeded: true,
+        kind: "escalation",
+      },
+    ],
+    registry
+  );
+  const out = formatText({
+    findings: [],
+    meta: {
+      action: "review",
+      addon: "x",
+      reviewed: true,
+      manualReview: [{ ...item, extended: true }],
+    },
+  });
+  const manual = out.split("── Extended manual review ──")[1];
+  assert.match(manual, /matches a published file of the upstream release/);
+  assert.ok(!manual.includes("Suggested response:"));
+  // Both URLs survive whole onto the locus line - the site being judged, then the
+  // release it was matched against.
+  assert.match(
+    manual,
+    / - lib\/x\.css:1 - https:\/\/fonts\.example\/f\.css - https:\/\/cdn\.example\/x@1\.0\.0\/x\.css/
+  );
 });
 
 // JSON render drops manualReview entirely - both the meta key and the item
