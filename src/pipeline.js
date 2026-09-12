@@ -485,7 +485,11 @@ export async function runPipeline(opts) {
     // resolveReviewMode returns a plain XPI review when there is no --sca-root (a native XPI
     // submission); with --sca-root it DOWNGRADES to a plain XPI review when the shipped XPI's
     // own first-party code is directly reviewable (sca-not-required reports it), else keeps SCA.
-    ({ mode, scaNotRequired } = resolveReviewMode(opts, xpiAddon.bundled));
+    ({ mode, scaNotRequired } = resolveReviewMode(
+      opts,
+      xpiAddon.bundled,
+      xpiAddon
+    ));
   }
 
   // Phase 2: everything mode-dependent, DERIVED from the resolved mode - no mutation. The
@@ -1022,13 +1026,15 @@ export function selectSchemaChannel({ candidates, strictMax }) {
  * @param {object} opts  Pipeline opts; only `opts.scaRoot` is read here.
  * @param {?import("./lib/bundled.js").Bundled} bundled  The built XPI's vendor-aware
  *   classification (xpiAddon.bundled from the Phase 2 classifyReview).
+ * @param {import("./addon/load.js").Addon} [addon]  The built XPI itself, so the
+ *   decision also sees code shipped inside a page (hasUnreviewableCode).
  * @returns {{mode: REVIEW_MODE.XPI|"sca", scaNotRequired: boolean}}
  */
-export function resolveReviewMode(opts, bundled) {
+export function resolveReviewMode(opts, bundled, addon) {
   if (!opts.scaRoot) {
     return { mode: REVIEW_MODE.XPI, scaNotRequired: false };
   }
-  if (hasUnreviewableCode(bundled)) {
+  if (hasUnreviewableCode(bundled, addon)) {
     return { mode: REVIEW_MODE.SCA, scaNotRequired: false };
   }
   return { mode: REVIEW_MODE.XPI, scaNotRequired: true };

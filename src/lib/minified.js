@@ -33,18 +33,48 @@ const LONG_LINE = 500;
 const MINIFIED_LINE_STMTS = 10;
 
 /**
+ * Whether a JavaScript SOURCE is minified. The language is the caller's knowledge, not
+ * a guess from the path: an inline `<script>` is JavaScript living in a .html file, and
+ * judging it by its container's extension would apply the CSS rule - one long line is
+ * enough - instead of the statement-density test that exists to keep a single long line
+ * from counting.
+ * Source that does not PARSE falls whichever way the caller says. For a file the
+ * default is "minified": a .js that will not parse is packed or broken, and waving it
+ * through would be the wrong risk. For a body whose language was never established -
+ * an inline `<script>` holding a template or a JSON blob - it is the opposite: those
+ * never parse, and calling them minified rejects an add-on for shipping data. Code
+ * that actually runs parses either way, so the choice only decides what happens to
+ * things that do not.
+ * @param {string} text  JavaScript source.
+ * @param {string} [file]  Parse hint (extension picks ts/tsx/jsx) and debug label.
+ * @param {{unparsableIsMinified?: boolean}} [opts]
+ * @returns {boolean}
+ */
+export function isMinifiedJs(text, file, { unparsableIsMinified = true } = {}) {
+  // Parse-gate: no long line -> not minified, and no parse.
+  if (longestLine(text) <= LONG_LINE) {
+    return false;
+  }
+  const stmts = maxLineStatements(text, file);
+  if (stmts === Infinity && !unparsableIsMinified) {
+    return false; // did not parse, and the caller does not treat that as packed
+  }
+  return stmts >= MINIFIED_LINE_STMTS;
+}
+
+/**
  * Whether `text` is minified code (packed, unreviewable) rather than readable source.
  * @param {string} text  JS or CSS source.
  * @param {string} [file]  The file path (decides JS vs CSS, and labels the debug log).
  * @returns {boolean}
  */
 export function isMinified(text, file) {
-  // Parse-gate for both languages: no long line -> not minified, and no parse.
+  if (JS_EXTENSIONS.has(extname(file ?? ""))) {
+    return isMinifiedJs(text, file);
+  }
+  // Parse-gate: no long line -> not minified, and no parse.
   if (longestLine(text) <= LONG_LINE) {
     return false;
-  }
-  if (JS_EXTENSIONS.has(extname(file ?? ""))) {
-    return maxLineStatements(text, file) >= MINIFIED_LINE_STMTS;
   }
   // CSS has no statements. A long line is minification ONLY if it survives stripping
   // the one thing that makes readable CSS long: a payload (a `data:` font in url(), a

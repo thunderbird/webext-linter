@@ -1,0 +1,23 @@
+{
+  "_comment": "Code shipped INSIDE a page rather than beside it. classifyFiles tags files, so an inline <script> body was never asked whether it is reviewable: the identical bytes were rejected as a .js and unmentioned as an inline script. packed.html carries machine-packed code (minified-code), hidden.html carries the array-replacement obfuscation from the obfuscated-code fixture (obfuscated-code, and NOT also minified - the same routing a file gets). readable.html is the control that keeps the language honest: its one long line is a single data literal, so the JS statement-density rule says readable. Judged by its container's .html extension it would take the CSS rule - one long line is enough - and be reported, which is why classifyInlineScripts calls isMinifiedJs rather than isMinified. template.html and disguised.html pin the type rule: a body is read when its type is one a browser RUNS, and also whenever it parses. template.html holds markup under text/template - not JavaScript, never parses, so reporting it would reject an add-on for shipping a template. disguised.html holds real packed code under the SAME non-JS type: it parses, so it is still caught, which is why the type list can never hide code from the scan.",
+  "expect": {
+    "minified-code": [
+      "packed.html:1",
+      "disguised.html:2"
+    ],
+    "obfuscated-code": [
+      "hidden.html:1"
+    ],
+    "unused-files": [
+      "readable.html",
+      "template.html",
+      "disguised.html"
+    ],
+    "addon-icon-missing": [
+      "manifest.json"
+    ],
+    "unparsable-file": [
+      "template.html"
+    ]
+  }
+}

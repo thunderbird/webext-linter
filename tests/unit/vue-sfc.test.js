@@ -115,3 +115,25 @@ test("extractVueSfc: a plain <script> with no lang parses as JavaScript", () => 
   // .js enables JSX, so a render-function JSX literal still parses.
   assert.equal(parseJs(s.code, s.parseAs).parseError, null);
 });
+
+// `inline` marks a shipped <script> BODY. A lifted binding is an attribute expression
+// wrapped in code of the scanner's own making, so it must not carry the flag: a
+// consumer judging what the add-on ships would otherwise name a `()=>{...}` wrapper
+// the developer never wrote. The lifting itself is unaffected - the sinks still see it.
+test("a lifted template binding is not marked as an inline script body", () => {
+  const sources = extractVueSfc(
+    "Comp.vue",
+    `<template>\n  <div v-html="userInput"></div>\n  <button @click="go()">x</button>\n</template>\n` +
+      `<script>\nexport default { data() { return { n: 0 }; } };\n</` +
+      `script>\n`
+  );
+  const bodies = sources.filter((s) => s.inline);
+  const bindings = sources.filter((s) => !s.inline);
+  assert.equal(bodies.length, 1); // the <script> block
+  assert.match(bodies[0].code, /defineComponent|export default/);
+  // Both bindings are still lifted, still scannable - only the flag is withheld.
+  assert.deepEqual(bindings.map((b) => b.code).sort(), [
+    "()=>{go()}",
+    "__vhtml.innerHTML=(userInput)",
+  ]);
+});

@@ -33,30 +33,27 @@ import { eachElement } from "./html-parse.js";
  */
 export function extractVueSfc(file, text) {
   const out = [];
-  eachElement(
-    text,
-    (el) => {
-      if (el.tag === "script") {
-        if (el.rawText && el.rawText.value.trim() !== "") {
-          out.push({
-            file,
-            code: el.rawText.value,
-            lineOffset: el.rawText.startLine - 1,
-            inline: true,
-            parseAs: extForLang(el.attr("lang")),
-          });
-        }
-        return;
+  eachElement(text, (el) => {
+    if (el.tag === "script") {
+      if (el.rawText && el.rawText.value.trim() !== "") {
+        out.push({
+          file,
+          code: el.rawText.value,
+          lineOffset: el.rawText.startLine - 1,
+          inline: true,
+          declaredJs: true,
+          parseAs: extForLang(el.attr("lang")),
+        });
       }
-      for (const a of el.attrList) {
-        const src = bindingSource(file, a);
-        if (src) {
-          out.push(src);
-        }
+      return;
+    }
+    for (const a of el.attrList) {
+      const src = bindingSource(file, a);
+      if (src) {
+        out.push(src);
       }
-    },
-    { intoTemplates: true }
-  );
+    }
+  });
   return out;
 }
 
@@ -113,7 +110,10 @@ function bindingSource(file, a) {
     file,
     code,
     lineOffset: a.line - 1,
-    inline: true,
+    // NOT `inline`: that means a shipped <script> body (see JsSource), and this is an
+    // attribute expression the tool lifted into code of its own making. A consumer
+    // asking "is this body reviewable" must not be handed a `()=>{...}` wrapper the
+    // developer never wrote - it would name template markup in the finding.
     parseAs: ".js",
   };
 }

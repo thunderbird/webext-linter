@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "Inline Script Sample",
+  "version": "1.0",
+  "action": { "default_popup": "packed.html" },
+  "options_ui": { "page": "hidden.html" }
+}

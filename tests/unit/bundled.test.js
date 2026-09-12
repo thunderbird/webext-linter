@@ -9,6 +9,8 @@ import assert from "node:assert/strict";
 import {
   classifyBundled,
   classifyAddonJs,
+  classifyInlineScripts,
+  classifyInlineSources,
   hasUnreviewableCode,
   isMinifiedFirstParty,
   isObfuscatedFirstParty,
@@ -386,4 +388,200 @@ test("hasUnreviewableCode: minified/obfuscated first-party -> true; library/read
   );
   assert.equal(hasUnreviewableCode({ ...base, untrusted: [] }), false);
   assert.equal(hasUnreviewableCode(null), false);
+});
+
+// ---- inline <script> bodies ----
+// classifyFiles tags FILES, so the same bytes that are rejected beside a page went
+// unasked inside it: minified-code and obfuscated-code both read per-file tags, and an
+// inline script has none. classifyInlineScripts asks both questions of the extracted
+// source. `ctx` here is the shape a check sees - jsSources, as collectJsSources builds
+// them, where an inline body carries the HTML path and inline: true.
+const inlineCtx = (code, file = "page.html", extra = {}) => ({
+  addon: { files: new Map(), ...extra.addon },
+  jsSources: [
+    { file, code, lineOffset: 4, inline: true, declaredJs: true, ...extra.src },
+  ],
+  ...extra,
+});
+
+test("classifyInlineScripts judges a minified inline script", () => {
+  const [site] = classifyInlineScripts(inlineCtx(MINIFIED));
+  assert.equal(site.file, "page.html");
+  // lineOffset + 1: the reviewer is sent to the <script>, not the top of the page.
+  assert.deepEqual(site.loc, { line: 5, column: 0 });
+  assert.equal(site.minified, true);
+  assert.equal(site.obfuscation, VERDICT.PASS);
+});
+
+test("classifyInlineScripts judges an obfuscated inline script", () => {
+  const [site] = classifyInlineScripts(inlineCtx(OBFUSCATED));
+  assert.equal(site.obfuscation, VERDICT.FAIL);
+  // Multi-line and low-density: obfuscated, and not minified by geometry.
+  assert.equal(site.minified, false);
+});
+
+// The container is a .html, so judging by extension would apply the CSS rule - one long
+// line is enough. A script whose only long line is a data literal is readable source.
+test("classifyInlineScripts judges the body as JS, not by the .html it sits in", () => {
+  const [site] = classifyInlineScripts(inlineCtx(DATA_BLOB));
+  assert.equal(site.minified, false);
+});
+
+// The floor bounds the OBFUSCATION detector, not the minified question - so a body
+// under it is still asked whether it is packed, and a bundle cannot be cut into
+// sub-floor <script> blocks to hide. A non-authored page is skipped outright.
+test("classifyInlineScripts asks about a short body, but not for obfuscation", () => {
+  const short = `var a=0;${"a=a+1;".repeat(120)}`; // packed, ~730 bytes: under the floor
+  assert.ok(Buffer.byteLength(short, "utf8") < 1024);
+  const [site] = classifyInlineScripts(inlineCtx(short));
+  assert.equal(site.minified, true);
+  assert.equal(site.obfuscation, VERDICT.PASS); // not asked at this size
+  const ctx = inlineCtx(MINIFIED, "lib/vendor.html");
+  ctx.addon.bundled = {
+    classified: [],
+    nonAuthored: new Set(["lib/vendor.html"]),
+    untrusted: [],
+  };
+  assert.deepEqual(classifyInlineScripts(ctx), []);
+});
+
+// The same split for FILES: a sub-floor packed build chunk is minified (real ones ship -
+// a Vite modulepreload polyfill, a webpack chunk), while the obfuscation detector is
+// still bounded to the sizes where it is precise.
+test("classifyBundled asks about a short file, but not for obfuscation", () => {
+  const short = `var a=0;${"a=a+1;".repeat(120)}`;
+  const { classified } = classifyBundled(addonWith({ "chunk.js": short }));
+  const tag = classified.find((c) => c.file === "chunk.js");
+  assert.equal(tag.minified, true);
+  assert.equal(tag.obfuscation, VERDICT.PASS);
+  assert.equal(tag.library, false);
+});
+
+// ... but only for JS. The size-independence argument is about statement density, and
+// only the JS branch measures it: for CSS isMinified is pure geometry, so a small
+// one-line generated stylesheet - a design-token file - would read as packed.
+test("a short stylesheet keeps the floor, a short script does not", () => {
+  const tokens = `:root{${Array.from(
+    { length: 40 },
+    (_, i) => `--tk-color-${i}:#ff00${i % 10}${i % 10}`
+  ).join(";")}}`;
+  assert.ok(Buffer.byteLength(tokens, "utf8") < 1024);
+  const { classified } = classifyBundled(
+    addonWith({
+      "tokens.css": tokens,
+      "chunk.js": `var a=0;${"a=a+1;".repeat(120)}`,
+    })
+  );
+  assert.equal(
+    classified.find((c) => c.file === "tokens.css"),
+    undefined
+  );
+  assert.equal(classified.find((c) => c.file === "chunk.js").minified, true);
+});
+
+// A script with a src= attribute is a separate file and is classified as one; only
+// bodies reach here, and a page with none yields nothing.
+test("classifyInlineScripts yields nothing for a page with no inline body", () => {
+  assert.deepEqual(
+    classifyInlineScripts({ addon: { files: new Map() }, jsSources: [] }),
+    []
+  );
+});
+
+// We read an inline body if its type is one a browser RUNS, and also whenever it
+// parses. So the type list can never hide code - packed JavaScript in a
+// <script type="text/template"> still parses, and is still caught - while a template
+// or a JSON blob, which never parses, is not rejected for not being JavaScript.
+test("an inline body is read when its type declares JS, or when it parses", () => {
+  const packed = `var a=0;${"a=a+1;".repeat(250)}`;
+  const markup = `<tr><td>${"x".repeat(600)}</td></tr>\n`.repeat(4);
+  const of = (code, declaredJs) =>
+    classifyInlineScripts(
+      inlineCtx(code, "page.html", { src: { declaredJs } })
+    );
+  // declared JS: read whether or not it parses.
+  assert.equal(of(packed, true)[0].minified, true);
+  assert.equal(of(markup, true)[0].minified, true);
+  // not declared JS: read it anyway when it parses...
+  assert.equal(of(packed, false)[0].minified, true);
+  // ... and do not call unparsable markup "packed code".
+  assert.equal(of(markup, false)[0].minified, false);
+});
+
+// The parse hint is the SOURCE's, never the container's path. A Vue <script lang="ts">
+// lives in a .vue; parsed as plain JS it fails, maxLineStatements gives up, and an
+// ordinary component is reported as packed code.
+test("classifyInlineScripts parses a .vue block by its lang, not the .vue path", () => {
+  const ts =
+    "export default defineComponent({\n" +
+    "  data(): { n: number } { return { n: 0 }; },\n" +
+    `  computed: { label(): string { return "${"x".repeat(560)}"; } },\n` +
+    "});\n" +
+    `// ${"pad ".repeat(200)}\n`;
+  const ctx = inlineCtx(ts, "App.vue", { src: { parseAs: ".ts" } });
+  assert.equal(classifyInlineScripts(ctx)[0].minified, false);
+  // Without the hint the same block is misparsed and called minified.
+  const noHint = inlineCtx(ts, "App.vue");
+  assert.equal(classifyInlineScripts(noHint)[0].minified, true);
+});
+
+// The reviewability decision must see the same verdicts the checks do. Otherwise one
+// report tells the developer to send the readable original while another tells them the
+// source archive was not needed - and the archive they sent is discarded.
+test("hasUnreviewableCode counts code shipped inside a page", () => {
+  const page = `<html><body><script>\nvar a=0;${"a=a+1;".repeat(250)}\n</script></body></html>`;
+  const addon = addonWith({ "page.html": page });
+  const bundled = classifyBundled(addon);
+  assert.equal(hasUnreviewableCode(bundled), false); // files alone: nothing to see
+  assert.equal(hasUnreviewableCode(bundled, addon), true);
+});
+
+// classifyInlineSources answers "is this body the developer ships reviewable", so it
+// reads only shipped <script> bodies. A source without `inline` - a lifted Vue template
+// binding - is code the scanner synthesized and is not the add-on's to answer for.
+test("classifyInlineSources ignores a source that is not a script body", () => {
+  const packed = `()=>{${"a=a+1; ".repeat(200)}}`;
+  const asBinding = [
+    { file: "Comp.vue", code: packed, lineOffset: 1, parseAs: ".js" },
+  ];
+  const asBody = [{ ...asBinding[0], inline: true, declaredJs: true }];
+  assert.deepEqual(classifyInlineSources(asBinding), []);
+  assert.equal(classifyInlineSources(asBody).length, 1);
+});
+
+// A weak-family-only body: obfuscation UNSURE, so obfuscated-code asks the model rather
+// than deciding. Repeated helpers with a shared accessor - the shape the detector
+// half-recognises. >= 1024 bytes so it clears the floor.
+const WEAK_FAMILY =
+  "const M = (() => {\n" +
+  Array.from(
+    { length: 14 },
+    (_, i) =>
+      `  function assist${i}(v) { return String(v || "").trim() + " assist ${i}"; }\n`
+  ).join("") +
+  `  const table = [${Array.from({ length: 14 }, (_, i) => `assist${i}`).join(", ")}];\n` +
+  '  return { run: (i, v) => table[i](v) };\n})();\nM.run(0, "x");\n';
+
+// Two unsure scripts in ONE page are two questions. The candidate must carry the line:
+// the criterion renders `file:line`, so without it the model sees one subject named
+// twice, and a verdict can be attached to the wrong body.
+test("an inline obfuscation candidate names its site, not just its page", async () => {
+  const obfuscated = (await import("../../src/checks/rules/obfuscated-code.js"))
+    .default;
+  assert.equal(
+    classifyInlineSources([
+      { file: "p.html", code: WEAK_FAMILY, lineOffset: 0, inline: true },
+    ])[0].obfuscation.unsure,
+    true,
+    "fixture must be UNSURE, else there are no candidates to name"
+  );
+  const jsSources = [
+    { file: "p.html", code: WEAK_FAMILY, lineOffset: 1, inline: true },
+    { file: "p.html", code: WEAK_FAMILY, lineOffset: 40, inline: true },
+  ];
+  const out = obfuscated.run({ addon: { files: new Map() }, jsSources });
+  assert.deepEqual(
+    out.llm.candidates.map((c) => `${c.file}:${c.line}`),
+    ["p.html:2", "p.html:41"]
+  );
 });

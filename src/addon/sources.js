@@ -31,7 +31,14 @@ import {
  * @property {string} code  JavaScript text.
  * @property {number} lineOffset  Lines to add to AST-reported lines
  *   (0 for .js files).
- * @property {boolean} inline  True if extracted from an HTML <script> block.
+ * @property {boolean} inline  True if extracted from a <script> BODY - an HTML inline
+ *   script or an SFC block. Not set for code a scanner lifts out of an attribute:
+ *   that is synthesized, so a consumer judging what the add-on ships must not see it.
+ * @property {boolean} [declaredJs]  Whether the tag declares this body as JavaScript,
+ *   i.e. whether a browser would RUN it (see JS_SCRIPT_TYPES). Set on inline bodies;
+ *   a .js file needs no declaration. Read where an unparsable body has to fall one way
+ *   or the other - declared JS that will not parse is suspicious, a template or a JSON
+ *   blob that will not parse is just not JavaScript.
  * @property {string} [parseAs]  An extension (".ts"/".tsx"/...) that overrides the
  *   parse mode picked from `file`; set for a Vue <script> block, whose mode comes
  *   from its `lang` attribute rather than the ".vue" path.
@@ -98,6 +105,46 @@ export function collectJsSources(addon) {
   return sources;
 }
 
+// The `type` values a browser EXECUTES as a classic script, per the HTML spec's
+// JavaScript MIME types, plus the two that mean "no type given". A tag with any other
+// type - text/template, application/json, importmap, ld+json - is data: the browser
+// never runs it. The list is only ever used to decide which way an UNPARSABLE body
+// falls, never what gets extracted, so a spelling missing from it cannot blind a scan:
+// anything that parses is judged whatever its type says.
+const JS_SCRIPT_TYPES = new Set([
+  "",
+  "module",
+  "application/ecmascript",
+  "application/javascript",
+  "application/x-ecmascript",
+  "application/x-javascript",
+  "text/ecmascript",
+  "text/javascript",
+  "text/javascript1.0",
+  "text/javascript1.1",
+  "text/javascript1.2",
+  "text/javascript1.3",
+  "text/javascript1.4",
+  "text/javascript1.5",
+  "text/jscript",
+  "text/livescript",
+  "text/x-ecmascript",
+  "text/x-javascript",
+]);
+
+/**
+ * Whether a `<script type=...>` value declares JavaScript. Absent counts; the value is
+ * compared as the spec does - trimmed, lowercased, parameters (";charset=") dropped.
+ * @param {?string} type  The raw attribute value, or null when absent.
+ * @returns {boolean}
+ */
+function declaresJs(type) {
+  if (type === null || type === undefined) {
+    return true;
+  }
+  return JS_SCRIPT_TYPES.has(type.split(";")[0].trim().toLowerCase());
+}
+
 /**
  * Extract inline <script> bodies from an HTML document. Scripts with a `src`
  * attribute are skipped (the referenced file is covered separately, and a
@@ -121,6 +168,7 @@ function extractInlineScripts(file, html) {
       code: el.rawText.value,
       lineOffset: el.rawText.startLine - 1,
       inline: true,
+      declaredJs: declaresJs(el.attr("type")),
     });
   });
   return out;

@@ -47,7 +47,7 @@ import { debug } from "../util/log.js";
 import { writeFileAtomic } from "../util/atomic.js";
 import { rawSha256 } from "../normalize/hash.js";
 import { defaultNet, isPopular } from "../vendor/verify.js";
-import { markUntrusted } from "./bundled.js";
+import { markUntrusted, MIN_CLASSIFY_BYTES } from "./bundled.js";
 import {
   CDN_LOOKUP_URL,
   CDN_LOOKUP_CACHE,
@@ -119,6 +119,14 @@ export async function resolveCdnLibraries(
     // developer's own source; skip it. (Unlike the free local Mozilla hash DB, which
     // matches any file, a CDN lookup is a network request that fingerprints the file's
     // hash to a third party - hence the size floor, to keep it off small authored files.)
+    // A file below the classification floor is too small to be a library release (the
+    // reason the local hash lookup is floored too), so a lookup could only fingerprint
+    // it - which is the one thing the size floor above exists to prevent. `minified`
+    // waives the READABLE floor, not this one: it is asked at every size now, so
+    // without this a 700-byte first-party chunk would be hashed to a third party.
+    if (buf.length < MIN_CLASSIFY_BYTES) {
+      continue;
+    }
     if (!tag.minified && buf.length < CDN_LOOKUP_READABLE_MIN_BYTES) {
       continue;
     }

@@ -18,7 +18,11 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { classifyAddonJs, isMinifiedFirstParty } from "../../lib/bundled.js";
+import {
+  classifyAddonJs,
+  isMinifiedFirstParty,
+  classifyInlineScripts,
+} from "../../lib/bundled.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {
@@ -43,6 +47,24 @@ export default {
       );
       if (isMinifiedFirstParty(c)) {
         findings.push(finding({ file: c.file }));
+      }
+    }
+    // The same question, asked of code that ships INSIDE a page rather than beside it.
+    // classifyAddonJs tags files, so without this the identical bytes are rejected as
+    // a .js and unmentioned as an inline <script>. An obfuscated one is obfuscated-code's
+    // finding, exactly as for a file.
+    for (const site of classifyInlineScripts(ctx)) {
+      if (site.obfuscation.fail) {
+        continue;
+      }
+      ctx.note?.(
+        site.file,
+        site.loc,
+        site.minified ? "minified inline script" : "readable inline script",
+        site.minified ? VERDICT.FAIL : VERDICT.PASS
+      );
+      if (site.minified) {
+        findings.push(finding({ file: site.file, loc: site.loc }));
       }
     }
     return findings;

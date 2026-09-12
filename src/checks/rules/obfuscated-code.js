@@ -27,7 +27,7 @@
 // src/checks/registry.js), and report formatting (-> src/report/format.js).
 
 import { finding } from "../../report/finding.js";
-import { classifyAddonJs } from "../../lib/bundled.js";
+import { classifyAddonJs, classifyInlineScripts } from "../../lib/bundled.js";
 import { perCandidateResolve } from "../../lib/verdict-resolve.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -68,6 +68,45 @@ export default {
       );
       if (c.obfuscation.fail) {
         findings.push(finding({ file: c.file }));
+      }
+    }
+    // The same two questions, asked of an inline <script>: its body ships and runs
+    // like a file's, and classifyAddonJs only tags files. No library/untrusted branch
+    // here - those come from hashing a FILE, so an inline body is always the
+    // developer's own code (see classifyInlineScripts).
+    for (const site of classifyInlineScripts(ctx)) {
+      if (site.obfuscation.unsure) {
+        const id = `V${++n}`;
+        // The LINE is what distinguishes two scripts in one page: without it both
+        // candidates render as the same subject, the model is asked one question about
+        // two bodies, and a verdict can land on the wrong one.
+        candidates.push({
+          id,
+          file: site.file,
+          line: site.loc.line,
+          corpus: [site.file],
+        });
+        cases.push({
+          id,
+          finding: { file: site.file, loc: site.loc },
+          item: site.file,
+        });
+        ctx.note?.(
+          site.file,
+          site.loc,
+          "possible obfuscation",
+          site.obfuscation
+        );
+        continue;
+      }
+      ctx.note?.(
+        site.file,
+        site.loc,
+        site.obfuscation.fail ? "obfuscated" : "readable",
+        site.obfuscation
+      );
+      if (site.obfuscation.fail) {
+        findings.push(finding({ file: site.file, loc: site.loc }));
       }
     }
     if (!candidates.length) {

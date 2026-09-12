@@ -30,10 +30,11 @@ import {
   CODE_EXTENSIONS,
 } from "../util/files.js";
 import { isVendored } from "../vendor/resolve.js";
+import { collectJsSources } from "../addon/sources.js";
 import { rawSha256 } from "../normalize/hash.js";
 import { obfuscationVerdict } from "./obfuscation.js";
 import { VERDICT } from "./enum.js";
-import { isMinified } from "./minified.js";
+import { isMinified, isMinifiedJs } from "./minified.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../addon/load.js").Addon} Addon */
@@ -101,6 +102,13 @@ export function classifyBundled(addon, { libraryHashes = new Map() } = {}) {
   return assembleBundled(classifyFiles(addon, { libraryHashes }));
 }
 
+// Below this, the LIBRARY and OBFUSCATION questions are not worth asking: too small to
+// be a library release, and the obfuscation detector's array-replacement heuristic fires
+// on an ordinary string-lookup table at these sizes. The MINIFIED question has no such
+// limit and is asked at every size. Applied to a file's bytes and to an inline script's
+// body alike (classifyInlineSources).
+export const MIN_CLASSIFY_BYTES = 1024;
+
 /**
  * The per-file classification: library (content hash) / minified (geometry) /
  * obfuscation (structural, via classify) tags, plus the vendored / experiment-trusted /
@@ -131,18 +139,26 @@ export function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
     if ((!JS_EXTENSIONS.has(ext) && !CSS_EXTENSIONS.has(ext)) || vend) {
       continue;
     }
-    if (buf.length < 1024) {
-      // Too small (by bytes, as hashed) to be a library or a worrying blob. The floor
-      // also bounds the obfuscation detector to sizes where it is precise: on a tiny
-      // file its array-replacement heuristic fires on an ordinary string-lookup table
-      // (e.g. a day-name array), a false positive that vanishes above ~1KB.
+    // The floor guards the two questions that need it, not the one that does not. A
+    // tiny file is too small to be a library release, and the obfuscation detector's
+    // array-replacement heuristic fires on an ordinary string-lookup table at these
+    // sizes (a day-name array). Minification is neither: it is statement density on a
+    // long line, as precise at 700 bytes as at 700 KB - and skipping it here hid real
+    // packed build chunks (a Vite modulepreload polyfill, a webpack chunk) and let a
+    // bundle split into sub-floor pieces ship unasked.
+    const small = buf.length < MIN_CLASSIFY_BYTES;
+    // The size-independence argument is about STATEMENT DENSITY, which only the JS
+    // branch measures: for CSS, isMinified is pure geometry (one long line surviving a
+    // payload strip), and a small one-line stylesheet - a generated design-token file -
+    // reads as packed. So CSS keeps the floor and JS does not.
+    if (small && !JS_EXTENSIONS.has(ext)) {
       continue;
     }
     const text = buf.toString("utf8");
     // The library tag is a true content-hash match against the known-library DB;
     // a hit also names the matched release (libraryId) for missing-library.
-    const libraryId = libraryHashes.get(rawSha256(buf));
-    const content = classify(text, file);
+    const libraryId = small ? undefined : libraryHashes.get(rawSha256(buf));
+    const content = classify(text, file, { detectObfuscation: !small });
     const tag = { file, library: Boolean(libraryId), ...content };
     if (libraryId) {
       tag.libraryId = libraryId;
@@ -295,6 +311,75 @@ export function classifyAddonJs(ctx) {
 }
 
 /**
+ * Content verdicts for inline `<script>` bodies, one entry per site.
+ *
+ * classifyFiles tags FILES, and an inline script is not one - so the same bytes that
+ * are rejected as unreviewable beside a page went unasked inside it. The body ships and
+ * runs exactly like a .js file's, so both questions have to be put to the extracted
+ * SOURCE, which is where the code is. The verdicts come from the same two detectors
+ * classifyFiles uses, so "minified" and "obfuscated" keep one definition each.
+ *
+ * The floor applies to the OBFUSCATION half only, as for files: the minified question
+ * is statement density, which does not lose precision on a short body, and a page's
+ * scripts must not become invisible by being cut small. `skip` is the non-authored set - an inline script in a vendored or library
+ * page is no more the developer's than the page around it. No library/untrusted
+ * tagging: those come from hashing a FILE against the known-library database, and an
+ * inline body is not one, so every hit here is the developer's own code.
+ * @param {import("../addon/sources.js").JsSource[]} sources
+ * @param {Set<string>} [skip]  Non-authored paths.
+ * @returns {{file: string, loc: {line: number, column: number}, minified: boolean,
+ *   obfuscation: import("./enum.js").Verdict}[]}
+ */
+export function classifyInlineSources(sources, skip = new Set()) {
+  const out = [];
+  for (const src of sources) {
+    if (!src.inline || skip.has(src.file)) {
+      continue;
+    }
+    // Floor as in classifyFiles: it bounds the obfuscation detector, not the minified
+    // question - which is why a page's inline bodies cannot be shrunk below it to hide
+    // packed code.
+    const small = Buffer.byteLength(src.code, "utf8") < MIN_CLASSIFY_BYTES;
+    // The parse hint is the source's own (`parseAs`), never the container's path: a
+    // Vue <script lang="ts"> lives in a .vue, and judging it by that extension parses
+    // it as plain JS, fails, and reports an ordinary component as packed code. This is
+    // the hint every other consumer uses (src/checks/extract.js parseHint).
+    const hint = src.parseAs ?? src.file;
+    out.push({
+      file: src.file,
+      loc: { line: src.lineOffset + 1, column: 0 },
+      minified: isMinifiedJs(src.code, hint, {
+        // A body the tag declares as JavaScript and that will not parse is packed or
+        // broken - the file default. One the tag declares as something else is data
+        // the browser never runs, and calling it minified rejects an add-on for
+        // shipping a template. Anything that PARSES is judged whatever its type says,
+        // so the type list can never hide code (see declaresJs).
+        unparsableIsMinified: src.declaredJs !== false,
+      }),
+      obfuscation: small ? VERDICT.PASS : obfuscationVerdict(src.code, hint),
+    });
+  }
+  return out;
+}
+
+/**
+ * classifyInlineSources for a check's routed artifact, computed ONCE per review and
+ * shared - the module's compute-once contract, the same one classifyAddonJs keeps.
+ * Read at CHECK time on purpose: applyUnverifiedVendor removes a readable unverifiable
+ * page from the non-authored set after classification, and its inline scripts are then
+ * the developer's to answer for.
+ * @param {RunContext} ctx
+ * @returns {ReturnType<typeof classifyInlineSources>}
+ */
+export function classifyInlineScripts(ctx) {
+  const bundled = getBundled(ctx);
+  return (bundled.inline ??= classifyInlineSources(
+    ctx.jsSources ?? [],
+    bundled.nonAuthored
+  ));
+}
+
+/**
  * Files that are not the developer's authored source (see classifyBundled).
  * @param {RunContext} ctx
  * @returns {Set<string>}
@@ -352,16 +437,27 @@ export function isObfuscatedFirstParty(c) {
  * @param {?Bundled} bundled  A classifyBundled result.
  * @returns {boolean}
  */
-export function hasUnreviewableCode(bundled) {
+export function hasUnreviewableCode(bundled, addon) {
   if (!bundled) {
     return false;
   }
   const classified = bundled.classified ?? [];
-  return (
+  if (
     classified.some(isMinifiedFirstParty) ||
     classified.some(isObfuscatedFirstParty) ||
     (bundled.untrusted ?? []).some((lib) => lib.unreadable)
-  );
+  ) {
+    return true;
+  }
+  // Code shipped INSIDE a page counts too. Without this the report contradicts itself:
+  // minified-code tells the developer to send the readable original while
+  // sca-not-required tells them the source archive was not needed - and the archive
+  // they did send is discarded at the moment it is what the reviewer needs.
+  return addon
+    ? classifyInlineSources(collectJsSources(addon), bundled.nonAuthored).some(
+        (site) => site.minified || site.obfuscation.fail
+      )
+    : false;
 }
 
 /**
@@ -374,15 +470,16 @@ export function hasUnreviewableCode(bundled) {
  * @param {string} file
  * @returns {{minified: boolean, obfuscation: import("./enum.js").Verdict}}
  */
-export function classify(text, file) {
+export function classify(text, file, { detectObfuscation = true } = {}) {
   // Obfuscation is JS-only (a stylesheet is never obfuscated in this sense); isMinified
   // handles both JS (statement density) and CSS (packed rules). The verdict is three-state:
   // a weak-family-only match is UNSURE (readable, authored, scanned) and referred to the
   // obfuscated-code check's LLM/manual adjudication, never a deterministic finding.
   return {
     minified: isMinified(text, file),
-    obfuscation: JS_EXTENSIONS.has(extname(file))
-      ? obfuscationVerdict(text, file)
-      : VERDICT.PASS,
+    obfuscation:
+      detectObfuscation && JS_EXTENSIONS.has(extname(file))
+        ? obfuscationVerdict(text, file)
+        : VERDICT.PASS,
   };
 }
