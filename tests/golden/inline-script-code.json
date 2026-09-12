@@ -87,9 +87,9 @@
     ]
   },
   "summary": {
-    "error": 6,
+    "error": 3,
     "hold": 0,
-    "warning": 0,
+    "warning": 3,
     "info": 2,
     "byRule": {
       "minified-code": 2,
@@ -102,7 +102,7 @@
   "findings": [
     {
       "ruleId": "unused-files",
-      "severity": "error",
+      "severity": "warning",
       "file": "disguised.html",
       "loc": null,
       "item": null,
@@ -156,7 +156,7 @@
     },
     {
       "ruleId": "unused-files",
-      "severity": "error",
+      "severity": "warning",
       "file": "readable.html",
       "loc": null,
       "item": null,
@@ -165,7 +165,7 @@
     },
     {
       "ruleId": "unused-files",
-      "severity": "error",
+      "severity": "warning",
       "file": "template.html",
       "loc": null,
       "item": null,

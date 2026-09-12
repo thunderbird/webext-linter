@@ -87,9 +87,9 @@
     ]
   },
   "summary": {
-    "error": 3,
+    "error": 2,
     "hold": 0,
-    "warning": 0,
+    "warning": 1,
     "info": 0,
     "byRule": {
       "missing-permission": 2,
@@ -121,7 +121,7 @@
     },
     {
       "ruleId": "unused-files",
-      "severity": "error",
+      "severity": "warning",
       "file": "unreachable/",
       "loc": null,
       "item": null,

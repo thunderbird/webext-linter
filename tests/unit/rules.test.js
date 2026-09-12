@@ -699,7 +699,7 @@ test("every escalating check declares a section, and only those", async () => {
 
 // Severity is the ONE thing that decides whether a finding rejects a submission, and
 // the JSON report is an upload filter that can auto-reject before a human sees it. It
-// is observable only through a rendered report, and 22 checks fire in no fixture - so
+// is observable only through a rendered report, and eight checks fire in no fixture - so
 // demoting one of those from error to info changed nothing anywhere in this suite.
 // This pins the whole map: a flipped severity, or a new check landing in the wrong
 // band, trips here rather than silently softening a reject.
@@ -775,7 +775,6 @@ test("every check's severity is pinned to its band", async () => {
       "unsupported-build-tool",
       "unsupported-dependency",
       "untrusted-minified-library",
-      "unused-files",
       "update-url",
       "vendor-ambiguous-source",
       "vendor-modified",
@@ -790,6 +789,7 @@ test("every check's severity is pinned to its band", async () => {
       "mistyped-manifest-value",
       "non-experiment-strict-max-version",
       "sca-not-required",
+      "unused-files",
       "unused-permission",
     ],
     info: [

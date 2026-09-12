@@ -6,6 +6,8 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
  - manifest.json:7 - messagesModify
  - manifest.json:7 - scripting
 
+We kindly ask you to resolve the following issues with your next release:
+
 2) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
  - unreachable/
 
@@ -150,6 +152,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-3 error(s), 0 hold, 0 warning(s), 0 info,
+2 error(s), 0 hold, 1 warning(s), 0 info,
 0 extended code review item(s), 0 extended manual review item(s),
 8 standard code review item(s), 10 standard manual review item(s)

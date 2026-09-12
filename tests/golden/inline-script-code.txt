@@ -2,20 +2,22 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
- - disguised.html
- - readable.html
- - template.html
-
-2) The following file(s) cannot be reviewed in this form: they are minified, machine-generated, or not parsable as JavaScript. If a file is a third-party library, declare it as such and link its source so the (unmodified) bundled copy can be verified against the linked version (a VENDOR.md file at the add-on root is common practice). If it is your own code, provide the original, human-readable source for it - the add-on does not need to be minified. Where the readable code is produced by a build step, supply the build's sources and the instructions needed to reproduce the shipped XPI, using the source code upload field available during submission or on the version page in the developer hub. Note that the source-archive route slows review down, as it requires manually verifying the build process and that it reproduces the shipped XPI. If a file is not JavaScript at all - data shipped with a .js name, say - give it an extension that matches its content.
+1) The following file(s) cannot be reviewed in this form: they are minified, machine-generated, or not parsable as JavaScript. If a file is a third-party library, declare it as such and link its source so the (unmodified) bundled copy can be verified against the linked version (a VENDOR.md file at the add-on root is common practice). If it is your own code, provide the original, human-readable source for it - the add-on does not need to be minified. Where the readable code is produced by a build step, supply the build's sources and the instructions needed to reproduce the shipped XPI, using the source code upload field available during submission or on the version page in the developer hub. Note that the source-archive route slows review down, as it requires manually verifying the build process and that it reproduces the shipped XPI. If a file is not JavaScript at all - data shipped with a .js name, say - give it an extension that matches its content.
 Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 Read more #2: https://extensionworkshop.com/documentation/publish/source-code-submission/
  - disguised.html:2
  - packed.html:1
 
-3) The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
+2) The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
 Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
  - hidden.html:1
+
+We kindly ask you to resolve the following issues with your next release:
+
+3) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
+ - disguised.html
+ - readable.html
+ - template.html
 
 We would like to share the following information with you:
 
@@ -179,6 +181,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-6 error(s), 0 hold, 0 warning(s), 2 info,
+3 error(s), 0 hold, 3 warning(s), 2 info,
 1 extended code review item(s), 0 extended manual review item(s),
 8 standard code review item(s), 10 standard manual review item(s)

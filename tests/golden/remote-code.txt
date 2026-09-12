@@ -2,15 +2,17 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
- - page.html
- - style.css
-
-2) A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed.
+1) A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed.
  - page.html:4 - https://cdn.example.com/lib.js
  - page.html:7 - https://cdn.example.com/fonts.css
  - page.html:11 - https://cdn.example.com/bg.png
  - style.css:1 - https://cdn.example.com/theme.css
+
+We kindly ask you to resolve the following issues with your next release:
+
+2) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
+ - page.html
+ - style.css
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
@@ -165,6 +167,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-6 error(s), 0 hold, 0 warning(s), 0 info,
+4 error(s), 0 hold, 2 warning(s), 0 info,
 1 extended code review item(s), 0 extended manual review item(s),
 8 standard code review item(s), 10 standard manual review item(s)

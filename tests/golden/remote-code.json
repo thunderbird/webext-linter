@@ -87,9 +87,9 @@
     ]
   },
   "summary": {
-    "error": 6,
+    "error": 4,
     "hold": 0,
-    "warning": 0,
+    "warning": 2,
     "info": 0,
     "byRule": {
       "unused-files": 2,
@@ -99,7 +99,7 @@
   "findings": [
     {
       "ruleId": "unused-files",
-      "severity": "error",
+      "severity": "warning",
       "file": "page.html",
       "loc": null,
       "item": null,
@@ -144,7 +144,7 @@
     },
     {
       "ruleId": "unused-files",
-      "severity": "error",
+      "severity": "warning",
       "file": "style.css",
       "loc": null,
       "item": null,

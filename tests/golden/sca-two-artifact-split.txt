@@ -30,7 +30,7 @@ An example can be found here: https://github.com/thunderbird/webext-examples/tre
    a runtime loader that builds load paths at run time (a dynamic import,
    getURL, executeScript, insertCSS, setIcon and the like) and so may load it
    without naming it. If nothing loads them, they should not ship.
-Suggested verdict: error
+Suggested verdict: warning
 Suggested response: The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
  - [XPI] orphan.js
 

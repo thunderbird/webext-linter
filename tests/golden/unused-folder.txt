@@ -1,6 +1,6 @@
 ── Found Issues ──
 
-Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
+Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
 
 1) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
  - deadtree/
@@ -146,6 +146,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 hold, 0 warning(s), 0 info,
+0 error(s), 0 hold, 1 warning(s), 0 info,
 0 extended code review item(s), 0 extended manual review item(s),
 8 standard code review item(s), 10 standard manual review item(s)

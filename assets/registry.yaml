@@ -932,7 +932,7 @@ deterministic-phase:
 # hidden/junk files and files reachable from no entry point; the
 # ambiguous (dynamically-loadable) ones are escalated to a reviewer.
 - title: Unused, hidden or duplicate files or folders
-  severity: error
+  severity: warning
   check: unused-files
   escalation: code-review
   input: xpi

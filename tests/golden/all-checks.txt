@@ -20,20 +20,20 @@ Read more: https://webextension-api.thunderbird.net/.
 5) The following referenced file(s) are not bundled with the add-on, or the path may be wrongly specified. Please include every referenced file in the package, and check that the used paths are correct.
  - manifest.json:9 - missing.js
 
-6) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
- - options.html
- - styles.css
-
-7) A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed.
+6) A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed.
  - options.html:4 - https://cdn.example.com/remote.js
  - styles.css:1 - https://fonts.example.com/font.css
 
 We kindly ask you to resolve the following issues with your next release:
 
-8) An asynchronous listener is attached to the following runtime message event(s). An async listener always returns a Promise, which claims the response for every message it sees - including the ones it declines - so the other listeners never get to answer. This is error-prone and must be avoided.
+7) An asynchronous listener is attached to the following runtime message event(s). An async listener always returns a Promise, which claims the response for every message it sees - including the ones it declines - so the other listeners never get to answer. This is error-prone and must be avoided.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
  - background.js:36 - runtime.onMessage
  - background.js:37 - runtime.onMessageExternal
+
+8) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
+ - options.html
+ - styles.css
 
 We would like to share the following information with you:
 
@@ -252,6 +252,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-11 error(s), 0 hold, 2 warning(s), 8 info,
+9 error(s), 0 hold, 4 warning(s), 8 info,
 7 extended code review item(s), 0 extended manual review item(s),
 8 standard code review item(s), 10 standard manual review item(s)

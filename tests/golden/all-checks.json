@@ -88,9 +88,9 @@
     ]
   },
   "summary": {
-    "error": 11,
+    "error": 9,
     "hold": 0,
-    "warning": 2,
+    "warning": 4,
     "info": 8,
     "byRule": {
       "deprecated-api": 2,
@@ -309,7 +309,7 @@
     },
     {
       "ruleId": "unused-files",
-      "severity": "error",
+      "severity": "warning",
       "file": "options.html",
       "loc": null,
       "item": null,
@@ -330,7 +330,7 @@
     },
     {
       "ruleId": "unused-files",
-      "severity": "error",
+      "severity": "warning",
       "file": "styles.css",
       "loc": null,
       "item": null,
