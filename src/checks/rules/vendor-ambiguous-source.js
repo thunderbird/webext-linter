@@ -26,7 +26,9 @@ export default {
     for (const { source, paths } of vendor?.ambiguousSources ?? []) {
       const files = paths.join(", ");
       ctx.note?.(file, null, `${source} -> ${files}`, VERDICT.FAIL);
-      out.push(finding({ file, item: source, data: { files } }));
+      // The source is the locus subject and the files it collides over the detail, so
+      // every ambiguous pairing shares one message and they collapse into one entry.
+      out.push(finding({ file, item: source, hint: files }));
     }
     return out;
   },

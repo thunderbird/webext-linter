@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "Missing Manifest Keys",
+  "version": "1.0",
+  "background": { "scripts": ["bg.js"] },
+  "icons": { "16": "icon.png" }
+}

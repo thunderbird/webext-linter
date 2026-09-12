@@ -2,11 +2,9 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) "messagesModify" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
- - manifest.json:9
-
-2) "scripting" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
- - manifest.json:9
+1) The following permissions are required at the locations listed, but are not declared in the manifest. Add them to the requested permissions.
+ - manifest.json:9 - messagesModify
+ - manifest.json:9 - scripting
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter

@@ -20,8 +20,9 @@ vendor/jszip.min.js: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
  - VENDORS.md
 
-2) A single source URL (https://unpkg.com/pkg@1.0.0/dist/bundle.min.js) is declared as the source of more than one bundled file (lib/a.min.js, lib/b.min.js). A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL.
- - VENDORS.md
+2) Each of the following source URLs is declared as the source of more than one bundled file. A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL.
+ - VENDORS.md - https://unpkg.com/pkg@1.0.0/dist/bundle.min.js - lib/a.min.js, lib/b.min.js
+ - VENDORS.md - https://unpkg.com/other@2.0.0/dist/other.min.js - lib/c.min.js, lib/d.min.js
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
@@ -106,4 +107,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-2 error(s), 0 warning(s), 0 info, 1 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)
+3 error(s), 0 warning(s), 0 info, 1 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)

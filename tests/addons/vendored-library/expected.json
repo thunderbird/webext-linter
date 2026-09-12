@@ -1,6 +1,6 @@
 {
-  "_comment": "VENDORS.md (plural, backslash path) declares lib/widget.min.js from an unpinned unpkg URL. The minified file is recognized as vendored, so missing-library / minified-code / obfuscated-code / code-sanity skip it; unpinned-vendor-source rejects the non-pinned source, anchored to the VENDORS.md line that cites it (with the URL on the locus line) - decided offline, no fetch. bg.js imports the lib, so unused-files leaves it alone.",
+  "_comment": "VENDORS.md (plural, backslash path) declares lib/widget.min.js and lib/helper.min.js, each from an unpinned unpkg URL. The minified files are recognized as vendored, so missing-library / minified-code / obfuscated-code / code-sanity skip them; unpinned-vendor-source rejects both non-pinned sources, anchored to the VENDORS.md line that cites each one - decided offline, no fetch. The response names no file, so the two share one message and collapse into a single entry with a locus per declaration. bg.js imports both libs, so unused-files leaves them alone.",
   "expect": {
-    "unpinned-vendor-source": ["VENDORS.md:2"]
+    "unpinned-vendor-source": ["VENDORS.md:2", "VENDORS.md:5"]
   }
 }

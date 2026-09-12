@@ -2,9 +2,9 @@
 
 Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
-1) Inserting markup via ".innerHTML" will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
+1) Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
- - [SCA] Comp.vue:7
+ - [SCA] Comp.vue:7 - .innerHTML
 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive

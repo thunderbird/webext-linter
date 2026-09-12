@@ -1,0 +1,6 @@
+{
+  "_comment": "Two namespaces whose APIs require a manifest key the add-on never declares: action.onClicked needs \"action\" or \"browser_action\", and messageDisplayScripts.register needs \"message_display_scripts\". One finding per namespace (the check groups by namespace, so the required keys are collected per API). Each message interpolates the required key as well as the API, so the two never share a message and stay separate entries - which is why moving the API onto the locus would not collapse them. Both injected files are shipped, so bundled-files stays quiet.",
+  "expect": {
+    "missing-manifest-key": ["bg.js:4", "bg.js:6"]
+  }
+}

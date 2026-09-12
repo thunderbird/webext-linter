@@ -2,8 +2,9 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) The Experiment API "messages.evil" overrides or extends a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under a new, distinct API namespace.
- - manifest.json:7
+1) The following Experiment API(s) override or extend a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under new, distinct API namespaces.
+ - manifest.json:7 - messages.evil
+ - manifest.json:7 - messages.sneaky
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
@@ -99,4 +100,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 warning(s), 0 info, 2 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)
+2 error(s), 0 warning(s), 0 info, 2 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)

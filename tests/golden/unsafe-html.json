@@ -89,9 +89,9 @@
   "summary": {
     "error": 0,
     "warning": 0,
-    "info": 3,
+    "info": 5,
     "byRule": {
-      "unsafe-html": 3
+      "unsafe-html": 5
     }
   },
   "findings": [
@@ -105,7 +105,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "Inserting markup via \".innerHTML\" will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
       "ruleId": "unsafe-html",
@@ -117,7 +117,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "Inserting markup via \".innerHTML\" will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
       "ruleId": "unsafe-html",
@@ -129,7 +129,31 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "Inserting markup via \".innerHTML\" will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+    },
+    {
+      "ruleId": "unsafe-html",
+      "severity": "info",
+      "file": "bg.js",
+      "loc": {
+        "line": 12,
+        "column": 0
+      },
+      "item": ".outerHTML",
+      "hint": null,
+      "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+    },
+    {
+      "ruleId": "unsafe-html",
+      "severity": "info",
+      "file": "bg.js",
+      "loc": {
+        "line": 14,
+        "column": 0
+      },
+      "item": "insertAdjacentHTML()",
+      "hint": null,
+      "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     }
   ]
 }

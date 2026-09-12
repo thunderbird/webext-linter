@@ -87,11 +87,11 @@
     ]
   },
   "summary": {
-    "error": 1,
+    "error": 2,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "experiment-modified": 1
+      "experiment-modified": 2
     }
   },
   "findings": [
@@ -105,7 +105,19 @@
       },
       "item": "demo",
       "hint": null,
-      "message": "\"demo\" is a published Thunderbird Experiment API draft, but this add-on bundles a modified or outdated copy. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments."
+      "message": "The following Experiment API(s) are published Thunderbird API drafts, but this add-on bundles a modified or outdated copy of each. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments."
+    },
+    {
+      "ruleId": "experiment-modified",
+      "severity": "error",
+      "file": "manifest.json",
+      "loc": {
+        "line": 17,
+        "column": 0
+      },
+      "item": "notify",
+      "hint": null,
+      "message": "The following Experiment API(s) are published Thunderbird API drafts, but this add-on bundles a modified or outdated copy of each. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments."
     }
   ]
 }

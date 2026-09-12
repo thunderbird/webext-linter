@@ -2,8 +2,9 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) "demo" is a published Thunderbird Experiment API draft, but this add-on bundles a modified or outdated copy. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments.
- - manifest.json:8
+1) The following Experiment API(s) are published Thunderbird API drafts, but this add-on bundles a modified or outdated copy of each. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments.
+ - manifest.json:8 - demo
+ - manifest.json:17 - notify
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
@@ -99,4 +100,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 warning(s), 0 info, 2 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)
+2 error(s), 0 warning(s), 0 info, 2 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)

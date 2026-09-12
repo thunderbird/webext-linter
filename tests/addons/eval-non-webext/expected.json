@@ -1,5 +1,5 @@
 {
-  "_comment": "An Experiment reviewed with --allow-experiments. The eval/Function/code-string-timer file checks (eval-call / function-constructor / string-timer) scan ONLY code outside the pure WebExtension tree: a WebExtension sandbox cannot execute these without a permissive CSP (reported separately by csp-unsafe-*), so the identical constructs in background.js are NOT flagged, while the privileged Experiment parent script - which has no CSP gate - IS flagged at each construct.",
+  "_comment": "An Experiment reviewed with --allow-experiments. The eval/Function/code-string-timer file checks (eval-call / function-constructor / string-timer) scan ONLY code outside the pure WebExtension tree: a WebExtension sandbox cannot execute these without a permissive CSP (reported separately by csp-unsafe-*), so the identical constructs in background.js are NOT flagged, while the privileged Experiment parent script - which has no CSP gate - IS flagged at each construct. The two fetch().then(eval) calls there cannot be decided statically, so remote-eval escalates each one (escalations are not expressible in `expect`; the golden holds them).",
   "options": { "--allow-experiments": true },
   "expect": {
     "eval-call": ["experiments/demo/parent/ext-demo.js:8"],

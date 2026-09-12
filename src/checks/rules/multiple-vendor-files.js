@@ -30,10 +30,11 @@ export default {
       return [];
     }
     // Every candidate is a locus, so the reviewer sees which files collide without
-    // opening the submission. The item names them together for the response.
+    // opening the submission - and the response names none of them, so the findings
+    // collapse into a single entry listing the colliding files once.
     for (const name of names) {
       ctx.note?.(name, null, "candidate VENDOR file", VERDICT.FAIL);
     }
-    return names.map((name) => finding({ file: name, item: names.join(", ") }));
+    return names.map((name) => finding({ file: name }));
   },
 };

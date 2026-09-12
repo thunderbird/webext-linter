@@ -10,7 +10,10 @@
       "parent": {
         "scopes": ["addon_parent"],
         "script": "experiments/evil/parent/ext-evil.js",
-        "paths": [["messages", "evil"]]
+        "paths": [
+          ["messages", "evil"],
+          ["messages", "sneaky"]
+        ]
       }
     }
   },

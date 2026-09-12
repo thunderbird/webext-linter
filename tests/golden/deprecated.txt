@@ -7,9 +7,9 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 
 We would like to share the following information with you:
 
-2) "messages.oldOne" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+2) The following APIs are deprecated in the targeted Thunderbird version. Please migrate to supported APIs.
 Read more: https://webextension-api.thunderbird.net/.
- - background.js:2 - Use list() instead.
+ - background.js:2 - messages.oldOne - Use list() instead.
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter

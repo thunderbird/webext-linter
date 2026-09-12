@@ -1,0 +1,6 @@
+{
+  "_comment": "Two known manifest keys whose values have the wrong type, caught by the ajv validation against the schema-derived JSON Schema: description is a number and browser_specific_settings is a number. One finding each (warning). The message interpolates the ajv diagnostic as well as the key, so the two never share a message and stay separate entries - which is why moving the key onto the locus would not collapse them. Neither finding carries a line, since the check anchors on the manifest as a whole.",
+  "expect": {
+    "mistyped-manifest-value": ["manifest.json", "manifest.json"]
+  }
+}

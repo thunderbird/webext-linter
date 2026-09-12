@@ -87,11 +87,11 @@
     ]
   },
   "summary": {
-    "error": 1,
+    "error": 2,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "experiment-overrides-api": 1
+      "experiment-overrides-api": 2
     }
   },
   "findings": [
@@ -105,7 +105,19 @@
       },
       "item": "messages.evil",
       "hint": null,
-      "message": "The Experiment API \"messages.evil\" overrides or extends a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under a new, distinct API namespace."
+      "message": "The following Experiment API(s) override or extend a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under new, distinct API namespaces."
+    },
+    {
+      "ruleId": "experiment-overrides-api",
+      "severity": "error",
+      "file": "manifest.json",
+      "loc": {
+        "line": 7,
+        "column": 0
+      },
+      "item": "messages.sneaky",
+      "hint": null,
+      "message": "The following Experiment API(s) override or extend a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under new, distinct API namespaces."
     }
   ]
 }

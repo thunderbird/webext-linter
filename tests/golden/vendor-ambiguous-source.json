@@ -87,12 +87,12 @@
     ]
   },
   "summary": {
-    "error": 2,
+    "error": 3,
     "warning": 0,
     "info": 0,
     "byRule": {
       "vendor-unparseable": 1,
-      "vendor-ambiguous-source": 1
+      "vendor-ambiguous-source": 2
     }
   },
   "findings": [
@@ -111,8 +111,17 @@
       "file": "VENDORS.md",
       "loc": null,
       "item": "https://unpkg.com/pkg@1.0.0/dist/bundle.min.js",
-      "hint": null,
-      "message": "A single source URL (https://unpkg.com/pkg@1.0.0/dist/bundle.min.js) is declared as the source of more than one bundled file (lib/a.min.js, lib/b.min.js). A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL."
+      "hint": "lib/a.min.js, lib/b.min.js",
+      "message": "Each of the following source URLs is declared as the source of more than one bundled file. A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL."
+    },
+    {
+      "ruleId": "vendor-ambiguous-source",
+      "severity": "error",
+      "file": "VENDORS.md",
+      "loc": null,
+      "item": "https://unpkg.com/other@2.0.0/dist/other.min.js",
+      "hint": "lib/c.min.js, lib/d.min.js",
+      "message": "Each of the following source URLs is declared as the source of more than one bundled file. A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL."
     }
   ]
 }

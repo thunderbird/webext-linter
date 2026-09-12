@@ -105,7 +105,7 @@
       },
       "item": "messagesModify",
       "hint": null,
-      "message": "\"messagesModify\" permission is required here, but is not declared in the manifest. Add it to the requested permissions."
+      "message": "The following permissions are required at the locations listed, but are not declared in the manifest. Add them to the requested permissions."
     },
     {
       "ruleId": "missing-permission",
@@ -116,7 +116,7 @@
       },
       "item": "scripting",
       "hint": null,
-      "message": "\"scripting\" permission is required here, but is not declared in the manifest. Add it to the requested permissions."
+      "message": "The following permissions are required at the locations listed, but are not declared in the manifest. Add them to the requested permissions."
     },
     {
       "ruleId": "unused-files",

@@ -89,8 +89,8 @@
   },
   "summary": {
     "error": 15,
-    "warning": 1,
-    "info": 7,
+    "warning": 2,
+    "info": 8,
     "byRule": {
       "unknown-api": 2,
       "deprecated-api": 2,
@@ -102,8 +102,8 @@
       "sync-xhr": 1,
       "unsafe-html": 1,
       "debugger-statement": 1,
-      "async-onmessage": 1,
-      "code-sanity": 1,
+      "async-onmessage": 2,
+      "code-sanity": 2,
       "minimize-host-permissions": 1,
       "addon-icon-missing": 1,
       "strict-min-version-api": 1,
@@ -146,7 +146,7 @@
       },
       "item": "messagesRead",
       "hint": null,
-      "message": "\"messagesRead\" permission is required here, but is not declared in the manifest. Add it to the requested permissions."
+      "message": "The following permissions are required at the locations listed, but are not declared in the manifest. Add them to the requested permissions."
     },
     {
       "ruleId": "deprecated-api",
@@ -158,7 +158,7 @@
       },
       "item": "messages.oldOne",
       "hint": "Use list() instead.",
-      "message": "\"messages.oldOne\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The following APIs are deprecated in the targeted Thunderbird version. Please migrate to supported APIs.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "strict-min-version-api",
@@ -182,7 +182,7 @@
       },
       "item": "legacy.doThing",
       "hint": "The legacy API was removed; use messages instead.",
-      "message": "\"legacy.doThing\" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The following APIs are deprecated in the targeted Thunderbird version. Please migrate to supported APIs.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "missing-permission",
@@ -194,7 +194,7 @@
       },
       "item": "accountsRead",
       "hint": null,
-      "message": "\"accountsRead\" permission is required here, but is not declared in the manifest. Add it to the requested permissions."
+      "message": "The following permissions are required at the locations listed, but are not declared in the manifest. Add them to the requested permissions."
     },
     {
       "ruleId": "missing-permission",
@@ -206,7 +206,7 @@
       },
       "item": "messagesMove",
       "hint": null,
-      "message": "\"messagesMove\" permission is required here, but is not declared in the manifest. Add it to the requested permissions."
+      "message": "The following permissions are required at the locations listed, but are not declared in the manifest. Add them to the requested permissions."
     },
     {
       "ruleId": "missing-manifest-key",
@@ -217,8 +217,8 @@
         "column": 0
       },
       "item": "action.onClicked",
-      "hint": null,
-      "message": "action.onClicked needs a manifest key that is not declared: \"action\". Add one of those keys to manifest.json."
+      "hint": "\"action\"",
+      "message": "The following APIs each need a manifest key that is not declared. Add one of the keys named for each API to manifest.json."
     },
     {
       "ruleId": "sync-xhr",
@@ -242,7 +242,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
-      "message": "Inserting markup via \".innerHTML\" will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
+      "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
       "ruleId": "debugger-statement",
@@ -261,24 +261,48 @@
       "severity": "warning",
       "file": "background.js",
       "loc": {
-        "line": 35,
+        "line": 36,
         "column": 0
       },
       "item": "runtime.onMessage",
       "hint": null,
-      "message": "Asynchronous listener attached to runtime.onMessage. An async listener always returns a Promise, which claims the response for every message it sees - including the ones it declines - so the other listeners never get to answer. This is error-prone and must be avoided.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html"
+      "message": "An asynchronous listener is attached to the following runtime message event(s). An async listener always returns a Promise, which claims the response for every message it sees - including the ones it declines - so the other listeners never get to answer. This is error-prone and must be avoided.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html"
+    },
+    {
+      "ruleId": "async-onmessage",
+      "severity": "warning",
+      "file": "background.js",
+      "loc": {
+        "line": 37,
+        "column": 0
+      },
+      "item": "runtime.onMessageExternal",
+      "hint": null,
+      "message": "An asynchronous listener is attached to the following runtime message event(s). An async listener always returns a Promise, which claims the response for every message it sees - including the ones it declines - so the other listeners never get to answer. This is error-prone and must be avoided.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html"
     },
     {
       "ruleId": "code-sanity",
       "severity": "info",
       "file": "background.js",
       "loc": {
-        "line": 41,
+        "line": 43,
         "column": 5
       },
       "item": "no-redeclare: 'duplicate' is already defined.",
       "hint": null,
-      "message": "Static analysis flagged a likely code error: no-redeclare: 'duplicate' is already defined."
+      "message": "Static analysis flagged the following likely code error(s)."
+    },
+    {
+      "ruleId": "code-sanity",
+      "severity": "info",
+      "file": "background.js",
+      "loc": {
+        "line": 47,
+        "column": 26
+      },
+      "item": "no-dupe-keys: Duplicate key 'a'.",
+      "hint": null,
+      "message": "Static analysis flagged the following likely code error(s)."
     },
     {
       "ruleId": "addon-icon-missing",

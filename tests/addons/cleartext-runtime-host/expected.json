@@ -1,0 +1,6 @@
+{
+  "_comment": "A cleartext send whose host is built at run time (`http://${server}/api`): the scan resolves the \"http://\" prefix, so remote and cleartext are known while the host is not. The response is item-free, so it renders with no subject to fill and all three sends collapse into ONE entry with a locus each - the destination as the developer wrote it, including the template literal. Naming the host in the message instead both split the entry per host and rendered a null message, which crashed the text report and put a reason-less error into the JSON upload filter.",
+  "expect": {
+    "cleartext-transmission": ["background.js:5", "background.js:7", "background.js:8"]
+  }
+}

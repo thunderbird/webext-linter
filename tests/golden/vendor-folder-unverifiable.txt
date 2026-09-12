@@ -13,9 +13,9 @@ We would like to share the following information with you:
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
  - lib/widget.js - lib/widget.js - https://not-a-known-host.example/widget/1.2.3/dist/index.js
 
-3) Inserting markup via ".innerHTML" will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
+3) Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
- - lib/widget.js:2
+ - lib/widget.js:2 - .innerHTML
 
 4) Adding an add-on icon in manifest.json improves user acceptance.
 Read more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons

@@ -25,7 +25,9 @@ export default {
     const vendor = ctx.addon?.vendor;
     // Anchor on the VENDOR declaration (file + the line citing the source), with
     // the URL on the locus line - mirrors vendor-vuln-unknown. The vendored file
-    // is `item`, surfaced in the response prose.
+    // rides on `item`, which the response does not consume, so every unpinned
+    // declaration shares one message and they collapse into a single entry with
+    // a locus per file.
     const vendorName = vendor?.vendorFile ?? null;
     const vendorText = vendorName
       ? (ctx.addon.files?.get(vendorName)?.toString("utf8") ?? "")

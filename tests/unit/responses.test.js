@@ -16,19 +16,29 @@ import { artifactLabel } from "../../src/report/artifact.js";
 const registry = loadRegistry();
 
 // {{item}} is replaced with the finding's item, keyed by ruleId; horizontal
-// whitespace is collapsed and the placeholder is gone, but the deliberate line
-// break before "Read more:" is preserved (Issues prints responses verbatim).
+// whitespace is collapsed and the placeholder is gone. Most responses name no
+// subject (it rides the locus instead), so this uses one that does.
 test("renderFindings fills {{item}} from the registry response by ruleId", () => {
   const f = {
-    ruleId: "unsafe-html",
-    item: "innerHTML",
+    ruleId: "missing-vendor-file",
+    item: "VENDORS.md",
     message: null,
   };
   renderFindings([f], registry);
-  assert.match(f.message, /via "innerHTML"/); // {{item}} filled in the prose
+  assert.match(f.message, /listed in "VENDORS.md"/); // filled in the prose
   assert.ok(!f.message.includes("{{item}}"));
-  // The only line break is the one before "Read more:" - the prose itself is
-  // one line (no 80-col wrapping survives into the message).
+  assert.equal(f.message.split("\n").length, 1); // no 80-col wrapping survives
+});
+
+// A deliberate line break in the authored response survives: Issues prints a
+// response verbatim, so the break before "Read more:" is the message's own.
+test("renderFindings keeps an authored line break in the response", () => {
+  const f = {
+    ruleId: "deprecated-api",
+    item: "messages.oldOne",
+    message: null,
+  };
+  renderFindings([f], registry);
   assert.match(f.message, /\nRead more:/);
   assert.equal(f.message.split("\n").length, 2);
 });
@@ -120,7 +130,7 @@ test("renderFindings renders a system message for check-failed", () => {
 // it is not also listed (false); when the response is item-free the identifier
 // is surfaced on the finding's location line instead (true).
 test("renderFindings sets listItem only for item-free responses", () => {
-  const consumed = { ruleId: "missing-permission", item: "accountsRead" };
+  const consumed = { ruleId: "missing-vendor-file", item: "VENDORS.md" };
   const listed = { ruleId: "unrecognized-manifest-key", item: "fooBar" };
   renderFindings([consumed, listed], registry);
   assert.equal(consumed.listItem, false); // {{item}} is in the message
@@ -217,8 +227,8 @@ test("renderManualItems sets listItem + locus for an item-free instructions ref"
 test("a substituted value carries no control characters into the message", () => {
   const ESC = "\u001B";
   const f = {
-    ruleId: "unsafe-html",
-    item: `inner${ESC}[2KHTML`,
+    ruleId: "missing-vendor-file",
+    item: `VENDORS${ESC}[2K.md`,
     message: null,
   };
   renderFindings([f], registry);
@@ -226,9 +236,7 @@ test("a substituted value carries no control characters into the message", () =>
     !f.message.includes(ESC),
     "the escape did not survive substitution"
   );
-  assert.match(f.message, /inner \[2KHTML/); // separated, not fused
-  // The authored break before "Read more:" is untouched - the template is ours.
-  assert.match(f.message, /\nRead more:/);
+  assert.match(f.message, /VENDORS \[2K\.md/); // separated, not fused
 });
 
 // The same for a named {{slot}}: vendor-modified takes the declared source URL, which

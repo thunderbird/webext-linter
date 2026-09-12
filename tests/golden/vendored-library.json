@@ -87,11 +87,11 @@
     ]
   },
   "summary": {
-    "error": 1,
+    "error": 2,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "unpinned-vendor-source": 1
+      "unpinned-vendor-source": 2
     }
   },
   "findings": [
@@ -104,7 +104,18 @@
       },
       "item": "lib/widget.min.js",
       "hint": "https://unpkg.com/widget/dist/widget.min.js",
-      "message": "The vendored file lib/widget.min.js cites a source that is not pinned to an immutable version. It is linked to a branch or unversioned URL rather than a specific release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from."
+      "message": "The following vendored file(s) cite a source that is not pinned to an immutable version. Each is linked to a branch or unversioned URL rather than a specific release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from."
+    },
+    {
+      "ruleId": "unpinned-vendor-source",
+      "severity": "error",
+      "file": "VENDORS.md",
+      "loc": {
+        "line": 5
+      },
+      "item": "lib/helper.min.js",
+      "hint": "https://unpkg.com/helper/dist/helper.min.js",
+      "message": "The following vendored file(s) cite a source that is not pinned to an immutable version. Each is linked to a branch or unversioned URL rather than a specific release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from."
     }
   ]
 }

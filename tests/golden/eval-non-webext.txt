@@ -36,6 +36,13 @@ Suggested response: Please include an English localization. English serves as th
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
 
+3) Remote eval: The following location(s) execute code assembled at run time,
+   such as fetch().then(eval). Confirm by hand that the executed code is static
+   and local, and that nothing remotely fetched is executed.
+Suggested response: Remotely fetched code is executed at the following location(s). Remote code execution is not allowed - bundle all code with the add-on so it can be reviewed.
+ - experiments/demo/parent/ext-demo.js:13
+ - experiments/demo/parent/ext-demo.js:16
+
 ── Standard manual review ──
 
 Continue manual review for the following checks:
@@ -105,4 +112,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-3 error(s), 0 warning(s), 0 info, 2 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)
+3 error(s), 0 warning(s), 0 info, 4 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)

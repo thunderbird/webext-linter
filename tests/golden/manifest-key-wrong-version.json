@@ -105,8 +105,8 @@
         "column": 0
       },
       "item": "action.onClicked",
-      "hint": null,
-      "message": "action.onClicked needs a manifest key that is not declared: \"action\". Add one of those keys to manifest.json."
+      "hint": "\"action\"",
+      "message": "The following APIs each need a manifest key that is not declared. Add one of the keys named for each API to manifest.json."
     },
     {
       "ruleId": "unrecognized-manifest-key",

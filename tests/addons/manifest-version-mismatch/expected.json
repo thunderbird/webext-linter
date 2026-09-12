@@ -1,0 +1,7 @@
+{
+  "_comment": "An MV2 manifest reviewed against the MV3 schema set, so manifest-version-mismatch rejects it (error). Exactly one finding is possible: there is a single manifest_version to disagree with, which is why this check cannot be collapsed with anything. The same value also fails the schema's enum for the key, so mistyped-manifest-value reports it as well (warning) - a separate check with its own remedy.",
+  "expect": {
+    "manifest-version-mismatch": ["manifest.json"],
+    "mistyped-manifest-value": ["manifest.json"]
+  }
+}

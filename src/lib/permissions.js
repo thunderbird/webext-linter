@@ -238,11 +238,14 @@ function analyzePermissions(ctx) {
     });
     if (!satisfied) {
       missingManifestKeys.push(
+        // The API is the locus subject and the keys that would satisfy it the detail,
+        // so every API missing a key shares one message and they collapse into a
+        // single entry listing "<api> - <keys>" per line.
         finding({
           file: rec.file,
           loc: rec.loc,
           item: rec.example,
-          data: { keys: `"${alts}"` },
+          hint: `"${alts}"`,
         })
       );
     }

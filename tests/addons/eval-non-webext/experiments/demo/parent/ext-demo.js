@@ -8,6 +8,14 @@ this.demo = class extends ExtensionAPI {
     eval("doSomething()");
     const fn = new Function("return 1");
     setTimeout("doSomething()", 0);
+    // remote-eval: whether the executed payload is remote cannot be decided
+    // statically, so each of these escalates rather than rejecting outright.
+    fetch("/a.js")
+      .then((r) => r.text())
+      .then(eval);
+    fetch("/b.js")
+      .then((r) => r.text())
+      .then(eval);
     return {
       demo: {
         async doThing() {

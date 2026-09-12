@@ -87,11 +87,11 @@
     ]
   },
   "summary": {
-    "error": 1,
+    "error": 2,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "banned-library": 1
+      "banned-library": 2
     }
   },
   "findings": [
@@ -105,6 +105,17 @@
       "item": "jquery",
       "hint": null,
       "message": "A bundled library version is disallowed by Mozilla's add-on policy: jquery (2.2.4) - jQuery before 3.0 is unsupported and carries known security issues. Update to the latest 3.x. Update to a permitted version and re-bundle."
+    },
+    {
+      "ruleId": "banned-library",
+      "severity": "error",
+      "file": "package.json",
+      "loc": {
+        "line": 6
+      },
+      "item": "angular",
+      "hint": null,
+      "message": "A bundled library version is disallowed by Mozilla's add-on policy: angular (1.5.0) - AngularJS before 1.5.9 is affected by a Content-Security-Policy bypass. Update to the latest 1.x. Update to a permitted version and re-bundle."
     }
   ]
 }

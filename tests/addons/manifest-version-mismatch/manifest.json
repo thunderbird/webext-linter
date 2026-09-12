@@ -1,0 +1,7 @@
+{
+  "manifest_version": 2,
+  "name": "Manifest Version Mismatch",
+  "version": "1.0",
+  "background": { "scripts": ["bg.js"] },
+  "icons": { "16": "icon.png" }
+}

@@ -69,11 +69,14 @@ export default {
         `${where} (${err.keyword})`,
         VERDICT.FAIL
       );
+      // The entry is the locus subject and the ajv diagnostic its detail, so every
+      // mistyped value shares one message and they collapse into a single entry
+      // listing "<entry> - <what is wrong>" per line.
       out.push(
         finding({
           file: "manifest.json",
           item: where,
-          data: { detail: err.message },
+          hint: err.message,
         })
       );
     }

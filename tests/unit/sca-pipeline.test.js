@@ -916,9 +916,11 @@ test("SCA e2e: build-policy checks flag yarn + a redirected registry offline", a
       has(findings, "unsupported-build-tool", (f) => /yarn/.test(f.message)),
       "yarn.lock is rejected as an unsupported build tool"
     );
+    // The registry as written rides on the item (the locus line), not the message,
+    // so every redirected .npmrc collapses into one entry.
     assert.ok(
       has(findings, "build-registry-redirect", (f) =>
-        /evil\.example/.test(f.message)
+        /evil\.example/.test(f.item)
       ),
       "the .npmrc registry redirect is rejected"
     );

@@ -33,12 +33,15 @@ export default {
         continue; // an encrypted (https/wss/ftps) remote transmission is fine
       }
       const loc = { line: sink.line, column: sink.column };
-      // The host IS the offending identity, so it stays `item` (the response names
-      // it). The destination as written rides on `hint`, which shows the reviewer
-      // the send itself rather than repeating the host.
+      // The destination as written rides on `hint`, so every cleartext send shares
+      // one item-free message and they collapse into a single entry with a locus per
+      // site. Naming the host in the message instead would split them one per host,
+      // and the host is the lesser fact: `sink.host` is null whenever the URL is
+      // assembled at run time (`http://${server}/api`), while the line the developer
+      // wrote is always showable.
       const label = sinkLabel(sink, "cleartext send");
-      out.push(finding({ file: sink.file, loc, item: sink.host, hint: label }));
-      ctx.note?.(sink.file, loc, `${label} to ${sink.host}`, VERDICT.FAIL);
+      out.push(finding({ file: sink.file, loc, hint: label }));
+      ctx.note?.(sink.file, loc, label, VERDICT.FAIL);
     }
     return out;
   },

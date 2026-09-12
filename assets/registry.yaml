@@ -64,7 +64,7 @@ deterministic-phase:
   check: deprecated-api
   input: source
   response: |-
-    "{{item}}" is deprecated in the targeted Thunderbird version. Please migrate to a supported API.
+    The following APIs are deprecated in the targeted Thunderbird version. Please migrate to supported APIs.
     Read more: https://webextension-api.thunderbird.net/.
 
 # Flags functions/events added after the declared strict_max_version: the add-on
@@ -82,7 +82,7 @@ deterministic-phase:
   check: missing-permission
   input: source
   response: |-
-    "{{item}}" permission is required here, but is not declared in the manifest. Add it to the requested permissions.
+    The following permissions are required at the locations listed, but are not declared in the manifest. Add them to the requested permissions.
 
 # Flags an API call that needs a manifest key (e.g. "action") not declared.
 - title: Missing manifest key
@@ -90,7 +90,7 @@ deterministic-phase:
   check: missing-manifest-key
   input: source
   response: |-
-    {{item}} needs a manifest key that is not declared: {{keys}}. Add one of those keys to manifest.json.
+    The following APIs each need a manifest key that is not declared. Add one of the keys named for each API to manifest.json.
 
 # manifest.json is present but not valid JSON.
 - title: Invalid manifest JSON
@@ -163,7 +163,7 @@ deterministic-phase:
   check: mistyped-manifest-value
   input: manifest
   response: |-
-    Manifest entry issue: "{{item}}" {{detail}}. Thunderbird ignores or misreads such entries.
+    The following manifest entries have a value Thunderbird ignores or misreads.
     Read more: https://webextension-api.thunderbird.net/.
 
 # Flags manifest/loader references (scripts, popups, icons, ...) to files not in
@@ -199,7 +199,7 @@ deterministic-phase:
   check: unsafe-html
   input: source
   response: |-
-    Inserting markup via "{{item}}" will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
+    Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
 
 # Flags unconditional debugger statements left in shipped code.
@@ -217,7 +217,7 @@ deterministic-phase:
   check: async-onmessage
   input: source
   response: |-
-    Asynchronous listener attached to {{item}}. An async listener always returns a Promise, which claims the response for every message it sees - including the ones it declines - so the other listeners never get to answer. This is error-prone and must be avoided.
+    An asynchronous listener is attached to the following runtime message event(s). An async listener always returns a Promise, which claims the response for every message it sees - including the ones it declines - so the other listeners never get to answer. This is error-prone and must be avoided.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
 
 # ESLint correctness rules (no-redeclare/no-shadow/no-empty/no-unreachable/...)
@@ -228,7 +228,7 @@ deterministic-phase:
   input: source
   eslint: true
   response: |-
-    Static analysis flagged a likely code error: {{item}}
+    Static analysis flagged the following likely code error(s).
 
 # Flags broad host permissions (<all_urls> or a "*" host) requested as required.
 - title: Minimize host permissions
@@ -352,7 +352,7 @@ deterministic-phase:
   check: api-coverage
   input: source
   response: |-
-    Limited static-analysis coverage: {{item}}
+    Limited static-analysis coverage at the following location(s).
 
 # Reports a file that failed to parse, so its API checks were skipped.
 - title: Unparsable file
@@ -369,7 +369,7 @@ deterministic-phase:
   check: experiment-modified
   input: source
   response: |-
-    "{{item}}" is a published Thunderbird Experiment API draft, but this add-on bundles a modified or outdated copy. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments.
+    The following Experiment API(s) are published Thunderbird API drafts, but this add-on bundles a modified or outdated copy of each. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments.
 
 # Flags an accepted Experiment (--allow-experiments) that declares no
 # strict_max_version.
@@ -387,7 +387,7 @@ deterministic-phase:
   check: experiment-overrides-api
   input: manifest
   response: |-
-    The Experiment API "{{item}}" overrides or extends a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under a new, distinct API namespace.
+    The following Experiment API(s) override or extend a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under new, distinct API namespaces.
 
 # A deterministic check that escalates a whole-add-on manual review for every
 # Experiment submission: Experiments have full access to Thunderbird internals, so
@@ -527,7 +527,7 @@ deterministic-phase:
   check: build-registry-redirect
   input: build
   response: |-
-    The .npmrc sets a package registry ({{item}}), which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
+    The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
 
 # Deterministic (SCA only): a node_modules folder anywhere in --sca-root is a hard
 # reject. Installed dependencies are build output - the reviewer installs them from the
@@ -540,7 +540,7 @@ deterministic-phase:
   check: committed-node-modules
   input: build
   response: |-
-    A committed node_modules folder ({{item}}) is not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove it and resubmit.
+    The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them and resubmit.
 
 # Deterministic (SCA only): a committed binary archive (.zip/.xpi/.crx/...) anywhere in
 # --sca-root is a hard reject. A built archive is build output the reviewer reproduces from
@@ -552,7 +552,7 @@ deterministic-phase:
   check: committed-build-artifact
   input: build
   response: |-
-    A committed build artifact ({{item}}) is not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove it and resubmit.
+    The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them and resubmit.
 
 # Deterministic (SCA only): a package.json install lifecycle hook (preinstall / install /
 # postinstall / prepare / prepublish) runs arbitrary code when the reviewer installs the
@@ -567,7 +567,7 @@ deterministic-phase:
   check: build-lifecycle-hook
   input: build
   response: |-
-    The package.json declares an npm install lifecycle hook ({{item}}) that runs when the reviewer installs the dependencies, before the build. Confirm it only runs local build steps and does not fetch or execute remote code (curl/wget, a download-and-run, or a git clone of an unpinned repo).
+    The package.json declares the following npm install lifecycle hook(s), which run when the reviewer installs the dependencies, before the build. Confirm they only run local build steps and do not fetch or execute remote code (curl/wget, a download-and-run, or a git clone of an unpinned repo).
 
 # SCA only: the build review. selectBuildCorpus finds the build ONCE in setup
 # (src/build/analyze.js), storing addon.buildFiles.buildReview; this check reads it. A build
@@ -625,7 +625,7 @@ deterministic-phase:
   check: unpinned-vendor-source
   input: source
   response: |-
-    The vendored file {{item}} cites a source that is not pinned to an immutable version. It is linked to a branch or unversioned URL rather than a specific release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from.
+    The following vendored file(s) cite a source that is not pinned to an immutable version. Each is linked to a branch or unversioned URL rather than a specific release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from.
 
 - title: Modified vendored library
   severity: error
@@ -653,7 +653,7 @@ deterministic-phase:
   check: multiple-vendor-files
   input: source
   response: |-
-    This add-on ships more than one file that names itself the VENDOR manifest ({{item}}). Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different manifest after a rebuild. Keep the one that lists your bundled third-party libraries and remove the others.
+    This add-on ships more than one file that names itself the VENDOR manifest. Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different manifest after a rebuild. Keep the one that lists your bundled third-party libraries and remove the others.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
 # bundled library file with a source URL pointing to a file), so the declared
@@ -690,7 +690,7 @@ deterministic-phase:
   check: vendor-ambiguous-source
   input: source
   response: |-
-    A single source URL ({{item}}) is declared as the source of more than one bundled file ({{files}}). A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL.
+    Each of the following source URLs is declared as the source of more than one bundled file. A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL.
 
 # Flags data smuggled out through a channel not meant for it - always an error,
 # regardless of consent. One check per channel (resource/stylesheet/window/
@@ -730,7 +730,7 @@ deterministic-phase:
   check: cleartext-transmission
   input: source
   response: |-
-    Data is sent over an unencrypted connection to {{item}}. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
+    Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
 
 # Preflight -> manual review: data sent to a hardcoded remote host means the
 # listing must carry a privacy policy, which is not part of the package.
@@ -910,9 +910,9 @@ deterministic-phase:
   check: strict-min-version-api
   input: source
   instructions: |-
-    "{{item}}" exists and is supported, but was added after the declared
-    strict_min_version, so decide one thing only: is this call guarded so it runs
-    only where the API exists? Any of these counts as guarded, provided the
+    The API at each location below exists and is supported, but was added after
+    the declared strict_min_version, so decide one thing only: is that call guarded
+    so it runs only where the API exists? Any of these counts as guarded, provided the
     feature is genuinely optional or has a fallback: optional chaining on the API
     path, a typeof or existence test, an earlier guard clause that returned or
     threw when the API was missing, or a runtime.getBrowserInfo() version gate.
@@ -985,11 +985,12 @@ deterministic-phase:
   check: remote-eval
   input: source
   instructions: |-
-    "{{item}}" executes code assembled at run time, such as fetch().then(eval).
+    The following location(s) execute code assembled at run time, such as
+    fetch().then(eval).
     Confirm by hand that the executed code is static and local, and that nothing
     remotely fetched is executed.
   response: |-
-    Remotely fetched code is executed at "{{item}}". Remote code execution is not allowed - bundle all code with the add-on so it can be reviewed.
+    Remotely fetched code is executed at the following location(s). Remote code execution is not allowed - bundle all code with the add-on so it can be reviewed.
 
 # normal transmission (fetch and friends) to a remote host - allowed
 # only with an options-page opt-in, judged from the options page in evidence.

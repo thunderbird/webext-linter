@@ -829,11 +829,7 @@ test("every check's severity is pinned to its band", async () => {
       "untrusted-library",
       "vendor-vuln-unknown",
     ],
-    auto: [
-      "banned-library",
-      "vendor-vulnerable",
-      "vendor-vulnerable-dev",
-    ],
+    auto: ["banned-library", "vendor-vulnerable", "vendor-vulnerable-dev"],
   });
 });
 
@@ -1178,11 +1174,16 @@ test("committed-node-modules flags each recorded node_modules directory", () => 
     committedNodeModules.run({ addon: { nodeModules } });
   const out = run(["node_modules", "packages/a/node_modules"]);
   assert.equal(out.length, 2);
+  // The directory travels as the locus only. It carries no item, so the response
+  // names no folder and the findings collapse into one entry per submission.
   assert.deepEqual(
-    out.map((f) => f.item),
+    out.map((f) => f.file),
     ["node_modules", "packages/a/node_modules"]
   );
-  assert.equal(out[0].file, "node_modules");
+  assert.deepEqual(
+    out.map((f) => f.item),
+    [null, null]
+  );
   // None recorded, or no addon -> no finding.
   assert.deepEqual(run([]), []);
   assert.deepEqual(committedNodeModules.run({}), []);
@@ -3566,10 +3567,28 @@ test("cleartext-transmission flags overt http/ws/ftp remote sends only", () => {
   assert.equal(n('new WebSocket("wss://x.example.com/feed");'), 0); // encrypted
   assert.equal(n('fetch("/local.json");'), 0); // local
   assert.equal(n('img.src = "http://x/?d=" + body;'), 0); // covert, not overt
+  // The destination as WRITTEN rides on `hint`, and the finding carries no `item`:
+  // the response is item-free so every cleartext send shares one message and they
+  // collapse into a single entry with a locus each. A host would also be the lesser
+  // fact - it is null whenever the URL is assembled at run time, while the written
+  // line always shows.
   const hit = cleartextTransmission.run(
     withManifest(jsCtx('fetch("http://api.example.com/x");'))
   )[0];
-  assert.equal(hit.item, "api.example.com");
+  assert.equal(hit.item, null);
+  assert.equal(hit.hint, 'cleartext send "http://api.example.com/x"');
+
+  // A run-time host resolves to no host at all, yet the send is still known to be
+  // remote and cleartext from the "http://" prefix - so it must still be a finding,
+  // and it must still be renderable. Naming the host in the message crashed the
+  // report here (a null message reaching message.split) and put a reason-less error
+  // into the JSON upload filter.
+  const runtime = cleartextTransmission.run(
+    withManifest(jsCtx("fetch(`http://${server}/api`, { method: 'POST' });"))
+  );
+  assert.equal(runtime.length, 1);
+  assert.equal(runtime[0].item, null);
+  assert.match(runtime[0].hint, /http:\/\/\$\{server\}\/api/);
 });
 
 // ---- privacy-policy ----

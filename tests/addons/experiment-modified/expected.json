@@ -1,6 +1,6 @@
 {
-  "_comment": "Bundles the 'demo' experiment (a recognised published draft) with a locally-modified parent script. Recognised-but-modified -> the review is NOT aborted: it runs in full and experiment-modified flags the modified draft (error) so the dev gets complete feedback and knows to bundle the unmodified latest upstream.",
+  "_comment": "Bundles two recognised published drafts ('demo' and 'notify'), each with a locally-modified copy, so experiment-modified reports two findings and their collapse behaviour is observable. Recognised-but-modified -> the review is NOT aborted: it runs in full and experiment-modified flags each modified draft (error) so the dev gets complete feedback and knows to bundle the unmodified latest upstream. Each finding is anchored to its own experiment_apis entry, so the two carry different loci as well as different names.",
   "expect": {
-    "experiment-modified": ["manifest.json:8"]
+    "experiment-modified": ["manifest.json:17", "manifest.json:8"]
   }
 }

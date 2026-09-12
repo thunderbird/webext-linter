@@ -2,8 +2,8 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) action.onClicked needs a manifest key that is not declared: "action". Add one of those keys to manifest.json.
- - background.js:3
+1) The following APIs each need a manifest key that is not declared. Add one of the keys named for each API to manifest.json.
+ - background.js:3 - action.onClicked - "action"
 
 We would like to share the following information with you:
 

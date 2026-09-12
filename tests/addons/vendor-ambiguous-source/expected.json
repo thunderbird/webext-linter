@@ -1,7 +1,7 @@
 {
-  "_comment": "VENDORS.md pairs ONE file source URL with TWO packaged files, which is ambiguous - the resolver cannot tell which file that URL verifies, so both are pulled out (kept vendored) and surfaced by vendor-ambiguous-source (src/vendor/resolve.js). Because that was the only declaration, splicing it out leaves the parsed manifest empty, so vendor-unparseable also fires (unparsedVendor: nothing parseable remained). The source is pinned, so unpinned-vendor-source does not fire.",
+  "_comment": "VENDORS.md does this twice: each of two source URLs is paired with TWO packaged files, which is ambiguous - the resolver cannot tell which file that URL verifies, so both are pulled out (kept vendored) and surfaced by vendor-ambiguous-source (src/vendor/resolve.js). Because those were the only declarations, splicing them out leaves the parsed manifest empty, so vendor-unparseable also fires (unparsedVendor: nothing parseable remained). Both sources are pinned, so unpinned-vendor-source does not fire. Each finding names its own source URL and file list, so the two never share a message and stay separate entries.",
   "expect": {
-    "vendor-ambiguous-source": ["VENDORS.md"],
+    "vendor-ambiguous-source": ["VENDORS.md", "VENDORS.md"],
     "vendor-unparseable": ["VENDORS.md"]
   }
 }

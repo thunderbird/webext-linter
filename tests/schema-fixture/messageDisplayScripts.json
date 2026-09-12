@@ -1,6 +1,7 @@
 [
   {
     "namespace": "messageDisplayScripts",
+    "permissions": ["manifest:message_display_scripts"],
     "functions": [
       {
         "name": "register",

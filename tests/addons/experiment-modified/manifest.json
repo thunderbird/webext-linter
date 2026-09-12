@@ -13,6 +13,15 @@
         "paths": [["demo"]]
       }
     }
+    ,
+    "notify": {
+      "schema": "experiments/notify/schema/notify.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "experiments/notify/parent/ext-notify.js",
+        "paths": [["notify"]]
+      }
+    }
   },
   "icons": { "16": "icon.png", "48": "icon.png" }
 }

@@ -103,9 +103,9 @@
         "line": 4,
         "column": 0
       },
-      "item": "api.example.com",
+      "item": null,
       "hint": "cleartext send \"http://api.example.com/collect\"",
-      "message": "Data is sent over an unencrypted connection to api.example.com. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://."
+      "message": "Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://."
     }
   ]
 }

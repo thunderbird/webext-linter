@@ -1,4 +1,6 @@
 node_modules/
+# ... except the test fixtures that exist to be flagged as committed dependencies.
+!tests/addons/**/node_modules/
 tmp_extract/
 logs/
 .schema-cache/

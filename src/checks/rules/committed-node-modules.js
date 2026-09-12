@@ -6,7 +6,9 @@
 //
 // node_modules is NEVER read: loadAddon skips it at load and records only the directory
 // paths (addon.nodeModules), which selectScaBuildFiles passes onto the input: build addon.
-// This check turns each recorded directory into an error finding.
+// This check turns each recorded directory into an error finding. The directory is the
+// finding's locus, so the response names no folder and every one of them collapses into
+// a single entry with a locus per directory.
 //
 // Belongs here: mapping a recorded node_modules directory to a finding. Does NOT belong
 // here: detecting/skipping node_modules (-> src/addon/load.js) or the wording
@@ -26,7 +28,7 @@ export default {
     const findings = [];
     for (const dir of ctx.addon?.nodeModules ?? []) {
       ctx.note?.(dir, null, "committed node_modules", VERDICT.FAIL);
-      findings.push(finding({ file: dir, item: dir }));
+      findings.push(finding({ file: dir }));
     }
     return findings;
   },

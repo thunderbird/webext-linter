@@ -1,0 +1,8 @@
+[
+  {
+    "namespace": "notify",
+    "functions": [
+      { "name": "show", "type": "function", "async": true, "parameters": [] }
+    ]
+  }
+]

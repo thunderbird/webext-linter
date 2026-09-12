@@ -88,10 +88,10 @@
   },
   "summary": {
     "error": 0,
-    "warning": 1,
+    "warning": 2,
     "info": 0,
     "byRule": {
-      "missing-vendor-file": 1
+      "missing-vendor-file": 2
     }
   },
   "findings": [
@@ -99,6 +99,15 @@
       "ruleId": "missing-vendor-file",
       "severity": "warning",
       "file": "lib/ghost.js",
+      "loc": null,
+      "item": "VENDORS.md",
+      "hint": null,
+      "message": "One or more files listed in \"VENDORS.md\" are not present in the submission. Add each file to the submission, or remove its entry from \"VENDORS.md\"."
+    },
+    {
+      "ruleId": "missing-vendor-file",
+      "severity": "warning",
+      "file": "lib/phantom.js",
       "loc": null,
       "item": "VENDORS.md",
       "hint": null,

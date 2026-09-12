@@ -213,9 +213,14 @@ test("experimentGroups groups entries by their experiments/<seg>/ subtree", () =
 // ---- loadAllowList ----
 test("loadAllowList collects file hashes and upstream API namespaces", () => {
   const { fileHashes, apiNamespaces } = loadAllowList(EXPERIMENTS_FIXTURE);
-  assert.equal(fileHashes.size, 3); // demo.json, ext-demo.js, ext-demo-utils.sys.mjs
+  // Both drafts the fixture publishes: demo (demo.json, ext-demo.js,
+  // ext-demo-utils.sys.mjs) and notify (notify.json, ext-notify.js).
+  assert.equal(fileHashes.size, 5);
   assert.ok(fileHashes.has(normalizedSha256(fixtureBytes("schema/demo.json"))));
-  assert.ok(apiNamespaces.has("demo")); // parsed from the demo schema's namespace
+  // Parsed from each schema's own `namespace`, which is how an add-on's
+  // experiment is recognised by name.
+  assert.ok(apiNamespaces.has("demo"));
+  assert.ok(apiNamespaces.has("notify"));
 });
 
 // ---- verifyExperiments ----

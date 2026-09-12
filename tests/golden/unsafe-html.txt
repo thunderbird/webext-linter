@@ -2,11 +2,13 @@
 
 Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
-1) Inserting markup via ".innerHTML" will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
+1) Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
- - bg.js:2
- - bg.js:4
- - bg.js:6
+ - bg.js:2 - .innerHTML
+ - bg.js:4 - .innerHTML
+ - bg.js:6 - .innerHTML
+ - bg.js:12 - .outerHTML
+ - bg.js:14 - insertAdjacentHTML()
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
@@ -91,4 +93,4 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 0 warning(s), 3 info, 1 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)
+0 error(s), 0 warning(s), 5 info, 1 extended code review step(s), 0 extended manual review step(s), 10 standard manual review step(s)
