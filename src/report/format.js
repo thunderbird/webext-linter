@@ -314,10 +314,10 @@ function entriesOf(items) {
     const last = out.at(-1);
     if (last && last.key === item.entry && last.section === item.section) {
       last.members.push(item.target);
-      if (item.index == null) {
-        last.withheld++;
-      } else {
+      if (item.shown) {
         last.shown.push(item.target);
+      } else {
+        last.withheld++;
       }
       continue;
     }
@@ -325,8 +325,8 @@ function entriesOf(items) {
       key: item.entry,
       section: item.section,
       members: [item.target],
-      shown: item.index == null ? [] : [item.target],
-      withheld: item.index == null ? 1 : 0,
+      shown: item.shown ? [item.target] : [],
+      withheld: item.shown ? 0 : 1,
     });
   }
   return out;

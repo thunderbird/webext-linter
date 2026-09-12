@@ -8,11 +8,14 @@
 // group's locus filter, the display cap, and whether the messages had been filled yet -
 // and each drift silently moved every later number.
 //
-// Only an item the report actually shows is numbered. One withheld behind an "and N
-// more" marker gets no number at all, because nobody can see it to settle it, and a
-// number nobody can read would push every later one out of step with the page.
+// EVERY item is numbered, including one the page will not have room to print. The
+// display cap is a property of the page, not of the review: the item file --llm-review
+// writes must carry every item, or the reader settles the ones they were handed and the
+// rest pass unexamined, and a verdict naming one of them must resolve rather than fail.
+// `shown` carries the page's decision separately, for the renderer to act on.
 //
-// Belongs here: the sequence, the entry boundaries within it, and the numbering.
+// Belongs here: the sequence, the entry boundaries within it, the numbering, and which
+// items the page has room for.
 //
 // Does NOT belong here: how an entry is drawn (src/report/format.js), what it says
 // (assets/registry.yaml), or which items a verdict changes (src/report/verdicts.js).
@@ -71,8 +74,10 @@ const TODO_SECTIONS = Object.freeze(["code", "extendedManual", "standard"]);
  * @property {string} section  A severity band for a finding, a to-do section otherwise.
  * @property {string} entry  Entry key: consecutive items sharing it are one numbered
  *   entry with a shared body and a list of locations.
- * @property {?number} index  The number this item is listed under, or null when the
- *   report withholds it (past the per-entry display cap).
+ * @property {number} index  The number this item is listed under. Every item has one,
+ *   whether or not the page prints its line.
+ * @property {boolean} shown  Whether the report prints a location line for it, or folds
+ *   it into the entry's "and N more" marker (past the per-entry display cap).
  * @property {object} target  The Finding or ManualItem itself.
  */
 
@@ -98,14 +103,15 @@ export function orderReview(findings, manual = []) {
   let n = 0;
   const push = (kind, section, key, members) => {
     members.forEach((target, i) => {
-      // Beyond the cap the report prints a marker instead of the line, so there is
-      // nothing to number - and numbering it would shift every later item off the page.
-      const shown = i < MAX_ENTRIES_PER_CATEGORY;
+      // Past the cap the page prints a marker instead of the line. The item is numbered
+      // all the same: it is still part of the review, still in the item file, and still
+      // addressable by a verdict.
       items.push({
         kind,
         section,
         entry: key,
-        index: shown ? ++n : null,
+        index: ++n,
+        shown: i < MAX_ENTRIES_PER_CATEGORY,
         target,
       });
     });

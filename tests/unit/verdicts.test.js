@@ -229,6 +229,33 @@ test("a malformed verdict file is rejected with a reason", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// The display cap bounds the PAGE, not the review. An add-on with more sites than one
+// entry can print still hands the reader every one of them, and a verdict naming a site
+// the page folded into its "and N more" marker applies like any other. Capping the file
+// too would mean the reader settles what they were handed while the rest pass unexamined,
+// and the review reports no issue for sites nobody ever looked at.
+test("an item the page withheld is in the file and can be settled", () => {
+  const manual = Array.from({ length: 30 }, (_, i) =>
+    mkItem("unused-permission", "Perms", "m.json", i + 1, `perm${i}`)
+  );
+  const items = reviewItems([], manual);
+  assert.equal(items.length, 30, "every site reaches the item file");
+  assert.deepEqual(
+    items.map((x) => x.index),
+    Array.from({ length: 30 }, (_, i) => i + 1),
+    "numbered 1..N with no gaps, so no index is unaddressable"
+  );
+  // The last one is past the 25-line cap, so the report shows it only as "and N more".
+  const beyondCap = items.at(-1);
+  applyVerdicts({
+    findings: [],
+    manual,
+    verdicts: new Map([[beyondCap.index, "cleared"]]),
+    registry,
+  });
+  assert.equal(manual.length, 29, "the withheld item settled like any other");
+});
+
 // The item file is what --llm-review hands over, so its indices must be the ones a verdict
 // file keys by. Built from the same sequence the renderer walks, and its `ref` is the
 // locus line the report prints - so a verdict copied out of the file is accepted, and the

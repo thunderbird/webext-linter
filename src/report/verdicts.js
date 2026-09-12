@@ -101,12 +101,12 @@ export function applyVerdicts({
   labelOf,
 }) {
   // The same sequence the report printed, numbered the same way - not a reconstruction
-  // of it. An item the report withheld carries no number and so cannot be addressed.
+  // of it. EVERY item is here, including one the page had no room to print: those are in
+  // the item file a reviewer worked from, so a verdict naming one has to resolve rather
+  // than be refused as out of range.
   const byIndex = new Map();
   for (const item of orderReview(findings, manual)) {
-    if (item.index != null) {
-      byIndex.set(item.index, item);
-    }
+    byIndex.set(item.index, item);
   }
   const applied = [];
   const dropFindings = new Set();

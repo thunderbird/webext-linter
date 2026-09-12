@@ -837,7 +837,8 @@ test("control characters from the submission never reach the report", () => {
 // itself: every locus line the renderer emits, in order, is what the sequence numbered.
 // Grouping reorders findings (they collapse by message), the to-do sections follow the
 // body groups, and the display cap hides the tail of a long list - all three are ways the
-// two could drift, and all three are covered here.
+// two could drift, and all three are covered here. The cap bounds the PAGE only: a
+// withheld item is still numbered, so it is still in the item file and still settleable.
 test("the enumeration is exactly the order the report prints", () => {
   const registry = loadRegistry();
   const mk = (ruleId, severity, message, file, line, item) => ({
@@ -890,17 +891,19 @@ test("the enumeration is exactly the order the report prints", () => {
     .filter((l) => !l.startsWith("… and "));
   const label = locusLabeler();
   const enumerated = orderReview(findings, manual);
-  // Numbered items are exactly the printed ones, in the printed order. A withheld item
-  // carries no number at all, so it cannot push a later one out of step.
+  // The SHOWN items are exactly the printed ones, in the printed order.
   assert.deepEqual(
     enumerated
-      .filter((x) => x.index != null && hasLocus(x.target))
+      .filter((x) => x.shown && hasLocus(x.target))
       .map((x) => locationLine(x.target, label(x.target))),
     printed
   );
+  // Every item is numbered, 1..N with no gaps - including the ones the page had no room
+  // for. The item file carries them and a verdict can address them, which is what keeps
+  // a reader from settling the items they were handed while the rest pass unexamined.
   assert.deepEqual(
-    enumerated.filter((x) => x.index != null).map((x) => x.index),
-    enumerated.filter((x) => x.index != null).map((_, i) => i + 1)
+    enumerated.map((x) => x.index),
+    enumerated.map((_, i) => i + 1)
   );
   // The collapse really did reorder: c.js is listed second, not third.
   assert.deepEqual(printed.slice(0, 3), ["a.js:1", "c.js:3", "b.js:2"]);
@@ -911,8 +914,10 @@ test("the enumeration is exactly the order the report prints", () => {
   assert.equal(hasLocus(enumerated.at(-1).target), false);
   assert.equal(enumerated.at(-1).kind, "todo");
   assert.equal(typeof enumerated.at(-1).index, "number");
-  // The five the cap withheld are in the sequence but carry no number.
-  assert.equal(enumerated.filter((x) => x.index == null).length, 5);
+  // The five the cap withheld are in the sequence, numbered, and marked unprinted.
+  const withheld = enumerated.filter((x) => !x.shown);
+  assert.equal(withheld.length, 5);
+  assert.ok(withheld.every((x) => typeof x.index === "number"));
 });
 
 // The regression that forced the one-sequence design. A finding with no locus used to

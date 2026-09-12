@@ -9,9 +9,11 @@
 // ATN auto-verifies against, deliberately free of unsettled to-do items. This one exists
 // for the opposite purpose, so it is a separate file with a separate contract.
 //
-// The display cap applies here too. An item the report withheld is absent, so the two
-// documents number identically and neither can be made enormous by an add-on with
-// thousands of sites.
+// EVERY item is here, including one the page had no room to print. The cap bounds the
+// PAGE, and a reader working from this file would otherwise settle the items they were
+// handed while the rest passed unexamined - and a verdict naming one of them would be
+// refused as out of range. The two documents still number identically, because the
+// numbering counts every item on both sides.
 //
 // Belongs here: the shape of that file, and the temp path it is written to.
 //
@@ -38,57 +40,53 @@ import { SECTION_TITLES } from "./format.js";
 export function reviewItems(findings, manual) {
   const entryNumbers = new Map();
   const counters = new Map();
-  return orderReview(findings, manual)
-    .filter((x) => x.index != null)
-    .map((x) => {
-      const t = x.target;
-      // The entry number the report shows for it. Found Issues numbers continuously across
-      // its severity bands and each to-do section restarts at 1, so the counter is keyed
-      // the same way - "entry 2" then means the same thing in both documents.
-      const scope = x.kind === "finding" ? "finding" : x.section;
-      const key = `${scope}/${x.entry}`;
-      if (!entryNumbers.has(key)) {
-        counters.set(scope, (counters.get(scope) ?? 0) + 1);
-        entryNumbers.set(key, counters.get(scope));
-      }
-      const locus = {
-        file: t.file ?? null,
-        loc: t.loc ?? null,
-        item: t.item ?? null,
-        hint: t.hint ?? null,
-      };
-      // The section the report lists it under, by the name it prints - not the internal
-      // key. A finding's own band is already on `severity`.
-      const title =
-        x.kind === "finding"
-          ? SECTION_TITLES.issues
-          : SECTION_TITLES[x.section];
-      return x.kind === "finding"
-        ? {
-            index: x.index,
-            kind: "finding",
-            section: title,
-            entry: entryNumbers.get(key),
-            ruleId: t.ruleId,
-            severity: t.severity,
-            ...locus,
-            message: t.message,
-          }
-        : {
-            index: x.index,
-            kind: "todo",
-            section: title,
-            entry: entryNumbers.get(key),
-            ruleId: t.ruleId ?? null,
-            // What a reported case becomes, or null when settling it produces no
-            // finding however it goes.
-            suggestedVerdict: t.verdict ?? null,
-            ...locus,
-            title: t.title,
-            instructions: t.instructions ?? null,
-            suggestedResponse: t.response ?? null,
-          };
-    });
+  return orderReview(findings, manual).map((x) => {
+    const t = x.target;
+    // The entry number the report shows for it. Found Issues numbers continuously across
+    // its severity bands and each to-do section restarts at 1, so the counter is keyed
+    // the same way - "entry 2" then means the same thing in both documents.
+    const scope = x.kind === "finding" ? "finding" : x.section;
+    const key = `${scope}/${x.entry}`;
+    if (!entryNumbers.has(key)) {
+      counters.set(scope, (counters.get(scope) ?? 0) + 1);
+      entryNumbers.set(key, counters.get(scope));
+    }
+    const locus = {
+      file: t.file ?? null,
+      loc: t.loc ?? null,
+      item: t.item ?? null,
+      hint: t.hint ?? null,
+    };
+    // The section the report lists it under, by the name it prints - not the internal
+    // key. A finding's own band is already on `severity`.
+    const title =
+      x.kind === "finding" ? SECTION_TITLES.issues : SECTION_TITLES[x.section];
+    return x.kind === "finding"
+      ? {
+          index: x.index,
+          kind: "finding",
+          section: title,
+          entry: entryNumbers.get(key),
+          ruleId: t.ruleId,
+          severity: t.severity,
+          ...locus,
+          message: t.message,
+        }
+      : {
+          index: x.index,
+          kind: "todo",
+          section: title,
+          entry: entryNumbers.get(key),
+          ruleId: t.ruleId ?? null,
+          // What a reported case becomes, or null when settling it produces no
+          // finding however it goes.
+          suggestedVerdict: t.verdict ?? null,
+          ...locus,
+          title: t.title,
+          instructions: t.instructions ?? null,
+          suggestedResponse: t.response ?? null,
+        };
+  });
 }
 
 /**
