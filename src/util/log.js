@@ -33,6 +33,19 @@ export function setVerbose(v) {
 }
 
 /**
+ * Whether a debug() line would actually be narrated or recorded, for a caller that must do
+ * EXTRA WORK to produce one (rather than just format one it already has). Quiet is part of
+ * the answer: --report-format json sets it independently of --verbose, and emit() drops
+ * everything while it is on, so verbose alone would have such a caller pay for output
+ * nobody receives.
+ *
+ * @returns {boolean}
+ */
+export function isVerbose() {
+  return verbose && !quiet;
+}
+
+/**
  * Enable or disable the live progress feed (which check is running, review
  * escalations). The CLI turns it on for text runs. JSON and test runs leave it
  * off so they stay quiet.

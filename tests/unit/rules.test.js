@@ -466,13 +466,13 @@ test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () =
   );
 });
 
-// A weak-family-only file (a revealing-module pattern, which the structural
-// detector flags but readable code also has) is the UNSURE verdict: no
-// deterministic finding, and the file escalates to a reviewer instead.
-test("obfuscated-code escalates a weak-only match instead of flagging it", () => {
+// A revealing-module file - which the library recognizes, under a family that is not
+// pinned because readable code has that shape too - is ordinary code: no finding, and
+// nobody asked to look at it.
+test("obfuscated-code ignores a match no pinned family made", () => {
   // A revealing-module pattern over the 1024-byte floor: an IIFE-initialized
-  // const referenced only as `Helper.method(...)`, which structurally matches
-  // the WEAK family the detector applies no density guard to -> UNSURE, not FAIL.
+  // const referenced only as `Helper.method(...)`, the structure the unpinned
+  // family applies no density guard to.
   const methods = Array.from(
     { length: 12 },
     (_, i) =>
@@ -486,14 +486,13 @@ test("obfuscated-code escalates a weak-only match instead of flagging it", () =>
     { length: 12 },
     (_, i) => `Helper.step${i}("x${i}");`
   ).join("\n");
-  const weak = `const Helper = (() => {\n${methods}  return { ${returns} };\n})();\n${calls}\n`;
+  const unpinned = `const Helper = (() => {\n${methods}  return { ${returns} };\n})();\n${calls}\n`;
 
-  const step = obfuscatedCode.run(withManifest(filesCtx({ "app.js": weak })));
-  // No deterministic finding for a weak-only match. The one escalation is located
-  // by the file and carries no `{{item}}` token - the reviewer inspects the named
-  // file by hand.
+  const step = obfuscatedCode.run(
+    withManifest(filesCtx({ "app.js": unpinned }))
+  );
   assert.equal(step.findings.length, 0);
-  assert.deepEqual(step.escalations, [{ file: "app.js" }]);
+  assert.equal(step.escalations, undefined);
 });
 
 // vendor-vulnerable surfaces a vulnerability the OSV audit recorded for a
@@ -695,7 +694,6 @@ test("every escalating check declares a section, and only those", async () => {
       "experiment-unknown-api",
       "minimize-web-accessible-resources",
       "missing-english-localization",
-      "obfuscated-code",
       "remote-eval",
       "remote-resources",
       "strict-min-version-api",

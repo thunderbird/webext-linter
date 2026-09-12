@@ -1,19 +1,18 @@
 // Unit tests for the obfuscation seam (src/lib/obfuscation.js): obfuscationVerdict is
-// FAIL only for the AST STRUCTURE of a recognized STRONG obfuscator family; PASS for
-// readable code, plain-minified-but-clean code, and unparseable input; and UNSURE for a
-// weak-family-only match (a structure ordinary readable code also has, so it is deferred
-// to the obfuscated-code check's escalation rather than decided outright).
-// The family mechanics are private to the module - only the verdict is observable. This
-// is the property that keeps legitimate libraries (readable pdf.js, minified JSZip) and
-// module-pattern first-party code from being mislabeled: obfuscation is recognized by
-// structure, not token presence, and only by structures readable code cannot have.
+// FAIL only for the AST STRUCTURE of a PINNED obfuscator family, and PASS for everything
+// else - readable code, plain-minified-but-clean code, unparseable input, and a structure
+// only an unpinned family recognizes. The family mechanics are private to the module -
+// only the verdict is observable. This is the property that keeps legitimate libraries
+// (readable pdf.js, minified JSZip) and module-pattern first-party code from being
+// mislabeled: obfuscation is recognized by structure, not token presence, and only by
+// structures readable code cannot have.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { obfuscationVerdict } from "../../src/lib/obfuscation.js";
 
-// A string array dereferenced through an accessor - the array_replacements STRONG family.
+// A string array dereferenced through an accessor - the pinned array_replacements family.
 const ARRAY_REPLACEMENT =
   `var _0xarr = [${Array.from({ length: 40 }, (_, i) => `"s${i}"`).join(", ")}];\n` +
   "function _0xget(i) { return _0xarr[i]; }\n" +
@@ -21,7 +20,7 @@ const ARRAY_REPLACEMENT =
     "\n"
   );
 
-// An obfuscator.io-style rotated string array - a STRONG family.
+// An obfuscator.io-style rotated string array - a pinned family.
 const OBFUSCATOR_IO =
   "var _0x12=['\\x68\\x69','\\x62\\x79\\x65','\\x6c\\x6f\\x67'];" +
   "(function(a,b){var c=function(d){while(--d){a['push'](a['shift']());}};c(++b);}(_0x12,0x1));" +
@@ -38,8 +37,9 @@ const READABLE =
 const MINIFIED_CLEAN = `var s=0;${"s=s+1;".repeat(250)}`;
 
 // The revealing module pattern - an IIFE-initialized const referenced only as a
-// member-expression object - which structurally matches the WEAK
-// function_to_array_replacements family (the detector applies no density guards there).
+// member-expression object. The library recognizes it, under a family that is not pinned
+// because ordinary readable code has that shape and the detector applies no density
+// guards to it.
 const MODULE_PATTERN =
   "const NCEmailSignature = (() => {\n" +
   "  function normalizeEmail(value) {\n" +
@@ -53,11 +53,11 @@ const MODULE_PATTERN =
   "})();\n" +
   "NCEmailSignature.init();\n";
 
-test("a strong array-replacement match is FAIL", () => {
+test("a pinned array-replacement match is FAIL", () => {
   assert.ok(obfuscationVerdict(ARRAY_REPLACEMENT).fail);
 });
 
-test("a strong obfuscator.io-style match is FAIL", () => {
+test("a pinned obfuscator.io-style match is FAIL", () => {
   assert.ok(obfuscationVerdict(OBFUSCATOR_IO).fail);
 });
 
@@ -69,17 +69,31 @@ test("plain-minified-but-clean code is PASS (that is minified-code's job)", () =
   assert.ok(obfuscationVerdict(MINIFIED_CLEAN).pass);
 });
 
-test("unparseable input is PASS, not obfuscated (the catch path)", () => {
+// Source the parser cannot read yields no tree, so no family is asked and none is
+// therefore missing. Obfuscated code that also fails to parse is minified-code's concern.
+test("unparseable input is PASS, not obfuscated", () => {
   assert.ok(obfuscationVerdict("function (").pass);
 });
 
-// A weak-family-only match is not decided outright: it is the UNSURE verdict, deferred to
-// the obfuscated-code check's escalation - never a FAIL on its own.
-test("a weak-family-only match (the revealing module) is UNSURE", () => {
-  assert.ok(obfuscationVerdict(MODULE_PATTERN).unsure);
+// An unpinned family decides nothing, so the structures ordinary code shares with an
+// obfuscator pass untouched - no finding, and no reviewer asked to judge them either.
+test("a structure only an unpinned family matches is PASS", () => {
+  assert.ok(obfuscationVerdict(MODULE_PATTERN).pass);
 });
 
-// A strong family present alongside the weak one still decides: FAIL, not UNSURE.
-test("a strong family alongside the weak one is FAIL", () => {
+// Issue #5: a readable object literal whose keys happen to be mostly five letters long.
+// An unpinned family recognizes that shape, and it is common enough in hand-written
+// source that letting it decide rejects real add-ons - which is what pinning prevents.
+test("readable code an unpinned family recognizes is PASS (issue #5)", () => {
+  const source = Array.from(
+    { length: 10 },
+    (_, i) =>
+      `const config${i} = { count: ${i}, label: "a", color: "b", width: 2, title: "c" };`
+  ).join("\n");
+  assert.ok(obfuscationVerdict(source).pass);
+});
+
+// A pinned family present alongside an unpinned one still decides: FAIL.
+test("a pinned family alongside an unpinned one is FAIL", () => {
   assert.ok(obfuscationVerdict(`${MODULE_PATTERN}\n${ARRAY_REPLACEMENT}`).fail);
 });

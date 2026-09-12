@@ -56,9 +56,9 @@ const OBFUSCATED =
 // short lines, low density -> NOT minified. This is what prettier would produce.
 const PRETTY = "const x = 1;\n".repeat(120);
 // The revealing module pattern: an IIFE-initialized const whose only reference is a
-// member call - readable first-party code that nevertheless matches the WEAK
-// function_to_array_replacements structure (see src/lib/obfuscation.js). >= 1024
-// bytes so it is classified, not skipped.
+// member call - readable first-party code whose structure the library recognizes under a
+// family that is not pinned (see src/lib/obfuscation.js). >= 1024 bytes so it is
+// classified, not skipped.
 const MODULE_PATTERN =
   "const EmailSignature = (() => {\n" +
   Array.from(
@@ -168,39 +168,28 @@ test("a minified non-library is non-authored and rejected; identified libraries 
   );
 });
 
-// A weak-family-only match is not a verdict: the file stays readable authored code
-// (scanned, reviewable), and obfuscated-code turns it into ONE escalation judged
-// from the file's own content - with no hint of what the detector matched, so the
-// reviewer cannot be steered into confirming a detector claim. The escalation names the
-// verdict 1:1: fail -> finding, pass -> drop, unsure -> manual review (also the
-// no-token default).
-test("a weak-family-only file is not obfuscated: authored, one escalation", () => {
+// An unpinned family decides nothing, and "nothing" means the file is ordinary: readable
+// authored code, scanned and reviewable, with no finding and nobody asked to judge it. A
+// structure the library half-recognizes is one ordinary code shares, so charging a
+// reviewer for it would spend attention on every innocent submission that has it.
+test("a file only an unpinned family matches is ordinary authored code", () => {
   const file = "modules/signature.js";
   const addon = addonWith({ [file]: MODULE_PATTERN });
   const bundled = classifyBundled(addon);
   const tag = bundled.classified.find((c) => c.file === file);
   assert.deepEqual(
     [tag.minified, tag.library, tag.obfuscation],
-    [false, false, VERDICT.UNSURE]
+    [false, false, VERDICT.PASS]
   );
   assert.ok(!bundled.nonAuthored.has(file), "stays authored (scanned)");
   assert.equal(
     hasUnreviewableCode(bundled),
     false,
-    "a weak-only match does not force a source review"
+    "an unpinned match does not force a source review"
   );
-
-  // No finding: a weak-only match is not proof. The reviewer is asked instead, and
-  // the entry names the file and NOTHING about what the detector matched.
-  const out = obfuscatedCode.run({ addon: { ...addon, bundled } });
-  assert.deepEqual(out.findings, []);
   assert.deepEqual(
-    out.escalations.map((e) => e.file),
-    [file]
-  );
-  assert.ok(
-    !JSON.stringify(out.escalations).includes("function_to_array"),
-    "the escalation carries no detector hint"
+    obfuscatedCode.run({ addon: { ...addon, bundled } }).findings,
+    []
   );
 });
 
@@ -539,39 +528,26 @@ test("classifyInlineSources ignores a source that is not a script body", () => {
   assert.equal(classifyInlineSources(asBody).length, 1);
 });
 
-// A weak-family-only body: obfuscation UNSURE, so obfuscated-code escalates rather
-// than deciding. Repeated helpers with a shared accessor - the shape the detector
-// half-recognises. >= 1024 bytes so it clears the floor.
-const WEAK_FAMILY =
-  "const M = (() => {\n" +
-  Array.from(
-    { length: 14 },
-    (_, i) =>
-      `  function assist${i}(v) { return String(v || "").trim() + " assist ${i}"; }\n`
-  ).join("") +
-  `  const table = [${Array.from({ length: 14 }, (_, i) => `assist${i}`).join(", ")}];\n` +
-  '  return { run: (i, v) => table[i](v) };\n})();\nM.run(0, "x");\n';
-
-// Two unsure scripts in ONE page are two questions. The candidate must carry the line:
-// the entry renders `file:line`, so without it the reviewer sees one subject named
-// twice, and a verdict can be attached to the wrong body.
-test("an inline obfuscation candidate names its site, not just its page", async () => {
+// Two obfuscated scripts in ONE page are two findings. Each must carry its line: the
+// report renders `file:line`, so without it both bodies render as the same subject named
+// twice and the developer cannot tell which one to replace.
+test("an inline obfuscation finding names its site, not just its page", async () => {
   const obfuscated = (await import("../../src/checks/rules/obfuscated-code.js"))
     .default;
   assert.equal(
     classifyInlineSources([
-      { file: "p.html", code: WEAK_FAMILY, lineOffset: 0, inline: true },
-    ])[0].obfuscation.unsure,
+      { file: "p.html", code: OBFUSCATED, lineOffset: 0, inline: true },
+    ])[0].obfuscation.fail,
     true,
-    "fixture must be UNSURE, else there is nothing to escalate"
+    "fixture must be obfuscated, else there is nothing to report"
   );
   const jsSources = [
-    { file: "p.html", code: WEAK_FAMILY, lineOffset: 1, inline: true },
-    { file: "p.html", code: WEAK_FAMILY, lineOffset: 40, inline: true },
+    { file: "p.html", code: OBFUSCATED, lineOffset: 1, inline: true },
+    { file: "p.html", code: OBFUSCATED, lineOffset: 40, inline: true },
   ];
   const out = obfuscated.run({ addon: { files: new Map() }, jsSources });
   assert.deepEqual(
-    out.escalations.map((e) => `${e.file}:${e.loc.line}`),
+    out.findings.map((f) => `${f.file}:${f.loc.line}`),
     ["p.html:2", "p.html:41"]
   );
 });

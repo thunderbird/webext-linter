@@ -873,34 +873,23 @@ deterministic-phase:
     Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
     An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
 
-# Checks whose scan finds cases it cannot settle: those escalate to a person
-# instead of becoming a finding, and the entry's `instructions` is what the
-# reviewer is shown for each one.
-
 # Flags shipped obfuscated JS that is not a recognized library; asks for the
-# original sources. A strong structural detector match is a deterministic finding;
-# a weak-only match (a structure ordinary readable code also has - see
-# src/lib/obfuscation.js WEAK_FAMILIES) escalates to a reviewer. The entry
-# deliberately never names the structural detector or what it matched, so the
-# reviewer judges the file cold and cannot be steered into confirming a detector
-# claim.
+# original sources. The structural detector families the verdict is drawn from are
+# pinned (see src/lib/obfuscation.js), so a match is deterministic and needs no
+# second opinion. The entry deliberately never names the detector or what it
+# matched: the developer is told the file is obfuscated, not how it was recognized,
+# which is not a hint worth handing to someone working around the check.
 - title: Obfuscated code is not permitted
   severity: error
   check: obfuscated-code
-  escalation: code-review
   input: source
-  instructions: |-
-    The automated analysis could not tell whether the following file(s) are
-    obfuscated, so judge each one by reading it. Obfuscated means transformed to
-    hide behaviour from a reviewer: machine-mangled identifiers (_0x1a2b),
-    encoded or rotated string tables resolved through a decoder, or flattened
-    control flow. Readable developer code with meaningful names and ordinary
-    structure is not obfuscated even when it is dense or minified, and
-    minification on its own is another check's concern. The detector's reason is
-    deliberately withheld here so the file is judged on its own content.
   response: |-
     The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
     Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
+
+# Checks whose scan finds cases it cannot settle: those escalate to a person
+# instead of becoming a finding, and the entry's `instructions` is what the
+# reviewer is shown for each one.
 
 # functions/events added after the declared strict_min_version. The
 # deterministic pre-flight (strict-min-version-api.js) emits an UNGUARDED too-new

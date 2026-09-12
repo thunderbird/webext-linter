@@ -1,7 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/obfuscated-code-escalated",
+    "addon": "<root>/tests/addons/obfuscated-code-unpinned",
     "addonKind": "dir",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

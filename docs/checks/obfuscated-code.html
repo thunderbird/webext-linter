@@ -26,13 +26,15 @@
         <code>obfuscation-detector</code> library.
       </p>
       <p>
-        Detection is two-tier. A <strong>strong</strong> family match is a
-        deterministic finding. One family — the revealing-module pattern
-        (<code>const X = (() =&gt; {…})(); X.init();</code>) — also fits ordinary
-        readable code, so a <strong>weak-only</strong> match is not decided outright:
-        the file escalates, for the reviewer to judge from its own content. The
-        reviewer is never told which family the detector matched, so that judgement
-        cannot be anchored to a detector claim.
+        The families a match is drawn from are <strong>pinned</strong>. The library
+        ships more detectors than the check consults and gains new ones in minor
+        releases, and one it has always shipped — the revealing-module pattern
+        (<code>const X = (() =&gt; {…})(); X.init();</code>) — fits ordinary readable
+        code. A family that is not pinned decides nothing, so it can neither reject an
+        add-on nor cost a reviewer a look, and every family that is pinned is one a
+        match needs no second opinion about. The price is paid deliberately: a pinned
+        family the library no longer has is a verdict that can no longer be produced,
+        so the review stops rather than quietly rejecting less than it claims to.
       </p>
       <p>
         A file that looks like a recognised third-party library is excluded here,
@@ -50,10 +52,10 @@ flowchart TD
   Z -- yes --> S([skip])
   Z -- no --> L{"Recognized third-party library?"}
   L -- yes --> S2([skip — missing-library's concern])
-  L -- no --> B{"Obfuscator-family match?"}
-  B -- "no family" --> OK([no finding — a merely-minified<br/>file is minified-code's concern])
-  B -- "STRONG family" --> ERR([ERROR: obfuscated code])
-  B -- "WEAK family only<br/>(a structure readable code also has)" --> MAN(["escalate — the reviewer judges the file<br/>from its content alone<br/>(never told what matched)"])
+  L -- no --> B{"Pinned obfuscator-family match?"}
+  B -- "no pinned family<br/>(an unpinned one decides nothing)" --> OK([no finding — a merely-minified<br/>file is minified-code's concern])
+  B -- "a pinned family matched" --> ERR([ERROR: obfuscated code])
+  B -- "a pinned family is gone<br/>from the library" --> STOP(["the review stops — a verdict<br/>it can no longer produce"])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -63,7 +65,7 @@ flowchart TD
   class OK ok;
   class S skip;
   class S2 skip;
-  class MAN manual;
+  class STOP manual;
         </pre>
       </div>
 
@@ -72,9 +74,7 @@ flowchart TD
         The add-on is told the named files are obfuscated and that obfuscated code is
         not permitted — whether or not the add-on is hosted on addons.thunderbird.net
         — as it violates the Add-on Policy and is subject to being blocked. It is
-        asked to ship the original, human-readable code directly. A weak-family match
-        the scan cannot decide is deferred
-        to manual review instead.
+        asked to ship the original, human-readable code directly.
       </div>
 
       <p class="source-note">
