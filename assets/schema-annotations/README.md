@@ -21,6 +21,21 @@ Either way a fragment here acts as a local override/addition until the same
 annotation ships in the published schema, at which point the fragment can be
 removed cleanly.
 
+## `theme.json` — `ThemeManifest.icons` is a packaged path
+
+`manifest.WebExtensionManifest.icons` types each size-keyed value as
+`manifest.ExtensionFileUrl` (`format: strictRelativeUrl`), but
+`manifest.ThemeManifest.icons` in `theme.json` types the same values as a bare
+`string`. It is the same key with the same meaning, and a static theme's icon is a
+packaged file exactly as an add-on's is.
+
+The fragment retypes it to match. `bundled-files` walks the manifest against its schema
+types and reports a declared path that is not in the package, so with the bare-string
+typing a theme's missing icon was invisible to it, and any other consumer reading the
+schema to learn which keys carry a file path would draw the same wrong conclusion.
+
+Remove this fragment once `theme.json` upstream types the value as `ExtensionFileUrl`.
+
 ## `manifest.json` — `web_api` permission grounding
 
 Supplies the `web_api` annotation on the `manifest.OptionalPermission` enum values

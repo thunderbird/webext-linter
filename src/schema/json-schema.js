@@ -19,6 +19,8 @@
 // src/checks/rules/*. User-facing wording for any finding lives in
 // assets/registry.yaml.
 
+import { MANIFEST_ROOT_TYPES } from "./index.js";
+
 const SCALAR_TYPES = new Set([
   "string",
   "integer",
@@ -129,11 +131,16 @@ export function buildManifestJsonSchema(schema) {
     return out;
   };
 
-  const base =
-    schema.globalTypes.get("manifest.ManifestBase")?.properties || {};
-  const wem =
-    schema.globalTypes.get("manifest.WebExtensionManifest")?.properties || {};
-  const merged = { ...base, ...wem };
+  // Every root a submitted manifest can be - a static theme declares `theme`, which no
+  // other root carries. Later roots win a name collision, as WebExtensionManifest already
+  // did over ManifestBase.
+  const merged = {};
+  for (const name of MANIFEST_ROOT_TYPES) {
+    Object.assign(
+      merged,
+      schema.globalTypes.get(`manifest.${name}`)?.properties || {}
+    );
+  }
   if (Object.keys(merged).length === 0) {
     return null;
   }

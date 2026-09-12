@@ -8,7 +8,7 @@
 // Belongs here: the present-manifest / not-a-theme / absent-icons verdict,
 // treating an empty or value-less `icons` object as "no icon defined". Does NOT
 // belong here: whether a referenced icon file is actually bundled (->
-// bundled-files.js, which does not enumerate icons anyway), authored wording (->
+// bundled-files.js, which walks the schema's icon paths), authored wording (->
 // assets/registry.yaml), and severity (-> that registry entry, stamped by
 // src/checks/registry.js).
 

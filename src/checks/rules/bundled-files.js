@@ -1,10 +1,12 @@
 // Referenced files must be bundled. Flags add-on-internal files that are
 // referenced but not present in the package:
-//   - manifest entries: content_scripts js/css, background scripts/page/
-//     service_worker, options_ui.page, *_action.default_popup,
+//   - manifest entries: every key the SCHEMA types as an extension-relative path -
+//     scripts, pages, popups, icons and every default_icon/theme_icons, ruleset paths,
+//     theme images, experiment schema and parent/child scripts (manifestFileRefs),
 //   - file-loading API calls: every packaged-file path the schema-directed +
 //     bridge extractor finds (register/setIcon/theme/menus, executeScript/
 //     insertCSS, getURL, tabs.create, *.setPopup, ...) - see loader-files.js.
+// Both halves therefore come from the schema, and neither has a key list to maintain.
 // Complements the remote-resources check (which catches remote sources).
 //
 // Belongs here: gathering referenced paths from both sources, keeping only
@@ -30,7 +32,7 @@ import {
   resolveRefStatus,
 } from "../../lib/manifest-refs.js";
 import { scriptHostDirs, resolvePageRelative } from "../../lib/script-hosts.js";
-import { manifestTokenLine, SCHEME_RE } from "../../lib/util.js";
+import { manifestPathLine, SCHEME_RE } from "../../lib/util.js";
 
 export default {
   run(ctx) {
@@ -49,27 +51,49 @@ export default {
     /** @param {string} p @returns {boolean} whether the file is bundled. */
     const rootOk = (p) => resolveRefStatus(addon.files, null, p).kind === "ok";
 
-    // 1. Files referenced from the manifest. Anchor on the manifest.json line
-    // that cites the path (located by its quoted form), so the finding points at
-    // the actual reference, not just the file; null loc when it cannot be found.
-    if (ctx.manifest) {
-      const manifestText = ctx.manifestText;
-      for (const { path } of manifestFileRefs(ctx.manifest)) {
-        if (typeof path !== "string") {
-          continue;
-        }
-        const line = manifestTokenLine(manifestText, path);
-        const loc = line ? { line } : null;
-        const present = rootOk(path);
-        ctx.note?.(
-          "manifest.json",
-          loc,
-          path,
-          present ? VERDICT.PASS : VERDICT.FAIL
-        );
-        if (!present) {
-          out.push(finding({ file: "manifest.json", loc, item: path }));
-        }
+    // 1. Files the manifest declares, per the SCHEMA (see manifestFileRefs). `experiments`
+    // is on: this check only asks "is the file packaged", and a missing Experiment schema
+    // or parent script is reported by nothing else - it just makes the experiment's
+    // namespaces fail to register, which surfaces later as unknown-api at the CALL sites
+    // instead of here at the missing file.
+    //
+    // Anchored by the JSON path to the slot, not by searching the text for the value: one
+    // file is routinely named in several slots (icons.16 and icons.48 for one image), and a
+    // token search would give every one of them the first slot's line. Deduped by SLOT for
+    // the same reason - two slots naming one missing file are two defects at two lines,
+    // while a `choices` fan-out must not emit one slot twice.
+    const refs = ctx.manifest
+      ? manifestFileRefs(ctx.manifest, ctx.schema, { experiments: true })
+      : [];
+    if (ctx.manifest && !refs.length) {
+      // Either no schema (a hand-built ctx) or a schema that types no manifest path at
+      // all. Said out loud: the check cannot make its claim, and a silent empty result
+      // would read exactly like a manifest that declares nothing.
+      ctx.note?.(
+        "manifest.json",
+        null,
+        "no schema-declared file paths",
+        VERDICT.SKIPPED
+      );
+    }
+    const seenSlot = new Set();
+    for (const { path, where } of refs) {
+      const slot = where.join("\u0000");
+      if (seenSlot.has(slot) || !isPackagedPathRef(path)) {
+        continue;
+      }
+      seenSlot.add(slot);
+      const line = manifestPathLine(ctx, ...where);
+      const loc = line ? { line } : null;
+      const present = rootOk(path);
+      ctx.note?.(
+        "manifest.json",
+        loc,
+        path,
+        present ? VERDICT.PASS : VERDICT.FAIL
+      );
+      if (!present) {
+        out.push(finding({ file: "manifest.json", loc, item: path }));
       }
     }
 
@@ -141,6 +165,12 @@ function isPackagedPathRef(raw) {
   }
   if (SCHEME_RE.test(s)) {
     return false; // about:, moz-extension:, chrome:, http:, ...
+  }
+  // A localized path resolves only against a locale, so which file it names is not known
+  // here. ExtensionFileUrl carries `preprocess: localize`, so this is legal on exactly the
+  // slots the schema walk covers - icons and every default_icon.
+  if (s.includes("__MSG_")) {
+    return false;
   }
   return classifyUrl(s).local; // also drops protocol-relative "//host/x"
 }

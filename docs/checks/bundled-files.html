@@ -16,17 +16,34 @@
       <h2>What it detects</h2>
       <p class="lead">
         A file the add-on points to but does not actually ship. References are
-        gathered from two places: manifest entries (content script JS and CSS,
-        background scripts, pages and service workers, options pages, and action
-        popups) and file-loading API calls in the code (icon, theme and menu
-        registration, script and CSS injection, packaged-URL lookups, tab
-        creation, popup assignment, and so on).
+        gathered from two places, and <strong>both come from the schema rather than
+        a list kept here</strong>: manifest entries, meaning every key the schema
+        types as an extension-relative path (content script JS and CSS, background
+        scripts, pages and service workers, options pages, action popups,
+        <code>icons</code> and every <code>default_icon</code> /
+        <code>theme_icons</code>, ruleset paths, theme images, and an Experiment's
+        schema and parent scripts), and file-loading API calls in the code (icon,
+        theme and menu registration, script and CSS injection, packaged-URL
+        lookups, tab creation, popup assignment, and so on).
+      </p>
+      <p>
+        Coverage is therefore the schema's. A key it types loosely, or does not
+        declare, is not followed &mdash; and noticing that one key had lost its
+        typing would need a list of the keys to expect, which is exactly the
+        hand-maintained artefact this replaced. A list like that had already
+        forgotten <code>icons</code>, so an add-on whose manifest pointed at an icon
+        it did not package was reported by nothing.
       </p>
       <p>
         Only references that look like packaged files are judged — relative or
         root-relative paths with no URI scheme. Remote URLs, pseudo-schemes such
         as moz-extension or about, and bare fragments are left to other checks.
-        Manifest references are anchored to the line that cites them; page-
+        Manifest references are anchored by the JSON path to the slot that holds
+        them, so one file named in several slots &mdash; <code>icons.16</code> and
+        <code>icons.48</code> for one image is the norm &mdash; gives each slot its
+        own line rather than repeating the first. A localized
+        <code>__MSG_…__</code> path is skipped, since which file it names depends on
+        the locale. Page-
         relative loader references are resolved against the calling script's host
         page directory, the rest against the package root. Each candidate that
         is absent from the package produces a finding.

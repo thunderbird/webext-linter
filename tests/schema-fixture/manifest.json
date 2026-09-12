@@ -4,65 +4,271 @@
     "applicationVersion": "128.0",
     "types": [
       {
+        "id": "ThemeIcons",
+        "type": "object",
+        "properties": {
+          "light": {
+            "$ref": "ExtensionURL"
+          },
+          "dark": {
+            "$ref": "ExtensionURL"
+          }
+        }
+      },
+      {
+        "id": "IconPath",
+        "choices": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "patternProperties": {
+              "^[1-9]\\d*$": {
+                "$ref": "ExtensionFileUrl"
+              }
+            }
+          },
+          {
+            "$ref": "ExtensionFileUrl"
+          }
+        ]
+      },
+      {
+        "id": "ExperimentURL",
+        "type": "string",
+        "format": "unresolvedRelativeUrl"
+      },
+      {
+        "id": "ImageDataOrExtensionURL",
+        "type": "string",
+        "format": "imageDataOrStrictRelativeUrl"
+      },
+      {
+        "id": "ExtensionFileUrl",
+        "type": "string",
+        "format": "strictRelativeUrl",
+        "preprocess": "localize"
+      },
+      {
+        "id": "ExtensionURL",
+        "type": "string",
+        "format": "strictRelativeUrl"
+      },
+      {
         "id": "ManifestBase",
         "type": "object",
         "properties": {
-          "manifest_version": { "type": "integer", "enum": [3] },
-          "name": { "type": "string" },
-          "version": { "type": "string" },
-          "description": { "type": "string" },
-          "browser_specific_settings": { "type": "object" }
+          "manifest_version": {
+            "type": "integer",
+            "enum": [
+              3
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "browser_specific_settings": {
+            "type": "object"
+          }
         }
       },
       {
         "id": "WebExtensionManifest",
         "type": "object",
-        "additionalProperties": { "$ref": "UnrecognizedProperty" },
+        "additionalProperties": {
+          "$ref": "UnrecognizedProperty"
+        },
         "properties": {
-          "permissions": { "type": "array" },
-          "optional_permissions": { "type": "array" },
-          "host_permissions": { "type": "array" },
-          "default_locale": { "type": "string" },
-          "icons": { "type": "object" },
-          "background": { "type": "object" },
-          "options_ui": { "type": "object" },
-          "action": { "type": "object" },
-          "content_scripts": { "type": "array" },
+          "permissions": {
+            "type": "array"
+          },
+          "optional_permissions": {
+            "type": "array"
+          },
+          "host_permissions": {
+            "type": "array"
+          },
+          "default_locale": {
+            "type": "string"
+          },
+          "icons": {
+            "type": "object",
+            "additionalProperties": false,
+            "patternProperties": {
+              "^[1-9]\\d*$": {
+                "$ref": "ExtensionFileUrl"
+              }
+            }
+          },
+          "background": {
+            "type": "object",
+            "properties": {
+              "scripts": {
+                "type": "array",
+                "items": {
+                  "$ref": "ExtensionURL"
+                }
+              },
+              "page": {
+                "$ref": "ExtensionURL"
+              },
+              "service_worker": {
+                "$ref": "ExtensionURL"
+              }
+            }
+          },
+          "options_ui": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "$ref": "ExtensionURL"
+              }
+            }
+          },
+          "action": {
+            "type": "object",
+            "properties": {
+              "default_popup": {
+                "$ref": "ExtensionURL"
+              },
+              "default_icon": {
+                "$ref": "IconPath"
+              },
+              "theme_icons": {
+                "type": "array",
+                "items": {
+                  "$ref": "ThemeIcons"
+                }
+              }
+            }
+          },
+          "content_scripts": {
+            "type": "array",
+            "items": {
+              "properties": {
+                "js": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "ExtensionURL"
+                  }
+                },
+                "css": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "ExtensionURL"
+                  }
+                }
+              }
+            }
+          },
           "compose_scripts": {
             "type": "array",
             "annotations": [
-              { "additional_properties": { "required_permissions": ["compose"] } }
-            ]
+              {
+                "additional_properties": {
+                  "required_permissions": [
+                    "compose"
+                  ]
+                }
+              }
+            ],
+            "items": {
+              "properties": {
+                "js": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "ExtensionURL"
+                  }
+                },
+                "css": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "ExtensionURL"
+                  }
+                }
+              }
+            }
           },
           "message_display_scripts": {
             "type": "array",
             "annotations": [
               {
                 "additional_properties": {
-                  "required_permissions": ["messagesModify"]
+                  "required_permissions": [
+                    "messagesModify"
+                  ]
                 }
               },
               {
                 "max_strict_version": "153",
                 "note": "Before Thunderbird 154, message_display_scripts also required the \"scripting\" permission to inject; the requirement was removed in 154.",
                 "additional_properties": {
-                  "required_permissions": ["scripting"]
+                  "required_permissions": [
+                    "scripting"
+                  ]
                 }
               }
-            ]
+            ],
+            "items": {
+              "properties": {
+                "js": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "ExtensionURL"
+                  }
+                },
+                "css": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "ExtensionURL"
+                  }
+                }
+              }
+            }
           },
-          "experiment_apis": { "type": "object" }
+          "experiment_apis": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "schema": {
+                  "$ref": "ExperimentURL"
+                },
+                "parent": {
+                  "type": "object",
+                  "properties": {
+                    "script": {
+                      "$ref": "ExperimentURL"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "options_page": {
+            "$ref": "ExtensionURL"
+          }
         }
       },
       {
         "id": "PermissionNoPrompt",
         "type": "string",
-        "enum": ["storage", "alarms"]
+        "enum": [
+          "storage",
+          "alarms"
+        ]
       },
       {
         "id": "OptionalPermission",
         "choices": [
-          { "$ref": "PermissionNoPrompt" },
+          {
+            "$ref": "PermissionNoPrompt"
+          },
           {
             "type": "string",
             "enum": [
@@ -80,9 +286,32 @@
       {
         "id": "Permission",
         "choices": [
-          { "$ref": "PermissionNoPrompt" },
-          { "$ref": "OptionalPermission" }
+          {
+            "$ref": "PermissionNoPrompt"
+          },
+          {
+            "$ref": "OptionalPermission"
+          }
         ]
+      },
+      {
+        "id": "ThemeManifest",
+        "type": "object",
+        "properties": {
+          "theme": {
+            "type": "object",
+            "properties": {
+              "images": {
+                "type": "object",
+                "properties": {
+                  "theme_frame": {
+                    "$ref": "ImageDataOrExtensionURL"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     ]
   }

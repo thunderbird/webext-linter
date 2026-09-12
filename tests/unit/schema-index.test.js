@@ -3,10 +3,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex, SchemaIndex } from "../../src/schema/index.js";
+import { manifestFileRefs } from "../../src/lib/manifest-refs.js";
 import {
   loadSchemaAnnotations,
   applySchemaAnnotations,
@@ -342,4 +344,84 @@ test("derives fileLoaderMethods from rel-url-format parameters", () => {
 // rel-url file parameter, so it is derived as a loader (no hardcoding needed).
 test("derives the fixture's messageDisplayScripts.register loader", () => {
   assert.ok(schema.fileLoaderMethods.has("messageDisplayScripts.register"));
+});
+
+// ---- drift lock against the REAL schema ----
+// Which manifest keys carry a packaged-file path is the schema's answer, not a list kept
+// here, and that is the point (see manifestFileRefs). The cost is that coverage can narrow
+// silently: a key retyped upstream as a plain string simply stops being followed, and no
+// review would look different. Per-key detection would need a list of expected keys, which
+// is the artefact the walk replaced - so the check lives here instead, against the real
+// cached branches, where a lost format breaks a test rather than a review.
+//
+// Skipped when .schema-cache is absent (a fresh clone before `npm test` seeds it).
+const CACHE = path.join(here, "..", "..", ".schema-cache");
+const branches = ["release-mv2", "release-mv3"].filter((b) =>
+  fs.existsSync(path.join(CACHE, `webext-annotated-schemas-${b}.zip`))
+);
+
+test("the real schema still types these manifest keys as packaged paths", (t) => {
+  if (!branches.length) {
+    t.skip("no .schema-cache - run tests/seed-caches.js or npm test");
+    return;
+  }
+  // One entry per SHAPE the walk has to descend, not an exhaustive list: a size map
+  // (icons), a choices arm (default_icon), a nested array of objects (theme_icons), an
+  // array item property (rule_resources), a non-WebExtensionManifest root (theme), and the
+  // experiment subtree the walk skips by default.
+  const expect = [
+    ["icons", { icons: { 48: "a.png" } }],
+    // compose_action rather than action/browser_action: those two split across MV2 and
+    // MV3, and this asserts the same expectation on both branches.
+    ["default_icon map", { compose_action: { default_icon: { 16: "a.png" } } }],
+    ["default_icon string", { compose_action: { default_icon: "a.png" } }],
+    ["theme_icons", { compose_action: { theme_icons: [{ light: "a.png" }] } }],
+    ["background.scripts", { background: { scripts: ["a.js"] } }],
+    [
+      "rule_resources",
+      {
+        declarative_net_request: {
+          rule_resources: [{ id: "r", enabled: true, path: "a.json" }],
+        },
+      },
+    ],
+    ["theme images", { theme: { images: { theme_frame: "a.png" } } }],
+  ];
+  for (const b of branches) {
+    // The annotations too, exactly as the pipeline applies them before building the index.
+    // One of them is load-bearing here: upstream's theme.json types ThemeManifest.icons as
+    // a bare string, and the roots are merged, so without the fragment a theme's typing
+    // wins and every add-on's icons stop being paths. Drop the annotation and this fails.
+    const files = loadSchemaFiles(
+      path.join(CACHE, `webext-annotated-schemas-${b}.zip`)
+    );
+    applySchemaAnnotations(files.files, loadSchemaAnnotations());
+    const real = buildSchemaIndex(files);
+    for (const [what, manifest] of expect) {
+      const got = manifestFileRefs(manifest, real).map((r) => r.path);
+      assert.equal(got.length, 1, `${b}: ${what} is no longer a packaged path`);
+    }
+    // A rule id is a plain string next to a typed path: the format gate is what keeps it
+    // out, and a key walk would take both.
+    const dnr = manifestFileRefs(
+      {
+        declarative_net_request: {
+          rule_resources: [{ id: "ruleset_1", path: "a.json" }],
+        },
+      },
+      real
+    );
+    assert.deepEqual(
+      dnr.map((r) => r.path),
+      ["a.json"],
+      `${b}: a rule id is not a path`
+    );
+    // Skipped by default, taken when asked - the two callers differ deliberately.
+    const exp = { experiment_apis: { x: { parent: { script: "p.js" } } } };
+    assert.deepEqual(manifestFileRefs(exp, real), []);
+    assert.deepEqual(
+      manifestFileRefs(exp, real, { experiments: true }).map((r) => r.path),
+      ["p.js"]
+    );
+  }
 });

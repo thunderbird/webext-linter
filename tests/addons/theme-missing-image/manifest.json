@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Theme Missing Image",
+  "version": "1.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "theme-missing-image@example.invalid"
+    }
+  },
+  "icons": {
+    "32": "icon.png"
+  },
+  "theme": {
+    "images": {
+      "theme_frame": "images/frame.png"
+    },
+    "colors": {
+      "frame": "#123456",
+      "tab_background_text": "#ffffff"
+    }
+  }
+}

@@ -28,6 +28,15 @@ function ctxWith(manifest, files = {}) {
   return withManifest({ addon: { files: map, manifest }, jsSources: [] });
 }
 
+// The manifest half of this check asks the SCHEMA which keys carry a file path, so a ctx
+// without one makes it a no-op. Kept separate from ctxWith because the loader half reads
+// the schema too, and handing one to a loader test changes which calls are extracted.
+function manifestCtx(manifest, files = {}) {
+  const ctx = ctxWith(manifest, files);
+  ctx.schema = fixtureSchema;
+  return ctx;
+}
+
 // Build a ctx whose single JS source carries `code`, with the fixture schema so
 // derived loaders (messageDisplayScripts.register) are type-walked. bg.js is
 // declared as a background script (and present in files) so it is LIVE - the
@@ -57,7 +66,7 @@ test("does not throw on malformed content_scripts shapes", () => {
     { content_scripts: [{ js: "content.js" }] },
     { background: "oops.js" },
   ]) {
-    assert.doesNotThrow(() => bundledFiles.run(ctxWith(manifest)).findings);
+    assert.doesNotThrow(() => bundledFiles.run(manifestCtx(manifest)).findings);
   }
 });
 
@@ -66,7 +75,7 @@ test("does not throw on malformed content_scripts shapes", () => {
 test("a string-typed `js` does not produce per-character findings", () => {
   // Malformed: js is a string, not an array. Must not iterate characters.
   const out = bundledFiles.run(
-    ctxWith({ content_scripts: [{ js: "x.js" }] })
+    manifestCtx({ content_scripts: [{ js: "x.js" }] })
   ).findings;
   assert.equal(out.length, 0);
 });
@@ -75,13 +84,92 @@ test("a string-typed `js` does not produce per-character findings", () => {
 // produced and it names the missing file, confirming present files are skipped.
 test("flags a genuinely missing content script, not a present one", () => {
   const out = bundledFiles.run(
-    ctxWith(
+    manifestCtx(
       { content_scripts: [{ js: ["present.js", "missing.js"] }] },
       { "present.js": "" }
     )
   ).findings;
   assert.equal(out.length, 1);
   assert.match(out[0].item, /missing\.js/);
+});
+
+// The schema is the only thing that says which keys carry a path, and `icons` is the key a
+// hand-written list forgot - a shipped add-on whose manifest points at an icon it does not
+// package was reported by nothing. Its size map is also where the walk needs three guards
+// that the AST twin (walkType) deliberately lacks, so they are pinned together here.
+test("icons are walked, and the three shape guards hold", () => {
+  const run = (manifest, files) =>
+    bundledFiles.run(manifestCtx(manifest, files)).findings.map((f) => f.item);
+
+  // The plain case: declared, not packaged.
+  assert.deepEqual(run({ icons: { 48: "gone.png" } }, {}), ["gone.png"]);
+  assert.deepEqual(run({ icons: { 48: "here.png" } }, { "here.png": "" }), []);
+
+  // Guard 1: a key that does not match patternProperties is not a path. Gecko ignores
+  // "32x32", so reporting it would name a file the runtime never loads.
+  assert.deepEqual(run({ icons: { "32x32": "legacy.png" } }, {}), []);
+
+  // Guard 2: the leaf must hold a string. IconPath has a size-map arm AND a bare-string
+  // arm, so an object value reaches a string-formatted leaf through the second one.
+  assert.deepEqual(run({ action: { default_icon: { 16: "a.png" } } }, {}), [
+    "a.png",
+  ]);
+  assert.deepEqual(run({ action: { default_icon: "b.png" } }, {}), ["b.png"]);
+
+  // Guard 3: a value that is not a packaged path at all. A data: URI is legal wherever the
+  // schema says ImageDataOrExtensionURL, and a localized path resolves only against a
+  // locale, so neither can be called missing.
+  assert.deepEqual(
+    run({ icons: { 48: "data:image/png;base64,AAAA" } }, {}),
+    []
+  );
+  assert.deepEqual(run({ icons: { 48: "__MSG_iconPath__" } }, {}), []);
+});
+
+// Two slots naming one missing file are two defects, and each anchors at its OWN line -
+// a text search for the value would give both the first slot's line. Repeating a path
+// across slots is the norm, not the exception.
+test("each slot anchors at its own line", () => {
+  const manifestText = [
+    "{",
+    '  "manifest_version": 3,',
+    '  "icons": {',
+    '    "16": "icon.png",',
+    '    "48": "icon.png"',
+    "  }",
+    "}",
+  ].join("\n");
+  const out = bundledFiles.run(
+    manifestCtx(
+      { manifest_version: 3, icons: { 16: "icon.png", 48: "icon.png" } },
+      { "manifest.json": manifestText }
+    )
+  ).findings;
+  assert.deepEqual(
+    out.map((f) => f.loc.line),
+    [4, 5]
+  );
+});
+
+// An Experiment's schema and parent script are packaged files like any other, and a missing
+// one is reported by nothing else: it just makes the experiment's namespaces fail to
+// register, which surfaces later as unknown-api at the CALL sites rather than here at the
+// file. bundled-files opts into that subtree; the walk itself skips it by default, so a
+// reachability seed built from the walk never pulls privileged code into the WebExtension
+// tree.
+test("a missing experiment script is reported", () => {
+  const manifest = {
+    manifest_version: 3,
+    experiment_apis: {
+      myApi: { schema: "exp/schema.json", parent: { script: "exp/impl.js" } },
+    },
+  };
+  assert.deepEqual(
+    bundledFiles
+      .run(manifestCtx(manifest, { "exp/schema.json": "[]" }))
+      .findings.map((f) => f.item),
+    ["exp/impl.js"]
+  );
 });
 
 // A missing manifest reference anchors at the manifest.json line that cites it
@@ -96,7 +184,7 @@ test("anchors a missing manifest reference at its manifest.json line", () => {
     "}",
   ].join("\n");
   const out = bundledFiles.run(
-    ctxWith(
+    manifestCtx(
       {
         manifest_version: 3,
         background: { page: "chrome/content/dummy.html" },
@@ -114,7 +202,7 @@ test("anchors a missing manifest reference at its manifest.json line", () => {
 // names the file but carries no line (graceful fallback to the prior behavior).
 test("missing manifest reference falls back to no line when manifest.json text is absent", () => {
   const out = bundledFiles.run(
-    ctxWith({ content_scripts: [{ js: ["missing.js"] }] })
+    manifestCtx({ content_scripts: [{ js: ["missing.js"] }] })
   ).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "manifest.json");

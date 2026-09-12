@@ -50,7 +50,19 @@ const DATA_COLLECTION_TYPES = [
   "CommonDataCollectionPermission",
 ];
 
-const MANIFEST_KEY_TYPES = ["ManifestBase", "WebExtensionManifest"];
+// The manifest's ROOT types - every shape a submitted manifest.json can take. A static
+// theme's keys live on ThemeManifest, not WebExtensionManifest, so a list of the latter two
+// alone reports `theme` as an unrecognized key on every theme it reviews. Exported because
+// three readers need the same set: the valid-key collection and the key-permission
+// collection below, buildManifestJsonSchema (src/schema/json-schema.js), and the
+// manifest file-path walk (src/lib/manifest-refs.js).
+export const MANIFEST_ROOT_TYPES = [
+  "ManifestBase",
+  "WebExtensionManifest",
+  "ThemeManifest",
+  "WebExtensionDictionaryManifest",
+  "WebExtensionLangpackManifest",
+];
 
 // String formats that mark a value as an extension-relative path (a packaged
 // file the runtime loads), as opposed to a generic/remote "url". A function
@@ -384,7 +396,7 @@ export class SchemaIndex {
 
   _collectManifestKeys() {
     const keys = new Set();
-    for (const name of MANIFEST_KEY_TYPES) {
+    for (const name of MANIFEST_ROOT_TYPES) {
       const type = this.globalTypes.get(`manifest.${name}`);
       for (const key of Object.keys(type?.properties || {})) {
         keys.add(key);
@@ -417,7 +429,7 @@ export class SchemaIndex {
    */
   _collectManifestKeyPermissions() {
     const out = new Map();
-    for (const name of MANIFEST_KEY_TYPES) {
+    for (const name of MANIFEST_ROOT_TYPES) {
       const type = this.globalTypes.get(`manifest.${name}`);
       for (const [key, prop] of Object.entries(type?.properties || {})) {
         const entries = [];

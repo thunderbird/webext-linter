@@ -1,0 +1,17 @@
+[
+  {
+    "namespace": "manifest",
+    "types": [
+      {
+        "id": "ThemeManifest",
+        "properties": {
+          "icons": {
+            "patternProperties": {
+              "^[1-9]\\d*$": { "$ref": "manifest.ExtensionFileUrl" }
+            }
+          }
+        }
+      }
+    ]
+  }
+]

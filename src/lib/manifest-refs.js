@@ -2,10 +2,14 @@
 // normalizing a raw reference to an add-on-relative key, and resolving a
 // reference (directory-aware) against the packaged file set. Two readers of
 // deliberately different scope, because their consumers ask opposite questions:
-//   - manifestFileRefs: the SPECIFIC declared keys known to carry file paths
-//     (content_scripts, background, options, popups), each with its location.
-//     bundled-files uses it to warn a referenced file is MISSING - which needs
-//     "this string is a file path" to hold independent of the file existing.
+//   - manifestFileRefs: the paths the SCHEMA declares, walked from the manifest's root
+//     types, each with the JSON path to its slot. bundled-files uses it to warn a
+//     referenced file is MISSING - which needs "this string is a file path" to hold
+//     independent of the file existing, so existence cannot be the filter here.
+//     Coverage is therefore the schema's: every key it types as extension-relative is
+//     followed, and one it types loosely (l10n_resources) or not at all is not. Noticing
+//     that a single key lost its format would need a list of the keys to expect, which is
+//     the artefact this replaced - so do not add one back.
 //   - manifestStringRefs: EVERY string in the manifest (outside experiment_apis).
 //     reachability seeds from it, keeping only those that resolve to a packaged
 //     file - so existence is the filter, and there is no per-key list to keep.
@@ -24,63 +28,141 @@
 // bundled-files verdict - its rule under src/checks/rules/*. Generic shape
 // guards like asArray - lib/util.js.
 
-import { asArray } from "./util.js";
 import { dirname } from "../util/files.js";
+import { MANIFEST_ROOT_TYPES, REL_URL_FORMATS } from "../schema/index.js";
 
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
 
 /**
- * Enumerate add-on-internal file paths referenced by the manifest.
+ * Enumerate add-on-internal file paths the manifest declares, by walking the parsed
+ * manifest against its SCHEMA TYPE and taking every leaf the schema marks as an
+ * extension-relative path (a `format` in REL_URL_FORMATS, reached through $ref to
+ * ExtensionURL / ExtensionFileUrl / IconPath / ImageDataOrExtensionURL / ThemeIcons).
+ *
+ * The schema is the authority on which keys carry a path, so there is no list to maintain
+ * and no key to forget. A hand-written list of keys was one, and it did not name `icons` -
+ * a shipped add-on with a manifest pointing at an icon it does not package was reported by
+ * nothing.
+ *
+ * `where` is the JSON path to the leaf (["icons","48"]), not a label: one file named in
+ * several slots is the norm rather than the exception, so the caller anchors each finding
+ * with manifestPathLine rather than searching the text for the value, and dedupes by SLOT
+ * so `icons.16` and `icons.48` stay two defect sites at two lines.
+ *
+ * The twin of this walk is walkType in src/parse/loader-files.js, which does the same
+ * descent over a Babel AST for file-loading API arguments. They are deliberately separate:
+ * a JSON value and an AST node differ at every branch, and merging them would mean a
+ * conditional at each step. Three things differ beyond the node model, and each is a
+ * correctness fix rather than a preference - see the comments below.
  * @param {Manifest} manifest  Parsed manifest.json.
- * @returns {{path: string, where: string}[]}
+ * @param {import("../schema/index.js").SchemaIndex} schema
+ * @param {{experiments?: boolean}} [opts]  `experiments` includes the experiment_apis
+ *   subtree. OFF by default, matching manifestStringRefs, so privileged Experiment
+ *   implementation paths never enter a reachability seed built from this walk. A caller
+ *   that only asks "is this file packaged" can turn it on, and bundled-files does.
+ * @returns {{path: string, where: (string|number)[]}[]}
  */
-export function manifestFileRefs(manifest) {
+export function manifestFileRefs(manifest, schema, opts = {}) {
   const refs = [];
-  /**
-   * @param {unknown} path  Candidate path (recorded only if a string).
-   * @param {string} where  Manifest location, for the message.
-   */
-  const add = (path, where) => {
-    if (typeof path === "string") {
-      refs.push({ path, where });
-    }
-  };
-
-  // A submitted manifest can be malformed. Guard every shape before iterating
-  // so a bad value degrades gracefully instead of throwing.
-  asArray(manifest.content_scripts).forEach((cs, i) => {
-    if (!cs || typeof cs !== "object") {
-      return;
-    }
-    for (const js of asArray(cs.js)) {
-      add(js, `content_scripts[${i}].js`);
-    }
-    for (const css of asArray(cs.css)) {
-      add(css, `content_scripts[${i}].css`);
-    }
-  });
-
-  const bg = manifest.background;
-  if (bg && typeof bg === "object") {
-    for (const s of asArray(bg.scripts)) {
-      add(s, "background.scripts");
-    }
-    add(bg.service_worker, "background.service_worker");
-    add(bg.page, "background.page");
+  if (!manifest || typeof manifest !== "object" || !schema?.globalTypes) {
+    return refs;
   }
-
-  add(manifest.options_ui?.page, "options_ui.page");
-  add(manifest.options_page, "options_page");
-  for (const key of [
-    "action",
-    "browser_action",
-    "compose_action",
-    "message_display_action",
-  ]) {
-    add(manifest[key]?.default_popup, `${key}.default_popup`);
+  // The roots merged into one property map. Three keys are declared by two roots at once -
+  // `icons`, `default_locale` and `theme_experiment` - so a later root's typing wins, and
+  // that only matters if two roots disagree about whether a key holds a path. None do:
+  // `theme_experiment` is the same $ref in both, `default_locale` is a plain string in
+  // both, and `icons` agrees because assets/schema-annotations/theme.json retypes
+  // ThemeManifest's copy, which upstream declares as a bare string. That last one is the
+  // whole reason the annotation exists, and the drift lock in tests/unit/schema-index.test.js
+  // is what notices if any of it stops being true.
+  const props = {};
+  for (const name of MANIFEST_ROOT_TYPES) {
+    Object.assign(
+      props,
+      schema.globalTypes.get(`manifest.${name}`)?.properties || {}
+    );
   }
-
+  for (const [key, value] of Object.entries(manifest)) {
+    if (key === "experiment_apis" && !opts.experiments) {
+      continue;
+    }
+    walkValue(value, props[key], schema, [key], refs, new Set());
+  }
   return refs;
+}
+
+/**
+ * Walk one manifest VALUE against its schema type, pushing `{path, where}` at each
+ * extension-relative leaf. The cycle guard is per descent path, as in walkType.
+ * @param {unknown} value  The manifest value at this position.
+ * @param {object|undefined} type  Its schema type.
+ * @param {import("../schema/index.js").SchemaIndex} schema
+ * @param {(string|number)[]} where  JSON path to this position.
+ * @param {{path: string, where: (string|number)[]}[]} out
+ * @param {Set<string>} seen  $refs on the current path.
+ */
+function walkValue(value, type, schema, where, out, seen) {
+  if (value == null || !type || typeof type !== "object") {
+    return;
+  }
+  if (type.$ref) {
+    if (!seen.has(type.$ref)) {
+      const next = new Set(seen).add(type.$ref);
+      walkValue(value, schema.resolveRef(type.$ref), schema, where, out, next);
+    }
+    return;
+  }
+  if (Array.isArray(type.choices)) {
+    for (const choice of type.choices) {
+      walkValue(value, choice, schema, where, out, seen);
+    }
+    return;
+  }
+  if (typeof type.format === "string" && REL_URL_FORMATS.has(type.format)) {
+    // The leaf must hold a STRING. walkType can take its node unconditionally because a
+    // non-literal yields no static path downstream; here there is no such filter, and
+    // IconPath's two arms mean an object value reaches a string-formatted leaf
+    // (`default_icon: {"16": "a.png"}` matches the size-map arm AND the bare-string arm).
+    if (typeof value === "string") {
+      out.push({ path: value, where: [...where] });
+    }
+    return;
+  }
+  if (type.items && Array.isArray(value)) {
+    value.forEach((el, i) =>
+      walkValue(el, type.items, schema, [...where, i], out, seen)
+    );
+    return;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return;
+  }
+  const props = type.properties || {};
+  const extra =
+    type.additionalProperties && typeof type.additionalProperties === "object"
+      ? type.additionalProperties
+      : null;
+  const patterns = Object.entries(type.patternProperties || {});
+  for (const [key, child] of Object.entries(value)) {
+    const at = [...where, key];
+    if (Object.prototype.hasOwnProperty.call(props, key)) {
+      walkValue(child, props[key], schema, at, out, seen);
+      continue;
+    }
+    if (extra) {
+      walkValue(child, extra, schema, at, out, seen);
+    }
+    // The key must MATCH its pattern. walkType applies every pattern type to every
+    // unmatched key because an AST key may be computed and unknowable; a manifest key is
+    // known. `icons` is patternProperties {"^[1-9]\d*$"} with additionalProperties:false,
+    // and Gecko ignores a key like "32x32" - taking it would report a file the runtime
+    // never loads as missing.
+    for (const [rx, pt] of patterns) {
+      if (new RegExp(rx).test(key)) {
+        walkValue(child, pt, schema, at, out, seen);
+      }
+    }
+  }
 }
 
 /**
