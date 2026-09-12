@@ -39,9 +39,11 @@ that no longer exist.
 ## Sources of truth (read these to (re)generate content)
 
 1. `assets/registry.yaml` — the canonical list of checks, in order, with each
-   check's `title`, `severity` (`error` / `warning` / `info` / `auto` - `auto`
-   means the check itself picks the severity per finding, and the badge class is
-   `auto` - and `escalation`, a check that can never emit a finding, only escalations),
+   check's `title`, `severity` (`error` / `warning` / `info` / `hold-or-error` /
+   `auto` - `auto` means the check itself picks the severity per finding, and the
+   badge class is `auto`; `hold-or-error` blocks the review without rejecting on its
+   own and badges as `hold-or-error`, never shortened to `hold` - and `escalation`, a
+   check that can never emit a finding, only escalations),
    `check` (the kebab-case id), `response` (developer-facing message),
    `instructions` (the to-do text a reviewer is shown for a case the check could not
    settle), and often a leading comment block describing intent. EVERY check entry
@@ -106,7 +108,9 @@ that no longer exist.
      inferred from the rule. `escalation` is a severity like the others: it marks a check
      that can never emit a finding (the loader refuses one from it), so the page must not
      promise a rejection. `manual-checks` entries have no severity and are badged
-     `manual`;
+     `manual`. Five `manual-checks` entries DO declare `severity: hold-or-error`; that
+     does not change their badge, which stays `manual` because it names the list they
+     belong to rather than the band they resolve at;
    - escalating checks — make clear what the scan settles on its own and what it
      hands to the reviewer. **The tool calls no model: there is no verdict step, so a
      diagram must never draw a pass/fail/unsure fan-out.** A check pushes its

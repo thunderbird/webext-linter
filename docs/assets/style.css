@@ -174,9 +174,9 @@ body {
 .badge.info {
   background: var(--info);
 }
-/* `hold`: blocks the review without rejecting the add-on - the fix is on the ATN
-   listing, not in the package. Resolves to error alongside a real one. */
-.badge.hold {
+/* `hold-or-error`: blocks the review without rejecting the add-on on its own - the fix is
+   on the ATN listing, not in the package. Resolves to error alongside a real one. */
+.badge.hold-or-error {
   background: #b7791f;
 }
 /* `auto`: severity is decided per finding (e.g. by advisory band). */
