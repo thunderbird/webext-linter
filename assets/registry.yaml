@@ -596,20 +596,23 @@ deterministic-phase:
     The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 
 # Deterministic: a submitted source-code archive (--sca-root) was unnecessary because the shipped
-# XPI IS the source - readable AND not generated. The pipeline asks both halves
-# (resolveReviewMode): hasUnreviewableCode over xpiAddon.bundled answers whether the shipped
-# bytes can be read, and the archive's source kinds answer whether they are the source, since a
-# transpiler's output reads perfectly and is still generated. Only when both say the XPI stands
-# on its own does it downgrade to a plain XPI review, setting ctx.scaNotRequired, which this
-# check reports. A readable XPI whose build merely copies vendored libraries is caught here too -
-# it downgrades before the build review runs. No `sca:` gate - it fires in the downgraded XPI
-# review; silent in every other review.
+# XPI IS the source - readable, not generated, and byte-for-byte what the archive holds. The
+# pipeline asks all three (resolveXpiOnlyAdvice): hasUnreviewableCode over xpiAddon.bundled
+# answers whether the shipped bytes can be read; the archive's source KINDS answer whether a
+# build ran at all, since a transpiler's output reads perfectly and is still generated (and it
+# is what catches a non-JS build - .scss -> .css - that the third question cannot see); and
+# untwinnedShippedJs answers whether every shipped script exists, identical, in the archive.
+# Only when all three say the XPI stands on its own is ctx.scaNotRequired set, which this check
+# reports. ADVICE ONLY - the review is never re-routed: an SCA submission is always reviewed as
+# SCA, so a wrong answer here costs a wrong suggestion, not a narrowed review. `sca: true`
+# because it can now only ever fire in an SCA review.
 - title: Source archive not required
-  severity: warning
+  severity: info
   check: sca-not-required
   input: source
+  sca: true
   response: |-
-    The shipped add-on (the built XPI) is directly reviewable, because its code is not minified, obfuscated or transpiled. A separate source-code archive is therefore not required, and this review was performed on the submitted XPI itself. A source-code submission is needed only when the shipped code is minified, transpiled or otherwise not human-readable, and it moves the add-on into a separate review process that takes considerably longer to complete. For this add-on you can avoid that delay by submitting only the XPI as a standard review.
+    The shipped add-on (the built XPI) is the same code you submitted as a source archive: it is not minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A separate source-code archive is therefore not required for this add-on, and we recommend you stop submitting one. Source-code submissions go into a separate review process which takes considerably longer to complete, while a plain XPI submission is usually reviewed much faster - often the difference between a short wait and a long one. A source archive is needed only when the shipped code is minified, transpiled, bundled or otherwise not the code you wrote. Please submit only the XPI next time.
 
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the repo-name candidate and proves it by content hash);

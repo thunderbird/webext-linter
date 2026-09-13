@@ -1104,11 +1104,11 @@ const READABLE_XPI = {
   "background.js": `console.log("readable shipped code");`,
 };
 
-// The transpiled half of the decision, end to end - and the scope that makes it usable:
-// the scan sees the --sca-source subtree ONLY. Build tooling and tests written in TypeScript
-// sit outside it in most repos, and must not veto the downgrade for a plain-JS add-on whose
-// shipped files are simply copied in.
-test("SCA e2e: a transpiled source keeps the SCA; a typed file outside --sca-source does not", async () => {
+// The transpiled question, end to end - and the scope that makes it usable: the scan sees
+// the --sca-source subtree ONLY. Build tooling and tests written in TypeScript sit outside it
+// in most repos, and must not withhold the advice from a plain-JS add-on whose shipped files
+// are simply copied in. Neither run changes the MODE: an SCA submission is always SCA.
+test("SCA e2e: a transpiled source withholds the XPI-only advice; a typed file outside --sca-source does not", async () => {
   const xpi = tmpDir(READABLE_XPI);
   const base = {
     "package.json": JSON.stringify({ name: "tr", version: "1.0.0" }),
@@ -1118,7 +1118,9 @@ test("SCA e2e: a transpiled source keeps the SCA; a typed file outside --sca-sou
         ? JSON.parse(READABLE_XPI["manifest.json"])
         : { manifest_version: 3, name: "tr", version: "1.0" }
     ),
-    "src/background.js": `console.log("plain js");\n`,
+    // Byte-identical to the shipped script, so the shipped-bytes question passes and this
+    // test isolates the transpiled one. A lookalike literal would silently fail it.
+    "src/background.js": READABLE_XPI["background.js"],
   };
   const outside = tmpDir(base);
   const inside = tmpDir({
@@ -1132,12 +1134,11 @@ test("SCA e2e: a transpiled source keeps the SCA; a typed file outside --sca-sou
       scaSource: "src",
       ...OFFLINE,
     });
-    assert.equal(
-      a.mode,
-      REVIEW_MODE.XPI,
-      "a typed build config does not keep the SCA"
+    assert.equal(a.mode, REVIEW_MODE.SCA, "the review is never re-routed");
+    assert.ok(
+      has(a.findings, "sca-not-required"),
+      "a typed build config outside --sca-source does not withhold the advice"
     );
-    assert.ok(has(a.findings, "sca-not-required"));
 
     const b = await runPipeline({
       addonPath: xpi,
@@ -1145,14 +1146,10 @@ test("SCA e2e: a transpiled source keeps the SCA; a typed file outside --sca-sou
       scaSource: "src",
       ...OFFLINE,
     });
-    assert.equal(
-      b.mode,
-      REVIEW_MODE.SCA,
-      "an authored .ts under --sca-source keeps it"
-    );
+    assert.equal(b.mode, REVIEW_MODE.SCA, "still SCA, as always");
     assert.ok(
       !has(b.findings, "sca-not-required"),
-      "and the redundant-source finding is not reported"
+      "an authored .ts under --sca-source withholds the advice"
     );
   } finally {
     [xpi, outside, inside].forEach((d) =>
@@ -1161,19 +1158,20 @@ test("SCA e2e: a transpiled source keeps the SCA; a typed file outside --sca-sou
   }
 });
 
-test("SCA e2e: a readable-XPI submission is downgraded to a plain XPI review (sca-not-required)", async () => {
+test("SCA e2e: a readable XPI that IS the source is advised to submit XPI-only, and is still reviewed as SCA", async () => {
   const xpi = tmpDir(READABLE_XPI);
-  // The source has a copy-only build (a package.json whose build merely vendors libraries),
-  // yet the readable XPI downgrades BEFORE any build review runs, so sca-not-required fires.
-  // The source also carries a fake API in a file the XPI lacks; if the source were reviewed
-  // unknown-api would catch it - so its ABSENCE proves the XPI, not the source, was reviewed.
+  // Every shipped script is byte-identical here, so all three questions pass and the advice
+  // fires. The source ALSO carries a fake API in a file the XPI lacks: unknown-api catching it
+  // is what proves the source was reviewed anyway - the advice does not narrow the review.
   const src = tmpDir({
     "package.json": JSON.stringify({
       name: "dg",
       version: "1.0.0",
       scripts: { build: "cp -r node_modules/lib dist" },
     }),
-    "src/only-in-source.js": `browser.totallyFakeNamespace.doThing();\n`,
+    "background.js": READABLE_XPI["background.js"],
+    "manifest.json": READABLE_XPI["manifest.json"],
+    "only-in-source.js": `browser.totallyFakeNamespace.doThing();\n`,
   });
   try {
     const result = await runPipeline({
@@ -1185,18 +1183,18 @@ test("SCA e2e: a readable-XPI submission is downgraded to a plain XPI review (sc
     const { findings, mode } = result;
     assert.equal(
       mode,
-      REVIEW_MODE.XPI,
-      "a directly-reviewable XPI downgrades the SCA to a plain XPI review"
+      REVIEW_MODE.SCA,
+      "the advice never re-routes the review - an SCA submission stays SCA"
     );
     assert.ok(
       has(findings, "sca-not-required"),
       "the redundant source submission is reported"
     );
     assert.ok(
-      !hasItem(result.meta, "unknown-api", (m) =>
+      hasItem(result.meta, "unknown-api", (m) =>
         /totallyFakeNamespace/.test(m.item ?? "")
       ),
-      "the source content is not reviewed after the downgrade - the XPI is"
+      "and the source IS still reviewed - that is the point of not downgrading"
     );
     // Lock the rendered entry: it must explain the cost of the source-archive route,
     // and it must carry NO locus line - the subject is the submission as a whole, so
@@ -1204,12 +1202,12 @@ test("SCA e2e: a readable-XPI submission is downgraded to a plain XPI review (sc
     const body = formatText(result);
     assert.match(
       body,
-      /separate review process that takes considerably longer/,
-      "the report explains that the source archive triggers a slower review"
+      /usually reviewed much faster/,
+      "the report presses the case: an XPI-only submission is reviewed faster"
     );
     const entry = body
       .split("\n")
-      .findIndex((l) => l.includes("directly reviewable"));
+      .findIndex((l) => l.includes("the same code you submitted"));
     assert.ok(entry >= 0, "the sca-not-required entry is rendered");
     assert.equal(
       body.split("\n")[entry + 1].trim(),
@@ -1238,18 +1236,18 @@ test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", 
     );
     assert.ok(
       !has(findings, "sca-not-required"),
-      "no downgrade warning for a legitimate SCA"
+      "no XPI-only advice for a legitimate SCA"
     );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
   }
 });
 
-// Regression: a downgrade re-classifies the XPI vendor-aware in Phase 3, so a VENDOR-declared
-// readable library is excluded from content review - identical to a native XPI review of the
-// same artifact. (If the pre-vendor Phase-1 decision classification were reused, the library
-// would be scanned as authored and unknown-api would fire on its fake API.)
-test("SCA e2e: a downgrade excludes VENDOR-declared readable files from content review", async () => {
+// The anti-bypass invariant, end to end: a VENDOR-declared file is a CLAIM Phase 3 has not
+// verified when the advice is decided, so it must NOT be exempt from the shipped-bytes
+// question. Here lib/widget.js is declared but absent from the archive, and that alone
+// withholds the advice - otherwise a developer could buy it by writing a VENDOR.md entry.
+test("SCA e2e: a VENDOR-declared file still needs a source twin (a declaration cannot buy the advice)", async () => {
   const xpi = tmpDir({
     "manifest.json": JSON.stringify({
       manifest_version: 3,
@@ -1257,7 +1255,7 @@ test("SCA e2e: a downgrade excludes VENDOR-declared readable files from content 
       version: "1.0",
       background: { scripts: ["background.js"] },
     }),
-    "background.js": `console.log("readable first-party");`, // readable -> XPI downgrades
+    "background.js": `console.log("readable first-party");`, // readable: question 1 passes
     "VENDOR.md":
       "File: lib/widget.js\nSource: https://unpkg.com/widget@1.0.0/widget.js\n",
     "lib/widget.js": `browser.totallyFakeNamespace.doThing();\n`, // scanned-as-authored -> unknown-api
@@ -1272,11 +1270,18 @@ test("SCA e2e: a downgrade excludes VENDOR-declared readable files from content 
       scaSource: ".",
       ...OFFLINE,
     });
-    assert.equal(mode, REVIEW_MODE.XPI, "the readable XPI downgrades");
-    assert.ok(has(findings, "sca-not-required"));
+    assert.equal(
+      mode,
+      REVIEW_MODE.SCA,
+      "an SCA submission is always reviewed as SCA"
+    );
+    assert.ok(
+      !has(findings, "sca-not-required"),
+      "the declared-but-untwinned library withholds the advice"
+    );
     assert.ok(
       !hasItem(meta, "unknown-api", (m) => /widget\.js/.test(m.file ?? "")),
-      "the VENDOR-declared library is excluded from content review (vendor-aware classify)"
+      "the VENDOR-declared library is still excluded from content review (vendor-aware classify)"
     );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));

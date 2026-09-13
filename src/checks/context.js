@@ -125,8 +125,9 @@ function projectCtx(
     // SCA mode: the Experiment folder as a source-relative path, excluded from the WebExtension
     // code checks by buildReachability. Undefined in XPI mode.
     scaExpSource: env.scaExpSource,
-    // A submitted SCA was downgraded to this XPI review because the shipped XPI is directly
-    // reviewable; the sca-not-required check reads this to report the redundant source submission.
+    // The shipped XPI turned out to BE the submitted source, so an XPI-only submission would
+    // have been enough; the sca-not-required check reads this to say so. Advice only - this
+    // review is a full SCA review either way.
     scaNotRequired: env.scaNotRequired,
     // The authoritative manifest/experiments are the SHIPPED artifact's (the built XPI) - what
     // Thunderbird actually loads. Explicit shared context like `schema`, so the manifest /

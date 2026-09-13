@@ -1,11 +1,27 @@
 ── Found Issues ──
 
-Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
+Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
-1) The shipped add-on (the built XPI) is directly reviewable, because its code is not minified, obfuscated or transpiled. A separate source-code archive is therefore not required, and this review was performed on the submitted XPI itself. A source-code submission is needed only when the shipped code is minified, transpiled or otherwise not human-readable, and it moves the add-on into a separate review process that takes considerably longer to complete. For this add-on you can avoid that delay by submitting only the XPI as a standard review.
+1) The shipped add-on (the built XPI) is the same code you submitted as a source archive: it is not minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A separate source-code archive is therefore not required for this add-on, and we recommend you stop submitting one. Source-code submissions go into a separate review process which takes considerably longer to complete, while a plain XPI submission is usually reviewed much faster - often the difference between a short wait and a long one. A source archive is needed only when the shipped code is minified, transpiled, bundled or otherwise not the code you wrote. Please submit only the XPI next time.
+
+[XPI] = source file in the submitted XPI
+[SCA] = source file in the submitted source code archive
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
+
+── Extended Manual Review ──
+
+Continue manual review for the following checks:
+
+1) Build process review: Confirm by hand that the shipped XPI is produced by
+   this source: reproduce the build and compare the result against the submitted
+   XPI. Confirm the build pulls ONLY from the dependencies declared in
+   package.json/lock - no remote code or resources from a raw URL, curl/wget, a
+   git clone of an unpinned repo, a CDN, or a postinstall hook.
+Suggested verdict: error
+Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+ - [SCA] package.json
 
 ── Standard Code Review ──
 
@@ -123,7 +139,7 @@ Suggested response: The add-on listing page on ATN (addons.thunderbird.net) shou
 
 9) Missing English ATN localization: Verify that the ATN listing page also has
    an English version.
-Suggested verdict: hold
+Suggested verdict: info
 Suggested response: The add-on listing page on ATN (addons.thunderbird.net) should also have an English localization. English serves as the default language in Thunderbird, and most users who do not understand the available non-English version will most likely be able to read English.
 
 10) Forked add-on: Check if the submission is a fork of an existing add-on. Such
@@ -145,6 +161,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 0 hold, 1 warning(s), 0 info,
-0 extended code review item(s), 0 extended manual review item(s),
+0 error(s), 0 hold, 0 warning(s), 1 info,
+0 extended code review item(s), 1 extended manual review item(s),
 8 standard code review item(s), 10 standard manual review item(s)

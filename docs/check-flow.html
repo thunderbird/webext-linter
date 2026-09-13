@@ -104,7 +104,7 @@
         parsed - the pipeline's first job, and it does every expensive thing
         exactly once. The amber boxes are the ones that matter: they
         <strong>resolve the review state</strong> -
-        <code>invalidExperiment</code>, the <code>mode</code> (with
+        <code>invalidExperiment</code>, the <code>mode</code> (plus the advisory
         <code>scaNotRequired</code>) and the
         <strong>review target</strong> - and everything after them, every check,
         keys off those. After Phase&nbsp;4, Phase&nbsp;5 runs the review (a
@@ -160,10 +160,11 @@ flowchart TB
     XV["resolveVendor(XPI) → verifyVendor()<br/>the committed copies (VENDOR.md)"] --> XC["classifyReview(XPI)<br/>classifyFiles + assembleBundled<br/>library hash · minified geometry · obfuscation · vendored<br/>→ xpiAddon.bundled"]
     XC --> XI["identifyBundledLibraries(XPI)<br/>applyUnverifiedVendor() · resolveCdnLibraries() · auditIdentifiedLibraries()<br/>FINALIZES the authored / non-authored split - ADDS + REMOVES"]
     XI --> XE["Parsing the built add-on → extractReview(XPI)<br/>content extraction + api-usage on the authored remainder<br/>parse each source ONCE, drop the AST<br/>→ xpiParsedSources (Phase 4 hands them to buildXpiCtxs)"]
-    XE --> MODEQ{{"resolveReviewMode(xpiAddon.bundled)<br/>--sca-root, and the XPI's OWN first-party<br/>code is minified / obfuscated?"}}
-    MODEQ -- "no source archive -<br/>native XPI review" --> MX2["mode = xpi"]
-    MODEQ -- "XPI reviewable -<br/>source adds nothing" --> DOWN["mode = xpi<br/>scaNotRequired = true"]
-    MODEQ -- "XPI unreviewable -<br/>source IS needed" --> KEEP["mode = sca"]
+    XE --> MODEQ{{"--sca-root given?<br/>(the review is NEVER re-routed by what the XPI looks like)"}}
+    MODEQ -- "no" --> MX2["mode = xpi"]
+    MODEQ -- "yes" --> KEEP["mode = sca"]
+    KEEP --> ADVQ{{"resolveXpiOnlyAdvice(xpiAddon.bundled, sourceFiles)<br/>readable? · no transpiled source kind?<br/>· every shipped script byte-identical in the archive?"}}
+    ADVQ -- "all three yes" --> DOWN["scaNotRequired = true<br/>(advice only - still mode = sca)"]
     SETINV["invalidExperiment = true<br/>mode = xpi · reads no code"]
   end
 
@@ -248,18 +249,23 @@ flowchart TB
         same way in both modes, an <code>input: xpi</code> check sees the
         identical artifact whether the run is SCA or XPI - the reason for the
         rework. There is no separate &ldquo;light&rdquo; classification pass any
-        more: the <strong>SCA&nbsp;→&nbsp;XPI downgrade</strong> reads that same
-        <code>xpiAddon.bundled</code>. A source archive is only worth reviewing
-        when the shipped XPI cannot be, so <code>resolveReviewMode()</code>
-        decides from the XPI&rsquo;s own code alone: if its first-party code is
-        not minified or obfuscated the source adds nothing, the review is
-        downgraded to a plain XPI review, the source archive is never read, and
-        <code>sca-not-required</code> reports it. In SCA the readable source is
+        more: the <strong>XPI-only advice</strong> reads that same
+        <code>xpiAddon.bundled</code>. That advice is all it is -
+        <code>--sca-root</code> alone decides the mode, and an SCA submission is
+        <strong>always</strong> reviewed as SCA. <code>resolveXpiOnlyAdvice()</code>
+        only asks whether the developer could have skipped the archive: is the
+        shipped code readable, does the archive carry no transpiled source kind,
+        and is every shipped script byte-identical to one in the archive? All
+        three yes and <code>sca-not-required</code> (info) says so for next time.
+        Routing on that answer is what the tool used to do, and it was a bypass: a
+        committed, unminified <code>dist/</code> inside <code>--sca-source</code>
+        is its own twin under any content test. In SCA the readable source is
         then analysed on its own in Phase&nbsp;3 (<code>siblings.source</code>);
         in an XPI review there is no second artifact, so
         <code>siblings.source</code> simply aliases the shipped ctx. An invalid
-        Experiment skips the analysis entirely (it reads no code), so it is
-        never downgraded.
+        Experiment skips the analysis entirely (it reads no code), and is the one
+        thing that still pins an <code>--sca-root</code> run to
+        <code>mode = xpi</code>.
       </div>
       <p>
         The invalid-Experiment path is not an early exit - it runs on to the

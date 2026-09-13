@@ -426,13 +426,14 @@ export function isObfuscatedFirstParty(c) {
  * Whether the add-on ships code that cannot be reviewed as-is: minified or obfuscated
  * first-party code, or an identified-but-untrusted library that is unreadable. The union
  * of what minified-code / obfuscated-code / untrusted-minified-library flag, so the
- * pipeline's "is the shipped XPI directly reviewable?" decision and those checks share one
+ * pipeline's "is the shipped XPI directly reviewable?" question and those checks share one
  * definition. Note WHEN the pipeline reads this: applyUnverifiedVendor runs inside
- * identifyBundledLibraries, which precedes resolveReviewMode, so the untrusted list is
- * already filled at the mode decision. An unverifiable, unreadable vendored file
- * therefore counts as unreviewable code and keeps a source-archive review - which is
- * the point: if we could neither read nor check that file, the source archive is
- * exactly what the reviewer needs.
+ * identifyBundledLibraries, which precedes resolveXpiOnlyAdvice, so the untrusted list is
+ * already filled. An unverifiable, unreadable vendored file therefore counts as
+ * unreviewable code and withholds the XPI-only advice - which is the point: if we could
+ * neither read nor check that file, the source archive is exactly what the reviewer needs.
+ * Not subsumed by the shipped-bytes test that runs beside it: a minified file COMMITTED to
+ * the archive has a twin there, and only this question objects to it.
  * @param {?Bundled} bundled  A classifyBundled result.
  * @returns {boolean}
  */
@@ -448,10 +449,11 @@ export function hasUnreviewableCode(bundled, addon) {
   ) {
     return true;
   }
-  // Code shipped INSIDE a page counts too. Without this the report contradicts itself:
-  // minified-code tells the developer to send the readable original while
-  // sca-not-required tells them the source archive was not needed - and the archive
-  // they did send is discarded at the moment it is what the reviewer needs.
+  // Code shipped INSIDE a page counts too - and this is the other half no shipped-bytes
+  // comparison can reach, since that one only compares script FILES: a byte-identical
+  // .html twin still carries an unreviewable inline <script>. Without this the report
+  // contradicts itself, minified-code telling the developer to send the readable original
+  // while sca-not-required tells them the archive was unnecessary.
   return addon
     ? classifyInlineSources(collectJsSources(addon), bundled.nonAuthored).some(
         (site) => site.minified || site.obfuscation.fail

@@ -1,8 +1,9 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/sca-not-required/xpi",
+    "addon": "<root>/tests/addons/sca-not-required/src",
     "addonKind": "dir",
+    "shippedAddon": "<root>/tests/addons/sca-not-required/xpi",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
@@ -38,6 +39,7 @@
       "minified-code",
       "untrusted-minified-library",
       "untrusted-library",
+      "unpopular-source-dependency",
       "unparsable-file",
       "experiment-modified",
       "experiment-missing-strict-max-version",
@@ -49,6 +51,13 @@
       "unsupported-dependency",
       "vendor-vulnerable",
       "banned-library",
+      "vendor-vulnerable-dev",
+      "unsupported-build-tool",
+      "build-registry-redirect",
+      "committed-node-modules",
+      "committed-build-artifact",
+      "build-lifecycle-hook",
+      "undeclared-build-source",
       "sca-not-required",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
@@ -89,8 +98,8 @@
   "summary": {
     "error": 0,
     "hold": 0,
-    "warning": 1,
-    "info": 0,
+    "warning": 0,
+    "info": 1,
     "byRule": {
       "sca-not-required": 1
     }
@@ -98,12 +107,12 @@
   "findings": [
     {
       "ruleId": "sca-not-required",
-      "severity": "warning",
+      "severity": "info",
       "file": null,
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The shipped add-on (the built XPI) is directly reviewable, because its code is not minified, obfuscated or transpiled. A separate source-code archive is therefore not required, and this review was performed on the submitted XPI itself. A source-code submission is needed only when the shipped code is minified, transpiled or otherwise not human-readable, and it moves the add-on into a separate review process that takes considerably longer to complete. For this add-on you can avoid that delay by submitting only the XPI as a standard review."
+      "message": "The shipped add-on (the built XPI) is the same code you submitted as a source archive: it is not minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A separate source-code archive is therefore not required for this add-on, and we recommend you stop submitting one. Source-code submissions go into a separate review process which takes considerably longer to complete, while a plain XPI submission is usually reviewed much faster - often the difference between a short wait and a long one. A source archive is needed only when the shipped code is minified, transpiled, bundled or otherwise not the code you wrote. Please submit only the XPI next time."
     }
   ]
 }

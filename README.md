@@ -132,11 +132,15 @@ authoritative shipped artifact:
 node verify.js built.xpi --sca-root ./source-archive --sca-source src
 ```
 
-SCA only helps when the built XPI can't be read directly. If the shipped XPI's first-party
-code is **not** minified or obfuscated, the source archive adds nothing: the review is
-performed on the XPI directly (a plain XPI review) and `sca-not-required` (warning) is
-reported. Submit only the XPI in that case — a source archive is needed only for a
-minified/obfuscated build.
+A source archive is always reviewed as one — the review is never re-routed to the XPI on
+the strength of what the XPI looks like. SCA is what you need when the shipped XPI is not
+the code you wrote: minified, obfuscated, transpiled, or bundled.
+
+When the shipped XPI turns out to BE the submitted source — readable, no transpiled source
+kind, and every script it ships byte-identical to one in the archive — the review reports
+`sca-not-required` (info) to say an XPI-only submission would have done, and would have
+been reviewed faster. That is advice for next time; it does not change the review it
+appears in.
 
 - `--sca-root` is the source archive (folder or zip) that holds `package.json` /
   the lock file; setting it switches on SCA mode. `--sca-source` is the add-on code

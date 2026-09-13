@@ -194,9 +194,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
  *   --allow-experiments is off: the review short-circuits to the reject check
  *   only (see runChecks and buildXpiCtxs).
- * @property {boolean} [scaNotRequired]  A submitted SCA (--sca-root) was downgraded to
- *   this plain XPI review because the shipped XPI is directly reviewable; the
- *   sca-not-required check reads this to report the redundant source submission.
+ * @property {boolean} [scaNotRequired]  The shipped XPI of a submitted SCA (--sca-root)
+ *   turned out to BE its source, so an XPI-only submission would have been enough; the
+ *   sca-not-required check reads this to say so. Pure advice - the review is not re-routed.
  * @property {Function} [note]  Narrate a file:line investigation note to the
  *   feed: (file, loc, item, verdict) -> void. Set by runChecks, absent in tests.
  */

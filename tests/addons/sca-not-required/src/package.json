@@ -1,0 +1,6 @@
+{
+  "name": "sca-not-required",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {}
+}

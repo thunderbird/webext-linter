@@ -16,7 +16,7 @@ import {
   detectManifestVersion,
   peekBranchMajor,
   resolveReviewSchema,
-  resolveReviewMode,
+  resolveXpiOnlyAdvice,
 } from "../../src/pipeline.js";
 import {
   schemaBranch,
@@ -25,7 +25,7 @@ import {
   hasAllCachedSchemas,
 } from "../../src/schema/fetch.js";
 import { peekApplicationVersion } from "../../src/schema/load.js";
-import { VERDICT, REVIEW_MODE } from "../../src/lib/enum.js";
+import { VERDICT } from "../../src/lib/enum.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA_FIXTURE = path.join(here, "..", "schema-fixture");
@@ -247,8 +247,10 @@ test("peekBranchMajor: missing / corrupt zip → null, never throws", () => {
   }
 });
 
-// resolveReviewMode: the effective review mode from --sca-root + the built XPI's
-// reviewability. A minimal Bundled: one minified first-party file => unreviewable.
+// resolveXpiOnlyAdvice: would an XPI-only submission have been enough? Advice only - it
+// never re-routes the review (an SCA submission is always reviewed as SCA), so every
+// answer below is about whether the developer is TOLD, not about what gets reviewed.
+// A minimal Bundled: one minified first-party file => unreviewable.
 const bundled = (files = []) => ({
   classified: files,
   nonAuthored: new Set(),
@@ -260,36 +262,50 @@ const MINIFIED_FIRST_PARTY = {
   library: false,
   obfuscation: VERDICT.PASS,
 };
+/** An XPI whose files are named+valued by `spec`, for the shipped-bytes question. */
+const xpi = (spec = {}) => ({
+  files: new Map(
+    Object.entries(spec).map(([f, t]) => [f, Buffer.from(t, "utf8")])
+  ),
+});
+/** A source archive, same shape as what the pipeline slices out of --sca-source. */
+const src = (spec = {}) =>
+  new Map(Object.entries(spec).map(([f, t]) => [f, Buffer.from(t, "utf8")]));
 
-test("resolveReviewMode: no --sca-root -> plain XPI review", () => {
-  assert.deepEqual(resolveReviewMode({}, bundled()), {
-    mode: REVIEW_MODE.XPI,
-    scaNotRequired: false,
-  });
+const sca = { scaRoot: "src" };
+// The twinned baseline every "does the OTHER question veto it?" case builds on: one
+// shipped script, byte-identical in the archive. On its own it advises.
+const TWIN_XPI = xpi({ "background.js": "console.log(1);\n" });
+const TWIN_SRC = { "background.js": "console.log(1);\n" };
+
+test("resolveXpiOnlyAdvice: no --sca-root -> no advice (nothing was submitted to advise about)", () => {
+  assert.equal(resolveXpiOnlyAdvice({}, bundled()), false);
 });
 
-test("resolveReviewMode: --sca-root + an unreviewable (minified) XPI -> keep SCA", () => {
-  assert.deepEqual(
-    resolveReviewMode({ scaRoot: "src" }, bundled([MINIFIED_FIRST_PARTY])),
-    { mode: REVIEW_MODE.SCA, scaNotRequired: false }
+test("resolveXpiOnlyAdvice: an unreviewable (minified) XPI is never advised", () => {
+  assert.equal(
+    resolveXpiOnlyAdvice(
+      sca,
+      bundled([MINIFIED_FIRST_PARTY]),
+      TWIN_XPI,
+      src(TWIN_SRC)
+    ),
+    false
   );
 });
 
-test("resolveReviewMode: --sca-root + a directly-reviewable XPI -> downgrade", () => {
-  assert.deepEqual(resolveReviewMode({ scaRoot: "src" }, bundled([])), {
-    mode: REVIEW_MODE.XPI,
-    scaNotRequired: true,
-  });
+test("resolveXpiOnlyAdvice: a readable XPI that IS the source is advised", () => {
+  assert.equal(
+    resolveXpiOnlyAdvice(sca, bundled([]), TWIN_XPI, src(TWIN_SRC)),
+    true
+  );
 });
 
-// The second half of the decision: readable shipped bytes are not the same question as
+// Question 2: readable shipped bytes are not the same question as
 // shipped-bytes-are-the-source. A transpiler's output reads perfectly, so the archive's
-// source KINDS are what answer it - and either half alone keeps the SCA.
-const KEEP = { mode: REVIEW_MODE.SCA, scaNotRequired: false };
-const DOWN = { mode: REVIEW_MODE.XPI, scaNotRequired: true };
-const sca = { scaRoot: "src" };
-
-test("resolveReviewMode: a transpiled source kind keeps the SCA, readable XPI or not", () => {
+// source KINDS answer it - and this is the ONLY question that sees a non-JS build
+// (.scss -> .css) where every script is copied verbatim.
+test("resolveXpiOnlyAdvice: a transpiled source kind withholds the advice, twins or not", () => {
   for (const kind of [
     "app.ts",
     "a/b/Comp.vue",
@@ -297,50 +313,149 @@ test("resolveReviewMode: a transpiled source kind keeps the SCA, readable XPI or
     "m.svelte",
     "s.scss",
   ]) {
-    assert.deepEqual(
-      resolveReviewMode(sca, bundled([]), undefined, ["background.js", kind]),
-      KEEP,
-      `${kind} keeps the SCA`
+    assert.equal(
+      resolveXpiOnlyAdvice(
+        sca,
+        bundled([]),
+        TWIN_XPI,
+        src({ ...TWIN_SRC, [kind]: "x" })
+      ),
+      false,
+      `${kind} withholds the advice`
     );
   }
 });
 
-test("resolveReviewMode: a .d.ts is not a transpiled source", () => {
+test("resolveXpiOnlyAdvice: a .d.ts is not a transpiled source", () => {
   // Types only, emits nothing, and plain-JS projects ship them. extname() reads ".ts"
   // from it, so excluding it by extension would veto exactly those projects.
-  assert.deepEqual(
-    resolveReviewMode(sca, bundled([]), undefined, [
-      "background.js",
-      "types.d.ts",
-    ]),
-    DOWN
+  assert.equal(
+    resolveXpiOnlyAdvice(
+      sca,
+      bundled([]),
+      TWIN_XPI,
+      src({ ...TWIN_SRC, "types.d.ts": "declare const x: number;" })
+    ),
+    true
   );
-  // ...but a real .ts alongside one still keeps it.
-  assert.deepEqual(
-    resolveReviewMode(sca, bundled([]), undefined, ["types.d.ts", "app.ts"]),
-    KEEP
+  // ...but a real .ts alongside one still withholds it.
+  assert.equal(
+    resolveXpiOnlyAdvice(
+      sca,
+      bundled([]),
+      TWIN_XPI,
+      src({ ...TWIN_SRC, "types.d.ts": "x", "app.ts": "y" })
+    ),
+    false
   );
 });
 
-test("resolveReviewMode: plain-JS source paths downgrade, and omitting them keeps today's answer", () => {
-  assert.deepEqual(
-    resolveReviewMode(sca, bundled([]), undefined, [
-      "background.js",
-      "popup.html",
-    ]),
-    DOWN
+// Question 3: are the shipped bytes THE SOURCE? Without it the first two answered
+// "is the XPI readable?" and called it "is the XPI the source?", so every bundler
+// submission - webpack, Vite, a build copying from submodules - was wrongly advised.
+test("resolveXpiOnlyAdvice: a shipped script absent from the archive withholds the advice", () => {
+  assert.equal(
+    resolveXpiOnlyAdvice(
+      sca,
+      bundled([]),
+      xpi({ "content/app.bundle.js": "/* built */\n" }),
+      src({ "content/app.mjs": "/* authored */\n" })
+    ),
+    false
   );
-  assert.deepEqual(resolveReviewMode(sca, bundled([]), undefined, []), DOWN);
-  assert.deepEqual(resolveReviewMode(sca, bundled([]), undefined), DOWN);
 });
 
-test("resolveReviewMode: an unreviewable XPI keeps the SCA whatever the source kinds", () => {
-  assert.deepEqual(
-    resolveReviewMode(sca, bundled([MINIFIED_FIRST_PARTY]), undefined, [
-      "a.js",
-    ]),
-    KEEP
+test("resolveXpiOnlyAdvice: a same-named script with different bytes withholds the advice", () => {
+  assert.equal(
+    resolveXpiOnlyAdvice(
+      sca,
+      bundled([]),
+      TWIN_XPI,
+      src({ "background.js": "console.log(2);\n" })
+    ),
+    false
   );
+});
+
+test("resolveXpiOnlyAdvice: the twin may sit at any path, and any one candidate suffices", () => {
+  // Basename matching: a build that RELOCATES a file it copied verbatim still counts,
+  // and so does a wrapper directory (GitHub's "Download ZIP").
+  assert.equal(
+    resolveXpiOnlyAdvice(
+      sca,
+      bundled([]),
+      TWIN_XPI,
+      src({ "deep/nested/background.js": TWIN_SRC["background.js"] })
+    ),
+    true
+  );
+  // Two candidates share the name; one matches.
+  assert.equal(
+    resolveXpiOnlyAdvice(
+      sca,
+      bundled([]),
+      TWIN_XPI,
+      src({
+        "a/background.js": "console.log(999);\n",
+        "b/background.js": TWIN_SRC["background.js"],
+      })
+    ),
+    true
+  );
+});
+
+test("resolveXpiOnlyAdvice: a shipped .cjs needs a twin too", () => {
+  // JS_EXTENSIONS, not just .js/.mjs: Gecko loads background.scripts by path, so an
+  // add-on whose code is all .cjs must not pass for free.
+  assert.equal(
+    resolveXpiOnlyAdvice(sca, bundled([]), xpi({ "bg.cjs": "a" }), src({})),
+    false
+  );
+  assert.equal(
+    resolveXpiOnlyAdvice(
+      sca,
+      bundled([]),
+      xpi({ "bg.cjs": "a" }),
+      src({ "bg.cjs": "a" })
+    ),
+    true
+  );
+});
+
+test("resolveXpiOnlyAdvice: an identified library needs no twin, a DECLARED one does", () => {
+  // The anti-bypass invariant. `tag.library` is a true content-hash match against the
+  // known-library DB, so exempting it is evidence-based. A VENDOR.md declaration is a
+  // CLAIM that Phase 3 has not verified yet, and it must not be able to buy this advice -
+  // which is why the exempt set is built from `classified`, where vendored files never
+  // appear at all.
+  const LIB = {
+    file: "lib/jquery.js",
+    minified: false,
+    library: true,
+    obfuscation: VERDICT.PASS,
+  };
+  const shipped = xpi({
+    "background.js": TWIN_SRC["background.js"],
+    "lib/jquery.js": "/* upstream */\n",
+  });
+  assert.equal(
+    resolveXpiOnlyAdvice(sca, bundled([LIB]), shipped, src(TWIN_SRC)),
+    true
+  );
+  // Same file, but only DECLARED (never hash-identified, so absent from `classified`):
+  // it still needs a twin, and has none.
+  assert.equal(
+    resolveXpiOnlyAdvice(sca, bundled([]), shipped, src(TWIN_SRC)),
+    false
+  );
+});
+
+test("resolveXpiOnlyAdvice: an archive that was never read withholds the advice", () => {
+  assert.equal(
+    resolveXpiOnlyAdvice(sca, bundled([]), TWIN_XPI, src({})),
+    false
+  );
+  assert.equal(resolveXpiOnlyAdvice(sca, bundled([]), TWIN_XPI), false);
 });
 
 // A channel branch is a moving target, so a cached zip is a snapshot that goes stale the

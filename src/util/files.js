@@ -43,9 +43,11 @@ export const SFC_EXTENSIONS = new Set([".vue"]);
 
 /** Source kinds that CANNOT ship as they are: a build step compiles them to the JS or
  *  CSS a browser loads, so the shipped file is generated and the archive is the only real
- *  source. Their presence is what keeps a source-code review from being downgraded
- *  (resolveReviewMode) - the readable-shipped-bytes test cannot see the difference, since
- *  a transpiler's output is perfectly readable. Deliberately by extension only: the
+ *  source. Their presence is what withholds the XPI-only advice (resolveXpiOnlyAdvice) -
+ *  the readable-shipped-bytes test cannot see the difference, since a transpiler's output
+ *  is perfectly readable. Still needed alongside the shipped-bytes test, which is JS-only:
+ *  a .scss -> .css build with every script copied verbatim is invisible to that one and
+ *  visible here. Deliberately by extension only, and scanned only under --sca-source: the
  *  question is what KIND of source the archive carries, and no file content or build
  *  config is consulted to answer it. */
 const TRANSPILED_SOURCE_EXTENSIONS = new Set([

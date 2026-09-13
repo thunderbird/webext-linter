@@ -131,11 +131,25 @@ guard family had a demonstrated defect.
   source does not help, because we cannot identify what was rolled up in the first place;
   that is why declaration is not required here.
 
-  This is NOT a downgrade defect: it behaves identically for an XPI-only submission and a
-  downgraded one. The downgrade question itself is settled by the rule the plan set - could
-  this have been submitted XPI-only, and would we have rejected it? A readable rollup would
-  not have been, so no source archive is required. Transpiled source kinds are the one
-  deliberate exception (`resolveReviewMode`).
+  It behaves identically for an XPI-only submission and for one accompanied by a source
+  archive, because the review is never re-routed by what the XPI looks like.
+
+- **A source archive is NEVER traded away for the XPI.** An SCA submission is always
+  reviewed as SCA (`resolveXpiOnlyAdvice`). The older rule - "could this have been
+  submitted XPI-only, and would we have rejected it? a readable rollup would not have
+  been, so no source archive is required" - downgraded the review on that answer, and was
+  wrong twice over. It asked whether the shipped bytes could be READ, not whether they
+  WERE the source, so every bundler submission (webpack, Vite, a build copying from
+  submodules) was told its archive was unnecessary; Thunderbird Conversations was rejected
+  for a `new Function` in webpack's own `globalThis` polyfill, code its developer never
+  wrote and could not edit. And no content test can be trusted to route: a committed,
+  unminified `dist/` inside `--sca-source` is its own twin under any of them, so a build
+  can always be dressed up as source.
+
+  The three questions survive as ADVICE only (`sca-not-required`, info): readable bytes,
+  no transpiled source kind, and every shipped script byte-identical to one in the archive.
+  A wrong answer now costs a wrong suggestion, not a narrowed review - which is what makes
+  the third question safe to ask at all.
 
 - **Which to-do section a check's cases land in is a property of the CHECK**, declared as
   `escalation: code-review | manual-review` beside its severity - never decided per case.
