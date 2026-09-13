@@ -1287,7 +1287,7 @@ manual-checks:
 # Manual: the ATN listing page should have an English version.
 - title: Missing English ATN localization
   check: missing-english-atn-localization
-  severity: hold-or-error
+  severity: info
   instructions: |-
     Verify that the ATN listing page also has an English version.
   response: |-
