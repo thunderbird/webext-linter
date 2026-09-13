@@ -68,6 +68,14 @@ function bucketOf(m) {
 /** The to-do sections, in the order the report prints them. */
 const TODO_SECTIONS = Object.freeze(["code", "extendedManual", "standard"]);
 
+/** The to-do sections a person answers, as opposed to the ones settled by reading the
+ *  add-on. --llm-verify withholds BOTH the prompt's asks for them (src/report/format.js)
+ *  and their entries in the item file (src/report/items.js); named once here because those
+ *  two must never disagree - an ask for a section the file omits sends the reader hunting
+ *  for entries that are not there. They are the LAST sections TODO_SECTIONS numbers, which
+ *  is what makes omitting them truncate the numbering rather than punch a hole in it. */
+export const MANUAL_SECTIONS = Object.freeze(["extendedManual", "standard"]);
+
 /**
  * @typedef {object} OrderedItem
  * @property {"finding"|"todo"} kind

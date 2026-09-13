@@ -168,14 +168,18 @@ function helpText() {
     ],
   ];
 
-  // The two halves of one round trip, in the order they run: --llm-review asks, then
-  // --llm-verdict applies the answers. Their own section, because neither is a report
-  // format - the first replaces the report with a prompt and a file, the second rebuilds
+  // One round trip, in the order it runs: --llm-review or --llm-verify asks, then
+  // --llm-verdict applies the answers. Their own section, because none is a report
+  // format - the first two replace the report with a prompt and a file, the last rebuilds
   // it from settled verdicts.
   const llm = [
     [
       "--llm-review [<file>]",
       "Print a verification prompt and write the review as a JSON item array instead of the report, to a temp file or to <file>. The prompt explains how to settle the items and pass them back with --llm-verdict. Refused with --report-format json.",
+    ],
+    [
+      "--llm-verify [<file>]",
+      "Like --llm-review, but asks only for what can be settled by reading the ADD-ON. It withholds the two parts that need a person: no add-on description is written, and the Extended/Standard Manual Review items are neither put to a reviewer nor written to the item file (they stay in the report, for the reviewer to work through later). The sweep, the findings, the Extended Code Review, the verdict file and the --llm-verdict re-run are exactly as --llm-review has them. Refused with --report-format json.",
     ],
     [
       "--llm-verdict <file>",
@@ -269,18 +273,58 @@ const OPTIONS = {
   "report-format": { type: "string" },
   "report-out": { type: "string" },
   "llm-review": { type: "string" },
+  "llm-verify": { type: "string" },
   "llm-verdict": { type: "string" },
   verbose: { type: "boolean" },
   help: { type: "boolean" },
 };
 
-// --llm-review takes an OPTIONAL path: bare it writes the item file where the linter
-// chooses, with a path it writes that file. parseArgs has no option type for that - a
+// The review flags take an OPTIONAL path: bare they write the item file where the linter
+// chooses, with a path they write that file. parseArgs has no option type for that - a
 // string option demands a value and a boolean one refuses every value - so a bare
 // occurrence is rewritten to an empty value before parsing. It refuses
 // `--llm-review --other` on its own ("argument is ambiguous"), which is why only the bare
 // case needs rewriting: the last token, or one followed by another option.
-const OPTIONAL_VALUE = new Set(["--llm-review"]);
+const OPTIONAL_VALUE = new Set(["--llm-review", "--llm-verify"]);
+
+/**
+ * Which review prompt was asked for, if either. Read with `!== undefined`, never
+ * truthiness: withOptionalValues encodes a BARE flag as an empty value, and "" is falsy.
+ * The two flags are joined HERE and nowhere else, so main()'s guards and
+ * pipelineOptsFromValues cannot drift apart about which one was given - they run on
+ * different paths (pipelineOptsFromArgv runs none of main's guards).
+ * @param {Record<string, string|boolean>} values
+ * @returns {"full"|"verify"|undefined}
+ */
+function reviewMode(values) {
+  if (values["llm-review"] !== undefined) {
+    return "full";
+  }
+  if (values["llm-verify"] !== undefined) {
+    return "verify";
+  }
+  return undefined;
+}
+
+/**
+ * The path given with whichever review flag was used; "" means "you choose". `??` not
+ * `||`, so a bare --llm-review does not fall through to --llm-verify's value.
+ * @param {Record<string, string|boolean>} values
+ * @returns {string|undefined}
+ */
+function reviewOut(values) {
+  return values["llm-review"] ?? values["llm-verify"];
+}
+
+/**
+ * The flag a message should name, for a run that has at most one of them (the guard in
+ * main() refuses both together before any of this is read).
+ * @param {Record<string, string|boolean>} values
+ * @returns {string}
+ */
+function reviewFlag(values) {
+  return values["llm-review"] !== undefined ? "--llm-review" : "--llm-verify";
+}
 
 /**
  * @param {string[]} argv
@@ -323,11 +367,11 @@ export async function main(argv) {
   setQuiet(format === "json");
   setVerbose(values.verbose);
   setProgress(format === "text");
-  // --llm-review hands the report to a model and --llm-verdict produces the settled
+  // A review flag hands the report to a model and --llm-verdict produces the settled
   // report a reviewer sends on. Either way the output IS the document, so the record of
   // how it was produced - the Setup and Activity sections - is noise in it. The report's
   // own header and prompt are not feed and still print.
-  setFeed(values["llm-review"] === undefined && !values["llm-verdict"]);
+  setFeed(reviewMode(values) === undefined && !values["llm-verdict"]);
   setCapture(format === "text" && Boolean(values["report-out"]));
   // Color only on an interactive text screen. Piped/redirected runs and JSON
   // stay plain, and the --report-out copy is stripped below either way.
@@ -338,14 +382,31 @@ export async function main(argv) {
   // below so --help and validation errors all carry it too.
   emitBanner(argv);
 
-  // parseArgs cannot tell --llm-review's optional value from the add-on path, so
+  // Refused FIRST, so every guard below - and every message that names a flag - can
+  // assume at most one review flag was given.
+  if (
+    !values.help &&
+    values["llm-review"] !== undefined &&
+    values["llm-verify"] !== undefined
+  ) {
+    process.stderr.write(
+      "--llm-review and --llm-verify are the same round trip at two depths and cannot " +
+        "be used together: --llm-review asks for everything, --llm-verify asks only for " +
+        "what reading the add-on can settle. Pick one.\n"
+    );
+    return 2;
+  }
+
+  // parseArgs cannot tell a review flag's optional value from the add-on path, so
   // `--llm-review <addon>` takes the add-on as the output file and leaves nothing to
   // review. Say that, instead of printing the whole help for what looks like a missing
-  // argument.
-  if (!values.help && positionals.length === 0 && values["llm-review"]) {
+  // argument. Truthiness on purpose here (unlike everywhere else): only a NON-EMPTY value
+  // can have swallowed the add-on path.
+  if (!values.help && positionals.length === 0 && reviewOut(values)) {
+    const flag = reviewFlag(values);
     process.stderr.write(
-      `"${values["llm-review"]}" was taken as --llm-review's output file, so no add-on ` +
-        "was given. Put the add-on first, or write --llm-review=<file>.\n"
+      `"${reviewOut(values)}" was taken as ${flag}'s output file, so no add-on ` +
+        `was given. Put the add-on first, or write ${flag}=<file>.\n`
     );
     return 2;
   }
@@ -362,25 +423,26 @@ export async function main(argv) {
     return 2;
   }
 
-  // --llm-review's whole output is a prompt and an item file. JSON is the machine
+  // A review flag's whole output is a prompt and an item file. JSON is the machine
   // contract for ATN, which wants neither, and asking for both leaves nothing coherent to
   // print - so say so rather than silently favouring one.
-  if (values["llm-review"] !== undefined && format === "json") {
+  if (reviewMode(values) !== undefined && format === "json") {
     process.stderr.write(
-      "--llm-review is text only: it prints a prompt and writes an item file, which is " +
-        "not what --report-format json produces.\n"
+      `${reviewFlag(values)} is text only: it prints a prompt and writes an item file, ` +
+        "which is not what --report-format json produces.\n"
     );
     return 2;
   }
 
-  // The two halves of one round trip, one run each: --llm-review asks the questions,
+  // The two halves of one round trip, one run each: a review flag asks the questions,
   // --llm-verdict applies the answers. Together they would print a prompt asking for
   // verdicts on a report that already has them, so the answer file would be written
   // against a review nobody ran. Refuse rather than pick one.
-  if (values["llm-review"] !== undefined && values["llm-verdict"]) {
+  if (reviewMode(values) !== undefined && values["llm-verdict"]) {
+    const flag = reviewFlag(values);
     process.stderr.write(
-      "--llm-review and --llm-verdict are the two halves of one round trip and cannot " +
-        "be used together: run --llm-review first, then --llm-verdict with the answers.\n"
+      `${flag} and --llm-verdict are the two halves of one round trip and cannot ` +
+        `be used together: run ${flag} first, then --llm-verdict with the answers.\n`
     );
     return 2;
   }
@@ -519,9 +581,9 @@ function pipelineOptsFromValues(values) {
     scaRoot: values["sca-root"],
     scaSource: values["sca-source"],
     scaExpSource: values["sca-exp-source"],
-    llmReview: values["llm-review"] !== undefined,
+    llmReview: reviewMode(values),
     // The path given with the flag, if any. Empty means "you choose".
-    llmReviewOut: values["llm-review"] || undefined,
+    llmReviewOut: reviewOut(values) || undefined,
     llmVerdict: values["llm-verdict"],
   };
 }

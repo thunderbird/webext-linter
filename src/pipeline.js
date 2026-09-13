@@ -133,9 +133,13 @@ import { DEFAULT_CACHE } from "./config.js";
  *   The answers carry no wording - a reported case is worded by its own check.
  * @property {string} [llmReviewOut]  Where --llm-review writes the item file, when the
  *   flag named a path. Absent means the linter chooses one (a temp file).
- * @property {boolean} [llmReview]  Print the verification prompt above the review
- *   header (--llm-review), addressing the report to a model that is asked to check
- *   it. Changes nothing about the review, only what is printed before it.
+ * @property {"full"|"verify"} [llmReview]  Print the verification prompt above the review
+ *   header, addressing the report to a model that is asked to check it, and write the
+ *   review to an item file instead of printing it. Changes nothing about the review itself,
+ *   only what is printed before it and what the item file carries. "full" (--llm-review)
+ *   asks for everything; "verify" (--llm-verify) withholds the two parts that need a
+ *   person - the add-on description, and putting the manual items to the reviewer - and
+ *   omits those items from the file. Unset means neither flag was given.
  */
 
 /**
@@ -734,7 +738,12 @@ export async function runPipeline(opts) {
   // resolveHolds settled every band - an array built any earlier would carry a null
   // message and a provisional severity.
   if (meta.itemsFile) {
-    const itemsList = reviewItems(findings, meta.manualReview, meta.preSweep);
+    const itemsList = reviewItems(
+      findings,
+      meta.manualReview,
+      meta.preSweep,
+      opts.llmReview
+    );
     fs.writeFileSync(meta.itemsFile, `${JSON.stringify(itemsList, null, 2)}\n`);
   }
 
@@ -751,7 +760,8 @@ export async function runPipeline(opts) {
       registry.llmReviewPrompt(),
       findings,
       meta.manualReview,
-      meta.preSweep
+      meta.preSweep,
+      opts.llmReview
     )) {
       report(line);
     }

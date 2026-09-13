@@ -1432,7 +1432,7 @@ sweep-intro-llm: |-
 
 llm-review-prompt:
   intro: |-
-    Please verify this review and settle its manual items with the reviewer. Every item of it is in the JSON array named under "Review Details" below, one entry per item, in report order, each carrying its own "index" and the report section it is listed under.
+    Please verify this review and settle its items. Every item you are asked to settle is in the JSON array named under "Review Details" below, in report order, each carrying its own "index" and the report section it is listed under.
   issues: |-
     The "Found Issues" entries are what the deterministic checks proved. Judge only whether
     each one is right, never whether it matters.
@@ -1453,27 +1453,48 @@ llm-review-prompt:
     The "Standard Code Review" entry is not a finding and settles nothing. It is ONE
     sweep, carried by every submission: a shared method, then the bare class of code each
     check cannot detect for itself. What a sweep finds is a finding OF THE NAMED CHECK.
-  outcome: |-
+  outcome-intro: |-
     Work in this order:
+  # The steps of that order, as a list rather than one block, because --llm-verify prints a
+  # SUBSET of them: `verify: false` marks a step that needs a person, which that flag
+  # withholds. The prompt numbers what survives, so no step may number itself - a literal
+  # "1." in the text would render as "1. 1. ...". Every step appears in a --llm-review run,
+  # so a step cannot be verify-ONLY: anything mode-specific must be worded neutrally (step
+  # 10 names no flag) or live in a `verify: false` step (the two agent clauses below).
+  outcome:
+    - verify: true
+      text: |-
+        Run the sweep first. Spawn ONE independent sub-agent - a single agent, and never the one that goes on to verify this review, so that no finding is checked by whoever produced it. Give it ONE request: the "Standard Code Review" entry's "intro", then its whole "items" list. It returns plain "check - file:line - hint" lines, and no verdict, no response text and no prose beyond that hint. The linter spawns nothing; you do.
+    - verify: false
+      text: |-
+        Spawn a SECOND independent sub-agent to describe the add-on for the reviewer, so they can read it while you work. Spawn it NOW, beside the sweep and before you wait for either, so the two run at once. Have it write the description as a Markdown file beside the item file named under "Review Details", as <that file's name>.summary.md, and open it for them. Anything quoted from the add-on - its name, its description, a string it ships - goes in a code span, so they see it as the add-on wrote it rather than as markup. Do not describe the add-on yourself: that is this agent's job, and a pass the review would pay for twice.
+    - verify: true
+      text: |-
+        Wait for the sweep to come back, and while you wait do NOTHING ELSE - do not open the add-on, and do not start verifying. The one thing worth doing is locating the linter's schema cache, which you need later and which says nothing about this submission.
+    - verify: true
+      text: |-
+        Verify every finding in ONE pass - the ones the linter made and the ones the sweep returned, together. A linter finding that is not correct is "withdrawn"; a swept candidate that does not hold is simply never written down, and each that does becomes an entry in this file's "additions", carrying the "check" it was found for. Judge them against each other, not one at a time: the items a sweep answers are independent questions, so ONE location can hold under two of them and is then two findings - never drop one because another already names that line. But a candidate naming a transmission a finding already reports is one transmission reported twice, and only one belongs in the review. An addition carries only what a sweep returned: if verifying turns up something no agent reported, it is not yours to file - a finding checked by whoever produced it has not been checked. Never put any of this to the reviewer.
+    - verify: true
+      text: |-
+        Settle each "Extended Code Review" entry yourself, following that entry's "instructions". A case that holds against the add-on is "reported", one that does not is "cleared".
+    - verify: false
+      text: |-
+        Wait for the description agent, and give the reviewer the description before you put anything to them. Print its path on a line of its own as well, so they can reopen it and in case opening failed.
+    - verify: false
+      text: |-
+        Put every manual review entry ("Extended Manual Review" and/or "Standard Manual Review") to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each entry's "instructions" as its question, with that entry's "title" as the question's first line followed by a blank line. Label the question with its position among these entries and their total (for example "3/11"). Offer exactly two answers, ALWAYS in this order: "Report" first, "Clear" second - never reordered, not even to put a likelier answer first, because a reviewer working through a batch answers by position. "Report" means the case holds against the add-on and the developer is told, "Clear" means there is nothing to tell them. Their answers need no report of your own.
+    - verify: true
+      text: |-
+        Write a SEPARATE JSON file naming the reviewed add-on, holding the settled entries keyed by their "index" and the sweep results in "additions". Leave the item file itself untouched. The "addon" is the path printed under "Review Details" as the reviewed XPI, and it is checked: an index means nothing without it, so nothing in this file can be applied to another submission by accident.
 
-    1. Run the sweep first. Spawn ONE independent sub-agent - a single agent, and never the one that goes on to verify this review, so that no finding is checked by whoever produced it. Give it ONE request: the "Standard Code Review" entry's "intro", then its whole "items" list. It returns plain "check - file:line - hint" lines, and no verdict, no response text and no prose beyond that hint. The linter spawns nothing; you do. WAIT for both agents, and while they work do NOTHING ELSE - do not open the add-on, do not start verifying, and do not describe the add-on yourself, which is the second agent's job and a pass the review would pay for twice. The one thing worth doing is locating the linter's schema cache, which you need later and which says nothing about this submission.
+        {"addon": "/path/to/the-reviewed.xpi",
+        "additions": [{"check": "data-exfiltration", "file": "background/background.js", "line": 40, "hint": "<a ping> attribute posts the message digest"}],
+        "verdicts": {"3": "reported", "4": "cleared", "7": "withdrawn"}}
 
-    2. Give the reviewer the add-on description now, before you verify anything, so they can read it while you work through the next two steps. Have the agent write it as a Markdown file beside the item file named under "Review Details", as <that file's name>.summary.md, and open it for them. Print its path on a line of its own as well, so they can reopen it and in case opening failed. Anything quoted from the add-on - its name, its description, a string it ships - goes in a code span, so they see it as the add-on wrote it rather than as markup.
-
-    3. Verify every finding in ONE pass - the ones the linter made and the ones the sweep returned, together. A linter finding that is not correct is "withdrawn"; a swept candidate that does not hold is simply never written down, and each that does becomes an entry in this file's "additions", carrying the "check" it was found for. Judge them against each other, not one at a time: the items a sweep answers are independent questions, so ONE location can hold under two of them and is then two findings - never drop one because another already names that line. But a candidate naming a transmission a finding already reports is one transmission reported twice, and only one belongs in the review. An addition carries only what a sweep returned: if verifying turns up something no agent reported, it is not yours to file - a finding checked by whoever produced it has not been checked. Never put any of this to the reviewer.
-
-    4. Settle each "Extended Code Review" entry yourself, following that entry's "instructions". A case that holds against the add-on is "reported", one that does not is "cleared".
-
-    5. Put every manual review entry ("Extended Manual Review" and/or "Standard Manual Review") to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each entry's "instructions" as its question, with that entry's "title" as the question's first line followed by a blank line. Label the question with its position among these entries and their total (for example "3/11"). Offer exactly two answers, ALWAYS in this order: "Report" first, "Clear" second - never reordered, not even to put a likelier answer first, because a reviewer working through a batch answers by position. "Report" means the case holds against the add-on and the developer is told, "Clear" means there is nothing to tell them.
-
-    6. Write a SEPARATE JSON file naming the reviewed add-on, holding the settled entries keyed by their "index" and the sweep results in "additions". Leave the item file itself untouched. The "addon" is the path printed under "Review Details" as the reviewed XPI, and it is checked: an index means nothing without it, so nothing in this file can be applied to another submission by accident.
-
-    {"addon": "/path/to/the-reviewed.xpi",
-    "additions": [{"check": "data-exfiltration", "file": "background/background.js", "line": 40, "hint": "<a ping> attribute posts the message digest"}],
-    "verdicts": {"3": "reported", "4": "cleared", "7": "withdrawn"}}
-
-    An addition carries no "index" and no verdict. An index belongs to the linter's numbering of the document it wrote, and an addition was never in it; it is addressed by its "check" and its location instead. The linter files it under that check's own ruleId, band and wording, so it reads as a finding of that check rather than as a note from you. The "hint" is the one thing you write that a developer may read, so keep it to what is at that location - never a judgement, never a sentence of response.
-
-    7. Report your own decisions in two sections: under "Found Issues", each finding you withdrew and why, and each finding a sweep added and where you found it; under "Extended Code Review", the verdict you reached for each entry and why. The reviewer's own answers need no report.
-
-    8. Run the same webext-linter command again with --llm-verdict <your file> in place of --llm-review, and print the report it produces as a code block, unchanged. Write no report wording of your own, it is the linter's.
+        An addition carries no "index" and no verdict. An index belongs to the linter's numbering of the document it wrote, and an addition was never in it; it is addressed by its "check" and its location instead. The linter files it under that check's own ruleId, band and wording, so it reads as a finding of that check rather than as a note from you. The "hint" is the one thing you write that a developer may read, so keep it to what is at that location - never a judgement, never a sentence of response.
+    - verify: true
+      text: |-
+        Report your own decisions in two sections: under "Found Issues", each finding you withdrew and why, and each finding a sweep added and where you found it; under "Extended Code Review", the verdict you reached for each entry and why.
+    - verify: true
+      text: |-
+        Run the same webext-linter command again with --llm-verdict <your file> in place of the review flag you ran, and print the report it produces as a code block, unchanged. Write no report wording of your own, it is the linter's.

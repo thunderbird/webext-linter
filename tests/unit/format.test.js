@@ -1116,7 +1116,12 @@ test("the prompt asks only for the sections the report actually has", () => {
     codeReview: "CODE.",
     extendedManualReview: "EXT.",
     standardManualReview: "STD.",
-    outcome: "OUT.",
+    outcomeIntro: "HOW.",
+    outcome: [
+      { verify: true, text: "A." },
+      { verify: false, text: "B." },
+      { verify: true, text: "C." },
+    ],
   };
   const finding = { ruleId: "r", severity: "error", message: "m" };
   const codeItem = { extended: true, section: "code-review", title: "t" };
@@ -1126,7 +1131,8 @@ test("the prompt asks only for the sections the report actually has", () => {
   // Its own section, like every other block in the report. `outcome` - how the verdicts
   // come back - closes it whenever something was asked, and is absent when nothing was.
   const head = ["", "── LLM Prompt ──", "", "INTRO.", ""];
-  const tail = ["", "OUT."];
+  // The steps, numbered over what a full run prints - all of them.
+  const tail = ["", "HOW.", "", "1. A.", "", "2. B.", "", "3. C."];
   assert.deepEqual(llmPromptLines(prompt, [], []), head);
   assert.deepEqual(llmPromptLines(prompt, [finding], []), [
     ...head,
@@ -1174,7 +1180,7 @@ test("the prompt texts come from the registry and all three are required", () =>
     "codeReview",
     "extendedManualReview",
     "standardManualReview",
-    "outcome",
+    "outcomeIntro",
   ]) {
     assert.equal(typeof prompt[key], "string");
     assert.ok(prompt[key].length > 0, key);
@@ -1182,6 +1188,166 @@ test("the prompt texts come from the registry and all three are required", () =>
   const registry = loadRegistry();
   delete registry.doc["llm-review-prompt"].issues;
   assert.throws(() => registry.llmReviewPrompt(), /authors no `issues`/);
+});
+
+// Every step must DECLARE whether it survives --llm-verify, the way every check entry must
+// declare its severity: a step added without one would silently join (or silently leave)
+// the verify prompt, and nothing downstream validates this wording. The steps must not
+// number themselves either - the prompt numbers what survives, so a literal number would
+// render twice.
+test("every outcome step declares its verify flag and authors text", () => {
+  const prompt = loadRegistry().llmReviewPrompt();
+  assert.ok(Array.isArray(prompt.outcome) && prompt.outcome.length > 0);
+  for (const [i, step] of prompt.outcome.entries()) {
+    assert.equal(typeof step.verify, "boolean", `step ${i + 1} verify`);
+    assert.equal(typeof step.text, "string", `step ${i + 1} text`);
+    assert.ok(step.text.length > 0, `step ${i + 1} text`);
+    assert.doesNotMatch(step.text, /^\d+[.)]\s/, `step ${i + 1} self-numbers`);
+  }
+  assert.ok(
+    prompt.outcome.some((step) => step.verify),
+    "--llm-verify would print no steps"
+  );
+});
+
+// The two clause MOVES that let a plain boolean carry the whole feature: the instructions
+// about the description agent and about the reviewer's answers live in the steps that
+// --llm-verify drops, never in one it keeps. Left behind, a verify prompt would command
+// work it never asked for - which no other test would catch.
+test("no surviving step refers to work --llm-verify does not ask for", () => {
+  const kept = loadRegistry()
+    .llmReviewPrompt()
+    .outcome.filter((step) => step.verify);
+  for (const step of kept) {
+    for (const stray of [
+      "summary.md",
+      "describe the add-on",
+      "Their answers",
+      "to the reviewer in index order",
+    ]) {
+      assert.ok(
+        !step.text.includes(stray),
+        `a verify step still mentions "${stray}"`
+      );
+    }
+  }
+});
+
+test("a malformed outcome step is refused", () => {
+  const bad = (mutate, re) => {
+    const registry = loadRegistry();
+    mutate(registry.doc["llm-review-prompt"]);
+    assert.throws(() => registry.llmReviewPrompt(), re);
+  };
+  bad((p) => delete p.outcome, /authors no `outcome` steps/);
+  bad((p) => (p.outcome = []), /authors no `outcome` steps/);
+  bad(
+    (p) => (p.outcome = [{ verify: true, text: "a" }, "nope"]),
+    /step 2 is not a step mapping/
+  );
+  bad((p) => delete p.outcome[0].verify, /step 1 has no `verify` true\/false/);
+  bad(
+    (p) => (p.outcome[0].verify = "yes"),
+    /step 1 has no `verify` true\/false/
+  );
+  bad((p) => (p.outcome[1].text = ""), /step 2 authors no `text`/);
+  bad(
+    (p) => (p.outcome[0].text = "1. Run the sweep."),
+    /step 1 numbers itself/
+  );
+  bad(
+    (p) => p.outcome.forEach((s) => (s.verify = false)),
+    /authors no `verify: true` step/
+  );
+  bad((p) => delete p["outcome-intro"], /authors no `outcome-intro`/);
+});
+
+// --llm-verify asks only for what reading the ADD-ON can settle: the two manual asks are
+// withheld, and so are the steps that need a person. What is left is renumbered, which is
+// the whole reason no step authors its own number.
+test("the verify prompt drops the manual asks and renumbers the steps", () => {
+  const prompt = {
+    intro: "INTRO.",
+    issues: "ISSUES.",
+    preSweep: "SWEEP.",
+    codeReview: "CODE.",
+    extendedManualReview: "EXT.",
+    standardManualReview: "STD.",
+    outcomeIntro: "HOW.",
+    outcome: [
+      { verify: true, text: "A." },
+      { verify: false, text: "B." },
+      { verify: true, text: "C." },
+    ],
+  };
+  const finding = { ruleId: "r", severity: "error", message: "m" };
+  const codeItem = { extended: true, section: "code-review", title: "t" };
+  const manualItem = { extended: true, section: "manual-review", title: "t" };
+  const standardItem = { extended: false, section: null, title: "t" };
+  const head = ["", "── LLM Prompt ──", "", "INTRO.", ""];
+
+  // The manual items are in the review and still print in the report - they are simply
+  // not asked about, and step B (which would put them to a reviewer) is gone with them.
+  assert.deepEqual(
+    llmPromptLines(
+      prompt,
+      [finding],
+      [codeItem, manualItem, standardItem],
+      null,
+      "verify"
+    ),
+    [...head, "- ISSUES.", "- CODE.", "", "HOW.", "", "1. A.", "", "2. C."]
+  );
+  // The same call in a full run asks for everything and prints every step.
+  assert.deepEqual(
+    llmPromptLines(prompt, [finding], [codeItem, manualItem, standardItem]),
+    [
+      ...head,
+      "- ISSUES.",
+      "- CODE.",
+      "- EXT.",
+      "- STD.",
+      "",
+      "HOW.",
+      "",
+      "1. A.",
+      "",
+      "2. B.",
+      "",
+      "3. C.",
+    ]
+  );
+  // A verify run whose only ask is the sweep still closes with the steps: the work it
+  // asks for is the sweep's, and the hand-back instruction is in a surviving step.
+  assert.deepEqual(
+    llmPromptLines(prompt, [], [standardItem], { items: [{}] }, "verify"),
+    [...head, "- SWEEP.", "", "HOW.", "", "1. A.", "", "2. C."]
+  );
+});
+
+// A step may carry a literal example, whose authored line breaks ARE the layout. Unlike an
+// ask, a step is never whitespace-collapsed, and each is wrapped in ONE call - wrapping it
+// paragraph by paragraph would lose the blank lines inside it.
+test("a step's authored line breaks survive the per-step wrap", () => {
+  const prompt = {
+    intro: "Go.",
+    issues: "i",
+    outcomeIntro: "HOW.",
+    outcome: [
+      { verify: true, text: 'lead in\n\n{"a": 1,\n"b": 2}\n\ntail out' },
+    ],
+  };
+  const lines = llmPromptLines(prompt, [{ ruleId: "r" }], []);
+  // Each SOURCE line is wrapped on its own and only the first carries the marker, so the
+  // example keeps its own line breaks and stays flush - exactly as it renders today.
+  assert.deepEqual(lines.slice(-6), [
+    "1. lead in",
+    "",
+    '{"a": 1,',
+    '"b": 2}',
+    "",
+    "tail out",
+  ]);
 });
 
 // A registry text is authored as wrapped YAML, so its source line breaks must not survive
@@ -1192,7 +1358,8 @@ test("a prompt bullet is re-wrapped and hanging-indented", () => {
     intro: "Go.",
     issues: "one two\nthree " + "w".repeat(70) + " tail",
     codeReview: "c",
-    outcome: "o",
+    outcomeIntro: "HOW.",
+    outcome: [{ verify: true, text: "o" }],
   };
   const lines = llmPromptLines(prompt, [{ ruleId: "r" }], []).slice(3);
   assert.deepEqual(lines[0], "Go.");

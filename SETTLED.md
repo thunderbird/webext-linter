@@ -453,3 +453,29 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   `.out/messenger-mv2.d.ts` does not compile (one error, `Cannot find name
   'ContextFilter'`). What survives is upstream and has nothing to do with types: promoting
   those 31 prose gates to a machine-readable `permissions` field, which `TODO.md` carries.
+
+- **`--llm-verify` is a separate flag, not a mode value on `--llm-review`.** `--llm-review`
+  already takes an OPTIONAL FILE value (`--llm-review=<path>`, and bare means "you choose"),
+  so `--llm-review verify` cannot be told from a path called `verify` - the same ambiguity
+  the `--llm-review <addon>` guard already exists to explain. Internally it is still ONE
+  decision, `opts.llmReview: "full" | "verify" | undefined`, so the two pipeline sites that
+  read it as a truthiness test need no change and there is no representable-but-illegal
+  state; the two flag names are joined in exactly one place (`reviewMode`/`reviewOut` in
+  `src/cli.js`), because `main()`'s guards and `pipelineOptsFromArgv` run on different paths
+  and must not drift about which flag was given.
+
+  Two shape decisions go with it. The prompt's `outcome` is an ARRAY of steps, each
+  declaring `verify: true|false`, rather than two authored variants of one scalar: the
+  variants would duplicate ~60 lines of the highest-value prose in the repo and drift. The
+  builder numbers the survivors, so no step may number itself, and a step cannot be
+  verify-ONLY - every step appears in an `--llm-review` run. Anything mode-specific is
+  therefore either worded neutrally (the last step names no flag, only "the review flag you
+  ran") or lives in a `verify: false` step; that is why the "do not describe the add-on
+  yourself" and "their answers need no report" clauses sit in the two dropped steps rather
+  than in the surviving ones they used to qualify.
+
+  And `--llm-verify` omits the manual sections from the ITEM FILE as well as from the
+  prompt, rather than listing items it never asks about. That is safe because they are the
+  last sections `orderReview` numbers, so the file truncates rather than developing a hole:
+  an index means the same item in a verify file, a full file and the report alike, and
+  `applyVerdicts` resolves it against the full ordered review either way.

@@ -300,6 +300,114 @@ test("an item the page withheld is in the file and can be settled", () => {
   assert.equal(manual.length, 29, "the withheld item settled like any other");
 });
 
+// --llm-verify asks only for what reading the ADD-ON can settle, so its item file omits the
+// two sections a person answers - the prompt does not mention them either, and they stay in
+// the report for the reviewer. It TRUNCATES the numbering and never renumbers: those are the
+// last sections orderReview numbers, so an index means the same item in a verify file, a
+// full file and the report alike. Renumbering here would silently re-aim every verdict at
+// its neighbour, which is why the filter runs AFTER orderReview and not on its input.
+test("a verify item file omits the manual sections without renumbering", () => {
+  const findings = [mkFinding("unused-files", "error", "DEAD", "junk.txt", 1)];
+  const code = mkItem("unused-permission", "Perms", "manifest.json", 3, "tabs");
+  const extendedManual = {
+    ...mkItem("privacy-policy", "Policy", null, 0),
+    extended: true,
+    section: "manual-review",
+    file: null,
+    loc: null,
+  };
+  const standard = {
+    ...mkItem("test-add-on", "Test it", null, 0),
+    extended: false,
+    section: null,
+    file: null,
+    loc: null,
+  };
+  const manual = [code, extendedManual, standard];
+
+  const full = reviewItems(findings, manual, null, "full");
+  assert.deepEqual(
+    full.map((x) => [x.index, x.section]),
+    [
+      [1, "Found Issues"],
+      [2, "Extended Code Review"],
+      [3, "Extended Manual Review"],
+      [4, "Standard Manual Review"],
+    ]
+  );
+
+  const verify = reviewItems(findings, manual, null, "verify");
+  assert.deepEqual(
+    verify.map((x) => [x.index, x.section]),
+    [
+      [1, "Found Issues"],
+      [2, "Extended Code Review"],
+    ],
+    "the manual sections are gone and the survivors keep their numbers"
+  );
+  // The surviving entries are byte-for-byte what the full file holds for them: dropping
+  // the tail changed nothing about the items ahead of it.
+  assert.deepEqual(verify, full.slice(0, 2));
+});
+
+// The pre-sweep block is appended AFTER the mode filter, so it is still the tail of a
+// verify file and still unnumbered - the property that keeps positions 0..M-1 aligned with
+// indices 1..M once the manual sections are gone.
+test("the pre-sweep tail is still the tail in a verify file", () => {
+  const manual = [
+    mkItem("unused-permission", "Perms", "manifest.json", 3, "tabs"),
+    {
+      ...mkItem("test-add-on", "Test it", null, 0),
+      extended: false,
+      section: null,
+      file: null,
+      loc: null,
+    },
+  ];
+  const preSweep = { intro: "sweep", items: [{ check: "x", title: "t" }] };
+  const items = reviewItems([], manual, preSweep, "verify");
+  const numbered = items.filter((x) => x.index !== undefined);
+  assert.deepEqual(
+    numbered.map((x) => x.index),
+    [1]
+  );
+  assert.equal(items.at(-1).kind, "pre-sweep");
+  assert.equal(items.length, numbered.length + 1);
+});
+
+// The round trip closes from a verify file: an index copied out of it resolves against the
+// FULL ordered review, and the manual items it never listed are left standing for the
+// reviewer rather than being treated as settled.
+test("a verdict written from a verify item file applies", () => {
+  const findings = [mkFinding("unused-files", "error", "DEAD", "junk.txt", 1)];
+  const code = mkItem("unused-permission", "Perms", "manifest.json", 3, "tabs");
+  const standard = {
+    ...mkItem("test-add-on", "Test it", null, 0),
+    extended: false,
+    section: null,
+    file: null,
+    loc: null,
+  };
+  const manual = [code, standard];
+  const items = reviewItems(findings, manual, null, "verify");
+  assert.equal(items.length, 2, "the standard item is not in the file");
+
+  applyVerdicts({
+    findings,
+    manual,
+    verdicts: verdicts({ [items[1].index]: "reported" }),
+    registry,
+  });
+  assert.ok(
+    !manual.includes(code),
+    "the code item settled by its verify index"
+  );
+  assert.ok(
+    manual.includes(standard),
+    "the manual item is left for the reviewer"
+  );
+});
+
 // The item file is what --llm-review hands over, so its indices must be the ones a verdict
 // file keys by. Built from the same sequence the renderer walks, and its `ref` is the
 // locus line the report prints - so a verdict copied out of the file is accepted, and the

@@ -458,12 +458,18 @@ export class Registry {
 
   /**
    * The texts of the --llm-review verification prompt: one per to-do section it can ask
-   * about, plus the intro and the outcome. Read only when the flag is set, and all of them
-   * are required then - which of them a given review prints depends on what the report
-   * contains, so a missing one would silently drop a whole instruction from the prompt
-   * instead of failing.
+   * about, plus the intro and the ordered steps. Read only when a review flag is set, and
+   * all of them are required then - which of them a given review prints depends on what the
+   * report contains and on the flag used, so a missing one would silently drop a whole
+   * instruction from the prompt instead of failing.
+   *
+   * The steps come back WITH their `verify` flag and in authored order, never filtered here:
+   * which of them a run prints is layout, decided beside the ask selection in
+   * src/report/format.js. `verify: false` marks a step that needs a person, which
+   * --llm-verify withholds.
    * @returns {{intro: string, issues: string, preSweep: string, codeReview: string,
-   *   extendedManualReview: string, standardManualReview: string, outcome: string}}
+   *   extendedManualReview: string, standardManualReview: string, outcomeIntro: string,
+   *   outcome: {verify: boolean, text: string}[]}}
    */
   llmReviewPrompt() {
     const p = this.doc["llm-review-prompt"];
@@ -476,6 +482,50 @@ export class Registry {
       }
       return text;
     };
+    // Every step must DECLARE its `verify`, the way every check entry must declare its
+    // severity: a step added without one would silently join the --llm-verify prompt (or
+    // silently leave it), and the prompt is the one document nothing downstream validates.
+    // Positions are reported as authored, not as printed - the printed number differs per
+    // flag, and it is the YAML the author is fixing.
+    const readSteps = () => {
+      const steps = p && typeof p === "object" ? p.outcome : null;
+      if (!Array.isArray(steps) || steps.length === 0) {
+        throw new Error(
+          "llm-review-prompt authors no `outcome` steps (assets/registry.yaml)"
+        );
+      }
+      const out = steps.map((step, i) => {
+        const at = `\`outcome\` step ${i + 1}`;
+        if (!step || typeof step !== "object" || Array.isArray(step)) {
+          throw new Error(
+            `llm-review-prompt ${at} is not a step mapping (assets/registry.yaml)`
+          );
+        }
+        if (step.verify !== true && step.verify !== false) {
+          throw new Error(
+            `llm-review-prompt ${at} has no \`verify\` true/false (assets/registry.yaml)`
+          );
+        }
+        if (typeof step.text !== "string" || step.text === "") {
+          throw new Error(
+            `llm-review-prompt ${at} authors no \`text\` (assets/registry.yaml)`
+          );
+        }
+        // The prompt numbers the steps; a literal number in the text renders twice.
+        if (/^\d+[.)]\s/.test(step.text)) {
+          throw new Error(
+            `llm-review-prompt ${at} numbers itself; the prompt numbers the steps (assets/registry.yaml)`
+          );
+        }
+        return { verify: step.verify, text: step.text };
+      });
+      if (!out.some((step) => step.verify)) {
+        throw new Error(
+          "llm-review-prompt `outcome` authors no `verify: true` step, so --llm-verify would print no steps (assets/registry.yaml)"
+        );
+      }
+      return out;
+    };
     return {
       intro: read("intro"),
       issues: read("issues"),
@@ -483,7 +533,8 @@ export class Registry {
       codeReview: read("code-review"),
       extendedManualReview: read("extended-manual-review"),
       standardManualReview: read("standard-manual-review"),
-      outcome: read("outcome"),
+      outcomeIntro: read("outcome-intro"),
+      outcome: readSteps(),
     };
   }
 

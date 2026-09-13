@@ -94,12 +94,14 @@ is monitored and upstream changes are ported manually.
 | `--report-format <text\|json>` | Report output format (default `text`). |
 | `--report-out <file>` | Write the report to a file in addition to stdout. |
 
-**LLM review:** the two halves of one round trip, in the order they run.
+**LLM review:** one round trip, in the order it runs — `--llm-review` or `--llm-verify`
+asks, then `--llm-verdict` applies the answers.
 
 | Option | Description |
 | --- | --- |
 | `--llm-review [<file>]` | Print a verification prompt and write the review as a JSON item array instead of the report, to a temp file or to `<file>` (use `--llm-review=<file>` if the add-on path follows). The prompt explains how to settle the items and pass them back. Refused with `--report-format json`. |
-| `--llm-verdict <file>` | Apply settled verdicts and print the settled report, from a JSON file written as the `--llm-review` prompt describes. |
+| `--llm-verify [<file>]` | As `--llm-review`, but asks only for what can be settled by reading the **add-on**. No add-on description is written, and the Extended/Standard Manual Review items are neither put to a reviewer nor written to the item file — they stay in the report, for the reviewer to work through later. The sweep, the findings, the Extended Code Review, the verdict file and the `--llm-verdict` re-run are unchanged. |
+| `--llm-verdict <file>` | Apply settled verdicts and print the settled report, from a JSON file written as the prompt describes. Verdicts are keyed by index and settle only what they name, so a `--llm-verify` file leaves the manual items listed. |
 
 **Source code archive (SCA):**
 

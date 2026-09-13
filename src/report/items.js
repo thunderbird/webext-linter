@@ -9,11 +9,19 @@
 // ATN auto-verifies against, deliberately free of unsettled to-do items. This one exists
 // for the opposite purpose, so it is a separate file with a separate contract.
 //
-// EVERY item is here, including one the page had no room to print. The cap bounds the
-// PAGE, and a reader working from this file would otherwise settle the items they were
-// handed while the rest passed unexamined - and a verdict naming one of them would be
-// refused as out of range. The two documents still number identically, because the
-// numbering counts every item on both sides.
+// EVERY item the reader is asked to settle is here, including one the page had no room to
+// print. The cap bounds the PAGE, and a reader working from this file would otherwise
+// settle the items they were handed while the rest passed unexamined - and a verdict
+// naming one of them would be refused as out of range. The two documents still number
+// identically, because the numbering counts every item on both sides.
+//
+// --llm-verify is the one case where "asked to settle" is narrower than "listed": its
+// prompt does not put the two MANUAL sections to a reviewer, so the file does not carry
+// them either - the rest passing unexamined is the point there, and they stay in the
+// report for the reviewer to work through later. It TRUNCATES the numbering and never
+// renumbers: those are the last sections orderReview numbers, so what survives is still
+// 1..M at positions 0..M-1, and an index means the same item in a verify file, a full
+// file and the report alike.
 //
 // The one exception to "a position IS the number" is the PRE-SWEEP tail. Those entries
 // are not items of the review: they settle nothing, they are jobs to do BEFORE settling
@@ -30,7 +38,7 @@
 import os from "node:os";
 import path from "node:path";
 
-import { orderReview } from "./order.js";
+import { orderReview, MANUAL_SECTIONS } from "./order.js";
 import { SECTION_TITLES } from "./format.js";
 
 /**
@@ -43,12 +51,25 @@ import { SECTION_TITLES } from "./format.js";
  * @param {import("./finding.js").ManualItem[]} manual
  * @param {?{intro: string, items: object[]}} [preSweep]  The blind-spot sweep, appended
  *   as the unnumbered tail: one entry carrying the shared method and the bare items.
+ * @param {"full"|"verify"} [mode]  The review flag used. "verify" (--llm-verify) omits the
+ *   two manual sections, which its prompt does not ask about either.
  * @returns {object[]}
  */
-export function reviewItems(findings, manual, preSweep = null) {
+export function reviewItems(findings, manual, preSweep = null, mode = "full") {
   const entryNumbers = new Map();
   const counters = new Map();
-  const items = orderReview(findings, manual).map((x) => {
+  // Filtered AFTER orderReview, never by handing it a filtered `manual`: orderReview
+  // numbers what it is GIVEN, so a pre-filtered list would renumber the survivors and
+  // every index here would name a different item than the report does. Dropping them
+  // afterwards leaves each survivor the index the report printed.
+  const ordered = orderReview(findings, manual);
+  const listed =
+    mode === "verify"
+      ? ordered.filter(
+          (x) => x.kind !== "todo" || !MANUAL_SECTIONS.includes(x.section)
+        )
+      : ordered;
+  const items = listed.map((x) => {
     const t = x.target;
     // The entry number the report shows for it. Found Issues numbers continuously across
     // its severity bands and each to-do section restarts at 1, so the counter is keyed

@@ -185,16 +185,33 @@ function reviewBodyLines(review) {
  * its OWN section. One ask per section, because a review that happens to have no Extended
  * Manual Review items must not be told to work them. Both tests come from the same place the
  * report's own sections do - `findings` and the ordered sequence - so the prompt cannot
- * ask for a section the reader will not find. `outcome` - how the verdicts come back - closes the
- * prompt whenever either was asked, and is absent when neither was: with nothing to
- * settle there is nothing to hand back.
- * @param {{intro: string, issues: string, codeReview: string,
- *   extendedManualReview: string, standardManualReview: string, outcome: string}} prompt
+ * ask for a section the reader will not find. The ordered steps - how the work is done and
+ * the verdicts come back - close the prompt whenever any ask was made, and are absent when
+ * none was: with nothing to settle there is nothing to hand back.
+ *
+ * `mode` is the review flag that was used. "verify" (--llm-verify) withholds the two parts
+ * that need a person: the asks for the manual sections, and the `verify: false` steps (the
+ * add-on description, and putting the manual entries to the reviewer). The surviving steps
+ * are renumbered, which is why no step authors its own number. src/report/items.js withholds
+ * the same two sections from the item file, so the prompt and the file agree about what the
+ * reader is being asked to settle.
+ * @param {{intro: string, issues: string, preSweep: string, codeReview: string,
+ *   extendedManualReview: string, standardManualReview: string, outcomeIntro: string,
+ *   outcome: {verify: boolean, text: string}[]}} prompt
  * @param {import("./finding.js").Finding[]} findings
  * @param {import("./finding.js").ManualItem[]} manual
+ * @param {?{items: object[]}} [preSweep]
+ * @param {"full"|"verify"} [mode]
  * @returns {string[]}
  */
-export function llmPromptLines(prompt, findings, manual, preSweep = null) {
+export function llmPromptLines(
+  prompt,
+  findings,
+  manual,
+  preSweep = null,
+  mode = "full"
+) {
+  const verifyOnly = mode === "verify";
   const asks = [];
   if (findings.length) {
     asks.push(prompt.issues);
@@ -208,10 +225,10 @@ export function llmPromptLines(prompt, findings, manual, preSweep = null) {
   if (sections.has("code")) {
     asks.push(prompt.codeReview);
   }
-  if (sections.has("extendedManual")) {
+  if (!verifyOnly && sections.has("extendedManual")) {
     asks.push(prompt.extendedManualReview);
   }
-  if (sections.has("standard")) {
+  if (!verifyOnly && sections.has("standard")) {
     asks.push(prompt.standardManualReview);
   }
   const lines = [...section("LLM Prompt"), "", ...wrapText(prompt.intro), ""];
@@ -219,9 +236,15 @@ export function llmPromptLines(prompt, findings, manual, preSweep = null) {
     lines.push(...wrapText(`- ${ask.replace(/\s+/g, " ").trim()}`));
   }
   if (asks.length) {
-    // Not collapsed like the asks above: this one carries a literal example, so its
-    // authored line breaks are the layout and wrapText keeps them.
-    lines.push("", ...wrapText(prompt.outcome));
+    lines.push("", ...wrapText(prompt.outcomeIntro));
+    const steps = prompt.outcome.filter((step) => !verifyOnly || step.verify);
+    steps.forEach((step, i) => {
+      // Numbered HERE, over what survived the mode filter, so the steps a run prints read
+      // 1..N with no gaps. Not collapsed like the asks above: a step can carry a literal
+      // example, so its authored line breaks are the layout and wrapText keeps them - which
+      // is why each step is ONE wrapText call rather than one per paragraph.
+      lines.push("", ...wrapText(`${i + 1}. ${step.text}`));
+    });
   }
   return lines;
 }

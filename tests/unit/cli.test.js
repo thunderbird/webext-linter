@@ -388,14 +388,141 @@ test("--sca-root / --sca-source map to the sca pipeline opts", () => {
   assert.ok(!pipelineOptsFromArgv([]).scaSource);
 });
 
-// --llm-review switches on the verification prompt and nothing else: the review stays
+// --llm-verify end to end: the same round trip, minus the two parts that need a person.
+// The sweep, the findings and the Extended Code Review are asked for exactly as
+// --llm-review asks for them; the add-on description and the manual questions are not, and
+// the manual items are absent from the item file so the prompt and the file agree about
+// what the reader is being asked to settle. They stay in the REPORT, for the reviewer.
+test("--llm-verify withholds the description and the manual items", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const on = run([addon, ...OFFLINE_FLAGS, "--llm-verify"]);
+  const lines = on.stdout.split("\n");
+  const intro = lines.findIndex((l) => l.startsWith("Please verify"));
+  const target = lines.findIndex((l) => l.startsWith("Reviewed XPI:"));
+  assert.ok(intro > -1, "prompt is printed");
+  assert.ok(intro < target, "prompt comes before the Review Details section");
+  assert.ok(!on.stdout.includes("── Found Issues ──"), "no prose report");
+  assert.ok(!on.stdout.includes("── Setup ──"), "no feed");
+
+  // The inverse of the --llm-review assertions above: these are the two withheld steps,
+  // and their absence is the whole feature.
+  assert.ok(!on.stdout.includes('"Report"'), "no manual questions asked");
+  assert.ok(!on.stdout.includes('"Clear"'), "no manual questions asked");
+  assert.ok(
+    !on.stdout.includes("summary.md"),
+    "no add-on description asked for"
+  );
+  // ...while the step that closes the round trip survives the renumbering.
+  assert.match(on.stdout, /--llm-verdict/);
+
+  const named = lines.find((l) => l.startsWith("Review items: "));
+  assert.ok(named, "the item file is named");
+  const items = JSON.parse(
+    fs.readFileSync(named.slice("Review items: ".length), "utf8")
+  );
+  assert.ok(Array.isArray(items) && items.length > 0);
+  const numbered = items.filter((x) => x.index !== undefined);
+  // TRUNCATED, never renumbered: the manual sections are the last ones the review numbers,
+  // so what survives is still 1..M at positions 0..M-1 and an index means the same item
+  // here as it does in the report.
+  assert.deepEqual(
+    numbered.map((x) => x.index),
+    numbered.map((_, i) => i + 1),
+    "index is still the position in the array"
+  );
+  for (const item of items) {
+    assert.ok(
+      !["Extended Manual Review", "Standard Manual Review"].includes(
+        item.section
+      ),
+      `item file carries a manual entry: ${item.section}`
+    );
+  }
+  // The pre-sweep block is still the tail, and still unnumbered.
+  const tail = items.slice(numbered.length);
+  assert.equal(tail.length, 1);
+  assert.equal(tail[0].index, undefined);
+
+  // The Summary still prints, and still counts the manual items the reviewer owes: they
+  // were withheld from the PROMPT, not dropped from the review.
+  assert.match(on.stdout, /standard manual review item\(s\)/);
+  assert.equal(on.code, 0);
+});
+
+// The two flags are one round trip at two depths, so asking for both leaves no one prompt
+// to print. Refused before anything that names a flag, so every later message can name the
+// one that was actually given.
+test("--llm-review and --llm-verify are refused together", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const both = run([addon, ...OFFLINE_FLAGS, "--llm-review", "--llm-verify"]);
+  assert.equal(both.code, 2);
+  assert.match(both.stderr, /--llm-review and --llm-verify/);
+  assert.match(both.stderr, /Pick one/);
+});
+
+// Every guard --llm-review carries applies to --llm-verify too, and each message names the
+// flag that was actually used rather than the one the guard was written for.
+test("--llm-verify carries the same guards, named for itself", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const json = run([
+    addon,
+    ...OFFLINE_FLAGS,
+    "--llm-verify",
+    "--report-format",
+    "json",
+  ]);
+  assert.equal(json.code, 2);
+  assert.match(json.stderr, /--llm-verify is text only/);
+
+  const verdict = run([
+    addon,
+    ...OFFLINE_FLAGS,
+    "--llm-verify",
+    "--llm-verdict",
+    "answers.json",
+  ]);
+  assert.equal(verdict.code, 2);
+  assert.match(verdict.stderr, /--llm-verify and --llm-verdict/);
+
+  // The optional value swallows a following add-on path, leaving nothing to review.
+  const swallowed = run([...OFFLINE_FLAGS, "--llm-verify", addon]);
+  assert.equal(swallowed.code, 2);
+  assert.match(swallowed.stderr, /--llm-verify's output file/);
+  assert.match(swallowed.stderr, /--llm-verify=<file>/);
+});
+
+// A review flag switches on the verification prompt and nothing else: the review stays
 // deterministic, so the flag must reach the pipeline as a print decision and leave every
-// other opt alone.
-test("--llm-review carries only the prompt decision into the run", () => {
-  const withFlag = pipelineOptsFromArgv(["--llm-review"]);
-  assert.equal(withFlag.llmReview, true);
-  assert.equal(pipelineOptsFromArgv([]).llmReview, false);
-  assert.deepEqual({ ...withFlag, llmReview: false }, pipelineOptsFromArgv([]));
+// other opt alone. It arrives as the MODE, not a boolean, so the two pipeline sites that
+// read it as a truthiness test keep working while format.js and items.js can tell the two
+// prompts apart.
+test("a review flag carries only the prompt decision into the run", () => {
+  const bare = pipelineOptsFromArgv([]);
+  assert.equal(bare.llmReview, undefined);
+
+  const full = pipelineOptsFromArgv(["--llm-review"]);
+  assert.equal(full.llmReview, "full");
+  assert.deepEqual({ ...full, llmReview: undefined }, bare);
+
+  const verify = pipelineOptsFromArgv(["--llm-verify"]);
+  assert.equal(verify.llmReview, "verify");
+  assert.deepEqual({ ...verify, llmReview: undefined }, bare);
+});
+
+// The optional value belongs to whichever flag carried it, and a BARE flag is encoded as
+// an empty value - so the path must be read with `??`, never truthiness, or a bare
+// --llm-review would fall through and pick up --llm-verify's.
+test("either review flag takes an optional output path", () => {
+  assert.equal(pipelineOptsFromArgv(["--llm-review"]).llmReviewOut, undefined);
+  assert.equal(pipelineOptsFromArgv(["--llm-verify"]).llmReviewOut, undefined);
+  assert.equal(
+    pipelineOptsFromArgv(["--llm-verify=/tmp/items.json"]).llmReviewOut,
+    "/tmp/items.json"
+  );
+  assert.equal(
+    pipelineOptsFromArgv(["--llm-review=/tmp/items.json"]).llmReviewOut,
+    "/tmp/items.json"
+  );
 });
 
 // The retired flags parse as unknown options (exit 2), so a stale command line fails
