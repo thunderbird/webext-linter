@@ -16,15 +16,25 @@
       <h2>What it detects</h2>
       <p class="lead">
         Mozilla's trademark policy forbids certain brand names in an add-on's
-        name. "Firefox", "Mozilla" and "MZLA" are never allowed. "Thunderbird" is
-        only allowed in the trailing form "&lt;name&gt; for Thunderbird".
+        name outright. "Firefox", "Mozilla" and "MZLA" are never allowed, in any
+        form and in any language.
       </p>
       <p>
         The check reads the add-on name from the manifest. If the name is a
         localized <em>__MSG_…__</em> placeholder, it resolves the real text from
-        every locale file and checks each resolved name. All matching is
-        case-insensitive. The add-on icon is the other trademark vector, but
-        being an image it is left to manual review instead.
+        every locale file and checks each one, reporting every offending name
+        rather than only the first. All matching is case-insensitive, and needs
+        no knowledge of the language, which is why this half is decided here.
+      </p>
+      <p>
+        "Thunderbird" is <em>not</em> checked here. It is allowed in one
+        construction, "&lt;name&gt; for Thunderbird", and recognising that
+        outside English needs the meaning of the word before it, so it is split
+        across two sibling checks by who can answer it: <em>Thunderbird in a
+        localized add-on name</em> for names that arrive with a locale tag, and
+        <em>Thunderbird in an unlocalized add-on name</em> for a name whose
+        language nothing in the package states. The add-on icon is the third
+        trademark vector, but being an image it is left to manual review.
       </p>
 
       <h2>Decision flow</h2>
@@ -36,13 +46,9 @@ flowchart TD
   B -- yes --> C{"Is the name a localized<br/>__MSG_key__ placeholder?"}
   C -- yes --> R["Resolve the text from every<br/>_locales messages.json"]
   C -- no --> D
-  R --> D{"Does the name contain<br/>Firefox, Mozilla or MZLA?"}
-  D -- yes --> ERR([ERROR: trademark violation])
-  D -- no --> E{"Does the name contain<br/>Thunderbird?"}
-  E -- no --> OK([no finding])
-  E -- yes --> F{"Only as the trailing<br/>'... for Thunderbird' form?"}
-  F -- yes --> OK
-  F -- no --> ERR
+  R --> D{"Does any resolved name contain<br/>Firefox, Mozilla or MZLA?"}
+  D -- yes --> ERR([ERROR: brand term in the name])
+  D -- no --> OK([no finding])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -55,8 +61,8 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told its name uses a registered Mozilla trademark, which is
-        not allowed except in the "&lt;name&gt; for Thunderbird" format.
+        The add-on is told its name uses a registered Mozilla trademark, and that
+        "Mozilla", "Firefox" and "MZLA" are not allowed in an add-on name at all.
       </div>
 
       <p class="source-note">

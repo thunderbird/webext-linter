@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Thunderbird in an unlocalized add-on name</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Thunderbird in an unlocalized add-on name
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">trademark-thunderbird-name</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        "Thunderbird" may appear in an add-on's name only in the trailing form
+        "&lt;name&gt; for Thunderbird". This check looks at a name the manifest
+        states directly, rather than through a localized placeholder, and puts
+        every name outside that form to a reviewer. It never rejects one itself.
+      </p>
+      <p>
+        The reason is narrow. Recognising the allowed form outside English needs
+        the meaning of the word before the brand, so the language has to be
+        settled first, and a name written directly in the manifest carries no
+        locale tag. Nothing in the package says what language it is in, which is
+        why this question goes to manual review while its sibling, whose names
+        arrive tagged with their language, goes to code review.
+      </p>
+      <p>
+        A name already carrying "Firefox", "Mozilla" or "MZLA" is left alone: the
+        brand check rejects it outright, so asking about its Thunderbird form as
+        well would be a second question about a name that is refused either way.
+      </p>
+      <p>
+        One consequence is deliberate: a name that looks like an obvious English
+        violation is put to a reviewer rather than rejected outright, because the
+        same shape in another language can be the allowed form. A wrong rejection
+        costs the developer a release, while a question costs a reviewer a glance.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Add-on name in manifest.json"] --> B{"Is there a name?"}
+  B -- no --> S([skip])
+  B -- yes --> C{"Is the name a localized<br/>__MSG_key__ placeholder?"}
+  C -- yes --> S2([skip: the localized<br/>sibling check owns it])
+  C -- no --> D{"Does the name carry Thunderbird<br/>outside the '... for Thunderbird'<br/>form, and no brand term?"}
+  D -- no --> OK([no finding])
+  D -- yes --> M([Manual review: a person decides<br/>what language the name is in,<br/>then whether it is the allowed form])
+
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#fff6e5,stroke:#b7791f,color:#7a5711;
+  class OK ok;
+  class S skip;
+  class S2 skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that "Thunderbird" is not allowed in its name except as
+        "&lt;name&gt; for Thunderbird". The check itself only raises the question,
+        so nothing is reported to the developer until a reviewer confirms it.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/trademark-thunderbird-name.js</code> and its entry
+        in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

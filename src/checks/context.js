@@ -51,7 +51,8 @@ import { apiUsageOf } from "./extract.js";
  * fallbacks would recompute a less-complete one). `nodeModules`/`archives`/`buildReview` serve
  * the SCA build corpus (reviewView also projects addon.buildFiles for the input:build checks);
  * they are undefined on the xpi/source/manifest routes, which is harmless. The lazy caches
- * (locales/evalScan/outboundSinks/permissionAnalysis/apiResolution, and the bundled fallback)
+ * (locales/localizedNames/evalScan/outboundSinks/permissionAnalysis/apiResolution, and the
+ * bundled fallback)
  * attach themselves on demand via `ctx.addon.X ??= …`, so they need no seeding.
  *
  * DELIBERATELY ABSENT: manifest/manifestError/manifestLoc and experiments are

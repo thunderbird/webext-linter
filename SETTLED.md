@@ -96,7 +96,10 @@ guard family had a demonstrated defect.
   Eight checks still never fire in any golden, all offline and unrelated to the network:
   trademark-violation, manifest-invalid-json, manifest-missing, unsupported-dependency,
   disguised-stylesheet, csp-unsafe-eval, csp-unsafe-inline,
-  minimize-web-accessible-resources.
+  minimize-web-accessible-resources. Measured, not assumed: the two
+  trademark-thunderbird-* checks DO fire, in fixtures added with the trademark split, but
+  `trademark-violation` needs a brand term that no fixture ships. Note an escalation is
+  observable only in the `.txt` golden, because `expected.json` diffs findings alone.
 
 - **A dead network aborts the review; one dead load does not.** Every catch in the vendor
   and CDN paths turns a fetch failure into a benign value ("not popular", "unfetchable",

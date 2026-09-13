@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Thunderbird Organizer",
+  "version": "1.0",
+  "description": "Organizes folders.",
+  "icons": { "16": "icon.png", "48": "icon.png" },
+  "background": { "scripts": ["background.js"] }
+}

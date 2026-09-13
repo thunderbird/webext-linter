@@ -1,0 +1,4 @@
+{
+  "_comment": "A literal name carrying the brand outside the allowed form. It reads as an English violation, but the package never says the name is English, and the same shape in another language can be the allowed form - so it is put to a human rather than rejected. No finding: the Extended Manual Review item is what this fixture pins, and it lives in the .txt golden.",
+  "expect": {}
+}

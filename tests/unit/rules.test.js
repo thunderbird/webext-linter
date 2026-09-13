@@ -38,6 +38,10 @@ import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 import vendorVulnerableDev from "../../src/checks/rules/vendor-vulnerable-dev.js";
 import { rawSha256 } from "../../src/normalize/hash.js";
 import trademarkViolation from "../../src/checks/rules/trademark-violation.js";
+import trademarkThunderbirdLocale from "../../src/checks/rules/trademark-thunderbird-locale.js";
+import trademarkThunderbirdName from "../../src/checks/rules/trademark-thunderbird-name.js";
+import { isEnglishLocale } from "../../src/lib/locales.js";
+import { offFormThunderbird } from "../../src/lib/trademark.js";
 import coreSymbolInWebext from "../../src/checks/rules/core-symbol-in-webext.js";
 import missingEnglish from "../../src/checks/rules/missing-english-localization.js";
 import disguisedResource from "../../src/checks/rules/disguised-resource.js";
@@ -683,6 +687,7 @@ test("every escalating check declares a section, and only those", async () => {
       "remote-eval",
       "remote-resources",
       "strict-min-version-api",
+      "trademark-thunderbird-locale",
       "unknown-api",
       "unused-files",
       "unused-permission",
@@ -691,6 +696,7 @@ test("every escalating check declares a section, and only those", async () => {
       "experiment-manual-review",
       "native-messaging",
       "privacy-policy",
+      "trademark-thunderbird-name",
       "undeclared-build-source",
       "vendored-remote-resources",
     ],
@@ -765,6 +771,8 @@ test("every check's severity is pinned to its band", async () => {
       "strict-min-version-api",
       "string-timer",
       "sync-xhr",
+      "trademark-thunderbird-locale",
+      "trademark-thunderbird-name",
       "trademark-violation",
       "undeclared-build-source",
       "unknown-api",
@@ -963,6 +971,8 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "default-locale-unused",
     "minimize-web-accessible-resources",
     "missing-english-localization",
+    "trademark-thunderbird-locale",
+    "trademark-thunderbird-name",
     "trademark-violation",
     "unrecognized-file-type",
     "unrecognized-manifest-key",
@@ -2665,12 +2675,17 @@ test("unused-permission enumerates regardless of strict_min_version", () => {
   }
 });
 
-// ---- trademark-violation (deterministic name check) ----
-// Firefox/Mozilla/MZLA are never allowed in the name; Thunderbird only as the
-// trailing "for Thunderbird". Matching is case-insensitive, and a __MSG__ name
-// is resolved from _locales (which a deterministic check can read).
-test("trademark-violation flags forbidden brands in the (resolved) name", () => {
-  const ctx = (name, files = {}) => ({
+// ---- the three trademark name checks ----
+// One concern, three answer-types, so three checks. trademark-violation owns the
+// brand terms that are never allowed (a fact, always a finding).
+// trademark-thunderbird-locale owns the "for Thunderbird" form for names that
+// arrive with a locale tag: English is decided, any other language is escalated,
+// because the allowed and forbidden readings share one surface shape ("X para
+// Thunderbird" is allowed, "X de Thunderbird" is not) and telling them apart needs
+// the meaning of a word. trademark-thunderbird-name owns a name the manifest
+// states literally, whose language nothing in the package declares.
+const tmCtx = (name, files = {}) =>
+  withManifest({
     addon: {
       manifest: { manifest_version: 3, name, version: "1" },
       files: new Map(
@@ -2678,19 +2693,232 @@ test("trademark-violation flags forbidden brands in the (resolved) name", () => 
       ),
     },
   });
+const msgs = (message) => JSON.stringify({ extName: { message } });
+
+test("trademark-violation flags forbidden brands in the (resolved) name", () => {
   const flags = (name, files) =>
-    trademarkViolation.run(withManifest(ctx(name, files))).findings.length;
+    trademarkViolation.run(tmCtx(name, files)).findings.length;
   assert.equal(flags("Firefox Helper"), 1);
   assert.equal(flags("My Mozilla Thing"), 1);
   assert.equal(flags("MZLA Tools"), 1);
-  assert.equal(flags("thunderbird helper"), 1); // case-insensitive
-  assert.equal(flags("Calendar for Thunderbird"), 0); // allowed trailing form
   assert.equal(flags("Calendar Tool"), 0);
-  // A localized __MSG__ name is resolved from _locales (and flagged).
-  const locale = JSON.stringify({ extName: { message: "Firefox Sync" } });
+  // Thunderbird is NOT this check's business, in either form.
+  assert.equal(flags("thunderbird helper"), 0);
+  assert.equal(flags("Calendar for Thunderbird"), 0);
+  // A localized __MSG__ name is resolved from _locales (and flagged) - in ANY
+  // locale, because a brand term needs no language to recognise.
   assert.equal(
-    flags("__MSG_extName__", { "_locales/en/messages.json": locale }),
+    flags("__MSG_extName__", {
+      "_locales/en/messages.json": msgs("Firefox Sync"),
+    }),
     1
+  );
+  assert.equal(
+    flags("__MSG_extName__", {
+      "_locales/de/messages.json": msgs("Firefox Helfer"),
+    }),
+    1
+  );
+});
+
+// The English branch is a finding, every other language is a question, and BOTH
+// come out of the one check - they are two branches of one question, not two
+// questions, so they need no separate entry.
+test("trademark-thunderbird-locale decides English and escalates the rest", () => {
+  const run = (locales) =>
+    trademarkThunderbirdLocale.run(
+      tmCtx(
+        "__MSG_extName__",
+        Object.fromEntries(
+          Object.entries(locales).map(([loc, name]) => [
+            `_locales/${loc}/messages.json`,
+            msgs(name),
+          ])
+        )
+      )
+    );
+  // The issue's case: English is the allowed form, Czech renders it with "pro".
+  // Nothing is rejected, and the Czech name is put to a reader.
+  const issue = run({
+    en: "Conversations for Thunderbird",
+    cs: "Konverzace pro Thunderbird",
+  });
+  assert.equal(issue.findings.length, 0);
+  assert.equal(issue.escalations.length, 1);
+  assert.equal(issue.escalations[0].item, "Konverzace pro Thunderbird");
+  assert.equal(issue.escalations[0].hint, "cs");
+
+  // One check, both outcomes: English violates AND Czech is unjudgeable.
+  const mixed = run({
+    en: "Thunderbird Conversations",
+    cs: "Konverzace pro Thunderbird",
+  });
+  assert.equal(mixed.findings.length, 1);
+  assert.equal(mixed.findings[0].item, "Thunderbird Conversations");
+  assert.equal(mixed.escalations.length, 1);
+
+  // No English locale at all: nothing is decided here, everything is asked.
+  const noEnglish = run({ cs: "Konverzace pro Thunderbird" });
+  assert.equal(noEnglish.findings.length, 0);
+  assert.equal(noEnglish.escalations.length, 1);
+
+  // The allowed form passes in every locale, English or not.
+  const clean = run({
+    en: "Calendar for Thunderbird",
+    de: "Calendar for Thunderbird",
+  });
+  assert.equal(clean.findings.length, 0);
+  assert.equal(clean.escalations.length, 0);
+
+  // A region tag is still English.
+  assert.equal(run({ en_GB: "Thunderbird Tool" }).findings.length, 1);
+
+  // No dedup of distinct names, but one name shared across locales is one case:
+  // a reader clearing the name shown must not be clearing locales nobody saw.
+  const two = run({ en: "Thunderbird A", en_US: "Thunderbird B" });
+  assert.equal(two.findings.length, 2);
+  const same = run({ en: "Thunderbird A", en_GB: "Thunderbird A" });
+  assert.equal(same.findings.length, 1);
+
+  // A literal name is the sibling's business, not this check's.
+  const literal = trademarkThunderbirdLocale.run(tmCtx("Thunderbird Tool"));
+  assert.equal(literal.findings.length, 0);
+  assert.equal(literal.escalations.length, 0);
+});
+
+// An unlocalized name carries no language, so it is never decided here - only
+// asked, and asked of a human rather than an agent.
+// isEnglishLocale is the pivot of the whole split - it decides reject versus ask -
+// so its case-insensitivity and its tag boundary are pinned here. Without this, both
+// mutations (dropping /i, or widening to /^en/) pass the rest of the suite while
+// flipping real add-ons between a rejection and a question.
+test("isEnglishLocale reads the tag, not a prefix", () => {
+  for (const tag of ["en", "EN", "en_US", "en-GB", "En_gb"]) {
+    assert.equal(isEnglishLocale(tag), true, `${tag} is English`);
+  }
+  for (const tag of ["english", "eng", "eo", "en.UTF-8", "xx", "und", ""]) {
+    assert.equal(isEnglishLocale(tag), false, `${tag} is not English`);
+  }
+  // A null locale is an unlabelled name: not English, and not "not English" either -
+  // the callers must route it, never test it.
+  assert.equal(isEnglishLocale(null), false);
+});
+
+// The allowed form is anchored at the end, so trailing text after the brand means
+// the construction does not account for it.
+test("offFormThunderbird anchors the allowed form at the end", () => {
+  assert.equal(offFormThunderbird("Notes for Thunderbird"), false);
+  assert.equal(offFormThunderbird("NOTES FOR THUNDERBIRD"), false);
+  assert.equal(offFormThunderbird("Notes for Thunderbird Users"), true);
+  assert.equal(offFormThunderbird("Thunderbird Notes"), true);
+  assert.equal(offFormThunderbird("Notes for Thunderbird\t"), false);
+  assert.equal(offFormThunderbird("Calendar Tool"), false);
+});
+
+// A name nobody could read must never read as verified-clean. Both halves of that
+// are load-bearing: an unparsable locale file is named, and the unresolved
+// placeholder is a skip rather than a pass.
+test("an unreadable or unresolvable localized name is a skip, never a pass", () => {
+  const ctxOf = (files) =>
+    withManifest({
+      addon: {
+        manifest: {
+          manifest_version: 3,
+          name: "__MSG_extName__",
+          version: "1",
+        },
+        files: new Map(
+          Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
+        ),
+      },
+    });
+  const verdicts = (files) =>
+    notesFrom(trademarkThunderbirdLocale, ctxOf(files)).map((n) => n.verdict);
+
+  // Malformed locale file: named out loud, and no pass.
+  const bad = verdicts({ "_locales/en/messages.json": '{"extName":' });
+  assert.ok(bad.length > 0);
+  assert.ok(bad.every((v) => v === VERDICT.SKIPPED));
+  assert.ok(!bad.includes(VERDICT.PASS));
+
+  // A placeholder no locale defines.
+  const missing = verdicts({ "_locales/en/messages.json": "{}" });
+  assert.ok(missing.every((v) => v === VERDICT.SKIPPED));
+
+  // A BOM is stripped, because Thunderbird strips it too - so the name IS read and
+  // an infringing English name is still decided.
+  const bom = trademarkThunderbirdLocale.run(
+    ctxOf({
+      "_locales/en/messages.json":
+        "\ufeff" + JSON.stringify({ extName: { message: "Thunderbird Tool" } }),
+    })
+  );
+  assert.equal(bom.findings.length, 1);
+});
+
+// One offending name, reported once, naming every locale that states it - and a name
+// already decided in English is not asked about again because of another locale.
+test("the trademark checks name every locale and never double-report", () => {
+  const ctxOf = (locales) =>
+    withManifest({
+      addon: {
+        manifest: {
+          manifest_version: 3,
+          name: "__MSG_extName__",
+          version: "1",
+        },
+        files: new Map(
+          Object.entries(locales).map(([loc, name]) => [
+            `_locales/${loc}/messages.json`,
+            Buffer.from(JSON.stringify({ extName: { message: name } })),
+          ])
+        ),
+      },
+    });
+  // Brand term in two locales: one finding, both locales named.
+  const brand = trademarkViolation.run(
+    ctxOf({ en: "Firefox Helper", de: "Firefox Helper" })
+  ).findings;
+  assert.equal(brand.length, 1);
+  assert.equal(brand[0].hint.split(", ").sort().join(","), "de,en");
+
+  // The same Thunderbird name in an English and a non-English locale: decided once,
+  // never also escalated.
+  const cross = trademarkThunderbirdLocale.run(
+    ctxOf({ en: "Thunderbird Viewer", ja: "Thunderbird Viewer" })
+  );
+  assert.equal(cross.findings.length, 1);
+  assert.equal(cross.escalations.length, 0);
+
+  // A name carrying BOTH a brand term and an off-form Thunderbird is the brand
+  // check's alone - it is refused either way, so the form is not a second question.
+  const both = ctxOf({ en: "Mozilla Thunderbird Extras" });
+  assert.equal(trademarkViolation.run(both).findings.length, 1);
+  const tb = trademarkThunderbirdLocale.run(both);
+  assert.equal(tb.findings.length, 0);
+  assert.equal(tb.escalations.length, 0);
+});
+
+test("trademark-thunderbird-name escalates an unlabelled name, never finds", () => {
+  const run = (name, files) => trademarkThunderbirdName.run(tmCtx(name, files));
+  const off = run("Thunderbird Organizer");
+  assert.equal(off.findings.length, 0);
+  assert.equal(off.escalations.length, 1);
+  assert.equal(off.escalations[0].item, "Thunderbird Organizer");
+  // The allowed form needs no one's judgement.
+  assert.equal(run("Calendar for Thunderbird").escalations.length, 0);
+  assert.equal(run("Calendar Tool").escalations.length, 0);
+  // A brand term belongs to trademark-violation, so this check stays out of it -
+  // including when the SAME name also carries Thunderbird outside the allowed form,
+  // which is the case that proves the gate rather than merely passing without it.
+  assert.equal(run("Firefox Helper").escalations.length, 0);
+  assert.equal(run("Firefox Thunderbird Helper").escalations.length, 0);
+  // A localized name has locale tags, so it is the sibling's business.
+  assert.equal(
+    run("__MSG_extName__", {
+      "_locales/cs/messages.json": msgs("Konverzace pro Thunderbird"),
+    }).escalations.length,
+    0
   );
 });
 
@@ -3082,9 +3310,56 @@ test("trademark-violation notes pass / fail / skipped", () => {
     addon: { manifest: name == null ? {} : { name }, files: new Map() },
   });
   const v = (name) => notesFrom(trademarkViolation, ctxFor(name));
-  assert.equal(v("Calendar for Thunderbird")[0].verdict, VERDICT.PASS);
+  // Any brand-free name passes here, Thunderbird or not: the form is a sibling's
+  // question, so the name chosen must not imply this check still weighs it.
+  assert.equal(v("Calendar Tool")[0].verdict, VERDICT.PASS);
+  assert.equal(v("Thunderbird Organizer")[0].verdict, VERDICT.PASS);
   assert.equal(v("Firefox Helper")[0].verdict, VERDICT.FAIL);
   assert.equal(v(null)[0].verdict, VERDICT.SKIPPED); // no name
+});
+
+// The Activity feed must tell the two branches apart: a decided English name reads
+// as a failure, an unjudgeable one as unsure, and each check says so when the name
+// is the other one's business.
+test("the trademark-thunderbird checks note fail / unsure / skipped", () => {
+  const localeCtx = (locales) => ({
+    addon: {
+      manifest: { name: "__MSG_extName__" },
+      files: new Map(
+        Object.entries(locales).map(([loc, name]) => [
+          `_locales/${loc}/messages.json`,
+          Buffer.from(JSON.stringify({ extName: { message: name } })),
+        ])
+      ),
+    },
+  });
+  const loc = (locales) =>
+    notesFrom(trademarkThunderbirdLocale, localeCtx(locales));
+  assert.equal(loc({ en: "Thunderbird Tool" })[0].verdict, VERDICT.FAIL);
+  assert.equal(
+    loc({ cs: "Nastroj pro Thunderbird" })[0].verdict,
+    VERDICT.UNSURE
+  );
+  assert.equal(loc({ en: "Tool for Thunderbird" })[0].verdict, VERDICT.PASS);
+
+  const literalCtx = (name) => ({
+    addon: { manifest: name == null ? {} : { name }, files: new Map() },
+  });
+  const lit = (name) => notesFrom(trademarkThunderbirdName, literalCtx(name));
+  assert.equal(lit("Thunderbird Organizer")[0].verdict, VERDICT.UNSURE);
+  assert.equal(lit("Tool for Thunderbird")[0].verdict, VERDICT.PASS);
+  assert.equal(lit(null)[0].verdict, VERDICT.SKIPPED); // no name
+
+  // Each check stands down for the other's input, and says which.
+  assert.equal(
+    notesFrom(trademarkThunderbirdLocale, literalCtx("Thunderbird Tool"))[0]
+      .verdict,
+    VERDICT.SKIPPED
+  );
+  assert.equal(
+    notesFrom(trademarkThunderbirdName, localeCtx({ cs: "x" }))[0].verdict,
+    VERDICT.SKIPPED
+  );
 });
 
 test("missing-english-localization: _locales branches (pass / fail)", () => {

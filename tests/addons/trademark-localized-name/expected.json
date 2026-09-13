@@ -1,0 +1,4 @@
+{
+  "_comment": "The English name is the allowed \"NAME for Thunderbird\" form, so nothing is rejected. The Czech name renders the same form with \"pro\", which no structural test can tell from a name that simply contains the brand - so it escalates to code review instead of becoming a finding. No trademark finding is expected: the Code Review item is what this fixture pins, and it lives in the .txt golden.",
+  "expect": {}
+}

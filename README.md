@@ -216,7 +216,9 @@ answer declares `escalation: manual-review` instead, and its cases land under
 **Extended Manual Review**: `privacy-policy` (the policy is a field in the ATN listing,
 not in the package), `native-messaging` (likewise, what the listing discloses about the
 native app), `undeclared-build-source` (reproducing the build is the reviewer's own
-attestation that the source produces the shipped XPI), and `vendored-remote-resources`
+attestation that the source produces the shipped XPI), `trademark-thunderbird-name` (an
+add-on name written directly in the manifest carries no locale tag, so the language has
+to be settled before the trademark form can be judged at all), and `vendored-remote-resources`
 (a remote `@import` inside a file matching a published release is that release's line,
 not the developer's, so accepting it is a judgement a person owns).
 
@@ -287,7 +289,9 @@ machine.
 | `privacy-policy` | Data transmitted to a hardcoded remote host by an overt API - routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
 | `string-timer` | A code string passed to `setTimeout`/`setInterval` (it is eval'd) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
 | `sync-xhr` | Synchronous `XMLHttpRequest` (`open(..., false)`). |
-| `trademark-violation` | Add-on name (resolved from `_locales` for a `__MSG__` name) using a Mozilla trademark - `Firefox`/`Mozilla`/`MZLA` anywhere, or `Thunderbird` other than as a trailing "for Thunderbird" (error, case-insensitive). The icon is a separate manual check. |
+| `trademark-violation` | Add-on name (resolved from `_locales` for a `__MSG__` name) using a Mozilla brand term - `Firefox`/`Mozilla`/`MZLA` anywhere, in any locale (error, case-insensitive). Needs no knowledge of the language, so it is always a finding, and each offending name is reported once naming every locale that states it. `Thunderbird` is the two checks below, and a name carrying a brand term is left to this one alone, since it is refused either way. The icon is a separate manual check. |
+| `trademark-thunderbird-locale` | `Thunderbird` in a name resolved from `_locales`, other than as a trailing "for Thunderbird". A name from an `en*` locale is a finding - the policy is written in English - and a name decided that way is not also escalated because another locale states it. A name from any other locale escalates to code review, because the allowed and forbidden readings share one shape ("X para Thunderbird" is allowed, "X de Thunderbird" is not), word order and word boundaries both vary, and telling them apart needs the meaning of a word. Answerable from the package, since every locale file ships in it and its directory names the language. |
+| `trademark-thunderbird-name` | The same question for a name the manifest states literally. It carries no locale tag, so nothing in the package says what language it is in and the language must be settled first - not answerable from the submission, so it escalates to manual review and never rejects on its own. |
 | `unknown-api` | Unknown namespaces, unknown members (incl. methods on property types like `storage.local.x`), and APIs marked `unsupported`. |
 | `unparsable-file` | A JavaScript, TypeScript, or Vue `<script>` source that failed to parse, so its API checks were skipped (info). |
 | `unpinned-dependency` | A `package.json` dependency declared as a version range with no lock file, so it can't be pinned to one release and verified (error). |

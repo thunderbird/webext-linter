@@ -21,11 +21,11 @@ import { VERDICT } from "../../lib/enum.js";
 import { francAll } from "franc-min";
 import { finding } from "../../report/finding.js";
 import { visibleText } from "../../scan/html-parse.js";
+import { isEnglishLocale } from "../../lib/locales.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../../addon/load.js").Addon} Addon */
 
-const ENGLISH_DIR = /^en([-_]|$)/i;
 const HTML_FILE = /\.x?html?$/i;
 // The franc library is unreliable on short samples, so below this many
 // characters of user-facing text we do not trust a non-English verdict and
@@ -64,7 +64,7 @@ export default {
     }
 
     // Uses _locales: an English locale is required - resolved deterministically.
-    const english = [...localeDirs].find((d) => ENGLISH_DIR.test(d));
+    const english = [...localeDirs].find((d) => isEnglishLocale(d));
     if (english) {
       ctx.note?.(
         "manifest.json",

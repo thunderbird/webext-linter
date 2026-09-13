@@ -12,6 +12,8 @@
     "checksRun": [
       "core-symbol-in-webext",
       "trademark-violation",
+      "trademark-thunderbird-locale",
+      "trademark-thunderbird-name",
       "unknown-api",
       "deprecated-api",
       "strict-max-version-api",

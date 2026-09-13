@@ -1,32 +1,34 @@
-// Deterministic trademark check on the add-on NAME. Mozilla's policy: "Firefox",
-// "Mozilla", and "MZLA" are never allowed in the name, and "Thunderbird" only as
-// the trailing "<name> for Thunderbird" form. All matching is case-insensitive.
-// A localized __MSG__ name is resolved from _locales (which a deterministic
-// check can read, unlike a reviewer). The icon - the other trademark vector - is an
-// image, so it is left to the manual-review list instead. This check returns
-// Finding[] directly - it does not escalate.
+// Deterministic trademark check on the add-on NAME, for the brand terms that are
+// never allowed in it: "Firefox", "Mozilla" and "MZLA". Case-insensitive, and
+// applied to EVERY name the package states - the literal manifest name, or each
+// locale's resolution of a __MSG__ placeholder, which a deterministic check can
+// read even though a reviewer would not.
 //
-// Belongs here: resolving the literal or __MSG__ name and matching it against
-// the FORBIDDEN brand terms and the Thunderbird-suffix rule. Does NOT belong
-// here: reporting a malformed locale file (skipped here - its JSON validity is
-// out of this check's scope). The icon trademark vector, deferred to manual
-// review by its registry entry. Authored wording -> assets/registry.yaml.
-// Severity -> that registry entry, stamped by runChecks (src/checks/
-// registry.js). Report formatting -> src/report/format.js.
+// This half is a fact with an exact anchor, so it is a finding and never
+// escalates: no construction around the word makes it acceptable. The other
+// trademark, "Thunderbird", is NOT here, because deciding it needs the meaning of
+// the word before it - "X para Thunderbird" is allowed and "X de Thunderbird" is
+// not - which is a judgement rather than a fact. That question is split by who can
+// answer it: trademark-thunderbird-locale.js for a name whose locale states its
+// language, trademark-thunderbird-name.js for an unlabelled one. The icon, the
+// third vector, is an image, so it is on the manual-review list instead.
+//
+// Belongs here: reporting every resolved name that carries a brand term, and
+// saying so when it could not read a name at all.
+// Does NOT belong here: the "for Thunderbird" form (-> the two siblings above),
+// resolving the names themselves (-> localizedNames in src/lib/locales.js),
+// reporting a malformed locale file (its JSON validity is out of scope for a
+// trademark verdict). Authored wording -> assets/registry.yaml. Severity -> that
+// registry entry, stamped by runChecks (src/checks/registry.js). Report
+// formatting -> src/report/format.js.
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
+import { localizedNames } from "../../lib/locales.js";
+import { brandTerm } from "../../lib/trademark.js";
 import { manifestTokenLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
-/** @typedef {import("../../addon/load.js").Addon} Addon */
-
-// Brand terms never allowed anywhere in the name (lowercased needle -> label).
-const FORBIDDEN = [
-  ["firefox", "Firefox"],
-  ["mozilla", "Mozilla"],
-  ["mzla", "MZLA"],
-];
 
 export default {
   /**
@@ -39,18 +41,16 @@ export default {
     // ships (a source submission's _locales may be generated or live outside
     // --sca-source), so the name, its anchor line, and the _locales all come from
     // the XPI's own files.
-    const { addon } = ctx;
     const name = ctx.manifest?.name;
     if (typeof name !== "string") {
       ctx.note?.("manifest.json", null, "no add-on name", VERDICT.SKIPPED);
       return { findings: [] };
     }
     // Anchor every note/finding on the manifest's `name` property line.
-    const text = ctx.manifestText;
-    const line = manifestTokenLine(text, "name");
+    const line = manifestTokenLine(ctx.manifestText, "name");
     const loc = line ? { line } : null;
-    const candidates = resolveNames(name, addon);
-    if (!candidates.length) {
+    const { pairs, resolved, unreadable } = localizedNames(ctx);
+    if (!resolved) {
       ctx.note?.(
         "manifest.json",
         loc,
@@ -59,69 +59,51 @@ export default {
       );
       return { findings: [] };
     }
-    for (const candidate of candidates) {
-      const term = trademarkTerm(candidate);
-      if (term) {
-        ctx.note?.("manifest.json", loc, `name uses "${term}"`, VERDICT.FAIL);
-        return {
-          findings: [finding({ file: "manifest.json", loc, item: candidate })],
-        };
+    // Group by the offending name and list every locale that states it. Reporting
+    // one case per locale would collapse to one arbitrary locale, because a finding
+    // dedupes on its item and the locale is only a hint - so a reader would clear
+    // the name having been shown one of the locales carrying it.
+    const byName = new Map();
+    for (const { locale, name: candidate } of pairs) {
+      if (!brandTerm(candidate)) {
+        continue;
       }
+      const locales = byName.get(candidate) ?? [];
+      if (locale) {
+        locales.push(locale);
+      }
+      byName.set(candidate, locales);
     }
-    ctx.note?.("manifest.json", loc, `name "${name}"`, VERDICT.PASS);
-    return { findings: [] };
+    const findings = [];
+    for (const [candidate, locales] of byName) {
+      const term = brandTerm(candidate);
+      const where = locales.length ? ` (${locales.join(", ")})` : "";
+      ctx.note?.(
+        "manifest.json",
+        loc,
+        `name uses "${term}"${where}`,
+        VERDICT.FAIL
+      );
+      findings.push(
+        finding({
+          file: "manifest.json",
+          loc,
+          item: candidate,
+          hint: locales.join(", ") || null,
+        })
+      );
+    }
+    for (const locale of unreadable) {
+      ctx.note?.(
+        "manifest.json",
+        loc,
+        `${locale} messages.json could not be read`,
+        VERDICT.SKIPPED
+      );
+    }
+    if (!findings.length) {
+      ctx.note?.("manifest.json", loc, `name "${name}"`, VERDICT.PASS);
+    }
+    return { findings };
   },
 };
-
-/**
- * Names to check: the literal manifest name, or - for a __MSG_key__ placeholder
- * - the message resolved from every _locales/<locale>/messages.json.
- * @param {string} name
- * @param {Addon} addon
- * @returns {string[]}
- */
-function resolveNames(name, addon) {
-  const msg = /^__MSG_(.+)__$/.exec(name);
-  if (!msg) {
-    return [name];
-  }
-  const key = msg[1];
-  const names = [];
-  for (const [path, buf] of addon.files) {
-    if (!/^_locales\/[^/]+\/messages\.json$/.test(path)) {
-      continue;
-    }
-    let json;
-    try {
-      json = JSON.parse(buf.toString("utf8"));
-    } catch {
-      continue; // a malformed locale file is skipped (not this check's concern)
-    }
-    const value = json?.[key]?.message;
-    if (typeof value === "string") {
-      names.push(value);
-    }
-  }
-  return names;
-}
-
-/**
- * The Mozilla trademark a name misuses, or null. Case-insensitive. "Firefox" /
- * "Mozilla" / "MZLA" are never allowed. "Thunderbird" only as the trailing
- * "<name> for Thunderbird".
- * @param {string} name
- * @returns {string|null}
- */
-function trademarkTerm(name) {
-  const lc = name.toLowerCase();
-  for (const [needle, label] of FORBIDDEN) {
-    if (lc.includes(needle)) {
-      return label;
-    }
-  }
-  const withoutSuffix = lc.replace(/\s+for\s+thunderbird\s*$/, "");
-  if (withoutSuffix.includes("thunderbird")) {
-    return "Thunderbird";
-  }
-  return null;
-}

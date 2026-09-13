@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Thunderbird in a localized add-on name</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Thunderbird in a localized add-on name
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">trademark-thunderbird-locale</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        "Thunderbird" may appear in an add-on's name only in the trailing form
+        "&lt;name&gt; for Thunderbird". This check judges that form for every name
+        the add-on's locale files state, and what it does with each one depends on
+        the language that locale declares.
+      </p>
+      <p>
+        A name from a locale whose tag says English is decided here and becomes a
+        finding, because the policy is written in English. A name from any other
+        locale is handed to a reviewer instead. Outside English the form cannot be
+        recognised from the text alone: the allowed and forbidden readings share
+        one shape, since "Conversations para Thunderbird" is allowed while
+        "Settings de Thunderbird" is not, word order is not fixed because some
+        languages place the brand first, and neither are word boundaries, because
+        some write the connecting particle against the brand and others add a case
+        ending to the brand itself. Answering it needs the meaning of a word, so a
+        reader answers it.
+      </p>
+      <p>
+        Two names are left alone. One already carrying "Firefox", "Mozilla" or
+        "MZLA" belongs to the brand check, which rejects it outright, so weighing
+        its Thunderbird form would be a second question about a name that is
+        refused either way. And a name the check could not read at all - an
+        unparsable locale file, or a placeholder no locale defines - is reported as
+        exactly that, never as a pass, since nothing was examined.
+      </p>
+      <p>
+        Those reviewer items go to the code review list rather than manual review
+        because they are answerable from the package alone: every locale file
+        ships inside it, and each one's directory names its language. A name the
+        manifest states literally carries no such tag, so it belongs to the
+        sibling check instead.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Add-on name in manifest.json"] --> B{"Is the name a localized<br/>__MSG_key__ placeholder?"}
+  B -- no --> S([skip: the unlocalized<br/>sibling check owns it])
+  B -- yes --> R["Resolve the name from every<br/>_locales messages.json"]
+  R --> U{"Could any name<br/>be read at all?"}
+  U -- no --> S2([skip: say which locale<br/>could not be read])
+  U -- yes --> C{"Does a name carry Thunderbird<br/>outside the '... for Thunderbird'<br/>form, and no brand term?"}
+  C -- no --> OK([no finding])
+  C -- yes --> D{"Does any locale stating<br/>that name say English?"}
+  D -- yes --> ERR([ERROR: the name is<br/>not the allowed form])
+  D -- no --> M([Code review: a reader decides<br/>whether this is the allowed<br/>form in that language])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#fff6e5,stroke:#b7791f,color:#7a5711;
+  class ERR err;
+  class OK ok;
+  class S skip;
+  class S2 skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that "Thunderbird" is not allowed in its name except as
+        "&lt;name&gt; for Thunderbird", and that this applies to translations of
+        the name as well as the original.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/trademark-thunderbird-locale.js</code> and its entry
+        in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

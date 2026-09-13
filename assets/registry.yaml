@@ -35,14 +35,59 @@ deterministic-phase:
   response: |-
     This add-on is using privileged Thunderbird internals in a WebExtension context, where they are not available: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage.
 
-# Flags use of a Mozilla/Thunderbird trademark in the add-on name (the icon is a
-# separate manual check).
+# Flags a Mozilla brand term in the add-on name - never allowed, in any form, in
+# any locale. "Thunderbird" is the two checks below instead, because it is allowed
+# in one construction and recognising that needs a language the package may not
+# state. The icon is a separate manual check. All three read one shared name
+# resolution (localizedNames, src/lib/locales.js).
 - title: Trademark violation
   severity: error
   check: trademark-violation
   input: xpi
   response: |-
-    This extension uses a registered trademark of Mozilla in its name or icon and is unallowable under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). For Mozilla trademarks, the usage of “Mozilla” and “Thunderbird” are generally not allowed in the add-on name, except in the following format: “ADD-ON NAME for Thunderbird.”
+    This extension uses a registered trademark of Mozilla in its name and is unallowable under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). The usage of “Mozilla”, “Firefox” and “MZLA” is not allowed in the add-on name. Please choose a name that does not use them.
+
+# The same concern's second question (shared name resolution, see above): whether
+# "Thunderbird" sits in the one allowed construction. A name from a locale whose tag
+# says English is decided here and is a finding. A name from any other locale cannot
+# be judged structurally, so it is escalated - and a reader CAN settle it from the
+# package, because every locale file ships in it and its directory names the
+# language.
+- title: Thunderbird in a localized add-on name
+  severity: error
+  check: trademark-thunderbird-locale
+  escalation: code-review
+  input: xpi
+  instructions: |-
+    The add-on name below carries “Thunderbird” in a form this scan cannot verify.
+    Only “ADD-ON NAME for Thunderbird” is allowed, and outside English the scan
+    cannot tell a word meaning “for” from a word that is part of the name. Read the
+    name in EVERY _locales/<locale>/messages.json, not only the ones listed, and
+    decide for each whether Thunderbird is the object of a word meaning “for” or
+    part of the add-on’s own name. Report only the names that present the add-on as
+    a Thunderbird product.
+  response: |-
+    The add-on name uses the registered trademark “Thunderbird” in a way that is unallowable under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). “Thunderbird” is generally not allowed in the add-on name, except in the format “ADD-ON NAME for Thunderbird”, including in translations of the name.
+
+# The same question for a name the manifest states literally. It carries no locale
+# tag, so nothing in the package says what language it is in, and the language has
+# to be settled before the form can be judged at all. That is not answerable from
+# the submission, which is why this one goes to manual review rather than code
+# review. It never emits a finding.
+- title: Thunderbird in an unlocalized add-on name
+  severity: error
+  check: trademark-thunderbird-name
+  escalation: manual-review
+  input: xpi
+  instructions: |-
+    The add-on name below carries “Thunderbird” in a form this scan cannot verify,
+    and the name is not localized, so nothing in the package states what language
+    it is in. Only “ADD-ON NAME for Thunderbird” is allowed. Decide what language
+    the name is in, then whether Thunderbird reads as the object of a word meaning
+    “for” in that language or as part of the add-on’s own name. Report it only if
+    the name presents the add-on as a Thunderbird product.
+  response: |-
+    The add-on name uses the registered trademark “Thunderbird” in a way that is unallowable under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). “Thunderbird” is generally not allowed in the add-on name, except in the format “ADD-ON NAME for Thunderbird”.
 
 # Flags API namespaces or members absent from the schema, or marked unsupported.
 - title: Unknown or unsupported WebExtension API
