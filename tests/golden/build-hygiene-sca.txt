@@ -177,7 +177,7 @@ Suggested response: The add-on listing page on ATN (addons.thunderbird.net) shou
 
 9) Missing English ATN localization: Verify that the ATN listing page also has
    an English version.
-Suggested verdict: hold
+Suggested verdict: info
 Suggested response: The add-on listing page on ATN (addons.thunderbird.net) should also have an English localization. English serves as the default language in Thunderbird, and most users who do not understand the available non-English version will most likely be able to read English.
 
 10) Forked add-on: Check if the submission is a fork of an existing add-on. Such
