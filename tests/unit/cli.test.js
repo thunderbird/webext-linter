@@ -576,14 +576,20 @@ test("--sca-root / --sca-source map to the sca pipeline opts", () => {
   assert.ok(!pipelineOptsFromArgv([]).scaSource);
 });
 
-// --llm-verify end to end: the same round trip, minus the two parts that need a person.
-// The sweep, the findings and the Extended Code Review are asked for exactly as
+// The two skips end to end: the same round trip, minus the two parts that need a person.
+// The sweep, the findings and the Extended Code Review are asked for exactly as a plain
 // --llm-review asks for them; the add-on description and the manual questions are not, and
 // the manual items are absent from the item file so the prompt and the file agree about
 // what the reader is being asked to settle. They stay in the REPORT, for the reviewer.
-test("--llm-verify withholds the description and the manual items", () => {
+test("the two skips withhold the description and the manual items", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
-  const on = run([addon, ...OFFLINE_FLAGS, "--llm-verify"]);
+  const on = run([
+    addon,
+    ...OFFLINE_FLAGS,
+    "--llm-review",
+    "--llm-skip-summary",
+    "--llm-skip-manual",
+  ]);
   const lines = on.stdout.split("\n");
   const intro = lines.findIndex((l) => l.startsWith("Please verify"));
   const target = lines.findIndex((l) => l.startsWith("Reviewed XPI:"));
@@ -636,58 +642,126 @@ test("--llm-verify withholds the description and the manual items", () => {
   assert.equal(on.code, 0);
 });
 
-// The two flags are one round trip at two depths, so asking for both leaves no one prompt
-// to print. Refused before anything that names a flag, so every later message can name the
-// one that was actually given.
-test("--llm-review and --llm-verify are refused together", () => {
+// Each skip cuts ONE part, and the other is untouched: the pair is not a single decision
+// wearing two names. Asserted at both ends - what the prompt asks for, and what the item
+// file carries - because the two must agree about what the reader is being asked to settle.
+test("each skip leaves out its own part and nothing else", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
-  const both = run([addon, ...OFFLINE_FLAGS, "--llm-review", "--llm-verify"]);
-  assert.equal(both.code, 2);
-  assert.match(both.stderr, /--llm-review and --llm-verify/);
-  assert.match(both.stderr, /Pick one/);
+  const itemsOf = (r) => {
+    const named = r.stdout
+      .split("\n")
+      .find((l) => l.startsWith("Review items: "));
+    assert.ok(named, "the item file is named");
+    return JSON.parse(
+      fs.readFileSync(named.slice("Review items: ".length), "utf8")
+    );
+  };
+  const manualSections = ["Extended Manual Review", "Standard Manual Review"];
+
+  // The description goes, the questions stay: the file still offers answers.
+  const noSummary = run([
+    addon,
+    ...OFFLINE_FLAGS,
+    "--llm-review",
+    "--llm-skip-summary",
+  ]);
+  assert.equal(noSummary.code, 0, noSummary.stderr);
+  assert.ok(!noSummary.stdout.includes("Add-on description"));
+  assert.ok(noSummary.stdout.includes('"answers"'), "questions still asked");
+  assert.ok(
+    itemsOf(noSummary).some((x) => manualSections.includes(x.section)),
+    "the manual items are still in the file"
+  );
+
+  // The questions go, the description stays: the file carries no manual entry.
+  const noManual = run([
+    addon,
+    ...OFFLINE_FLAGS,
+    "--llm-review",
+    "--llm-skip-manual",
+  ]);
+  assert.equal(noManual.code, 0, noManual.stderr);
+  assert.match(noManual.stdout, /Add-on description: .*\.md/);
+  assert.ok(!noManual.stdout.includes('"answers"'), "no questions asked");
+  assert.ok(
+    !itemsOf(noManual).some((x) => manualSections.includes(x.section)),
+    "no manual entry in the file"
+  );
 });
 
-// Every guard --llm-review carries applies to --llm-verify too, and each message names the
-// flag that was actually used rather than the one the guard was written for.
-test("--llm-verify carries the same guards, named for itself", () => {
+// Each skip names part of the --llm-review prompt, so neither says anything without it:
+// a run that prints its report has no prompt to cut down. Refused before every other
+// guard, and the wording names the flags that were actually given.
+test("a skip without --llm-review is refused", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const one = run([addon, ...OFFLINE_FLAGS, "--llm-skip-manual"]);
+  assert.equal(one.code, 2);
+  assert.match(one.stderr, /--llm-skip-manual names part/);
+  assert.match(one.stderr, /it needs --llm-review, or --llm-sca-review/);
+
+  const both = run([
+    addon,
+    ...OFFLINE_FLAGS,
+    "--llm-skip-summary",
+    "--llm-skip-manual",
+  ]);
+  assert.equal(both.code, 2);
+  assert.match(
+    both.stderr,
+    /--llm-skip-summary and --llm-skip-manual name parts/
+  );
+  assert.match(both.stderr, /they need --llm-review, or --llm-sca-review/);
+});
+
+// --llm-review carries its own guards, and a skip changes none of them: the prompt is
+// still text only, and it is still the asking half of a round trip --llm-verdict closes.
+test("a skipped review carries the same guards", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const json = run([
     addon,
     ...OFFLINE_FLAGS,
-    "--llm-verify",
+    "--llm-review",
+    "--llm-skip-manual",
     "--report-format",
     "json",
   ]);
   assert.equal(json.code, 2);
-  assert.match(json.stderr, /--llm-verify is text only/);
+  assert.match(json.stderr, /--llm-review is text only/);
 
   const verdict = run([
     addon,
     ...OFFLINE_FLAGS,
-    "--llm-verify",
+    "--llm-review",
+    "--llm-skip-summary",
     "--llm-verdict",
     "answers.json",
   ]);
   assert.equal(verdict.code, 2);
-  assert.match(verdict.stderr, /--llm-verify and --llm-verdict/);
+  assert.match(verdict.stderr, /--llm-review and --llm-verdict/);
 });
 
-// A review flag switches on the verification prompt and nothing else: the review stays
-// deterministic, so the flag must reach the pipeline as a print decision and leave every
-// other opt alone. It arrives as the MODE, not a boolean, so the two pipeline sites that
-// read it as a truthiness test keep working while format.js and items.js can tell the two
-// prompts apart.
+// --llm-review switches on the verification prompt and the skips cut it down: the review
+// stays deterministic, so all three must reach the pipeline as print decisions and leave
+// every other opt alone. The skips arrive as the registry's own words, which is what
+// format.js and items.js match them against.
 test("a review flag carries only the prompt decision into the run", () => {
   const bare = pipelineOptsFromArgv([]);
-  assert.equal(bare.llmReview, undefined);
+  assert.equal(bare.llmReview, false);
+  assert.deepEqual(bare.llmSkip, []);
 
   const full = pipelineOptsFromArgv(["--llm-review"]);
-  assert.equal(full.llmReview, "full");
-  assert.deepEqual({ ...full, llmReview: undefined }, bare);
+  assert.equal(full.llmReview, true);
+  assert.deepEqual(full.llmSkip, []);
+  assert.deepEqual({ ...full, llmReview: false }, bare);
 
-  const verify = pipelineOptsFromArgv(["--llm-verify"]);
-  assert.equal(verify.llmReview, "verify");
-  assert.deepEqual({ ...verify, llmReview: undefined }, bare);
+  const cut = pipelineOptsFromArgv([
+    "--llm-review",
+    "--llm-skip-manual",
+    "--llm-skip-summary",
+  ]);
+  // Authored order, never the order the flags were given: the registry names the steps.
+  assert.deepEqual(cut.llmSkip, ["summary", "manual"]);
+  assert.deepEqual({ ...cut, llmReview: false, llmSkip: [] }, bare);
 });
 
 // The retired flags parse as unknown options (exit 2), so a stale command line fails
@@ -868,6 +942,43 @@ test("--llm-sca-review prints the flags the review is run with", () => {
   assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
   assert.match(plain.stdout, /\n4\. That review prints a prompt of its own/);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A skip names part of the prompt the PREPARED review will print, so it belongs to the
+// command handed back rather than to this run - which prints no such prompt of its own.
+test("--llm-sca-review hands a skip to the review it prepares", () => {
+  const dir = submissionFolder();
+  const r = run(["--llm-sca-review", dir, "--llm-skip-manual"]);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /\n {3}--llm-skip-manual\n/);
+  // The prompt itself is unchanged: the skip belongs to the run the command starts, not to
+  // this one, which asks nobody anything either way.
+  const prompt = (out) => out.split("── SCA Review Prompt ──")[1];
+  assert.equal(
+    prompt(r.stdout).replace(/ {3}--llm-skip-manual\n/, ""),
+    prompt(run(["--llm-sca-review", dir]).stdout)
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// These lines are a command their reader types, and a submission folder is as likely to
+// hold a space as not. Quoted where it matters and nowhere else: an unquoted path with a
+// space in it is the second add-on argument a review refuses.
+test("--llm-sca-review quotes an argument that carries whitespace", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl sub mission-"));
+  fs.writeFileSync(path.join(dir, "addon.xpi"), "");
+  fs.writeFileSync(path.join(dir, "src.tar.gz"), "");
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "wl-out-"));
+  const report = path.join(out, "my report.txt");
+
+  const r = run(["--llm-sca-review", dir, "--report-out", report]);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, new RegExp(`--llm-review '${dir}/addon\\.xpi'`));
+  assert.match(r.stdout, new RegExp(`--report-out '${report}'`));
+  // The values above the flags are read by eye, not typed, so they carry no quotes.
+  assert.match(r.stdout, new RegExp(`\n  FOLDER\n    ${dir}\n`));
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(out, { recursive: true, force: true });
 });
 
 // Each way the flag cannot be used, refused before it prints anything - it prepares a

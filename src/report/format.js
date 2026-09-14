@@ -197,19 +197,19 @@ function reviewBodyLines(review) {
  * the verdicts come back - close the prompt whenever any ask was made, and are absent when
  * none was: with nothing to settle there is nothing to hand back.
  *
- * `mode` is the review flag that was used. "verify" (--llm-verify) withholds the two parts
- * that need a person: the asks for the manual sections, and the `verify: false` steps (the
- * add-on description, and putting the manual entries to the reviewer). The surviving steps
- * are renumbered, which is why no step authors its own number. src/report/items.js withholds
- * the same two sections from the item file, so the prompt and the file agree about what the
- * reader is being asked to settle.
+ * `skip` is what the run was told to leave out: "summary" (--llm-skip-summary) withholds
+ * the add-on description steps, "manual" (--llm-skip-manual) the steps that put the manual
+ * entries to a reviewer AND the asks for those sections. The surviving steps are
+ * renumbered, which is why no step authors its own number. src/report/items.js withholds
+ * the same two sections from the item file under the same skip, so the prompt and the file
+ * agree about what the reader is being asked to settle.
  * @param {{intro: string, issues: string, preSweep: string, codeReview: string,
  *   extendedManualReview: string, standardManualReview: string, outcomeIntro: string,
- *   outcome: {verify: boolean, text: string}[]}} prompt
+ *   outcome: {skip: ?string, text: string}[]}} prompt
  * @param {import("./finding.js").Finding[]} findings
  * @param {import("./finding.js").ManualItem[]} manual
  * @param {?{items: object[]}} [preSweep]
- * @param {"full"|"verify"} [mode]
+ * @param {string[]} [skip]  The parts this run leaves out (PROMPT_SKIPS, src/config.js).
  * @returns {string[]}
  */
 export function llmPromptLines(
@@ -217,9 +217,12 @@ export function llmPromptLines(
   findings,
   manual,
   preSweep = null,
-  mode = "full"
+  skip = []
 ) {
-  const verifyOnly = mode === "verify";
+  // What this run was told to leave out. The manual sections go together: a run that does
+  // not put them to a reviewer must not be asked to work them either, or the reader hunts
+  // for entries the item file does not carry.
+  const skipped = new Set(skip);
   const asks = [];
   if (findings.length) {
     asks.push(prompt.issues);
@@ -233,10 +236,10 @@ export function llmPromptLines(
   if (sections.has("code")) {
     asks.push(prompt.codeReview);
   }
-  if (!verifyOnly && sections.has("extendedManual")) {
+  if (!skipped.has("manual") && sections.has("extendedManual")) {
     asks.push(prompt.extendedManualReview);
   }
-  if (!verifyOnly && sections.has("standard")) {
+  if (!skipped.has("manual") && sections.has("standard")) {
     asks.push(prompt.standardManualReview);
   }
   const lines = [...section("LLM Prompt"), "", ...wrapText(prompt.intro), ""];
@@ -245,9 +248,9 @@ export function llmPromptLines(
   }
   if (asks.length) {
     lines.push("", ...wrapText(prompt.outcomeIntro));
-    const steps = prompt.outcome.filter((step) => !verifyOnly || step.verify);
+    const steps = prompt.outcome.filter((step) => !skipped.has(step.skip));
     steps.forEach((step, i) => {
-      // Numbered HERE, over what survived the mode filter, so the steps a run prints read
+      // Numbered HERE, over what survived the skips, so the steps a run prints read
       // 1..N with no gaps. Not collapsed like the asks above: a step can carry a literal
       // example, so its authored line breaks are the layout and wrapText keeps them - which
       // is why each step is ONE wrapText call rather than one per paragraph.

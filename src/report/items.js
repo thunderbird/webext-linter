@@ -15,12 +15,12 @@
 // naming one of them would be refused as out of range. The two documents still number
 // identically, because the numbering counts every item on both sides.
 //
-// --llm-verify is the one case where "asked to settle" is narrower than "listed": its
-// prompt does not put the two MANUAL sections to a reviewer, so the file does not carry
-// them either - the rest passing unexamined is the point there, and they stay in the
+// --llm-skip-manual is the one case where "asked to settle" is narrower than "listed":
+// its prompt does not put the two MANUAL sections to a reviewer, so the file does not
+// carry them either - the rest passing unexamined is the point there, and they stay in the
 // report for the reviewer to work through later. It TRUNCATES the numbering and never
 // renumbers: those are the last sections orderReview numbers, so what survives is still
-// 1..M at positions 0..M-1, and an index means the same item in a verify file, a full
+// 1..M at positions 0..M-1, and an index means the same item in a skipped file, a whole
 // file and the report alike.
 //
 // An item of the two MANUAL sections carries the question it is put to the reviewer as:
@@ -84,8 +84,8 @@ import { SECTION_TITLES, manualQuestion } from "./format.js";
  * @param {?{intro: string, items: object[]}} [args.preSweep]  The blind-spot sweep,
  *   appended as the unnumbered tail: one entry carrying the shared method and the bare
  *   items.
- * @param {"full"|"verify"} [args.mode]  The review flag used. "verify" (--llm-verify)
- *   omits the two manual sections, which its prompt does not ask about either.
+ * @param {boolean} [args.skipManual]  --llm-skip-manual: omit the two manual sections,
+ *   which the prompt does not ask about either under that flag.
  * @param {(x: object) => string} [args.labelOf]  Artifact label ([XPI]/[SCA]) for a
  *   question's locus, from src/report/format.js locusLabeler - in an SCA review
  *   "package.json" alone names a file in either artifact, and the question has to say
@@ -97,7 +97,7 @@ export function reviewItems({
   manual,
   choices,
   preSweep = null,
-  mode = "full",
+  skipManual = false,
   labelOf,
 }) {
   const entryNumbers = new Map();
@@ -107,15 +107,14 @@ export function reviewItems({
   // every index here would name a different item than the report does. Dropping them
   // afterwards leaves each survivor the index the report printed.
   const ordered = orderReview(findings, manual);
-  const listed =
-    mode === "verify"
-      ? ordered.filter(
-          (x) => x.kind !== "todo" || !MANUAL_SECTIONS.includes(x.section)
-        )
-      : ordered;
+  const listed = skipManual
+    ? ordered.filter(
+        (x) => x.kind !== "todo" || !MANUAL_SECTIONS.includes(x.section)
+      )
+    : ordered;
   // The reviewer's questions, in the order they are asked: the two manual sections, which
   // are the last of the review and so are already contiguous. Their count is the total a
-  // label states, taken from the LISTED items - a --llm-verify file holds none of them,
+  // label states, taken from the LISTED items - a --llm-skip-manual file holds none,
   // and a total counting items that file never carried would be a progress bar for a
   // review nobody is being shown.
   const questions = listed.filter(

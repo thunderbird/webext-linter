@@ -316,13 +316,13 @@ test("an item the page withheld is in the file and can be settled", () => {
   assert.equal(manual.length, 29, "the withheld item settled like any other");
 });
 
-// --llm-verify asks only for what reading the ADD-ON can settle, so its item file omits the
-// two sections a person answers - the prompt does not mention them either, and they stay in
-// the report for the reviewer. It TRUNCATES the numbering and never renumbers: those are the
-// last sections orderReview numbers, so an index means the same item in a verify file, a
-// full file and the report alike. Renumbering here would silently re-aim every verdict at
+// --llm-skip-manual asks only for what reading the ADD-ON can settle, so its item file omits
+// the two sections a person answers - the prompt does not mention them either, and they stay
+// in the report for the reviewer. It TRUNCATES the numbering and never renumbers: those are
+// the last sections orderReview numbers, so an index means the same item in a cut-down file,
+// a full file and the report alike. Renumbering here would silently re-aim every verdict at
 // its neighbour, which is why the filter runs AFTER orderReview and not on its input.
-test("a verify item file omits the manual sections without renumbering", () => {
+test("--llm-skip-manual omits the manual sections without renumbering", () => {
   const findings = [mkFinding("unused-files", "error", "DEAD", "junk.txt", 1)];
   const code = mkItem("unused-permission", "Perms", "manifest.json", 3, "tabs");
   const extendedManual = {
@@ -352,9 +352,9 @@ test("a verify item file omits the manual sections without renumbering", () => {
     ]
   );
 
-  const verify = reviewItems({ findings, manual, choices, mode: "verify" });
+  const cut = reviewItems({ findings, manual, choices, skipManual: true });
   assert.deepEqual(
-    verify.map((x) => [x.index, x.section]),
+    cut.map((x) => [x.index, x.section]),
     [
       [1, "Found Issues"],
       [2, "Extended Code Review"],
@@ -363,13 +363,13 @@ test("a verify item file omits the manual sections without renumbering", () => {
   );
   // The surviving entries are byte-for-byte what the full file holds for them: dropping
   // the tail changed nothing about the items ahead of it.
-  assert.deepEqual(verify, full.slice(0, 2));
+  assert.deepEqual(cut, full.slice(0, 2));
 });
 
-// The pre-sweep block is appended AFTER the mode filter, so it is still the tail of a
-// verify file and still unnumbered - the property that keeps positions 0..M-1 aligned with
-// indices 1..M once the manual sections are gone.
-test("the pre-sweep tail is still the tail in a verify file", () => {
+// The pre-sweep block is appended AFTER the skip filter, so it is still the tail of a
+// cut-down file and still unnumbered - the property that keeps positions 0..M-1 aligned
+// with indices 1..M once the manual sections are gone.
+test("the pre-sweep tail is still the tail in a cut-down file", () => {
   const manual = [
     mkItem("unused-permission", "Perms", "manifest.json", 3, "tabs"),
     {
@@ -386,7 +386,7 @@ test("the pre-sweep tail is still the tail in a verify file", () => {
     manual,
     choices,
     preSweep,
-    mode: "verify",
+    skipManual: true,
   });
   const numbered = items.filter((x) => x.index !== undefined);
   assert.deepEqual(
@@ -397,10 +397,10 @@ test("the pre-sweep tail is still the tail in a verify file", () => {
   assert.equal(items.length, numbered.length + 1);
 });
 
-// The round trip closes from a verify file: an index copied out of it resolves against the
-// FULL ordered review, and the manual items it never listed are left standing for the
+// The round trip closes from a cut-down file: an index copied out of it resolves against
+// the FULL ordered review, and the manual items it never listed are left standing for the
 // reviewer rather than being treated as settled.
-test("a verdict written from a verify item file applies", () => {
+test("a verdict written from a cut-down item file applies", () => {
   const findings = [mkFinding("unused-files", "error", "DEAD", "junk.txt", 1)];
   const code = mkItem("unused-permission", "Perms", "manifest.json", 3, "tabs");
   const standard = {
@@ -411,7 +411,7 @@ test("a verdict written from a verify item file applies", () => {
     loc: null,
   };
   const manual = [code, standard];
-  const items = reviewItems({ findings, manual, choices, mode: "verify" });
+  const items = reviewItems({ findings, manual, choices, skipManual: true });
   assert.equal(items.length, 2, "the standard item is not in the file");
 
   applyVerdicts({
@@ -692,15 +692,20 @@ test("two cases of one check are two questions, told apart by their locus", () =
   );
 });
 
-// --llm-verify puts nothing to a reviewer, so its file holds no question - and no total
-// counting questions that file never carried.
-test("a verify item file asks nothing and so labels nothing", () => {
+// --llm-skip-manual puts nothing to a reviewer, so its file holds no question - and no
+// total counting questions that file never carried.
+test("a cut-down item file asks nothing and so labels nothing", () => {
   const manual = [
     mkItem("unused-permission", "Perms", "manifest.json", 3, "compose"),
     mkManual("privacy-policy", "Policy", "api.example.com"),
     mkStandard("test-add-on", "Test it"),
   ];
-  const items = reviewItems({ findings: [], manual, choices, mode: "verify" });
+  const items = reviewItems({
+    findings: [],
+    manual,
+    choices,
+    skipManual: true,
+  });
   assert.deepEqual(
     items.map((x) => x.section),
     ["Extended Code Review"]

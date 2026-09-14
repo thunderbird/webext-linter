@@ -468,32 +468,38 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   'ContextFilter'`). What survives is upstream and has nothing to do with types: promoting
   those 31 prose gates to a machine-readable `permissions` field, which `TODO.md` carries.
 
-- **`--llm-verify` is a separate flag, not a mode value on `--llm-review`.** Neither review
-  flag takes a value - the item file is the linter's to name - so a mode word could only
-  arrive as a POSITIONAL, and that slot belongs to the add-on: `--llm-review verify` is a
-  review of an add-on called `verify`, and giving both would make their ORDER decide which
-  is which. Two flag names cost a line of help each and remove the question. Internally it
-  is still ONE decision, `opts.llmReview: "full" | "verify" | undefined`, so the two
-  pipeline sites that read it as a truthiness test need no change and there is no
-  representable-but-illegal state; the two flag names are joined in exactly one place
-  (`reviewMode` in `src/cli.js`), because `main()`'s guards and `pipelineOptsFromArgv` run
-  on different paths and must not drift about which flag was given.
+- **What a review leaves out is a SKIP, not a second review flag.** `--llm-verify` was one
+  flag meaning "withhold both the parts that need a person"; it is now `--llm-skip-summary`
+  and `--llm-skip-manual`, each naming one part, and both requiring `--llm-review`. A
+  reviewer who wants the description but not the questions, or the questions but not the
+  description, can say so - and giving both is what the old flag was. The prompt's steps
+  declare which skip withholds them (`skip: summary` / `skip: manual`), so the flags, the
+  yaml and the renderer agree through one list (`PROMPT_SKIPS`, `src/config.js`)
+  rather than through a mode word.
+
+  A mode VALUE on `--llm-review` is still refused, for the reason the old entry gave: that
+  flag takes no value - the item file is the linter's to name - so a mode word could only
+  arrive as a POSITIONAL, and that slot belongs to the add-on.
 
   Two shape decisions go with it. The prompt's `outcome` is an ARRAY of steps, each
-  declaring `verify: true|false`, rather than two authored variants of one scalar: the
-  variants would duplicate ~60 lines of the highest-value prose in the repo and drift. The
-  builder numbers the survivors, so no step may number itself, and a step cannot be
-  verify-ONLY - every step appears in an `--llm-review` run. Anything mode-specific is
-  therefore either worded neutrally (the last step names no flag, only "the review flag you
-  ran") or lives in a `verify: false` step; that is why the "do not describe the add-on
-  yourself" and "their answers need no report" clauses sit in the two dropped steps rather
-  than in the surviving ones they used to qualify.
+  optionally marked with the skip that withholds it, rather than authored variants of one
+  scalar: the variants would duplicate ~60 lines of the highest-value prose in the repo and
+  drift. A step with no marker is printed by every run, the builder numbers the survivors,
+  so no step may number itself, and anything one skip drops is either worded neutrally or
+  lives in a step that skip withholds - that is why the "do not describe the add-on
+  yourself" and "their answers need no report" clauses sit in the dropped steps rather than
+  in the surviving ones they used to qualify.
 
-  And `--llm-verify` omits the manual sections from the ITEM FILE as well as from the
-  prompt, rather than listing items it never asks about. That is safe because they are the
-  last sections `orderReview` numbers, so the file truncates rather than developing a hole:
-  an index means the same item in a verify file, a full file and the report alike, and
+  And a skip omits what it withholds from the ITEM FILE as well as from the prompt, rather
+  than listing items it never asks about. That is safe because the manual sections are the
+  last ones `orderReview` numbers, so the file truncates rather than developing a hole: an
+  index means the same item in a cut-down file, a full file and the report alike, and
   `applyVerdicts` resolves it against the full ordered review either way.
+
+  Both skips may also be given to `--llm-sca-review`, which prepares a review rather than
+  printing a prompt of its own: it hands them back in the command it prints. `--llm-verdict`
+  takes neither - it prints a settled report, not a prompt - so the round trip's last step
+  says to drop them along with the review flag.
 
 - **A reviewer's note is not carried past the per-entry display cap, and that is fine.** An
   entry prints at most `MAX_ENTRIES_PER_CATEGORY` locations, so the note on a 26th case of

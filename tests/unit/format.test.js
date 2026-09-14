@@ -15,6 +15,7 @@ import {
 import { orderReview, hasLocus } from "../../src/report/order.js";
 import { renderManualItems } from "../../src/report/responses.js";
 import { loadRegistry } from "../../src/checks/registry.js";
+import { PROMPT_SKIPS } from "../../src/config.js";
 import { resolveHolds, hasErrors } from "../../src/report/finding.js";
 
 function review() {
@@ -1118,9 +1119,9 @@ test("the prompt asks only for the sections the report actually has", () => {
     standardManualReview: "STD.",
     outcomeIntro: "HOW.",
     outcome: [
-      { verify: true, text: "A." },
-      { verify: false, text: "B." },
-      { verify: true, text: "C." },
+      { skip: null, text: "A." },
+      { skip: "manual", text: "B." },
+      { skip: null, text: "C." },
     ],
   };
   const finding = { ruleId: "r", severity: "error", message: "m" };
@@ -1264,45 +1265,53 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   assert.throws(() => blankStep.llmScaReviewPrompt(), /step 2 authors no text/);
 });
 
-// Every step must DECLARE whether it survives --llm-verify, the way every check entry must
-// declare its severity: a step added without one would silently join (or silently leave)
-// the verify prompt, and nothing downstream validates this wording. The steps must not
-// number themselves either - the prompt numbers what survives, so a literal number would
-// render twice.
-test("every outcome step declares its verify flag and authors text", () => {
+// Every step must declare a `skip` a flag can actually give, the way every check entry
+// must declare its severity: a typo in the marker would silently leave the step in every
+// prompt, and nothing downstream validates this wording. The steps must not number
+// themselves either - the prompt numbers what survives, so a literal number would render
+// twice.
+test("every outcome step authors text and a skip a flag can give", () => {
   const prompt = loadRegistry().llmReviewPrompt();
   assert.ok(Array.isArray(prompt.outcome) && prompt.outcome.length > 0);
   for (const [i, step] of prompt.outcome.entries()) {
-    assert.equal(typeof step.verify, "boolean", `step ${i + 1} verify`);
+    assert.ok(
+      step.skip === null || PROMPT_SKIPS.includes(step.skip),
+      `step ${i + 1} skip`
+    );
     assert.equal(typeof step.text, "string", `step ${i + 1} text`);
     assert.ok(step.text.length > 0, `step ${i + 1} text`);
     assert.doesNotMatch(step.text, /^\d+[.)]\s/, `step ${i + 1} self-numbers`);
   }
-  assert.ok(
-    prompt.outcome.some((step) => step.verify),
-    "--llm-verify would print no steps"
-  );
+  for (const skip of PROMPT_SKIPS) {
+    assert.ok(
+      prompt.outcome.some((step) => step.skip === skip),
+      `--llm-skip-${skip} would withhold nothing`
+    );
+  }
 });
 
-// The two clause MOVES that let a plain boolean carry the whole feature: the instructions
-// about the description agent and about the reviewer's answers live in the steps that
-// --llm-verify drops, never in one it keeps. Left behind, a verify prompt would command
-// work it never asked for - which no other test would catch.
-test("no surviving step refers to work --llm-verify does not ask for", () => {
-  const kept = loadRegistry()
-    .llmReviewPrompt()
-    .outcome.filter((step) => step.verify);
-  for (const step of kept) {
-    for (const stray of [
-      "summary.md",
-      "describe the add-on",
-      "Their answers",
+// The clause MOVES that let a one-word marker carry the whole feature: the instructions
+// about the description agent and about the reviewer's answers live in the steps their own
+// skip drops, never in one it keeps. Left behind, a cut-down prompt would command work it
+// never asked for - which no other test would catch.
+test("no step a skip keeps refers to the work that skip drops", () => {
+  const dropped = {
+    summary: ["describe the add-on", "description agent", "Add-on description"],
+    manual: [
       "to the reviewer in index order",
-    ]) {
-      assert.ok(
-        !step.text.includes(stray),
-        `a verify step still mentions "${stray}"`
-      );
+      "the words they typed",
+      "the label they picked",
+    ],
+  };
+  const steps = loadRegistry().llmReviewPrompt().outcome;
+  for (const skip of PROMPT_SKIPS) {
+    for (const step of steps.filter((step) => step.skip !== skip)) {
+      for (const stray of dropped[skip]) {
+        assert.ok(
+          !step.text.includes(stray),
+          `a --llm-skip-${skip} step still mentions "${stray}"`
+        );
+      }
     }
   }
 });
@@ -1316,30 +1325,27 @@ test("a malformed outcome step is refused", () => {
   bad((p) => delete p.outcome, /authors no `outcome` steps/);
   bad((p) => (p.outcome = []), /authors no `outcome` steps/);
   bad(
-    (p) => (p.outcome = [{ verify: true, text: "a" }, "nope"]),
+    (p) => (p.outcome = [{ text: "a" }, "nope"]),
     /step 2 is not a step mapping/
   );
-  bad((p) => delete p.outcome[0].verify, /step 1 has no `verify` true\/false/);
-  bad(
-    (p) => (p.outcome[0].verify = "yes"),
-    /step 1 has no `verify` true\/false/
-  );
+  bad((p) => (p.outcome[0].skip = "nonsense"), /step 1 has `skip: nonsense`/);
+  bad((p) => (p.outcome[0].skip = true), /step 1 has `skip: true`/);
   bad((p) => (p.outcome[1].text = ""), /step 2 authors no `text`/);
   bad(
     (p) => (p.outcome[0].text = "1. Run the sweep."),
     /step 1 numbers itself/
   );
   bad(
-    (p) => p.outcome.forEach((s) => (s.verify = false)),
-    /authors no `verify: true` step/
+    (p) => p.outcome.forEach((s) => delete s.skip),
+    /has no `skip: summary` step/
   );
   bad((p) => delete p["outcome-intro"], /authors no `outcome-intro`/);
 });
 
-// --llm-verify asks only for what reading the ADD-ON can settle: the two manual asks are
-// withheld, and so are the steps that need a person. What is left is renumbered, which is
-// the whole reason no step authors its own number.
-test("the verify prompt drops the manual asks and renumbers the steps", () => {
+// --llm-skip-manual asks only for what reading the ADD-ON can settle: the two manual asks
+// are withheld, and so are the steps that need a person. What is left is renumbered, which
+// is the whole reason no step authors its own number.
+test("--llm-skip-manual drops the manual asks and renumbers the steps", () => {
   const prompt = {
     intro: "INTRO.",
     issues: "ISSUES.",
@@ -1349,9 +1355,9 @@ test("the verify prompt drops the manual asks and renumbers the steps", () => {
     standardManualReview: "STD.",
     outcomeIntro: "HOW.",
     outcome: [
-      { verify: true, text: "A." },
-      { verify: false, text: "B." },
-      { verify: true, text: "C." },
+      { skip: null, text: "A." },
+      { skip: "manual", text: "B." },
+      { skip: null, text: "C." },
     ],
   };
   const finding = { ruleId: "r", severity: "error", message: "m" };
@@ -1368,7 +1374,7 @@ test("the verify prompt drops the manual asks and renumbers the steps", () => {
       [finding],
       [codeItem, manualItem, standardItem],
       null,
-      "verify"
+      ["manual"]
     ),
     [...head, "- ISSUES.", "- CODE.", "", "HOW.", "", "1. A.", "", "2. C."]
   );
@@ -1391,10 +1397,10 @@ test("the verify prompt drops the manual asks and renumbers the steps", () => {
       "3. C.",
     ]
   );
-  // A verify run whose only ask is the sweep still closes with the steps: the work it
+  // A cut-down run whose only ask is the sweep still closes with the steps: the work it
   // asks for is the sweep's, and the hand-back instruction is in a surviving step.
   assert.deepEqual(
-    llmPromptLines(prompt, [], [standardItem], { items: [{}] }, "verify"),
+    llmPromptLines(prompt, [], [standardItem], { items: [{}] }, ["manual"]),
     [...head, "- SWEEP.", "", "HOW.", "", "1. A.", "", "2. C."]
   );
 });
@@ -1407,9 +1413,7 @@ test("a step's authored line breaks survive the per-step wrap", () => {
     intro: "Go.",
     issues: "i",
     outcomeIntro: "HOW.",
-    outcome: [
-      { verify: true, text: 'lead in\n\n{"a": 1,\n"b": 2}\n\ntail out' },
-    ],
+    outcome: [{ text: 'lead in\n\n{"a": 1,\n"b": 2}\n\ntail out' }],
   };
   const lines = llmPromptLines(prompt, [{ ruleId: "r" }], []);
   // Each SOURCE line is wrapped on its own and only the first carries the marker, so the
@@ -1433,7 +1437,7 @@ test("a prompt bullet is re-wrapped and hanging-indented", () => {
     issues: "one two\nthree " + "w".repeat(70) + " tail",
     codeReview: "c",
     outcomeIntro: "HOW.",
-    outcome: [{ verify: true, text: "o" }],
+    outcome: [{ text: "o" }],
   };
   const lines = llmPromptLines(prompt, [{ ruleId: "r" }], []).slice(3);
   assert.deepEqual(lines[0], "Go.");

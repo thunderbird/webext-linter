@@ -100,6 +100,16 @@ export const MAX_ENTRIES_PER_CATEGORY = 25;
 export const MAX_NOTE = 2000;
 
 /**
+ * What a --llm-review run can be told to leave out, as the prompt's steps declare it and
+ * the flags spell it: --llm-skip-summary and --llm-skip-manual.
+ *
+ * Read from every layer of that round trip, which is why it lives here: src/cli.js offers
+ * the flags, src/checks/registry.js refuses a step marked with anything else, and
+ * src/report/format.js drops the steps and asks a skip names.
+ */
+export const PROMPT_SKIPS = ["summary", "manual"];
+
+/**
  * Whether the reference graph (reachability) skips "non-authored" JS - library,
  * minified, obfuscated, or VENDOR.md-declared files (see nonAuthoredJs in
  * src/lib/bundled.js) - when extracting outgoing edges.

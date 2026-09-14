@@ -1512,40 +1512,37 @@ llm-review-prompt:
     check cannot detect for itself. What a sweep finds is a finding OF THE NAMED CHECK.
   outcome-intro: |-
     Work in this order:
-  # The steps of that order, as a list rather than one block, because --llm-verify prints a
-  # SUBSET of them: `verify: false` marks a step that needs a person, which that flag
-  # withholds. The prompt numbers what survives, so no step may number itself - a literal
-  # "1." in the text would render as "1. 1. ...". Every step appears in a --llm-review run,
-  # so a step cannot be verify-ONLY: anything mode-specific must be worded neutrally (step
-  # 10 names no flag) or live in a `verify: false` step (the two agent clauses below).
+  # The steps of that order, as a list rather than one block, because a run can print a
+  # SUBSET of them: `skip: summary` marks a step the --llm-skip-summary flag withholds, and
+  # `skip: manual` one that --llm-skip-manual does. A step with neither is printed by every
+  # run. The prompt numbers what survives, so no step may number itself - a literal "1." in
+  # the text would render as "1. 1. ...". A step cannot be skip-ONLY either: anything a
+  # skipped run must not be told has to live in a skipped step, and the rest is worded so
+  # it reads the same whether the other steps are there or not (the last step names no
+  # flag).
   outcome:
-    - verify: true
-      text: |-
+    - text: |-
         Run the sweep first. Spawn ONE independent sub-agent - a single agent, and never the one that goes on to verify this review, so that no finding is checked by whoever produced it. Give it ONE request: the "Standard Code Review" entry's "intro", then its whole "items" list. It returns plain "check - file:line - hint" lines, and no verdict, no response text and no prose beyond that hint. The linter spawns nothing; you do.
-    - verify: false
+    - skip: summary
       text: |-
         Spawn a SECOND independent sub-agent to describe the add-on for the reviewer, so they can read it while you work. Spawn it NOW, beside the sweep and before you wait for either, so the two run at once. Have it write the description to the path printed under "Review Details" as "Add-on description", and to nothing else: not to the chat, not to a file of its own choosing. Anything quoted from the add-on - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup.
 
         That file is the reviewer's, and yours only to name. Do not open it, do not read it, do not summarise it, and never print what is in it. Do not describe the add-on yourself either: that is this agent's job, and a pass the review would pay for twice.
-    - verify: true
-      text: |-
+    - text: |-
         Wait for the sweep to come back, and while you wait do NOTHING ELSE - do not open the add-on, and do not start verifying. The one thing worth doing is locating the linter's schema cache, which you need later and which says nothing about this submission.
-    - verify: true
-      text: |-
+    - text: |-
         Verify every finding in ONE pass - the ones the linter made and the ones the sweep returned, together. A linter finding that is not correct is "withdrawn"; a swept candidate that does not hold is simply never written down, and each that does becomes an entry in this file's "additions", carrying the "check" it was found for. Judge them against each other, not one at a time: the items a sweep answers are independent questions, so ONE location can hold under two of them and is then two findings - never drop one because another already names that line. But a candidate naming a transmission a finding already reports is one transmission reported twice, and only one belongs in the review. An addition carries only what a sweep returned: if verifying turns up something no agent reported, it is not yours to file - a finding checked by whoever produced it has not been checked. Never put any of this to the reviewer.
-    - verify: true
-      text: |-
+    - text: |-
         Settle each "Extended Code Review" entry yourself, following that entry's "instructions". A case that holds against the add-on is "reported", one that does not is "cleared".
-    - verify: false
+    - skip: summary
       text: |-
         Wait for the description agent, then give the reviewer ONE line before you put anything to them: a link to that file, written as a Markdown link so their client can open it, and nothing else. No summary of it, no excerpt, no description of your own - they read it themselves, while you work.
-    - verify: false
+    - skip: manual
       text: |-
         Put every manual review item ("Extended Manual Review" and/or "Standard Manual Review") to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each item's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that item's "answers", in the order they are listed, each with the label and description written there and no wording of your own - a reviewer working through a batch answers by position, and by answers that read the same every time.
 
         Record what the reviewer answered against that item's "index", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit. Their answers need no report of your own.
-    - verify: true
-      text: |-
+    - text: |-
         Write a SEPARATE JSON file naming the reviewed add-on, holding the settled entries keyed by their "index" and the sweep results in "additions". Leave the item file itself untouched. The "addon" is the path printed under "Review Details" as the reviewed XPI, and it is checked: an index means nothing without it, so nothing in this file can be applied to another submission by accident.
 
         {"addon": "/path/to/the-reviewed.xpi",
@@ -1555,12 +1552,10 @@ llm-review-prompt:
         Those three are settled by reading the add-on, so they carry a verdict. Everything about a reported case - its band, its response, the paragraph the developer reads - stays the linter's.
 
         An addition carries no "index" and no verdict. An index belongs to the linter's numbering of the document it wrote, and an addition was never in it; it is addressed by its "check" and its location instead. The linter files it under that check's own ruleId, band and wording, so it reads as a finding of that check rather than as a note from you. The "hint" is the one thing you write that a developer may read, so keep it to what is at that location - never a judgement, never a sentence of response.
-    - verify: false
+    - skip: manual
       text: |-
         An item you put to a reviewer carries what THEY answered instead of a verdict - the label they picked, or the words they typed: "9": "Clear", "11": "the German listing text is outdated too". Those words are the only prose in that file which is not yours to write.
-    - verify: true
-      text: |-
+    - text: |-
         Report your own decisions in two sections: under "Found Issues", each finding you withdrew and why, and each finding a sweep added and where you found it; under "Extended Code Review", the verdict you reached for each entry and why.
-    - verify: true
-      text: |-
-        Run the same webext-linter command again with --llm-verdict <your file> in place of the review flag you ran, and print the report it produces as a code block, unchanged. Write no report wording of your own, it is the linter's.
+    - text: |-
+        Run the same webext-linter command again with --llm-verdict <your file> in place of the review flag you ran and any --llm-skip-* beside it, and print the report it produces as a code block, unchanged. Write no report wording of your own, it is the linter's.

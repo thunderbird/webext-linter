@@ -31,6 +31,7 @@ import {
   EXPERIMENTS_CACHE,
   LIBRARY_HASHES_CACHE,
   CDN_LOOKUP_CACHE,
+  PROMPT_SKIPS,
 } from "./config.js";
 import {
   info,
@@ -174,18 +175,23 @@ function helpText() {
   ];
 
   // What an LLM agent runs, in the order it runs: --llm-sca-review prepares a source code
-  // review (and is over before one starts), then --llm-review or --llm-verify asks, then
-  // --llm-verdict applies the answers. Their own section, because none is a report format
-  // - the first three replace the report with a prompt, the last rebuilds it from settled
-  // verdicts.
+  // review (and is over before one starts), then --llm-review asks - leaving out whatever
+  // its two --llm-skip-* flags name, given to either - and --llm-verdict applies the
+  // answers. Their own
+  // section, because none is a report format: the first two replace the report with a
+  // prompt, the last rebuilds it from settled verdicts.
   const llm = [
     [
       "--llm-review",
       "Print a verification prompt and write the review as a JSON item array to a temp file, instead of the report. The prompt explains how to settle the items and pass them back with --llm-verdict. Refused with --report-format json.",
     ],
     [
-      "--llm-verify",
-      "Like --llm-review, but verifies only the add-on's code: it writes no behavioral description and does not settle the manual review items. Refused with --report-format json.",
+      "--llm-skip-summary",
+      "With --llm-review or --llm-sca-review: leave out the add-on description. The prompt no longer asks for one and names no file for it; everything else is unchanged.",
+    ],
+    [
+      "--llm-skip-manual",
+      "With --llm-review or --llm-sca-review: leave out the manual review items. The prompt does not put them to a reviewer and the item file does not carry them - they stay in the report, for the reviewer to work through later. Given with --llm-skip-summary, the review verifies only the add-on's code.",
     ],
     [
       "--llm-sca-review <folder>",
@@ -284,28 +290,23 @@ const OPTIONS = {
   "report-out": { type: "string" },
   "llm-sca-review": { type: "string" },
   "llm-review": { type: "boolean" },
-  "llm-verify": { type: "boolean" },
+  "llm-skip-summary": { type: "boolean" },
+  "llm-skip-manual": { type: "boolean" },
   "llm-verdict": { type: "string" },
   verbose: { type: "boolean" },
   help: { type: "boolean" },
 };
 
 /**
- * Which review prompt was asked for, if either. The two flags are joined HERE and nowhere
- * else, so main()'s guards and pipelineOptsFromValues cannot drift apart about which one
- * was given - they run on different paths (pipelineOptsFromArgv runs none of main's
- * guards).
+ * What a --llm-review run was told to leave out, as the registry names it: "summary" for
+ * --llm-skip-summary, "manual" for --llm-skip-manual. Read HERE and nowhere else, so
+ * main()'s guards and pipelineOptsFromValues cannot drift apart about what was given -
+ * they run on different paths (pipelineOptsFromArgv runs none of main's guards).
  * @param {Record<string, string|boolean>} values
- * @returns {"full"|"verify"|undefined}
+ * @returns {string[]}
  */
-function reviewMode(values) {
-  if (values["llm-review"]) {
-    return "full";
-  }
-  if (values["llm-verify"]) {
-    return "verify";
-  }
-  return undefined;
+function reviewSkips(values) {
+  return PROMPT_SKIPS.filter((skip) => values[`llm-skip-${skip}`]);
 }
 
 /** The --sca-* flags, which --llm-sca-review exists to work out and so refuses to be given. */
@@ -366,16 +367,6 @@ function reviewCommand(values, xpi) {
     flags.push("--sca-exp-source <SCA_EXP_SOURCE>");
   }
   return { flags, experiments };
-}
-
-/**
- * The flag a message should name, for a run that has at most one of them (the guard in
- * main() refuses both together before any of this is read).
- * @param {Record<string, string|boolean>} values
- * @returns {string}
- */
-function reviewFlag(values) {
-  return values["llm-review"] ? "--llm-review" : "--llm-verify";
 }
 
 /**
@@ -537,7 +528,7 @@ export async function main(argv) {
   // report a reviewer sends on. Either way the output IS the document, so the record of
   // how it was produced - the Setup and Activity sections - is noise in it. The report's
   // own header and prompt are not feed and still print.
-  setFeed(reviewMode(values) === undefined && !values["llm-verdict"]);
+  setFeed(!values["llm-review"] && !values["llm-verdict"]);
   setCapture(format === "text" && Boolean(values["report-out"]));
   // Color only on an interactive text screen. Piped/redirected runs and JSON
   // stay plain, and the --report-out copy is stripped below either way.
@@ -548,17 +539,23 @@ export async function main(argv) {
   // below so --help and validation errors all carry it too.
   emitBanner(argv);
 
-  // Refused FIRST, so every guard below - and every message that names a flag - can
-  // assume at most one review flag was given.
+  // A skip names part of the --llm-review prompt to leave out, so it says nothing without a
+  // review to cut down. --llm-sca-review takes them too: it prepares a review, and hands
+  // them back in the command it prints. Refused FIRST, so every guard below can assume a
+  // skip implies one of the two.
+  const skips = reviewSkips(values);
   if (
     !values.help &&
-    values["llm-review"] !== undefined &&
-    values["llm-verify"] !== undefined
+    skips.length &&
+    !values["llm-review"] &&
+    values["llm-sca-review"] === undefined
   ) {
+    const many = skips.length > 1;
     process.stderr.write(
-      "--llm-review and --llm-verify are the same round trip at two depths and cannot " +
-        "be used together: --llm-review asks for everything, --llm-verify asks only for " +
-        "what reading the add-on can settle. Pick one.\n"
+      `${listOf(skips.map((s) => `--llm-skip-${s}`))} ${many ? "name parts" : "names part"} ` +
+        `of the --llm-review prompt to leave out, so ${many ? "they need" : "it needs"} ` +
+        "--llm-review, or --llm-sca-review to hand to the review it prepares: a run that " +
+        "prints its report has no prompt to cut down.\n"
     );
     return 2;
   }
@@ -575,7 +572,7 @@ export async function main(argv) {
       );
       return 2;
     }
-    if (reviewMode(values) !== undefined || values["llm-verdict"]) {
+    if (values["llm-review"] || values["llm-verdict"]) {
       process.stderr.write(
         "--llm-sca-review comes BEFORE a review: it prints how to start one and runs " +
           "none, so it cannot be combined with the flags that run or settle one.\n"
@@ -620,8 +617,8 @@ export async function main(argv) {
       return 2;
     }
     // The prompt IS the output: no review has run, and none can until its reader answers
-    // it. Printed as the report is, and copied to --report-out for the same reason - this
-    // run's output is the whole of what a reviewer would want to keep.
+    // it. Printed as the report is, and to the screen only - --report-out saves a report,
+    // and is refused above beside this flag.
     for (const line of scaPromptLines(
       loadRegistry().llmScaReviewPrompt(),
       submission,
@@ -630,7 +627,6 @@ export async function main(argv) {
       report(line);
     }
     report("");
-    writeReportOut(values);
     return 0;
   }
 
@@ -654,9 +650,9 @@ export async function main(argv) {
   // A review flag's whole output is a prompt and an item file. JSON is the machine
   // contract for ATN, which wants neither, and asking for both leaves nothing coherent to
   // print - so say so rather than silently favouring one.
-  if (reviewMode(values) !== undefined && format === "json") {
+  if (values["llm-review"] && format === "json") {
     process.stderr.write(
-      `${reviewFlag(values)} is text only: it prints a prompt and writes an item file, ` +
+      "--llm-review is text only: it prints a prompt and writes an item file, " +
         "which is not what --report-format json produces.\n"
     );
     return 2;
@@ -666,11 +662,10 @@ export async function main(argv) {
   // --llm-verdict applies the answers. Together they would print a prompt asking for
   // verdicts on a report that already has them, so the answer file would be written
   // against a review nobody ran. Refuse rather than pick one.
-  if (reviewMode(values) !== undefined && values["llm-verdict"]) {
-    const flag = reviewFlag(values);
+  if (values["llm-review"] && values["llm-verdict"]) {
     process.stderr.write(
-      `${flag} and --llm-verdict are the two halves of one round trip and cannot ` +
-        `be used together: run ${flag} first, then --llm-verdict with the answers.\n`
+      "--llm-review and --llm-verdict are the two halves of one round trip and cannot " +
+        "be used together: run --llm-review first, then --llm-verdict with the answers.\n"
     );
     return 2;
   }
@@ -841,7 +836,8 @@ function pipelineOptsFromValues(values) {
     scaRoot: values["sca-root"],
     scaSource: values["sca-source"],
     scaExpSource: values["sca-exp-source"],
-    llmReview: reviewMode(values),
+    llmReview: Boolean(values["llm-review"]),
+    llmSkip: reviewSkips(values),
     llmVerdict: values["llm-verdict"],
   };
 }

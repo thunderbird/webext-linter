@@ -39,7 +39,7 @@ import YAML from "yaml";
 import { displayLine } from "../util/text.js";
 
 import { finding, SEVERITY } from "../report/finding.js";
-import { MAX_NOTE } from "../config.js";
+import { MAX_NOTE, PROMPT_SKIPS } from "../config.js";
 import { artifactLabel } from "../report/artifact.js";
 import { progress, debug, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
@@ -464,13 +464,13 @@ export class Registry {
    * report contains and on the flag used, so a missing one would silently drop a whole
    * instruction from the prompt instead of failing.
    *
-   * The steps come back WITH their `verify` flag and in authored order, never filtered here:
-   * which of them a run prints is layout, decided beside the ask selection in
-   * src/report/format.js. `verify: false` marks a step that needs a person, which
-   * --llm-verify withholds.
+   * The steps come back WITH the `skip` that withholds them and in authored order, never
+   * filtered here: which of them a run prints is layout, decided beside the ask selection
+   * in src/report/format.js. `skip: summary` is withheld by --llm-skip-summary and
+   * `skip: manual` by --llm-skip-manual; a step with neither is printed by every run.
    * @returns {{intro: string, issues: string, preSweep: string, codeReview: string,
    *   extendedManualReview: string, standardManualReview: string, outcomeIntro: string,
-   *   outcome: {verify: boolean, text: string}[]}}
+   *   outcome: {skip: ?string, text: string}[]}}
    */
   llmReviewPrompt() {
     const p = this.doc["llm-review-prompt"];
@@ -483,11 +483,13 @@ export class Registry {
       }
       return text;
     };
-    // Every step must DECLARE its `verify`, the way every check entry must declare its
-    // severity: a step added without one would silently join the --llm-verify prompt (or
-    // silently leave it), and the prompt is the one document nothing downstream validates.
-    // Positions are reported as authored, not as printed - the printed number differs per
-    // flag, and it is the YAML the author is fixing.
+    // A step's `skip` is optional - no marker means every run prints it, which is the safe
+    // default: a forgotten marker is noise in one run, where a wrong one withholds an
+    // instruction from a reviewer who needed it. What is NOT optional is that the name be
+    // one this tool knows, because the prompt is the one document nothing downstream
+    // validates: a typo would name a flag nobody can give, and the step would print
+    // forever. Positions are reported as authored, not as printed - the printed number
+    // differs per run, and it is the YAML the author is fixing.
     const readSteps = () => {
       const steps = p && typeof p === "object" ? p.outcome : null;
       if (!Array.isArray(steps) || steps.length === 0) {
@@ -502,9 +504,10 @@ export class Registry {
             `llm-review-prompt ${at} is not a step mapping (assets/registry.yaml)`
           );
         }
-        if (step.verify !== true && step.verify !== false) {
+        if (step.skip !== undefined && !PROMPT_SKIPS.includes(step.skip)) {
           throw new Error(
-            `llm-review-prompt ${at} has no \`verify\` true/false (assets/registry.yaml)`
+            `llm-review-prompt ${at} has \`skip: ${step.skip}\`, which no flag gives ` +
+              `(expected one of: ${PROMPT_SKIPS.join(", ")}) (assets/registry.yaml)`
           );
         }
         if (typeof step.text !== "string" || step.text === "") {
@@ -518,12 +521,17 @@ export class Registry {
             `llm-review-prompt ${at} numbers itself; the prompt numbers the steps (assets/registry.yaml)`
           );
         }
-        return { verify: step.verify, text: step.text };
+        return { skip: step.skip ?? null, text: step.text };
       });
-      if (!out.some((step) => step.verify)) {
-        throw new Error(
-          "llm-review-prompt `outcome` authors no `verify: true` step, so --llm-verify would print no steps (assets/registry.yaml)"
-        );
+      // Every skip a flag can give must have a step to withhold: a flag that drops nothing
+      // is a promise the prompt does not keep.
+      for (const skip of PROMPT_SKIPS) {
+        if (!out.some((step) => step.skip === skip)) {
+          throw new Error(
+            `llm-review-prompt \`outcome\` has no \`skip: ${skip}\` step, so ` +
+              `--llm-skip-${skip} would withhold nothing (assets/registry.yaml)`
+          );
+        }
       }
       return out;
     };
@@ -596,10 +604,9 @@ export class Registry {
    * to print without them.
    *
    * A step comes back with its `experiments` flag, never filtered here: which steps a run
-   * prints is layout, decided in src/report/format.js beside the flags themselves. The
-   * flag is OPTIONAL, unlike llmReviewPrompt's `verify` - a step that forgets it is printed
-   * by every run, which is noise, where a step that forgets `verify` would silently leave
-   * (or join) a prompt and change what is asked for.
+   * prints is layout, decided in src/report/format.js beside the flags themselves. The flag
+   * marks a step that asks for the Experiment folder, which only a review allowing
+   * Experiments reads - so it is printed only when one does.
    * @returns {{intro: string, outcome: {experiments: boolean, text: string}[]}}
    */
   llmScaReviewPrompt() {

@@ -132,13 +132,15 @@ import { DEFAULT_CACHE } from "./config.js";
  *   questions this review asks: findings withdrawn, to-do items reported or cleared.
  *   A reported case is worded by its own check; the only wording an answer brings is what
  *   a reviewer typed instead of picking one, which travels on that case's location line.
- * @property {"full"|"verify"} [llmReview]  Print the verification prompt above the review
- *   header, addressing the report to a model that is asked to check it, and write the
- *   review to an item file instead of printing it. Changes nothing about the review itself,
- *   only what is printed before it and what the item file carries. "full" (--llm-review)
- *   asks for everything; "verify" (--llm-verify) withholds the two parts that need a
- *   person - the add-on description, and putting the manual items to the reviewer - and
- *   omits those items from the file. Unset means neither flag was given.
+ * @property {boolean} [llmReview]  Print the verification prompt above the review header,
+ *   addressing the report to a model that is asked to check it, and write the review to an
+ *   item file instead of printing it. Changes nothing about the review itself, only what
+ *   is printed before it and what the item file carries.
+ * @property {string[]} [llmSkip]  What that prompt leaves out (PROMPT_SKIPS, src/config.js):
+ *   "summary" (--llm-skip-summary) drops the add-on description and the file named for it;
+ *   "manual" (--llm-skip-manual) drops the steps that put the manual items to a reviewer,
+ *   and those items leave the item file with them - they stay in the report, for the
+ *   reviewer to work through later.
  */
 
 /**
@@ -664,14 +666,18 @@ export async function runPipeline(opts) {
   // --llm-review writes the review's items to a file, named in the Review Details section.
   // Claim it now, empty: a directory we cannot write to has to fail here rather than after
   // the whole review has run.
+  // What this run was told to leave out (--llm-skip-summary / --llm-skip-manual). Read
+  // once: the prompt drops steps by it, the item file drops sections by it, and the
+  // description file is named by it.
+  const skip = opts.llmSkip ?? [];
   if (opts.llmReview) {
     const files = reviewFilePaths(xpiAddon);
     meta.itemsFile = files.items;
     // Where the prompt's reader writes the add-on description, sharing the item file's
-    // name and moment; never written and never read by this tool. Named only under
-    // --llm-review: --llm-verify withholds the description step, so naming a file nobody
-    // is asked to write would be an instruction with no step behind it.
-    if (opts.llmReview === "full") {
+    // name and moment; never written and never read by this tool. Not named under
+    // --llm-skip-summary, which withholds the step that writes it: a path printed for a
+    // file nobody is asked to write is an instruction with no step behind it.
+    if (!skip.includes("summary")) {
       meta.summaryFile = files.summary;
     }
     fs.writeFileSync(meta.itemsFile, "");
@@ -753,7 +759,7 @@ export async function runPipeline(opts) {
       manual: meta.manualReview,
       choices: registry.manualReviewChoices(),
       preSweep: meta.preSweep,
-      mode: opts.llmReview,
+      skipManual: skip.includes("manual"),
       // So a question names its case as the settled report will: in an SCA review
       // "package.json" alone is a file in either artifact, and a reviewer asked about one
       // of them has to be told which.
@@ -776,7 +782,7 @@ export async function runPipeline(opts) {
       findings,
       meta.manualReview,
       meta.preSweep,
-      opts.llmReview
+      skip
     )) {
       report(line);
     }
