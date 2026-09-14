@@ -242,30 +242,37 @@ test("--sca-root must point at a folder (exit 2)", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The other two questions every folder flag is asked. A BLANK value is what a script
-// produces from an unset variable, and every reader of these flags tests them for truth -
-// so a blank --sca-root silently reviewed the XPI alone, the one trade an SCA review may
-// never make. A ".." segment is the value this guard and the loader read differently: the
-// loader strips leading dots, so the folder that answered here is not the folder the review
-// reads, and for --sca-exp-source "nothing" is also the legitimate answer for an Experiment
-// outside the source - so the mistake was silent at both ends.
-test("a folder flag refuses a blank value and a .. segment (exit 2)", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-folder-"));
-  fs.mkdirSync(path.join(dir, "src"));
-
-  for (const argv of [
-    ["some.xpi", "--sca-root="],
-    ["some.xpi", "--sca-root", dir, "--sca-source="],
-    ["--llm-sca-review="],
+// A flag given with no value names something and says nothing. Asked of EVERY option that
+// takes one, before any branch reads one: parseArgs hands "--flag=" down as "", which every
+// reader tests for truth and so reads as "not given" - a named cache silently became the
+// default one, a named verdict file printed an unsettled report, a named format fell back
+// to text, and a named source root reviewed the XPI alone. Whitespace counts as none.
+test("a flag given no value is refused (exit 2)", () => {
+  for (const [argv, flag] of [
+    [["some.xpi", "--report-format="], "--report-format"],
+    [["some.xpi", "--report-out="], "--report-out"],
+    [["some.xpi", "--checks-only="], "--checks-only"],
+    [["some.xpi", "--cache-schema-dir="], "--cache-schema-dir"],
+    [["some.xpi", "--llm-verdict="], "--llm-verdict"],
+    [["some.xpi", "--sca-root="], "--sca-root"],
+    [["some.xpi", "--sca-root", " "], "--sca-root"],
+    [["--llm-sca-review="], "--llm-sca-review"],
   ]) {
     const r = run(argv);
     assert.equal(r.code, 2, argv.join(" "));
-    assert.match(
-      r.stderr,
-      /names a folder, and none was given/,
-      argv.join(" ")
-    );
+    assert.match(r.stderr, new RegExp(`\\${flag} needs a value`), flag);
   }
+  // --help is a request for the usage text, not a run: it is answered before this.
+  assert.equal(run(["--help", "--report-out="]).code, 0);
+});
+
+// A ".." segment is the value this guard and the loader read differently: the loader strips
+// leading dots, so the folder that answered here is not the folder the review reads, and for
+// --sca-exp-source "nothing" is also the legitimate answer for an Experiment outside the
+// source - so the mistake was silent at both ends.
+test("a folder flag refuses a .. segment (exit 2)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-folder-"));
+  fs.mkdirSync(path.join(dir, "src"));
 
   // A folder INSIDE --sca-root is written relative to it: an absolute path names one on
   // the reviewing machine, which can be anywhere, so what it names is not the submission's
@@ -968,17 +975,74 @@ test("--llm-sca-review quotes an argument that carries whitespace", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl sub mission-"));
   fs.writeFileSync(path.join(dir, "addon.xpi"), "");
   fs.writeFileSync(path.join(dir, "src.tar.gz"), "");
-  const out = fs.mkdtempSync(path.join(os.tmpdir(), "wl-out-"));
-  const report = path.join(out, "my report.txt");
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "wl cache-"));
 
-  const r = run(["--llm-sca-review", dir, "--report-out", report]);
+  const r = run(["--llm-sca-review", dir, "--cache-schema-dir", out]);
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, new RegExp(`--llm-review '${dir}/addon\\.xpi'`));
-  assert.match(r.stdout, new RegExp(`--report-out '${report}'`));
+  assert.match(r.stdout, new RegExp(`--cache-schema-dir '${out}'`));
   // The values above the flags are read by eye, not typed, so they carry no quotes.
   assert.match(r.stdout, new RegExp(`\n  FOLDER\n    ${dir}\n`));
   fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(out, { recursive: true, force: true });
+});
+
+// --report-out saves the REPORT, and no run of the --llm-* round trip is one to save: two
+// print a prompt, and the third prints the settled report for the agent to hand back in
+// its own answer. ONE rule for every --llm-* flag, so there is nothing to work out per
+// flag - and no saved prompt for the command --llm-sca-review hands back to overwrite.
+test("--report-out is refused with any --llm-* flag", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const dir = submissionFolder();
+  const out = path.join(os.tmpdir(), "wl-report-out.txt");
+
+  for (const flags of [
+    ["--llm-review"],
+    ["--llm-review", "--llm-skip-manual"],
+    ["--llm-verdict", "answers.json"],
+  ]) {
+    const r = run([addon, ...OFFLINE_FLAGS, ...flags, "--report-out", out]);
+    assert.equal(r.code, 2, flags.join(" "));
+    assert.match(
+      r.stderr,
+      /--report-out cannot be given with/,
+      flags.join(" ")
+    );
+    assert.match(r.stderr, new RegExp(flags[0]), flags.join(" "));
+  }
+
+  const sca = run(["--llm-sca-review", dir, "--report-out", out]);
+  assert.equal(sca.code, 2);
+  assert.match(
+    sca.stderr,
+    /--report-out cannot be given with --llm-sca-review/
+  );
+  assert.doesNotMatch(sca.stdout, /SCA Review Prompt/);
+  assert.ok(!fs.existsSync(out), "nothing was written");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A check id nobody can run is a bad command line whatever the run does with it - and
+// --llm-sca-review would print it into the command it tells its reader to run, which then
+// exits 2 on that very line. Answered before any branch, so no prompt is printed at all.
+test("an unknown check id is refused before a prompt is printed", () => {
+  const dir = submissionFolder();
+  const sca = run(["--llm-sca-review", dir, "--checks-only", "no-such-check"]);
+  assert.equal(sca.code, 2);
+  assert.match(sca.stderr, /Unknown check "no-such-check"/);
+  assert.doesNotMatch(sca.stdout, /SCA Review Prompt/);
+
+  const review = run([
+    path.join(ROOT, "tests", "addons", "clean"),
+    ...OFFLINE_FLAGS,
+    "--llm-review",
+    "--checks-skip",
+    "no-such-check",
+  ]);
+  assert.equal(review.code, 2);
+  assert.match(review.stderr, /Unknown check "no-such-check"/);
+  assert.doesNotMatch(review.stdout, /LLM Prompt/);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // Each way the flag cannot be used, refused before it prints anything - it prepares a

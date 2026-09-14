@@ -170,7 +170,7 @@ function helpText() {
     ["--report-format <text|json>", "Report output format (default: text)."],
     [
       "--report-out <file>",
-      "Write the report to a file in addition to stdout.",
+      "Write the report to a file in addition to stdout. Refused with any --llm-* flag: no run of that round trip saves its output.",
     ],
   ];
 
@@ -342,9 +342,9 @@ function shellArg(value) {
  * collapse here, once, and the renderer lays out what it is handed.
  *
  * A --llm-skip-* is carried like any other flag: it names part of the prompt the prepared
- * review will print, which is the run this command starts. A flag given an EMPTY value is
- * left out, the way the run itself reads it: every place that acts on one tests it for
- * truth, so printing it would promise the review something this run did not do.
+ * review will print, which is the run this command starts. A flag given no value never
+ * reaches here - main() refuses one before any branch - so the truth test below only skips
+ * the flags this run was not given.
  * --llm-review, --llm-verdict and the --sca-* flags cannot appear - --llm-sca-review
  * refuses to be given them - and neither can --help, which returns above.
  * @param {Record<string, string|boolean>} values
@@ -400,11 +400,8 @@ function pointsAtFolder(p) {
 
 /**
  * What is wrong with a value that must name a folder, as the message saying so - or null
- * when nothing is. Three questions, asked of every such flag:
- *
- * Was anything GIVEN? A blank value is what a script produces from an unset variable, and
- * every reader of these flags tests them for truth - so a blank one silently reviewed the
- * XPI alone, which is the one trade an SCA review may never make.
+ * when nothing is. Two questions, asked of every such flag (that a value was given at all
+ * is main()'s, asked of every flag that takes one):
  *
  * Does it stay INSIDE the tree it names? A ".." segment names a folder by the way out of
  * another, which is a value someone will misread whether or not it lands back inside;
@@ -426,12 +423,6 @@ function pointsAtFolder(p) {
  *   what to do on its own - the others are worth telling what the folder is FOR.
  */
 function folderProblem(flag, value, base, inRoot = false) {
-  if (!value.trim()) {
-    return {
-      text: `--${flag} names a folder, and none was given.`,
-      escape: false,
-    };
-  }
   if (inRoot && path.isAbsolute(value)) {
     return {
       text:
@@ -469,9 +460,8 @@ function folderProblem(flag, value, base, inRoot = false) {
  * one was printed. Color codes are stripped so the saved file is plain even when the
  * screen was colored.
  *
- * Every run that prints something calls this, including the ones that print a PROMPT
- * instead of a report - a reviewer who asked for a copy of what was on screen gets what
- * was on screen, whatever it was.
+ * Only a run that prints a REPORT reaches this: the flag is refused beside every --llm-*
+ * flag, and those are the runs whose output is a prompt.
  * @param {Record<string, string|boolean>} values
  * @param {string} [rendered]  The report, when one was printed.
  * @returns {void}
@@ -539,6 +529,67 @@ export async function main(argv) {
   // below so --help and validation errors all carry it too.
   emitBanner(argv);
 
+  // A flag given with no value names something and says nothing, so it is refused before
+  // any branch reads one. Asked HERE, once, for every option that takes a value: what a
+  // value MEANS is each reader's question - a report format is checked where the format is
+  // read, a folder where the folder is opened - but whether one was given at all is the
+  // parser's, and a run that returns early must not be able to skip it. parseArgs hands
+  // "--flag=" down as "", which every reader below tests for truth and so reads as "not
+  // given": a named cache silently became the default one, a named verdict file printed an
+  // unsettled report, and a named format fell back to text.
+  if (!values.help) {
+    const empty = Object.entries(OPTIONS).find(
+      ([name, opt]) =>
+        opt.type === "string" &&
+        values[name] !== undefined &&
+        !values[name].trim()
+    );
+    if (empty) {
+      process.stderr.write(
+        `--${empty[0]} needs a value, and none was given.\n`
+      );
+      return 2;
+    }
+  }
+
+  // A bad --checks-only/--checks-skip id is a bad command line whatever the run does with
+  // it, so it is answered before any branch below - including the two that print a prompt.
+  // --llm-sca-review hands its reader a command built from these very flags: an id nobody
+  // can run would travel into it, and the review it starts would exit 2 on a line the
+  // prompt told them to run.
+  const registry = loadRegistry();
+  const checkIds = registry.checkIds();
+  const badCheck =
+    !values.help &&
+    unknownId(
+      [
+        ...(splitList(values["checks-only"]) ?? []),
+        ...(splitList(values["checks-skip"]) ?? []),
+      ],
+      checkIds
+    );
+  if (badCheck) {
+    process.stderr.write(
+      `Unknown check "${badCheck}" (--checks-only/--checks-skip). Available: ${checkIds.join(", ")}.\n`
+    );
+    return 2;
+  }
+
+  // --report-out saves a copy of the REPORT, and no run of the --llm-* round trip is one to
+  // save: the first two print a prompt, and the last prints the settled report for the
+  // agent to hand back in its own answer. One rule for all of them, so there is nothing to
+  // work out per flag - and no saved prompt for the command it hands back to overwrite.
+  const llmFlags = Object.keys(OPTIONS).filter(
+    (name) => name.startsWith("llm-") && values[name] !== undefined
+  );
+  if (!values.help && values["report-out"] && llmFlags.length) {
+    process.stderr.write(
+      `--report-out cannot be given with ${listOf(llmFlags.map((f) => `--${f}`))}: ` +
+        "no run of the --llm-* round trip saves its output.\n"
+    );
+    return 2;
+  }
+
   // A skip names part of the --llm-review prompt to leave out, so it says nothing without a
   // review to cut down. --llm-sca-review takes them too: it prepares a review, and hands
   // them back in the command it prints. Refused FIRST, so every guard below can assume a
@@ -593,9 +644,9 @@ export async function main(argv) {
       );
       return 2;
     }
-    // The same three questions every folder flag is asked. "--llm-sca-review=" parses as a
-    // flag with an empty value, which would resolve to the working directory and describe a
-    // folder nobody named; a ".." segment names a folder by the way out of another.
+    // The same two questions every folder flag is asked - a ".." segment names a folder by
+    // the way out of another, and the folder has to be there. That a value was given at all
+    // is settled far above, for every flag that takes one.
     const problem = folderProblem(
       "llm-sca-review",
       values["llm-sca-review"],
@@ -620,7 +671,7 @@ export async function main(argv) {
     // it. Printed as the report is, and to the screen only - --report-out saves a report,
     // and is refused above beside this flag.
     for (const line of scaPromptLines(
-      loadRegistry().llmScaReviewPrompt(),
+      registry.llmScaReviewPrompt(),
       submission,
       reviewCommand(values, submission.xpi)
     )) {
@@ -735,20 +786,6 @@ export async function main(argv) {
       "--sca-exp-source is required with --allow-experiments in source code " +
         "archive (SCA) mode (it locates the Experiment code so it is not reviewed " +
         "as WebExtension code).\n"
-    );
-    return 2;
-  }
-
-  const only = splitList(values["checks-only"]);
-  const skip = splitList(values["checks-skip"]);
-  // Parse the registry once and thread it into the pipeline, so the yaml is read
-  // a single time per run rather than re-parsed per concern.
-  const registry = loadRegistry();
-  const ids = registry.checkIds();
-  const badCheck = unknownId([...(only ?? []), ...(skip ?? [])], ids);
-  if (badCheck) {
-    process.stderr.write(
-      `Unknown check "${badCheck}" (--checks-only/--checks-skip). Available: ${ids.join(", ")}.\n`
     );
     return 2;
   }

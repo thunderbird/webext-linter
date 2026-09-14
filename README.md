@@ -92,7 +92,7 @@ is monitored and upstream changes are ported manually.
 | Option | Description |
 | --- | --- |
 | `--report-format <text\|json>` | Report output format (default `text`). |
-| `--report-out <file>` | Write the report to a file in addition to stdout. |
+| `--report-out <file>` | Write the report to a file in addition to stdout. Refused with any `--llm-*` flag: no run of that round trip saves its output. |
 
 **LLM review:** what an LLM agent runs, in the order it runs it — `--llm-sca-review`
 prepares a source code review and is over before one starts, then `--llm-review` asks
