@@ -1524,7 +1524,9 @@ llm-review-prompt:
         Run the sweep first. Spawn ONE independent sub-agent - a single agent, and never the one that goes on to verify this review, so that no finding is checked by whoever produced it. Give it ONE request: the "Standard Code Review" entry's "intro", then its whole "items" list. It returns plain "check - file:line - hint" lines, and no verdict, no response text and no prose beyond that hint. The linter spawns nothing; you do.
     - verify: false
       text: |-
-        Spawn a SECOND independent sub-agent to describe the add-on for the reviewer, so they can read it while you work. Spawn it NOW, beside the sweep and before you wait for either, so the two run at once. Have it write the description as a Markdown file beside the item file named under "Review Details", as <that file's name>.summary.md, and open it for them. Anything quoted from the add-on - its name, its description, a string it ships - goes in a code span, so they see it as the add-on wrote it rather than as markup. Do not describe the add-on yourself: that is this agent's job, and a pass the review would pay for twice.
+        Spawn a SECOND independent sub-agent to describe the add-on for the reviewer, so they can read it while you work. Spawn it NOW, beside the sweep and before you wait for either, so the two run at once. Have it write the description to the path printed under "Review Details" as "Add-on description", and to nothing else: not to the chat, not to a file of its own choosing. Anything quoted from the add-on - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup.
+
+        That file is the reviewer's, and yours only to name. Do not open it, do not read it, do not summarise it, and never print what is in it. Do not describe the add-on yourself either: that is this agent's job, and a pass the review would pay for twice.
     - verify: true
       text: |-
         Wait for the sweep to come back, and while you wait do NOTHING ELSE - do not open the add-on, and do not start verifying. The one thing worth doing is locating the linter's schema cache, which you need later and which says nothing about this submission.
@@ -1536,7 +1538,7 @@ llm-review-prompt:
         Settle each "Extended Code Review" entry yourself, following that entry's "instructions". A case that holds against the add-on is "reported", one that does not is "cleared".
     - verify: false
       text: |-
-        Wait for the description agent, and give the reviewer the description before you put anything to them. Print its path on a line of its own as well, so they can reopen it and in case opening failed.
+        Wait for the description agent, then give the reviewer ONE line before you put anything to them: a link to that file, written as a Markdown link so their client can open it, and nothing else. No summary of it, no excerpt, no description of your own - they read it themselves, while you work.
     - verify: false
       text: |-
         Put every manual review item ("Extended Manual Review" and/or "Standard Manual Review") to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each item's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that item's "answers", in the order they are listed, each with the label and description written there and no wording of your own - a reviewer working through a batch answers by position, and by answers that read the same every time.

@@ -52,7 +52,7 @@ import { headerLines, llmPromptLines, summaryLines } from "./report/format.js";
 import { resolveHolds } from "./report/finding.js";
 import { locusLabeler } from "./report/format.js";
 import { readVerdicts, applyVerdicts } from "./report/verdicts.js";
-import { reviewItems, itemsFilePath } from "./report/items.js";
+import { reviewItems, reviewFilePaths } from "./report/items.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import {
   verifyVendor,
@@ -665,7 +665,15 @@ export async function runPipeline(opts) {
   // Claim it now, empty: a directory we cannot write to has to fail here rather than after
   // the whole review has run.
   if (opts.llmReview) {
-    meta.itemsFile = itemsFilePath(xpiAddon);
+    const files = reviewFilePaths(xpiAddon);
+    meta.itemsFile = files.items;
+    // Where the prompt's reader writes the add-on description, sharing the item file's
+    // name and moment; never written and never read by this tool. Named only under
+    // --llm-review: --llm-verify withholds the description step, so naming a file nobody
+    // is asked to write would be an instruction with no step behind it.
+    if (opts.llmReview === "full") {
+      meta.summaryFile = files.summary;
+    }
     fs.writeFileSync(meta.itemsFile, "");
   }
 

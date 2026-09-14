@@ -404,6 +404,9 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   // the next wording change happens to move. The answers themselves are not here - they
   // travel on each question in the item file - so the prompt names the field instead.
   assert.match(on.stdout, /"answers"/);
+  // The description is a file the reader writes and the reviewer opens: this run names
+  // the path, and never reads what lands there.
+  assert.match(on.stdout, /Add-on description: .*\.summary\.md/);
   assert.ok(
     !on.stdout.includes('"Report"'),
     "the answers are not prose in the prompt"
@@ -593,8 +596,8 @@ test("--llm-verify withholds the description and the manual items", () => {
   // and their absence is the whole feature.
   assert.ok(!on.stdout.includes('"answers"'), "no manual questions asked");
   assert.ok(
-    !on.stdout.includes("summary.md"),
-    "no add-on description asked for"
+    !on.stdout.includes("Add-on description"),
+    "no add-on description asked for, and no file named for one"
   );
   // ...while the step that closes the round trip survives the renumbering.
   assert.match(on.stdout, /--llm-verdict/);

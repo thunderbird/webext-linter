@@ -52,7 +52,9 @@
 // they carry no `index` and no `entry`, and they sit at the END, which keeps positions
 // 0..N-1 aligned with indices 1..N for everything that does have one.
 //
-// Belongs here: the shape of that file, and the temp path it is written to.
+// Belongs here: the shape of that file, and the paths this run names - the item file it
+// writes, and the description file its reader writes (reviewFilePaths), which share one
+// name so neither can drift from the review it belongs to.
 //
 // Does NOT belong here: the ORDER and the numbering (src/report/order.js), the wording
 // (assets/registry.yaml, resolved before this runs), and when the file is claimed and
@@ -214,29 +216,55 @@ export function reviewItems({
 }
 
 /**
- * Where the item file is written: the system temp directory, named after the add-on it
- * describes and the moment it was written, so one review does not open the file another
- * left behind. Not beside the submission - a review does not write into what it is
- * reviewing.
+ * The two files this run names, sharing one name and one moment:
+ *
+ * - `items`, the machine-readable item file, in the system temp directory. Not beside the
+ *   submission - a review does not write into what it is reviewing.
+ * - `summary`, where the prompt's reader writes the add-on description for the reviewer.
+ *   That one sits BESIDE the submitted .xpi, in the folder the reviewer is working out
+ *   of, so the link they are handed opens where they are looking. This linter never
+ *   writes it and never reads it; it only says where it goes, so the name cannot drift
+ *   from the review it belongs to.
+ *
+ * One base for both: a name and a version do not identify a review - two submissions can
+ * share both (a fork, a resubmission, an add-on reviewed twice in a session) - so the run's
+ * own moment separates them, and a later run does not open what an earlier one left
+ * behind. Millisecond resolution, which separates reviews a person runs; two started in
+ * the same millisecond would still collide, and nothing here pretends otherwise.
  * @param {import("../addon/load.js").Addon} addon  The shipped add-on.
+ * @returns {{items: string, summary: string}}
+ */
+export function reviewFilePaths(addon) {
+  const base = reviewFileBase(addon);
+  return {
+    items: path.join(os.tmpdir(), `${base}.items.json`),
+    // Beside the .xpi, which is the folder a reviewer downloaded it into. For an unpacked
+    // submission that is the folder holding it, for the same reason: not inside what is
+    // being reviewed.
+    summary: path.join(
+      path.dirname(path.resolve(addon.source)),
+      `${base}.summary.md`
+    ),
+  };
+}
+
+/**
+ * The shared name: the add-on, its version, and the moment - made safe to put in a path.
+ * @param {import("../addon/load.js").Addon} addon
  * @returns {string}
  */
-export function itemsFilePath(addon) {
+function reviewFileBase(addon) {
   const m = addon?.manifest;
   const id =
     m?.browser_specific_settings?.gecko?.id ??
     m?.applications?.gecko?.id ??
     m?.name ??
     "addon";
-  // The run's own moment, because a name and a version do not identify a review: two
-  // submissions can share both (a fork, a resubmission, an add-on reviewed twice in a
-  // session), and the later run would otherwise open the earlier one's file and truncate
-  // it - under a reader still working from that path. Millisecond resolution, which
-  // separates reviews a person runs; two started in the same millisecond would still
-  // collide, and nothing here pretends otherwise.
   const at = new Date().toISOString().replace(/[:.]/g, "-");
-  const name = `webext-linter-${id}-${m?.version ?? "0"}-${at}.items.json`;
   // Anything outside this set could escape the directory or upset a shell, and the id
   // comes from the submission.
-  return path.join(os.tmpdir(), name.replace(/[^A-Za-z0-9._@-]/g, "_"));
+  return `webext-linter-${id}-${m?.version ?? "0"}-${at}`.replace(
+    /[^A-Za-z0-9._@-]/g,
+    "_"
+  );
 }

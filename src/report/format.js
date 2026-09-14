@@ -75,6 +75,9 @@ const SEV_COLOR = {
  * @property {string} [applicationVersion]
  * @property {number} [manifestVersion]
  * @property {string[]} [checksRun]  Ids of the checks that ran.
+ * @property {string} [summaryFile]  Where the --llm-review prompt's reader writes the
+ *   add-on description for the reviewer - beside the submitted .xpi, sharing the item
+ *   file's name. Named by this tool, written and read by neither.
  * @property {string} [itemsFile]  Path of the machine-readable item file, when one was
  *   written (--llm-review). Named in the Review Details section.
  * @property {import("./finding.js").ManualItem[]} [manualReview]  The manual-review
@@ -362,6 +365,9 @@ export function headerLines(meta) {
     // Only --llm-review writes one. It is named here rather than only in the prompt so
     // the section stays the one place that says what this review consists of.
     ...(meta.itemsFile ? [`Review items: ${meta.itemsFile}`] : []),
+    // Where the description GOES, not where it is: this run writes no such file. The
+    // prompt's reader does, and the reviewer is handed a link to it.
+    ...(meta.summaryFile ? [`Add-on description: ${meta.summaryFile}`] : []),
   ];
 }
 
