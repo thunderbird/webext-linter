@@ -93,8 +93,8 @@ test("SCA e2e: a flat layout (--sca-source == --sca-root) is accepted and fully 
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(FLAT_SRC);
   try {
-    // "." and an absolute path equal to --sca-root both resolve to the root.
-    for (const scaSource of [".", src]) {
+    // "." and "./" alike name the root itself.
+    for (const scaSource of [".", "./"]) {
       const { findings, meta } = await runPipeline({
         addonPath: xpi,
         scaRoot: src,
@@ -515,18 +515,14 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
       "the WebExtension code is still reviewed with --sca-exp-source"
     );
 
-    // Both source flags also accept an absolute path (same --sca-root base).
-    const withAbs = await runPipeline({
-      ...base,
-      scaExpSource: path.join(src, "src", "experiments"),
-    });
-    assert.ok(
-      !has(
-        withAbs.findings,
-        "core-symbol-in-webext",
-        (f) => f.file === "experiments/exp.js"
-      ),
-      "an absolute --sca-exp-source is accepted and excludes the subtree"
+    // Both source flags name a folder within --sca-root, written relative to it: an
+    // absolute path names one on the reviewing machine, which is not the submission's.
+    await assert.rejects(
+      runPipeline({
+        ...base,
+        scaExpSource: path.join(src, "src", "experiments"),
+      }),
+      /must be relative to --sca-root/
     );
   } finally {
     fs.rmSync(xpi, { recursive: true, force: true });
@@ -544,9 +540,8 @@ test("SCA e2e: --sca-exp-source may be a sibling of --sca-source under --sca-roo
   });
   try {
     const base = { addonPath: xpi, scaRoot: src, scaSource: "src", ...OFFLINE };
-    // Accepted (no throw) whether the sibling folder is named relative to --sca-root or
-    // by an absolute path.
-    for (const scaExpSource of ["experiment", path.join(src, "experiment")]) {
+    // Accepted (no throw) when the sibling folder is named relative to --sca-root.
+    for (const scaExpSource of ["experiment", "./experiment"]) {
       const res = await runPipeline({ ...base, scaExpSource });
       // The review source is still reviewed...
       assert.ok(

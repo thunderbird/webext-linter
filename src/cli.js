@@ -23,6 +23,7 @@ import { parseArgs } from "node:util";
 import { runPipeline } from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
 import { scaSubmission } from "./addon/submission.js";
+import { hasParentSegment, scaRootRelative } from "./addon/load.js";
 import { hasErrors } from "./report/finding.js";
 import { formatReview, scaPromptLines } from "./report/format.js";
 import {
@@ -198,16 +199,16 @@ function helpText() {
 
   const sca = [
     [
-      "--sca-root <folder|zip>",
-      "The source archive root (holds package.json/lock). Switches to SCA mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused). Always reviewed as SCA; when the XPI turns out to BE the submitted source, sca-not-required (info) says an XPI-only submission would have been enough.",
+      "--sca-root <folder>",
+      "The extracted source root (holds package.json/lock) - a folder, not a packed archive: this tool unpacks the submitted .xpi and nothing else, so extract the source yourself. Switches to SCA mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused). Always reviewed as SCA; when the XPI turns out to BE the submitted source, sca-not-required (info) says an XPI-only submission would have been enough.",
     ],
     [
       "--sca-source <path>",
-      "The add-on code root, relative to --sca-root or an absolute path (e.g. src or addon). Optional; defaults to . (the whole --sca-root reviewed as the source - a flat layout where manifest.json sits at the root). Needs --sca-root.",
+      "The add-on code root, as a path relative to --sca-root (e.g. src or addon). Optional; defaults to . (the whole --sca-root reviewed as the source - a flat layout where manifest.json sits at the root). Needs --sca-root.",
     ],
     [
       "--sca-exp-source <path>",
-      "The Experiment implementation folder, relative to --sca-root or an absolute path - anywhere within --sca-root (e.g. addon/experiment-api, or a sibling of the source like experiment). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-root; REQUIRED when --allow-experiments is used in SCA mode.",
+      "The Experiment implementation folder, as a path relative to --sca-root - anywhere within it (e.g. addon/experiment-api, or a sibling of the source like experiment). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-root; REQUIRED when --allow-experiments is used in SCA mode.",
     ],
   ];
 
@@ -378,6 +379,101 @@ function reviewFlag(values) {
 }
 
 /**
+ * A list as prose: "a", "a and b", "a, b and c". Joining with " and " throughout reads as
+ * a chain rather than a list once there are three.
+ * @param {string[]} items
+ * @returns {string}
+ */
+function listOf(items) {
+  return items.length < 2
+    ? (items[0] ?? "")
+    : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+/**
+ * Whether `p` points at a folder. Resolved first, because that is the path the loader
+ * will open: `existsSync("x.zip/")` is false while `path.resolve` drops the slash, so
+ * asking about the raw string answers a different question than the one that matters.
+ * Anything unreadable is "no" - the caller says what it wanted, and no stat escapes
+ * main() to print a stack where a usage line belongs.
+ * @param {string} p
+ * @returns {boolean}
+ */
+function pointsAtFolder(p) {
+  try {
+    return fs.statSync(path.resolve(p)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What is wrong with a value that must name a folder, as the message saying so - or null
+ * when nothing is. Three questions, asked of every such flag:
+ *
+ * Was anything GIVEN? A blank value is what a script produces from an unset variable, and
+ * every reader of these flags tests them for truth - so a blank one silently reviewed the
+ * XPI alone, which is the one trade an SCA review may never make.
+ *
+ * Does it stay INSIDE the tree it names? A ".." segment names a folder by the way out of
+ * another, which is a value someone will misread whether or not it lands back inside;
+ * hasParentSegment is the same test the loader applies to every value it resolves, so the
+ * two cannot part company. A flag that names a folder INSIDE --sca-root (`inRoot`) answers
+ * the same question about an ABSOLUTE path: it names a folder on the reviewing machine,
+ * which can be anywhere, so what it names is not part of the submission and cannot be
+ * shown to be.
+ *
+ * Does it point at a FOLDER? Asked of the resolved path, so a trailing slash cannot answer
+ * it differently. A file, a missing path and an unreadable one are all "no".
+ * @param {string} flag  The flag's name, for the message.
+ * @param {string} value  The value as it was given.
+ * @param {string} base  What the value is relative to: --sca-root for a flag that names a
+ *   folder inside it, and the value's own path otherwise.
+ * @param {boolean} [inRoot]  Whether the flag names a folder inside --sca-root, which an
+ *   absolute path cannot be written as.
+ * @returns {?{text: string, escape: boolean}}  `escape` marks the ".." refusal, which says
+ *   what to do on its own - the others are worth telling what the folder is FOR.
+ */
+function folderProblem(flag, value, base, inRoot = false) {
+  if (!value.trim()) {
+    return {
+      text: `--${flag} names a folder, and none was given.`,
+      escape: false,
+    };
+  }
+  if (inRoot && path.isAbsolute(value)) {
+    return {
+      text:
+        `--${flag} names a folder inside --sca-root, written relative to it: ` +
+        `"${value}" is an absolute path. Name it relative to --sca-root.`,
+      escape: true,
+    };
+  }
+  if (hasParentSegment(value)) {
+    return {
+      text:
+        `--${flag} names a folder, never a way out of one: "${value}" carries a ".." ` +
+        "segment. Name the folder itself.",
+      escape: true,
+    };
+  }
+  // Resolved by the LOADER's own function for a flag that names a folder inside
+  // --sca-root: the two refusals above are the two shapes it throws on, so by here it
+  // answers rather than throws, and the folder asked about is the folder the review reads.
+  const rel = inRoot ? scaRootRelative(value, base, `--${flag}`) : null;
+  const full = inRoot ? (rel ? path.join(base, rel) : base) : value;
+  if (!pointsAtFolder(full)) {
+    return {
+      text:
+        `--${flag} must point at a folder: "${value}" does not (looked in ` +
+        `"${path.resolve(full)}").`,
+      escape: false,
+    };
+  }
+  return null;
+}
+
+/**
  * --report-out saves a carbon copy of stdout: the captured narration and the report, if
  * one was printed. Color codes are stripped so the saved file is plain even when the
  * screen was colored.
@@ -473,7 +569,7 @@ export async function main(argv) {
     const given = SCA_FLAGS.filter((f) => values[f]);
     if (given.length) {
       process.stderr.write(
-        `--llm-sca-review works out ${given.map((f) => `--${f}`).join(" and ")} for you, ` +
+        `--llm-sca-review works out ${listOf(given.map((f) => `--${f}`))} for you, ` +
           "so it cannot be given them. Drop them, or run --llm-review with the ones you " +
           "already have.\n"
       );
@@ -500,13 +596,20 @@ export async function main(argv) {
       );
       return 2;
     }
-    // "--llm-sca-review=" parses as a flag with an empty value, which would resolve to the
-    // working directory and describe a folder nobody named. Say what is missing instead.
-    if (!values["llm-sca-review"].trim()) {
-      process.stderr.write(
-        "--llm-sca-review names the submission folder - the one holding the built .xpi " +
-          "and the archive of its source. None was given.\n"
-      );
+    // The same three questions every folder flag is asked. "--llm-sca-review=" parses as a
+    // flag with an empty value, which would resolve to the working directory and describe a
+    // folder nobody named; a ".." segment names a folder by the way out of another.
+    const problem = folderProblem(
+      "llm-sca-review",
+      values["llm-sca-review"],
+      values["llm-sca-review"]
+    );
+    if (problem) {
+      const what = problem.escape
+        ? ""
+        : " It is the submission folder - the one holding the built .xpi and the archive " +
+          "of its source.";
+      process.stderr.write(`${problem.text}${what}\n`);
       return 2;
     }
     let submission;
@@ -572,6 +675,45 @@ export async function main(argv) {
     );
     return 2;
   }
+
+  // Every --sca-* flag names a FOLDER that is there. The root is the extracted source -
+  // this tool unpacks the submitted .xpi and nothing else, so extracting is the reviewer's,
+  // and then every format works because tar handles what we do not - and the other two name
+  // directories inside it. Asked in root-first order, so the root's own validity is settled
+  // before anything is looked up inside it.
+  //
+  // Asked here rather than left to the loader because only one of the three failed loudly:
+  // a --sca-exp-source that names nothing was a WARNING, and the review then read the
+  // Experiment's privileged code as WebExtension code - the thing that flag exists to
+  // prevent - on a typo.
+  for (const flag of SCA_FLAGS) {
+    const value = values[flag];
+    if (value === undefined) {
+      continue;
+    }
+    // --sca-root stands on its own; the other two name folders INSIDE it, and the path
+    // they name is resolved BY THE LOADER'S OWN function - so the folder asked about here
+    // is the folder the review goes on to read, rather than a second spelling of it.
+    // scaRootRelative refuses the same two shapes folderProblem does (an absolute path, a
+    // ".." segment), which is why it is safe to call only once those are answered.
+    const inRoot = flag !== "sca-root";
+    const problem = folderProblem(
+      flag,
+      value,
+      values["sca-root"] ?? ".",
+      inRoot
+    );
+    if (problem) {
+      const what =
+        flag === "sca-root" && !problem.escape
+          ? " This tool unpacks the submitted .xpi and nothing else - extract the source " +
+            "archive and point --sca-root at the folder it produced."
+          : "";
+      process.stderr.write(`${problem.text}${what}\n`);
+      return 2;
+    }
+  }
+
   // In SCA mode there is no manifest trace to separate Experiment code from
   // WebExtension code (the readable source is reviewed whole), so allowing
   // Experiments REQUIRES naming their folder via --sca-exp-source. Without it the

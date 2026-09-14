@@ -99,17 +99,17 @@ import { DEFAULT_CACHE } from "./config.js";
  *   default); when unset, the code-sanity check is skipped entirely.
  * @property {boolean} [allowExperiments]
  * @property {string} [scaRoot]  SCA mode: path to the source
- *   archive root (folder or zip) holding package.json/lock. Setting it switches the
+ *   archive root, an extracted folder, holding package.json/lock. Setting it switches the
  *   review to SCA mode - the readable source (scaSource) is reviewed and its declared
  *   dependencies are audited; the positional XPI is the shipped artifact against which
  *   the manifest, experiments and file-completeness (`input: xpi`) checks all run (a
  *   separate shipped context the orchestrator routes them to - see buildXpiCtxs in
  *   src/checks/context.js).
- * @property {string} [scaSource]  The add-on code root, relative to scaRoot or an
- *   absolute path (e.g. "src" or "addon"). Optional; defaults to "." (the whole scaRoot
+ * @property {string} [scaSource]  The add-on code root, as a path relative to scaRoot
+ *   (e.g. "src" or "addon"). Optional; defaults to "." (the whole scaRoot
  *   reviewed as the source - a flat layout with manifest.json at the root).
  * @property {string} [scaExpSource]  SCA mode: the Experiment implementation folder,
- *   relative to scaRoot (or absolute), anywhere under scaRoot (e.g. "addon/experiment-api");
+ *   relative to scaRoot, anywhere under it (e.g. "addon/experiment-api");
  *   runPipeline re-bases it to a source-relative ctx.scaExpSource. Its privileged, non-WebExtension
  *   files are excluded from the WebExtension code checks (which review all of the
  *   readable source, having no reachability tree there). Optional in general, but
@@ -178,7 +178,7 @@ export async function runPipeline(opts) {
   // file in --sca-source is rejected like one in an XPI, not scanned as authored.
   // --sca-source may name a nested subfolder OR the archive root itself (a flat
   // layout: manifest.json at the root, with the build tooling intermingled). The root
-  // case (scaRootRelative resolves ".", an absolute root, or a literal match all to "")
+  // case (scaRootRelative resolves "." and "./" alike to "")
   // is handled throughout: loadScaAddon reviews every file, and selectScaBuildFiles still
   // traces the build off the root package.json (there is no source subtree to exclude).
   // --sca-root alone switches to SCA mode; --sca-source is optional and defaults to "."
@@ -447,7 +447,7 @@ export async function runPipeline(opts) {
     // Mirror the XPI's experiment classification onto the review addon (the experiment
     // checks read ctx.experiments from it; in XPI mode the two are one addon anyway).
     addon.experiments = xpiAddon.experiments;
-    // --sca-exp-source is relative to --sca-root (or absolute); re-base it into the
+    // --sca-exp-source is relative to --sca-root; re-base it into the
     // review-source keyspace so the WebExtension-code checks can exclude the Experiment
     // subtree. Warn when it matches nothing - a mis-typed path would silently exclude
     // nothing and flood the report with false positives on the privileged Experiment code.

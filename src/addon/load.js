@@ -211,33 +211,62 @@ const SCA_MANIFEST_FILES = [
 
 /**
  * Resolve an SCA source-path flag (--sca-source / --sca-exp-source) to a posix path
- * relative to scaRoot. The value is either already relative to scaRoot, or an
- * absolute filesystem path (made relative to scaRoot). Throws when an absolute path
- * resolves OUTSIDE scaRoot - which also rejects an absolute path against a zip
- * scaRoot, since it can never sit under the archive file.
+ * relative to scaRoot.
+ *
+ * The value is a path WITHIN scaRoot, written relative to it - an absolute one is
+ * refused. A submission names its own folders, and an absolute path names a folder on
+ * the reviewing machine: it can point anywhere, so what it names is not part of the
+ * submission and cannot be shown to be. Relative is also the only spelling the review
+ * can repeat on another machine.
  * @param {string} value  The raw flag value.
  * @param {string} scaRoot  The --sca-root path.
  * @param {string} [flag]  The flag name to name in the error (e.g. "--sca-source").
  * @returns {string} A posix path relative to scaRoot ("" for the root itself).
  */
 export function scaRootRelative(value, scaRoot, flag = "SCA path") {
-  let v = String(value ?? "");
+  const v = String(value ?? "").replace(/\\/g, "/");
   if (path.isAbsolute(v)) {
-    v = path.relative(path.resolve(scaRoot), path.resolve(v));
-    if (v.startsWith("..") || path.isAbsolute(v)) {
-      throw new Error(`${flag} "${value}" is outside --sca-root (${scaRoot})`);
-    }
+    throw new Error(
+      `${flag} "${value}" must be relative to --sca-root (${scaRoot}), not an absolute path`
+    );
   }
-  return v
-    .replace(/\\/g, "/")
-    .replace(/^[./]+/, "")
-    .replace(/\/+$/, "");
+  if (hasParentSegment(v)) {
+    throw new Error(
+      `${flag} "${value}" carries a ".." segment - it names a folder inside --sca-root, ` +
+        "never a way out of one"
+    );
+  }
+  // NORMALISED, never stripped: "." and "./" mean the root itself, "a//b" and "a/./b" mean
+  // "a/b", and a dot that is part of a NAME stays in it. Stripping a leading run of dots
+  // and slashes read ".src" as "src" - a folder that exists, is not the one named, and was
+  // reviewed without a word (the CLI had asked the filesystem about ".src" and found it).
+  const rel = path.posix.normalize(v).replace(/\/+$/, "");
+  return rel === "." ? "" : rel;
+}
+
+/**
+ * Whether a path, as WRITTEN, steps out of the tree it is relative to: any segment that is
+ * "..", not only a leading one.
+ *
+ * Named once because two layers ask it of two different things - src/cli.js of the folder
+ * flags it is handed (including the two that never reach the path math here), and
+ * scaRootRelative of every value it resolves, for the callers that never pass a CLI at all.
+ * Asked of the written form rather than of the resolved one, so "src/../other" is refused
+ * as surely as "../other": a value that names a folder by the way out of another is a
+ * value someone will misread, whether or not it lands back inside.
+ * @param {string} value
+ * @returns {boolean}
+ */
+export function hasParentSegment(value) {
+  return String(value ?? "")
+    .split(/[/\\]/)
+    .includes("..");
 }
 
 /**
  * The Experiment folder as a path relative to the review SOURCE (scaSource), from
- * the --sca-exp-source flag which - like --sca-source - is relative to scaRoot (or
- * absolute). Both flags share the scaRoot base; when the Experiment lives inside the
+ * the --sca-exp-source flag which - like --sca-source - is a path relative to scaRoot.
+ * Both flags share that base; when the Experiment lives inside the
  * review source this strips the scaSource prefix so scaWebExtensionFiles can match it
  * against the (already source-stripped) file keys. --sca-exp-source may sit anywhere
  * under scaRoot, though: when it lies outside the review source it is not part of the
@@ -270,7 +299,7 @@ export function scaExpSourceRelative(scaExpSource, scaSource, scaRoot) {
 
 /**
  * Load a source code archive. The readable add-on code lives at `scaSource`
- * within the `scaRoot` archive (folder or zip); package.json/lock live at the
+ * within the extracted `scaRoot` archive; package.json/lock live at the
  * archive root. Returns a review Addon whose `files` are the scaSource subtree
  * (the prefix stripped, so `<scaSource>/manifest.json` becomes `manifest.json`)
  * PLUS the archive-root package.json + lock (so the dependency audit, which reads
@@ -282,8 +311,8 @@ export function scaExpSourceRelative(scaExpSource, scaSource, scaRoot) {
  * manifest, so it is left untouched here.
  * @param {Addon} archive  The scaRoot archive, loaded ONCE by the caller (loadAddon)
  *   and shared with selectScaBuildFiles - so the source tree is not read twice.
- * @param {string} scaSource  The add-on code root, relative to scaRoot or an
- *   absolute path (e.g. "src", "addon", or "/abs/path/to/root/addon").
+ * @param {string} scaSource  The add-on code root, as a path relative to scaRoot
+ *   (e.g. "src" or "addon"), or "." for the root itself.
  * @param {string} scaRoot  Path to the source archive root (for the path math).
  * @returns {Addon}
  */

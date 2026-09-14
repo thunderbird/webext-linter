@@ -155,7 +155,7 @@ test("--allow-experiments in SCA mode requires --sca-exp-source (exit 2)", () =>
   const r = run([
     "some.xpi",
     "--sca-root",
-    "pkg",
+    ROOT,
     "--sca-source",
     "src",
     "--allow-experiments",
@@ -182,6 +182,163 @@ test("an unknown --report-format is refused on every path (exit 2)", () => {
     assert.equal(r.code, 2, args.join(" "));
     assert.match(r.stderr, /Invalid --report-format "xml"/, args.join(" "));
   }
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// --sca-root is the EXTRACTED source, and the guard asks one question: does the path
+// point at a folder? A packed root is the case that motivated it - a .tar.gz used to
+// reach AdmZip and come back with "No END header found", an error about a format nobody
+// claimed to support - but a missing path and a trailing slash are the same answer.
+test("--sca-root must point at a folder (exit 2)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-sca-root-"));
+  const zip = path.join(dir, "source.zip");
+  fs.writeFileSync(zip, "not a folder");
+  fs.writeFileSync(path.join(dir, "source.tar.gz"), "not a folder");
+  const refused = [
+    zip,
+    path.join(dir, "source.tar.gz"),
+    // A trailing slash: existsSync says no, path.resolve drops it, and the loader would
+    // have opened the archive anyway - so the guard asks about the resolved path.
+    `${zip}/`,
+    path.join(dir, "no-such-folder"),
+  ];
+  for (const root of refused) {
+    const r = run(["some.xpi", "--sca-root", root]);
+    assert.equal(r.code, 2, root);
+    assert.match(r.stderr, /--sca-root must point at a folder/, root);
+    assert.doesNotMatch(r.stderr, /END header|unsupported zip/i, root);
+  }
+
+  // The other two name folders INSIDE the root, and are asked the same question. The
+  // Experiment one is why this is a refusal and not a warning: it used to warn and carry
+  // on, and the review then read the Experiment's privileged code as WebExtension code.
+  for (const flag of ["--sca-source", "--sca-exp-source"]) {
+    const r = run([
+      "some.xpi",
+      "--sca-root",
+      dir,
+      ...(flag === "--sca-exp-source" ? ["--sca-source", "."] : []),
+      flag,
+      "no-such-dir",
+    ]);
+    assert.equal(r.code, 2, flag);
+    assert.match(
+      r.stderr,
+      new RegExp(`\\${flag} must point at a folder`),
+      flag
+    );
+    assert.match(r.stderr, /no-such-dir/, flag);
+  }
+
+  // A folder passes this guard and the run reaches the NEXT --sca-* refusal, which pins
+  // both that a directory is accepted and that the folder check comes first.
+  const ok = run(["some.xpi", "--sca-root", dir, "--allow-experiments"]);
+  assert.equal(ok.code, 2);
+  assert.match(
+    ok.stderr,
+    /--sca-exp-source is required with --allow-experiments/
+  );
+  assert.doesNotMatch(ok.stderr, /must point at a folder/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The other two questions every folder flag is asked. A BLANK value is what a script
+// produces from an unset variable, and every reader of these flags tests them for truth -
+// so a blank --sca-root silently reviewed the XPI alone, the one trade an SCA review may
+// never make. A ".." segment is the value this guard and the loader read differently: the
+// loader strips leading dots, so the folder that answered here is not the folder the review
+// reads, and for --sca-exp-source "nothing" is also the legitimate answer for an Experiment
+// outside the source - so the mistake was silent at both ends.
+test("a folder flag refuses a blank value and a .. segment (exit 2)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-folder-"));
+  fs.mkdirSync(path.join(dir, "src"));
+
+  for (const argv of [
+    ["some.xpi", "--sca-root="],
+    ["some.xpi", "--sca-root", dir, "--sca-source="],
+    ["--llm-sca-review="],
+  ]) {
+    const r = run(argv);
+    assert.equal(r.code, 2, argv.join(" "));
+    assert.match(
+      r.stderr,
+      /names a folder, and none was given/,
+      argv.join(" ")
+    );
+  }
+
+  // A folder INSIDE --sca-root is written relative to it: an absolute path names one on
+  // the reviewing machine, which can be anywhere, so what it names is not the submission's
+  // - true for a path that happens to sit inside the root as much as for one that does not.
+  for (const argv of [
+    ["some.xpi", "--sca-root", dir, "--sca-source", path.join(dir, "src")],
+    [
+      "some.xpi",
+      "--sca-root",
+      dir,
+      "--sca-source",
+      ".",
+      "--sca-exp-source",
+      "/tmp",
+    ],
+  ]) {
+    const r = run(argv);
+    assert.equal(r.code, 2, argv.join(" "));
+    assert.match(r.stderr, /is an absolute path/, argv.join(" "));
+  }
+
+  for (const argv of [
+    ["some.xpi", "--sca-root", `${dir}/../${path.basename(dir)}`],
+    ["some.xpi", "--sca-root", dir, "--sca-source", "../*"],
+    [
+      "some.xpi",
+      "--sca-root",
+      dir,
+      "--sca-source",
+      ".",
+      "--sca-exp-source",
+      `../${path.basename(dir)}/src`,
+    ],
+    ["--llm-sca-review", `${dir}/..`],
+  ]) {
+    const r = run(argv);
+    assert.equal(r.code, 2, argv.join(" "));
+    assert.match(r.stderr, /never a way out of one/, argv.join(" "));
+    assert.match(r.stderr, /carries a "\.\." segment/, argv.join(" "));
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The guard asks the LOADER which folder a value names, rather than spelling the path math
+// a second time. ".src" used to be validated as ".src" (found) and then read as "src" - a
+// real folder, not the one named, reviewed in silence. Pinned from the CLI end, because the
+// defect was the two ends disagreeing.
+test("a folder flag is checked against the folder the review will read", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-dotdir-"));
+  fs.mkdirSync(path.join(dir, "src"));
+
+  // Only src/ exists: naming .src refuses, where it used to review src/ without a word.
+  const missing = run(["some.xpi", "--sca-root", dir, "--sca-source", ".src"]);
+  assert.equal(missing.code, 2);
+  assert.match(missing.stderr, /--sca-source must point at a folder: "\.src"/);
+  assert.match(missing.stderr, new RegExp(`${dir}/\\.src`), "looked in .src");
+
+  // With the folder there, it passes this guard and the run reaches the next refusal.
+  fs.mkdirSync(path.join(dir, ".src"));
+  const ok = run([
+    "some.xpi",
+    "--sca-root",
+    dir,
+    "--sca-source",
+    ".src",
+    "--allow-experiments",
+  ]);
+  assert.equal(ok.code, 2);
+  assert.match(
+    ok.stderr,
+    /--sca-exp-source is required with --allow-experiments/
+  );
+  assert.doesNotMatch(ok.stderr, /must point at a folder/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

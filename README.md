@@ -109,9 +109,9 @@ prepares a source code review and is over before one starts, then `--llm-review`
 
 | Option | Description |
 | --- | --- |
-| `--sca-root <folder\|zip>` | The source archive root (holds `package.json`/lock). Switches to SCA mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused). See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
-| `--sca-source <path>` | The add-on code root, relative to `--sca-root` or an absolute path (e.g. `src` or `addon`). Optional; defaults to `.` (the whole `--sca-root` reviewed as the source - a flat layout with `manifest.json` at the root). Needs `--sca-root`. |
-| `--sca-exp-source <path>` | The Experiment implementation folder, relative to `--sca-root` or an absolute path, and within `--sca-source` (e.g. `addon/experiment-api`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--sca-root`; required when `--allow-experiments` is used in SCA mode. |
+| `--sca-root <folder>` | The **extracted** source root (holds `package.json`/lock) - a folder, not a packed archive: this tool unpacks the submitted `.xpi` and nothing else, so extract the source yourself. Switches to SCA mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused). See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
+| `--sca-source <path>` | The add-on code root, as a path relative to `--sca-root` (e.g. `src` or `addon`). Optional; defaults to `.` (the whole `--sca-root` reviewed as the source - a flat layout with `manifest.json` at the root). Needs `--sca-root`. |
+| `--sca-exp-source <path>` | The Experiment implementation folder, as a path relative to `--sca-root` - anywhere within it (e.g. `addon/experiment-api`, or a sibling of the source like `experiment`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--sca-root`; required when `--allow-experiments` is used in SCA mode. |
 
 **Other:**
 
@@ -146,9 +146,12 @@ kind, and every script it ships byte-identical to one in the archive — the rev
 been reviewed faster. That is advice for next time; it does not change the review it
 appears in.
 
-- `--sca-root` is the source archive (folder or zip) that holds `package.json` /
-  the lock file; setting it switches on SCA mode. `--sca-source` is the add-on code
-  root within it (relative to `--sca-root` or an absolute path, e.g. `src`); it is
+- `--sca-root` is the **extracted** source archive that holds `package.json` /
+  the lock file; setting it switches on SCA mode. It must be a folder: this tool
+  unpacks the submitted `.xpi` and nothing else, so extract the source archive
+  first - every format then works, because `tar` handles what this tool does not.
+  `--sca-source` is the add-on code
+  root within it (a path relative to `--sca-root`, e.g. `src`); it is
   **optional and defaults to `.`** - the whole `--sca-root` reviewed as the source, for
   a flat layout with `manifest.json` at the root (`node verify.js built.xpi --sca-root
   ./source-archive`).
@@ -172,9 +175,10 @@ appears in.
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest, the experiments and the file-completeness checks (bundled /
   web-accessible / unused / locales). The
-- `--sca-exp-source` names an Experiment implementation folder - relative to
-  `--sca-root` (or absolute), and within `--sca-source` (e.g. `addon/experiment-api`)
-  - so its privileged, non-WebExtension code is excluded from the WebExtension checks
+- `--sca-exp-source` names an Experiment implementation folder - a path relative
+  to `--sca-root`, anywhere within it (e.g.
+  `addon/experiment-api`, or a sibling of the source like `experiment`) - so its
+  privileged, non-WebExtension code is excluded from the WebExtension checks
   (required when `--allow-experiments` is used in SCA mode).
 - Because a review spans two artifacts, each finding's `file:line` is prefixed with the
   artifact it lives in - `[XPI]` (the built XPI) or `[SCA]` (the readable source code

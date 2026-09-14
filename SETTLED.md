@@ -315,6 +315,13 @@ guard family had a demonstrated defect.
   escalation to every add-on with an unfollowable loader. E and F are closed by the
   TypeScript entry below.
 
+- **`--sca-source` and `--sca-exp-source` are paths relative to `--sca-root`, never
+  absolute.** Both name a folder INSIDE the extracted source; an absolute path names a
+  folder on the reviewing machine, which can be anywhere, so what it names is not part of
+  the submission and cannot be shown to be. `--sca-root` itself is a machine path and stays
+  free. Refused at the CLI with a usage line and in `scaRootRelative`, so no caller has a
+  second answer; `.` and `./` still name the root itself. Do not re-add the absolute form.
+
 - **The order authored in `llm-manual-review-choices` IS the order a reviewer sees.** It is
   the only rule about answer order: no prompt step, no code and no second list may restate
   it, because a rule kept in two places is a rule kept in step by hand. Reordering the yaml
