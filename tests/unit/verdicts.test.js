@@ -219,6 +219,16 @@ test("a malformed verdict file is rejected with a reason", () => {
     () => readVerdicts(write('{"verdicts": {"2": "cleared"}}')),
     /names no "addon"/
   );
+  // A "verdicts" that is not a map of answers is refused, null and [] included: both are
+  // typeof "object", and either would have settled nothing while reading as an answer.
+  for (const verdicts of ["null", "[]", '"cleared"', "3"]) {
+    assert.throws(
+      () =>
+        readVerdicts(write(`{"addon": "/x/a.xpi", "verdicts": ${verdicts}}`)),
+      /"verdicts" must be an object/,
+      verdicts
+    );
+  }
   // Either block alone is a legitimate answer, but a file with neither settles nothing.
   assert.throws(
     () => readVerdicts(write('{"addon": "/x/a.xpi"}')),

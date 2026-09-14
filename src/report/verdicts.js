@@ -109,7 +109,12 @@ export function readVerdicts(file) {
       `--llm-verdict ${file} names no "addon" - it must carry the path the review printed, so verdicts cannot be applied to a different submission (e.g. ${shape})`
     );
   }
-  if (doc.verdicts !== undefined && typeof doc.verdicts !== "object") {
+  if (
+    doc.verdicts !== undefined &&
+    (typeof doc.verdicts !== "object" ||
+      doc.verdicts === null ||
+      Array.isArray(doc.verdicts))
+  ) {
     throw new Error(
       `--llm-verdict ${file}: "verdicts" must be an object, e.g. ${shape}`
     );
