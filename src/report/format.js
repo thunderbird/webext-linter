@@ -397,7 +397,13 @@ function renderLocusList(entry, labelOf) {
   const lines = [];
   for (const x of entry.shown) {
     if (hasLocus(x)) {
-      lines.push(` - ${locationLine(x, labelOf?.(x))}`);
+      // A reviewer's answer can be a LIST, and locationLine keeps their lines when the
+      // answer is all this case has. Each becomes an item of its own here, which is what
+      // they wrote it as - and is a single line for everything else, which is what every
+      // other locus is.
+      for (const line of locationLine(x, labelOf?.(x)).split("\n")) {
+        lines.push(` - ${line}`);
+      }
     }
   }
   if (entry.withheld) {
@@ -413,8 +419,9 @@ function renderLocusList(entry, labelOf) {
  * HAS one (see hasLocus - an entry whose subject is the submission as a whole has none,
  * and renders as the message alone). The locus has up to two parts: `locationLine`
  * surfaces the SUBJECT (`item`) after "file:line" when the message did not name it
- * (`listItem`), then the DETAIL (`hint`) is appended after " - " - so a finding with
- * both renders "file:line - item - hint". Manual review still wraps - see manualLines.
+ * (`listItem`), then the DETAIL (`hint`) is appended after " - ", and a reviewer's
+ * `note` closes the line in parentheses - so a finding with all of them renders
+ * "file:line - item - hint (note)". Manual review still wraps - see manualLines.
  * @param {number} n  1-based entry number.
  * @param {import("./finding.js").Finding[]} findings  All sharing one message.
  * @param {(f: import("./finding.js").Finding) => string} [labelOf]  Artifact label.
@@ -645,11 +652,14 @@ export function formatJson(review) {
   // Consumed by tooling rather than a terminal, but a consumer may print it, so the
   // submission-derived fields carry no more than the text report shows.
   const publicFindings = sortFindings(issues).map(
-    ({ data: _d, listItem: _li, ...f }) => ({
+    ({ data: _d, listItem: _li, note, ...f }) => ({
       ...f,
       ...(f.file == null ? {} : { file: displayLine(f.file) }),
       ...(f.item == null ? {} : { item: displayLine(f.item) }),
       ...(f.hint == null ? {} : { hint: displayLine(f.hint) }),
+      // A reviewer's note only when there is one: every other finding's document is
+      // the shape it always was.
+      ...(note == null ? {} : { note: displayLine(note) }),
     })
   );
   return JSON.stringify(
@@ -693,6 +703,15 @@ function section(title) {
  * path at all whichever of those exists leads instead; hasLocus guarantees at least one
  * does, so there is nothing to stand in for.
  *
+ * A reviewer's `note` closes the line in PARENTHESES rather than after another " - ":
+ * every other part is a short phrase, a note is a sentence a person typed, and a viewer
+ * wrapping the line would make a dash-joined sentence read as a location of its own. It is
+ * collapsed to one line there, because it shares that line.
+ *
+ * With nothing before it the note IS the location, and then the reviewer's own lines are
+ * kept: they answered a check that asked what they found, and a list of findings is a
+ * list. The caller splits on them (renderLocusList), so each becomes a location line.
+ *
  * A segment equal to one already on the line is DROPPED rather than printed twice. A
  * check whose subject is its own locus repeats the path otherwise - an untrusted library
  * with no identified name falls back to its path, and the line read
@@ -726,7 +745,17 @@ export function locationLine(f, label = "") {
     seen.add(text);
     segments.push(text);
   }
-  return segments.join(" - ");
+  const line = segments.join(" - ");
+  // Last, after everything the linter knows about the location: the line reads as the
+  // case first and what a person added about it second.
+  // A note that ANNOTATES a location is a phrase and shares that line, so it is collapsed
+  // into one; a note that IS the location keeps the reviewer's lines, and the caller gives
+  // each one its own bullet.
+  const note = f.note == null ? "" : f.note;
+  if (!note || seen.has(note)) {
+    return line;
+  }
+  return line ? `${line} (${displayLine(note)})` : note;
 }
 
 /**

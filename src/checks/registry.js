@@ -39,6 +39,7 @@ import YAML from "yaml";
 import { displayLine } from "../util/text.js";
 
 import { finding, SEVERITY } from "../report/finding.js";
+import { MAX_NOTE } from "../config.js";
 import { artifactLabel } from "../report/artifact.js";
 import { progress, debug, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
@@ -539,6 +540,56 @@ export class Registry {
   }
 
   /**
+   * The answers a manual review question offers, in the order the reviewer sees them.
+   *
+   * Each carries the `label` and `description` the reviewer reads and the `verdict` it
+   * settles the item with - the last of which never leaves this process: the item file
+   * carries the first two, the answer comes back as the reviewer gave it, and mapping it
+   * to a verdict happens here. Read once per review, and required: a question with no
+   * answers to offer cannot be asked.
+   * @returns {{label: string, verdict: string, description: string}[]}
+   */
+  manualReviewChoices() {
+    const at = "assets/registry.yaml";
+    const choices = this.doc["llm-manual-review-choices"];
+    if (!Array.isArray(choices) || choices.length === 0) {
+      throw new Error(`llm-manual-review-choices authors no answers (${at})`);
+    }
+    return choices.map((c, i) => {
+      for (const key of ["label", "verdict", "description"]) {
+        if (!c || typeof c[key] !== "string" || c[key] === "") {
+          throw new Error(
+            `llm-manual-review-choices answer ${i + 1} authors no \`${key}\` (${at})`
+          );
+        }
+      }
+      return {
+        label: c.label,
+        verdict: c.verdict,
+        // `{{maxNote}}` is the one number in this text the linter owns: the limit it
+        // refuses an answer past. Filled here so the reviewer is told what is enforced,
+        // rather than what someone typed into the yaml alongside it.
+        description: c.description.replace("{{maxNote}}", String(MAX_NOTE)),
+      };
+    });
+  }
+
+  /**
+   * The note a REPORTED case of this check carries when the reviewer gave none, or null.
+   *
+   * Authoring one declares that the check's report IS what the reviewer found: its
+   * response ends on a list, and the list is their words. The fallback keeps that list
+   * from being empty - a marker the reviewer completes after pasting - and a check that
+   * authors none never gets a note it was not given.
+   * @param {string} ruleId
+   * @returns {?string}
+   */
+  defaultNote(ruleId) {
+    const note = this.checkEntry(ruleId)?.["default-note"];
+    return typeof note === "string" && note !== "" ? note : null;
+  }
+
+  /**
    * The Found Issues response template for a finding's ruleId: the owning check's
    * `response`, or a system `messages` entry for an orchestrator-emitted ruleId
    * (e.g. "check-failed"). Null if neither exists.
@@ -826,6 +877,33 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
     // escalation is a case LISTED in the report for someone to settle. A sweep
     // instruction lists no case; it produces findings directly, so a check with no
     // escalation section authors one just as well.
+    // Authoring a `default-note` declares that this check's report IS what the reviewer
+    // found: its response ends on a list, and the marker stands in that list when they
+    // reported the case without writing one. An empty one is a declaration with nothing
+    // to declare - the response would end on a list introduction and nothing beneath it,
+    // which is the defect the fallback exists to prevent - so it fails HERE, where every
+    // other config pairing fails, and not on the one review that finally reports the case.
+    const defaultNote = entry["default-note"];
+    if (
+      defaultNote !== undefined &&
+      (typeof defaultNote !== "string" || defaultNote.trim() === "")
+    ) {
+      throw new Error(
+        `rules/${id}.js has an invalid \`default-note\` ` +
+          `${JSON.stringify(defaultNote)} (expected a non-empty string)`
+      );
+    }
+    // And it stands in for a REVIEWER'S words, so only a case a reviewer is asked about
+    // can have one: a `manual-review` escalation. Anywhere else the marker would be
+    // stamped onto a case nobody was ever asked to write about - on a code-review case a
+    // model settled, or on a check that lists no case at all.
+    if (defaultNote !== undefined && entry.escalation !== "manual-review") {
+      throw new Error(
+        `rules/${id}.js authors a \`default-note\` but is not \`escalation: ` +
+          `manual-review\` (it is ${JSON.stringify(entry.escalation ?? null)}). The note ` +
+          "stands in for what a REVIEWER wrote, so only a case put to one can carry it."
+      );
+    }
     const sweepInstruction = entry["sweep-instruction"];
     if (sweepInstruction !== undefined) {
       if (

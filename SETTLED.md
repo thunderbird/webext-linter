@@ -315,6 +315,13 @@ guard family had a demonstrated defect.
   escalation to every add-on with an unfollowable loader. E and F are closed by the
   TypeScript entry below.
 
+- **The order authored in `llm-manual-review-choices` IS the order a reviewer sees.** It is
+  the only rule about answer order: no prompt step, no code and no second list may restate
+  it, because a rule kept in two places is a rule kept in step by hand. Reordering the yaml
+  reorders what every question offers and what each position settles, and a test pins that
+  by flipping the list and asserting the outcome flips with it. Do not re-add "always offer
+  X first" wording anywhere.
+
 ## Not needed - do not re-report
 
 An audit will find these and call them gaps. They were looked at and judged not
@@ -479,3 +486,26 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   last sections `orderReview` numbers, so the file truncates rather than developing a hole:
   an index means the same item in a verify file, a full file and the report alike, and
   `applyVerdicts` resolves it against the full ordered review either way.
+
+- **A reviewer's note is not carried past the per-entry display cap, and that is fine.** An
+  entry prints at most `MAX_ENTRIES_PER_CATEGORY` locations, so the note on a 26th case of
+  one check is asked for, answered, and never printed - the very loss `readVerdict` refuses
+  for a `cleared` verdict. It stays: a submission with 26 cases of one manual check is
+  rejected long before a reviewer works through 26 questions about it, so the path is not
+  one a real review reaches. Do not re-propose exempting notes from the cap, sorting noted
+  members to the front of the shown window, or warning about it.
+
+- **A noted case with NO location of its own leaves its entry, and that is wanted.** A note
+  makes an item locus-bearing (`hasLocus`), and locus status is part of the grouping key,
+  so a noted locus-less case is listed on its own rather than inside the entry its unnoted
+  siblings share. The alternative is a numbered entry whose location list mixes cases a
+  reviewer wrote about with cases they did not. A case that HAS a location still groups
+  normally - the note is on the location line, not in the text entries group by. Do not
+  re-propose computing the grouping key from the item's own locus fields.
+
+- **A note identical to something already on its location line is dropped.** `locationLine`
+  drops a segment equal to one already printed, and that applies to a note as much as to a
+  subject that is its own path. A reviewer who answers with the hostname the line already
+  names has added no information, so none is lost. Do not re-propose exempting notes from
+  the dedup or diagnosing the drop.
+

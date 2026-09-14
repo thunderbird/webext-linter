@@ -863,6 +863,55 @@ test("the checks that sweep their own blind spot are exactly these", () => {
 
 // The three things that must hold for a sweep instruction to be fileable are config, so
 // they fail at LOAD time rather than when an addition first arrives - which may be never.
+// A `default-note` stands in for what a REVIEWER wrote when they reported a case without
+// words, so only a case a reviewer is asked about can carry one. Anywhere else the marker
+// would be stamped onto a case nobody was asked about - and the check that authors one
+// today is the only one whose response ends on the reviewer's own list.
+test("loadChecks refuses a default-note outside a manual-review escalation", async () => {
+  const entry = (extra) => ({
+    title: "X",
+    check: "sync-xhr",
+    severity: "error",
+    input: "source",
+    ...extra,
+  });
+  await assert.rejects(
+    loadChecks(
+      new Registry({
+        "deterministic-phase": [entry({ "default-note": "  " })],
+      })
+    ),
+    /invalid `default-note`/
+  );
+  // A code-review case a model settles, and a check that lists no case at all.
+  for (const extra of [
+    { escalation: "code-review", instructions: "settle it" },
+    {},
+  ]) {
+    await assert.rejects(
+      loadChecks(
+        new Registry({
+          "deterministic-phase": [entry({ ...extra, "default-note": "- ..." })],
+        })
+      ),
+      /not `escalation: manual-review`/,
+      JSON.stringify(extra)
+    );
+  }
+  // The pairing it exists for loads.
+  await loadChecks(
+    new Registry({
+      "deterministic-phase": [
+        entry({
+          escalation: "manual-review",
+          instructions: "settle it",
+          "default-note": "- ...",
+        }),
+      ],
+    })
+  );
+});
+
 test("loadChecks refuses a sweep-instruction it could not file a finding for", async () => {
   const entry = (extra) => ({
     title: "X",

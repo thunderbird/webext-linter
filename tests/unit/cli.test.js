@@ -213,9 +213,13 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   assert.ok(intro > -1, "prompt is printed");
   assert.ok(intro < target, "prompt comes before the Review Details section");
   // Wrapped at 80 columns, so match only single tokens: any phrase can straddle a break
-  // the next wording change happens to move.
-  assert.match(on.stdout, /"Report"/);
-  assert.match(on.stdout, /"Clear"/);
+  // the next wording change happens to move. The answers themselves are not here - they
+  // travel on each question in the item file - so the prompt names the field instead.
+  assert.match(on.stdout, /"answers"/);
+  assert.ok(
+    !on.stdout.includes('"Report"'),
+    "the answers are not prose in the prompt"
+  );
   // The review itself is in the file, so none of it is printed.
   assert.ok(!on.stdout.includes("── Found Issues ──"), "no prose report");
   assert.ok(!on.stdout.includes("── Setup ──"), "no feed");
@@ -406,8 +410,7 @@ test("--llm-verify withholds the description and the manual items", () => {
 
   // The inverse of the --llm-review assertions above: these are the two withheld steps,
   // and their absence is the whole feature.
-  assert.ok(!on.stdout.includes('"Report"'), "no manual questions asked");
-  assert.ok(!on.stdout.includes('"Clear"'), "no manual questions asked");
+  assert.ok(!on.stdout.includes('"answers"'), "no manual questions asked");
   assert.ok(
     !on.stdout.includes("summary.md"),
     "no add-on description asked for"

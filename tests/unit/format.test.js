@@ -1190,6 +1190,47 @@ test("the prompt texts come from the registry and all three are required", () =>
   assert.throws(() => registry.llmReviewPrompt(), /authors no `issues`/);
 });
 
+// The answers a question offers are authored once and asked of every reviewer, so a run
+// that cannot read them has no question to ask. Each way the yaml can be wrong refuses by
+// name, rather than reaching the reviewer as an answer with no label or no description.
+test("the manual review answers come from the registry and are whole", () => {
+  const choices = loadRegistry().manualReviewChoices();
+  assert.ok(
+    choices.length >= 2,
+    "a question offers something to choose between"
+  );
+  for (const c of choices) {
+    for (const key of ["label", "verdict", "description"]) {
+      assert.equal(typeof c[key], "string");
+      assert.ok(c[key].length > 0, key);
+    }
+  }
+
+  const missing = loadRegistry();
+  delete missing.doc["llm-manual-review-choices"];
+  assert.throws(() => missing.manualReviewChoices(), /authors no answers/);
+
+  const empty = loadRegistry();
+  empty.doc["llm-manual-review-choices"] = [];
+  assert.throws(() => empty.manualReviewChoices(), /authors no answers/);
+
+  // One test per field, because each is a different thing the reviewer loses: the answer
+  // they pick, the verdict it settles the item with, and what it means.
+  for (const [i, key] of [
+    [0, "label"],
+    [1, "verdict"],
+    [0, "description"],
+  ]) {
+    const broken = loadRegistry();
+    delete broken.doc["llm-manual-review-choices"][i][key];
+    assert.throws(
+      () => broken.manualReviewChoices(),
+      new RegExp(`answer ${i + 1} authors no \\\`${key}\\\``),
+      key
+    );
+  }
+});
+
 // Every step must DECLARE whether it survives --llm-verify, the way every check entry must
 // declare its severity: a step added without one would silently join (or silently leave)
 // the verify prompt, and nothing downstream validates this wording. The steps must not

@@ -103,6 +103,18 @@ export function renderFindings(findings, registry) {
 }
 
 /**
+ * A response that ends on a list, with the marker that stands in for the reviewer's own
+ * words beneath it. Null in, null out: a check that authors no response has nothing to
+ * append to, and one that authors no default note keeps the response as written.
+ * @param {?string} response
+ * @param {?string} note
+ * @returns {?string}
+ */
+function withDefaultNote(response, note) {
+  return response && note ? `${response}\n\n${note}` : response;
+}
+
+/**
  * Resolve manual-review refs to ManualItems: the owning entry's title plus its
  * `instructions`, filled with the case
  * item and any `data` slots (e.g. a reason). The ref's locus (file/loc/item) is
@@ -127,7 +139,17 @@ export function renderManualItems(refs, registry) {
       // the instructions. Every escalation carries one: once a reviewer settles the
       // case against the add-on, this is the text that goes to the developer, so
       // withholding it would leave them with a decision and nothing to send.
-      response: fill(entry?.response, ref.item, ref.data),
+      //
+      // A check whose report IS what the reviewer found ends its response on a list and
+      // carries a `default-note` to stand in that list. It is appended HERE too, because
+      // this text is pasted by hand as often as it is settled through --llm-verdict, and
+      // a reviewer handed a list introduction with nothing under it has been handed half
+      // a sentence. A settled case gets the same string on its location line instead,
+      // unless the reviewer wrote their own.
+      response: withDefaultNote(
+        fill(entry?.response, ref.item, ref.data),
+        registry.defaultNote(ref.ruleId)
+      ),
       // The band a reported case lands in, printed above that response. Null for a
       // check whose cases produce no finding however they are settled.
       verdict: registry.suggestedVerdict(ref.ruleId),

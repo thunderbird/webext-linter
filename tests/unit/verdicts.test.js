@@ -11,11 +11,18 @@ import path from "node:path";
 
 import { applyVerdicts, readVerdicts } from "../../src/report/verdicts.js";
 import { loadRegistry } from "../../src/checks/registry.js";
-import { renderFindings } from "../../src/report/responses.js";
+import { MAX_NOTE } from "../../src/config.js";
+import {
+  renderFindings,
+  renderManualItems,
+} from "../../src/report/responses.js";
 import { reviewItems } from "../../src/report/items.js";
-import { formatText } from "../../src/report/format.js";
+import { formatText, formatJson } from "../../src/report/format.js";
 
 const registry = loadRegistry();
+// The answers every question offers - what the pipeline hands reviewItems, so the tests
+// see the file a review actually writes.
+const choices = registry.manualReviewChoices();
 
 /** A finding as it looks once renderFindings has run. */
 function mkFinding(ruleId, severity, message, file, line) {
@@ -63,6 +70,9 @@ function review() {
   };
 }
 
+// A verdict file carries what settles each item, as it was given: a verb for an item
+// nobody was asked, and for a question the label the reviewer picked or the words they
+// typed instead.
 const verdicts = (obj) => new Map(Object.entries(obj).map(([k, v]) => [+k, v]));
 
 // The three verbs, each on the kind of item it belongs to. A reported to-do item
@@ -154,7 +164,7 @@ test("a by-hand reminder settles like an escalation", () => {
   applyVerdicts({
     findings,
     manual: list,
-    verdicts: verdicts({ [held + 1]: "reported", [held + 2]: "cleared" }),
+    verdicts: verdicts({ [held + 1]: "Report", [held + 2]: "Clear" }),
     registry,
   });
   // One confirmed into a finding, one cleared away, the rest still to do.
@@ -221,15 +231,20 @@ test("a malformed verdict file is rejected with a reason", () => {
       ),
     /"x" is not an item index/
   );
+  // What an answer means needs the review it settles, so the file reader refuses only
+  // what is not an answer at all - applyVerdicts is where "maybe" meets its item.
   assert.throws(
-    () =>
-      readVerdicts(write('{"addon": "/x/a.xpi", "verdicts": {"1": "maybe"}}')),
-    /has verdict "maybe"/
+    () => readVerdicts(write('{"addon": "/x/a.xpi", "verdicts": {"1": ""}}')),
+    /item 1 has ""/
+  );
+  assert.throws(
+    () => readVerdicts(write('{"addon": "/x/a.xpi", "verdicts": {"1": 7}}')),
+    /item 1 has 7/
   );
   assert.deepEqual(readVerdicts(write(ok)), {
     addon: "/x/a.xpi",
     additions: [],
-    verdicts: new Map([[2, "cleared"]]),
+    verdicts: verdicts({ 2: "cleared" }),
   });
 
   // An addition is addressed by check and locus, never by an index, so it is read into
@@ -244,7 +259,7 @@ test("a malformed verdict file is rejected with a reason", () => {
     additions: [
       { check: "data-exfiltration", file: "bg.js", line: 40, hint: null },
     ],
-    verdicts: new Map(),
+    verdicts: verdicts({}),
   });
   assert.throws(
     () =>
@@ -283,7 +298,7 @@ test("an item the page withheld is in the file and can be settled", () => {
   const manual = Array.from({ length: 30 }, (_, i) =>
     mkItem("unused-permission", "Perms", "m.json", i + 1, `perm${i}`)
   );
-  const items = reviewItems([], manual);
+  const items = reviewItems({ findings: [], manual, choices });
   assert.equal(items.length, 30, "every site reaches the item file");
   assert.deepEqual(
     items.map((x) => x.index),
@@ -295,7 +310,7 @@ test("an item the page withheld is in the file and can be settled", () => {
   applyVerdicts({
     findings: [],
     manual,
-    verdicts: new Map([[beyondCap.index, "cleared"]]),
+    verdicts: verdicts({ [beyondCap.index]: "cleared" }),
     registry,
   });
   assert.equal(manual.length, 29, "the withheld item settled like any other");
@@ -326,7 +341,7 @@ test("a verify item file omits the manual sections without renumbering", () => {
   };
   const manual = [code, extendedManual, standard];
 
-  const full = reviewItems(findings, manual, null, "full");
+  const full = reviewItems({ findings, manual, choices });
   assert.deepEqual(
     full.map((x) => [x.index, x.section]),
     [
@@ -337,7 +352,7 @@ test("a verify item file omits the manual sections without renumbering", () => {
     ]
   );
 
-  const verify = reviewItems(findings, manual, null, "verify");
+  const verify = reviewItems({ findings, manual, choices, mode: "verify" });
   assert.deepEqual(
     verify.map((x) => [x.index, x.section]),
     [
@@ -366,7 +381,13 @@ test("the pre-sweep tail is still the tail in a verify file", () => {
     },
   ];
   const preSweep = { intro: "sweep", items: [{ check: "x", title: "t" }] };
-  const items = reviewItems([], manual, preSweep, "verify");
+  const items = reviewItems({
+    findings: [],
+    manual,
+    choices,
+    preSweep,
+    mode: "verify",
+  });
   const numbered = items.filter((x) => x.index !== undefined);
   assert.deepEqual(
     numbered.map((x) => x.index),
@@ -390,7 +411,7 @@ test("a verdict written from a verify item file applies", () => {
     loc: null,
   };
   const manual = [code, standard];
-  const items = reviewItems(findings, manual, null, "verify");
+  const items = reviewItems({ findings, manual, choices, mode: "verify" });
   assert.equal(items.length, 2, "the standard item is not in the file");
 
   applyVerdicts({
@@ -421,7 +442,7 @@ test("a verdict written from the item file applies", () => {
   const manual = [
     mkItem("unused-permission", "Perms", "manifest.json", 3, "compose"),
   ];
-  const items = reviewItems(findings, manual);
+  const items = reviewItems({ findings, manual, choices });
   assert.deepEqual(
     items.map((x) => [x.index, x.kind, x.file]),
     [
@@ -460,7 +481,7 @@ test("an addition is filed as a finding of the check it names", () => {
   const { applied, added } = applyVerdicts({
     findings: r.findings,
     manual: r.manual,
-    verdicts: new Map(),
+    verdicts: verdicts({}),
     additions: [
       {
         check: "data-exfiltration",
@@ -530,7 +551,7 @@ test("an addition for a check that swept nothing refuses the run", () => {
       applyVerdicts({
         findings: r.findings,
         manual: r.manual,
-        verdicts: new Map(),
+        verdicts: verdicts({}),
         additions: [{ check: "eval-call", file: "a.js", line: 1, hint: null }],
         registry,
       }),
@@ -619,7 +640,7 @@ test("a manual item carries its question and its progress label", () => {
     mkManual("privacy-policy", "Policy", "api.example.com"),
     mkStandard("test-add-on", "Test it"),
   ];
-  const items = reviewItems(findings, manual);
+  const items = reviewItems({ findings, manual, choices });
 
   assert.deepEqual(
     items.filter((x) => x.label).map((x) => [x.label, x.section]),
@@ -655,7 +676,7 @@ test("two cases of one check are two questions, told apart by their locus", () =
     mkManual("privacy-policy", "Policy", "api.example.com"),
     mkManual("privacy-policy", "Policy", "metrics.example.com"),
   ];
-  const items = reviewItems([], manual);
+  const items = reviewItems({ findings: [], manual, choices });
   assert.deepEqual(
     items.map((x) => x.entry),
     [1, 1],
@@ -679,7 +700,7 @@ test("a verify item file asks nothing and so labels nothing", () => {
     mkManual("privacy-policy", "Policy", "api.example.com"),
     mkStandard("test-add-on", "Test it"),
   ];
-  const items = reviewItems([], manual, null, "verify");
+  const items = reviewItems({ findings: [], manual, choices, mode: "verify" });
   assert.deepEqual(
     items.map((x) => x.section),
     ["Extended Code Review"]
@@ -699,7 +720,12 @@ test("a question's locus carries the artifact label the report gives it", () => 
       loc: null,
     },
   ];
-  const items = reviewItems([], manual, null, "full", () => "SCA");
+  const items = reviewItems({
+    findings: [],
+    manual,
+    choices,
+    labelOf: () => "SCA",
+  });
   assert.equal(items[0].message, "[Build] inspect Build ([SCA] package.json)");
 });
 
@@ -714,7 +740,7 @@ test("a question flattens the instructions the registry wrapped", () => {
     },
   ];
   assert.equal(
-    reviewItems([], manual)[0].message,
+    reviewItems({ findings: [], manual, choices })[0].message,
     "[Test it] Open the add-on in a test profile, then exercise it."
   );
 });
@@ -728,7 +754,7 @@ test("a question's locus is the locus line the report prints", () => {
     mkManual("privacy-policy", "Policy", "api.example.com"),
     mkManual("privacy-policy", "Policy", "metrics.example.com"),
   ];
-  const items = reviewItems([], manual);
+  const items = reviewItems({ findings: [], manual, choices });
   const printed = formatText({
     findings: [],
     meta: {
@@ -747,4 +773,358 @@ test("a question's locus is the locus line the report prints", () => {
       `the report lists "${locus}" as a location of its own`
     );
   }
+});
+
+// What an item of each kind carries, asserted as a whole key set: the file is a contract,
+// and a field added or dropped is a change to it. A question carries the finished question
+// and NOT the parts it was composed from - a reader told to ask it as written should not
+// also hold the material to write a different one - while an item settled by reading the
+// add-on carries the instructions its reader follows and no question at all.
+test("each kind of item carries what settling it needs, and no more", () => {
+  const findings = [mkFinding("unused-files", "error", "DEAD", "junk.txt", 1)];
+  const code = mkItem(
+    "unused-permission",
+    "Perms",
+    "manifest.json",
+    3,
+    "compose"
+  );
+  const manual = [
+    code,
+    mkManual("privacy-policy", "Policy", "api.example.com"),
+  ];
+  const items = reviewItems({ findings, manual, choices });
+  const keys = (kind) => Object.keys(items.find(kind)).sort().join(",");
+
+  assert.equal(
+    keys((x) => x.label),
+    "answers,entry,file,hint,index,item,kind,label,loc,message,ruleId,section,suggestedResponse,suggestedVerdict"
+  );
+  assert.equal(
+    keys((x) => x.section === "Extended Code Review"),
+    "entry,file,hint,index,instructions,item,kind,loc,ruleId,section,suggestedResponse,suggestedVerdict"
+  );
+  assert.equal(
+    keys((x) => x.kind === "finding"),
+    "entry,file,hint,index,item,kind,loc,message,ruleId,section,severity"
+  );
+  // The verdict each answer settles the item with is the linter's business: the file
+  // carries only what the reviewer reads, so a reader cannot write a verdict of its own.
+  assert.deepEqual(
+    items.find((x) => x.answers).answers,
+    choices.map(({ label, description }) => ({ label, description }))
+  );
+  assert.ok(
+    choices.every((c) => c.verdict),
+    "the registry knows the verdicts it did not hand over"
+  );
+});
+
+// The registry's order IS the order a reviewer sees, and nothing else has a say: a rule
+// living anywhere but that list would have to be kept in step with it by hand. Flipping
+// the authoring flips what the question offers AND what the first position settles, so a
+// reviewer answering by position is answering the list.
+test("the authored answer order is the order a question offers", () => {
+  const flipped = loadRegistry();
+  flipped.doc["llm-manual-review-choices"] = [
+    ...flipped.doc["llm-manual-review-choices"],
+  ].reverse();
+  const asAuthored = registry.manualReviewChoices();
+  const other = flipped.manualReviewChoices();
+  assert.deepEqual(
+    other.map((c) => c.label),
+    asAuthored.map((c) => c.label).reverse()
+  );
+
+  for (const choices of [asAuthored, other]) {
+    const manual = [mkManual("privacy-policy", "Policy", "api.example.com")];
+    const items = reviewItems({ findings: [], manual, choices });
+    assert.deepEqual(
+      items.find((x) => x.answers).answers.map((a) => a.label),
+      choices.map((c) => c.label),
+      "the file offers them in the authored order"
+    );
+    // ...and the first position settles what the list says it settles, either way round:
+    // a reported case becomes a finding, a cleared one leaves nothing behind.
+    const findings = [];
+    applyVerdicts({
+      findings,
+      manual,
+      verdicts: verdicts({ 1: choices[0].label }),
+      registry: choices === other ? flipped : registry,
+    });
+    assert.equal(
+      findings.length,
+      choices[0].verdict === "reported" ? 1 : 0,
+      `answer 1 settles as ${choices[0].verdict}`
+    );
+  }
+});
+
+// ---- what a reviewer answered ----
+// A question offers the answers the registry authors, and the reviewer either picks one or
+// types instead. The verdict file carries what they gave, verbatim; turning that into a
+// verdict is the linter's job. Typed words are a report carrying them: they reach the
+// developer on the case's LOCATION line, while the response paragraph above stays the
+// registry's word for word.
+
+/** The label of the answer that clears a case, and of the one that reports it. */
+const [CLEAR, REPORT] = registry.manualReviewChoices().map((c) => c.label);
+
+/** The settled report's Found Issues body, for a review of `manual` answered by `answers`. */
+function settled(manual, answers) {
+  const findings = [];
+  applyVerdicts({ findings, manual, verdicts: verdicts(answers), registry });
+  renderFindings(findings, registry);
+  return {
+    findings,
+    body: formatText({
+      findings,
+      meta: {
+        action: "review",
+        addon: "x",
+        reviewed: true,
+        manualReview: manual,
+      },
+    })
+      .split("── Found Issues ──")[1]
+      .split("You can run")[0],
+  };
+}
+
+/** Settle one question with `answer`, for the cases that must be refused. */
+function answerQuestion(
+  answer,
+  item = mkManual("privacy-policy", "Policy", "api.example.com")
+) {
+  const manual = [item];
+  return () =>
+    applyVerdicts({
+      findings: [],
+      manual,
+      verdicts: verdicts({ 1: answer }),
+      registry,
+    });
+}
+
+test("a typed answer closes the case's location line in parentheses", () => {
+  const manual = [mkManual("privacy-policy", "Policy", "api.example.com")];
+  const { body } = settled(manual, {
+    1: "the German listing text is outdated too",
+  });
+  assert.match(
+    body,
+    /\n - api\.example\.com \(the German listing text is outdated too\)\n/
+  );
+});
+
+// A case that names no location still carries what the reviewer said about it, and that
+// line is the only place it can appear - so a note is a locus of its own.
+test("a case with no location renders as the answer alone", () => {
+  const manual = [mkStandard("test-add-on", "Test it")];
+  const { body } = settled(manual, { 1: "the trial expires after two weeks" });
+  assert.match(body, /\n - the trial expires after two weeks\n/);
+});
+
+// A reviewer asked what a check found answers with a list as often as with a sentence, so
+// their lines are kept and each becomes an item of its own. The report opens every one with
+// "- ", so the bullet they typed is dropped rather than printed twice.
+test("a typed answer keeps the reviewer's lines, one item each", () => {
+  const manual = [mkStandard("test-add-on", "Test it")];
+  const { findings, body } = settled(manual, {
+    1: "  - the BrowserShim is bad\n\n* today is monday  ",
+  });
+  assert.equal(findings[0].note, "the BrowserShim is bad\ntoday is monday");
+  assert.match(body, /\n - the BrowserShim is bad\n - today is monday\n/);
+
+  // Inside a line it is still one line: a wrapped sentence does not become two items.
+  const one = settled([mkStandard("test-add-on", "Test it")], {
+    1: "the listing text\tis   outdated",
+  });
+  assert.equal(one.findings[0].note, "the listing text is outdated");
+});
+
+// The answer travels on the location line, not in the response, so two cases of one check
+// still share one paragraph - the developer reads it once, and only the line carrying the
+// reviewer's words differs.
+test("an answered case stays in its entry beside one that was only reported", () => {
+  const manual = [
+    mkManual("privacy-policy", "Policy", "api.example.com"),
+    mkManual("privacy-policy", "Policy", "metrics.example.com"),
+  ];
+  const { body } = settled(manual, {
+    1: "and the listing is out of date",
+    2: REPORT,
+  });
+  assert.equal(
+    body.match(/^\d+\) /gm).length,
+    1,
+    "one numbered entry, not one per answer"
+  );
+  assert.match(
+    body,
+    /\n - api\.example\.com \(and the listing is out of date\)\n - metrics\.example\.com\n/
+  );
+});
+
+// The two vocabularies are keyed on the item, and crossing them is refused both ways. A
+// verb on a question is a model answering for the reviewer; a reviewer's answer on an item
+// nobody was asked is a model writing prose a developer reads.
+test("an answer belongs to the kind of item it settles", () => {
+  assert.throws(
+    answerQuestion("cleared"),
+    /was put to a reviewer and carries "cleared" - answer it as they did, with "Clear" or "Report"/
+  );
+  const code = mkItem(
+    "unused-permission",
+    "Perms",
+    "manifest.json",
+    3,
+    "compose"
+  );
+  assert.throws(
+    () =>
+      applyVerdicts({
+        findings: [],
+        manual: [code],
+        verdicts: verdicts({ 1: "I judged this myself" }),
+        registry,
+      }),
+    /was not put to a reviewer - it is settled by reading the add-on/
+  );
+  // A label is not a verb either: the same guard, the other way round.
+  assert.throws(
+    () =>
+      applyVerdicts({
+        findings: [],
+        manual: [code],
+        verdicts: verdicts({ 1: CLEAR }),
+        registry,
+      }),
+    /was not put to a reviewer/
+  );
+});
+
+// The limit the reviewer is told about in the answer they read, and the limit the linter
+// enforces, are ONE number - the answer's description is filled from it. Asserted against
+// the constant rather than against a number parsed out of English, so the test survives a
+// rewording and fails on what it is about: the two parting.
+test("the limit the answers state is the limit the linter enforces", () => {
+  const limit = MAX_NOTE;
+  const stating = registry
+    .manualReviewChoices()
+    .filter((c) => c.description.includes(`${limit} characters`));
+  assert.equal(stating.length, 1, "exactly one answer states the limit");
+  assert.ok(
+    !stating[0].description.includes("{{"),
+    "and states it as a number, not as the slot it was filled from"
+  );
+
+  const manual = [mkStandard("test-add-on", "Test it")];
+  const { findings } = settled(manual, { 1: "x".repeat(limit) });
+  assert.equal(findings[0].note.length, limit, "the stated limit is accepted");
+  assert.throws(
+    answerQuestion("x".repeat(limit + 1)),
+    new RegExp(`${limit + 1}-character answer and the limit is ${limit}`),
+    "one character more is refused, naming the item so the question can be asked again"
+  );
+  // Counted as the reviewer counts: an emoji is one character, not the two UTF-16 units it
+  // is stored as, so the refusal states a number they can act on.
+  const emoji = settled([mkStandard("test-add-on", "Test it")], {
+    1: "\u{1F600}".repeat(limit),
+  });
+  assert.equal(
+    [...emoji.findings[0].note].length,
+    limit,
+    "counted in code points"
+  );
+});
+
+// A reviewer who typed into the free-text box and thought better of it leaves a bullet
+// behind. That says nothing, so it is the empty answer - not a note reading "-".
+test("an answer that is only a bullet is no answer", () => {
+  for (const typed of ["-", "- ", "  *  ", "\u2022", "-\n-\n"]) {
+    assert.throws(
+      answerQuestion(typed),
+      /carries an answer with nothing in it/,
+      JSON.stringify(typed)
+    );
+  }
+  // A dash that is part of what they wrote stays.
+  const { findings } = settled([mkStandard("test-add-on", "Test it")], {
+    1: "-5 icons are missing",
+  });
+  assert.equal(findings[0].note, "-5 icons are missing");
+});
+
+// The machine document says what the report says. A review with no answers of that kind is
+// the document it always was - the key appears only where a reviewer wrote something.
+test("the JSON carries a note only where there is one", () => {
+  const manual = [
+    mkManual("privacy-policy", "Policy", "api.example.com"),
+    mkManual("privacy-policy", "Policy", "metrics.example.com"),
+  ];
+  const { findings } = settled(manual, {
+    1: "and the listing is out of date",
+    2: REPORT,
+  });
+  const doc = JSON.parse(
+    formatJson({
+      findings,
+      meta: { action: "review", addon: "x", reviewed: true },
+    })
+  );
+  assert.deepEqual(
+    doc.findings.map((f) => f.note ?? null),
+    ["and the listing is out of date", null]
+  );
+  assert.ok(
+    !Object.hasOwn(doc.findings[1], "note"),
+    "absent, not null, on a finding nobody annotated"
+  );
+});
+
+// ---- a check whose report IS what the reviewer found ----
+// Such a check authors a `default-note`: its response ends on a list, and the list is the
+// reviewer's words. Authoring that fallback is the declaration - it stands in when the case
+// was reported with none, so the list is never an introduction with nothing under it.
+
+test("a check that authors a default note falls back to it", () => {
+  const item = {
+    ...mkItem("experiment-manual-review", "Experiment", null, 0),
+    extended: true,
+    section: "manual-review",
+    file: null,
+    loc: null,
+  };
+  assert.ok(registry.defaultNote("experiment-manual-review"));
+
+  // Reported with nothing written: the marker stands in, normalised like any answer, so
+  // the report's own bullet is not doubled.
+  const bare = settled([{ ...item }], { 1: REPORT });
+  assert.equal(bare.findings[0].note, "...");
+  assert.match(bare.body, /\n - \.\.\.\n/);
+
+  // What the reviewer wrote wins over it.
+  const written = settled([{ ...item }], {
+    1: "the BrowserShim reaches too far",
+  });
+  assert.equal(written.findings[0].note, "the BrowserShim reaches too far");
+
+  // A check that authors none gets none.
+  const other = settled([mkStandard("test-add-on", "Test it")], { 1: REPORT });
+  assert.equal(other.findings[0].note, null);
+});
+
+// The response a reviewer pastes by hand ends on the same list, so the marker is appended
+// there too - a list introduction with nothing under it is half a sentence.
+test("the default note completes the response the reviewer pastes", () => {
+  const [rendered] = renderManualItems(
+    [{ ruleId: "experiment-manual-review", item: null }],
+    registry
+  );
+  assert.match(
+    rendered.response,
+    /The following need to be addressed:\n\n- \.\.\.$/
+  );
 });

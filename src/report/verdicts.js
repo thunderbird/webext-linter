@@ -1,8 +1,10 @@
 // Apply settled verdicts to a finished review (--llm-verdict). A reviewer - or a model
 // handed the report by --llm-review - answers the questions the review asked, and this
-// is where those answers change the report. It reads a verdict file and nothing else:
-// no prose, no severity, no message comes from the answer, so the wording stays the
-// registry's and a reported case lands in the band its own check declares.
+// is where those answers change the report. It reads a verdict file and nothing else: no
+// severity and no response comes from the answer, so a reported case lands in the band its
+// own check declares and is worded by that check. The ONE exception is what a reviewer
+// typed instead of picking an answer - their words, carried onto the case's location line
+// and nowhere else (see below).
 //
 // A file carries two kinds of answer, and they are addressed differently ON PURPOSE.
 // A VERDICT settles an item the linter numbered, so it is keyed by that index. An
@@ -18,8 +20,20 @@
 // beside it, saying what sits at that line. The response paragraph a developer reads is
 // still wholly the registry's, filled by renderFindings from the owning check.
 //
-// Belongs here: reading the file, matching each answer to the item it settles, filing
-// each addition under its check, and turning the three verbs into finding/to-do edits.
+// A reported case may also bring a `note`, and that one IS a person's words reaching the
+// developer - the reviewer answered the question about this case in their own words
+// instead of picking an answer, and those words are the answer. They are the REVIEWER's,
+// never the model's: nothing here can tell the two apart, so the prompt that asks the
+// question is what holds that line, and what this file refuses is the rest - a verb where
+// a reviewer answered, an answer where nobody was asked, an answer with nothing in it,
+// and one too long to have been typed into the question it answers. The note travels on
+// the LOCATION line, like a hint, so the response paragraph stays the registry's word for
+// word.
+//
+// Belongs here: reading the file, matching each answer to the item it settles, deciding
+// what that answer MEANS for that kind of item (a reviewer's label or words for a question,
+// one of the three verbs for anything else), normalising the words they typed, and filing
+// each addition under its check.
 //
 // Does NOT belong here: the item ORDER and its numbering (src/report/order.js, the one
 // sequence the renderer prints from), the wording (assets/registry.yaml), and deciding a
@@ -27,8 +41,13 @@
 
 import fs from "node:fs";
 
+import { displayLine } from "../util/text.js";
+// The length a reviewer is told they have, in the answer's own description: one number,
+// stated there and enforced here. Exceeding it FAILS the run by design - truncating would
+// drop words a person wrote, so the model goes back and asks rather than making them fit.
+import { MAX_NOTE } from "../config.js";
 import { finding } from "./finding.js";
-import { orderReview, hasLocus } from "./order.js";
+import { orderReview, hasLocus, MANUAL_SECTIONS } from "./order.js";
 import { locationLine } from "./format.js";
 
 // The three verdicts, all naming what happens to the item in the REPORT rather than what
@@ -54,7 +73,7 @@ const MAX_HINT = 200;
 
 /**
  * Read and shape-check a verdict file:
- * `{ addon, additions?: [{check, file, line?, hint?}], verdicts?: {"<index>": "<verb>"} }`.
+ * `{ addon, additions?: [{check, file, line?, hint?}], verdicts?: {"<index>": "<answer>"} }`.
  *
  * `addon` names the add-on the answers were reached on - the path the Review Details
  * section printed - and is checked against the one being reviewed. That is the whole
@@ -81,7 +100,7 @@ export function readVerdicts(file) {
     );
   }
   const shape =
-    '{"addon": "<the reviewed path>", "verdicts": {"4": "reported"}}';
+    '{"addon": "<the reviewed path>", "verdicts": {"4": "Clear", "7": "withdrawn"}}';
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
     throw new Error(`--llm-verdict ${file} must be an object, e.g. ${shape}`);
   }
@@ -109,19 +128,23 @@ export function readVerdicts(file) {
     readAddition(file, i, raw)
   );
   const verdicts = new Map();
-  for (const [key, verdict] of Object.entries(doc.verdicts ?? {})) {
+  for (const [key, raw] of Object.entries(doc.verdicts ?? {})) {
     const index = Number(key);
     if (!Number.isInteger(index) || index < 1) {
       throw new Error(
         `--llm-verdict ${file}: "${key}" is not an item index (a whole number from 1)`
       );
     }
-    if (!VERBS.has(verdict)) {
+    // What an answer MEANS needs the review it settles - a question takes one of the
+    // answers it offered, or the reviewer's own words, and everything else takes a verb.
+    // Neither is knowable from a path, so applyVerdicts checks it and this only refuses
+    // what is not an answer at all.
+    if (typeof raw !== "string" || raw.trim() === "") {
       throw new Error(
-        `--llm-verdict ${file}: item ${index} has verdict ${JSON.stringify(verdict)} (expected one of: ${[...VERBS].join(", ")})`
+        `--llm-verdict ${file}: item ${index} has ${JSON.stringify(raw)} - an answer is the reviewer's, or one of ${[...VERBS].join(", ")} for an item they were not asked`
       );
     }
-    verdicts.set(index, verdict);
+    verdicts.set(index, raw);
   }
   return { addon: doc.addon, additions, verdicts };
 }
@@ -189,6 +212,97 @@ function readAddition(file, i, raw) {
 }
 
 /**
+ * What one answer settles its item with: the verdict, and the reviewer's own words when
+ * the answer WAS their words.
+ *
+ * An item a reviewer was asked takes one of the answers it offered, matched by label, or
+ * anything else - which is what they typed instead of picking, so it reports the case and
+ * carries what they wrote. An item nobody was asked - a finding, or a case settled by
+ * reading the add-on - takes a verb, because there is no reviewer whose answer it could
+ * be. Crossing the two is refused either way: a verb on a question is a model answering
+ * for a reviewer, and a sentence on the rest is a model writing prose a developer reads.
+ * @param {string} answer  The value the verdict file carries for this item.
+ * @param {import("./order.js").OrderedItem} item
+ * @param {number} index
+ * @param {{label: string, verdict: string, description: string}[]} choices  The answers a
+ *   question offered, read once per review by the caller: the registry cannot change
+ *   between two answers of one file, and an accessor that says "read once" should be.
+ * @returns {{verdict: string, note: ?string}}
+ */
+function settleAnswer(answer, item, index, choices) {
+  const at = `--llm-verdict: item ${index}`;
+  const verbs = [...VERBS].join(", ");
+  const asked = item.kind === "todo" && MANUAL_SECTIONS.includes(item.section);
+  if (!asked) {
+    if (!VERBS.has(answer)) {
+      throw new Error(
+        `${at} was not put to a reviewer - it is settled by reading the add-on, so it takes one of ${verbs}, not ${JSON.stringify(answer)}`
+      );
+    }
+    return { verdict: answer, note: null };
+  }
+  const picked = choices.find(
+    (c) => c.label.toLowerCase() === answer.trim().toLowerCase()
+  );
+  if (picked) {
+    return { verdict: picked.verdict, note: null };
+  }
+  if (VERBS.has(answer)) {
+    throw new Error(
+      `${at} was put to a reviewer and carries ${JSON.stringify(answer)} - answer it as they did, with ${choices.map((c) => `"${c.label}"`).join(" or ")}, or with their own words`
+    );
+  }
+  // Their own words, then: the case is reported and the words travel with it.
+  const note = reviewerNote(answer);
+  if (note === "") {
+    throw new Error(
+      `${at} carries an answer with nothing in it - leave the item out, or carry what the reviewer said`
+    );
+  }
+  // Counted in CODE POINTS, not UTF-16 units: an emoji is one character to the person who
+  // typed it, and a refusal calling their 1001 characters 2002 tells them something they
+  // cannot act on.
+  const length = [...note].length;
+  if (length > MAX_NOTE) {
+    throw new Error(
+      `${at} carries a ${length}-character answer and the limit is ${MAX_NOTE} - ask the reviewer to shorten it and answer that question again, rather than shortening their words yourself`
+    );
+  }
+  return { verdict: "reported", note };
+}
+
+/**
+ * A reviewer's answer as it will be printed: their LINES, kept.
+ *
+ * A reviewer asked for what a check found answers with a list as often as with a sentence,
+ * and flattening it into one line runs their items together. So each line survives as a
+ * line - the report gives each one its own bullet - while everything inside a line is
+ * collapsed and stripped of control characters (displayLine), because a line is still one
+ * line. The bullet a reviewer typed goes with it: the report opens every line with one, so
+ * keeping theirs would print two.
+ *
+ * Blank lines go. They separate nothing once each line is its own bullet, and a trailing
+ * one would print an empty item.
+ * @param {string} text
+ * @returns {string}  The lines, joined by "\n"; "" when nothing was written.
+ */
+function reviewerNote(text) {
+  const lines = String(text ?? "")
+    .split("\n")
+    .map((line) =>
+      displayLine(line)
+        // A bullet is a marker followed by space; a dash that runs into its text is part
+        // of it ("-5 icons are missing").
+        .replace(/^[-*\u2022]\s+/, "")
+        .trim()
+    )
+    // A line that is nothing but a bullet is what a reviewer who started an item and
+    // thought better of it leaves behind; it says nothing, so it is not an item.
+    .filter((line) => line !== "" && !/^[-*\u2022]+$/.test(line));
+  return lines.join("\n");
+}
+
+/**
  * Settle the review against `verdicts`, in place: withdraw findings, clear to-do items,
  * and turn a reported one into a finding of its own check.
  *
@@ -198,7 +312,8 @@ function readAddition(file, i, raw) {
  * @param {object} args
  * @param {import("./finding.js").Finding[]} args.findings  Mutated in place.
  * @param {import("./finding.js").ManualItem[]} args.manual  Mutated in place.
- * @param {Map<number, string>} args.verdicts  Index to verdict.
+ * @param {Map<number, string>} args.verdicts  Index to the answer that settles it, as the
+ *   verdict file carries it: a reviewer's answer for a question, a verb for anything else.
  * @param {object[]} [args.additions]  Findings a check's sweep found, from readAddition.
  * @param {import("../checks/registry.js").Registry} args.registry
  * @param {(x: object) => string} [args.labelOf]
@@ -227,17 +342,21 @@ export function applyVerdicts({
   for (const item of orderReview(findings, manual)) {
     byIndex.set(item.index, item);
   }
+  // The answers every question offered, read ONCE: they are the same for every item, and
+  // the registry cannot change while one file is applied.
+  const choices = registry.manualReviewChoices();
   const applied = [];
   const dropFindings = new Set();
   const dropManual = new Set();
   const added = [];
-  for (const [index, verdict] of [...verdicts].sort((a, b) => a[0] - b[0])) {
+  for (const [index, answer] of [...verdicts].sort((a, b) => a[0] - b[0])) {
     const item = byIndex.get(index);
     if (!item) {
       throw new Error(
         `--llm-verdict: item ${index} does not exist - this review lists ${byIndex.size} item(s)`
       );
     }
+    const { verdict, note } = settleAnswer(answer, item, index, choices);
     // Named in the audit line, so a misaimed verdict is legible there rather than only
     // in the re-rendered report.
     const ref = refOf(item.target, labelOf);
@@ -259,10 +378,27 @@ export function applyVerdicts({
       }
       dropManual.add(item.target);
       if (verdict === "reported") {
-        added.push(asFinding(item.target, index, registry));
+        // A check whose report IS what the reviewer found ends its response on a list.
+        // When they reported the case without writing that list, the registry's marker
+        // stands in it - quietly, because completing it is the reviewer's job and nobody
+        // else's to know about.
+        const fallback = registry.defaultNote(item.target.ruleId);
+        added.push(
+          asFinding(
+            item.target,
+            index,
+            registry,
+            // The marker is authored as the list item its response needs, bullet and all;
+            // a location line opens with a bullet of its own, so it is normalised exactly
+            // as a reviewer's own answer is.
+            note ?? (fallback ? reviewerNote(fallback) : null)
+          )
+        );
       }
     }
-    applied.push(`${index} ${verdict}${where}`);
+    // The note is named, not quoted: this line is the audit of what was applied, and the
+    // words themselves are in the report below it, where the developer reads them.
+    applied.push(`${index} ${verdict}${note ? " + note" : ""}${where}`);
   }
   // Still validate-only: an addition that cannot be filed must fail before anything is
   // edited, exactly like a verdict that cannot be applied.
@@ -332,9 +468,11 @@ function refOf(target, labelOf) {
  * @param {import("./finding.js").ManualItem} item
  * @param {number} index
  * @param {import("../checks/registry.js").Registry} registry
+ * @param {?string} [note]  The reviewer's own words about this case, carried onto the
+ *   finding's location line. The response paragraph stays the registry's.
  * @returns {import("./finding.js").Finding}
  */
-function asFinding(item, index, registry) {
+function asFinding(item, index, registry, note = null) {
   const severity = item.ruleId ? registry.suggestedVerdict(item.ruleId) : null;
   if (!severity) {
     throw new Error(
@@ -350,5 +488,6 @@ function asFinding(item, index, registry) {
   });
   f.ruleId = item.ruleId;
   f.severity = severity;
+  f.note = note;
   return f;
 }

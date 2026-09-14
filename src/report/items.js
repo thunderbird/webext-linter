@@ -26,12 +26,25 @@
 // An item of the two MANUAL sections carries the question it is put to the reviewer as:
 // `message` is what they are asked (src/report/format.js manualQuestion writes it, as it
 // writes every other user-facing string) and `label` says how far through the questions
-// they are ("3/13"). Only those two sections carry them, because they are the only items
-// a reviewer is asked: an Extended Code Review entry is settled from its instructions by
-// whoever reads this file, and a progress label on it would count a question nobody asks.
+// they are ("3/13"). `label` is theirs alone - the only items a reviewer is asked - and a
+// progress label on anything else would count a question nobody asks. `message` is not:
+// a finding carries one too, the wording the report showed for it, and which of the two a
+// `message` is follows from the item's `kind`.
 //
 // The label is the progress, NOT the number a verdict names - that is still `index`, and
 // the two differ by every finding and code-review item ahead of the questions.
+//
+// A question carries no `title` and no `instructions`. They are what `message` was
+// composed FROM, and the prompt tells its reader to ask the question as written - so
+// handing over the parts as well is handing over the means to write a different one. The
+// items settled by reading the add-on keep their `instructions`, which is the one thing
+// their reader follows.
+//
+// Each question also carries the `answers` it offers - every label and description the
+// reviewer will read, in order. They are the same for every question, and they are
+// repeated on every question all the same: what it takes to ask one is then in one place,
+// and a reader assembling a question from two places is a reader that can assemble it
+// from one of them alone.
 //
 // The one exception to "a position IS the number" is the PRE-SWEEP tail. Those entries
 // are not items of the review: they settle nothing, they are jobs to do BEFORE settling
@@ -57,24 +70,34 @@ import { SECTION_TITLES, manualQuestion } from "./format.js";
  * Each entry carries its `index` (its number in the report), the `entry` it shares with
  * its siblings - the numbered entry a collapsed group renders as, which the prose conveys
  * by layout and a flat array would otherwise lose - and the fields that decide it.
- * @param {import("./finding.js").Finding[]} findings
- * @param {import("./finding.js").ManualItem[]} manual
- * @param {?{intro: string, items: object[]}} [preSweep]  The blind-spot sweep, appended
- *   as the unnumbered tail: one entry carrying the shared method and the bare items.
- * @param {"full"|"verify"} [mode]  The review flag used. "verify" (--llm-verify) omits the
- *   two manual sections, which its prompt does not ask about either.
- * @param {(x: object) => string} [labelOf]  Artifact label ([XPI]/[SCA]) for a question's
- *   locus, from src/report/format.js locusLabeler - in an SCA review "package.json" alone
- *   names a file in either artifact, and the question has to say which.
+ * Named arguments, as applyVerdicts takes them: enough of them decide layout rather than
+ * content that a call site listing them by position says nothing about what it passes.
+ * @param {object} args
+ * @param {import("./finding.js").Finding[]} args.findings
+ * @param {import("./finding.js").ManualItem[]} args.manual
+ * @param {{label: string, description: string}[]} args.choices  The answers a question
+ *   offers, from registry.manualReviewChoices(), in the order the reviewer sees them.
+ *   REQUIRED, and not defaulted: a question with no answers is one a reviewer cannot
+ *   answer, which the registry itself refuses to author.
+ * @param {?{intro: string, items: object[]}} [args.preSweep]  The blind-spot sweep,
+ *   appended as the unnumbered tail: one entry carrying the shared method and the bare
+ *   items.
+ * @param {"full"|"verify"} [args.mode]  The review flag used. "verify" (--llm-verify)
+ *   omits the two manual sections, which its prompt does not ask about either.
+ * @param {(x: object) => string} [args.labelOf]  Artifact label ([XPI]/[SCA]) for a
+ *   question's locus, from src/report/format.js locusLabeler - in an SCA review
+ *   "package.json" alone names a file in either artifact, and the question has to say
+ *   which.
  * @returns {object[]}
  */
-export function reviewItems(
+export function reviewItems({
   findings,
   manual,
+  choices,
   preSweep = null,
   mode = "full",
-  labelOf
-) {
+  labelOf,
+}) {
   const entryNumbers = new Map();
   const counters = new Map();
   // Filtered AFTER orderReview, never by handing it a filtered `manual`: orderReview
@@ -141,13 +164,26 @@ export function reviewItems(
           // finding however it goes.
           suggestedVerdict: t.verdict ?? null,
           ...locus,
-          // The composed question and its progress label, on the items a reviewer is
-          // asked and no others (see the header).
+          // An item a reviewer is asked carries the finished question - what they are
+          // asked, how far through they are, and the answers it offers - and NOT the
+          // parts it was composed from: a reader told to ask the question as written
+          // should not also be handed the material to write a different one.
+          //
+          // An item settled by reading the add-on carries the opposite: no question, and
+          // the `instructions` that say how to settle it.
           ...(asked.has(x)
-            ? { label: asked.get(x), message: manualQuestion(t, labelOf) }
-            : {}),
-          title: t.title,
-          instructions: t.instructions ?? null,
+            ? {
+                label: asked.get(x),
+                message: manualQuestion(t, labelOf),
+                // The label and description the reviewer reads, and nothing else: the
+                // verdict each answer settles the item with is this linter's business,
+                // and what comes back is the reviewer's answer, not a verdict.
+                answers: choices.map(({ label, description }) => ({
+                  label,
+                  description,
+                })),
+              }
+            : { instructions: t.instructions ?? null }),
           suggestedResponse: t.response ?? null,
         };
   });

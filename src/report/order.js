@@ -25,16 +25,19 @@ import { MAX_ENTRIES_PER_CATEGORY } from "../config.js";
 
 /**
  * Whether an entry has anything to put on a location line: a file, a subject surfaced
- * for display, or a supplementary detail. One of the three is required because
- * locationLine has nothing to print without them - it is this gate, not a placeholder,
- * that keeps an empty line out of the report. An entry with none of them - a finding
- * whose subject is the submission as a whole, and whose message already says everything -
- * is listed with no location line rather than a line naming nothing.
+ * for display, a supplementary detail, or a reviewer's note. One of the four is required
+ * because locationLine has nothing to print without them - it is this gate, not a
+ * placeholder, that keeps an empty line out of the report. An entry with none of them - a
+ * finding whose subject is the submission as a whole, and whose message already says
+ * everything - is listed with no location line rather than a line naming nothing.
+ *
+ * A note counts on its own: a reported case that named no location still carries what the
+ * reviewer said about it, and that line is the only place it can appear.
  * @param {object} x  A finding or manual item.
  * @returns {boolean}
  */
 export function hasLocus(x) {
-  return Boolean(x.file || (x.listItem && x.item) || x.hint);
+  return Boolean(x.file || (x.listItem && x.item) || x.hint || x.note);
 }
 
 /**

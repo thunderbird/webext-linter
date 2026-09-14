@@ -93,6 +93,12 @@ const SEVERITY_RANK = Object.fromEntries(
  *   location line because the message did not consume `{{item}}` (else the subject
  *   would be invisible). This is the item-on-locus mechanism; `hint` (a DETAIL) is
  *   appended separately and unconditionally. Never set by a check.
+ * @property {string|null} note  The REVIEWER's own words about this one case, attached
+ *   when they answered its question in their own words instead of picking an answer
+ *   (src/report/verdicts.js, the only thing that sets it - as with `message`, a check
+ *   never does). Printed as the last part of the location line, after any `hint`: it is
+ *   what a person added about THIS location, so it travels with the location rather
+ *   than with the response paragraph, which stays wholly the registry's.
  */
 
 /**
@@ -114,6 +120,7 @@ export function finding({ ruleId, severity, file, loc, item, hint, data }) {
     data: data ?? null,
     message: null,
     listItem: false,
+    note: null,
   };
 }
 

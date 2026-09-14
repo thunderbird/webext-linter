@@ -423,9 +423,10 @@ deterministic-phase:
 # A whole-add-on review raised for every Experiment submission: Experiments have full
 # access to Thunderbird internals, so nothing here is proved by scanning and a person has
 # to look. The reviewer clears it or it is reported, which is why it carries a real
-# severity - and its response is a SCAFFOLD, leading with the requirement and ending in an
-# empty bullet for the reviewer to list what they found beneath (as no-surprises-policy
-# ends in a placeholder). The response is printed verbatim, so that bullet survives.
+# severity - and its response is a SCAFFOLD, leading with the requirement and ending on a
+# list for the reviewer to fill (as no-surprises-policy ends in a placeholder). What fills
+# that list is their answer; `default-note` below is the marker that stands in it when they
+# reported the case without writing one.
 - title: Experiment manual review
   severity: error
   check: experiment-manual-review
@@ -437,10 +438,14 @@ deterministic-phase:
     the add-on needs, and that it does not affect Thunderbird's usability,
     stability, performance or security. Reviewing only the differences from the
     last approved submission can save time. Report this unless all of that holds.
+  # A reported case of this check IS what the reviewer found, so its response ends on a
+  # list and that list is their words. This stands in when they reported it without any: a
+  # marker the reviewer completes after pasting. Authoring it is the declaration - a check
+  # with no `default-note` never gets one.
+  default-note: |-
+    - ...
   response: |-
     This add-on ships an Experiment, which runs with full access to Thunderbird's internals. Its Experiment surface must be kept to what the add-on actually needs, and must not affect Thunderbird's usability, stability, performance or security. The following need to be addressed:
-
-    - ...
 
 # Raises a code review when an Experiment calls a WebExtension API the schema does not
 # recognize - usually a typo in the add-on's OWN experiment schema, which reads like a
@@ -1372,6 +1377,19 @@ issue-headings:
   info: "We would like to share the following information with you:"
 
 
+# The answers a manual review question offers, in the order the reviewer sees them, and the
+# verdict each one settles the item with. Every question offers the same two, so a reviewer
+# working through a batch learns them once. The item file carries each label and its
+# description and NOT the verdict: what comes back is the reviewer's answer, and turning
+# that into a verdict is this file's job, not its reader's.
+llm-manual-review-choices:
+- label: Clear
+  verdict: cleared
+  description: Nothing to report here to the developer, the add-on is fine.
+- label: Report
+  verdict: reported
+  description: This has to be reported to the developer. If additional information has to be attached, use "Other" below (max {{maxNote}} characters, one finding per line).
+
 # System notices the orchestrator emits (not tied to one check): "{{item}}" is
 # filled with the relevant check id / token. Keeps every printed string here.
 messages:
@@ -1482,7 +1500,9 @@ llm-review-prompt:
         Wait for the description agent, and give the reviewer the description before you put anything to them. Print its path on a line of its own as well, so they can reopen it and in case opening failed.
     - verify: false
       text: |-
-        Put every manual review item ("Extended Manual Review" and/or "Standard Manual Review") to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each item's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Record each answer against that item's "index". Offer exactly two answers, ALWAYS in this order: "Report" first, "Clear" second - never reordered, not even to put a likelier answer first, because a reviewer working through a batch answers by position. "Report" means the case holds against the add-on and the developer is told, "Clear" means there is nothing to tell them. Their answers need no report of your own.
+        Put every manual review item ("Extended Manual Review" and/or "Standard Manual Review") to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each item's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that item's "answers", in the order they are listed, each with the label and description written there and no wording of your own - a reviewer working through a batch answers by position, and by answers that read the same every time.
+
+        Record what the reviewer answered against that item's "index", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit. Their answers need no report of your own.
     - verify: true
       text: |-
         Write a SEPARATE JSON file naming the reviewed add-on, holding the settled entries keyed by their "index" and the sweep results in "additions". Leave the item file itself untouched. The "addon" is the path printed under "Review Details" as the reviewed XPI, and it is checked: an index means nothing without it, so nothing in this file can be applied to another submission by accident.
@@ -1491,7 +1511,12 @@ llm-review-prompt:
         "additions": [{"check": "data-exfiltration", "file": "background/background.js", "line": 40, "hint": "<a ping> attribute posts the message digest"}],
         "verdicts": {"3": "reported", "4": "cleared", "7": "withdrawn"}}
 
+        Those three are settled by reading the add-on, so they carry a verdict. Everything about a reported case - its band, its response, the paragraph the developer reads - stays the linter's.
+
         An addition carries no "index" and no verdict. An index belongs to the linter's numbering of the document it wrote, and an addition was never in it; it is addressed by its "check" and its location instead. The linter files it under that check's own ruleId, band and wording, so it reads as a finding of that check rather than as a note from you. The "hint" is the one thing you write that a developer may read, so keep it to what is at that location - never a judgement, never a sentence of response.
+    - verify: false
+      text: |-
+        An item you put to a reviewer carries what THEY answered instead of a verdict - the label they picked, or the words they typed: "9": "Clear", "11": "the German listing text is outdated too". Those words are the only prose in that file which is not yours to write.
     - verify: true
       text: |-
         Report your own decisions in two sections: under "Found Issues", each finding you withdrew and why, and each finding a sweep added and where you found it; under "Extended Code Review", the verdict you reached for each entry and why.

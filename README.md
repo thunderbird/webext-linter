@@ -349,7 +349,11 @@ the response text its own registry entry authors:
     { "check": "data-exfiltration", "file": "background.js", "line": 40,
       "hint": "<a ping> attribute carries the message digest" }
   ],
-  "verdicts": { "3": "cleared" }
+  "verdicts": {
+    "3": "cleared",
+    "9": "Clear",
+    "11": "the German listing text is outdated too"
+  }
 }
 ```
 
@@ -357,6 +361,26 @@ An addition carries no item index - an index belongs to the linter's numbering o
 the document it wrote, and an addition was never in it. The `hint` is a locus
 annotation naming what sits at that line; the paragraph the developer reads stays
 the registry's.
+
+Every value is a string, and which strings are legal depends on **who settles the
+item**. Item 3 is settled by reading the add-on - a finding, or an Extended Code
+Review case - so it takes one of the linter's verbs: `reported`, `cleared`, or
+`withdrawn` (a finding takes only `withdrawn`). Items 9 and 11 were put to a
+reviewer as questions, so they carry what the reviewer answered: the label of one
+of the answers that question offered (`Clear`, `Report` - the item file lists
+them under `answers`), or the words they typed instead, which report the case and
+travel with it.
+
+Those words are the one thing in this file a person writes. They are printed on
+that case's location line - in parentheses after the location, or as the line
+itself when the case has none, where the reviewer's own line breaks are kept and
+each line becomes an item of its own. The response paragraph above stays the
+registry's, word for word.
+
+The crossings are refused, each naming the item so the question can be asked
+again rather than an answer being made to fit: a verb on a question, a
+reviewer's answer on an item nobody was asked, an answer with nothing in it, and
+one past the length the question tells the reviewer they have (`MAX_NOTE`).
 
 | Check id (`check:`) | The blind spot its sweep covers |
 | --- | --- |

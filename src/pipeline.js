@@ -130,7 +130,8 @@ import { DEFAULT_CACHE } from "./config.js";
  *   registry threaded from the caller, parsed once here otherwise.
  * @property {string} [llmVerdict]  Path to a verdict file (--llm-verdict) settling the
  *   questions this review asks: findings withdrawn, to-do items reported or cleared.
- *   The answers carry no wording - a reported case is worded by its own check.
+ *   A reported case is worded by its own check; the only wording an answer brings is what
+ *   a reviewer typed instead of picking one, which travels on that case's location line.
  * @property {string} [llmReviewOut]  Where --llm-review writes the item file, when the
  *   flag named a path. Absent means the linter chooses one (a temp file).
  * @property {"full"|"verify"} [llmReview]  Print the verification prompt above the review
@@ -743,16 +744,17 @@ export async function runPipeline(opts) {
   // resolveHolds settled every band - an array built any earlier would carry a null
   // message and a provisional severity.
   if (meta.itemsFile) {
-    const itemsList = reviewItems(
+    const itemsList = reviewItems({
       findings,
-      meta.manualReview,
-      meta.preSweep,
-      opts.llmReview,
+      manual: meta.manualReview,
+      choices: registry.manualReviewChoices(),
+      preSweep: meta.preSweep,
+      mode: opts.llmReview,
       // So a question names its case as the settled report will: in an SCA review
       // "package.json" alone is a file in either artifact, and a reviewer asked about one
       // of them has to be told which.
-      labelOf
-    );
+      labelOf,
+    });
     fs.writeFileSync(meta.itemsFile, `${JSON.stringify(itemsList, null, 2)}\n`);
   }
 

@@ -89,6 +89,17 @@ export const DISPLAY_TRUNCATE_LENGTH = 80;
 export const MAX_ENTRIES_PER_CATEGORY = 25;
 
 /**
+ * How much a reviewer may write when they answer a manual review question in their own
+ * words, in code points - an emoji is one character to the person who typed it.
+ *
+ * Read from BOTH ends of that round trip, which is why it lives here: the answer's own
+ * description states it to the reviewer (assets/registry.yaml fills it in), and
+ * src/report/verdicts.js refuses an answer past it. A reviewer typing a sentence or a
+ * short list never meets it; it is here so that a model pasting half a review does.
+ */
+export const MAX_NOTE = 2000;
+
+/**
  * Whether the reference graph (reachability) skips "non-authored" JS - library,
  * minified, obfuscated, or VENDOR.md-declared files (see nonAuthoredJs in
  * src/lib/bundled.js) - when extracting outgoing edges.
