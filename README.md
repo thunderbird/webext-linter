@@ -94,11 +94,13 @@ is monitored and upstream changes are ported manually.
 | `--report-format <text\|json>` | Report output format (default `text`). |
 | `--report-out <file>` | Write the report to a file in addition to stdout. |
 
-**LLM review:** one round trip, in the order it runs — `--llm-review` or `--llm-verify`
-asks, then `--llm-verdict` applies the answers.
+**LLM review:** what an LLM agent runs, in the order it runs it — `--llm-sca-review`
+prepares a source code review and is over before one starts, then `--llm-review` or
+`--llm-verify` asks, then `--llm-verdict` applies the answers.
 
 | Option | Description |
 | --- | --- |
+| `--llm-sca-review <folder>` | Print the prompt for preparing a source code review of a submission folder — one built `.xpi` and one archive of the source it was built from — and exit without reviewing anything. The prompt says how to reach the source, and hands back this command with `--llm-review` in place of this flag for the reader to run with the `--sca-*` arguments they worked out. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-review` | Print a verification prompt and write the review as a JSON item array to a temp file, instead of the report. The prompt explains how to settle the items and pass them back. Refused with `--report-format json`. |
 | `--llm-verify` | As `--llm-review`, but verifies only the add-on's **code**: it writes no behavioral description and does not settle the manual review items. Refused with `--report-format json`. |
 | `--llm-verdict <file>` | Apply settled verdicts and print the settled report, from a JSON file written as the prompt describes. Normally run by the agent that settled the review rather than by a person. Verdicts are keyed by index and settle only what they name, so a `--llm-verify` file leaves the manual items listed. |

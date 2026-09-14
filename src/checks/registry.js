@@ -590,6 +590,44 @@ export class Registry {
   }
 
   /**
+   * The texts of the --llm-sca-review prompt: the intro, and the ordered steps that turn a
+   * submission folder into the arguments an SCA review needs. Read only when that flag is
+   * set, and both are required then - a run whose whole output is this prompt has nothing
+   * to print without them.
+   *
+   * A step comes back with its `experiments` flag, never filtered here: which steps a run
+   * prints is layout, decided in src/report/format.js beside the flags themselves. The
+   * flag is OPTIONAL, unlike llmReviewPrompt's `verify` - a step that forgets it is printed
+   * by every run, which is noise, where a step that forgets `verify` would silently leave
+   * (or join) a prompt and change what is asked for.
+   * @returns {{intro: string, outcome: {experiments: boolean, text: string}[]}}
+   */
+  llmScaReviewPrompt() {
+    const p = this.doc["llm-sca-review-prompt"];
+    const at = "assets/registry.yaml";
+    const intro = p && typeof p === "object" ? p.intro : null;
+    if (typeof intro !== "string" || intro === "") {
+      throw new Error(`llm-sca-review-prompt authors no \`intro\` (${at})`);
+    }
+    const steps = p.outcome;
+    if (!Array.isArray(steps) || steps.length === 0) {
+      throw new Error(
+        `llm-sca-review-prompt authors no \`outcome\` steps (${at})`
+      );
+    }
+    const outcome = steps.map((step, i) => {
+      const text = step && typeof step === "object" ? step.text : null;
+      if (typeof text !== "string" || text === "") {
+        throw new Error(
+          `llm-sca-review-prompt \`outcome\` step ${i + 1} authors no text (${at})`
+        );
+      }
+      return { experiments: step.experiments === true, text };
+    });
+    return { intro, outcome };
+  }
+
+  /**
    * The Found Issues response template for a finding's ruleId: the owning check's
    * `response`, or a system `messages` entry for an orchestrator-emitted ruleId
    * (e.g. "check-failed"). Null if neither exists.

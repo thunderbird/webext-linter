@@ -6,8 +6,10 @@
 // main(argv) below. `npm run help` is an alias for `verify.js --help`.
 //
 // Belongs here: the front-end only - the OPTIONS table, usage/help text, argv
-// parse and flag validation, the values -> PipelineOpts
-// mapping, stream/capture routing, and exit codes.
+// parse and flag validation, the values -> PipelineOpts mapping, stream/capture
+// routing, exit codes, and the COMMAND a prompt hands back: which flags a
+// prepared review is to be run with is a fact about this run's own arguments,
+// known here and nowhere else, so it is composed here and laid out there.
 //
 // Does NOT belong here: running the stages (opts -> Review is pipeline.js
 // runPipeline); report layout and rendering (src/report/format.js formatReview
@@ -20,8 +22,9 @@ import { parseArgs } from "node:util";
 
 import { runPipeline } from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
+import { scaSubmission } from "./addon/submission.js";
 import { hasErrors } from "./report/finding.js";
-import { formatReview } from "./report/format.js";
+import { formatReview, scaPromptLines } from "./report/format.js";
 import {
   DEFAULT_CACHE,
   EXPERIMENTS_CACHE,
@@ -30,6 +33,7 @@ import {
 } from "./config.js";
 import {
   info,
+  report,
   setVerbose,
   setProgress,
   setFeed,
@@ -168,10 +172,11 @@ function helpText() {
     ],
   ];
 
-  // One round trip, in the order it runs: --llm-review or --llm-verify asks, then
-  // --llm-verdict applies the answers. Their own section, because none is a report
-  // format - the first two replace the report with a prompt and a file, the last rebuilds
-  // it from settled verdicts.
+  // What an LLM agent runs, in the order it runs: --llm-sca-review prepares a source code
+  // review (and is over before one starts), then --llm-review or --llm-verify asks, then
+  // --llm-verdict applies the answers. Their own section, because none is a report format
+  // - the first three replace the report with a prompt, the last rebuilds it from settled
+  // verdicts.
   const llm = [
     [
       "--llm-review",
@@ -180,6 +185,10 @@ function helpText() {
     [
       "--llm-verify",
       "Like --llm-review, but verifies only the add-on's code: it writes no behavioral description and does not settle the manual review items. Refused with --report-format json.",
+    ],
+    [
+      "--llm-sca-review <folder>",
+      "Print the prompt for preparing a source code review of a submission folder - one built .xpi and one archive of the source it was built from - and exit without reviewing anything. The prompt says how to reach the source and hands back this command with --llm-review in place of this flag, for the reader to run with the --sca-* arguments they worked out. Refused beside any --sca-* flag, which is what it exists to produce.",
     ],
     [
       "--llm-verdict <file>",
@@ -272,6 +281,7 @@ const OPTIONS = {
   "sca-exp-source": { type: "string" },
   "report-format": { type: "string" },
   "report-out": { type: "string" },
+  "llm-sca-review": { type: "string" },
   "llm-review": { type: "boolean" },
   "llm-verify": { type: "boolean" },
   "llm-verdict": { type: "string" },
@@ -297,6 +307,66 @@ function reviewMode(values) {
   return undefined;
 }
 
+/** The --sca-* flags, which --llm-sca-review exists to work out and so refuses to be given. */
+const SCA_FLAGS = ["sca-root", "sca-source", "sca-exp-source"];
+
+/**
+ * One argument as it must be TYPED: quoted when it carries whitespace, because these lines
+ * are a command their reader runs, and a submission folder is as likely to be "/reviews/my
+ * add-on" as not. Single quotes, the shell's literal form, with the one escape that form
+ * needs.
+ * @param {string} value
+ * @returns {string}
+ */
+function shellArg(value) {
+  return /\s/.test(value) ? `'${value.replaceAll("'", "'\\''")}'` : value;
+}
+
+/**
+ * What --llm-sca-review hands its reader: the flags the REVIEW is run with, one finished
+ * line each, and whether that review allows Experiments.
+ *
+ * The whole command, not a template to assemble: the flags are known here, so printing
+ * them saves its reader the one step where a flag can go missing. This run's own flags
+ * first - with --llm-sca-review replaced by --llm-review and the add-on the submission
+ * folder holds - then the three the reader works out. Anything dropped or invented here
+ * reviews a different submission than the reviewer asked about, --allow-experiments above
+ * all, which is also why --sca-exp-source is named only when Experiments are allowed:
+ * nothing reads it otherwise.
+ *
+ * Composed from the PARSED values against OPTIONS, which is what knows a flag from its
+ * value. Reading argv again instead means guessing that pairing from the token shapes, and
+ * the guess lives in whichever file prints the command - so both spellings of every flag
+ * collapse here, once, and the renderer lays out what it is handed.
+ *
+ * A --llm-skip-* is carried like any other flag: it names part of the prompt the prepared
+ * review will print, which is the run this command starts. A flag given an EMPTY value is
+ * left out, the way the run itself reads it: every place that acts on one tests it for
+ * truth, so printing it would promise the review something this run did not do.
+ * --llm-review, --llm-verdict and the --sca-* flags cannot appear - --llm-sca-review
+ * refuses to be given them - and neither can --help, which returns above.
+ * @param {Record<string, string|boolean>} values
+ * @param {string} xpi  The built add-on's path, which the review takes as its positional.
+ * @returns {{flags: string[], experiments: boolean}}
+ */
+function reviewCommand(values, xpi) {
+  const flags = [`--llm-review ${shellArg(xpi)}`];
+  for (const [name, { type }] of Object.entries(OPTIONS)) {
+    if (name === "llm-sca-review" || !values[name]) {
+      continue;
+    }
+    flags.push(
+      type === "string" ? `--${name} ${shellArg(values[name])}` : `--${name}`
+    );
+  }
+  flags.push("--sca-root <SCA_ROOT>", "--sca-source <SCA_SOURCE>");
+  const experiments = Boolean(values["allow-experiments"]);
+  if (experiments) {
+    flags.push("--sca-exp-source <SCA_EXP_SOURCE>");
+  }
+  return { flags, experiments };
+}
+
 /**
  * The flag a message should name, for a run that has at most one of them (the guard in
  * main() refuses both together before any of this is read).
@@ -305,6 +375,27 @@ function reviewMode(values) {
  */
 function reviewFlag(values) {
   return values["llm-review"] ? "--llm-review" : "--llm-verify";
+}
+
+/**
+ * --report-out saves a carbon copy of stdout: the captured narration and the report, if
+ * one was printed. Color codes are stripped so the saved file is plain even when the
+ * screen was colored.
+ *
+ * Every run that prints something calls this, including the ones that print a PROMPT
+ * instead of a report - a reviewer who asked for a copy of what was on screen gets what
+ * was on screen, whatever it was.
+ * @param {Record<string, string|boolean>} values
+ * @param {string} [rendered]  The report, when one was printed.
+ * @returns {void}
+ */
+function writeReportOut(values, rendered = "") {
+  const reportOut = values["report-out"];
+  if (!reportOut) {
+    return;
+  }
+  const copy = stripColor(getCapture() + (rendered ? `${rendered}\n` : ""));
+  fs.writeFileSync(path.resolve(reportOut), copy);
 }
 
 /**
@@ -332,6 +423,17 @@ export async function main(argv) {
   // carries only the document. A text --report-out records the feed so the file
   // is a carbon copy of the screen.
   const format = values["report-format"] || "text";
+  // Checked HERE, before a single line below acts on it: every setter in this block
+  // branches on the format, and so does every branch that prints - one of which used to
+  // print nothing at all for an unknown value and exit 0. One question, asked once, at
+  // the point the value enters.
+  if (format !== "text" && format !== "json") {
+    emitBanner(argv);
+    process.stderr.write(
+      `Invalid --report-format "${format}" (expected text or json).\n`
+    );
+    return 2;
+  }
   setQuiet(format === "json");
   setVerbose(values.verbose);
   setProgress(format === "text");
@@ -365,16 +467,73 @@ export async function main(argv) {
     return 2;
   }
 
+  // --llm-sca-review prepares a review rather than running one, so it shares nothing with
+  // the flags below and is settled here, in full, before any of them are read.
+  if (!values.help && values["llm-sca-review"] !== undefined) {
+    const given = SCA_FLAGS.filter((f) => values[f]);
+    if (given.length) {
+      process.stderr.write(
+        `--llm-sca-review works out ${given.map((f) => `--${f}`).join(" and ")} for you, ` +
+          "so it cannot be given them. Drop them, or run --llm-review with the ones you " +
+          "already have.\n"
+      );
+      return 2;
+    }
+    if (reviewMode(values) !== undefined || values["llm-verdict"]) {
+      process.stderr.write(
+        "--llm-sca-review comes BEFORE a review: it prints how to start one and runs " +
+          "none, so it cannot be combined with the flags that run or settle one.\n"
+      );
+      return 2;
+    }
+    if (format === "json") {
+      process.stderr.write(
+        "--llm-sca-review is text only: it prints a prompt and no report, which is not " +
+          "what --report-format json produces.\n"
+      );
+      return 2;
+    }
+    if (positionals.length) {
+      process.stderr.write(
+        `--llm-sca-review names the submission folder, so "${positionals[0]}" is one ` +
+          "add-on too many. The review it prepares takes the add-on from that folder.\n"
+      );
+      return 2;
+    }
+    // "--llm-sca-review=" parses as a flag with an empty value, which would resolve to the
+    // working directory and describe a folder nobody named. Say what is missing instead.
+    if (!values["llm-sca-review"].trim()) {
+      process.stderr.write(
+        "--llm-sca-review names the submission folder - the one holding the built .xpi " +
+          "and the archive of its source. None was given.\n"
+      );
+      return 2;
+    }
+    let submission;
+    try {
+      submission = scaSubmission(values["llm-sca-review"]);
+    } catch (err) {
+      process.stderr.write(`${err.message}\n`);
+      return 2;
+    }
+    // The prompt IS the output: no review has run, and none can until its reader answers
+    // it. Printed as the report is, and copied to --report-out for the same reason - this
+    // run's output is the whole of what a reviewer would want to keep.
+    for (const line of scaPromptLines(
+      loadRegistry().llmScaReviewPrompt(),
+      submission,
+      reviewCommand(values, submission.xpi)
+    )) {
+      report(line);
+    }
+    report("");
+    writeReportOut(values);
+    return 0;
+  }
+
   if (values.help || positionals.length === 0) {
     process.stdout.write(helpText());
     return values.help ? 0 : 2;
-  }
-
-  if (format !== "text" && format !== "json") {
-    process.stderr.write(
-      `Invalid --report-format "${format}" (expected text or json).\n`
-    );
-    return 2;
   }
 
   // A review flag's whole output is a prompt and an item file. JSON is the machine
@@ -489,14 +648,7 @@ export async function main(argv) {
     process.stdout.write(rendered + "\n");
   }
 
-  // --report-out saves a carbon copy of stdout: the captured narration and the report, if
-  // one was printed. Color codes are stripped so the saved file is plain even when the
-  // screen was colored.
-  const reportOut = values["report-out"];
-  if (reportOut) {
-    const copy = stripColor(getCapture() + (rendered ? `${rendered}\n` : ""));
-    fs.writeFileSync(path.resolve(reportOut), copy);
-  }
+  writeReportOut(values, rendered);
 
   return hasErrors(result.findings) ? 1 : 0;
 }

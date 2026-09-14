@@ -1231,6 +1231,39 @@ test("the manual review answers come from the registry and are whole", () => {
   }
 });
 
+// The SCA prompt is the whole output of its own flag - no review runs beside it - so a
+// missing key there is a run with nothing to print, and it refuses rather than printing
+// half an instruction.
+test("the SCA prompt comes from the registry and both parts are required", () => {
+  const prompt = loadRegistry().llmScaReviewPrompt();
+  assert.ok(prompt.intro.length > 0);
+  assert.ok(prompt.outcome.length > 0);
+  for (const step of prompt.outcome) {
+    assert.equal(typeof step.text, "string");
+    assert.ok(step.text.length > 0);
+    assert.equal(typeof step.experiments, "boolean");
+  }
+  // Exactly one step is the Experiment one, and it is printed only when they are allowed.
+  assert.equal(prompt.outcome.filter((s) => s.experiments).length, 1);
+  const noIntro = loadRegistry();
+  delete noIntro.doc["llm-sca-review-prompt"].intro;
+  assert.throws(() => noIntro.llmScaReviewPrompt(), /authors no `intro`/);
+
+  const noSteps = loadRegistry();
+  noSteps.doc["llm-sca-review-prompt"].outcome = [];
+  assert.throws(
+    () => noSteps.llmScaReviewPrompt(),
+    /authors no `outcome` steps/
+  );
+
+  const blankStep = loadRegistry();
+  blankStep.doc["llm-sca-review-prompt"].outcome = [
+    { text: "fine" },
+    { text: "" },
+  ];
+  assert.throws(() => blankStep.llmScaReviewPrompt(), /step 2 authors no text/);
+});
+
 // Every step must DECLARE whether it survives --llm-verify, the way every check entry must
 // declare its severity: a step added without one would silently join (or silently leave)
 // the verify prompt, and nothing downstream validates this wording. The steps must not

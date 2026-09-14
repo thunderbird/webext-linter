@@ -167,6 +167,24 @@ test("--allow-experiments in SCA mode requires --sca-exp-source (exit 2)", () =>
   );
 });
 
+// The format decides how everything below it is routed, so it is checked where it is
+// read. It used to be checked after the --llm-sca-review branch, which then printed
+// nothing at all and exited 0 for an unknown value.
+test("an unknown --report-format is refused on every path (exit 2)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-fmt-"));
+  fs.writeFileSync(path.join(dir, "a.xpi"), "");
+  fs.writeFileSync(path.join(dir, "source.tar.gz"), "");
+  for (const args of [
+    ["some.xpi", "--report-format", "xml"],
+    ["--llm-sca-review", dir, "--report-format", "xml"],
+  ]) {
+    const r = run(args);
+    assert.equal(r.code, 2, args.join(" "));
+    assert.match(r.stderr, /Invalid --report-format "xml"/, args.join(" "));
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // No positional argument is a usage error: usage to stdout, exit 2.
 test("no add-on argument prints usage and exits 2", () => {
   const r = run([]);
@@ -566,5 +584,152 @@ test("a swept addition is reported as a finding of the check that owns it", () =
   const wrong = run([addon, ...OFFLINE_FLAGS, "--llm-verdict", vfile]);
   assert.notEqual(wrong.code, 0);
   assert.match(wrong.stderr + wrong.stdout, /was written for/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ---- --llm-sca-review ----
+// The half of an SCA review a program can do: which file is the add-on, which is the
+// source, and what command the review is run with. It reviews nothing - it cannot, until
+// its reader has opened the source archive - so its whole output is that prompt.
+
+/** A submission folder: one built add-on, one source archive, and the usual clutter. */
+function submissionFolder() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-submission-"));
+  fs.writeFileSync(path.join(dir, "addon.xpi"), "");
+  fs.writeFileSync(path.join(dir, "src-4.3.12.tar_ABC.gz"), "");
+  fs.writeFileSync(path.join(dir, "README.txt"), "");
+  return dir;
+}
+
+test("--llm-sca-review prints the prompt, names both files, and reviews nothing", () => {
+  const dir = submissionFolder();
+  const r = run(["--llm-sca-review", dir, ...OFFLINE_FLAGS]);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /── SCA Review Prompt ──/);
+  // A name on its own line and its value beneath it, whole: the steps name the values
+  // rather than carrying them, so no path has to be read out of a wrapped paragraph.
+  assert.match(r.stdout, new RegExp(`\\n  XPI\\n    ${dir}/addon\\.xpi\\n`));
+  assert.match(
+    r.stdout,
+    new RegExp(
+      `\\n  SOURCE_ARCHIVE\\n    ${dir}/src-4\\.3\\.12\\.tar_ABC\\.gz\\n`
+    )
+  );
+  assert.match(r.stdout, new RegExp(`\\n  FOLDER\\n    ${dir}\\n`));
+  // No review ran: no report sections, and no item file was claimed.
+  assert.doesNotMatch(r.stdout, /── Found Issues ──|Review items:/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The contract the review rests on: the flags printed are this run's own, with the flag
+// swapped and the add-on in place of the folder, plus the ones its reader works out. A
+// flag invented or dropped here reviews a different submission than the reviewer asked
+// about - --allow-experiments most of all, which decides whether the review runs at all.
+// They print in the order OPTIONS declares them, never the order they were typed: composed
+// from the parsed values, so the command reads the same however it was written.
+test("--llm-sca-review prints the flags the review is run with", () => {
+  const dir = submissionFolder();
+  const xpi = path.join(dir, "addon.xpi");
+  // The flags are the paragraph after the step that says to run the linter, indented
+  // beneath its number and ending at the blank line before the next step.
+  const flagsOf = (r) =>
+    r.stdout
+      .split("with exactly these flags, and nothing else:\n\n")[1]
+      .split("\n\n")[0]
+      .split("\n")
+      .map((l) => l.trim());
+
+  // Every spelling of every flag collapses to one command: the parser reads them, so
+  // "--flag=value" and "--flag value" reach the reader as the same line.
+  for (const flag of [["--llm-sca-review", dir], [`--llm-sca-review=${dir}`]]) {
+    assert.deepEqual(
+      flagsOf(run([...flag, "--allow-experiments", "--eslint"])),
+      [
+        `--llm-review ${xpi}`,
+        "--eslint",
+        "--allow-experiments",
+        "--sca-root <SCA_ROOT>",
+        "--sca-source <SCA_SOURCE>",
+        "--sca-exp-source <SCA_EXP_SOURCE>",
+      ],
+      flag.join(" ")
+    );
+  }
+  assert.deepEqual(
+    flagsOf(run(["--llm-sca-review", dir, "--checks-only=unused-files"])),
+    [
+      `--llm-review ${xpi}`,
+      "--checks-only unused-files",
+      "--sca-root <SCA_ROOT>",
+      "--sca-source <SCA_SOURCE>",
+    ],
+    "--flag=value"
+  );
+
+  // A boolean flag is never paired with what follows it, wherever it sits: the OPTIONS
+  // table says which flags take a value, so nothing is guessed from the token shapes. A
+  // trailing one used to be printed with the argument after it, which was "undefined".
+  assert.doesNotMatch(
+    run(["--llm-sca-review", dir, "--eslint"]).stdout,
+    /undefined/
+  );
+  assert.deepEqual(
+    flagsOf(run(["--llm-sca-review", dir, "--eslint", "--verbose"])),
+    [
+      `--llm-review ${xpi}`,
+      "--eslint",
+      "--verbose",
+      "--sca-root <SCA_ROOT>",
+      "--sca-source <SCA_SOURCE>",
+    ]
+  );
+
+  // Without --allow-experiments nothing reads --sca-exp-source, so the prompt neither
+  // asks for it nor prints it - and the steps renumber over what survives.
+  const plain = run(["--llm-sca-review", dir]);
+  assert.deepEqual(flagsOf(plain), [
+    `--llm-review ${xpi}`,
+    "--sca-root <SCA_ROOT>",
+    "--sca-source <SCA_SOURCE>",
+  ]);
+  assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
+  assert.match(plain.stdout, /\n4\. That review prints a prompt of its own/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Each way the flag cannot be used, refused before it prints anything - it prepares a
+// review rather than running one, so it shares no run with the flags that do.
+test("--llm-sca-review refuses what it cannot be combined with", () => {
+  const dir = submissionFolder();
+  const cases = [
+    [["--sca-root", "src"], /works out --sca-root for you/],
+    [["--sca-source", "."], /works out --sca-source for you/],
+    [["--llm-review"], /comes BEFORE a review/],
+    [["--llm-verdict", "answers.json"], /comes BEFORE a review/],
+    [["--report-format", "json"], /--llm-sca-review is text only/],
+    [
+      ["x.xpi"],
+      /names the submission folder, so "x\.xpi" is one add-on too many/,
+    ],
+  ];
+  for (const [extra, message] of cases) {
+    const r = run(["--llm-sca-review", dir, ...extra]);
+    assert.equal(r.code, 2, extra.join(" "));
+    assert.match(r.stderr, message, extra.join(" "));
+    assert.doesNotMatch(r.stdout, /SCA Review Prompt/, extra.join(" "));
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A folder that is not a submission fails here, where the reviewer can see it, rather than
+// handing back a command aimed at a file nobody submitted.
+test("--llm-sca-review refuses a folder that is not a submission", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-empty-"));
+  const r = run(["--llm-sca-review", dir]);
+  assert.equal(r.code, 2);
+  assert.match(
+    r.stderr,
+    /must hold exactly one \.xpi and exactly one other archive/
+  );
   fs.rmSync(dir, { recursive: true, force: true });
 });

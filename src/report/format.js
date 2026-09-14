@@ -2,6 +2,11 @@
 // or JSON. Text goes to stdout so it can be read directly. JSON is
 // machine-consumable for CI.
 //
+// It also renders the two texts that are NOT a finished review: the prompt printed above
+// one (llmPromptLines) and the prompt that prepares one (scaPromptLines, the whole output
+// of a run in which no review has happened and none can). Both are layout over values
+// decided elsewhere, which is why they are here and not in the front-end.
+//
 // Belongs here: report LAYOUT and chrome - the ReviewMeta typedef, section
 // titles, ordering/sorting, line wrapping, the summary line, and the text +
 // JSON serialization (including stripping the internal data and the human-only
@@ -246,6 +251,86 @@ export function llmPromptLines(
       lines.push("", ...wrapText(`${i + 1}. ${step.text}`));
     });
   }
+  return lines;
+}
+
+/** The values --llm-sca-review hands its reader, in the order the steps use them. Named
+ *  here because the prompt's steps name them: the facts are a table the reader looks up,
+ *  never a sentence they have to extract a path from. */
+const SUBMISSION_VALUES = [
+  ["XPI", "xpi"],
+  ["SOURCE_ARCHIVE", "source"],
+  ["FOLDER", "folder"],
+];
+
+/**
+ * The whole output of a --llm-sca-review run: the prompt that turns a submission folder
+ * into an SCA review, the values it works from, and the flags to run it with.
+ *
+ * Three parts on purpose. The VALUES are `NAME` with its value beneath it, never wrapped,
+ * so a reader takes a path by looking up a name rather than by parsing a sentence. The
+ * STEPS are prose, and they name those values - and the ones the reader works out,
+ * <SCA_ROOT>, <SCA_SOURCE>, <SCA_EXP_SOURCE> - instead of carrying paths themselves. The
+ * FLAGS are the finished command, one flag per line, filled into the step that says to
+ * run it.
+ *
+ * What this run was given decides what is printed: a step marked `experiments` is dropped
+ * unless Experiments are allowed, and the surviving steps are numbered 1..N here, so no
+ * step may number itself. A prompt that asked for a value nothing will read would be
+ * asking for work that cannot be used.
+ *
+ * No review has run when this prints, and none can until its reader answers it - so unlike
+ * every other section here, this one describes work still to do rather than work done.
+ * @param {{intro: string, outcome: {experiments: boolean, text: string}[]}} prompt  From
+ *   registry.llmScaReviewPrompt().
+ * @param {{folder: string, xpi: string, source: string}} submission  From scaSubmission().
+ * @param {{flags: string[], experiments: boolean}} review  What the review is to be run
+ *   as, composed by the front-end (src/cli.js), which owns the flag names and holds the
+ *   parser's answers: the finished flag lines, and whether Experiments are allowed.
+ *   Laid out here, never added to, trimmed or second-guessed.
+ * @returns {string[]}
+ */
+export function scaPromptLines(prompt, submission, review) {
+  const lines = [
+    ...section("SCA Review Prompt"),
+    "",
+    ...wrapText(prompt.intro),
+    "",
+    "Submission:",
+  ];
+  for (const [name, key] of SUBMISSION_VALUES) {
+    // The name on its own line and the value beneath it: every value then starts at one
+    // known column whatever its name is, and no line holds two things. The paths are
+    // ours - a folder we were given and read - but they travel through a submission's own
+    // file names, so they are made safe to show like any other locus. Never wrapped: a
+    // path split across lines is a path a reader has to reassemble.
+    lines.push(`  ${name}`, `    ${displayLine(submission[key])}`);
+  }
+  // The flags are a command, composed elsewhere - but they travel through a submission's
+  // own file names, so they are made safe to show like every other line here.
+  const flags = review.flags.map(displayLine);
+  const steps = prompt.outcome.filter(
+    (step) => !step.experiments || review.experiments
+  );
+  steps.forEach((step, i) => {
+    // Each paragraph of a step is wrapped under the step's own number: the first carries
+    // the "N. " marker, the rest are indented to sit beneath it. A step here can run to
+    // several paragraphs, and one left flush-left reads as a step of its own. The flags
+    // are a paragraph of their own and are NOT wrapped - a command split across lines is
+    // a command to reassemble.
+    const marker = `${i + 1}. `;
+    const indent = " ".repeat(marker.length);
+    const [first, ...rest] = step.text.split("\n\n");
+    lines.push("", ...wrapText(`${marker}${first}`));
+    for (const paragraph of rest) {
+      lines.push("");
+      if (paragraph.trim() === "{{flags}}") {
+        lines.push(...flags.map((flag) => `${indent}${flag}`));
+      } else {
+        lines.push(...wrapText(paragraph, indent));
+      }
+    }
+  });
   return lines;
 }
 
