@@ -13,6 +13,7 @@ import { applyVerdicts, readVerdicts } from "../../src/report/verdicts.js";
 import { loadRegistry } from "../../src/checks/registry.js";
 import { renderFindings } from "../../src/report/responses.js";
 import { reviewItems } from "../../src/report/items.js";
+import { formatText } from "../../src/report/format.js";
 
 const registry = loadRegistry();
 
@@ -574,4 +575,176 @@ test("a file that fails anywhere leaves the review untouched", () => {
     /item 99 does not exist/
   );
   assert.equal(r2.findings.length, 2, "the addition was not filed either");
+});
+
+// ---- the question a manual item is put to the reviewer as ----
+// The item file carries the FINISHED question: the reviewer's wording is the linter's, and
+// a model composing it from the parts composes it differently each time. Only the two
+// manual sections carry one - they are the only items a reviewer is asked - and its label
+// is the progress through those questions, not the item's index in the review.
+
+/** A manual-review to-do (the "Extended Manual Review" bucket). */
+function mkManual(ruleId, title, item) {
+  return {
+    ...mkItem(ruleId, title, null, 0, item),
+    extended: true,
+    section: "manual-review",
+    file: null,
+    loc: null,
+  };
+}
+
+/** A by-hand standard check: no locus of any kind. */
+function mkStandard(ruleId, title) {
+  return {
+    ...mkItem(ruleId, title, null, 0),
+    extended: false,
+    section: null,
+    file: null,
+    loc: null,
+  };
+}
+
+test("a manual item carries its question and its progress label", () => {
+  const findings = [mkFinding("unused-files", "error", "DEAD", "junk.txt", 1)];
+  const code = mkItem(
+    "unused-permission",
+    "Perms",
+    "manifest.json",
+    3,
+    "compose"
+  );
+  const manual = [
+    code,
+    mkManual("privacy-policy", "Policy", "api.example.com"),
+    mkStandard("test-add-on", "Test it"),
+  ];
+  const items = reviewItems(findings, manual);
+
+  assert.deepEqual(
+    items.filter((x) => x.label).map((x) => [x.label, x.section]),
+    [
+      ["1/2", "Extended Manual Review"],
+      ["2/2", "Standard Manual Review"],
+    ],
+    "labelled 1..N over the QUESTIONS - the finding and the code-review item are not asked"
+  );
+  // The locus in parentheses is the string the report prints under the entry, so the
+  // reviewer can find the case in the page in front of them.
+  assert.equal(items[2].message, "[Policy] inspect Policy (api.example.com)");
+  // A by-hand check points at nothing, and empty parentheses would say it does.
+  assert.equal(items[3].message, "[Test it] inspect Test it");
+  // Nothing else grew a question: a progress label on an item nobody asks would count a
+  // question that is never put.
+  assert.deepEqual(
+    items.filter((x) => x.label === undefined).map((x) => x.section),
+    ["Found Issues", "Extended Code Review"]
+  );
+  assert.equal(
+    items[1].message,
+    undefined,
+    "the code-review item is settled, not asked"
+  );
+});
+
+// The report collapses repeats of one check into ONE entry with a list of locations. The
+// questions do not: each case is settled on its own, and its verdict is keyed by its own
+// index - so a reviewer asked twice must be able to tell which case they are answering.
+test("two cases of one check are two questions, told apart by their locus", () => {
+  const manual = [
+    mkManual("privacy-policy", "Policy", "api.example.com"),
+    mkManual("privacy-policy", "Policy", "metrics.example.com"),
+  ];
+  const items = reviewItems([], manual);
+  assert.deepEqual(
+    items.map((x) => x.entry),
+    [1, 1],
+    "one entry in the report"
+  );
+  assert.deepEqual(
+    items.map((x) => [x.label, x.message]),
+    [
+      ["1/2", "[Policy] inspect Policy (api.example.com)"],
+      ["2/2", "[Policy] inspect Policy (metrics.example.com)"],
+    ],
+    "two questions here, identical but for the case they name"
+  );
+});
+
+// --llm-verify puts nothing to a reviewer, so its file holds no question - and no total
+// counting questions that file never carried.
+test("a verify item file asks nothing and so labels nothing", () => {
+  const manual = [
+    mkItem("unused-permission", "Perms", "manifest.json", 3, "compose"),
+    mkManual("privacy-policy", "Policy", "api.example.com"),
+    mkStandard("test-add-on", "Test it"),
+  ];
+  const items = reviewItems([], manual, null, "verify");
+  assert.deepEqual(
+    items.map((x) => x.section),
+    ["Extended Code Review"]
+  );
+  assert.equal(items[0].label, undefined);
+  assert.equal(items[0].message, undefined);
+});
+
+// In an SCA review the report labels every locus by artifact, and the question has to say
+// the same thing: "package.json" alone names a file in either of the two artifacts.
+test("a question's locus carries the artifact label the report gives it", () => {
+  const manual = [
+    {
+      ...mkItem("undeclared-build-source", "Build", "package.json", 0),
+      extended: true,
+      section: "manual-review",
+      loc: null,
+    },
+  ];
+  const items = reviewItems([], manual, null, "full", () => "SCA");
+  assert.equal(items[0].message, "[Build] inspect Build ([SCA] package.json)");
+});
+
+// The registry authors its instructions wrapped, and those wraps are the YAML's layout,
+// not the sentence's. The report already flattens them for its entry body; a question
+// asked with them intact would reach the reviewer broken across lines mid-clause.
+test("a question flattens the instructions the registry wrapped", () => {
+  const manual = [
+    {
+      ...mkStandard("test-add-on", "Test it"),
+      instructions: "Open the add-on\nin a test profile,\n  then exercise it.",
+    },
+  ];
+  assert.equal(
+    reviewItems([], manual)[0].message,
+    "[Test it] Open the add-on in a test profile, then exercise it."
+  );
+});
+
+// The point of composing the question here is that it names its case in the words the
+// settled report uses - so a reviewer answering "which of these two?" and the developer
+// reading the report are looking at one string. Rendered, not asserted against a literal:
+// a change to locationLine or to the artifact label must move both or fail here.
+test("a question's locus is the locus line the report prints", () => {
+  const manual = [
+    mkManual("privacy-policy", "Policy", "api.example.com"),
+    mkManual("privacy-policy", "Policy", "metrics.example.com"),
+  ];
+  const items = reviewItems([], manual);
+  const printed = formatText({
+    findings: [],
+    meta: {
+      action: "review",
+      addon: "x",
+      reviewed: true,
+      manualReview: manual,
+    },
+  })
+    .split("── Extended Manual Review ──")[1]
+    .split("── Standard")[0];
+  for (const x of items) {
+    const locus = x.message.slice(x.message.lastIndexOf("(") + 1, -1);
+    assert.ok(
+      printed.includes(`\n - ${locus}\n`),
+      `the report lists "${locus}" as a location of its own`
+    );
+  }
 });

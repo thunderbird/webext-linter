@@ -38,6 +38,19 @@ export function hasLocus(x) {
 }
 
 /**
+ * One line out of authored prose. The registry wraps its texts, and those wraps are the
+ * YAML's layout rather than the sentence's, so anything rendering an item's instructions
+ * as a body flattens them the same way. Shared with the question the item file carries
+ * (src/report/format.js manualQuestion): the report and the reviewer's question say the
+ * same sentence, and one definition is what keeps them from flattening it differently.
+ * @param {?string} text
+ * @returns {string}
+ */
+export function collapseBody(text) {
+  return (text ?? "").replace(/\s+/g, " ").trim();
+}
+
+/**
  * The "Title: instructions" line of a to-do item - its entry body, and so its grouping
  * key: repeats of one check collapse into a single numbered entry with a locus list.
  * @param {import("./finding.js").ManualItem} m
@@ -45,7 +58,7 @@ export function hasLocus(x) {
  */
 export function manualBody(m) {
   return m.instructions
-    ? `${m.title}: ${m.instructions.replace(/\s+/g, " ").trim()}`
+    ? `${m.title}: ${collapseBody(m.instructions)}`
     : m.title;
 }
 

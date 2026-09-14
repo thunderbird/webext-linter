@@ -677,6 +677,11 @@ export async function runPipeline(opts) {
   // wording. The registry is the only source of this text.
   renderFindings(findings, registry);
 
+  // How a locus names its artifact ([XPI]/[SCA]) in this review - a no-op in an XPI one.
+  // Both readers of it below say the same thing about a case: the verdict narration and
+  // the question the item file carries.
+  const labelOf = locusLabeler(mode, registry.checkInputs());
+
   let appliedLine;
   let addedLine;
   // Settle the review against the answers a reviewer (or a model) gave it. AFTER
@@ -702,7 +707,7 @@ export async function runPipeline(opts) {
       verdicts: settled.verdicts,
       additions: settled.additions,
       registry,
-      labelOf: locusLabeler(mode, registry.checkInputs()),
+      labelOf,
     });
     // A reported case, and a swept addition, became a finding carrying only its locus and
     // slots, so word both from the registry like any other - the same text either way.
@@ -742,7 +747,11 @@ export async function runPipeline(opts) {
       findings,
       meta.manualReview,
       meta.preSweep,
-      opts.llmReview
+      opts.llmReview,
+      // So a question names its case as the settled report will: in an SCA review
+      // "package.json" alone is a file in either artifact, and a reviewer asked about one
+      // of them has to be told which.
+      labelOf
     );
     fs.writeFileSync(meta.itemsFile, `${JSON.stringify(itemsList, null, 2)}\n`);
   }

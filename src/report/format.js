@@ -21,7 +21,7 @@ import {
   countByRule,
   verdictKey,
 } from "./finding.js";
-import { orderReview, hasLocus, manualBody } from "./order.js";
+import { orderReview, hasLocus, manualBody, collapseBody } from "./order.js";
 import { artifactLabel } from "./artifact.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
 import { displayLine, wrapText } from "../util/text.js";
@@ -727,6 +727,38 @@ export function locationLine(f, label = "") {
     segments.push(text);
   }
   return segments.join(" - ");
+}
+
+/**
+ * The question ONE manual-review item is put to the reviewer as, for the item file
+ * --llm-review writes (src/report/items.js): the check's title in brackets, its
+ * instructions, and the case it is about in parentheses.
+ *
+ * Composed here rather than by whoever reads that file, for the reason every other
+ * user-facing string in this review is: the wording is the linter's, and a reader
+ * assembling it from the parts assembles it differently each time. It is the report's
+ * own entry body in a different frame - the same collapsed instructions (manualBody) and
+ * the same locationLine, artifact label and all - so a question and the settled report
+ * name one case in one set of words.
+ *
+ * The words are the coupling, not the page: past the per-entry display cap the report
+ * prints "and N more" where that location line would have been, while the item file
+ * carries every case and so asks about every one of them.
+ *
+ * The report collapses repeats of a check into a single entry with a list of locations;
+ * the questions do not. Each case is settled on its own and carries its own verdict, so
+ * the locus is what tells two questions of one check apart, and it is the only part of a
+ * question quoted from the submission.
+ * @param {import("./finding.js").ManualItem} m
+ * @param {(x: object) => string} [labelOf]  Artifact label ([XPI]/[SCA]) for the locus.
+ * @returns {string}
+ */
+export function manualQuestion(m, labelOf) {
+  const body = `[${m.title}] ${collapseBody(m.instructions)}`.trim();
+  // A standard by-hand check names no file and no subject; empty parentheses would say
+  // it does.
+  const locus = hasLocus(m) ? locationLine(m, labelOf?.(m)) : "";
+  return locus ? `${body} (${locus})` : body;
 }
 
 /**

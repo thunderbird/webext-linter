@@ -23,6 +23,16 @@
 // 1..M at positions 0..M-1, and an index means the same item in a verify file, a full
 // file and the report alike.
 //
+// An item of the two MANUAL sections carries the question it is put to the reviewer as:
+// `message` is what they are asked (src/report/format.js manualQuestion writes it, as it
+// writes every other user-facing string) and `label` says how far through the questions
+// they are ("3/13"). Only those two sections carry them, because they are the only items
+// a reviewer is asked: an Extended Code Review entry is settled from its instructions by
+// whoever reads this file, and a progress label on it would count a question nobody asks.
+//
+// The label is the progress, NOT the number a verdict names - that is still `index`, and
+// the two differ by every finding and code-review item ahead of the questions.
+//
 // The one exception to "a position IS the number" is the PRE-SWEEP tail. Those entries
 // are not items of the review: they settle nothing, they are jobs to do BEFORE settling
 // it, and what they produce is addressed by check and locus rather than by a number. So
@@ -39,7 +49,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { orderReview, MANUAL_SECTIONS } from "./order.js";
-import { SECTION_TITLES } from "./format.js";
+import { SECTION_TITLES, manualQuestion } from "./format.js";
 
 /**
  * The item array for a finished review.
@@ -53,9 +63,18 @@ import { SECTION_TITLES } from "./format.js";
  *   as the unnumbered tail: one entry carrying the shared method and the bare items.
  * @param {"full"|"verify"} [mode]  The review flag used. "verify" (--llm-verify) omits the
  *   two manual sections, which its prompt does not ask about either.
+ * @param {(x: object) => string} [labelOf]  Artifact label ([XPI]/[SCA]) for a question's
+ *   locus, from src/report/format.js locusLabeler - in an SCA review "package.json" alone
+ *   names a file in either artifact, and the question has to say which.
  * @returns {object[]}
  */
-export function reviewItems(findings, manual, preSweep = null, mode = "full") {
+export function reviewItems(
+  findings,
+  manual,
+  preSweep = null,
+  mode = "full",
+  labelOf
+) {
   const entryNumbers = new Map();
   const counters = new Map();
   // Filtered AFTER orderReview, never by handing it a filtered `manual`: orderReview
@@ -69,6 +88,17 @@ export function reviewItems(findings, manual, preSweep = null, mode = "full") {
           (x) => x.kind !== "todo" || !MANUAL_SECTIONS.includes(x.section)
         )
       : ordered;
+  // The reviewer's questions, in the order they are asked: the two manual sections, which
+  // are the last of the review and so are already contiguous. Their count is the total a
+  // label states, taken from the LISTED items - a --llm-verify file holds none of them,
+  // and a total counting items that file never carried would be a progress bar for a
+  // review nobody is being shown.
+  const questions = listed.filter(
+    (x) => x.kind === "todo" && MANUAL_SECTIONS.includes(x.section)
+  );
+  const asked = new Map(
+    questions.map((x, i) => [x, `${i + 1}/${questions.length}`])
+  );
   const items = listed.map((x) => {
     const t = x.target;
     // The entry number the report shows for it. Found Issues numbers continuously across
@@ -111,6 +141,11 @@ export function reviewItems(findings, manual, preSweep = null, mode = "full") {
           // finding however it goes.
           suggestedVerdict: t.verdict ?? null,
           ...locus,
+          // The composed question and its progress label, on the items a reviewer is
+          // asked and no others (see the header).
+          ...(asked.has(x)
+            ? { label: asked.get(x), message: manualQuestion(t, labelOf) }
+            : {}),
           title: t.title,
           instructions: t.instructions ?? null,
           suggestedResponse: t.response ?? null,
