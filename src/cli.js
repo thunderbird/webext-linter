@@ -174,16 +174,16 @@ function helpText() {
   // it from settled verdicts.
   const llm = [
     [
-      "--llm-review [<file>]",
-      "Print a verification prompt and write the review as a JSON item array instead of the report, to a temp file or to <file>. The prompt explains how to settle the items and pass them back with --llm-verdict. Refused with --report-format json.",
+      "--llm-review",
+      "Print a verification prompt and write the review as a JSON item array to a temp file, instead of the report. The prompt explains how to settle the items and pass them back with --llm-verdict. Refused with --report-format json.",
     ],
     [
-      "--llm-verify [<file>]",
-      "Like --llm-review, but asks only for what can be settled by reading the ADD-ON. It withholds the two parts that need a person: no add-on description is written, and the Extended/Standard Manual Review items are neither put to a reviewer nor written to the item file (they stay in the report, for the reviewer to work through later). The sweep, the findings, the Extended Code Review, the verdict file and the --llm-verdict re-run are exactly as --llm-review has them. Refused with --report-format json.",
+      "--llm-verify",
+      "Like --llm-review, but verifies only the add-on's code: it writes no behavioral description and does not settle the manual review items. Refused with --report-format json.",
     ],
     [
       "--llm-verdict <file>",
-      "Apply settled verdicts and print the settled report, from a JSON file written as the --llm-review prompt describes.",
+      "Apply settled verdicts and print the settled report, from a JSON file written as the --llm-review prompt describes. Normally run by the agent that settled the review rather than by a person.",
     ],
   ];
 
@@ -272,48 +272,29 @@ const OPTIONS = {
   "sca-exp-source": { type: "string" },
   "report-format": { type: "string" },
   "report-out": { type: "string" },
-  "llm-review": { type: "string" },
-  "llm-verify": { type: "string" },
+  "llm-review": { type: "boolean" },
+  "llm-verify": { type: "boolean" },
   "llm-verdict": { type: "string" },
   verbose: { type: "boolean" },
   help: { type: "boolean" },
 };
 
-// The review flags take an OPTIONAL path: bare they write the item file where the linter
-// chooses, with a path they write that file. parseArgs has no option type for that - a
-// string option demands a value and a boolean one refuses every value - so a bare
-// occurrence is rewritten to an empty value before parsing. It refuses
-// `--llm-review --other` on its own ("argument is ambiguous"), which is why only the bare
-// case needs rewriting: the last token, or one followed by another option.
-const OPTIONAL_VALUE = new Set(["--llm-review", "--llm-verify"]);
-
 /**
- * Which review prompt was asked for, if either. Read with `!== undefined`, never
- * truthiness: withOptionalValues encodes a BARE flag as an empty value, and "" is falsy.
- * The two flags are joined HERE and nowhere else, so main()'s guards and
- * pipelineOptsFromValues cannot drift apart about which one was given - they run on
- * different paths (pipelineOptsFromArgv runs none of main's guards).
+ * Which review prompt was asked for, if either. The two flags are joined HERE and nowhere
+ * else, so main()'s guards and pipelineOptsFromValues cannot drift apart about which one
+ * was given - they run on different paths (pipelineOptsFromArgv runs none of main's
+ * guards).
  * @param {Record<string, string|boolean>} values
  * @returns {"full"|"verify"|undefined}
  */
 function reviewMode(values) {
-  if (values["llm-review"] !== undefined) {
+  if (values["llm-review"]) {
     return "full";
   }
-  if (values["llm-verify"] !== undefined) {
+  if (values["llm-verify"]) {
     return "verify";
   }
   return undefined;
-}
-
-/**
- * The path given with whichever review flag was used; "" means "you choose". `??` not
- * `||`, so a bare --llm-review does not fall through to --llm-verify's value.
- * @param {Record<string, string|boolean>} values
- * @returns {string|undefined}
- */
-function reviewOut(values) {
-  return values["llm-review"] ?? values["llm-verify"];
 }
 
 /**
@@ -323,20 +304,7 @@ function reviewOut(values) {
  * @returns {string}
  */
 function reviewFlag(values) {
-  return values["llm-review"] !== undefined ? "--llm-review" : "--llm-verify";
-}
-
-/**
- * @param {string[]} argv
- * @returns {string[]}
- */
-function withOptionalValues(argv) {
-  return argv.map((arg, i) =>
-    OPTIONAL_VALUE.has(arg) &&
-    (i === argv.length - 1 || argv[i + 1].startsWith("-"))
-      ? `${arg}=`
-      : arg
-  );
+  return values["llm-review"] ? "--llm-review" : "--llm-verify";
 }
 
 /**
@@ -347,7 +315,7 @@ export async function main(argv) {
   let parsed;
   try {
     parsed = parseArgs({
-      args: withOptionalValues(argv),
+      args: argv,
       options: OPTIONS,
       allowPositionals: true,
     });
@@ -393,20 +361,6 @@ export async function main(argv) {
       "--llm-review and --llm-verify are the same round trip at two depths and cannot " +
         "be used together: --llm-review asks for everything, --llm-verify asks only for " +
         "what reading the add-on can settle. Pick one.\n"
-    );
-    return 2;
-  }
-
-  // parseArgs cannot tell a review flag's optional value from the add-on path, so
-  // `--llm-review <addon>` takes the add-on as the output file and leaves nothing to
-  // review. Say that, instead of printing the whole help for what looks like a missing
-  // argument. Truthiness on purpose here (unlike everywhere else): only a NON-EMPTY value
-  // can have swallowed the add-on path.
-  if (!values.help && positionals.length === 0 && reviewOut(values)) {
-    const flag = reviewFlag(values);
-    process.stderr.write(
-      `"${reviewOut(values)}" was taken as ${flag}'s output file, so no add-on ` +
-        `was given. Put the add-on first, or write ${flag}=<file>.\n`
     );
     return 2;
   }
@@ -582,8 +536,6 @@ function pipelineOptsFromValues(values) {
     scaSource: values["sca-source"],
     scaExpSource: values["sca-exp-source"],
     llmReview: reviewMode(values),
-    // The path given with the flag, if any. Empty means "you choose".
-    llmReviewOut: reviewOut(values) || undefined,
     llmVerdict: values["llm-verdict"],
   };
 }
@@ -596,7 +548,7 @@ function pipelineOptsFromValues(values) {
  */
 export function pipelineOptsFromArgv(argv) {
   const { values } = parseArgs({
-    args: withOptionalValues(argv),
+    args: argv,
     options: OPTIONS,
     allowPositionals: true,
   });

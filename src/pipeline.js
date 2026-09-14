@@ -132,8 +132,6 @@ import { DEFAULT_CACHE } from "./config.js";
  *   questions this review asks: findings withdrawn, to-do items reported or cleared.
  *   A reported case is worded by its own check; the only wording an answer brings is what
  *   a reviewer typed instead of picking one, which travels on that case's location line.
- * @property {string} [llmReviewOut]  Where --llm-review writes the item file, when the
- *   flag named a path. Absent means the linter chooses one (a temp file).
  * @property {"full"|"verify"} [llmReview]  Print the verification prompt above the review
  *   header, addressing the report to a model that is asked to check it, and write the
  *   review to an item file instead of printing it. Changes nothing about the review itself,
@@ -667,9 +665,7 @@ export async function runPipeline(opts) {
   // Claim it now, empty: a directory we cannot write to has to fail here rather than after
   // the whole review has run.
   if (opts.llmReview) {
-    meta.itemsFile = opts.llmReviewOut
-      ? path.resolve(opts.llmReviewOut)
-      : itemsFilePath(xpiAddon);
+    meta.itemsFile = itemsFilePath(xpiAddon);
     fs.writeFileSync(meta.itemsFile, "");
   }
 

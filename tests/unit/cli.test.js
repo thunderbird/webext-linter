@@ -280,12 +280,12 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   assert.match(json.stderr, /--llm-review is text only/);
 });
 
-// --llm-review takes an OPTIONAL path, which parseArgs has no option type for: a bare flag
-// writes wherever the linter chooses, a flag with a path writes there and overwrites what
-// was there. The one shape parseArgs cannot disambiguate is the flag BEFORE the add-on,
-// where the add-on becomes the output file - that has to say so rather than read as a
-// missing argument.
-test("--llm-review writes where told, or where it chooses", () => {
+// The item file is the linter's to name, so the flag takes no value at all - which is what
+// lets it sit anywhere on the command line, including before the add-on, where a flag with
+// an optional value would have swallowed the path and left nothing to review. The name
+// carries the moment as well as the add-on, so no second run can open the file a reader is
+// still working from.
+test("--llm-review names its own item file and swallows no argument", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const named = (r) =>
     r.stdout
@@ -293,32 +293,25 @@ test("--llm-review writes where told, or where it chooses", () => {
       .find((l) => l.startsWith("Review items: "))
       ?.slice("Review items: ".length);
 
-  const bare = named(run([addon, ...OFFLINE_FLAGS, "--llm-review"]));
-  assert.ok(
-    bare && fs.existsSync(bare),
-    "bare flag picks a path and writes it"
-  );
-
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-items-"));
-  const mine = path.join(dir, "mine.json");
-  fs.writeFileSync(mine, "STALE");
-  for (const form of [[`--llm-review=${mine}`], ["--llm-review", mine]]) {
-    const at = named(run([addon, ...OFFLINE_FLAGS, ...form]));
-    assert.equal(at, mine, form[0]);
-    // Overwritten, not appended to.
-    assert.ok(Array.isArray(JSON.parse(fs.readFileSync(mine, "utf8"))));
-  }
-  // A following option is not mistaken for the path.
-  assert.equal(
+  // After the add-on, before it, and before another option: the same review either way.
+  const written = [
+    named(run([addon, ...OFFLINE_FLAGS, "--llm-review"])),
+    named(run([...OFFLINE_FLAGS, "--llm-review", addon])),
     named(run([addon, ...OFFLINE_FLAGS, "--llm-review", "--eslint"])),
-    bare
+  ];
+  for (const file of written) {
+    assert.ok(file && fs.existsSync(file), `${file} was written`);
+    assert.ok(Array.isArray(JSON.parse(fs.readFileSync(file, "utf8"))));
+    assert.match(
+      path.basename(file),
+      /^webext-linter-Clean-1\.0-.*\.items\.json$/
+    );
+  }
+  assert.equal(
+    new Set(written).size,
+    written.length,
+    "each run writes its own file, so none truncates another's"
   );
-
-  // The flag before the add-on: the add-on is taken as the file, which must be said.
-  const swallowed = run([...OFFLINE_FLAGS, "--llm-review", addon]);
-  assert.equal(swallowed.code, 2);
-  assert.match(swallowed.stderr, /was taken as --llm-review's output file/);
-  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // The ESLint code-sanity check is opt-in: it runs only when --eslint is passed.
@@ -486,12 +479,6 @@ test("--llm-verify carries the same guards, named for itself", () => {
   ]);
   assert.equal(verdict.code, 2);
   assert.match(verdict.stderr, /--llm-verify and --llm-verdict/);
-
-  // The optional value swallows a following add-on path, leaving nothing to review.
-  const swallowed = run([...OFFLINE_FLAGS, "--llm-verify", addon]);
-  assert.equal(swallowed.code, 2);
-  assert.match(swallowed.stderr, /--llm-verify's output file/);
-  assert.match(swallowed.stderr, /--llm-verify=<file>/);
 });
 
 // A review flag switches on the verification prompt and nothing else: the review stays
@@ -510,22 +497,6 @@ test("a review flag carries only the prompt decision into the run", () => {
   const verify = pipelineOptsFromArgv(["--llm-verify"]);
   assert.equal(verify.llmReview, "verify");
   assert.deepEqual({ ...verify, llmReview: undefined }, bare);
-});
-
-// The optional value belongs to whichever flag carried it, and a BARE flag is encoded as
-// an empty value - so the path must be read with `??`, never truthiness, or a bare
-// --llm-review would fall through and pick up --llm-verify's.
-test("either review flag takes an optional output path", () => {
-  assert.equal(pipelineOptsFromArgv(["--llm-review"]).llmReviewOut, undefined);
-  assert.equal(pipelineOptsFromArgv(["--llm-verify"]).llmReviewOut, undefined);
-  assert.equal(
-    pipelineOptsFromArgv(["--llm-verify=/tmp/items.json"]).llmReviewOut,
-    "/tmp/items.json"
-  );
-  assert.equal(
-    pipelineOptsFromArgv(["--llm-review=/tmp/items.json"]).llmReviewOut,
-    "/tmp/items.json"
-  );
 });
 
 // The retired flags parse as unknown options (exit 2), so a stale command line fails

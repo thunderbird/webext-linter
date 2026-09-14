@@ -461,15 +461,16 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   'ContextFilter'`). What survives is upstream and has nothing to do with types: promoting
   those 31 prose gates to a machine-readable `permissions` field, which `TODO.md` carries.
 
-- **`--llm-verify` is a separate flag, not a mode value on `--llm-review`.** `--llm-review`
-  already takes an OPTIONAL FILE value (`--llm-review=<path>`, and bare means "you choose"),
-  so `--llm-review verify` cannot be told from a path called `verify` - the same ambiguity
-  the `--llm-review <addon>` guard already exists to explain. Internally it is still ONE
-  decision, `opts.llmReview: "full" | "verify" | undefined`, so the two pipeline sites that
-  read it as a truthiness test need no change and there is no representable-but-illegal
-  state; the two flag names are joined in exactly one place (`reviewMode`/`reviewOut` in
-  `src/cli.js`), because `main()`'s guards and `pipelineOptsFromArgv` run on different paths
-  and must not drift about which flag was given.
+- **`--llm-verify` is a separate flag, not a mode value on `--llm-review`.** Neither review
+  flag takes a value - the item file is the linter's to name - so a mode word could only
+  arrive as a POSITIONAL, and that slot belongs to the add-on: `--llm-review verify` is a
+  review of an add-on called `verify`, and giving both would make their ORDER decide which
+  is which. Two flag names cost a line of help each and remove the question. Internally it
+  is still ONE decision, `opts.llmReview: "full" | "verify" | undefined`, so the two
+  pipeline sites that read it as a truthiness test need no change and there is no
+  representable-but-illegal state; the two flag names are joined in exactly one place
+  (`reviewMode` in `src/cli.js`), because `main()`'s guards and `pipelineOptsFromArgv` run
+  on different paths and must not drift about which flag was given.
 
   Two shape decisions go with it. The prompt's `outcome` is an ARRAY of steps, each
   declaring `verify: true|false`, rather than two authored variants of one scalar: the
@@ -508,4 +509,12 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   subject that is its own path. A reviewer who answers with the hostname the line already
   names has added no information, so none is lost. Do not re-propose exempting notes from
   the dedup or diagnosing the drop.
+
+- **The item file is not hardened against a local attacker.** It is written to the system
+  temp directory under a name built from the submission's own manifest, and the run claims
+  it by writing an empty string - which follows a symlink, so a path pre-created by someone
+  else is truncated rather than refused. The run's timestamp is in the name to keep two
+  reviews apart, not to make the name unguessable. Guarding it (an `O_EXCL` claim, or a
+  `mkdtemp` directory per run) is not worth doing: the attacker it protects against is
+  already running as the reviewer on the reviewer's own machine. Do not re-propose it.
 

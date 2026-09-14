@@ -215,8 +215,9 @@ export function reviewItems({
 
 /**
  * Where the item file is written: the system temp directory, named after the add-on it
- * describes so reviewing two add-ons in one session cannot have them clobber each other.
- * Not beside the submission - a review does not write into what it is reviewing.
+ * describes and the moment it was written, so one review does not open the file another
+ * left behind. Not beside the submission - a review does not write into what it is
+ * reviewing.
  * @param {import("../addon/load.js").Addon} addon  The shipped add-on.
  * @returns {string}
  */
@@ -227,7 +228,14 @@ export function itemsFilePath(addon) {
     m?.applications?.gecko?.id ??
     m?.name ??
     "addon";
-  const name = `webext-linter-${id}-${m?.version ?? "0"}.items.json`;
+  // The run's own moment, because a name and a version do not identify a review: two
+  // submissions can share both (a fork, a resubmission, an add-on reviewed twice in a
+  // session), and the later run would otherwise open the earlier one's file and truncate
+  // it - under a reader still working from that path. Millisecond resolution, which
+  // separates reviews a person runs; two started in the same millisecond would still
+  // collide, and nothing here pretends otherwise.
+  const at = new Date().toISOString().replace(/[:.]/g, "-");
+  const name = `webext-linter-${id}-${m?.version ?? "0"}-${at}.items.json`;
   // Anything outside this set could escape the directory or upset a shell, and the id
   // comes from the submission.
   return path.join(os.tmpdir(), name.replace(/[^A-Za-z0-9._@-]/g, "_"));

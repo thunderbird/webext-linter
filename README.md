@@ -99,9 +99,9 @@ asks, then `--llm-verdict` applies the answers.
 
 | Option | Description |
 | --- | --- |
-| `--llm-review [<file>]` | Print a verification prompt and write the review as a JSON item array instead of the report, to a temp file or to `<file>` (use `--llm-review=<file>` if the add-on path follows). The prompt explains how to settle the items and pass them back. Refused with `--report-format json`. |
-| `--llm-verify [<file>]` | As `--llm-review`, but asks only for what can be settled by reading the **add-on**. No add-on description is written, and the Extended/Standard Manual Review items are neither put to a reviewer nor written to the item file — they stay in the report, for the reviewer to work through later. The sweep, the findings, the Extended Code Review, the verdict file and the `--llm-verdict` re-run are unchanged. |
-| `--llm-verdict <file>` | Apply settled verdicts and print the settled report, from a JSON file written as the prompt describes. Verdicts are keyed by index and settle only what they name, so a `--llm-verify` file leaves the manual items listed. |
+| `--llm-review` | Print a verification prompt and write the review as a JSON item array to a temp file, instead of the report. The prompt explains how to settle the items and pass them back. Refused with `--report-format json`. |
+| `--llm-verify` | As `--llm-review`, but verifies only the add-on's **code**: it writes no behavioral description and does not settle the manual review items. Refused with `--report-format json`. |
+| `--llm-verdict <file>` | Apply settled verdicts and print the settled report, from a JSON file written as the prompt describes. Normally run by the agent that settled the review rather than by a person. Verdicts are keyed by index and settle only what they name, so a `--llm-verify` file leaves the manual items listed. |
 
 **Source code archive (SCA):**
 
