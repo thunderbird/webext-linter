@@ -26,7 +26,13 @@ import {
   countByRule,
   verdictKey,
 } from "./finding.js";
-import { orderReview, hasLocus, manualBody, collapseBody } from "./order.js";
+import {
+  orderReview,
+  hasLocus,
+  manualBody,
+  collapseBody,
+  MANUAL_SECTIONS,
+} from "./order.js";
 import { artifactLabel } from "./artifact.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
 import { displayLine, wrapText } from "../util/text.js";
@@ -184,6 +190,15 @@ function reviewBodyLines(review) {
   ];
 }
 
+/** The prompt text that asks for each section a REVIEWER answers, keyed by the section
+ *  name order.js numbers it under. A section named in MANUAL_SECTIONS with no ask here is
+ *  a section the prompt cannot put to anyone, so llmPromptLines refuses it rather than
+ *  printing one ask fewer than the item file carries entries. */
+const MANUAL_ASKS = Object.freeze({
+  extendedManual: "extendedManualReview",
+  standard: "standardManualReview",
+});
+
 /**
  * The --llm-review verification prompt, printed above the header so the model that
  * is handed the report reads its instructions before the report itself.
@@ -236,11 +251,23 @@ export function llmPromptLines(
   if (sections.has("code")) {
     asks.push(prompt.codeReview);
   }
-  if (!skipped.has("manual") && sections.has("extendedManual")) {
-    asks.push(prompt.extendedManualReview);
-  }
-  if (!skipped.has("manual") && sections.has("standard")) {
-    asks.push(prompt.standardManualReview);
+  // The sections a reviewer answers are asked for in MANUAL_SECTIONS' own order, each
+  // through the prompt text that names it: the list that decides which sections a skip
+  // withholds from the item file is the list that decides which asks print, so an ask for
+  // a section the file omits cannot arise.
+  if (!skipped.has("manual")) {
+    for (const name of MANUAL_SECTIONS) {
+      if (!sections.has(name)) {
+        continue;
+      }
+      const ask = prompt[MANUAL_ASKS[name]];
+      if (!ask) {
+        throw new Error(
+          `no prompt ask for manual section "${name}" (src/report/format.js)`
+        );
+      }
+      asks.push(ask);
+    }
   }
   const lines = [...section("LLM Prompt"), "", ...wrapText(prompt.intro), ""];
   for (const ask of asks) {

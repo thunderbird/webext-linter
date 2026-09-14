@@ -47,7 +47,7 @@ import { displayLine } from "../util/text.js";
 // drop words a person wrote, so the model goes back and asks rather than making them fit.
 import { MAX_NOTE } from "../config.js";
 import { finding } from "./finding.js";
-import { orderReview, hasLocus, MANUAL_SECTIONS } from "./order.js";
+import { orderReview, hasLocus, isQuestion } from "./order.js";
 import { locationLine } from "./format.js";
 
 // The three verdicts, all naming what happens to the item in the REPORT rather than what
@@ -237,7 +237,7 @@ function readAddition(file, i, raw) {
 function settleAnswer(answer, item, index, choices) {
   const at = `--llm-verdict: item ${index}`;
   const verbs = [...VERBS].join(", ");
-  const asked = item.kind === "todo" && MANUAL_SECTIONS.includes(item.section);
+  const asked = isQuestion(item);
   if (!asked) {
     if (!VERBS.has(answer)) {
       throw new Error(

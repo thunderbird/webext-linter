@@ -63,7 +63,7 @@
 import os from "node:os";
 import path from "node:path";
 
-import { orderReview, MANUAL_SECTIONS } from "./order.js";
+import { orderReview, isQuestion } from "./order.js";
 import { SECTION_TITLES, manualQuestion } from "./format.js";
 
 /**
@@ -107,19 +107,13 @@ export function reviewItems({
   // every index here would name a different item than the report does. Dropping them
   // afterwards leaves each survivor the index the report printed.
   const ordered = orderReview(findings, manual);
-  const listed = skipManual
-    ? ordered.filter(
-        (x) => x.kind !== "todo" || !MANUAL_SECTIONS.includes(x.section)
-      )
-    : ordered;
+  const listed = skipManual ? ordered.filter((x) => !isQuestion(x)) : ordered;
   // The reviewer's questions, in the order they are asked: the two manual sections, which
   // are the last of the review and so are already contiguous. Their count is the total a
   // label states, taken from the LISTED items - a --llm-skip-manual file holds none,
   // and a total counting items that file never carried would be a progress bar for a
   // review nobody is being shown.
-  const questions = listed.filter(
-    (x) => x.kind === "todo" && MANUAL_SECTIONS.includes(x.section)
-  );
+  const questions = listed.filter(isQuestion);
   const asked = new Map(
     questions.map((x, i) => [x, `${i + 1}/${questions.length}`])
   );

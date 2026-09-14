@@ -14,8 +14,8 @@
 // rest pass unexamined, and a verdict naming one of them must resolve rather than fail.
 // `shown` carries the page's decision separately, for the renderer to act on.
 //
-// Belongs here: the sequence, the entry boundaries within it, the numbering, and which
-// items the page has room for.
+// Belongs here: the sequence, the entry boundaries within it, the numbering, which items
+// the page has room for, and which sections of it a reviewer answers.
 //
 // Does NOT belong here: how an entry is drawn (src/report/format.js), what it says
 // (assets/registry.yaml), or which items a verdict changes (src/report/verdicts.js).
@@ -86,12 +86,30 @@ const TODO_SECTIONS = Object.freeze(["code", "extendedManual", "standard"]);
 
 /** The to-do sections a person answers, as opposed to the ones settled by reading the
  *  add-on. --llm-skip-manual withholds BOTH the prompt's asks for them
- *  (src/report/format.js) and their entries in the item file (src/report/items.js); named
- *  once here because those two must never disagree - an ask for a section the file omits
+ *  (src/report/format.js, which walks this list to print them) and their entries in the
+ *  item file (src/report/items.js, through isQuestion); named once here because those two
+ *  must never disagree - an ask for a section the file omits
  *  sends the reader hunting for entries that are not there. They are the LAST sections
  *  TODO_SECTIONS numbers, which is what makes omitting them truncate the numbering rather
  *  than punch a hole in it. */
 export const MANUAL_SECTIONS = Object.freeze(["extendedManual", "standard"]);
+
+/**
+ * Whether this ordered entry is a question a REVIEWER was asked - the one property that
+ * decides, for an item, which vocabulary its answer is written in: a question is answered
+ * with one of the labels the item file offered (or the reviewer's own words), everything
+ * else with one of the linter's verbs.
+ *
+ * Spelled once because three readers must agree on it: the item file leaves these out
+ * under --llm-skip-manual, it offers `answers` for exactly these, and --llm-verdict reads
+ * an answer as a label only for these. Two of them disagreeing would refuse a label the
+ * third had just offered.
+ * @param {OrderedItem} x
+ * @returns {boolean}
+ */
+export function isQuestion(x) {
+  return x.kind === "todo" && MANUAL_SECTIONS.includes(x.section);
+}
 
 /**
  * @typedef {object} OrderedItem
