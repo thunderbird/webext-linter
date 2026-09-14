@@ -1405,10 +1405,11 @@ test("--llm-skip-manual drops the manual asks and renumbers the steps", () => {
   );
 });
 
-// A step may carry a literal example, whose authored line breaks ARE the layout. Unlike an
-// ask, a step is never whitespace-collapsed, and each is wrapped in ONE call - wrapping it
-// paragraph by paragraph would lose the blank lines inside it.
-test("a step's authored line breaks survive the per-step wrap", () => {
+// A step may carry a literal example, whose authored line breaks ARE the layout: a step is
+// never whitespace-collapsed like an ask. Everything after the step's first paragraph sits
+// UNDER its number - the example included, since it belongs to that step, and a paragraph
+// left flush-left reads as a step of its own.
+test("a step's paragraphs sit under its number, line breaks and all", () => {
   const prompt = {
     intro: "Go.",
     issues: "i",
@@ -1416,15 +1417,13 @@ test("a step's authored line breaks survive the per-step wrap", () => {
     outcome: [{ text: 'lead in\n\n{"a": 1,\n"b": 2}\n\ntail out' }],
   };
   const lines = llmPromptLines(prompt, [{ ruleId: "r" }], []);
-  // Each SOURCE line is wrapped on its own and only the first carries the marker, so the
-  // example keeps its own line breaks and stays flush - exactly as it renders today.
   assert.deepEqual(lines.slice(-6), [
     "1. lead in",
     "",
-    '{"a": 1,',
-    '"b": 2}',
+    '   {"a": 1,',
+    '   "b": 2}',
     "",
-    "tail out",
+    "   tail out",
   ]);
 });
 

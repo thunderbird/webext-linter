@@ -200,6 +200,39 @@ const MANUAL_ASKS = Object.freeze({
 });
 
 /**
+ * One numbered step of a prompt: the first paragraph carries the "N. " marker and every
+ * paragraph after it is indented to sit beneath it.
+ *
+ * Both prompts lay their steps out this way, from one function, because a continuation
+ * left flush-left reads as a step of its own - and so does the literal example a step
+ * carries, which belongs to that step. The numbers are the caller's: it numbers what
+ * survived its own filtering, which is why no step may number itself.
+ *
+ * Authored line breaks inside a paragraph are the layout and wrapText keeps them. `slot`
+ * lets a caller render ONE paragraph itself, matched by its whole text (the SCA prompt's
+ * flags, which are a command and must not be wrapped).
+ * @param {number} n  The step's number, as printed.
+ * @param {string} text  The authored step.
+ * @param {?{name: string, lines: string[]}} [slot]  A paragraph the caller renders.
+ * @returns {string[]}
+ */
+function stepLines(n, text, slot = null) {
+  const marker = `${n}. `;
+  const indent = " ".repeat(marker.length);
+  const [first, ...rest] = text.split("\n\n");
+  const out = [...wrapText(`${marker}${first}`)];
+  for (const paragraph of rest) {
+    out.push("");
+    if (slot && paragraph.trim() === slot.name) {
+      out.push(...slot.lines.map((line) => `${indent}${line}`));
+    } else {
+      out.push(...wrapText(paragraph, indent));
+    }
+  }
+  return out;
+}
+
+/**
  * The --llm-review verification prompt, printed above the header so the model that
  * is handed the report reads its instructions before the report itself.
  *
@@ -278,10 +311,8 @@ export function llmPromptLines(
     const steps = prompt.outcome.filter((step) => !skipped.has(step.skip));
     steps.forEach((step, i) => {
       // Numbered HERE, over what survived the skips, so the steps a run prints read
-      // 1..N with no gaps. Not collapsed like the asks above: a step can carry a literal
-      // example, so its authored line breaks are the layout and wrapText keeps them - which
-      // is why each step is ONE wrapText call rather than one per paragraph.
-      lines.push("", ...wrapText(`${i + 1}. ${step.text}`));
+      // 1..N with no gaps.
+      lines.push("", ...stepLines(i + 1, step.text));
     });
   }
   return lines;
@@ -346,23 +377,12 @@ export function scaPromptLines(prompt, submission, review) {
     (step) => !step.experiments || review.experiments
   );
   steps.forEach((step, i) => {
-    // Each paragraph of a step is wrapped under the step's own number: the first carries
-    // the "N. " marker, the rest are indented to sit beneath it. A step here can run to
-    // several paragraphs, and one left flush-left reads as a step of its own. The flags
-    // are a paragraph of their own and are NOT wrapped - a command split across lines is
-    // a command to reassemble.
-    const marker = `${i + 1}. `;
-    const indent = " ".repeat(marker.length);
-    const [first, ...rest] = step.text.split("\n\n");
-    lines.push("", ...wrapText(`${marker}${first}`));
-    for (const paragraph of rest) {
-      lines.push("");
-      if (paragraph.trim() === "{{flags}}") {
-        lines.push(...flags.map((flag) => `${indent}${flag}`));
-      } else {
-        lines.push(...wrapText(paragraph, indent));
-      }
-    }
+    // The flags are a paragraph of their own and are NOT wrapped - a command split across
+    // lines is a command to reassemble - so they are rendered here and slotted in.
+    lines.push(
+      "",
+      ...stepLines(i + 1, step.text, { name: "{{flags}}", lines: flags })
+    );
   });
   return lines;
 }
