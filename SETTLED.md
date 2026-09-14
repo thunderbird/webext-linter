@@ -39,13 +39,13 @@ Two corollaries:
   package is a hint that should not be produced.
 
 A deterministic check may still emit a hard finding, but only when the finding survives
-*any* guard the developer could have written. `deprecated-api` passes that test and is the
+_any_ guard the developer could have written. `deprecated-api` passes that test and is the
 model, not the exception.
 
 **Fact or inference?** The reusable criterion for auditing a check: does the verdict rest on
 a fact or on an inference about what the code does? A fact is a parse result, a file's
 presence, a byte or hash comparison, a schema lookup, a literal AST construct, a string
-match. An inference decides what code *means*. A fact with an exact anchor is a
+match. An inference decides what code _means_. A fact with an exact anchor is a
 deterministic finding; an inference with an anchor is an escalation; an inference with no
 anchor possible is a standing sweep. Audited over every registry entry: no check outside the
 guard family had a demonstrated defect.
@@ -329,6 +329,24 @@ guard family had a demonstrated defect.
   by flipping the list and asserting the outcome flips with it. Do not re-add "always offer
   X first" wording anywhere.
 
+- **The README does not document the registry's SHAPE.** It describes the review model,
+  and names a registry key only where that key IS the mechanism being explained -
+  `escalation: manual-review` under Extended Manual Review, `sweep-instruction:` under
+  blind-spot sweeps. Every other key (`default-note`, `answers`, `input`, `sca`, `diff`,
+  `instructions`, `response`, ...) is documented by the yaml itself and by the load-time
+  refusals in src/checks/registry.js, which is where someone authoring one is reading. Do
+  not re-report a key as "missing from the README" - ask instead whether understanding the
+  TOOL needs it.
+
+- **A ".." segment is refused in EVERY folder input, not only the ones resolved inside
+  `--sca-root`.** `--sca-root ../extracted` and `--llm-sca-review ../submission` are refused
+  along with `--sca-source ../x`, and as WRITTEN, so `src/../other` goes too - a value that
+  names a folder by the way out of another is one someone will misread, whether or not it
+  lands back inside. One test (`hasParentSegment`, `src/addon/load.js`), asked by the CLI
+  of every folder flag and by `scaRootRelative` of every value it resolves, so a caller
+  that never passes a command line is asked the same thing. The cost is typing the path the
+  flag names. Do not re-propose gating it on whether the flag resolves inside the root.
+
 ## Not needed - do not re-report
 
 An audit will find these and call them gaps. They were looked at and judged not
@@ -428,7 +446,7 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
 - **A TypeScript type check is not worth adopting, in either form proposed.** Both were
   judged on whether they clear an entire check of false negatives.
 
-  A *full type check* clears no existing check: neither any check nor any of the eight
+  A _full type check_ clears no existing check: neither any check nor any of the eight
   `sweep-instruction` entries covers API misuse (argument shapes, return-value structure),
   so it would be new capability rather than a closed gap. And it cannot be FN-free by
   construction. Against its own canonical example - `messages.query` returning a
@@ -441,7 +459,7 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   SILENTLY - no diagnostic, no "I could not tell". Misusing an API is also a functionality
   bug, which the review already covers by testing in a profile.
 
-  *Permission tracing* fails on its data, not its idea. A type checker supplies the
+  _Permission tracing_ fails on its data, not its idea. A type checker supplies the
   receiver's type; the gate table has to come from the schema, and in release-mv2 the
   functions carry 54 machine-readable `permissions` and 0 prose-only, while the properties
   carry 4 machine-readable and 31 PROSE-only - `<permission>X</permission>` inside a
@@ -465,7 +483,7 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   So there is no reason to consume `webext-typings-generator` output during a review. Its
   own defects stay bugs in that repo - `chrome` is not declared, and
   `.out/messenger-mv2.d.ts` does not compile (one error, `Cannot find name
-  'ContextFilter'`). What survives is upstream and has nothing to do with types: promoting
+'ContextFilter'`). What survives is upstream and has nothing to do with types: promoting
   those 31 prose gates to a machine-readable `permissions` field, which `TODO.md` carries.
 
 - **What a review leaves out is a SKIP, not a second review flag.** `--llm-verify` was one
@@ -540,3 +558,98 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   them tests for help. Do not re-add a help sentinel to a guard, and do not move a guard
   above the branch.
 
+- **A note that ANNOTATES a location is one line; a note that IS the location keeps the
+  reviewer's lines.** A location line is one line, so a note sharing it is collapsed into
+  the parentheses at its end - in the text report and in the JSON document alike. A case
+  with no location of its own is the other half of the rule: there the note is the line,
+  the reviewer's own line breaks survive, and each becomes an item of its own, because a
+  check that asks what they found is asking for a list. Do not re-propose wrapping the
+  parenthesised form, splitting it across lines, or teaching `formatJson` to keep line
+  structure.
+
+- **A reviewer's note may look like report structure, and that is not a defect.** Each
+  line of a note gets the report's own "- ", so a line can read like a locus or like the
+  "and N more, excluded from this list" marker. The words are the REVIEWER's, and the
+  model that transcribes them into the verdict file already writes that whole file - it
+  could file a fabricated addition or withdraw a real finding without any formatting
+  trick. Escaping or fencing the note buys nothing against an actor that already has the
+  pen. Do not re-raise it as an injection finding.
+
+- **A verdict file is answered in two vocabularies, and that is the point.** An item put
+  to a reviewer carries what they answered - the label they picked, or the words they
+  typed - and everything else carries one of the linter's verbs. One vocabulary would cost
+  more than it saves in either direction: labels everywhere make the model's own
+  conclusions read as something a person said, and verbs everywhere put the model back to
+  interpreting what the reviewer meant, which is what this shape removed. The item file
+  says which applies: a question is exactly an item carrying `answers`.
+
+- **The answer vocabulary for a question is OPEN, so anything that is not a label reports
+  the case.** "Clear.", "no", "nothing found" are not labels and not verbs, so they are
+  read as the reviewer's own words and the case is reported carrying them. That is the same
+  rule that makes a typed answer work at all, and closing the set would mean authoring a
+  third ANSWER for the option a reviewer types into - which the asking tool generates, and
+  which no registry answer may claim. Telling the reviewer where to type, as the `Report`
+  description does, is a different thing and is fine. Do not re-propose a third registry
+  answer or fuzzy label matching, and do not report the description for naming that option.
+
+- **`llm-manual-review-choices` is not checked against the three verbs.** Each answer must
+  author a non-empty `label`, `verdict` and `description`, and nothing checks that the
+  verdict is one the linter knows. A typo there would clear what a reviewer reported. It
+  stays: the file is ours, the choice set is four lines long, and the same reading that
+  would catch a typo in a response catches one here. Do not re-propose validating it.
+
+- **A submission folder is read as files, not as links.** `scaSubmission` counts entries
+  that ARE files, so a folder holding symlinks to an .xpi and a source archive is refused
+  as holding neither. Reviewers download into the folder they review; do not re-propose
+  following links.
+
+- **An addition's `check` is echoed into its refusal as written.** The two throws in the
+  addition loop (`src/report/verdicts.js`) name the check the verdict file gave, control
+  characters and all, where the same value is stripped on every path that RENDERS it. It
+  stays: the string comes from the agent that just ran the review, not from the submission,
+  and the run exits 2 on the spot. Do not re-propose `displayLine` there.
+
+- **A WRONG entry in a verdict file is not a defect to chase.** The file is written by the
+  agent this tool just instructed, against a document this tool wrote, and every shape the
+  reader can name is already refused by name (a verb where a label belongs, an answer on an
+  item nobody was asked, a bad index, a wrong add-on, a malformed block, an over-long note).
+  What is left - a near-miss spelling of a verb, a non-canonical index, two spellings of one
+  index, an answer that means something else than it says - is the caller writing nonsense
+  into its own half of a round trip.
+
+  A file written against a DIFFERENT run is the same thing. An index means a position in
+  the review that produced it, so answering with an old file, or re-running --llm-verdict
+  under different --checks-only/--checks-skip than the review used, settles whatever now
+  sits at that number. The prompt's last step says to re-run the same command with
+  --llm-verdict in its place, and used that way there is nothing to drift. Do not report
+  findings whose harm needs a wrong entry, a stale file, or a different command; report
+  what the LINTER does wrong with a correct one.
+
+- **The command `--llm-sca-review` prints is not hardened against the submission's own
+  file names.** `shellArg` quotes a value that carries whitespace and nothing else, so a
+  submission holding `addon$(id).xpi` prints an argument a shell would expand. It stays:
+  the folder is the reviewer's own, they downloaded into it, and a name chosen to attack
+  whoever pastes the command is a threat to the reviewer's shell, not to the review. Do
+  not re-propose escaping every metacharacter here.
+
+- **`{{flags}}` is not validated at load.** `llmScaReviewPrompt` refuses a missing intro
+  and an empty step, but nothing requires a step to carry the `{{flags}}` slot, so a typo
+  there would print the prompt with no command in it. It stays: the file is ours, one
+  run of the flag shows the gap immediately, and the yaml is read by whoever edits it. Do
+  not re-propose a placeholder contract.
+
+- **`scaSubmission`'s "found N add-on(s)" message prints file names as they are.** A
+  control character in a submission's own file name reaches the terminal there, where the
+  report's own lines strip them. It stays: the message is a refusal on stderr naming what
+  was in the folder, and the run stops. Do not re-propose `displayLine` there.
+
+- **A prompt step is filtered by skip only, never by whether its section produced items.**
+  A review with no manual items still prints the step that says to put them to a reviewer,
+  and one with no sweep still prints the sweep step. It stays: an empty section is visible
+  in the asks above the steps, and gating each step on its section would make the prompt's
+  numbering depend on the add-on. Do not re-propose presence-gating the steps.
+
+- **`--report-out` to an unwritable path prints a stack trace.** `writeReportOut` does not
+  catch, so the failure arrives as a Node error rather than a usage line. It stays: the
+  report has already been printed by then, the path is the caller's own, and exit 2 is
+  right either way. Do not re-propose wrapping it.
