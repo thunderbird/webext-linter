@@ -48,7 +48,12 @@ import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
 import { buildXpiCtxs, buildScaCtxs } from "./checks/context.js";
 import { renderFindings, renderManualItems } from "./report/responses.js";
-import { headerLines, llmPromptLines, summaryLines } from "./report/format.js";
+import {
+  headerLines,
+  llmPromptLines,
+  promptAsks,
+  summaryLines,
+} from "./report/format.js";
 import { resolveHolds } from "./report/finding.js";
 import { locusLabeler } from "./report/format.js";
 import { readVerdicts, applyVerdicts } from "./report/verdicts.js";
@@ -670,16 +675,14 @@ export async function runPipeline(opts) {
   // once: the prompt drops steps by it, the item file drops sections by it, and the
   // description file is named by it.
   const skip = opts.llmSkip ?? [];
+  // Where the prompt's reader writes the add-on description, sharing the item file's name
+  // and moment; never written and never read by this tool. Held until the prompt is built,
+  // because whether it is NAMED depends on whether the step that writes it prints.
+  let summaryPath = null;
   if (opts.llmReview) {
     const files = reviewFilePaths(xpiAddon);
     meta.itemsFile = files.items;
-    // Where the prompt's reader writes the add-on description, sharing the item file's
-    // name and moment; never written and never read by this tool. Not named under
-    // --llm-skip-summary, which withholds the step that writes it: a path printed for a
-    // file nobody is asked to write is an instruction with no step behind it.
-    if (!skip.includes("summary")) {
-      meta.summaryFile = files.summary;
-    }
+    summaryPath = skip.includes("summary") ? null : files.summary;
     fs.writeFileSync(meta.itemsFile, "");
   }
 
@@ -777,8 +780,20 @@ export async function runPipeline(opts) {
   // survive --llm-review switching the Setup and Activity sections off. Absent from JSON (a
   // machine contract) and from the golden harness for free, like the rest of the narration.
   if (opts.llmReview) {
+    const prompt = registry.llmReviewPrompt();
+    // A path printed for a file nobody is asked to write is an instruction with no step
+    // behind it. Two things withhold that step: --llm-skip-summary names it, and a review
+    // with nothing to settle prints no steps at all. Both are answered here, from the
+    // asks the prompt itself is built from, so the name and the step cannot part company.
+    if (
+      summaryPath &&
+      promptAsks(prompt, findings, meta.manualReview, meta.preSweep, skip)
+        .length
+    ) {
+      meta.summaryFile = summaryPath;
+    }
     for (const line of llmPromptLines(
-      registry.llmReviewPrompt(),
+      prompt,
       findings,
       meta.manualReview,
       meta.preSweep,

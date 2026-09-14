@@ -233,6 +233,73 @@ function stepLines(n, text, slot = null) {
 }
 
 /**
+ * What a --llm-review prompt ASKS this run's reader for, as the authored ask texts in the
+ * order they print - empty when the review has nothing to settle.
+ *
+ * Only the instructions the report can actually be checked against are asked for, and
+ * every one it can: the issues ask needs a finding to verify, and each to-do ask needs an
+ * item in its OWN section - a review that happens to have no Extended Manual Review items
+ * must not be told to work them. Both tests come from the same place the report's own
+ * sections do, so the prompt cannot ask for a section the reader will not find.
+ *
+ * Exported because the asks decide more than their own lines: the steps close the prompt
+ * only when an ask was made (with nothing to settle there is nothing to hand back), so the
+ * step that writes the add-on description prints only then - and the pipeline names that
+ * file only when it does. One computation, or the path and the step that writes it are
+ * decided by two.
+ * @param {object} prompt  From registry.llmReviewPrompt().
+ * @param {import("./finding.js").Finding[]} findings
+ * @param {import("./finding.js").ManualItem[]} manual
+ * @param {?{items: object[]}} [preSweep]
+ * @param {string[]} [skip]  The parts this run leaves out (PROMPT_SKIPS, src/config.js).
+ * @returns {string[]}
+ */
+export function promptAsks(
+  prompt,
+  findings,
+  manual,
+  preSweep = null,
+  skip = []
+) {
+  // The manual sections go together: a run that does not put them to a reviewer must not
+  // be asked to work them either, or the reader hunts for entries the item file does not
+  // carry.
+  const skipped = new Set(skip);
+  const asks = [];
+  if (findings.length) {
+    asks.push(prompt.issues);
+  }
+  // Listed first among the asks, because it is the first thing done: the sweeps add
+  // findings, and everything below settles the review those findings are part of.
+  if (preSweep?.items?.length) {
+    asks.push(prompt.preSweep);
+  }
+  const sections = new Set(orderReview([], manual).map((x) => x.section));
+  if (sections.has("code")) {
+    asks.push(prompt.codeReview);
+  }
+  // The sections a reviewer answers are asked for in MANUAL_SECTIONS' own order, each
+  // through the prompt text that names it: the list that decides which sections a skip
+  // withholds from the item file is the list that decides which asks print, so an ask for
+  // a section the file omits cannot arise.
+  if (!skipped.has("manual")) {
+    for (const name of MANUAL_SECTIONS) {
+      if (!sections.has(name)) {
+        continue;
+      }
+      const ask = prompt[MANUAL_ASKS[name]];
+      if (!ask) {
+        throw new Error(
+          `no prompt ask for manual section "${name}" (src/report/format.js)`
+        );
+      }
+      asks.push(ask);
+    }
+  }
+  return asks;
+}
+
+/**
  * The --llm-review verification prompt, printed above the header so the model that
  * is handed the report reads its instructions before the report itself.
  *
@@ -267,41 +334,8 @@ export function llmPromptLines(
   preSweep = null,
   skip = []
 ) {
-  // What this run was told to leave out. The manual sections go together: a run that does
-  // not put them to a reviewer must not be asked to work them either, or the reader hunts
-  // for entries the item file does not carry.
   const skipped = new Set(skip);
-  const asks = [];
-  if (findings.length) {
-    asks.push(prompt.issues);
-  }
-  // Listed first among the asks, because it is the first thing done: the sweeps add
-  // findings, and everything below settles the review those findings are part of.
-  if (preSweep?.items?.length) {
-    asks.push(prompt.preSweep);
-  }
-  const sections = new Set(orderReview([], manual).map((x) => x.section));
-  if (sections.has("code")) {
-    asks.push(prompt.codeReview);
-  }
-  // The sections a reviewer answers are asked for in MANUAL_SECTIONS' own order, each
-  // through the prompt text that names it: the list that decides which sections a skip
-  // withholds from the item file is the list that decides which asks print, so an ask for
-  // a section the file omits cannot arise.
-  if (!skipped.has("manual")) {
-    for (const name of MANUAL_SECTIONS) {
-      if (!sections.has(name)) {
-        continue;
-      }
-      const ask = prompt[MANUAL_ASKS[name]];
-      if (!ask) {
-        throw new Error(
-          `no prompt ask for manual section "${name}" (src/report/format.js)`
-        );
-      }
-      asks.push(ask);
-    }
-  }
+  const asks = promptAsks(prompt, findings, manual, preSweep, skip);
   const lines = [...section("LLM Prompt"), "", ...wrapText(prompt.intro), ""];
   for (const ask of asks) {
     lines.push(...wrapText(`- ${ask.replace(/\s+/g, " ").trim()}`));

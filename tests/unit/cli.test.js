@@ -266,6 +266,39 @@ test("a flag given no value is refused (exit 2)", () => {
   assert.equal(run(["--help", "--report-out="]).code, 0);
 });
 
+// The guard asks the LOADER which folder a value names, rather than spelling the path math
+// a second time. ".src" used to be validated as ".src" (found) and then read as "src" - a
+// real folder, not the one named, reviewed in silence. Pinned from the CLI end, because the
+// defect was the two ends disagreeing.
+test("a folder flag is checked against the folder the review will read", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-dotdir-"));
+  fs.mkdirSync(path.join(dir, "src"));
+
+  // Only src/ exists: naming .src refuses, where it used to review src/ without a word.
+  const missing = run(["some.xpi", "--sca-root", dir, "--sca-source", ".src"]);
+  assert.equal(missing.code, 2);
+  assert.match(missing.stderr, /--sca-source must point at a folder: "\.src"/);
+  assert.match(missing.stderr, new RegExp(`${dir}/\\.src`), "looked in .src");
+
+  // With the folder there, it passes this guard and the run reaches the next refusal.
+  fs.mkdirSync(path.join(dir, ".src"));
+  const ok = run([
+    "some.xpi",
+    "--sca-root",
+    dir,
+    "--sca-source",
+    ".src",
+    "--allow-experiments",
+  ]);
+  assert.equal(ok.code, 2);
+  assert.match(
+    ok.stderr,
+    /--sca-exp-source is required with --allow-experiments/
+  );
+  assert.doesNotMatch(ok.stderr, /must point at a folder/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // A ".." segment is the value this guard and the loader read differently: the loader strips
 // leading dots, so the folder that answered here is not the folder the review reads, and for
 // --sca-exp-source "nothing" is also the legitimate answer for an Experiment outside the
@@ -313,39 +346,6 @@ test("a folder flag refuses a .. segment (exit 2)", () => {
     assert.match(r.stderr, /never a way out of one/, argv.join(" "));
     assert.match(r.stderr, /carries a "\.\." segment/, argv.join(" "));
   }
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-// The guard asks the LOADER which folder a value names, rather than spelling the path math
-// a second time. ".src" used to be validated as ".src" (found) and then read as "src" - a
-// real folder, not the one named, reviewed in silence. Pinned from the CLI end, because the
-// defect was the two ends disagreeing.
-test("a folder flag is checked against the folder the review will read", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-dotdir-"));
-  fs.mkdirSync(path.join(dir, "src"));
-
-  // Only src/ exists: naming .src refuses, where it used to review src/ without a word.
-  const missing = run(["some.xpi", "--sca-root", dir, "--sca-source", ".src"]);
-  assert.equal(missing.code, 2);
-  assert.match(missing.stderr, /--sca-source must point at a folder: "\.src"/);
-  assert.match(missing.stderr, new RegExp(`${dir}/\\.src`), "looked in .src");
-
-  // With the folder there, it passes this guard and the run reaches the next refusal.
-  fs.mkdirSync(path.join(dir, ".src"));
-  const ok = run([
-    "some.xpi",
-    "--sca-root",
-    dir,
-    "--sca-source",
-    ".src",
-    "--allow-experiments",
-  ]);
-  assert.equal(ok.code, 2);
-  assert.match(
-    ok.stderr,
-    /--sca-exp-source is required with --allow-experiments/
-  );
-  assert.doesNotMatch(ok.stderr, /must point at a folder/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -693,6 +693,35 @@ test("each skip leaves out its own part and nothing else", () => {
   assert.ok(
     !itemsOf(noManual).some((x) => manualSections.includes(x.section)),
     "no manual entry in the file"
+  );
+});
+
+// The description file is named only when the step that writes it PRINTS. Two things
+// withhold that step - --llm-skip-summary names it, and a review with nothing to settle
+// prints no steps at all - and a path printed for a file nobody is asked to write is an
+// instruction with no step behind it. The second route is the one a skip does not cover.
+test("a review with nothing to settle names no description file", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const r = run([
+    addon,
+    ...OFFLINE_FLAGS,
+    "--llm-review",
+    "--llm-skip-manual",
+    "--checks-only",
+    "debugger-statement",
+  ]);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /── LLM Prompt ──/);
+  assert.doesNotMatch(r.stdout, /^1\. /m, "no steps were printed");
+  assert.doesNotMatch(r.stdout, /Add-on description/);
+  // The item file is still named and still written - it is simply empty.
+  const named = r.stdout
+    .split("\n")
+    .find((l) => l.startsWith("Review items: "));
+  assert.ok(named);
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(named.slice("Review items: ".length), "utf8")),
+    []
   );
 });
 
