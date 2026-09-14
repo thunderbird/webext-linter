@@ -342,6 +342,19 @@ test("a folder flag is checked against the folder the review will read", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// One add-on per run. A second positional was silently ignored, which is how an unquoted
+// path with a space in it reviewed the half before the space and said nothing about the
+// rest - the shape --llm-sca-review's printed command could produce.
+test("a second positional is refused (exit 2)", () => {
+  const r = run(["some.xpi", "another.xpi"]);
+  assert.equal(r.code, 2);
+  assert.match(
+    r.stderr,
+    /Only one add-on can be reviewed at a time, and 2 were given/
+  );
+  assert.match(r.stderr, /"some\.xpi", "another\.xpi"/);
+});
+
 // No positional argument is a usage error: usage to stdout, exit 2.
 test("no add-on argument prints usage and exits 2", () => {
   const r = run([]);

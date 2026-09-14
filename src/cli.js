@@ -639,6 +639,18 @@ export async function main(argv) {
     return values.help ? 0 : 2;
   }
 
+  // ONE add-on per run. A second positional was silently ignored, which is how an
+  // unquoted path with a space in it ("/my sub/a.xpi") reviewed "/my" and said nothing
+  // about the rest. Anything that is not a flag and is not the add-on is a mistake.
+  if (positionals.length > 1) {
+    process.stderr.write(
+      `Only one add-on can be reviewed at a time, and ${positionals.length} were given: ` +
+        `${positionals.map((p) => `"${p}"`).join(", ")}. If the path contains spaces, ` +
+        "quote it.\n"
+    );
+    return 2;
+  }
+
   // A review flag's whole output is a prompt and an item file. JSON is the machine
   // contract for ATN, which wants neither, and asking for both leaves nothing coherent to
   // print - so say so rather than silently favouring one.
