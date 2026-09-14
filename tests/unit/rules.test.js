@@ -67,6 +67,7 @@ import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
 import { parseApiUsage } from "../../src/parse/api-usage.js";
 import { getPermissionAnalysis } from "../../src/lib/permissions.js";
 import {
+  assertEntries,
   loadChecks,
   loadRegistry,
   runOneCheck,
@@ -821,12 +822,16 @@ test("every check's severity is pinned to its band", async () => {
 });
 
 // The band cannot be acquired implicitly: an entry that omits severity is a registry
-// mistake, not a request for the strictest value, so the loader refuses it by name.
-test("loadChecks refuses a check entry with no severity", async () => {
+// mistake, not a request for the strictest value, so reading the registry refuses it by
+// name - whatever this run was told to check.
+test("a check entry with no severity is refused", () => {
   const reg = new Registry({
     "deterministic-phase": [{ title: "X", check: "sync-xhr", input: "source" }],
   });
-  await assert.rejects(loadChecks(reg), /missing or invalid severity/);
+  assert.throws(
+    () => assertEntries(reg, "t.yaml"),
+    /missing or invalid severity/
+  );
 });
 
 // A check authors a `sweep-instruction` for a blind spot it cannot close by naming more
@@ -863,56 +868,117 @@ test("the checks that sweep their own blind spot are exactly these", () => {
 
 // The three things that must hold for a sweep instruction to be fileable are config, so
 // they fail at LOAD time rather than when an addition first arrives - which may be never.
+// Every entry is addressed by its `check` id - a finding carries only a ruleId, and that is
+// how it reaches its severity, its response and its wording. An entry without one is a
+// check that never runs, or, in manual-checks, a to-do printed in every review that no
+// verdict can name and no reviewer can settle. Asked of the RAW lists, because the union a
+// ruleId resolves against drops such an entry before anything can complain about it.
+test("an entry that authors no check id is refused", () => {
+  const bad = (mutate, re) => {
+    const registry = loadRegistry();
+    mutate(registry.doc);
+    assert.throws(() => assertEntries(registry, "t.yaml"), re);
+  };
+  for (const section of ["deterministic-phase", "manual-checks"]) {
+    bad(
+      (doc) => doc[section].push({ title: "Nameless", severity: "error" }),
+      new RegExp(`${section} entry \\d+ \\("Nameless"\\) authors no \`check\``)
+    );
+    bad(
+      (doc) =>
+        doc[section].push({ title: "Blank", check: "  ", severity: "error" }),
+      /authors no `check`/
+    );
+    bad((doc) => doc[section].push("nope"), /is not a mapping/);
+  }
+  // The shipped registry names every one of them.
+  assertEntries(loadRegistry(), "assets/registry.yaml");
+});
+
 // A `default-note` stands in for what a REVIEWER wrote when they reported a case without
-// words, so only a case a reviewer is asked about can carry one. Anywhere else the marker
-// would be stamped onto a case nobody was asked about - and the check that authors one
-// today is the only one whose response ends on the reviewer's own list.
-test("loadChecks refuses a default-note outside a manual-review escalation", async () => {
-  const entry = (extra) => ({
+// words, so it must be prose (never empty), and it must sit on an entry whose cases a
+// reviewer answers. Asked over allEntries() - the set checkEntry() indexes and
+// defaultNote() reads - because the two lists that set spans are exactly what a per-list
+// walk misses: a manual-checks entry has no rule module, so a walk over the linked checks
+// never sees one.
+test("a default-note must be prose on an entry a reviewer answers", () => {
+  const rule = (extra) => ({
     title: "X",
     check: "sync-xhr",
     severity: "error",
     input: "source",
     ...extra,
   });
-  await assert.rejects(
-    loadChecks(
-      new Registry({
-        "deterministic-phase": [entry({ "default-note": "  " })],
-      })
-    ),
-    /invalid `default-note`/
-  );
-  // A code-review case a model settles, and a check that lists no case at all.
-  for (const extra of [
-    { escalation: "code-review", instructions: "settle it" },
-    {},
-  ]) {
-    await assert.rejects(
-      loadChecks(
-        new Registry({
-          "deterministic-phase": [entry({ ...extra, "default-note": "- ..." })],
-        })
-      ),
-      /not `escalation: manual-review`/,
-      JSON.stringify(extra)
+  const manual = (extra) => ({
+    title: "Y",
+    check: "test-add-on",
+    severity: "error",
+    instructions: "answer it",
+    ...extra,
+  });
+  const bad = (doc, re) =>
+    assert.throws(
+      () => assertEntries(new Registry(doc), "t.yaml"),
+      re,
+      JSON.stringify(doc)
+    );
+
+  // Prose, in both lists.
+  for (const note of ["  ", "", 5]) {
+    bad(
+      {
+        "deterministic-phase": [
+          rule({
+            escalation: "manual-review",
+            instructions: "i",
+            "default-note": note,
+          }),
+        ],
+      },
+      /invalid `default-note`/
+    );
+    bad(
+      { "manual-checks": [manual({ "default-note": note })] },
+      /invalid `default-note`/
     );
   }
-  // The pairing it exists for loads.
-  await loadChecks(
-    new Registry({
+
+  // A case a reviewer answers: a manual-review escalation, or a manual check. A
+  // code-review case a model settled, or a check that lists no case at all, carries none.
+  bad(
+    {
       "deterministic-phase": [
-        entry({
-          escalation: "manual-review",
-          instructions: "settle it",
+        rule({
+          escalation: "code-review",
+          instructions: "i",
           "default-note": "- ...",
         }),
       ],
-    })
+    },
+    /not `escalation: manual-review`/
+  );
+  bad(
+    { "deterministic-phase": [rule({ "default-note": "- ..." })] },
+    /not `escalation: manual-review`/
+  );
+
+  // Both supported homes load, and a manual check needs no escalation to be one.
+  assertEntries(
+    new Registry({
+      "deterministic-phase": [
+        rule({
+          escalation: "manual-review",
+          instructions: "i",
+          "default-note": "- ...",
+        }),
+      ],
+      "manual-checks": [manual({ "default-note": "- ..." })],
+    }),
+    "t.yaml"
   );
 });
 
-test("loadChecks refuses a sweep-instruction it could not file a finding for", async () => {
+test("a sweep-instruction no finding could be filed for is refused", () => {
   const entry = (extra) => ({
     title: "X",
     check: "sync-xhr",
@@ -920,40 +986,34 @@ test("loadChecks refuses a sweep-instruction it could not file a finding for", a
     input: "source",
     ...extra,
   });
-  await assert.rejects(
-    loadChecks(
-      new Registry({
-        "deterministic-phase": [entry({ "sweep-instruction": "  " })],
-      })
-    ),
+  const bad = (doc, re) =>
+    assert.throws(() => assertEntries(new Registry(doc), "t.yaml"), re);
+  bad(
+    { "deterministic-phase": [entry({ "sweep-instruction": "  " })] },
     /invalid `sweep-instruction`/
   );
   // `auto` leaves the band to each finding and `none` says the check emits none, so
   // neither has one to stamp an addition with.
   for (const severity of ["auto", "none"]) {
-    await assert.rejects(
-      loadChecks(
-        new Registry({
-          "deterministic-phase": [
-            entry({ severity, "sweep-instruction": "look for X" }),
-          ],
-        })
-      ),
+    bad(
+      {
+        "deterministic-phase": [
+          entry({ severity, "sweep-instruction": "look for X" }),
+        ],
+      },
       /gives a reported case no band to carry/
     );
   }
   // An addition carries no item, so a placeholder would reach the developer literally.
-  await assert.rejects(
-    loadChecks(
-      new Registry({
-        "deterministic-phase": [
-          entry({
-            "sweep-instruction": "look for X",
-            response: "Remove {{item}}.",
-          }),
-        ],
-      })
-    ),
+  bad(
+    {
+      "deterministic-phase": [
+        entry({
+          "sweep-instruction": "look for X",
+          response: "Remove {{item}}.",
+        }),
+      ],
+    },
     /carries a {{placeholder}}/
   );
 });
@@ -3509,7 +3569,7 @@ test("loadChecks throws hard when a check: names a missing module", async () => 
   const tmp = path.join(os.tmpdir(), `bad-registry-${process.pid}.yaml`);
   fs.writeFileSync(
     tmp,
-    "deterministic-phase:\n- title: Bogus\n  check: __does_not_exist__.js\n"
+    "deterministic-phase:\n- title: Bogus\n  severity: error\n  input: source\n  check: __does_not_exist__.js\n"
   );
   try {
     await assert.rejects(() => loadChecks(loadRegistry(tmp)), /not found/);
@@ -3623,19 +3683,13 @@ test("loadChecks rejects a check with no valid input", async () => {
     "deterministic-phase:\n- title: NoInput\n  severity: error\n  check: sync-xhr.js\n"
   );
   try {
-    await assert.rejects(
-      () => loadChecks(loadRegistry(tmp)),
-      /missing a valid `input`/
-    );
+    assert.throws(() => loadRegistry(tmp), /missing a valid `input`/);
     // An out-of-set value is rejected too.
     fs.writeFileSync(
       tmp,
       "deterministic-phase:\n- title: BadInput\n  severity: error\n  check: sync-xhr.js\n  input: bogus\n"
     );
-    await assert.rejects(
-      () => loadChecks(loadRegistry(tmp)),
-      /missing a valid `input`/
-    );
+    assert.throws(() => loadRegistry(tmp), /missing a valid `input`/);
   } finally {
     fs.rmSync(tmp);
   }
@@ -3655,8 +3709,8 @@ test("loadChecks rejects an input:build check that is not sca:true", async () =>
     "deterministic-phase:\n- title: Build\n  severity: error\n  check: sync-xhr.js\n  input: build\n"
   );
   try {
-    await assert.rejects(
-      () => loadChecks(loadRegistry(tmp)),
+    assert.throws(
+      () => loadRegistry(tmp),
       /`input: build` but not `sca: true`/
     );
     // With the gate, it loads.
@@ -3678,10 +3732,7 @@ test("loadChecks rejects an invalid severity token", async () => {
     "deterministic-phase:\n- title: Bad\n  severity: nope\n  check: sync-xhr.js\n"
   );
   try {
-    await assert.rejects(
-      () => loadChecks(loadRegistry(tmp)),
-      /invalid severity "nope"/
-    );
+    assert.throws(() => loadRegistry(tmp), /invalid severity "nope"/);
   } finally {
     fs.rmSync(tmp);
   }
@@ -3771,15 +3822,15 @@ test("a check that returns a bare array is refused, not read as findings", async
 // empty shapes a check may legitimately return all pass.
 // The other half of the pairing, at load time: an entry declaring one without the other
 // fails there rather than at the first case that reaches it - which may be never.
-test("loadChecks refuses escalation without instructions, and the reverse", async () => {
+test("escalation without instructions, and the reverse, are refused", () => {
   const doc = loadRegistry();
   const entry = (id) =>
     doc.doc["deterministic-phase"].find((e) => e.check === id);
   const orphanSection = entry("remote-eval");
   const keepWording = orphanSection.instructions;
   delete orphanSection.instructions;
-  await assert.rejects(
-    () => loadChecks(doc),
+  assert.throws(
+    () => assertEntries(doc, "t.yaml"),
     /authors no `instructions`/,
     "a section with no wording"
   );
@@ -3788,14 +3839,14 @@ test("loadChecks refuses escalation without instructions, and the reverse", asyn
   const orphanWording = entry("data-exfiltration");
   const keepSection = orphanWording.escalation;
   delete orphanWording.escalation;
-  await assert.rejects(
-    () => loadChecks(doc),
+  assert.throws(
+    () => assertEntries(doc, "t.yaml"),
     /declares no `escalation` section/,
     "wording with no section"
   );
   orphanWording.escalation = keepSection;
-  // Restored: the real registry still loads.
-  await loadChecks(doc);
+  // Restored: the real registry still passes.
+  assertEntries(doc, "t.yaml");
 });
 
 test("severity:none refuses a finding, and accepts every empty shape", async () => {

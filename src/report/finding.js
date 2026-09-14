@@ -165,6 +165,16 @@ export function resolveHolds(findings) {
  * @param {Finding[]} findings
  * @returns {"none"|"rejected"|"hold"|"feedback"}
  */
+/** The keys verdictKey can return - the vocabulary `verdict-intros` must author one
+ *  preamble for. Named so the registry can assert that map against it rather than against
+ *  a second list of the same four words. */
+export const VERDICT_KEYS = Object.freeze([
+  "none",
+  "rejected",
+  "hold",
+  "feedback",
+]);
+
 export function verdictKey(findings) {
   if (findings.length === 0) {
     return "none";

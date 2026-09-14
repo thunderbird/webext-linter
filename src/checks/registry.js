@@ -38,7 +38,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import YAML from "yaml";
 import { displayLine } from "../util/text.js";
 
-import { finding, SEVERITY } from "../report/finding.js";
+import { finding, SEVERITY, VERDICT_KEYS } from "../report/finding.js";
 import { MAX_NOTE, PROMPT_SKIPS } from "../config.js";
 import { artifactLabel } from "../report/artifact.js";
 import { progress, debug, FEED } from "../util/log.js";
@@ -99,6 +99,20 @@ const ESCALATION_SECTIONS = new Set(["code-review", "manual-review"]);
 // check to its artifact's context, so the check reads one artifact and has no way to reach another (see
 // buildXpiCtxs / buildScaCtxs).
 const VALID_CHECK_INPUTS = new Set(["source", "xpi", "build", "manifest"]);
+
+/** The --llm-review prompt's authored texts: the yaml key, and the field llmReviewPrompt
+ *  hands it over as. One list, so the assert and the reader cannot ask for different
+ *  things - a key added to one and not the other is a prompt that loads and prints
+ *  "undefined". */
+const PROMPT_TEXTS = Object.freeze({
+  intro: "intro",
+  issues: "issues",
+  "pre-sweep": "preSweep",
+  "code-review": "codeReview",
+  "extended-manual-review": "extendedManualReview",
+  "standard-manual-review": "standardManualReview",
+  "outcome-intro": "outcomeIntro",
+});
 
 // The check-bearing yaml sections ARE the phases: a check's phase IS the section it
 // lives in, so the two can never disagree and no entry declares a phase of its own.
@@ -260,10 +274,28 @@ export class Registry {
    */
   checkEntry(ruleId) {
     return (this._byId ??= new Map(
-      [...this.checkEntries(), ...(this.doc["manual-checks"] || [])]
-        .filter((e) => e && typeof e.check === "string" && e.check)
-        .map((e) => [stem(e.check), e])
+      this.allEntries().map((e) => [stem(e.check), e])
     )).get(ruleId);
+  }
+
+  /**
+   * EVERY entry a ruleId can resolve to: the linked checks of every phase and the by-hand
+   * manual ones. checkEntry() indexes exactly this set, so anything asked of "an entry" is
+   * asked here and no list of them can be missed by asking only one.
+   *
+   * A manual-checks entry is marked `manualCheck`, which is the one thing its shape does
+   * not say: it declares no `escalation`, because it IS a case put to a reviewer rather
+   * than a case escalated into one.
+   * @returns {object[]}
+   */
+  allEntries() {
+    return [
+      ...this.checkEntries(),
+      ...(this.doc["manual-checks"] || []).map((e) => ({
+        ...e,
+        manualCheck: true,
+      })),
+    ].filter((e) => e && typeof e.check === "string" && e.check);
   }
 
   /**
@@ -425,12 +457,7 @@ export class Registry {
    * @returns {string}
    */
   sweepIntro(reader) {
-    const key = `sweep-intro-${reader}`;
-    const t = this.doc[key];
-    if (typeof t !== "string" || t === "") {
-      throw new Error(`registry authors no \`${key}\` (assets/registry.yaml)`);
-    }
-    return t;
+    return this.doc[`sweep-intro-${reader}`];
   }
 
   /**
@@ -474,76 +501,15 @@ export class Registry {
    */
   llmReviewPrompt() {
     const p = this.doc["llm-review-prompt"];
-    const read = (key) => {
-      const text = p && typeof p === "object" ? p[key] : null;
-      if (typeof text !== "string" || text === "") {
-        throw new Error(
-          `llm-review-prompt authors no \`${key}\` (assets/registry.yaml)`
-        );
-      }
-      return text;
-    };
-    // A step's `skip` is optional - no marker means every run prints it, which is the safe
-    // default: a forgotten marker is noise in one run, where a wrong one withholds an
-    // instruction from a reviewer who needed it. What is NOT optional is that the name be
-    // one this tool knows, because the prompt is the one document nothing downstream
-    // validates: a typo would name a flag nobody can give, and the step would print
-    // forever. Positions are reported as authored, not as printed - the printed number
-    // differs per run, and it is the YAML the author is fixing.
-    const readSteps = () => {
-      const steps = p && typeof p === "object" ? p.outcome : null;
-      if (!Array.isArray(steps) || steps.length === 0) {
-        throw new Error(
-          "llm-review-prompt authors no `outcome` steps (assets/registry.yaml)"
-        );
-      }
-      const out = steps.map((step, i) => {
-        const at = `\`outcome\` step ${i + 1}`;
-        if (!step || typeof step !== "object" || Array.isArray(step)) {
-          throw new Error(
-            `llm-review-prompt ${at} is not a step mapping (assets/registry.yaml)`
-          );
-        }
-        if (step.skip !== undefined && !PROMPT_SKIPS.includes(step.skip)) {
-          throw new Error(
-            `llm-review-prompt ${at} has \`skip: ${step.skip}\`, which no flag gives ` +
-              `(expected one of: ${PROMPT_SKIPS.join(", ")}) (assets/registry.yaml)`
-          );
-        }
-        if (typeof step.text !== "string" || step.text === "") {
-          throw new Error(
-            `llm-review-prompt ${at} authors no \`text\` (assets/registry.yaml)`
-          );
-        }
-        // The prompt numbers the steps; a literal number in the text renders twice.
-        if (/^\d+[.)]\s/.test(step.text)) {
-          throw new Error(
-            `llm-review-prompt ${at} numbers itself; the prompt numbers the steps (assets/registry.yaml)`
-          );
-        }
-        return { skip: step.skip ?? null, text: step.text };
-      });
-      // Every skip a flag can give must have a step to withhold: a flag that drops nothing
-      // is a promise the prompt does not keep.
-      for (const skip of PROMPT_SKIPS) {
-        if (!out.some((step) => step.skip === skip)) {
-          throw new Error(
-            `llm-review-prompt \`outcome\` has no \`skip: ${skip}\` step, so ` +
-              `--llm-skip-${skip} would withhold nothing (assets/registry.yaml)`
-          );
-        }
-      }
-      return out;
-    };
     return {
-      intro: read("intro"),
-      issues: read("issues"),
-      preSweep: read("pre-sweep"),
-      codeReview: read("code-review"),
-      extendedManualReview: read("extended-manual-review"),
-      standardManualReview: read("standard-manual-review"),
-      outcomeIntro: read("outcome-intro"),
-      outcome: readSteps(),
+      ...Object.fromEntries(
+        Object.entries(PROMPT_TEXTS).map(([key, field]) => [field, p[key]])
+      ),
+      // A step's `skip` comes back as null when it carries no marker: every run prints it.
+      outcome: p.outcome.map((step) => ({
+        skip: step.skip ?? null,
+        text: step.text,
+      })),
     };
   }
 
@@ -558,28 +524,14 @@ export class Registry {
    * @returns {{label: string, verdict: string, description: string}[]}
    */
   manualReviewChoices() {
-    const at = "assets/registry.yaml";
-    const choices = this.doc["llm-manual-review-choices"];
-    if (!Array.isArray(choices) || choices.length === 0) {
-      throw new Error(`llm-manual-review-choices authors no answers (${at})`);
-    }
-    return choices.map((c, i) => {
-      for (const key of ["label", "verdict", "description"]) {
-        if (!c || typeof c[key] !== "string" || c[key] === "") {
-          throw new Error(
-            `llm-manual-review-choices answer ${i + 1} authors no \`${key}\` (${at})`
-          );
-        }
-      }
-      return {
-        label: c.label,
-        verdict: c.verdict,
-        // `{{maxNote}}` is the one number in this text the linter owns: the limit it
-        // refuses an answer past. Filled here so the reviewer is told what is enforced,
-        // rather than what someone typed into the yaml alongside it.
-        description: c.description.replace("{{maxNote}}", String(MAX_NOTE)),
-      };
-    });
+    return this.doc["llm-manual-review-choices"].map((c) => ({
+      label: c.label,
+      verdict: c.verdict,
+      // `{{maxNote}}` is the one number in this text the linter owns: the limit it refuses
+      // an answer past. Filled here so the reviewer is told what is enforced, rather than
+      // what someone typed into the yaml alongside it.
+      description: c.description.replace("{{maxNote}}", String(MAX_NOTE)),
+    }));
   }
 
   /**
@@ -611,27 +563,16 @@ export class Registry {
    */
   llmScaReviewPrompt() {
     const p = this.doc["llm-sca-review-prompt"];
-    const at = "assets/registry.yaml";
-    const intro = p && typeof p === "object" ? p.intro : null;
-    if (typeof intro !== "string" || intro === "") {
-      throw new Error(`llm-sca-review-prompt authors no \`intro\` (${at})`);
-    }
-    const steps = p.outcome;
-    if (!Array.isArray(steps) || steps.length === 0) {
-      throw new Error(
-        `llm-sca-review-prompt authors no \`outcome\` steps (${at})`
-      );
-    }
-    const outcome = steps.map((step, i) => {
-      const text = step && typeof step === "object" ? step.text : null;
-      if (typeof text !== "string" || text === "") {
-        throw new Error(
-          `llm-sca-review-prompt \`outcome\` step ${i + 1} authors no text (${at})`
-        );
-      }
-      return { experiments: step.experiments === true, text };
-    });
-    return { intro, outcome };
+    return {
+      intro: p.intro,
+      // A step marked `experiments` asks for the Experiment folder, which only a review
+      // allowing Experiments reads - so it comes back marked, and the renderer drops it
+      // when it would ask for a value nothing will use.
+      outcome: p.outcome.map((step) => ({
+        experiments: step.experiments === true,
+        text: step.text,
+      })),
+    };
   }
 
   /**
@@ -660,6 +601,10 @@ export class Registry {
   instructionsFor(ruleId) {
     const entry = this.checkEntry(ruleId);
     const text = entry?.instructions;
+    // Not a registry-shape rule, which is why it is asked here and not in assertRegistry:
+    // a check that never escalates authors no `instructions` and is right not to. What is
+    // wrong is a to-do REF naming such a check - a bug in whatever raised it - and the
+    // alternative is an item printed with no text for a reviewer to answer.
     if (typeof text !== "string" || text === "") {
       throw new Error(
         `"${entry?.title ?? ruleId}" raised a to-do item but authors no ` +
@@ -752,35 +697,483 @@ export function assertRequiredPhaseSections(doc, registryPath) {
       );
     }
   }
-  // A by-hand entry is a to-do item like an escalation, so it needs the same two things:
-  // an id to be addressed by, and the band a reported case lands in. Without them the
-  // item still prints, but a reviewer settling it against the add-on has nothing to
-  // settle it INTO - and that would only surface the first time someone tried.
-  for (const entry of doc["manual-checks"] || []) {
-    for (const [field, valid] of [
-      ["check", typeof entry?.check === "string" && entry.check],
-      ["severity", VALID_CHECK_SEVERITIES.has(entry?.severity)],
-    ]) {
-      if (!valid) {
+}
+
+/**
+ * Assert one check entry's declarative contract - everything about it that is decided by
+ * the yaml alone, whatever this run was asked to check.
+ *
+ * Every rule here used to sit in loadChecks, AFTER --checks-only/--checks-skip and the
+ * --eslint gate had filtered the list: which checks a run loaded decided which entries were
+ * ever looked at, so `--checks-only unused-files` validated one entry out of eighty-six.
+ * @param {object} entry  From registry.allEntries(), so a manual check is marked.
+ * @param {string} at  The registry path, for the message.
+ */
+function assertEntry(entry, at) {
+  const id = stem(entry.check);
+  // A rule entry names its module; a manual check has none, so it is named by its id.
+  const where = entry.manualCheck
+    ? `Registry ${at}: the manual-checks entry "${id}"`
+    : `rules/${id}.js`;
+  if (typeof entry.title !== "string" || entry.title === "") {
+    throw new Error(
+      `${where} authors no \`title\` - it is how the entry is named wherever it is listed` +
+        (entry.manualCheck
+          ? ", and an untitled one is dropped from the review"
+          : "")
+    );
+  }
+  // Declared, never defaulted: a check's impact is configuration, so an entry that
+  // omits it is a registry mistake rather than a request for the strictest value.
+  // An escalate-only check declares one too - it says what a finding from it would
+  // mean, should the check ever gain one.
+  const severity = entry.severity;
+  if (!VALID_CHECK_SEVERITIES.has(severity)) {
+    throw new Error(
+      `${where} has a missing or invalid severity ${JSON.stringify(severity)} ` +
+        `(expected one of: ${[...VALID_CHECK_SEVERITIES].join(", ")})`
+    );
+  }
+  for (const flag of ["sca", "eslint"]) {
+    if (entry[flag] !== undefined && typeof entry[flag] !== "boolean") {
+      throw new Error(
+        `${where} has a non-boolean \`${flag}\` ${JSON.stringify(entry[flag])} - it is a ` +
+          "gate, and anything else silently reads as false"
+      );
+    }
+  }
+  const wording =
+    typeof entry.instructions === "string" && entry.instructions !== "";
+  // A manual check IS a to-do item rather than a check that raises one, so it declares no
+  // `escalation` and no `input`: it reads no artifact and lists its case unconditionally.
+  if (entry.manualCheck) {
+    if (!wording) {
+      throw new Error(
+        `${where} authors no \`instructions\` - the question a reviewer answers IS the entry`
+      );
+    }
+    for (const key of ["escalation", "input", "sweep-instruction"]) {
+      if (entry[key] !== undefined) {
         throw new Error(
-          `Registry ${registryPath}: the manual-checks entry ` +
-            `"${entry?.title ?? "(untitled)"}" declares no valid \`${field}\` ` +
-            `(severity: one of ${[...VALID_CHECK_SEVERITIES].join(", ")})`
+          `${where} authors \`${key}\`, which only a check that RUNS can carry - a ` +
+            "manual-checks entry lists its case unconditionally and reads no artifact"
+        );
+      }
+    }
+  } else {
+    // `escalation` and `instructions` are one declaration in two halves: the section a
+    // case is listed under, and the wording it is listed with. Either alone is a mistake -
+    // wording with no section is an escalation someone forgot to declare, a section with
+    // no wording asks a reviewer to decide with nothing to go on - and both would surface
+    // only when a case first reached them, which may be never. So both fail here.
+    const escalation = entry.escalation;
+    if (escalation !== undefined && !ESCALATION_SECTIONS.has(escalation)) {
+      throw new Error(
+        `${where} has an invalid escalation ${JSON.stringify(escalation)} ` +
+          `(expected one of: ${[...ESCALATION_SECTIONS].join(", ")})`
+      );
+    }
+    if (escalation !== undefined && !wording) {
+      throw new Error(
+        `${where} declares escalation: ${escalation} but authors no ` +
+          "`instructions` (assets/registry.yaml)"
+      );
+    }
+    if (wording && escalation === undefined) {
+      throw new Error(
+        `${where} authors \`instructions\` but declares no \`escalation\` section ` +
+          `(expected one of: ${[...ESCALATION_SECTIONS].join(", ")})`
+      );
+    }
+    // Every check must declare a valid `input`, which drives runOneCheck's artifact
+    // routing (routing is total - there is no default artifact to fall through to).
+    const input = entry.input;
+    if (!VALID_CHECK_INPUTS.has(input)) {
+      throw new Error(
+        `${where} is missing a valid \`input\` (got ${JSON.stringify(input)}; ` +
+          `expected one of: ${[...VALID_CHECK_INPUTS].join(", ")}). ` +
+          "Every check must declare which add-on artifact it reads (source = the " +
+          "review target, xpi = the built XPI, build = the SCA build files, " +
+          "manifest = the shipped manifest only)."
+      );
+    }
+    // An `input: build` check reads the SCA build corpus, which exists ONLY in an SCA review -
+    // so it MUST carry `sca: true`. Without it the check also runs in an XPI review, where the
+    // build sibling is undefined and routeCtx would THROW (no ctx for input "build"). The
+    // `sca: true` gate keeps every build check out of XPI mode; assert it at LOAD time rather
+    // than trust the yaml, so the failure is a clear config error, not a mid-review throw.
+    if (input === "build" && entry.sca !== true) {
+      throw new Error(
+        `${where} declares \`input: build\` but not \`sca: true\`. The build corpus ` +
+          "exists only in an SCA review; without the gate it would run in an XPI review, where " +
+          "routeCtx would throw (there is no build sibling there)."
+      );
+    }
+    assertSweepInstruction(entry, where, severity);
+  }
+  assertDefaultNote(entry, where);
+}
+
+/**
+ * A `sweep-instruction` sends a reader after what this check cannot detect, and what they
+ * find is filed AS this check. Three things must hold for that to be possible, and all
+ * three are config, so they fail here rather than when an addition first arrives - which
+ * may be never.
+ *
+ * Note what is NOT required: an `escalation`. That pairing exists because an escalation is
+ * a case LISTED in the report for someone to settle. A sweep instruction lists no case; it
+ * produces findings directly, so a check with no escalation section authors one just as
+ * well.
+ * @param {object} entry
+ * @param {string} where  How the entry is named in a message.
+ * @param {string} severity  The entry's (already validated) severity.
+ */
+function assertSweepInstruction(entry, where, severity) {
+  const sweepInstruction = entry["sweep-instruction"];
+  if (sweepInstruction === undefined) {
+    return;
+  }
+  if (typeof sweepInstruction !== "string" || sweepInstruction.trim() === "") {
+    throw new Error(
+      `${where} has an invalid \`sweep-instruction\` ` +
+        `${JSON.stringify(sweepInstruction)} (expected a non-empty string)`
+    );
+  }
+  // An addition is stamped with the check's own band. `auto` leaves the band to each
+  // finding and `none` says the check emits none, so neither has one to give - the
+  // sweep would return findings nothing could file.
+  if (!isConcreteSeverity(severity) && severity !== HOLD_OR_ERROR) {
+    throw new Error(
+      `${where} authors a \`sweep-instruction\` but its severity ` +
+        `${JSON.stringify(severity)} gives a reported case no band to carry`
+    );
+  }
+  // An addition carries no `item` and no `data`, so a placeholder in the response
+  // would reach the developer literally, or leave the message unfilled entirely.
+  if (typeof entry.response === "string" && entry.response.includes("{{")) {
+    throw new Error(
+      `${where} authors a \`sweep-instruction\` but its \`response\` carries a ` +
+        "{{placeholder}} - an addition brings no item to fill it with"
+    );
+  }
+}
+
+/**
+ * Authoring a `default-note` declares that this check's report IS what the reviewer found:
+ * its response ends on a list, and the marker stands in that list when they reported the
+ * case without writing one.
+ *
+ * So it must be prose - an empty one leaves the response ending on a list introduction with
+ * nothing beneath it, the defect the fallback exists to prevent - and it must sit on an
+ * entry whose cases a REVIEWER answers: a `manual-review` escalation, or a manual check,
+ * which is one by construction. Anywhere else the marker would be stamped onto a case
+ * nobody was ever asked to write about.
+ * @param {object} entry
+ * @param {string} where  How the entry is named in a message.
+ */
+function assertDefaultNote(entry, where) {
+  const note = entry["default-note"];
+  if (note === undefined) {
+    return;
+  }
+  if (typeof note !== "string" || note.trim() === "") {
+    throw new Error(
+      `${where} has an invalid \`default-note\` ${JSON.stringify(note)} ` +
+        "(expected a non-empty string)"
+    );
+  }
+  if (!entry.manualCheck && entry.escalation !== "manual-review") {
+    throw new Error(
+      `${where} authors a \`default-note\` but is not \`escalation: manual-review\` ` +
+        `(it is ${JSON.stringify(entry.escalation ?? null)}). The note stands in for ` +
+        "what a REVIEWER wrote, so only a case put to one can carry it."
+    );
+  }
+}
+
+/**
+ * Assert every entry the registry declares, in one walk over the one set a ruleId can
+ * resolve to - so no list of entries can be missed by asking only one of them.
+ *
+ * The id rule lives here because it is the same walk: one rule module is one entry in one
+ * phase, and a manual check may not take a rule's id either. A second declaration would run
+ * the check twice, and worse, the id -> entry index (a Map, keyed by that stem, and the
+ * only way a finding - which carries just a ruleId - reaches its severity and response
+ * text) would resolve to the LAST declaration: a duplicate can silently restamp a real
+ * check's `error` as `info`.
+ * @param {Registry} registry
+ * @param {string} at  The registry path, for the message.
+ */
+export function assertEntries(registry, at) {
+  // The id first, and asked of the RAW lists: allEntries() drops an entry that authors no
+  // `check`, so asking this of its result asks it only of the entries that already passed.
+  // An entry with no id is a check that never runs - or, in manual-checks, a to-do printed
+  // in every review that no verdict can name and no reviewer can settle into anything.
+  for (const [section, list] of [
+    ...Object.values(PHASE_SECTIONS).map((name) => [name, registry.doc[name]]),
+    ["manual-checks", registry.doc["manual-checks"]],
+  ]) {
+    for (const [i, entry] of (list ?? []).entries()) {
+      const nth = `Registry ${at}: ${section} entry ${i + 1}`;
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new Error(`${nth} is not a mapping`);
+      }
+      if (typeof entry.check !== "string" || entry.check.trim() === "") {
+        throw new Error(
+          `${nth} ("${entry.title ?? "untitled"}") authors no \`check\` - it is the id ` +
+            "everything else addresses the entry by"
         );
       }
     }
   }
+  const seen = new Set();
+  for (const entry of registry.allEntries()) {
+    const id = stem(entry.check);
+    if (seen.has(id)) {
+      throw new Error(
+        `Registry ${at}: the check "${id}" is declared more than once. One rule module is ` +
+          "one entry in one phase - a second declaration runs it again, and the id -> " +
+          "entry lookup that stamps every finding's severity and response would silently " +
+          "resolve to the last one."
+      );
+    }
+    seen.add(id);
+    assertEntry(entry, at);
+  }
+}
+
+/**
+ * Assert one authored prompt step: what BOTH prompts need of one, because both render
+ * through the same layout (stepLines, src/report/format.js).
+ *
+ * A step must be a mapping carrying prose, and it must not number itself: the renderer
+ * numbers what survived that run's own filtering, so a literal number would print twice
+ * and the second one would be wrong as soon as anything above it was withheld.
+ *
+ * It may carry ONE marker, the one its own prompt acts on, and nothing else. Each prompt
+ * reads only its own - `skip` here, `experiments` there - so any other key is dropped at
+ * load and the step prints in every run: a typo of the right marker, or the other prompt's
+ * marker, both read as a step that was never marked.
+ * @param {unknown} step
+ * @param {number} i  Its position, for the message.
+ * @param {string} where  Which prompt, for the message.
+ * @param {string} marker  The one marker this prompt acts on.
+ */
+function assertStep(step, i, where, marker) {
+  const nth = `${where} \`outcome\` step ${i + 1}`;
+  if (!step || typeof step !== "object" || Array.isArray(step)) {
+    throw new Error(`${nth} is not a step mapping`);
+  }
+  if (typeof step.text !== "string" || step.text === "") {
+    throw new Error(`${nth} authors no \`text\``);
+  }
+  if (/^\d+[.)]\s/.test(step.text)) {
+    throw new Error(
+      `${nth} numbers itself; the prompt numbers the steps it prints, so an authored ` +
+        "number would render twice"
+    );
+  }
+  const stray = Object.keys(step).find(
+    (key) => key !== "text" && key !== marker
+  );
+  if (stray) {
+    throw new Error(
+      `${nth} authors \`${stray}\`, which this prompt cannot act on (expected ` +
+        `\`${marker}\`) - the step would print in every run`
+    );
+  }
+}
+
+/**
+ * Assert both LLM prompts: the texts each authors, and the steps they share.
+ *
+ * The step rules are one helper because both prompts are laid out by one renderer. What
+ * differs is the MARKER a step may carry, and each is asserted against the vocabulary that
+ * gives it: `skip` against the flags (PROMPT_SKIPS), `experiments` against the one thing
+ * that decides whether the Experiment step is printed at all. A marker no flag gives, or a
+ * flag with no step to withhold, is a prompt that quietly asks for the wrong work.
+ * @param {Registry} registry
+ * @param {string} at  The registry path, for the message.
+ */
+export function assertPrompts(registry, at) {
+  const review = registry.doc["llm-review-prompt"];
+  const reviewAt = `llm-review-prompt (${at})`;
+  if (!review || typeof review !== "object") {
+    throw new Error(`${reviewAt} authors no prompt`);
+  }
+  for (const [key, field] of Object.entries(PROMPT_TEXTS)) {
+    if (typeof review[key] !== "string" || review[key] === "") {
+      throw new Error(`${reviewAt} authors no \`${key}\` (${field})`);
+    }
+  }
+  const steps = review.outcome;
+  if (!Array.isArray(steps) || steps.length === 0) {
+    throw new Error(`${reviewAt} authors no \`outcome\` steps`);
+  }
+  steps.forEach((step, i) => {
+    assertStep(step, i, "llm-review-prompt", "skip");
+    if (step.skip !== undefined && !PROMPT_SKIPS.includes(step.skip)) {
+      throw new Error(
+        `llm-review-prompt \`outcome\` step ${i + 1} has \`skip: ${step.skip}\`, which no ` +
+          `flag gives (expected one of: ${PROMPT_SKIPS.join(", ")}) (${at})`
+      );
+    }
+  });
+  for (const skip of PROMPT_SKIPS) {
+    if (!steps.some((step) => step.skip === skip)) {
+      throw new Error(
+        `llm-review-prompt \`outcome\` has no \`skip: ${skip}\` step, so ` +
+          `--llm-skip-${skip} would withhold nothing (${at})`
+      );
+    }
+  }
+
+  const sca = registry.doc["llm-sca-review-prompt"];
+  const scaAt = `llm-sca-review-prompt (${at})`;
+  if (!sca || typeof sca !== "object") {
+    throw new Error(`${scaAt} authors no prompt`);
+  }
+  if (typeof sca.intro !== "string" || sca.intro === "") {
+    throw new Error(`${scaAt} authors no \`intro\``);
+  }
+  const scaSteps = sca.outcome;
+  if (!Array.isArray(scaSteps) || scaSteps.length === 0) {
+    throw new Error(`${scaAt} authors no \`outcome\` steps`);
+  }
+  scaSteps.forEach((step, i) => {
+    assertStep(step, i, "llm-sca-review-prompt", "experiments");
+    if (
+      step.experiments !== undefined &&
+      typeof step.experiments !== "boolean"
+    ) {
+      throw new Error(
+        `llm-sca-review-prompt \`outcome\` step ${i + 1} has a non-boolean ` +
+          `\`experiments\` ${JSON.stringify(step.experiments)} - the marker decides ` +
+          `whether the step is printed at all, and anything else reads as "not marked" (${at})`
+      );
+    }
+  });
+}
+
+/**
+ * Assert the answers a manual review question offers: each authors the label and the
+ * description a reviewer reads, and the verdict the linter settles it with - which never
+ * leaves the linter, but without it an answer settles nothing.
+ * @param {Registry} registry
+ * @param {string} at  The registry path, for the message.
+ */
+export function assertChoices(registry, at) {
+  const choices = registry.doc["llm-manual-review-choices"];
+  if (!Array.isArray(choices) || choices.length === 0) {
+    throw new Error(`llm-manual-review-choices authors no answers (${at})`);
+  }
+  choices.forEach((c, i) => {
+    for (const key of ["label", "verdict", "description"]) {
+      if (!c || typeof c[key] !== "string" || c[key] === "") {
+        throw new Error(
+          `llm-manual-review-choices answer ${i + 1} authors no \`${key}\` (${at})`
+        );
+      }
+    }
+  });
+}
+
+/**
+ * Assert the report's own authored prose: the per-severity Issues headings, the section
+ * preamble for each verdict the report can reach, the system-notice templates, and the two
+ * sweep introductions.
+ *
+ * Every one of these is read through an accessor that returns {} or null when it is
+ * missing, so a mistyped key does not fail - it prints a section with no heading, a report
+ * with no preamble, or a finding with no response.
+ *
+ * Two of the maps are indexed by a CLOSED vocabulary - a heading per severity, a preamble
+ * per verdict the report can reach - so they are asserted against it in both directions: a
+ * name the report will look up must be authored, and a name it can never look up is dead
+ * yaml, which is how a rename hides (the old key still reads as prose, the new one is
+ * missing). `messages` is open, because message() is a lookup by whatever key a caller
+ * names, so only the one the report itself reaches is required.
+ * @param {Registry} registry
+ * @param {string} at  The registry path, for the message.
+ */
+export function assertProse(registry, at) {
+  const maps = [
+    ["issue-headings", Object.values(SEVERITY), true],
+    ["verdict-intros", VERDICT_KEYS, true],
+    ["messages", ["check-failed"], false],
+  ];
+  for (const [key, required, closed] of maps) {
+    const map = registry.doc[key];
+    if (!map || typeof map !== "object" || Array.isArray(map)) {
+      throw new Error(`registry authors no \`${key}\` map (${at})`);
+    }
+    for (const name of required) {
+      if (typeof map[name] !== "string" || map[name].trim() === "") {
+        throw new Error(
+          `\`${key}\` authors no \`${name}\` - the report reaches that case and would ` +
+            `print nothing for it (${at})`
+        );
+      }
+    }
+    for (const [name, text] of Object.entries(map)) {
+      if (closed && !required.includes(name)) {
+        throw new Error(
+          `\`${key}\` authors \`${name}\`, which no report can reach ` +
+            `(expected one of: ${required.join(", ")}) (${at})`
+        );
+      }
+      if (typeof text !== "string" || text.trim() === "") {
+        throw new Error(
+          `\`${key}.${name}\` is not prose ${JSON.stringify(text)} (${at})`
+        );
+      }
+    }
+  }
+  for (const reader of ["human", "llm"]) {
+    const key = `sweep-intro-${reader}`;
+    if (
+      typeof registry.doc[key] !== "string" ||
+      registry.doc[key].trim() === ""
+    ) {
+      throw new Error(`registry authors no \`${key}\` (${at})`);
+    }
+  }
+}
+
+/**
+ * Assert everything the registry says about ITSELF: its entries, the two prompts, the
+ * answers a question offers, and the report's authored prose.
+ *
+ * Called from loadRegistry, so an invalid registry aborts the run that READ it rather than
+ * the run that happens to print the part that is wrong. Every rule here is decided by the
+ * yaml alone - nothing needs a rule module, a flag, or an add-on - which is why they can
+ * all be asked in one place, and why anything that does need one (a module's `run` export,
+ * the --eslint gate) stays in loadChecks.
+ *
+ * `partial` is for a caller naming its OWN file - the unit tests, which declare one section
+ * to exercise it in isolation. A partial doc is the point there, so the document-level
+ * rules (every phase present, both prompts, the answers, the report's prose) are not asked
+ * of it. Its ENTRIES are asked, because an entry is an entry wherever it is declared.
+ * @param {Registry} registry
+ * @param {string} at  The registry path, for the messages.
+ * @param {{partial?: boolean}} [opts]
+ */
+export function assertRegistry(registry, at, { partial = false } = {}) {
+  assertEntries(registry, at);
+  if (partial) {
+    return;
+  }
+  assertRequiredPhaseSections(registry.doc, at);
+  assertPrompts(registry, at);
+  assertChoices(registry, at);
+  assertProse(registry, at);
 }
 
 export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
   const registry = new Registry(
     YAML.parse(fs.readFileSync(registryPath, "utf8")) || {}
   );
-  // Only the SHIPPED registry: a unit test naming its own file deliberately declares one
-  // section in isolation, so the all-phases-present rule must not apply to it.
-  if (registryPath === DEFAULT_REGISTRY) {
-    assertRequiredPhaseSections(registry.doc, registryPath);
-  }
+
   // ONE rule module = ONE entry = ONE phase. A check's id IS its module's filename stem, so a
   // second entry naming the same module is not a second check - it is the same check declared
   // twice. It would run once per entry, and worse, the id -> entry index (a Map, keyed by that
@@ -788,19 +1181,12 @@ export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
   // response text) would resolve to the LAST declaration: a duplicate can silently restamp a
   // real check's `error` as `info`. Applies to every registry, not just the shipped one: a
   // duplicate is a mistake in any of them.
-  const seen = new Set();
-  for (const entry of registry.checkEntries()) {
-    const id = stem(entry.check);
-    if (seen.has(id)) {
-      throw new Error(
-        `Registry ${registryPath}: the check "${id}" is declared more than once. One rule ` +
-          "module is one entry in one phase - a second declaration runs it again, and the " +
-          "id -> entry lookup that stamps every finding's severity and response would " +
-          "silently resolve to the last one."
-      );
-    }
-    seen.add(id);
-  }
+  // Everything the yaml says about itself, asked once, on the run that READ it - so a
+  // malformed entry, prompt, answer or heading aborts here rather than on the one run that
+  // happens to print the part that is wrong.
+  assertRegistry(registry, registryPath, {
+    partial: registryPath !== DEFAULT_REGISTRY,
+  });
   return registry;
 }
 
@@ -852,140 +1238,17 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
     if (typeof run !== "function") {
       throw new Error(`rules/${id}.js exports no run() function`);
     }
-    // Declared, never defaulted: a check's impact is configuration, so an entry that
-    // omits it is a registry mistake rather than a request for the strictest value.
-    // An escalate-only check declares one too - it says what a finding from it would
-    // mean, should the check ever gain one.
-    const severity = entry.severity;
-    if (!VALID_CHECK_SEVERITIES.has(severity)) {
-      throw new Error(
-        `rules/${id}.js has a missing or invalid severity ${JSON.stringify(severity)} ` +
-          `(expected one of: ${[...VALID_CHECK_SEVERITIES].join(", ")})`
-      );
-    }
-    // `escalation` and `instructions` are one declaration in two halves: the section a
-    // case is listed under, and the wording it is listed with. Either alone is a mistake -
-    // wording with no section is an escalation someone forgot to declare, a section with
-    // no wording asks a reviewer to decide with nothing to go on - and both would surface
-    // only when a case first reached them, which may be never. So both fail here.
-    const escalation = entry.escalation;
-    const wording =
-      typeof entry.instructions === "string" && entry.instructions !== "";
-    if (escalation !== undefined && !ESCALATION_SECTIONS.has(escalation)) {
-      throw new Error(
-        `rules/${id}.js has an invalid escalation ${JSON.stringify(escalation)} ` +
-          `(expected one of: ${[...ESCALATION_SECTIONS].join(", ")})`
-      );
-    }
-    if (escalation !== undefined && !wording) {
-      throw new Error(
-        `rules/${id}.js declares escalation: ${escalation} but authors no ` +
-          "`instructions` (assets/registry.yaml)"
-      );
-    }
-    if (wording && escalation === undefined) {
-      throw new Error(
-        `rules/${id}.js authors \`instructions\` but declares no \`escalation\` section ` +
-          `(expected one of: ${[...ESCALATION_SECTIONS].join(", ")})`
-      );
-    }
-    // Every check must declare a valid `input`, which drives runOneCheck's artifact
-    // routing (routing is total - there is no default artifact to fall through to).
-    const input = entry.input;
-    if (!VALID_CHECK_INPUTS.has(input)) {
-      throw new Error(
-        `rules/${id}.js is missing a valid \`input\` (got ${JSON.stringify(input)}; ` +
-          `expected one of: ${[...VALID_CHECK_INPUTS].join(", ")}). ` +
-          "Every check must declare which add-on artifact it reads (source = the " +
-          "review target, xpi = the built XPI, build = the SCA build files, " +
-          "manifest = the shipped manifest only)."
-      );
-    }
-    // An `input: build` check reads the SCA build corpus, which exists ONLY in an SCA review -
-    // so it MUST carry `sca: true`. Without it the check also runs in an XPI review, where the
-    // build sibling is undefined and routeCtx would THROW (no ctx for input "build"). The
-    // `sca: true` gate keeps every build check out of XPI mode; assert it at LOAD time rather
-    // than trust the yaml, so the failure is a clear config error, not a mid-review throw.
-    if (input === "build" && entry.sca !== true) {
-      throw new Error(
-        `rules/${id}.js declares \`input: build\` but not \`sca: true\`. The build corpus ` +
-          "exists only in an SCA review; without the gate it would run in an XPI review, where " +
-          "routeCtx would throw (there is no build sibling there)."
-      );
-    }
-    // A `sweep-instruction` sends a reader after what this check cannot detect, and what
-    // they find is filed AS this check. Three things must hold for that to be possible,
-    // and all three are config, so they fail here rather than when an addition first
-    // arrives - which may be never.
-    //
-    // Note what is NOT required: an `escalation`. That pairing exists because an
-    // escalation is a case LISTED in the report for someone to settle. A sweep
-    // instruction lists no case; it produces findings directly, so a check with no
-    // escalation section authors one just as well.
-    // Authoring a `default-note` declares that this check's report IS what the reviewer
-    // found: its response ends on a list, and the marker stands in that list when they
-    // reported the case without writing one. An empty one is a declaration with nothing
-    // to declare - the response would end on a list introduction and nothing beneath it,
-    // which is the defect the fallback exists to prevent - so it fails HERE, where every
-    // other config pairing fails, and not on the one review that finally reports the case.
-    const defaultNote = entry["default-note"];
-    if (
-      defaultNote !== undefined &&
-      (typeof defaultNote !== "string" || defaultNote.trim() === "")
-    ) {
-      throw new Error(
-        `rules/${id}.js has an invalid \`default-note\` ` +
-          `${JSON.stringify(defaultNote)} (expected a non-empty string)`
-      );
-    }
-    // And it stands in for a REVIEWER'S words, so only a case a reviewer is asked about
-    // can have one: a `manual-review` escalation. Anywhere else the marker would be
-    // stamped onto a case nobody was ever asked to write about - on a code-review case a
-    // model settled, or on a check that lists no case at all.
-    if (defaultNote !== undefined && entry.escalation !== "manual-review") {
-      throw new Error(
-        `rules/${id}.js authors a \`default-note\` but is not \`escalation: ` +
-          `manual-review\` (it is ${JSON.stringify(entry.escalation ?? null)}). The note ` +
-          "stands in for what a REVIEWER wrote, so only a case put to one can carry it."
-      );
-    }
-    const sweepInstruction = entry["sweep-instruction"];
-    if (sweepInstruction !== undefined) {
-      if (
-        typeof sweepInstruction !== "string" ||
-        sweepInstruction.trim() === ""
-      ) {
-        throw new Error(
-          `rules/${id}.js has an invalid \`sweep-instruction\` ` +
-            `${JSON.stringify(sweepInstruction)} (expected a non-empty string)`
-        );
-      }
-      // An addition is stamped with the check's own band. `auto` leaves the band to each
-      // finding and `none` says the check emits none, so neither has one to give - the
-      // sweep would return findings nothing could file.
-      if (!isConcreteSeverity(severity) && severity !== HOLD_OR_ERROR) {
-        throw new Error(
-          `rules/${id}.js authors a \`sweep-instruction\` but its severity ` +
-            `${JSON.stringify(severity)} gives a reported case no band to carry`
-        );
-      }
-      // An addition carries no `item` and no `data`, so a placeholder in the response
-      // would reach the developer literally, or leave the message unfilled entirely.
-      if (typeof entry.response === "string" && entry.response.includes("{{")) {
-        throw new Error(
-          `rules/${id}.js authors a \`sweep-instruction\` but its \`response\` carries a ` +
-            "{{placeholder}} - an addition brings no item to fill it with"
-        );
-      }
-    }
+    // Every declarative rule about this entry - severity, input, the escalation pair, the
+    // sweep trio, the default note - was asserted when the registry was READ
+    // (assertRegistry), where every entry is seen whatever this run was told to check.
     byPhase.get(entry.phase).push({
       id,
       title: entry.title,
-      severity,
-      input,
+      severity: entry.severity,
+      input: entry.input,
       sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
       instructions: entry.instructions,
-      escalation,
+      escalation: entry.escalation,
       // The permission-prompts token entries, like `instructions` above: registry
       // data every check carries, read by the one that scans for them. It version-filters at run time (versionInBounds) with the reviewed
       // manifest, so every entry is handed over here.

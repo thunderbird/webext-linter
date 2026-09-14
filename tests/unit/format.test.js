@@ -14,7 +14,11 @@ import {
 } from "../../src/report/format.js";
 import { orderReview, hasLocus } from "../../src/report/order.js";
 import { renderManualItems } from "../../src/report/responses.js";
-import { loadRegistry } from "../../src/checks/registry.js";
+import {
+  assertChoices,
+  assertPrompts,
+  loadRegistry,
+} from "../../src/checks/registry.js";
 import { PROMPT_SKIPS } from "../../src/config.js";
 import { resolveHolds, hasErrors } from "../../src/report/finding.js";
 
@@ -1188,7 +1192,7 @@ test("the prompt texts come from the registry and all three are required", () =>
   }
   const registry = loadRegistry();
   delete registry.doc["llm-review-prompt"].issues;
-  assert.throws(() => registry.llmReviewPrompt(), /authors no `issues`/);
+  assert.throws(() => assertPrompts(registry, "t.yaml"), /authors no `issues`/);
 });
 
 // The answers a question offers are authored once and asked of every reviewer, so a run
@@ -1209,11 +1213,11 @@ test("the manual review answers come from the registry and are whole", () => {
 
   const missing = loadRegistry();
   delete missing.doc["llm-manual-review-choices"];
-  assert.throws(() => missing.manualReviewChoices(), /authors no answers/);
+  assert.throws(() => assertChoices(missing, "t.yaml"), /authors no answers/);
 
   const empty = loadRegistry();
   empty.doc["llm-manual-review-choices"] = [];
-  assert.throws(() => empty.manualReviewChoices(), /authors no answers/);
+  assert.throws(() => assertChoices(empty, "t.yaml"), /authors no answers/);
 
   // One test per field, because each is a different thing the reviewer loses: the answer
   // they pick, the verdict it settles the item with, and what it means.
@@ -1225,7 +1229,7 @@ test("the manual review answers come from the registry and are whole", () => {
     const broken = loadRegistry();
     delete broken.doc["llm-manual-review-choices"][i][key];
     assert.throws(
-      () => broken.manualReviewChoices(),
+      () => assertChoices(broken, "t.yaml"),
       new RegExp(`answer ${i + 1} authors no \\\`${key}\\\``),
       key
     );
@@ -1248,12 +1252,12 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   assert.equal(prompt.outcome.filter((s) => s.experiments).length, 1);
   const noIntro = loadRegistry();
   delete noIntro.doc["llm-sca-review-prompt"].intro;
-  assert.throws(() => noIntro.llmScaReviewPrompt(), /authors no `intro`/);
+  assert.throws(() => assertPrompts(noIntro, "t.yaml"), /authors no `intro`/);
 
   const noSteps = loadRegistry();
   noSteps.doc["llm-sca-review-prompt"].outcome = [];
   assert.throws(
-    () => noSteps.llmScaReviewPrompt(),
+    () => assertPrompts(noSteps, "t.yaml"),
     /authors no `outcome` steps/
   );
 
@@ -1262,7 +1266,43 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
     { text: "fine" },
     { text: "" },
   ];
-  assert.throws(() => blankStep.llmScaReviewPrompt(), /step 2 authors no text/);
+  assert.throws(
+    () => assertPrompts(blankStep, "t.yaml"),
+    /step 2 authors no `text`/
+  );
+
+  // The marker decides whether the Experiment step prints at all, so anything but a
+  // boolean - the `experiments: "true"` a yaml edit produces - is refused by name.
+  const badMarker = loadRegistry();
+  badMarker.doc["llm-sca-review-prompt"].outcome[0].experiments = "true";
+  assert.throws(
+    () => assertPrompts(badMarker, "t.yaml"),
+    /step 1 has a non-boolean `experiments`/
+  );
+
+  // And the shared step rule: both prompts are numbered by the renderer.
+  const selfNumbered = loadRegistry();
+  selfNumbered.doc["llm-sca-review-prompt"].outcome[0].text = "1. Do it.";
+  assert.throws(
+    () => assertPrompts(selfNumbered, "t.yaml"),
+    /step 1 numbers itself/
+  );
+
+  // The mirror of the review prompt's rule: this one acts on `experiments` and nothing
+  // else, so the other prompt's marker - which reads as plausible here, and does nothing -
+  // is refused by name, as is a typo of its own.
+  const wrongMarker = loadRegistry();
+  wrongMarker.doc["llm-sca-review-prompt"].outcome[1].skip = "manual";
+  assert.throws(
+    () => assertPrompts(wrongMarker, "t.yaml"),
+    /step 2 authors `skip`, which this prompt cannot act on \(expected `experiments`\)/
+  );
+  const typo = loadRegistry();
+  typo.doc["llm-sca-review-prompt"].outcome[2].experiment = true;
+  assert.throws(
+    () => assertPrompts(typo, "t.yaml"),
+    /step 3 authors `experiment`/
+  );
 });
 
 // Every step must declare a `skip` a flag can actually give, the way every check entry
@@ -1320,7 +1360,7 @@ test("a malformed outcome step is refused", () => {
   const bad = (mutate, re) => {
     const registry = loadRegistry();
     mutate(registry.doc["llm-review-prompt"]);
-    assert.throws(() => registry.llmReviewPrompt(), re);
+    assert.throws(() => assertPrompts(registry, "t.yaml"), re);
   };
   bad((p) => delete p.outcome, /authors no `outcome` steps/);
   bad((p) => (p.outcome = []), /authors no `outcome` steps/);
@@ -1340,6 +1380,14 @@ test("a malformed outcome step is refused", () => {
     /has no `skip: summary` step/
   );
   bad((p) => delete p["outcome-intro"], /authors no `outcome-intro`/);
+  // A step may carry ONE marker, the one this prompt acts on. Anything else - the other
+  // prompt's marker, or a typo of this one - is dropped at load, and the step then prints
+  // in every run, which is the opposite of what its author wrote.
+  bad(
+    (p) => (p.outcome[0].experiments = true),
+    /step 1 authors `experiments`, which this prompt cannot act on \(expected `skip`\)/
+  );
+  bad((p) => (p.outcome[1].skipp = "summary"), /step 2 authors `skipp`/);
 });
 
 // --llm-skip-manual asks only for what reading the ADD-ON can settle: the two manual asks

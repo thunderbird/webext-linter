@@ -557,7 +557,15 @@ export async function main(argv) {
   // --llm-sca-review hands its reader a command built from these very flags: an id nobody
   // can run would travel into it, and the review it starts would exit 2 on a line the
   // prompt told them to run.
-  const registry = loadRegistry();
+  // Reading it asserts it: a malformed registry is a tool failure, not a stack trace, and
+  // it is the same answer whatever this run was going to do with the file.
+  let registry;
+  try {
+    registry = loadRegistry();
+  } catch (err) {
+    process.stderr.write(`${err.message}\nverify failed\n`);
+    return 2;
+  }
   const checkIds = registry.checkIds();
   const badCheck =
     !values.help &&
