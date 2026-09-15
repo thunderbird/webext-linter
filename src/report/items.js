@@ -209,15 +209,17 @@ export function reviewItems({
 }
 
 /**
- * The two files this run names, sharing one name and one moment:
+ * The three files this run names, sharing one name and one moment:
  *
  * - `items`, the machine-readable item file, in the system temp directory. Not beside the
  *   submission - a review does not write into what it is reviewing.
  * - `summary`, where the prompt's reader writes the add-on description for the reviewer.
- *   That one sits BESIDE the submitted .xpi, in the folder the reviewer is working out
- *   of, so the link they are handed opens where they are looking. This linter never
- *   writes it and never reads it; it only says where it goes, so the name cannot drift
- *   from the review it belongs to.
+ * - `build`, where it writes what building the add-on takes, in a source code review.
+ *
+ * The last two sit BESIDE the submitted .xpi, in the folder the reviewer is working out of,
+ * so the links they are handed open where they are looking. This linter writes neither and
+ * reads neither; it only says where they go, so a name cannot drift from the review it
+ * belongs to.
  *
  * One base for both: a name and a version do not identify a review - two submissions can
  * share both (a fork, a resubmission, an add-on reviewed twice in a session) - so the run's
@@ -228,7 +230,7 @@ export function reviewItems({
  *   it lends the pair (its id and version).
  * @param {string} xpiPath  Where that add-on IS. An Addon carries no path of its own, so
  *   the caller passes the one the run was given (src/pipeline.js).
- * @returns {{items: string, summary: string}}
+ * @returns {{items: string, summary: string, build: string}}
  */
 export function reviewFilePaths(addon, xpiPath) {
   const base = reviewFileBase(addon);
@@ -241,6 +243,7 @@ export function reviewFilePaths(addon, xpiPath) {
       path.dirname(path.resolve(xpiPath)),
       `${base}.summary.md`
     ),
+    build: path.join(path.dirname(path.resolve(xpiPath)), `${base}.build.md`),
   };
 }
 

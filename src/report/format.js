@@ -85,6 +85,8 @@ const SEV_COLOR = {
  * @property {string} [summaryFile]  Where the --llm-review prompt's reader writes the
  *   add-on description for the reviewer - beside the submitted .xpi, sharing the item
  *   file's name. Named by this tool, written and read by neither.
+ * @property {string} [buildFile]  The same, for what building the add-on takes: named only
+ *   in a source code review, where the reviewer reproduces the build.
  * @property {string} [itemsFile]  Path of the machine-readable item file, when one was
  *   written (--llm-review). Named in the Review Details section.
  * @property {import("./finding.js").ManualItem[]} [manualReview]  The manual-review
@@ -209,23 +211,26 @@ const MANUAL_ASKS = Object.freeze({
  * carries, which belongs to that step. The numbers are the caller's: it numbers what
  * survived its own filtering, which is why no step may number itself.
  *
- * Authored line breaks inside a paragraph are the layout and wrapText keeps them. `slot`
- * lets a caller render ONE paragraph itself, matched by its whole text (the SCA prompt's
- * flags, which are a command and must not be wrapped).
+ * Authored line breaks inside a paragraph are the layout and wrapText keeps them. `block`
+ * lets a caller render ONE paragraph itself, matched by its whole authored text: its lines
+ * are printed VERBATIM, however many there are, because they are not prose. Both users need
+ * that for the same reason - a command split across lines is a command to reassemble (the
+ * SCA prompt's flags), and so is a table of named values (the paths a review hands its
+ * build agent).
  * @param {number} n  The step's number, as printed.
  * @param {string} text  The authored step.
- * @param {?{name: string, lines: string[]}} [slot]  A paragraph the caller renders.
+ * @param {?{name: string, lines: string[]}} [block]  A paragraph the caller renders.
  * @returns {string[]}
  */
-function stepLines(n, text, slot = null) {
+function stepLines(n, text, block = null) {
   const marker = `${n}. `;
   const indent = " ".repeat(marker.length);
   const [first, ...rest] = text.split("\n\n");
   const out = [...wrapText(`${marker}${first}`)];
   for (const paragraph of rest) {
     out.push("");
-    if (slot && paragraph.trim() === slot.name) {
-      out.push(...slot.lines.map((line) => `${indent}${line}`));
+    if (block && paragraph.trim() === block.name) {
+      out.push(...block.lines.map((line) => `${indent}${line}`));
     } else {
       out.push(...wrapText(paragraph, indent));
     }
@@ -320,13 +325,14 @@ export function promptAsks(
  * the same two sections from the item file under the same skip, so the prompt and the file
  * agree about what the reader is being asked to settle.
  *
- * `scaRoot` decides the other marker: a step marked `run: sca` is printed only in a source
- * code review, because the work it asks for - discovering how the add-on is built, so the
- * reviewer can reproduce it - has nothing to read in an XPI review. It is the PATH rather
- * than a flag because those steps PRINT it, filling their `{{scaRoot}}` paragraph: the
- * request they hand a sub-agent has to carry the folder to read, and a request relayed
- * "and nothing else" cannot have one added to it afterwards. The caller passes what the
- * review resolved, so the prompt and the header name one path or neither.
+ * `sca` decides the other marker: a step marked `run: sca` is printed only in a source code
+ * review, because the work it asks for - discovering how the add-on is built, so the
+ * reviewer can reproduce it - has nothing to read in an XPI review. It carries the PATHS
+ * rather than a flag because those steps PRINT them, filling their `{{paths}}` paragraph:
+ * the request they hand a sub-agent has to carry the folder to read and the file to write,
+ * and a request relayed "and nothing else" cannot have either added to it afterwards. The
+ * caller passes what the review resolved, so the prompt and the header name the same paths
+ * or neither does.
  * @param {{intro: string, issues: string, preSweep: string, codeReview: string,
  *   extendedManualReview: string, standardManualReview: string, outcomeIntro: string,
  *   outcome: {skip: ?string, run: ?string, text: string}[]}} prompt
@@ -334,7 +340,8 @@ export function promptAsks(
  * @param {import("./finding.js").ManualItem[]} manual
  * @param {?{items: object[]}} [preSweep]
  * @param {string[]} [skip]  The parts this run leaves out (PROMPT_SKIPS, src/config.js).
- * @param {?string} [scaRoot]  The source root of an SCA review, null in an XPI one.
+ * @param {?{root: string, buildFile: string}} [sca]  What a source code review's own steps
+ *   name: the source root to read, and the file to write. Null in an XPI review.
  * @returns {string[]}
  */
 export function llmPromptLines(
@@ -343,7 +350,7 @@ export function llmPromptLines(
   manual,
   preSweep = null,
   skip = [],
-  scaRoot = null
+  sca = null
 ) {
   const skipped = new Set(skip);
   const asks = promptAsks(prompt, findings, manual, preSweep, skip);
@@ -354,18 +361,24 @@ export function llmPromptLines(
   if (asks.length) {
     lines.push("", ...wrapText(prompt.outcomeIntro));
     const steps = prompt.outcome.filter(
-      (step) => !skipped.has(step.skip) && (step.run !== "sca" || scaRoot)
+      (step) => !skipped.has(step.skip) && (step.run !== "sca" || sca)
     );
-    // The one value a step carries rather than names: rendered by the caller, on its own
-    // line and never wrapped, because a path with a space in it would otherwise be split
-    // across lines and handed on in halves.
-    const root = scaRoot
-      ? { name: "{{scaRoot}}", lines: [displayPath(scaRoot)] }
+    // The values a step carries rather than names, laid out as the block the reader already
+    // knows from Review Details: never wrapped, so a path with a space in it is handed on
+    // whole rather than in halves.
+    const paths = sca
+      ? {
+          name: "{{paths}}",
+          lines: valueLines([
+            ["SCA_ROOT", sca.root],
+            ["BUILD_PROCESS", sca.buildFile],
+          ]),
+        }
       : null;
     steps.forEach((step, i) => {
       // Numbered HERE, over what survived the skips, so the steps a run prints read
       // 1..N with no gaps.
-      lines.push("", ...stepLines(i + 1, step.text, root));
+      lines.push("", ...stepLines(i + 1, step.text, paths));
     });
   }
   return lines;
@@ -498,6 +511,11 @@ export function headerLines(meta) {
   // prompt's reader does, and the reviewer is handed a link to it.
   if (meta.summaryFile) {
     values.push(["ADDON_DESCRIPTION", meta.summaryFile]);
+  }
+  // Where the build report GOES, on the same terms: a source code review's reviewer
+  // reproduces the build, and this names what that takes without this tool ever reading it.
+  if (meta.buildFile) {
+    values.push(["BUILD_PROCESS", meta.buildFile]);
   }
   return [
     ...section("Review Details"),

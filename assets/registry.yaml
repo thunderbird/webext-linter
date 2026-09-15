@@ -1542,23 +1542,21 @@ llm-review-prompt:
         That file is the reviewer's, and yours only to name. Do not open it, do not read it, do not summarise it, and never print what is in it. Do not describe the add-on yourself either: that is this agent's job, and a pass the review would pay for twice.
     - run: sca
       text: |-
-        Spawn ANOTHER independent sub-agent NOW to discover the build steps. This is a source code review, so the reviewer reproduces the build themselves, and nothing in the report says what that takes.
+        Spawn ANOTHER independent sub-agent NOW to work out what building this add-on takes. This is a source code review, so the reviewer reproduces the build themselves, and nothing in the report says what that takes. It writes to the path printed under "Review Details" as BUILD_PROCESS, and that file is the reviewer's, yours only to name: do not open it, do not read it, do not summarise it, and never print what is in it.
 
-        Give it this request, and nothing else. It opens with the folder to read, because that is the one thing the request cannot name for itself:
+        Give it this request, and nothing else. It opens with the two paths it needs, because those are the things the request cannot name for itself:
 
-        SCA_ROOT is:
-
-        {{scaRoot}}
+        {{paths}}
 
         Read the documentation and the build files in SCA_ROOT, and report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
 
-        Restate the process in your OWN words, as a short numbered list to follow: the commands in order, the directory each runs in, what has to be installed first, and where the built .xpi lands. Name the file each step was read from. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
+        Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
 
         Report anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, code run from an install hook, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
 
         That is a report, never a verdict. Whether the build is accepted is settled by the reviewer reproducing it, and nothing you write settles it.
 
-        Read and report, and run NOTHING. Installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision, on the reviewer's machine.
+        Write it to BUILD_PROCESS, and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision, on the reviewer's machine.
     - text: |-
         Wait for the sweep to come back, and while you wait do NOTHING ELSE - do not open the add-on, and do not start verifying. The one thing worth doing is locating the linter's schema cache, which you need later and which says nothing about this submission.
     - text: |-
@@ -1570,7 +1568,7 @@ llm-review-prompt:
         Wait for the description agent, then give the reviewer ONE line before you put anything to them: a link to that file, written as a Markdown link so their client can open it, and nothing else. No summary of it, no excerpt, no description of your own - they read it themselves, while you work.
     - run: sca
       text: |-
-        Wait for the build agent, then print its list into the chat for the reviewer to follow, and add nothing to it. This settles nothing, it is not a finding, and none of it enters the verdict file - reproducing the build, and accepting it, is the reviewer's.
+        Wait for the build agent, then give the reviewer ONE line: a link to BUILD_PROCESS, written as a Markdown link so their client can open it, and nothing else. No summary of it, no excerpt, no list of your own - they read it themselves, while you work. Nothing in that file is a finding, none of it enters the verdict file, and reproducing the build and accepting it is theirs.
     - skip: manual
       text: |-
         Put every manual review item ("Extended Manual Review" and/or "Standard Manual Review") to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each item's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that item's "answers", in the order they are listed, each with the label and description written there and no wording of your own - a reviewer working through a batch answers by position, and by answers that read the same every time.

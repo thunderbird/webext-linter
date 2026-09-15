@@ -455,6 +455,45 @@ test("SCA meta names the artifacts, each a real path", async () => {
   }
 });
 
+// The two files a --llm-review run NAMES and never writes: the add-on description, and -
+// only in a source code review - what building the add-on takes. Both sit beside the
+// submitted add-on, never inside it, so the links the reviewer is handed open where they
+// are working. The build one is gated on the review being a source code one, not on
+// --llm-skip-summary, which withholds the description alone.
+test("an SCA --llm-review names a build report beside the add-on", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir(SRC_FILES);
+  try {
+    const { meta } = await runPipeline({
+      addonPath: xpi,
+      scaRoot: src,
+      scaSource: "src",
+      llmReview: true,
+      ...OFFLINE,
+    });
+    assert.match(meta.buildFile, /\.build\.md$/);
+    assert.equal(path.dirname(meta.buildFile), path.dirname(xpi));
+    assert.equal(meta.buildFile.startsWith(`${xpi}${path.sep}`), false);
+    // One name and one moment for all three, so none can drift from this review.
+    const base = path.basename(meta.itemsFile, ".items.json");
+    assert.equal(path.basename(meta.buildFile), `${base}.build.md`);
+    assert.equal(path.basename(meta.summaryFile), `${base}.summary.md`);
+    // Named, never written: this tool only says where it goes.
+    assert.equal(fs.existsSync(meta.buildFile), false);
+
+    // An XPI review has no build to reproduce, so it names none.
+    const xpiOnly = await runPipeline({
+      addonPath: xpi,
+      llmReview: true,
+      ...OFFLINE,
+    });
+    assert.equal(xpiOnly.meta.buildFile, undefined);
+  } finally {
+    fs.rmSync(xpi, { recursive: true, force: true });
+    fs.rmSync(src, { recursive: true, force: true });
+  }
+});
+
 test("SCA e2e: code checks review the source; manifest/WAR resolve against the XPI", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);

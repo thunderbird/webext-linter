@@ -1611,11 +1611,12 @@ test("the shipped prompt adds the build steps to a source code review only", () 
   }
 });
 
-// The prompt sends a sub-agent to a folder and the header prints that folder: ONE value, or
-// the agent reads somewhere the reviewer cannot see. Rendered from one `meta` here, because
-// the gate and the printed value were two expressions once and disagreed for a review that
-// keeps --sca-root and is still an XPI one.
-test("the prompt hands over the same source root the header prints", () => {
+// The prompt sends a sub-agent to TWO paths - the folder it reads and the file it writes -
+// and the header prints both: one set of values, or the agent works somewhere the reviewer
+// cannot see. Rendered from one `meta` here, because the gate and the printed value were
+// two expressions once and disagreed for a review that keeps --sca-root and is still an XPI
+// one.
+test("the prompt hands over the same paths the header prints", () => {
   // Two spaces on purpose: a path is a NAME, and the block used to collapse it - which the
   // prompt's last step turns into a verdict file naming a folder that does not exist.
   const meta = {
@@ -1623,9 +1624,14 @@ test("the prompt hands over the same source root the header prints", () => {
     xpi: "/x/a.xpi",
     scaRoot: "/x/my  src",
     scaSource: "addon",
+    buildFile: "/x/webext-linter-a-1.0-t.build.md",
   };
   const header = headerLines(meta);
   assert.equal(header[header.indexOf("  SCA_ROOT") + 1], "    /x/my  src");
+  assert.equal(
+    header[header.indexOf("  BUILD_PROCESS") + 1],
+    `    ${meta.buildFile}`
+  );
 
   const registry = loadRegistry();
   const finding = { ruleId: "r", severity: "error", message: "m" };
@@ -1635,22 +1641,31 @@ test("the prompt hands over the same source root the header prints", () => {
     [],
     null,
     [],
-    meta.scaRoot
+    { root: meta.scaRoot, buildFile: meta.buildFile }
   );
-  // On its own line and unwrapped, so a path with a space in it is handed over whole.
-  assert.ok(
-    lines.some((l) => l.trim() === "/x/my  src"),
-    "the request carries the path the header printed"
-  );
+  // Each on its own line and unwrapped, so a path with a space in it is handed over whole.
+  for (const value of [meta.scaRoot, meta.buildFile]) {
+    assert.ok(
+      lines.some((l) => l.trim() === value),
+      `the request carries ${value}`
+    );
+  }
+  // The agent writes there and the orchestrator does not read it back: the step says so,
+  // and the report's own copy is a link, never the content.
+  assert.ok(lines.some((l) => l.includes("do not read it")));
 
-  // An XPI review names no source root, so nothing may send an agent to one.
+  // An XPI review names neither, so nothing may send an agent to one.
   const xpi = llmPromptLines(registry.llmReviewPrompt(), [finding], []);
   assert.ok(!xpi.some((l) => l.includes("SCA_ROOT")));
-  assert.ok(
-    !headerLines({ ...meta, scaRoot: undefined, scaSource: undefined }).some(
-      (l) => l.includes("SCA_ROOT")
-    )
-  );
+  assert.ok(!xpi.some((l) => l.includes("BUILD_PROCESS")));
+  const xpiHeader = headerLines({
+    ...meta,
+    scaRoot: undefined,
+    scaSource: undefined,
+    buildFile: undefined,
+  });
+  assert.ok(!xpiHeader.some((l) => l.includes("SCA_ROOT")));
+  assert.ok(!xpiHeader.some((l) => l.includes("BUILD_PROCESS")));
 });
 
 // A step may carry a literal example, whose authored line breaks ARE the layout: a step is

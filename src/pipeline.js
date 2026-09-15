@@ -703,14 +703,18 @@ export async function runPipeline(opts) {
   // once: the prompt drops steps by it, the item file drops sections by it, and the
   // description file is named by it.
   const skip = opts.llmSkip ?? [];
-  // Where the prompt's reader writes the add-on description, sharing the item file's name
-  // and moment; never written and never read by this tool. Held until the prompt is built,
-  // because whether it is NAMED depends on whether the step that writes it prints.
+  // Where the prompt's reader writes the add-on description, and where it writes what
+  // building the add-on takes. Both share the item file's name and moment, and this tool
+  // writes neither and reads neither. Held until the prompt is built, because whether either
+  // is NAMED depends on whether the step that writes it prints - the description is withheld
+  // by --llm-skip-summary, the build report by a review that is not a source code one.
   let summaryPath = null;
+  let buildPath = null;
   if (opts.llmReview) {
     const files = reviewFilePaths(xpiAddon, xpiPath);
     meta.itemsFile = files.items;
     summaryPath = skip.includes("summary") ? null : files.summary;
+    buildPath = mode?.sca ? files.build : null;
     fs.writeFileSync(meta.itemsFile, "");
   }
 
@@ -813,12 +817,18 @@ export async function runPipeline(opts) {
     // behind it. Two things withhold that step: --llm-skip-summary names it, and a review
     // with nothing to settle prints no steps at all. Both are answered here, from the
     // asks the prompt itself is built from, so the name and the step cannot part company.
-    if (
-      summaryPath &&
-      promptAsks(prompt, findings, meta.manualReview, meta.preSweep, skip)
-        .length
-    ) {
+    const asked = promptAsks(
+      prompt,
+      findings,
+      meta.manualReview,
+      meta.preSweep,
+      skip
+    ).length;
+    if (summaryPath && asked) {
       meta.summaryFile = summaryPath;
+    }
+    if (buildPath && asked) {
+      meta.buildFile = buildPath;
     }
     for (const line of llmPromptLines(
       prompt,
@@ -826,11 +836,12 @@ export async function runPipeline(opts) {
       meta.manualReview,
       meta.preSweep,
       skip,
-      // The source root as the REVIEW resolved it, never as the flag asked for it: a
-      // rejected Experiment keeps --sca-root and is still an XPI review, and the steps
-      // this gates would then send an agent to a root nothing read. It is also the value
-      // those steps print, so meta and the prompt name one path or neither.
-      meta.scaRoot ?? null
+      // What a source code review's own steps need, or null in an XPI one - which is what
+      // gates them. Read off meta, never off the flags: a rejected Experiment keeps
+      // --sca-root and is still an XPI review, and these steps would then send an agent to
+      // a root nothing read. The same values the header prints, so the steps and the block
+      // name the same paths or neither does.
+      meta.scaRoot ? { root: meta.scaRoot, buildFile: meta.buildFile } : null
     )) {
       report(line);
     }
