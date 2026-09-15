@@ -228,22 +228,21 @@ export function reviewItems({
  * the same millisecond would still collide, and nothing here pretends otherwise.
  * @param {import("../addon/load.js").Addon} addon  The shipped add-on - read for the name
  *   it lends the pair (its id and version).
- * @param {string} xpiPath  Where that add-on IS. An Addon carries no path of its own, so
- *   the caller passes the one the run was given (src/pipeline.js).
+ * @param {string} xpiPath  Where that add-on IS, absolute. An Addon carries no path of its
+ *   own, so the caller passes the one the run was given (src/pipeline.js), which resolved
+ *   it - nothing re-resolves it here.
  * @returns {{items: string, summary: string, build: string}}
  */
 export function reviewFilePaths(addon, xpiPath) {
   const base = reviewFileBase(addon);
+  // Beside the .xpi, which is the folder a reviewer downloaded it into. For an unpacked
+  // submission that is the folder holding it, for the same reason: not inside what is being
+  // reviewed. Taken once, so the two files cannot land in different folders.
+  const beside = path.dirname(xpiPath);
   return {
     items: path.join(os.tmpdir(), `${base}.items.json`),
-    // Beside the .xpi, which is the folder a reviewer downloaded it into. For an unpacked
-    // submission that is the folder holding it, for the same reason: not inside what is
-    // being reviewed.
-    summary: path.join(
-      path.dirname(path.resolve(xpiPath)),
-      `${base}.summary.md`
-    ),
-    build: path.join(path.dirname(path.resolve(xpiPath)), `${base}.build.md`),
+    summary: path.join(beside, `${base}.summary.md`),
+    build: path.join(beside, `${base}.build.md`),
   };
 }
 

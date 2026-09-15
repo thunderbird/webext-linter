@@ -4,8 +4,13 @@
 // own structure (bullets, blank lines) is kept, and a leading list marker
 // hanging-indents its continuations.
 //
-// Belongs here: wrapText (a generic width-wrapper) and humanSize (a byte-size
-// formatter). Does NOT belong here: the report's section layout
+// It also holds the guards that make submission-derived text safe to print, which is the
+// other half of "text on its way to a reader": displayText for prose, displayLine for a
+// sink that is one line, displayPath for a value the reader copies back. Which to call is
+// documented on each.
+//
+// Belongs here: wrapText (a generic width-wrapper), humanSize (a byte-size formatter) and
+// that guard family. Does NOT belong here: the report's section layout
 // (src/report/format.js) or the activity-feed narration
 // (src/checks/escalation.js) that call them.
 

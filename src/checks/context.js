@@ -59,7 +59,8 @@ import { apiUsageOf } from "./extract.js";
  * DELIBERATELY ABSENT: manifest/manifestError/manifestLoc and experiments are
  * shipped-authoritative and exposed as ctx.manifest / ctx.experiments (so a check cannot read
  * one artifact's manifest against another's files); buildFiles is the wrong artifact for a
- * review check; source/kind/skipped are read by no check.
+ * review check; skipped is read by no check. An Addon carries no path of its own to withhold
+ * (src/addon/load.js) - a check addresses files by the keys of this `files` Map.
  * @param {import("../addon/load.js").Addon} addon  The routed add-on (or the build corpus).
  * @returns {object} The intrinsic-only view.
  */
