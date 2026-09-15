@@ -1577,9 +1577,9 @@ llm-review-prompt:
 
         Record what the reviewer answered against that item's "index", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit. Their answers need no report of your own.
     - text: |-
-        Write a SEPARATE JSON file naming the reviewed add-on, holding the settled entries keyed by their "index" and the sweep results in "additions". Leave the item file itself untouched. The "addon" is the path printed under "Review Details" as XPI, and it is checked: an index means nothing without it, so nothing in this file can be applied to another submission by accident.
+        Write a SEPARATE JSON file naming the reviewed add-on, holding the settled entries keyed by their "index" and the sweep results in "additions". Leave the item file itself untouched. The "xpi" is the path printed under "Review Details" under that same name, and it is checked: an index means nothing without it, so nothing in this file can be applied to another submission by accident.
 
-        {"addon": "/path/to/the-reviewed.xpi",
+        {"xpi": "/path/to/the-reviewed.xpi",
         "additions": [{"check": "data-exfiltration", "file": "background/background.js", "line": 40, "hint": "<a ping> attribute posts the message digest"}],
         "verdicts": {"3": "reported", "4": "cleared", "7": "withdrawn"}}
 

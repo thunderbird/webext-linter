@@ -1,8 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/outbound-data-escalated",
-    "addonKind": "dir",
+    "xpi": "<root>/tests/addons/outbound-data-escalated",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

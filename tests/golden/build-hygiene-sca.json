@@ -1,9 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/build-hygiene-sca/src",
-    "addonKind": "dir",
-    "shippedAddon": "<root>/tests/addons/build-hygiene-sca/xpi",
+    "xpi": "<root>/tests/addons/build-hygiene-sca/xpi",
     "scaRoot": "<root>/tests/addons/build-hygiene-sca/src",
     "scaSource": ".",
     "reviewed": true,

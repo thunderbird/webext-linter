@@ -1,8 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/disguised-data",
-    "addonKind": "dir",
+    "xpi": "<root>/tests/addons/disguised-data",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

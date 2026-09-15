@@ -33,7 +33,7 @@ function review() {
     findings: [],
     meta: {
       action: "review",
-      addon: "x",
+      xpi: "x",
       reviewed: false,
       manualReview: [
         {
@@ -55,7 +55,7 @@ test("manual review splits into code, manual, then standard sections", () => {
     findings: [],
     meta: {
       action: "review",
-      addon: "x",
+      xpi: "x",
       reviewed: true,
       manualReview: [
         {
@@ -125,7 +125,7 @@ test("Manual review groups by message and lists each item's locus", () => {
     findings: [],
     meta: {
       action: "review",
-      addon: "x",
+      xpi: "x",
       reviewed: true,
       manualReview: [
         exfil("bg.js", 80),
@@ -162,7 +162,7 @@ test("Manual review prints the response between instructions and the locus list"
     findings: [],
     meta: {
       action: "review",
-      addon: "x",
+      xpi: "x",
       reviewed: true,
       manualReview: [
         {
@@ -217,7 +217,7 @@ test("a manual-review item renders with its own wording and its response", () =>
     findings: [],
     meta: {
       action: "review",
-      addon: "x",
+      xpi: "x",
       reviewed: true,
       manualReview: [{ ...item, extended: true }],
     },
@@ -267,7 +267,7 @@ test("an escalation prints the verdict a reported case carries", () => {
     findings: [],
     meta: {
       action: "review",
-      addon: "x",
+      xpi: "x",
       reviewed: true,
       manualReview: [
         ...items.map((i) => ({ ...i, extended: true })),
@@ -448,7 +448,7 @@ test("issues render under Issues/JSON; manual items under Manual review", () => 
     ],
     meta: {
       action: "review",
-      addon: "x",
+      xpi: "x",
       reviewed: true,
       manualReview: [
         {
@@ -499,7 +499,7 @@ test("Issues are grouped by severity under headings with continuous numbering", 
       mk("info", "info one", "c.js", null),
       mk("error", "err one", "a.js", 1),
     ],
-    meta: { action: "review", addon: "x", reviewed: true },
+    meta: { action: "review", xpi: "x", reviewed: true },
     issueHeadings: {
       error: "ERR HEADING:",
       warning: "WARN HEADING:",
@@ -547,7 +547,7 @@ test("Issues group findings by identical message into one entry", () => {
       mk("same message", "a.js", 20),
       mk("same message", "c.js", 5),
     ],
-    meta: { action: "review", addon: "x", reviewed: true },
+    meta: { action: "review", xpi: "x", reviewed: true },
   };
   const out = formatText(r);
   const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
@@ -584,7 +584,7 @@ test("Issues print a location line only when it carries something", () => {
   const body = (f) => {
     const out = formatText({
       findings: [f],
-      meta: { action: "review", addon: "x", reviewed: true },
+      meta: { action: "review", xpi: "x", reviewed: true },
     }).split("── Found Issues ──")[1];
     return out.split("\n").filter((l) => l.trim().startsWith("- "));
   };
@@ -620,7 +620,7 @@ test("Issues list the identifier on the location line when listItem is set", () 
       mk(null, null, "name", true), // bare item (no file)
       mk("bg.js", 4, "browser.x", false), // item already in message -> where only
     ],
-    meta: { action: "review", addon: "x", reviewed: true },
+    meta: { action: "review", xpi: "x", reviewed: true },
   };
   const issues = formatText(r).split("── Found Issues ──")[1];
   assert.match(issues, /\n - manifest\.json:13 - frobnicate\n/);
@@ -644,7 +644,7 @@ const mkFinding = (severity, message, file = "a.js", line = 1) => ({
 });
 const withReview = (findings, verdictIntros) => ({
   findings,
-  meta: { action: "review", addon: "x", reviewed: true },
+  meta: { action: "review", xpi: "x", reviewed: true },
   issueHeadings: { error: "ERR:", warning: "WARN:", info: "INFO:" },
   verdictIntros,
 });
@@ -654,7 +654,7 @@ const withReview = (findings, verdictIntros) => ({
 test("the Summary tally is the report's last section", () => {
   const r = {
     findings: [mkFinding("info", "an info finding", "manifest.json", null)],
-    meta: { action: "review", addon: "x", reviewed: true, manualReview: [] },
+    meta: { action: "review", xpi: "x", reviewed: true, manualReview: [] },
     issueHeadings: { error: "E:", warning: "W:", info: "I:" },
   };
   const out = formatText(r);
@@ -725,7 +725,7 @@ test("Issues cap a grouped list at 25 locations with a 'more' marker", () => {
   }));
   const r = {
     findings,
-    meta: { action: "review", addon: "x", reviewed: true },
+    meta: { action: "review", xpi: "x", reviewed: true },
   };
   const out = formatText(r);
   const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
@@ -750,7 +750,7 @@ test("Issues add no marker for a list of 25 or fewer", () => {
   }));
   const out = formatText({
     findings,
-    meta: { action: "review", addon: "x", reviewed: true },
+    meta: { action: "review", xpi: "x", reviewed: true },
   });
   const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
   assert.equal((issues.match(/^ - f\d+\.js:/gm) || []).length, 25);
@@ -776,7 +776,7 @@ test("Manual review caps a grouped locus list at 25 with a marker", () => {
   });
   const out = formatText({
     findings: [],
-    meta: { action: "review", addon: "x", reviewed: true, manualReview },
+    meta: { action: "review", xpi: "x", reviewed: true, manualReview },
   });
   const extended = out
     .split("── Extended Code Review ──")[1]
@@ -823,7 +823,7 @@ test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () =
         message: "Unknown permission.",
       },
     ],
-    meta: { action: "review", addon: "x", reviewed: false },
+    meta: { action: "review", xpi: "x", reviewed: false },
   };
   const out = formatText(r);
   assert.match(out, /\[XPI\] orphan\.js:2/); // input:xpi -> XPI
@@ -873,7 +873,7 @@ test("control characters from the submission never reach the report", () => {
         loc: { line: 3 },
       },
     ],
-    meta: { action: "review", addon: "x", reviewed: false, manualReview: [] },
+    meta: { action: "review", xpi: "x", reviewed: false, manualReview: [] },
   };
   const text = formatText(r);
   assert.ok(!text.includes(ESC), "no escape survived into the text report");
@@ -951,7 +951,7 @@ test("the enumeration is exactly the order the report prints", () => {
     findings,
     meta: {
       action: "review",
-      addon: "x",
+      xpi: "x",
       reviewed: true,
       manualReview: manual,
     },
@@ -1018,7 +1018,7 @@ test("a locus-less finding is its own entry, so every item is on the page", () =
   const findings = [f("A", "a.js"), f("A", null), f("B", "b.js")];
   const out = formatText({
     findings,
-    meta: { action: "review", addon: "x", reviewed: true },
+    meta: { action: "review", xpi: "x", reviewed: true },
     issueHeadings: registry.issueHeadings(),
     verdictIntros: registry.verdictIntros(),
   });
@@ -1061,7 +1061,7 @@ test("a hold alone opens the section with the hold verdict", () => {
   );
   const out = formatText({
     findings,
-    meta: { action: "review", addon: "x", reviewed: true },
+    meta: { action: "review", xpi: "x", reviewed: true },
     issueHeadings: registry.issueHeadings(),
     verdictIntros: registry.verdictIntros(),
   });
@@ -1103,7 +1103,7 @@ test("a hold beside an error becomes an error, everywhere at once", () => {
   );
   const review = {
     findings,
-    meta: { action: "review", addon: "x", reviewed: true },
+    meta: { action: "review", xpi: "x", reviewed: true },
     issueHeadings: registry.issueHeadings(),
     verdictIntros: registry.verdictIntros(),
   };
@@ -1620,8 +1620,7 @@ test("the prompt hands over the same source root the header prints", () => {
   // prompt's last step turns into a verdict file naming a folder that does not exist.
   const meta = {
     schemaBranch: "release-mv3",
-    addon: "/x/my  src:addon",
-    shippedAddon: "/x/a.xpi",
+    xpi: "/x/a.xpi",
     scaRoot: "/x/my  src",
     scaSource: "addon",
   };
@@ -1719,8 +1718,7 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
   assert.deepEqual(
     headerLines({
       ...base,
-      addon: "/x/src:addon",
-      shippedAddon: "/x/a.xpi",
+      xpi: "/x/a.xpi",
       scaRoot: "/x/src",
       scaSource: "addon",
     }),
@@ -1735,7 +1733,7 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
       ...schema,
     ]
   );
-  assert.deepEqual(headerLines({ ...base, addon: "/x/a.xpi" }), [
+  assert.deepEqual(headerLines({ ...base, xpi: "/x/a.xpi" }), [
     ...head,
     "  XPI",
     "    /x/a.xpi",
@@ -1746,7 +1744,7 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
   // here: they are the Summary's, which closes every run.
   const llm = headerLines({
     ...base,
-    addon: "/x/a.xpi",
+    xpi: "/x/a.xpi",
     itemsFile: "/tmp/i.json",
   });
   assert.deepEqual(llm.slice(3, 7), [

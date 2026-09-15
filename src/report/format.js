@@ -68,17 +68,13 @@ const SEV_COLOR = {
 /**
  * @typedef {object} ReviewMeta
  * @property {string} action
- * @property {string} addon  The REVIEW TARGET: the readable source archive in an SCA
- *   review, the built XPI otherwise.
- * @property {string} [shippedAddon]  The built XPI, when it is a DIFFERENT artifact from
- *   the review target - i.e. an SCA review. Absent for an XPI review, where `addon` is
- *   already the shipped artifact and naming it twice would say nothing.
+ * @property {string} xpi  The shipped add-on - the artifact users install - in EVERY
+ *   review, resolved. Named for the ARTIFACT, never for its role: a field meaning "the
+ *   review target" names a different one in each mode, and no reader can tell which.
  * @property {string} [scaRoot]  SCA review: the source root the run was given
- *   (--sca-root). `addon` composes it with the source subtree; this is the value itself,
- *   which is what the header names and what a prompt step can point an agent at.
- * @property {string} [scaSource]  SCA review: the add-on's own code root within it, as
- *   given (--sca-source), or "." when the whole root is the source.
- * @property {"dir"|"zip"} [addonKind]
+ *   (--sca-root), resolved.
+ * @property {string} [scaSource]  SCA review: the add-on's own code root within that
+ *   root, normalised, or "." when the whole root is the source.
  * @property {boolean} reviewed
  * @property {string} [schemaBranch]
  * @property {string} [schemaSource]
@@ -476,8 +472,9 @@ export function scaPromptLines(prompt, submission, review) {
  *
  * An SCA review spans TWO artifacts and the reader has to know which is which: the report
  * labels every locus [XPI]/[SCA], and the block names the artifacts behind those labels -
- * the shipped add-on as XPI, the label the report and the reviewer both use for it, whether
- * or not a source archive came with it, and the [SCA] side as the two values it was given. The source is named as the two values the run was GIVEN,
+ * the shipped add-on as XPI, whether it was submitted packed or as an unpacked folder, and
+ * the [SCA] side as the two values it was given, SCA_ROOT and SCA_SOURCE, rather than as
+ * one path composed from them. The source is named as the two values the run was GIVEN,
  * SCA_ROOT and SCA_SOURCE, rather than as the one path they compose: an agent told to read
  * the source root cannot be handed a value it has to split on a colon first.
  *
@@ -488,7 +485,7 @@ export function scaPromptLines(prompt, submission, review) {
 export function headerLines(meta) {
   // Past tense throughout: the pipeline prints this header AFTER runChecks, so the
   // review is over by the time a reader sees it.
-  const values = [["XPI", meta.shippedAddon ?? meta.addon]];
+  const values = [["XPI", meta.xpi]];
   if (meta.scaRoot) {
     values.push(["SCA_ROOT", meta.scaRoot], ["SCA_SOURCE", meta.scaSource]);
   }

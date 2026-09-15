@@ -1,8 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/vendored-remote-load",
-    "addonKind": "dir",
+    "xpi": "<root>/tests/addons/vendored-remote-load",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

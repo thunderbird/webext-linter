@@ -1,8 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/default-locale-missing",
-    "addonKind": "dir",
+    "xpi": "<root>/tests/addons/default-locale-missing",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

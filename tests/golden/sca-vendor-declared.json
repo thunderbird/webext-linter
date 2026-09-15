@@ -1,9 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/sca-vendor-declared/src",
-    "addonKind": "dir",
-    "shippedAddon": "<root>/tests/addons/sca-vendor-declared/xpi",
+    "xpi": "<root>/tests/addons/sca-vendor-declared/xpi",
     "scaRoot": "<root>/tests/addons/sca-vendor-declared/src",
     "scaSource": ".",
     "reviewed": true,

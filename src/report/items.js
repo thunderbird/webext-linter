@@ -224,10 +224,13 @@ export function reviewItems({
  * own moment separates them, and a later run does not open what an earlier one left
  * behind. Millisecond resolution, which separates reviews a person runs; two started in
  * the same millisecond would still collide, and nothing here pretends otherwise.
- * @param {import("../addon/load.js").Addon} addon  The shipped add-on.
+ * @param {import("../addon/load.js").Addon} addon  The shipped add-on - read for the name
+ *   it lends the pair (its id and version).
+ * @param {string} xpiPath  Where that add-on IS. An Addon carries no path of its own, so
+ *   the caller passes the one the run was given (src/pipeline.js).
  * @returns {{items: string, summary: string}}
  */
-export function reviewFilePaths(addon) {
+export function reviewFilePaths(addon, xpiPath) {
   const base = reviewFileBase(addon);
   return {
     items: path.join(os.tmpdir(), `${base}.items.json`),
@@ -235,7 +238,7 @@ export function reviewFilePaths(addon) {
     // submission that is the folder holding it, for the same reason: not inside what is
     // being reviewed.
     summary: path.join(
-      path.dirname(path.resolve(addon.source)),
+      path.dirname(path.resolve(xpiPath)),
       `${base}.summary.md`
     ),
   };

@@ -100,9 +100,14 @@ import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
  */
 
 /**
+ * An Addon is the CONTENT of one loaded artifact and carries no path of its own. Where it
+ * came from is the caller's: the options named it, and the review's `meta` records it
+ * (src/pipeline.js). Nothing here resolves a path, derives a lookup from one, or reads it
+ * back - the checks cannot even see one (the ctx allowlist, src/checks/context.js) - so a
+ * path stapled on at load could only drift from the one the run was given. It also has no
+ * honest value for a source review, whose files are a SUBTREE of an archive: no single path
+ * names that, and for a zip root none exists.
  * @typedef {object} Addon
- * @property {string} source                 Original path provided.
- * @property {"zip"|"dir"} kind
  * @property {Map<string, Buffer>} files  Add-on-relative path (posix "/")
  *   -> contents. The review corpus EXCLUDES manifest.json: assembleAddon lifts it
  *   into manifest / manifestText / manifestLoc and drops the key, so a corpus lookup
@@ -142,10 +147,7 @@ export function loadAddon(source) {
   const { files, nodeModules, archives, skipped } = stat.isDirectory()
     ? readDir(resolved)
     : readZip(resolved);
-  const addon = assembleAddon(files, {
-    source: resolved,
-    kind: stat.isDirectory() ? "dir" : "zip",
-  });
+  const addon = assembleAddon(files);
   // Installed-dependency directories are skipped at load (never read) and only their
   // paths are recorded - a committed node_modules is a hard fail (committed-node-modules
   // in SCA mode), never reviewable input.
@@ -162,16 +164,12 @@ export function loadAddon(source) {
 
 /**
  * Build an Addon record from an in-memory file map: parse its manifest.json
- * (BOM-tolerant, JSON5) and stamp the source/kind. Shared by loadAddon and the
- * source code archive loader.
+ * (BOM-tolerant, JSON5). Shared by loadAddon and the source code archive loader.
  * @param {Map<string, Buffer>} files
- * @param {{source: string, kind: "dir"|"zip"}} meta
  * @returns {Addon}
  */
-function assembleAddon(files, { source, kind }) {
+function assembleAddon(files) {
   const addon = {
-    source,
-    kind,
     files,
     manifest: null,
     manifestText: "",
@@ -343,10 +341,7 @@ export function loadScaAddon(archive, scaSource, scaRoot) {
       files.set(name, buf);
     }
   }
-  return assembleAddon(files, {
-    source: rel ? `${archive.source}:${rel}` : archive.source,
-    kind: archive.kind,
-  });
+  return assembleAddon(files);
 }
 
 /**

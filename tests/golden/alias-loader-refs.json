@@ -1,8 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/alias-loader-refs",
-    "addonKind": "dir",
+    "xpi": "<root>/tests/addons/alias-loader-refs",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

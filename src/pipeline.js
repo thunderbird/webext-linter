@@ -168,6 +168,11 @@ import { DEFAULT_CACHE } from "./config.js";
  */
 export async function runPipeline(opts) {
   const { addonPath } = opts;
+  // The shipped add-on's path, resolved ONCE and read from here on. An Addon carries no
+  // path of its own (src/addon/load.js), so this is the single value the run has for
+  // "which add-on": what the report names, what a verdict file is checked against, and
+  // where the description file goes.
+  const xpiPath = path.resolve(addonPath);
   // SCA (source code archive) mode is on when --sca-root is set (--sca-source is
   // optional, defaulting to "."). It splits the review across TWO add-on artifacts
   // with a fixed ROLE each, resolved here ONCE so nothing downstream re-branches on the mode:
@@ -483,21 +488,27 @@ export async function runPipeline(opts) {
     addon = xpiAddon;
     scaExpSource = undefined;
   }
+  // What was reviewed, named by ARTIFACT rather than by role: `xpi` is the shipped add-on
+  // in EVERY review, and a source code review adds the two values it was given. One field
+  // meaning "the review target" named a different artifact in each mode, which no reader of
+  // the JSON could tell apart, and the subtree had nowhere to go but fused into it.
+  //
+  // These are the names the Review Details block prints and the --llm-review prompt's steps
+  // point at, so the report, the prompt and the machine-readable document say one thing.
   const meta = {
     action: "review",
-    addon: addon.source,
-    addonKind: addon.kind,
-    // Only when the two artifacts differ - an SCA review. In an XPI review the review
-    // target IS the shipped XPI, so recording it twice would add a field that says
-    // nothing.
-    ...(addon === xpiAddon ? {} : { shippedAddon: xpiAddon.source }),
-    // The two values an SCA review was GIVEN, which `addon` above composes into one path.
-    // Carried separately because they are read separately: the header names each, and the
-    // --llm-review prompt sends an agent to the root. The root is the RESOLVED path the
-    // loader read, like every other path this section prints - an agent handed a relative
-    // one would resolve it against its own directory. The source stays as given, because
-    // it only means anything relative to that root.
-    ...(mode?.sca ? { scaRoot: scaArchive.source, scaSource } : {}),
+    // RESOLVED, both of them: a reader resolves these, and an agent handed a relative one
+    // would resolve it against its own directory.
+    xpi: xpiPath,
+    ...(mode?.sca
+      ? {
+          scaRoot: path.resolve(opts.scaRoot),
+          // Normalised the way the LOADER normalises it, so "./addon/" and "addon" are one
+          // value and it names the subtree the review actually read.
+          scaSource:
+            scaRootRelative(scaSource, opts.scaRoot, "--sca-source") || ".",
+        }
+      : {}),
     reviewed: true,
   };
   if (scaNotRequired) {
@@ -697,7 +708,7 @@ export async function runPipeline(opts) {
   // because whether it is NAMED depends on whether the step that writes it prints.
   let summaryPath = null;
   if (opts.llmReview) {
-    const files = reviewFilePaths(xpiAddon);
+    const files = reviewFilePaths(xpiAddon, xpiPath);
     meta.itemsFile = files.items;
     summaryPath = skip.includes("summary") ? null : files.summary;
     fs.writeFileSync(meta.itemsFile, "");
@@ -726,10 +737,10 @@ export async function runPipeline(opts) {
     // An index means nothing on its own, so the file has to name the submission its
     // verdicts were reached on. Compared against the shipped add-on, which is the path
     // the Review Details section printed under the name XPI.
-    if (path.resolve(settled.addon) !== path.resolve(xpiAddon.source)) {
+    if (path.resolve(settled.xpi) !== xpiPath) {
       throw new Error(
-        `--llm-verdict ${opts.llmVerdict} was written for "${settled.addon}", but this ` +
-          `review is of "${xpiAddon.source}" - its item indices mean nothing here`
+        `--llm-verdict ${opts.llmVerdict} was written for "${settled.xpi}", but this ` +
+          `review is of "${xpiPath}" - its item indices mean nothing here`
       );
     }
     const { applied, added } = applyVerdicts({

@@ -1,8 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/debugger-runtime-condition",
-    "addonKind": "dir",
+    "xpi": "<root>/tests/addons/debugger-runtime-condition",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

@@ -352,7 +352,7 @@ the response text its own registry entry authors:
 
 ```json
 {
-  "addon": "/path/to/the-reviewed.xpi",
+  "xpi": "/path/to/the-reviewed.xpi",
   "additions": [
     { "check": "data-exfiltration", "file": "background.js", "line": 40,
       "hint": "<a ping> attribute carries the message digest" }

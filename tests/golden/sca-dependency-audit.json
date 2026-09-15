@@ -1,9 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/sca-dependency-audit/src",
-    "addonKind": "dir",
-    "shippedAddon": "<root>/tests/addons/sca-dependency-audit/xpi",
+    "xpi": "<root>/tests/addons/sca-dependency-audit/xpi",
     "scaRoot": "<root>/tests/addons/sca-dependency-audit/src",
     "scaSource": ".",
     "reviewed": true,

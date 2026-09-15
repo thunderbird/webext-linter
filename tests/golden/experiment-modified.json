@@ -1,8 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/experiment-modified",
-    "addonKind": "dir",
+    "xpi": "<root>/tests/addons/experiment-modified",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

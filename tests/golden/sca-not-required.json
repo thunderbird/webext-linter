@@ -1,9 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/sca-not-required/src",
-    "addonKind": "dir",
-    "shippedAddon": "<root>/tests/addons/sca-not-required/xpi",
+    "xpi": "<root>/tests/addons/sca-not-required/xpi",
     "scaRoot": "<root>/tests/addons/sca-not-required/src",
     "scaSource": ".",
     "reviewed": true,

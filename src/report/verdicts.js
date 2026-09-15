@@ -73,10 +73,12 @@ const MAX_HINT = 200;
 
 /**
  * Read and shape-check a verdict file:
- * `{ addon, additions?: [{check, file, line?, hint?}], verdicts?: {"<index>": "<answer>"} }`.
+ * `{ xpi, additions?: [{check, file, line?, hint?}], verdicts?: {"<index>": "<answer>"} }`.
  *
- * `addon` names the add-on the answers were reached on - the path the Review Details
- * section printed - and is checked against the one being reviewed. That is the whole
+ * `xpi` names the shipped add-on the answers were reached on - the path the Review Details
+ * section printed under that name - and is checked against the one being reviewed. Named
+ * for the ARTIFACT, like every other path in this round trip: the report's block, the
+ * prompt's steps and this file all say XPI and mean the same file. That is the whole
  * guard, and it guards additions at least as much as verdicts: an index means nothing on
  * its own, and an addition CREATES a finding, so a file written for another submission
  * would otherwise invent findings here.
@@ -88,7 +90,7 @@ const MAX_HINT = 200;
  * Every malformed entry throws rather than being skipped: an answer that does not apply
  * is a report that silently understates what was settled.
  * @param {string} file
- * @returns {{addon: string, additions: object[], verdicts: Map<number, string>}}
+ * @returns {{xpi: string, additions: object[], verdicts: Map<number, string>}}
  */
 export function readVerdicts(file) {
   let doc;
@@ -100,13 +102,13 @@ export function readVerdicts(file) {
     );
   }
   const shape =
-    '{"addon": "<the reviewed path>", "verdicts": {"4": "Clear", "7": "withdrawn"}}';
+    '{"xpi": "<the reviewed path>", "verdicts": {"4": "Clear", "7": "withdrawn"}}';
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
     throw new Error(`--llm-verdict ${file} must be an object, e.g. ${shape}`);
   }
-  if (typeof doc.addon !== "string" || doc.addon === "") {
+  if (typeof doc.xpi !== "string" || doc.xpi === "") {
     throw new Error(
-      `--llm-verdict ${file} names no "addon" - it must carry the path the review printed, so verdicts cannot be applied to a different submission (e.g. ${shape})`
+      `--llm-verdict ${file} names no "xpi" - it must carry the path the review printed, so verdicts cannot be applied to a different submission (e.g. ${shape})`
     );
   }
   if (
@@ -151,7 +153,7 @@ export function readVerdicts(file) {
     }
     verdicts.set(index, raw);
   }
-  return { addon: doc.addon, additions, verdicts };
+  return { xpi: doc.xpi, additions, verdicts };
 }
 
 /**

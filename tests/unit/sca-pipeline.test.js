@@ -423,6 +423,38 @@ test("SCA: the --sca-root archive is read once, not twice", async () => {
   }
 });
 
+// What the report and the machine-readable document SAY was reviewed: the shipped add-on,
+// and separately the two values the run was given. Named by ARTIFACT rather than by role,
+// each a real path, and none of them fused - the source used to carry its subtree glued on
+// with a colon ("<root>:src"), which no reader could resolve and none could split back,
+// since a directory name may hold one. The subtree is normalised the way the loader
+// normalises it, so the value names what was read whichever spelling the flag was given.
+test("SCA meta names the artifacts, each a real path", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir(SRC_FILES);
+  try {
+    const { meta } = await runPipeline({
+      addonPath: xpi,
+      scaRoot: src,
+      scaSource: "./src/",
+      ...OFFLINE,
+    });
+    assert.equal(meta.xpi, xpi);
+    assert.equal(meta.scaRoot, src);
+    assert.equal(meta.scaSource, "src");
+    for (const value of [meta.xpi, meta.scaRoot]) {
+      assert.equal(fs.existsSync(value), true, `${value} is a real path`);
+    }
+    // The fields a role-named meta carried, and the fused value with them.
+    assert.equal(meta.addon, undefined);
+    assert.equal(meta.shippedAddon, undefined);
+    assert.equal(meta.addonKind, undefined);
+  } finally {
+    fs.rmSync(xpi, { recursive: true, force: true });
+    fs.rmSync(src, { recursive: true, force: true });
+  }
+});
+
 test("SCA e2e: code checks review the source; manifest/WAR resolve against the XPI", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);

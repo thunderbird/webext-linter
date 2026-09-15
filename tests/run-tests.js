@@ -250,7 +250,9 @@ async function main() {
         const addon = loadAddon(dir);
         // Drop the harness sidecar so it is not reviewed as an add-on file.
         addon.files.delete("expected.json");
-        review = await runPipeline({ ...base, addon });
+        // The loaded add-on is handed over, but the PATH still has to be named: an Addon
+        // carries none, and the review records what it reviewed.
+        review = await runPipeline({ ...base, addonPath: dir, addon });
       }
       problems = diff(expected, locationsByRule(review.findings));
       for (const [ext, fmt] of [

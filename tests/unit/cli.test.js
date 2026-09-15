@@ -842,7 +842,7 @@ test("a swept addition is reported as a finding of the check that owns it", () =
   fs.writeFileSync(
     vfile,
     JSON.stringify({
-      addon,
+      xpi: addon,
       additions: [
         {
           check: "data-exfiltration",
@@ -875,12 +875,12 @@ test("a swept addition is reported as a finding of the check that owns it", () =
     /background\.js:12 - <a ping> attribute carries the message digest/
   );
 
-  // The add-on binding guards an addition as much as a verdict: it CREATES a finding, so
+  // The XPI binding guards an addition as much as a verdict: it CREATES a finding, so
   // a file written elsewhere would invent one here.
   fs.writeFileSync(
     vfile,
     JSON.stringify({
-      addon: path.join(ROOT, "tests", "addons", "all-checks"),
+      xpi: path.join(ROOT, "tests", "addons", "all-checks"),
       additions: [{ check: "data-exfiltration", file: "a.js", line: 1 }],
     })
   );

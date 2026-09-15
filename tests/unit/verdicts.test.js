@@ -212,48 +212,45 @@ test("a malformed verdict file is rejected with a reason", () => {
     fs.writeFileSync(p, content);
     return p;
   };
-  const ok = '{"addon": "/x/a.xpi", "verdicts": {"2": "cleared"}}';
+  const ok = '{"xpi": "/x/a.xpi", "verdicts": {"2": "cleared"}}';
   assert.throws(() => readVerdicts(write("{")), /is not readable JSON/);
   assert.throws(() => readVerdicts(write("[]")), /must be an object/);
   // The add-on is the whole guard, so a file without it is refused.
   assert.throws(
     () => readVerdicts(write('{"verdicts": {"2": "cleared"}}')),
-    /names no "addon"/
+    /names no "xpi"/
   );
   // A "verdicts" that is not a map of answers is refused, null and [] included: both are
   // typeof "object", and either would have settled nothing while reading as an answer.
   for (const verdicts of ["null", "[]", '"cleared"', "3"]) {
     assert.throws(
-      () =>
-        readVerdicts(write(`{"addon": "/x/a.xpi", "verdicts": ${verdicts}}`)),
+      () => readVerdicts(write(`{"xpi": "/x/a.xpi", "verdicts": ${verdicts}}`)),
       /"verdicts" must be an object/,
       verdicts
     );
   }
   // Either block alone is a legitimate answer, but a file with neither settles nothing.
   assert.throws(
-    () => readVerdicts(write('{"addon": "/x/a.xpi"}')),
+    () => readVerdicts(write('{"xpi": "/x/a.xpi"}')),
     /carries neither "verdicts" nor "additions"/
   );
   assert.throws(
     () =>
-      readVerdicts(
-        write('{"addon": "/x/a.xpi", "verdicts": {"x": "cleared"}}')
-      ),
+      readVerdicts(write('{"xpi": "/x/a.xpi", "verdicts": {"x": "cleared"}}')),
     /"x" is not an item index/
   );
   // What an answer means needs the review it settles, so the file reader refuses only
   // what is not an answer at all - applyVerdicts is where "maybe" meets its item.
   assert.throws(
-    () => readVerdicts(write('{"addon": "/x/a.xpi", "verdicts": {"1": ""}}')),
+    () => readVerdicts(write('{"xpi": "/x/a.xpi", "verdicts": {"1": ""}}')),
     /item 1 has ""/
   );
   assert.throws(
-    () => readVerdicts(write('{"addon": "/x/a.xpi", "verdicts": {"1": 7}}')),
+    () => readVerdicts(write('{"xpi": "/x/a.xpi", "verdicts": {"1": 7}}')),
     /item 1 has 7/
   );
   assert.deepEqual(readVerdicts(write(ok)), {
-    addon: "/x/a.xpi",
+    xpi: "/x/a.xpi",
     additions: [],
     verdicts: verdicts({ 2: "cleared" }),
   });
@@ -262,11 +259,11 @@ test("a malformed verdict file is rejected with a reason", () => {
   // its own list. `file` is required: a swept finding with nowhere to look is the exact
   // failure the per-check instructions exist to end.
   const withAdd = JSON.stringify({
-    addon: "/x/a.xpi",
+    xpi: "/x/a.xpi",
     additions: [{ check: "data-exfiltration", file: "bg.js", line: 40 }],
   });
   assert.deepEqual(readVerdicts(write(withAdd)), {
-    addon: "/x/a.xpi",
+    xpi: "/x/a.xpi",
     additions: [
       { check: "data-exfiltration", file: "bg.js", line: 40, hint: null },
     ],
@@ -274,16 +271,14 @@ test("a malformed verdict file is rejected with a reason", () => {
   });
   assert.throws(
     () =>
-      readVerdicts(
-        write('{"addon": "/x/a.xpi", "additions": [{"check": "x"}]}')
-      ),
+      readVerdicts(write('{"xpi": "/x/a.xpi", "additions": [{"check": "x"}]}')),
     /names no "file"/
   );
   assert.throws(
     () =>
       readVerdicts(
         write(
-          '{"addon": "/x/a.xpi", "additions": [{"check": "x", "file": "a.js", "verdict": "reported"}]}'
+          '{"xpi": "/x/a.xpi", "additions": [{"check": "x", "file": "a.js", "verdict": "reported"}]}'
         )
       ),
     /may only set "check", "file", "line", "hint"/
@@ -292,7 +287,7 @@ test("a malformed verdict file is rejected with a reason", () => {
     () =>
       readVerdicts(
         write(
-          `{"addon": "/x/a.xpi", "additions": [{"check": "x", "file": "a.js", "hint": "${"x".repeat(201)}"}]}`
+          `{"xpi": "/x/a.xpi", "additions": [{"check": "x", "file": "a.js", "hint": "${"x".repeat(201)}"}]}`
         )
       ),
     /201-character hint/
@@ -775,7 +770,7 @@ test("a question's locus is the locus line the report prints", () => {
     findings: [],
     meta: {
       action: "review",
-      addon: "x",
+      xpi: "x",
       reviewed: true,
       manualReview: manual,
     },
@@ -898,7 +893,7 @@ function settled(manual, answers) {
       findings,
       meta: {
         action: "review",
-        addon: "x",
+        xpi: "x",
         reviewed: true,
         manualReview: manual,
       },
@@ -1087,7 +1082,7 @@ test("the JSON carries a note only where there is one", () => {
   const doc = JSON.parse(
     formatJson({
       findings,
-      meta: { action: "review", addon: "x", reviewed: true },
+      meta: { action: "review", xpi: "x", reviewed: true },
     })
   );
   assert.deepEqual(

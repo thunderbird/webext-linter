@@ -1,8 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/permission-escalation-xpi",
-    "addonKind": "dir",
+    "xpi": "<root>/tests/addons/permission-escalation-xpi",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

@@ -1,8 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/manifest-key-ok",
-    "addonKind": "dir",
+    "xpi": "<root>/tests/addons/manifest-key-ok",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

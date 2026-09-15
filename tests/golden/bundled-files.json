@@ -1,8 +1,7 @@
 {
   "meta": {
     "action": "review",
-    "addon": "<root>/tests/addons/bundled-files",
-    "addonKind": "dir",
+    "xpi": "<root>/tests/addons/bundled-files",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
