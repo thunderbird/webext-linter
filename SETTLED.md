@@ -636,6 +636,19 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   whoever pastes the command is a threat to the reviewer's shell, not to the review. Do
   not re-propose escaping every metacharacter here.
 
+- **A surviving mutation is not a finding.** Breaking a line of our own code to see whether
+  the suite notices is a useful way to MEASURE coverage, and it says nothing about whether
+  the code is right. Two such were reported in the 2026-09-15 audit - that
+  `reviewFilePaths` would write the description inside the reviewed add-on if its `dirname`
+  were removed, and that `meta` would carry a relative path if a `path.resolve` were
+  deleted - and neither is reachable by any input: the shipped code does the right thing in
+  both, and only an edit makes it otherwise. Report a defect SOME INPUT REACHES, with the
+  input. "If someone changed this line, no test would fail" is a note about the test suite,
+  and the standing gap there is already recorded (nothing drives `--llm-review` end to
+  end). Where a missing test IS worth raising: it guards a rule the code states about
+  itself, or it covers behaviour the same commit changed - and then it is a test to write,
+  not a defect to fix.
+
 - **A mis-authored registry is not a finding.** `assertPrompts` refuses a missing intro and
   an empty step, and nothing more is owed. No load-time contract requires a step to carry
   the `{{flags}}` or `{{scaRoot}}` slot, requires each `run:` condition to have a step, or
