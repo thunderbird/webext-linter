@@ -9,6 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import AdmZip from "adm-zip";
 
 import { pipelineOptsFromArgv } from "../../src/cli.js";
 import { seedFixtureCache } from "../seed-caches.js";
@@ -1021,6 +1022,66 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
     prompt(r.stdout).replace(/ {3}--llm-skip-manual\n/, ""),
     prompt(run(["--llm-sca-review", dir]).stdout)
   );
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The prompt tells its reader to run the printed command "with exactly these flags, and
+// nothing else", so the one thing worth asserting about it is that it RUNS. Every guard
+// this round added lives between that command and a review - the empty-value rule, the
+// unknown check id, --report-out, the folder questions - and each of them could turn the
+// handed-back command into a usage error without a single test noticing.
+test("the command --llm-sca-review prints is one the tool accepts", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-handback-"));
+  const zip = new AdmZip();
+  zip.addLocalFolder(path.join(ROOT, "tests", "addons", "clean"));
+  zip.writeZip(path.join(dir, "addon.xpi"));
+  fs.writeFileSync(path.join(dir, "src-1.0.tar.gz"), "");
+  // What its reader works out: an extracted source, and where the add-on's code sits in it.
+  const root = path.join(dir, "extracted");
+  fs.cpSync(
+    path.join(ROOT, "tests", "addons", "build-hygiene-sca", "src"),
+    root,
+    {
+      recursive: true,
+    }
+  );
+
+  const prepared = run([
+    "--llm-sca-review",
+    dir,
+    ...OFFLINE_FLAGS,
+    "--checks-only",
+    "unused-files",
+  ]);
+  assert.equal(prepared.code, 0, prepared.stderr);
+  const flags = prepared.stdout
+    .split("with exactly these flags, and nothing else:\n\n")[1]
+    .split("\n\n")[0]
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  // Substitute the three values the prompt asks its reader for, and run what is left.
+  const argv = flags
+    .flatMap((line) => {
+      const [flag, ...rest] = line.split(" ");
+      const value = rest.join(" ").replace(/^'|'$/g, "");
+      return value ? [flag, value] : [flag];
+    })
+    .map((arg) =>
+      arg === "<SCA_ROOT>" ? root : arg === "<SCA_SOURCE>" ? "." : arg
+    );
+  const review = run(argv);
+
+  // A review may pass or find something (0 or 1); what it must not be is a usage error,
+  // and its own prompt must be what it prints.
+  assert.notEqual(review.code, 2, review.stderr);
+  assert.equal(
+    review.stderr,
+    "",
+    "the handed-back command is accepted as written"
+  );
+  assert.match(review.stdout, /── LLM Prompt ──/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

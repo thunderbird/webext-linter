@@ -16,11 +16,17 @@ import { orderReview, hasLocus } from "../../src/report/order.js";
 import { renderManualItems } from "../../src/report/responses.js";
 import {
   assertChoices,
+  assertProse,
   assertPrompts,
   loadRegistry,
 } from "../../src/checks/registry.js";
 import { PROMPT_SKIPS } from "../../src/config.js";
-import { resolveHolds, hasErrors } from "../../src/report/finding.js";
+import {
+  resolveHolds,
+  hasErrors,
+  SEVERITY,
+  VERDICT_KEYS,
+} from "../../src/report/finding.js";
 
 function review() {
   return {
@@ -1234,6 +1240,76 @@ test("the manual review answers come from the registry and are whole", () => {
       key
     );
   }
+});
+
+// The report's own authored prose is the one registry text nothing downstream refuses: each
+// accessor returns {} or null for anything it cannot read, so a mistyped key prints a
+// section with no heading, a report with no preamble, or a finding with no response. It is
+// asserted against the vocabularies that INDEX it - a heading per severity, a preamble per
+// verdict the report can reach - so a renamed key fails at load rather than in a review.
+test("the report's authored prose is required, by the names that index it", () => {
+  const bad = (mutate, re) => {
+    const registry = loadRegistry();
+    mutate(registry.doc);
+    assert.throws(() => assertProse(registry, "t.yaml"), re);
+  };
+  // One heading per severity the report can group by, one preamble per verdict it can
+  // reach: the code indexes these maps by those names, so every one must be authored.
+  for (const severity of Object.values(SEVERITY)) {
+    bad(
+      (doc) => delete doc["issue-headings"][severity],
+      new RegExp(`\`issue-headings\` authors no \`${severity}\``),
+      severity
+    );
+  }
+  for (const key of VERDICT_KEYS) {
+    bad(
+      (doc) => delete doc["verdict-intros"][key],
+      new RegExp(`\`verdict-intros\` authors no \`${key}\``),
+      key
+    );
+  }
+  bad(
+    (doc) => delete doc.messages["check-failed"],
+    /authors no `check-failed`/
+  );
+  // Authored but empty reads as absent, and is refused as absent: a heading of spaces
+  // prints the same nothing a missing one does.
+  bad((doc) => (doc["issue-headings"].error = "   "), /authors no `error`/);
+  // The two closed maps are asserted in both directions: a name no report can look up is
+  // dead yaml, and that is how a rename hides - the old key still reads as prose while the
+  // new one is missing.
+  bad(
+    (doc) => (doc["verdict-intros"].someday = "later"),
+    /`verdict-intros` authors `someday`, which no report can reach/
+  );
+  bad(
+    (doc) => (doc["issue-headings"].fatal = "Fatal"),
+    /`issue-headings` authors `fatal`, which no report can reach/
+  );
+  // `messages` is open - message() is a lookup by whatever key a caller names - so an extra
+  // template is fine, and only its prose is asked about.
+  assertProse(
+    (() => {
+      const r = loadRegistry();
+      r.doc.messages["some-other-notice"] = "Text.";
+      return r;
+    })(),
+    "t.yaml"
+  );
+  bad((doc) => (doc.messages["some-other-notice"] = "  "), /is not prose/);
+  // A missing map at all, and the two sweep introductions, which are plain strings.
+  bad((doc) => delete doc["verdict-intros"], /authors no `verdict-intros` map/);
+  bad((doc) => (doc.messages = []), /authors no `messages` map/);
+  for (const reader of ["human", "llm"]) {
+    bad(
+      (doc) => delete doc[`sweep-intro-${reader}`],
+      new RegExp(`authors no \`sweep-intro-${reader}\``),
+      reader
+    );
+  }
+  // The shipped registry authors all of it.
+  assertProse(loadRegistry(), "assets/registry.yaml");
 });
 
 // The SCA prompt is the whole output of its own flag - no review runs beside it - so a
