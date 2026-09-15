@@ -212,7 +212,9 @@ test("scaRootRelative normalizes a relative path, and a dot in a NAME survives",
     ["./", ""],
     ["a//b", "a/b"],
     ["a/./b", "a/b"],
-    ["sub\\dir", "sub/dir"],
+    // A backslash is a separator on Windows and an ordinary character in a POSIX file
+    // name, so which it is here is the platform's answer, never ours to rewrite.
+    [`sub${path.sep}dir`, "sub/dir"],
     [".src", ".src"],
     ["..src", "..src"],
     [".hidden/x", ".hidden/x"],

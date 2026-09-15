@@ -214,7 +214,9 @@ const SCA_MANIFEST_FILES = [
  * relative to scaRoot.
  *
  * The value is a path WITHIN scaRoot, written relative to it - an absolute one is
- * refused. A submission names its own folders, and an absolute path names a folder on
+ * refused. Judged as the PLATFORM spells paths (node's `path` is posix here and win32
+ * there), never by rewriting a separator first: a backslash is a separator on Windows and
+ * an ordinary character in a POSIX file name, and only the platform knows which this is. A submission names its own folders, and an absolute path names a folder on
  * the reviewing machine: it can point anywhere, so what it names is not part of the
  * submission and cannot be shown to be. Relative is also the only spelling the review
  * can repeat on another machine.
@@ -224,7 +226,7 @@ const SCA_MANIFEST_FILES = [
  * @returns {string} A posix path relative to scaRoot ("" for the root itself).
  */
 export function scaRootRelative(value, scaRoot, flag = "SCA path") {
-  const v = String(value ?? "").replace(/\\/g, "/");
+  const v = String(value ?? "");
   if (path.isAbsolute(v)) {
     throw new Error(
       `${flag} "${value}" must be relative to --sca-root (${scaRoot}), not an absolute path`
@@ -240,8 +242,9 @@ export function scaRootRelative(value, scaRoot, flag = "SCA path") {
   // "a/b", and a dot that is part of a NAME stays in it. Stripping a leading run of dots
   // and slashes read ".src" as "src" - a folder that exists, is not the one named, and was
   // reviewed without a word (the CLI had asked the filesystem about ".src" and found it).
-  const rel = path.posix.normalize(v).replace(/\/+$/, "");
-  return rel === "." ? "" : rel;
+  // Normalised by the PLATFORM, then keyed posix like every other add-on-internal path.
+  const rel = path.normalize(v).replace(/[\\/]+$/, "");
+  return rel === "." ? "" : rel.split(path.sep).join("/");
 }
 
 /**
@@ -451,7 +454,7 @@ function readZip(zipPath) {
     if (entry.isDirectory) {
       continue;
     }
-    const name = normalize(entry.entryName);
+    const name = entryKey(entry.entryName);
     // Reject path-traversal / absolute entry names from a (possibly malicious)
     // archive so they can never reach a filesystem write or the output package.
     if (!isSafeAddonPath(name)) {
@@ -518,7 +521,7 @@ function readDir(dir) {
         // has none, and following could pull in host files or loop. Collect the skip
         // as a notice (the caller narrates it) so it is not silent.
         if (e.name === "node_modules") {
-          nodeModules.push(normalize(path.relative(dir, full)));
+          nodeModules.push(walkedKey(path.relative(dir, full)));
         } else {
           skipped.push(
             `Skipping symlink (not packaged): ${displayLine(path.relative(dir, full))}`
@@ -528,12 +531,12 @@ function readDir(dir) {
         // Never read an installed-dependency tree: record it and do NOT recurse, so
         // its (huge) contents never enter memory.
         if (e.name === "node_modules") {
-          nodeModules.push(normalize(path.relative(dir, full)));
+          nodeModules.push(walkedKey(path.relative(dir, full)));
         } else {
           walk(full);
         }
       } else if (e.isFile()) {
-        const rel = normalize(path.relative(dir, full));
+        const rel = walkedKey(path.relative(dir, full));
         if (ARCHIVE_EXTENSIONS.has(extname(rel))) {
           archives.push(rel);
         }
@@ -551,12 +554,28 @@ function readDir(dir) {
 }
 
 /**
- * Normalize an add-on-internal path to posix style without a leading "./".
- * @param {string} p  Raw path (may use backslashes or a leading "./").
+ * An add-on-internal path as the file map keys it: posix, without a leading "./".
+ *
+ * A ZIP entry name is already posix - the format says so ("All slashes MUST be forward
+ * slashes '/' as opposed to backwards slashes") - so nothing is rewritten here. A
+ * backslash in an entry name is therefore part of the NAME, which is the only reading that
+ * cannot invent a directory that the archive does not have.
+ * @param {string} p  An entry name as the archive spells it.
  * @returns {string}
  */
-function normalize(p) {
-  return p.replace(/\\/g, "/").replace(/^\.\//, "");
+function entryKey(p) {
+  return p.replace(/^\.\//, "");
+}
+
+/**
+ * A walked file as the file map keys it: the OS told us this name, so the only conversion
+ * is its own separator to posix. `path.sep` and nothing else - rewriting every backslash
+ * would rename a file that legitimately carries one.
+ * @param {string} rel  A path relative to the add-on root, from path.relative.
+ * @returns {string}
+ */
+function walkedKey(rel) {
+  return rel.split(path.sep).join("/");
 }
 
 /**
