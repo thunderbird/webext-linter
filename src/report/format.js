@@ -372,14 +372,14 @@ const SUBMISSION_VALUES = [
  * FLAGS are the finished command, one flag per line, filled into the step that says to
  * run it.
  *
- * What this run was given decides what is printed: a step marked `experiments` is dropped
- * unless Experiments are allowed, and the surviving steps are numbered 1..N here, so no
- * step may number itself. A prompt that asked for a value nothing will read would be
+ * What this run was given decides what is printed: a step marked `run: experiments` is
+ * dropped unless Experiments are allowed, and the surviving steps are numbered 1..N here,
+ * so no step may number itself. A prompt that asked for a value nothing will read would be
  * asking for work that cannot be used.
  *
  * No review has run when this prints, and none can until its reader answers it - so unlike
  * every other section here, this one describes work still to do rather than work done.
- * @param {{intro: string, outcome: {experiments: boolean, text: string}[]}} prompt  From
+ * @param {{intro: string, outcome: {run: ?string, text: string}[]}} prompt  From
  *   registry.llmScaReviewPrompt().
  * @param {{folder: string, xpi: string, source: string}} submission  From scaSubmission().
  * @param {{flags: string[], experiments: boolean}} review  What the review is to be run
@@ -408,7 +408,7 @@ export function scaPromptLines(prompt, submission, review) {
   // own file names, so they are made safe to show like every other line here.
   const flags = review.flags.map(displayLine);
   const steps = prompt.outcome.filter(
-    (step) => !step.experiments || review.experiments
+    (step) => step.run !== "experiments" || review.experiments
   );
   steps.forEach((step, i) => {
     // The flags are a paragraph of their own and are NOT wrapped - a command split across

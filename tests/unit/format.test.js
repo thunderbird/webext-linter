@@ -1322,10 +1322,10 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   for (const step of prompt.outcome) {
     assert.equal(typeof step.text, "string");
     assert.ok(step.text.length > 0);
-    assert.equal(typeof step.experiments, "boolean");
+    assert.ok(step.run === null || step.run === "experiments");
   }
   // Exactly one step is the Experiment one, and it is printed only when they are allowed.
-  assert.equal(prompt.outcome.filter((s) => s.experiments).length, 1);
+  assert.equal(prompt.outcome.filter((s) => s.run === "experiments").length, 1);
   const noIntro = loadRegistry();
   delete noIntro.doc["llm-sca-review-prompt"].intro;
   assert.throws(() => assertPrompts(noIntro, "t.yaml"), /authors no `intro`/);
@@ -1347,13 +1347,14 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
     /step 2 authors no `text`/
   );
 
-  // The marker decides whether the Experiment step prints at all, so anything but a
-  // boolean - the `experiments: "true"` a yaml edit produces - is refused by name.
+  // The marker decides whether the Experiment step prints at all, so a condition this
+  // prompt cannot evaluate - a plausible near-miss included - is refused by name rather
+  // than leaving the step printed in every run.
   const badMarker = loadRegistry();
-  badMarker.doc["llm-sca-review-prompt"].outcome[0].experiments = "true";
+  badMarker.doc["llm-sca-review-prompt"].outcome[0].run = "experiment";
   assert.throws(
     () => assertPrompts(badMarker, "t.yaml"),
-    /step 1 has a non-boolean `experiments`/
+    /step 1 has `run: experiment`, which this prompt cannot evaluate \(expected one of: experiments\)/
   );
 
   // And the shared step rule: both prompts are numbered by the renderer.
@@ -1364,20 +1365,20 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
     /step 1 numbers itself/
   );
 
-  // The mirror of the review prompt's rule: this one acts on `experiments` and nothing
-  // else, so the other prompt's marker - which reads as plausible here, and does nothing -
-  // is refused by name, as is a typo of its own.
+  // The mirror of the review prompt's rule: this one acts on `run` and nothing else, so
+  // the other prompt's marker - which reads as plausible here, and does nothing - is
+  // refused by name, as is the bare name prop `run` replaced.
   const wrongMarker = loadRegistry();
   wrongMarker.doc["llm-sca-review-prompt"].outcome[1].skip = "manual";
   assert.throws(
     () => assertPrompts(wrongMarker, "t.yaml"),
-    /step 2 authors `skip`, which this prompt cannot act on \(expected `experiments`\)/
+    /step 2 authors `skip`, which this prompt cannot act on \(expected `run`\)/
   );
   const typo = loadRegistry();
-  typo.doc["llm-sca-review-prompt"].outcome[2].experiment = true;
+  typo.doc["llm-sca-review-prompt"].outcome[2].experiments = true;
   assert.throws(
     () => assertPrompts(typo, "t.yaml"),
-    /step 3 authors `experiment`/
+    /step 3 authors `experiments`/
   );
 });
 

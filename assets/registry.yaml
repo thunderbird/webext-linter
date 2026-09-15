@@ -1461,9 +1461,13 @@ llm-sca-review-prompt:
     This is the first half of a source code review. The add-on was submitted in two parts: the built XPI users install, and an archive of the source it was built from. A source archive has no fixed shape - the developer lays it out however they like - so where the add-on's own code sits inside it can only be found by looking. Work that out from the values below, then run the review yourself.
 
     A name in <angle brackets> is a value you work out. The rest are given under "Submission".
-  # A step marked `experiments: true` is printed only when the review allows Experiments:
+  # A step marked `run: experiments` is printed only when the review allows Experiments:
   # the flags are known here, so a prompt that asks for --sca-exp-source when nothing will
   # read it is asking for work that cannot be used. Absent means every run prints it.
+  #
+  # `run` names the axis and its VALUE names the condition, the way `skip` does in the
+  # other prompt: a step cannot accumulate conditions, and the value is checked against
+  # what this prompt can evaluate rather than merely being a boolean.
   outcome:
     - text: |-
         Extract SOURCE_ARCHIVE into a temporary directory of your own. Never into FOLDER: a review does not write into what it reviews.
@@ -1477,7 +1481,7 @@ llm-sca-review-prompt:
         Read what <SCA_ROOT> contains and judge it. When ONE directory clearly holds the add-on's code and EVERY other directory holds only what the add-on does not ship - tests, documentation, build tooling, CI configuration, examples - then that one directory is <SCA_SOURCE>. When that split cannot be made cleanly, <SCA_SOURCE> is "." and the whole of <SCA_ROOT> is reviewed.
 
         Judge by the code, never by where a manifest.json sits: a build can generate or move it, and a directory chosen that way hides every file outside it. The two mistakes are not equal - too wide only adds noise, too narrow leaves a file unreviewed as add-on code with nothing to say so. When unsure, be too wide.
-    - experiments: true
+    - run: experiments
       text: |-
         Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look under <SCA_SOURCE>: those paths are relative to the add-on's own root. Its path relative to <SCA_ROOT> is <SCA_EXP_SOURCE>.
     - text: |-

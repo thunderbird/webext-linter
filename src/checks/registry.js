@@ -556,21 +556,22 @@ export class Registry {
    * set, and both are required then - a run whose whole output is this prompt has nothing
    * to print without them.
    *
-   * A step comes back with its `experiments` flag, never filtered here: which steps a run
-   * prints is layout, decided in src/report/format.js beside the flags themselves. The flag
-   * marks a step that asks for the Experiment folder, which only a review allowing
-   * Experiments reads - so it is printed only when one does.
-   * @returns {{intro: string, outcome: {experiments: boolean, text: string}[]}}
+   * A step comes back with the `run` condition it is marked with, never filtered here:
+   * which steps a run prints is layout, decided in src/report/format.js beside the flags
+   * themselves. `run: experiments` marks a step that asks for the Experiment folder, which
+   * only a review allowing Experiments reads - so it is printed only when one does.
+   * @returns {{intro: string, outcome: {run: ?string, text: string}[]}}
    */
   llmScaReviewPrompt() {
     const p = this.doc["llm-sca-review-prompt"];
     return {
       intro: p.intro,
-      // A step marked `experiments` asks for the Experiment folder, which only a review
-      // allowing Experiments reads - so it comes back marked, and the renderer drops it
-      // when it would ask for a value nothing will use.
+      // A step's `run` comes back as null when it carries no marker: every run prints it.
+      // `run: experiments` asks for the Experiment folder, which only a review allowing
+      // Experiments reads - so it comes back marked, and the renderer drops it when it
+      // would ask for a value nothing will use.
       outcome: p.outcome.map((step) => ({
-        experiments: step.experiments === true,
+        run: step.run ?? null,
         text: step.text,
       })),
     };
@@ -940,9 +941,9 @@ export function assertEntries(registry, at) {
  * and the second one would be wrong as soon as anything above it was withheld.
  *
  * It may carry ONE marker, the one its own prompt acts on, and nothing else. Each prompt
- * reads only its own - `skip` here, `experiments` there - so any other key is dropped at
- * load and the step prints in every run: a typo of the right marker, or the other prompt's
- * marker, both read as a step that was never marked.
+ * reads only its own - `skip` here, `run` there - so any other key is dropped at load and
+ * the step prints in every run: a typo of the right marker, or the other prompt's marker,
+ * both read as a step that was never marked.
  * @param {unknown} step
  * @param {number} i  Its position, for the message.
  * @param {string} where  Which prompt, for the message.
@@ -973,14 +974,19 @@ function assertStep(step, i, where, marker) {
   }
 }
 
+/** What `run:` can name in the --llm-sca-review prompt: the one thing about a run that
+ *  decides whether a step of it is printed. No flag spells these - unlike PROMPT_SKIPS,
+ *  which the CLI offers - so they live here, beside the message that names them. */
+const SCA_PROMPT_RUNS = ["experiments"];
+
 /**
  * Assert both LLM prompts: the texts each authors, and the steps they share.
  *
  * The step rules are one helper because both prompts are laid out by one renderer. What
  * differs is the MARKER a step may carry, and each is asserted against the vocabulary that
- * gives it: `skip` against the flags (PROMPT_SKIPS), `experiments` against the one thing
- * that decides whether the Experiment step is printed at all. A marker no flag gives, or a
- * flag with no step to withhold, is a prompt that quietly asks for the wrong work.
+ * gives it: `skip` against the flags (PROMPT_SKIPS), `run` against the conditions each
+ * prompt can evaluate. A marker no flag gives, or a flag with no step to withhold, is a
+ * prompt that quietly asks for the wrong work.
  * @param {Registry} registry
  * @param {string} at  The registry path, for the message.
  */
@@ -1030,15 +1036,16 @@ export function assertPrompts(registry, at) {
     throw new Error(`${scaAt} authors no \`outcome\` steps`);
   }
   scaSteps.forEach((step, i) => {
-    assertStep(step, i, "llm-sca-review-prompt", "experiments");
-    if (
-      step.experiments !== undefined &&
-      typeof step.experiments !== "boolean"
-    ) {
+    assertStep(step, i, "llm-sca-review-prompt", "run");
+    // Checked against what this prompt can EVALUATE, the way `skip` is checked against the
+    // flags that give it: the marker decides whether the step is printed at all, so a
+    // condition nothing answers would print it in every run - which is the one case a
+    // reader cannot tell from a step that was never marked.
+    if (step.run !== undefined && !SCA_PROMPT_RUNS.includes(step.run)) {
       throw new Error(
-        `llm-sca-review-prompt \`outcome\` step ${i + 1} has a non-boolean ` +
-          `\`experiments\` ${JSON.stringify(step.experiments)} - the marker decides ` +
-          `whether the step is printed at all, and anything else reads as "not marked" (${at})`
+        `llm-sca-review-prompt \`outcome\` step ${i + 1} has \`run: ${step.run}\`, which ` +
+          `this prompt cannot evaluate (expected one of: ${SCA_PROMPT_RUNS.join(", ")}) ` +
+          `(${at})`
       );
     }
   });
