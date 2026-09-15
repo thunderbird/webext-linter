@@ -58,7 +58,7 @@ guard family had a demonstrated defect.
   production code above it - fetchWithTimeout, readBytes/readJson, the size caps - which
   then has no golden coverage at all; faking the socket exercises all of it.
 
-  A fixture declares what a URL serves under `network` in its expected.json:
+  A fixture declares what a URL serves under `network` in its spec (`tests/expected/`):
   `{"sameAs": "<path>"}` serves the bytes of one of its own files (the way to express
   "this declaration checks out" without a copy that rots), `{"body": "..."}` literal bytes
   (the way to express "modified"), `{"json": ...}` a JSON endpoint (npm downloads, GitHub
@@ -99,7 +99,7 @@ guard family had a demonstrated defect.
   minimize-web-accessible-resources. Measured, not assumed: the two
   trademark-thunderbird-* checks DO fire, in fixtures added with the trademark split, but
   `trademark-violation` needs a brand term that no fixture ships. Note an escalation is
-  observable only in the `.txt` golden, because `expected.json` diffs findings alone.
+  observable only in the `.txt` golden, because a fixture's spec diffs findings alone.
 
 - **A dead network aborts the review; one dead load does not.** Every catch in the vendor
   and CDN paths turns a fetch failure into a benign value ("not popular", "unfetchable",

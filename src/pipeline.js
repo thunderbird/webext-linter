@@ -140,8 +140,6 @@ import { DEFAULT_CACHE } from "./config.js";
  * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
  *   network transport for vendor verification (the test harness injects an
  *   offline one); defaults to the real fetch.
- * @property {import("./addon/load.js").Addon} [addon]  Pre-loaded add-on (the
- *   test harness injects one to drop its expected.json sidecar).
  * @property {import("./checks/registry.js").Registry} [registry]  Parsed
  *   registry threaded from the caller, parsed once here otherwise.
  * @property {string} [llmVerdict]  Path to a verdict file (--llm-verdict) settling the
@@ -221,9 +219,10 @@ export async function runPipeline(opts) {
   // Experiment. Every slow NETWORK step below (the experiment fetch, schema fetch, vendor
   // verification, CDN lookups) plus the AST parse is narrated as a Setup step. The add-on
   // reads are fast local unzips (this .xpi, and in a kept SCA the source archive loaded in
-  // Phase 2) marked by the "Reading add-on" step. A caller may inject a pre-loaded XPI
-  // add-on (the test harness does, to drop its expected.json).
-  const xpiAddon = opts.addon ?? loadAddon(addonPath);
+  // Phase 2) marked by the "Reading add-on" step. Loading here is the ONLY way an add-on
+  // enters a review: its content and its identity then come from one value, and no caller
+  // can hand in files that disagree with the path the report goes on to name.
+  const xpiAddon = loadAddon(addonPath);
   const isExp = isExperiment(xpiAddon.manifest);
 
   // The "Setup" feed: one numbered [i/total] line per slow pre-review step, matching

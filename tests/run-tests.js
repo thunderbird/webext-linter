@@ -1,7 +1,7 @@
 // Add-on test harness. Runs every sample add-on under tests/addons/ through the
 // reviewer against the offline schema fixture and checks two things:
-//   1. per-rule finding locations ("file:line") against each add-on's curated
-//      expected.json (a human-readable spec of which rules fire where), and
+//   1. per-rule finding locations ("file:line") against each add-on's curated spec in
+//      tests/expected/<name>.json (a human-readable list of which rules fire where), and
 //   2. the FULL rendered report (text + JSON) against a golden snapshot in
 //      tests/golden/ (a byte-level regression lock for the orchestrator,
 //      formatter and report plumbing - the layers thin unit tests barely cover).
@@ -16,7 +16,6 @@ import { fileURLToPath } from "node:url";
 
 import { runPipeline } from "../src/pipeline.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
-import { loadAddon } from "../src/addon/load.js";
 import { formatReview } from "../src/report/format.js";
 import { fixtureCacheOpts } from "./seed-caches.js";
 
@@ -26,6 +25,8 @@ const ROOT = path.resolve(here, "..");
 // library-hash fetches all hit disk - the whole harness runs offline.
 const CACHE_OPTS = fixtureCacheOpts();
 const ADDONS_DIR = path.join(here, "addons");
+// The fixtures' specs, kept out of the add-ons they describe (see loadFixture).
+const EXPECTED_DIR = path.join(here, "expected");
 const GOLDEN_DIR = path.join(here, "golden");
 const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 
@@ -36,7 +37,7 @@ const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 // production code above it - fetchWithTimeout, readBytes/readJson, the size caps - which
 // then has no golden coverage at all. Here only the socket is faked.
 //
-// A fixture declares what it needs under "network" in its expected.json (see
+// A fixture declares what it needs under "network" in its spec (see
 // fetchResponse). Anything it does not declare is a 404, deliberately: an unlisted URL
 // must be an HTTP negative and never a transport failure, because a connection-shaped
 // error sends fetchWithTimeout into assertNetwork, which probes the control point and
@@ -97,12 +98,16 @@ function installFetchMock(dir, network) {
   };
 }
 
-// Each fixture's expected.json holds the expected per-rule locations under
-// "expect", and may carry an optional "options" object keyed by real CLI flags
-// (e.g. { "--allow-experiments": true }), so a fixture can exercise a flag-gated
-// check through the same parsing the CLI uses.
+// A fixture's spec holds the expected per-rule locations under "expect", and may carry an
+// optional "options" object keyed by real CLI flags (e.g. { "--allow-experiments": true }),
+// so a fixture can exercise a flag-gated check through the same parsing the CLI uses.
+//
+// It lives OUTSIDE the add-on, in tests/expected/, because the add-on folder is the artifact
+// under review: a file kept inside it is a file the review sees the add-on shipping, which
+// is what once made the harness load the add-on itself and delete the key before handing it
+// over - and that in turn is what put a test-only input on runPipeline.
 function loadFixture(dir) {
-  const file = path.join(dir, "expected.json");
+  const file = path.join(EXPECTED_DIR, `${path.basename(dir)}.json`);
   const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
   return {
     expect: parsed.expect ?? {},
@@ -115,7 +120,7 @@ function loadFixture(dir) {
 // subfolders: `xpi/` (the shipped built add-on, the authoritative manifest) and
 // `src/` (the readable source tree the code checks review, e.g. a Vue .vue file).
 // The harness then drives runPipeline in SCA mode; a plain fixture folder is an
-// ordinary XPI review. Detected by layout, so expected.json needs no extra flag.
+// ordinary XPI review. Detected by layout, so the spec needs no extra flag.
 function isScaFixture(dir) {
   return ["xpi", "src"].every(
     (sub) =>
@@ -247,14 +252,9 @@ async function main() {
           scaSource: path.join(dir, "src"),
         });
       } else {
-        // XPI mode: load the add-on ourselves and drop the expected.json sidecar so
-        // it is not seen as an (unused) add-on file by the review.
-        const addon = loadAddon(dir);
-        // Drop the harness sidecar so it is not reviewed as an add-on file.
-        addon.files.delete("expected.json");
-        // The loaded add-on is handed over, but the PATH still has to be named: an Addon
-        // carries none, and the review records what it reviewed.
-        review = await runPipeline({ ...base, addonPath: dir, addon });
+        // XPI mode: the fixture folder IS the add-on, and the pipeline loads it - the
+        // harness hands over a path, never a pre-loaded artifact.
+        review = await runPipeline({ ...base, addonPath: dir });
       }
       problems = diff(expected, locationsByRule(review.findings));
       for (const [ext, fmt] of [

@@ -6,8 +6,7 @@ This tool uses two test layers to validate itself:
   whole sample add-on run through the full review pipeline, asserting each
   rule's finding *locations* (`file:line`). They prove the right checks fire (at
   the right spots, and stay quiet elsewhere) and that the pipeline composes end
-  to end. Coarse, but cheap to add - a folder plus an `expected.json`, no test
-  code.
+  to end. Coarse, but cheap to add - a folder plus a spec file, no test code.
 - **Unit tests** (`unit/*.test.js`) are white-box: they import one module and
   assert its exact behavior - messages, edge cases, branches - that an add-on
   test (which only checks rule + location) can't pin down. Fine-grained and
@@ -29,7 +28,11 @@ npm run test:unit       # run just the unit tests (node --test)
 ## Layout
 
 - `run-tests.js` - the test runner.
-- `addons/` - sample add-ons, one folder each, with an `expected.json`.
+- `addons/` - sample add-ons, one folder each. Nothing but the add-on lives there:
+  the folder IS the artifact under review, so a file kept inside it is a file the
+  review sees the add-on shipping.
+- `expected/` - one `<add-on name>.json` per fixture: what that add-on is expected
+  to trigger.
 - `unit/` - npm unit test files (`*.test.js`).
 - `schema-fixture/` - a small offline subset of the annotated WebExtension
   schema, so the suite needs no download. Used by the harness and by the
@@ -41,8 +44,8 @@ npm run test:unit       # run just the unit tests (node --test)
 
 Each add-on is run through `runPipeline` in **review** mode against
 `schema-fixture/`. Per rule, the findings' `file:line` locations are collected
-and compared (order-insensitive, duplicates significant) to that add-on's
-`expected.json`:
+and compared (order-insensitive, duplicates significant) to that add-on's spec in
+`expected/<name>.json`:
 
 ```json
 {
@@ -56,22 +59,22 @@ e.g. some manifest checks). A rule's list length is the hit count and each
 entry says where. Rules with no findings are omitted. Any mismatch (or a thrown
 pipeline) fails the run. The `_comment` documents each add-on's intent.
 
-An `expected.json` may also carry an `"options"` object keyed by **real CLI
+A spec may also carry an `"options"` object keyed by **real CLI
 flags**, parsed the same way the CLI parses them (the core review opts always
 win), so a fixture can exercise a flag-gated check - e.g.
 `"options": { "--allow-experiments": true }`.
 
 **Add an add-on test:** drop a folder under `addons/` with a `manifest.json`
-(plus any JS/HTML/CSS it needs) and an `expected.json` listing the `file:line`
-locations you expect per rule. (Tip: run the harness once - a mismatch prints
-the actual `got [...]` list to copy from.)
+(plus any JS/HTML/CSS it needs), and an `expected/<that folder's name>.json`
+listing the `file:line` locations you expect per rule. (Tip: run the harness once -
+a mismatch prints the actual `got [...]` list to copy from.)
 
 **SCA fixtures:** a fixture that instead holds two subfolders - `xpi/` (the
 shipped built add-on, the authoritative manifest) and `src/` (the readable source
 tree, e.g. a Vue `.vue`) - is run in **SCA** mode (source-code archive) rather than
-XPI mode. The layout is auto-detected (no flag needed); `expected.json` stays at the
-fixture root. Use one when a check depends on the source/shipped split or on a source
-format that only exists pre-build.
+XPI mode. The layout is auto-detected (no flag needed), and its spec sits in
+`expected/` like every other. Use one when a check depends on the source/shipped split
+or on a source format that only exists pre-build.
 
 | Add-on | Exercises |
 | --- | --- |
@@ -152,4 +155,4 @@ key off:
 | `$extend` of `manifest` types | the valid permission + manifest-key sets for `missing-permission` / `invalid-manifest` | the `Permission` enum; `manifest:action` |
 
 To exercise a new schema shape, add or extend a file here (and update the
-affected add-on's `expected.json`).
+affected add-on's spec in `expected/`).
