@@ -432,6 +432,51 @@ test("reviewing a fixture renders to stdout with a severity-based exit", () => {
   assert.ok(Array.isArray(json.findings));
 });
 
+// The seam between the two: a source code review's own steps send a sub-agent to paths, and
+// the Review Details block names them. Both come from what the review RESOLVED to be, never
+// from the flags it was given - a rejected Experiment keeps --sca-root and is still an XPI
+// review, and reading the flag there sent an agent to a root nothing had read, under a name
+// the block never printed. Driven through the CLI because that is the seam: rendering the
+// two halves from a hand-built meta cannot catch a pipeline that feeds them different
+// values.
+test("a source code review's steps carry exactly the paths its header names", () => {
+  const sca = path.join(ROOT, "tests", "addons", "build-hygiene-sca");
+  const r = run([
+    path.join(sca, "xpi"),
+    ...OFFLINE_FLAGS,
+    "--sca-root",
+    path.join(sca, "src"),
+    "--sca-source",
+    ".",
+    "--llm-review",
+  ]);
+  const root = headerValue(r.stdout, "SCA_ROOT");
+  const build = headerValue(r.stdout, "BUILD_PROCESS");
+  assert.equal(root, path.join(sca, "src"));
+  assert.match(build, /\.build\.md$/);
+  // Each sits on its own line inside the step that hands them over, unwrapped and
+  // unaltered, so what the agent is given is what the reviewer was shown.
+  const lines = r.stdout.split("\n").map((l) => l.trim());
+  assert.ok(lines.includes(root), "the prompt carries SCA_ROOT");
+  assert.ok(lines.includes(build), "the prompt carries BUILD_PROCESS");
+
+  // An invalid Experiment submitted WITH --sca-root is rejected from the shipped XPI alone:
+  // the source archive is never read, so neither name may appear anywhere - not in the
+  // block, and not in a step asking for work on a root this review does not have.
+  const exp = path.join(ROOT, "tests", "addons", "experiment-disallowed-sca");
+  const rejected = run([
+    path.join(exp, "xpi"),
+    ...OFFLINE_FLAGS,
+    "--sca-root",
+    exp,
+    "--sca-source",
+    "src",
+    "--llm-review",
+  ]);
+  assert.match(rejected.stdout, /── LLM Prompt ──/);
+  assert.doesNotMatch(rejected.stdout, /SCA_ROOT|BUILD_PROCESS/);
+});
+
 // --llm-review end to end. Its whole output is the prompt, the Review Details section and
 // an item file: the prose report is deliberately absent, because its reader settles the
 // items it can address rather than the report it can see. JSON is refused - that is the
@@ -930,6 +975,28 @@ test("--llm-sca-review prints the prompt, names both files, and reviews nothing"
 // about - --allow-experiments most of all, which decides whether the review runs at all.
 // They print in the order OPTIONS declares them, never the order they were typed: composed
 // from the parsed values, so the command reads the same however it was written.
+// The block NAMES the files and the command RUNS on them, so the two have to name one
+// file. A run of spaces is what separates them: only one of the two sanitisers keeps it,
+// and every other test here builds its folder with mkdtemp, whose names have none.
+test("the command --llm-sca-review prints names the file its block names", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-spaced-"));
+  const sub = path.join(dir, "my  submission");
+  fs.mkdirSync(sub);
+  fs.writeFileSync(path.join(sub, "addon  v2.xpi"), "");
+  fs.writeFileSync(path.join(sub, "src.tar.gz"), "");
+  const r = run(["--llm-sca-review", sub, ...OFFLINE_FLAGS]);
+  assert.equal(r.code, 0, r.stderr);
+  const xpi = headerValue(r.stdout, "XPI");
+  assert.equal(xpi, path.join(sub, "addon  v2.xpi"));
+  // Quoted because it carries whitespace, and quoting is worth nothing if the path inside
+  // was altered first.
+  assert.ok(
+    r.stdout.includes(`--llm-review '${xpi}'`),
+    "the command names the file the block named"
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("--llm-sca-review prints the flags the review is run with", () => {
   const dir = submissionFolder();
   const xpi = path.join(dir, "addon.xpi");

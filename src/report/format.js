@@ -457,8 +457,11 @@ export function scaPromptLines(prompt, submission, review) {
     )
   );
   // The flags are a command, composed elsewhere - but they travel through a submission's
-  // own file names, so they are made safe to show like every other line here.
-  const flags = review.flags.map(displayLine);
+  // own file names, so they are made safe to show like every other line here. displayPath,
+  // not displayLine: this command names the very files the block above it names, and its
+  // reader RUNS it. Collapsing a run of spaces inside a quoted path hands them a command
+  // for a file that does not exist - or, worse, for a different one that does.
+  const flags = review.flags.map(displayPath);
   const steps = prompt.outcome.filter(
     (step) => step.run !== "experiments" || review.experiments
   );

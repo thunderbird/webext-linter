@@ -9,6 +9,7 @@ import {
   humanSize,
   displayText,
   displayLine,
+  displayPath,
 } from "../../src/util/text.js";
 
 // A long single line wraps to multiple lines, none over the width, each carrying
@@ -77,6 +78,25 @@ test("displayText removes what can alter the report, and nothing else", () => {
   // Nullish is the empty string, never the word "null".
   assert.equal(displayText(null), "");
   assert.equal(displayText(undefined), "");
+});
+
+// A PATH the reader copies back needs the line guarantee WITHOUT the collapse: what is
+// printed is pasted into a shell and written into a verdict file the review compares, so a
+// path that was altered names a file that does not exist - or a different one that does.
+test("displayPath keeps the name and still guarantees one line", () => {
+  const ESC = "\u001B";
+  // Every ordinary space survives, inside and at the edges: a path is a NAME.
+  assert.equal(displayPath("/reviews/my  add-on"), "/reviews/my  add-on");
+  assert.equal(displayPath("  padded  "), "  padded  ");
+  // Everything a renderer may END A LINE on becomes a space - the three ASCII ones, and
+  // the two SEPARATORS that are not control characters, so displayText leaves them.
+  for (const ch of ["\t", "\r", "\n", "\u2028", "\u2029"]) {
+    assert.equal(displayPath(`a${ch}b`), "a b", JSON.stringify(ch));
+  }
+  // And what displayText removes is still removed.
+  assert.equal(displayPath(`a${ESC}[2Kb`), "a [2Kb");
+  assert.equal(displayPath("x\u202Ey"), "x y");
+  assert.equal(displayPath(null), "");
 });
 
 // A sink that emits ONE line needs more: there a newline is not text, it is a second

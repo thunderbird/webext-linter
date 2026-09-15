@@ -107,8 +107,10 @@ export function displayText(text) {
  * real second finding. So tab, CR and LF collapse here, where displayText keeps them
  * for prose that is meant to have shape.
  *
- * Which to call is decided by the SINK, not by the value: a caller that wraps its
- * text (wrapText) wants displayText, one that emits a single line wants this.
+ * Which to call: prose that will be wrapped (wrapText) wants displayText, one line of TEXT
+ * - a locus, a feed note - wants this, and a PATH the reader copies back wants displayPath.
+ * The sink decides between the first two; the third is decided by the value, because a path
+ * is the one thing here that has to survive a round trip unaltered.
  * @param {?string} text
  * @returns {string}
  */
@@ -128,9 +130,15 @@ export function displayLine(text) {
  * the other. The reader hands that path back (the verdict file names the add-on it
  * settled, and the review compares it), so a printed path that is not the path is a round
  * trip that fails on a line nobody wrote wrong.
+ *
+ * What goes is everything some renderer ENDS A LINE on, not just the three ASCII ones.
+ * Every such character that is also a control - vertical tab, form feed, NEL - displayText
+ * has already replaced; U+2028 and U+2029 survive it because they are SEPARATORS, so they
+ * are named here by property. A value block read in a Markdown client would otherwise
+ * carry a file name that breaks its own line and forges the next one.
  * @param {?string} text
  * @returns {string}
  */
 export function displayPath(text) {
-  return displayText(text).replace(/[\t\r\n]+/g, " ");
+  return displayText(text).replace(/[\t\r\n\p{Zl}\p{Zp}]+/gu, " ");
 }
