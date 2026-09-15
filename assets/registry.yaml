@@ -1493,7 +1493,7 @@ llm-sca-review-prompt:
 
 llm-review-prompt:
   intro: |-
-    Please verify this review and settle its items. Every item you are asked to settle is in the JSON array named under "Review Details" below, in report order, each carrying its own "index" and the report section it is listed under.
+    Please verify this review and settle its items. Every item you are asked to settle is in the JSON array named REVIEW_ITEMS under "Review Details" below, in report order, each carrying its own "index" and the report section it is listed under.
   issues: |-
     The "Found Issues" entries are what the deterministic checks proved. Judge only whether
     each one is right, never whether it matters.
@@ -1517,21 +1517,48 @@ llm-review-prompt:
   outcome-intro: |-
     Work in this order:
   # The steps of that order, as a list rather than one block, because a run can print a
-  # SUBSET of them: `skip: summary` marks a step the --llm-skip-summary flag withholds, and
-  # `skip: manual` one that --llm-skip-manual does. A step with neither is printed by every
-  # run. The prompt numbers what survives, so no step may number itself - a literal "1." in
-  # the text would render as "1. 1. ...". A step cannot be skip-ONLY either: anything a
-  # skipped run must not be told has to live in a skipped step, and the rest is worded so
-  # it reads the same whether the other steps are there or not (the last step names no
-  # flag).
+  # SUBSET of them: `skip: summary` marks a step the --llm-skip-summary flag withholds,
+  # `skip: manual` one that --llm-skip-manual does, and `run: sca` one that only a source
+  # code review prints - the build agent it spawns has nothing to read in an XPI review. A
+  # step with no marker is printed by every run, and none carries two: what decides a step
+  # is one answer, never two at once. The prompt numbers what survives, so no step may
+  # number itself - a literal "1." in the text would render as "1. 1. ...". A step cannot
+  # be skip-ONLY either: anything a skipped run must not be told has to live in a skipped
+  # step, and the rest is worded so it reads the same whether the other steps are there or
+  # not (the last step names no flag).
+  #
+  # The two `run: sca` steps are a PAIR - one spawns the build agent, the other prints what
+  # it returned - so they carry the same marker and stand or fall together: a spawned agent
+  # whose answer is never printed is a pass paid for and thrown away. That is also why
+  # --llm-skip-manual keeps both: it withholds the QUESTIONS put to a reviewer, and the
+  # build steps are information they work from, not a question they answer.
   outcome:
     - text: |-
         Run the sweep first. Spawn ONE independent sub-agent - a single agent, and never the one that goes on to verify this review, so that no finding is checked by whoever produced it. Give it ONE request: the "Standard Code Review" entry's "intro", then its whole "items" list. It returns plain "check - file:line - hint" lines, and no verdict, no response text and no prose beyond that hint. The linter spawns nothing; you do.
     - skip: summary
       text: |-
-        Spawn a SECOND independent sub-agent to describe the add-on for the reviewer, so they can read it while you work. Spawn it NOW, beside the sweep and before you wait for either, so the two run at once. Have it write the description to the path printed under "Review Details" as "Add-on description", and to nothing else: not to the chat, not to a file of its own choosing. Anything quoted from the add-on - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup.
+        Spawn ANOTHER independent sub-agent to describe the add-on for the reviewer, so they can read it while you work. Spawn it NOW, before you wait on anything, so it runs alongside whatever else this review spawns. Have it write the description to the path printed under "Review Details" as ADDON_DESCRIPTION, and to nothing else: not to the chat, not to a file of its own choosing. Anything quoted from the add-on - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup.
 
         That file is the reviewer's, and yours only to name. Do not open it, do not read it, do not summarise it, and never print what is in it. Do not describe the add-on yourself either: that is this agent's job, and a pass the review would pay for twice.
+    - run: sca
+      text: |-
+        Spawn ANOTHER independent sub-agent NOW to discover the build steps. This is a source code review, so the reviewer reproduces the build themselves, and nothing in the report says what that takes.
+
+        Give it this request, and nothing else. It opens with the folder to read, because that is the one thing the request cannot name for itself:
+
+        SCA_ROOT is:
+
+        {{scaRoot}}
+
+        Read the documentation and the build files in SCA_ROOT, and report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
+
+        Restate the process in your OWN words, as a short numbered list to follow: the commands in order, the directory each runs in, what has to be installed first, and where the built .xpi lands. Name the file each step was read from. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
+
+        Report anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, code run from an install hook, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
+
+        That is a report, never a verdict. Whether the build is accepted is settled by the reviewer reproducing it, and nothing you write settles it.
+
+        Read and report, and run NOTHING. Installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision, on the reviewer's machine.
     - text: |-
         Wait for the sweep to come back, and while you wait do NOTHING ELSE - do not open the add-on, and do not start verifying. The one thing worth doing is locating the linter's schema cache, which you need later and which says nothing about this submission.
     - text: |-
@@ -1541,13 +1568,16 @@ llm-review-prompt:
     - skip: summary
       text: |-
         Wait for the description agent, then give the reviewer ONE line before you put anything to them: a link to that file, written as a Markdown link so their client can open it, and nothing else. No summary of it, no excerpt, no description of your own - they read it themselves, while you work.
+    - run: sca
+      text: |-
+        Wait for the build agent, then print its list into the chat for the reviewer to follow, and add nothing to it. This settles nothing, it is not a finding, and none of it enters the verdict file - reproducing the build, and accepting it, is the reviewer's.
     - skip: manual
       text: |-
         Put every manual review item ("Extended Manual Review" and/or "Standard Manual Review") to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each item's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that item's "answers", in the order they are listed, each with the label and description written there and no wording of your own - a reviewer working through a batch answers by position, and by answers that read the same every time.
 
         Record what the reviewer answered against that item's "index", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit. Their answers need no report of your own.
     - text: |-
-        Write a SEPARATE JSON file naming the reviewed add-on, holding the settled entries keyed by their "index" and the sweep results in "additions". Leave the item file itself untouched. The "addon" is the path printed under "Review Details" as the reviewed XPI, and it is checked: an index means nothing without it, so nothing in this file can be applied to another submission by accident.
+        Write a SEPARATE JSON file naming the reviewed add-on, holding the settled entries keyed by their "index" and the sweep results in "additions". Leave the item file itself untouched. The "addon" is the path printed under "Review Details" as XPI, and it is checked: an index means nothing without it, so nothing in this file can be applied to another submission by accident.
 
         {"addon": "/path/to/the-reviewed.xpi",
         "additions": [{"check": "data-exfiltration", "file": "background/background.js", "line": 40, "hint": "<a ping> attribute posts the message digest"}],

@@ -35,7 +35,7 @@ import {
 } from "./order.js";
 import { artifactLabel } from "./artifact.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
-import { displayLine, wrapText } from "../util/text.js";
+import { displayLine, displayPath, wrapText } from "../util/text.js";
 
 /** @param {string} s @returns {string} */
 const identity = (s) => s;
@@ -73,6 +73,11 @@ const SEV_COLOR = {
  * @property {string} [shippedAddon]  The built XPI, when it is a DIFFERENT artifact from
  *   the review target - i.e. an SCA review. Absent for an XPI review, where `addon` is
  *   already the shipped artifact and naming it twice would say nothing.
+ * @property {string} [scaRoot]  SCA review: the source root the run was given
+ *   (--sca-root). `addon` composes it with the source subtree; this is the value itself,
+ *   which is what the header names and what a prompt step can point an agent at.
+ * @property {string} [scaSource]  SCA review: the add-on's own code root within it, as
+ *   given (--sca-source), or "." when the whole root is the source.
  * @property {"dir"|"zip"} [addonKind]
  * @property {boolean} reviewed
  * @property {string} [schemaBranch]
@@ -318,13 +323,22 @@ export function promptAsks(
  * renumbered, which is why no step authors its own number. src/report/items.js withholds
  * the same two sections from the item file under the same skip, so the prompt and the file
  * agree about what the reader is being asked to settle.
+ *
+ * `scaRoot` decides the other marker: a step marked `run: sca` is printed only in a source
+ * code review, because the work it asks for - discovering how the add-on is built, so the
+ * reviewer can reproduce it - has nothing to read in an XPI review. It is the PATH rather
+ * than a flag because those steps PRINT it, filling their `{{scaRoot}}` paragraph: the
+ * request they hand a sub-agent has to carry the folder to read, and a request relayed
+ * "and nothing else" cannot have one added to it afterwards. The caller passes what the
+ * review resolved, so the prompt and the header name one path or neither.
  * @param {{intro: string, issues: string, preSweep: string, codeReview: string,
  *   extendedManualReview: string, standardManualReview: string, outcomeIntro: string,
- *   outcome: {skip: ?string, text: string}[]}} prompt
+ *   outcome: {skip: ?string, run: ?string, text: string}[]}} prompt
  * @param {import("./finding.js").Finding[]} findings
  * @param {import("./finding.js").ManualItem[]} manual
  * @param {?{items: object[]}} [preSweep]
  * @param {string[]} [skip]  The parts this run leaves out (PROMPT_SKIPS, src/config.js).
+ * @param {?string} [scaRoot]  The source root of an SCA review, null in an XPI one.
  * @returns {string[]}
  */
 export function llmPromptLines(
@@ -332,7 +346,8 @@ export function llmPromptLines(
   findings,
   manual,
   preSweep = null,
-  skip = []
+  skip = [],
+  scaRoot = null
 ) {
   const skipped = new Set(skip);
   const asks = promptAsks(prompt, findings, manual, preSweep, skip);
@@ -342,11 +357,19 @@ export function llmPromptLines(
   }
   if (asks.length) {
     lines.push("", ...wrapText(prompt.outcomeIntro));
-    const steps = prompt.outcome.filter((step) => !skipped.has(step.skip));
+    const steps = prompt.outcome.filter(
+      (step) => !skipped.has(step.skip) && (step.run !== "sca" || scaRoot)
+    );
+    // The one value a step carries rather than names: rendered by the caller, on its own
+    // line and never wrapped, because a path with a space in it would otherwise be split
+    // across lines and handed on in halves.
+    const root = scaRoot
+      ? { name: "{{scaRoot}}", lines: [displayPath(scaRoot)] }
+      : null;
     steps.forEach((step, i) => {
       // Numbered HERE, over what survived the skips, so the steps a run prints read
       // 1..N with no gaps.
-      lines.push("", ...stepLines(i + 1, step.text));
+      lines.push("", ...stepLines(i + 1, step.text, root));
     });
   }
   return lines;
@@ -360,6 +383,29 @@ const SUBMISSION_VALUES = [
   ["SOURCE_ARCHIVE", "source"],
   ["FOLDER", "folder"],
 ];
+
+/**
+ * A block of NAMED values: the name on its own line, its value indented beneath it.
+ *
+ * Every value then starts at one known column whatever its name is, and no line holds two
+ * things. Never wrapped, because these are paths: one split across lines is one a reader
+ * has to reassemble. The paths are ours - a folder we were given, a file we named - but
+ * they travel through a submission's own file names, so they are made safe to show
+ * (displayPath), which strips what could forge a line and alters nothing else: these are
+ * copied back, so a path we changed is a path the reader cannot use.
+ *
+ * One renderer for both blocks that use this shape - the SCA prompt's Submission and the
+ * report's Review Details - because the prompt's steps look a value up in whichever of
+ * them the run printed, and a reader learns the shape once.
+ * @param {[string, string][]} entries  Name and value, in the order they print.
+ * @returns {string[]}
+ */
+function valueLines(entries) {
+  return entries.flatMap(([name, value]) => [
+    `  ${name}`,
+    `    ${displayPath(value)}`,
+  ]);
+}
 
 /**
  * The whole output of a --llm-sca-review run: the prompt that turns a submission folder
@@ -396,14 +442,11 @@ export function scaPromptLines(prompt, submission, review) {
     "",
     "Submission:",
   ];
-  for (const [name, key] of SUBMISSION_VALUES) {
-    // The name on its own line and the value beneath it: every value then starts at one
-    // known column whatever its name is, and no line holds two things. The paths are
-    // ours - a folder we were given and read - but they travel through a submission's own
-    // file names, so they are made safe to show like any other locus. Never wrapped: a
-    // path split across lines is a path a reader has to reassemble.
-    lines.push(`  ${name}`, `    ${displayLine(submission[key])}`);
-  }
+  lines.push(
+    ...valueLines(
+      SUBMISSION_VALUES.map(([name, key]) => [name, submission[key]])
+    )
+  );
   // The flags are a command, composed elsewhere - but they travel through a submission's
   // own file names, so they are made safe to show like every other line here.
   const flags = review.flags.map(displayLine);
@@ -424,34 +467,50 @@ export function scaPromptLines(prompt, submission, review) {
 /**
  * Review Details: what was reviewed, against which schema, and - when --llm-review wrote
  * one - where the machine-readable item file is.
+ *
+ * The paths are a block of NAMED values (valueLines), the shape the --llm-sca-review
+ * prompt uses for its own Submission block. Named, because the --llm-review prompt's steps
+ * point at them by name rather than carrying a path through wrapped prose - and named in
+ * EVERY run, not only under a review flag, because one section must not read two ways
+ * depending on a flag.
+ *
+ * An SCA review spans TWO artifacts and the reader has to know which is which: the report
+ * labels every locus [XPI]/[SCA], and the block names the artifacts behind those labels -
+ * the shipped add-on as XPI, the label the report and the reviewer both use for it, whether
+ * or not a source archive came with it, and the [SCA] side as the two values it was given. The source is named as the two values the run was GIVEN,
+ * SCA_ROOT and SCA_SOURCE, rather than as the one path they compose: an agent told to read
+ * the source root cannot be handed a value it has to split on a colon first.
+ *
+ * The schema line stays prose beneath the block: nothing looks it up by name.
  * @param {ReviewMeta} meta
  * @returns {string[]}
  */
 export function headerLines(meta) {
   // Past tense throughout: the pipeline prints this header AFTER runChecks, so the
   // review is over by the time a reader sees it.
-  //
-  // An SCA review spans TWO artifacts and the reader has to know which is which: the
-  // report labels every locus [XPI]/[SCA], so the header says what those are, using those
-  // same two words. Every review names its shipped add-on "XPI" - the label the report and
-  // the reviewer use for it - whether or not a source archive came with it.
-  const what = meta.shippedAddon
-    ? [`Reviewed XPI: ${meta.shippedAddon}`, `Reviewed SCA: ${meta.addon}`]
-    : [`Reviewed XPI: ${meta.addon}`];
+  const values = [["XPI", meta.shippedAddon ?? meta.addon]];
+  if (meta.scaRoot) {
+    values.push(["SCA_ROOT", meta.scaRoot], ["SCA_SOURCE", meta.scaSource]);
+  }
+  // Only --llm-review writes one. It is named here rather than only in the prompt so
+  // the section stays the one place that says what this review consists of.
+  if (meta.itemsFile) {
+    values.push(["REVIEW_ITEMS", meta.itemsFile]);
+  }
+  // Where the description GOES, not where it is: this run writes no such file. The
+  // prompt's reader does, and the reviewer is handed a link to it.
+  if (meta.summaryFile) {
+    values.push(["ADDON_DESCRIPTION", meta.summaryFile]);
+  }
   return [
     ...section("Review Details"),
     "",
-    ...what,
+    ...valueLines(values),
+    "",
     `schema ${meta.schemaBranch} · Thunderbird ${meta.applicationVersion ?? "?"}` +
       (meta.manifestVersion != null
         ? ` · manifest_version ${meta.manifestVersion}`
         : ""),
-    // Only --llm-review writes one. It is named here rather than only in the prompt so
-    // the section stays the one place that says what this review consists of.
-    ...(meta.itemsFile ? [`Review items: ${meta.itemsFile}`] : []),
-    // Where the description GOES, not where it is: this run writes no such file. The
-    // prompt's reader does, and the reviewer is handed a link to it.
-    ...(meta.summaryFile ? [`Add-on description: ${meta.summaryFile}`] : []),
   ];
 }
 

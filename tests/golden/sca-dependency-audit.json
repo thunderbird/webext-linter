@@ -4,6 +4,8 @@
     "addon": "<root>/tests/addons/sca-dependency-audit/src",
     "addonKind": "dir",
     "shippedAddon": "<root>/tests/addons/sca-dependency-audit/xpi",
+    "scaRoot": "<root>/tests/addons/sca-dependency-audit/src",
+    "scaSource": ".",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

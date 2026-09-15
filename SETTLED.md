@@ -632,22 +632,45 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   whoever pastes the command is a threat to the reviewer's shell, not to the review. Do
   not re-propose escaping every metacharacter here.
 
-- **`{{flags}}` is not validated at load.** `assertPrompts` refuses a missing intro
-  and an empty step, but nothing requires a step to carry the `{{flags}}` slot, so a typo
-  there would print the prompt with no command in it. It stays: the file is ours, one
-  run of the flag shows the gap immediately, and the yaml is read by whoever edits it. Do
-  not re-propose a placeholder contract.
+- **A mis-authored registry is not a finding.** `assertPrompts` refuses a missing intro and
+  an empty step, and nothing more is owed. No load-time contract requires a step to carry
+  the `{{flags}}` or `{{scaRoot}}` slot, requires each `run:` condition to have a step, or
+  proves that a condition the loader accepts is one a renderer evaluates - so yes, a typo
+  or a half-finished edit in `assets/registry.yaml` can print a prompt with no command in
+  it, or a step in every run. It stays that way: the file is OURS, not a submission's, it
+  is read by whoever edits it, and one run of the flag shows the gap immediately. Do not
+  report "the registry could be mis-authored" in any of its forms - a missing slot, an
+  orphaned one, a vocabulary validated in one place and evaluated in another, a marker
+  that could be mistyped. Report what the linter does wrong with the registry as it is.
 
 - **`scaSubmission`'s "found N add-on(s)" message prints file names as they are.** A
   control character in a submission's own file name reaches the terminal there, where the
   report's own lines strip them. It stays: the message is a refusal on stderr naming what
   was in the folder, and the run stops. Do not re-propose `displayLine` there.
 
-- **A prompt step is filtered by skip only, never by whether its section produced items.**
-  A review with no manual items still prints the step that says to put them to a reviewer,
-  and one with no sweep still prints the sweep step. It stays: an empty section is visible
-  in the asks above the steps, and gating each step on its section would make the prompt's
-  numbering depend on the add-on. Do not re-propose presence-gating the steps.
+- **A prompt step is filtered by its marker only, never by whether its section produced
+  items.** A review with no manual items still prints the step that says to put them to a
+  reviewer, one with no sweep still prints the sweep step, and a source code review prints
+  the build steps even when `--checks-skip undeclared-build-source` left no build question
+  to answer. It stays: an empty section is visible in the asks above the steps, gating each
+  step on its section would make the prompt's numbering depend on the add-on, and gating
+  the build steps on that item would put a check id inside the prompt renderer, which
+  nothing else there does. Do not re-propose presence-gating the steps.
+
+- **The linter does not work out how an add-on is built.** `analyzeBuild` records where the
+  build anchors and what it could not follow, and nothing more. The `{{buildInstructions}}`
+  slot that once held a model's answer is gone (it rendered empty from `fedf9c2` until it
+  was deleted), and the job belongs to the build agent the `--llm-review` prompt spawns in
+  a source code review: it picks the Thunderbird RELEASE target out of a tree that usually
+  builds several, and restates the steps in its own words. A static reader of `scripts` can
+  do neither. Do not re-propose filling a build-instructions slot deterministically.
+
+- **The build agent's request is authored in the step that hands it over.** Not a prose key
+  of its own, and not an entry in `items.json`. The sweep's request lives in that file
+  because the sweep needs a data LIST alongside its intro, and that file holds what carries
+  an index and gets settled - a request settles nothing. This one is prose, read in place
+  and relayed, with nothing to look up and no second place to drift from, exactly like the
+  description agent's. Do not re-propose moving it.
 
 - **`--report-out` to an unwritable path prints a stack trace.** `writeReportOut` does not
   catch, so the failure arrives as a Node error rather than a usage line. It stays: the

@@ -492,13 +492,14 @@ export class Registry {
    * report contains and on the flag used, so a missing one would silently drop a whole
    * instruction from the prompt instead of failing.
    *
-   * The steps come back WITH the `skip` that withholds them and in authored order, never
+   * The steps come back WITH the marker that decides them and in authored order, never
    * filtered here: which of them a run prints is layout, decided beside the ask selection
    * in src/report/format.js. `skip: summary` is withheld by --llm-skip-summary and
-   * `skip: manual` by --llm-skip-manual; a step with neither is printed by every run.
+   * `skip: manual` by --llm-skip-manual, `run: sca` is printed only by a source code
+   * review, and a step with no marker is printed by every run.
    * @returns {{intro: string, issues: string, preSweep: string, codeReview: string,
    *   extendedManualReview: string, standardManualReview: string, outcomeIntro: string,
-   *   outcome: {skip: ?string, text: string}[]}}
+   *   outcome: {skip: ?string, run: ?string, text: string}[]}}
    */
   llmReviewPrompt() {
     const p = this.doc["llm-review-prompt"];
@@ -506,9 +507,12 @@ export class Registry {
       ...Object.fromEntries(
         Object.entries(PROMPT_TEXTS).map(([key, field]) => [field, p[key]])
       ),
-      // A step's `skip` comes back as null when it carries no marker: every run prints it.
+      // A step's marker comes back as null when it carries none: every run prints it.
+      // `run: sca` marks a step only a source code review prints - the build agent it
+      // spawns has nothing to read in an XPI review.
       outcome: p.outcome.map((step) => ({
         skip: step.skip ?? null,
+        run: step.run ?? null,
         text: step.text,
       })),
     };
@@ -940,16 +944,19 @@ export function assertEntries(registry, at) {
  * numbers what survived that run's own filtering, so a literal number would print twice
  * and the second one would be wrong as soon as anything above it was withheld.
  *
- * It may carry ONE marker, the one its own prompt acts on, and nothing else. Each prompt
- * reads only its own - `skip` here, `run` there - so any other key is dropped at load and
- * the step prints in every run: a typo of the right marker, or the other prompt's marker,
- * both read as a step that was never marked.
+ * It may carry ONE marker, from those its own prompt acts on, and nothing else. Each
+ * prompt reads only its own - `skip` and `run` here, `run` there - so any other key is
+ * dropped at load and the step prints in every run: a typo of a marker, or the other
+ * prompt's marker, both read as a step that was never marked.
+ *
+ * ONE of them, never two: what withholds a step is a single answer, so a reader works out
+ * whether a step prints by looking at one marker rather than composing two.
  * @param {unknown} step
  * @param {number} i  Its position, for the message.
  * @param {string} where  Which prompt, for the message.
- * @param {string} marker  The one marker this prompt acts on.
+ * @param {string[]} markers  The markers this prompt acts on.
  */
-function assertStep(step, i, where, marker) {
+function assertStep(step, i, where, markers) {
   const nth = `${where} \`outcome\` step ${i + 1}`;
   if (!step || typeof step !== "object" || Array.isArray(step)) {
     throw new Error(`${nth} is not a step mapping`);
@@ -963,20 +970,29 @@ function assertStep(step, i, where, marker) {
         "number would render twice"
     );
   }
+  const named = markers.map((m) => `\`${m}\``).join(" or ");
   const stray = Object.keys(step).find(
-    (key) => key !== "text" && key !== marker
+    (key) => key !== "text" && !markers.includes(key)
   );
   if (stray) {
     throw new Error(
       `${nth} authors \`${stray}\`, which this prompt cannot act on (expected ` +
-        `\`${marker}\`) - the step would print in every run`
+        `${named}) - the step would print in every run`
+    );
+  }
+  const carried = markers.filter((m) => step[m] !== undefined);
+  if (carried.length > 1) {
+    throw new Error(
+      `${nth} carries ${carried.map((m) => `\`${m}\``).join(" and ")} - a step takes ` +
+        "ONE marker, or whether it prints depends on two answers at once"
     );
   }
 }
 
-/** What `run:` can name in the --llm-sca-review prompt: the one thing about a run that
- *  decides whether a step of it is printed. No flag spells these - unlike PROMPT_SKIPS,
- *  which the CLI offers - so they live here, beside the message that names them. */
+/** What `run:` can name in each prompt: the things about a run that decide whether a step
+ *  of it is printed. No flag spells these - unlike PROMPT_SKIPS, which the CLI offers - so
+ *  they live here, beside the messages that name them. */
+const REVIEW_PROMPT_RUNS = ["sca"];
 const SCA_PROMPT_RUNS = ["experiments"];
 
 /**
@@ -1006,11 +1022,20 @@ export function assertPrompts(registry, at) {
     throw new Error(`${reviewAt} authors no \`outcome\` steps`);
   }
   steps.forEach((step, i) => {
-    assertStep(step, i, "llm-review-prompt", "skip");
+    assertStep(step, i, "llm-review-prompt", ["skip", "run"]);
     if (step.skip !== undefined && !PROMPT_SKIPS.includes(step.skip)) {
       throw new Error(
         `llm-review-prompt \`outcome\` step ${i + 1} has \`skip: ${step.skip}\`, which no ` +
           `flag gives (expected one of: ${PROMPT_SKIPS.join(", ")}) (${at})`
+      );
+    }
+    // The mirror of the skip check, against what this prompt can EVALUATE rather than what
+    // a flag gives: a condition nothing answers would print the step in every run.
+    if (step.run !== undefined && !REVIEW_PROMPT_RUNS.includes(step.run)) {
+      throw new Error(
+        `llm-review-prompt \`outcome\` step ${i + 1} has \`run: ${step.run}\`, which this ` +
+          `prompt cannot evaluate (expected one of: ${REVIEW_PROMPT_RUNS.join(", ")}) ` +
+          `(${at})`
       );
     }
   });
@@ -1036,7 +1061,7 @@ export function assertPrompts(registry, at) {
     throw new Error(`${scaAt} authors no \`outcome\` steps`);
   }
   scaSteps.forEach((step, i) => {
-    assertStep(step, i, "llm-sca-review-prompt", "run");
+    assertStep(step, i, "llm-sca-review-prompt", ["run"]);
     // Checked against what this prompt can EVALUATE, the way `skip` is checked against the
     // flags that give it: the marker decides whether the step is printed at all, so a
     // condition nothing answers would print it in every run - which is the one case a

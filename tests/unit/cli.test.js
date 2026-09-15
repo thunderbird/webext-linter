@@ -30,6 +30,15 @@ const OFFLINE_FLAGS = [
   CACHE,
 ];
 
+/** What the Review Details block prints under one of its names - the value sits on the
+ *  line beneath the name, indented, so no line holds both. Undefined when the run printed
+ *  no such name, which is how a caller asserts a value is absent. */
+function headerValue(stdout, name) {
+  const lines = stdout.split("\n");
+  const at = lines.findIndex((l) => l.trim() === name);
+  return at === -1 ? undefined : lines[at + 1].trim();
+}
+
 /** Run a root entry file, capturing stdout/stderr/exit code. */
 function runFile(file, args = []) {
   const r = spawnSync(process.execPath, [file, ...args], { encoding: "utf8" });
@@ -432,7 +441,7 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   const on = run([addon, ...OFFLINE_FLAGS, "--llm-review"]);
   const lines = on.stdout.split("\n");
   const intro = lines.findIndex((l) => l.startsWith("Please verify"));
-  const target = lines.findIndex((l) => l.startsWith("Reviewed XPI:"));
+  const target = lines.findIndex((l) => l.trim() === "XPI");
   assert.ok(intro > -1, "prompt is printed");
   assert.ok(intro < target, "prompt comes before the Review Details section");
   // Wrapped at 80 columns, so match only single tokens: any phrase can straddle a break
@@ -441,7 +450,7 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   assert.match(on.stdout, /"answers"/);
   // The description is a file the reader writes and the reviewer opens: this run names
   // the path, and never reads what lands there.
-  assert.match(on.stdout, /Add-on description: .*\.summary\.md/);
+  assert.match(headerValue(on.stdout, "ADDON_DESCRIPTION"), /\.summary\.md$/);
   assert.ok(
     !on.stdout.includes('"Report"'),
     "the answers are not prose in the prompt"
@@ -451,11 +460,9 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   assert.ok(!on.stdout.includes("── Setup ──"), "no feed");
 
   // The path is named in the output, and the file behind it is the review as an array.
-  const named = lines.find((l) => l.startsWith("Review items: "));
+  const named = headerValue(on.stdout, "REVIEW_ITEMS");
   assert.ok(named, "the item file is named");
-  const items = JSON.parse(
-    fs.readFileSync(named.slice("Review items: ".length), "utf8")
-  );
+  const items = JSON.parse(fs.readFileSync(named, "utf8"));
   assert.ok(Array.isArray(items) && items.length > 0);
   // The numbered review is the head of the array, and a position in it IS the item's
   // number. The pre-sweep entries are the tail and carry no index at all: they settle
@@ -513,11 +520,7 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
 // still working from.
 test("--llm-review names its own item file and swallows no argument", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
-  const named = (r) =>
-    r.stdout
-      .split("\n")
-      .find((l) => l.startsWith("Review items: "))
-      ?.slice("Review items: ".length);
+  const named = (r) => headerValue(r.stdout, "REVIEW_ITEMS");
 
   // After the add-on, before it, and before another option: the same review either way.
   const written = [
@@ -627,7 +630,7 @@ test("the two skips withhold the description and the manual items", () => {
   ]);
   const lines = on.stdout.split("\n");
   const intro = lines.findIndex((l) => l.startsWith("Please verify"));
-  const target = lines.findIndex((l) => l.startsWith("Reviewed XPI:"));
+  const target = lines.findIndex((l) => l.trim() === "XPI");
   assert.ok(intro > -1, "prompt is printed");
   assert.ok(intro < target, "prompt comes before the Review Details section");
   assert.ok(!on.stdout.includes("── Found Issues ──"), "no prose report");
@@ -637,17 +640,15 @@ test("the two skips withhold the description and the manual items", () => {
   // and their absence is the whole feature.
   assert.ok(!on.stdout.includes('"answers"'), "no manual questions asked");
   assert.ok(
-    !on.stdout.includes("Add-on description"),
+    !on.stdout.includes("ADDON_DESCRIPTION"),
     "no add-on description asked for, and no file named for one"
   );
   // ...while the step that closes the round trip survives the renumbering.
   assert.match(on.stdout, /--llm-verdict/);
 
-  const named = lines.find((l) => l.startsWith("Review items: "));
+  const named = headerValue(on.stdout, "REVIEW_ITEMS");
   assert.ok(named, "the item file is named");
-  const items = JSON.parse(
-    fs.readFileSync(named.slice("Review items: ".length), "utf8")
-  );
+  const items = JSON.parse(fs.readFileSync(named, "utf8"));
   assert.ok(Array.isArray(items) && items.length > 0);
   const numbered = items.filter((x) => x.index !== undefined);
   // TRUNCATED, never renumbered: the manual sections are the last ones the review numbers,
@@ -683,13 +684,9 @@ test("the two skips withhold the description and the manual items", () => {
 test("each skip leaves out its own part and nothing else", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const itemsOf = (r) => {
-    const named = r.stdout
-      .split("\n")
-      .find((l) => l.startsWith("Review items: "));
+    const named = headerValue(r.stdout, "REVIEW_ITEMS");
     assert.ok(named, "the item file is named");
-    return JSON.parse(
-      fs.readFileSync(named.slice("Review items: ".length), "utf8")
-    );
+    return JSON.parse(fs.readFileSync(named, "utf8"));
   };
   const manualSections = ["Extended Manual Review", "Standard Manual Review"];
 
@@ -701,7 +698,7 @@ test("each skip leaves out its own part and nothing else", () => {
     "--llm-skip-summary",
   ]);
   assert.equal(noSummary.code, 0, noSummary.stderr);
-  assert.ok(!noSummary.stdout.includes("Add-on description"));
+  assert.ok(!noSummary.stdout.includes("ADDON_DESCRIPTION"));
   assert.ok(noSummary.stdout.includes('"answers"'), "questions still asked");
   assert.ok(
     itemsOf(noSummary).some((x) => manualSections.includes(x.section)),
@@ -716,7 +713,7 @@ test("each skip leaves out its own part and nothing else", () => {
     "--llm-skip-manual",
   ]);
   assert.equal(noManual.code, 0, noManual.stderr);
-  assert.match(noManual.stdout, /Add-on description: .*\.md/);
+  assert.match(headerValue(noManual.stdout, "ADDON_DESCRIPTION"), /\.md$/);
   assert.ok(!noManual.stdout.includes('"answers"'), "no questions asked");
   assert.ok(
     !itemsOf(noManual).some((x) => manualSections.includes(x.section)),
@@ -741,16 +738,11 @@ test("a review with nothing to settle names no description file", () => {
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /── LLM Prompt ──/);
   assert.doesNotMatch(r.stdout, /^1\. /m, "no steps were printed");
-  assert.doesNotMatch(r.stdout, /Add-on description/);
+  assert.equal(headerValue(r.stdout, "ADDON_DESCRIPTION"), undefined);
   // The item file is still named and still written - it is simply empty.
-  const named = r.stdout
-    .split("\n")
-    .find((l) => l.startsWith("Review items: "));
+  const named = headerValue(r.stdout, "REVIEW_ITEMS");
   assert.ok(named);
-  assert.deepEqual(
-    JSON.parse(fs.readFileSync(named.slice("Review items: ".length), "utf8")),
-    []
-  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(named, "utf8")), []);
 });
 
 // Each skip names part of the --llm-review prompt, so neither says anything without it:
@@ -928,7 +920,7 @@ test("--llm-sca-review prints the prompt, names both files, and reviews nothing"
   );
   assert.match(r.stdout, new RegExp(`\\n  FOLDER\\n    ${dir}\\n`));
   // No review ran: no report sections, and no item file was claimed.
-  assert.doesNotMatch(r.stdout, /── Found Issues ──|Review items:/);
+  assert.doesNotMatch(r.stdout, /── Found Issues ──|REVIEW_ITEMS/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

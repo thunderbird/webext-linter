@@ -4,6 +4,8 @@
     "addon": "<root>/tests/addons/vue-sca-handler/src",
     "addonKind": "dir",
     "shippedAddon": "<root>/tests/addons/vue-sca-handler/xpi",
+    "scaRoot": "<root>/tests/addons/vue-sca-handler/src",
+    "scaSource": ".",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

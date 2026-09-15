@@ -491,6 +491,13 @@ export async function runPipeline(opts) {
     // target IS the shipped XPI, so recording it twice would add a field that says
     // nothing.
     ...(addon === xpiAddon ? {} : { shippedAddon: xpiAddon.source }),
+    // The two values an SCA review was GIVEN, which `addon` above composes into one path.
+    // Carried separately because they are read separately: the header names each, and the
+    // --llm-review prompt sends an agent to the root. The root is the RESOLVED path the
+    // loader read, like every other path this section prints - an agent handed a relative
+    // one would resolve it against its own directory. The source stays as given, because
+    // it only means anything relative to that root.
+    ...(mode?.sca ? { scaRoot: scaArchive.source, scaSource } : {}),
     reviewed: true,
   };
   if (scaNotRequired) {
@@ -718,7 +725,7 @@ export async function runPipeline(opts) {
     const settled = readVerdicts(opts.llmVerdict);
     // An index means nothing on its own, so the file has to name the submission its
     // verdicts were reached on. Compared against the shipped add-on, which is the path
-    // the Review Details section printed as "Reviewed XPI".
+    // the Review Details section printed under the name XPI.
     if (path.resolve(settled.addon) !== path.resolve(xpiAddon.source)) {
       throw new Error(
         `--llm-verdict ${opts.llmVerdict} was written for "${settled.addon}", but this ` +
@@ -807,7 +814,12 @@ export async function runPipeline(opts) {
       findings,
       meta.manualReview,
       meta.preSweep,
-      skip
+      skip,
+      // The source root as the REVIEW resolved it, never as the flag asked for it: a
+      // rejected Experiment keeps --sca-root and is still an XPI review, and the steps
+      // this gates would then send an agent to a root nothing read. It is also the value
+      // those steps print, so meta and the prompt name one path or neither.
+      meta.scaRoot ?? null
     )) {
       report(line);
     }

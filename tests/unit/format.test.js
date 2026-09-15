@@ -1413,7 +1413,7 @@ test("every outcome step authors text and a skip a flag can give", () => {
 // never asked for - which no other test would catch.
 test("no step a skip keeps refers to the work that skip drops", () => {
   const dropped = {
-    summary: ["describe the add-on", "description agent", "Add-on description"],
+    summary: ["describe the add-on", "description agent", "ADDON_DESCRIPTION"],
     manual: [
       "to the reviewer in index order",
       "the words they typed",
@@ -1457,14 +1457,27 @@ test("a malformed outcome step is refused", () => {
     /has no `skip: summary` step/
   );
   bad((p) => delete p["outcome-intro"], /authors no `outcome-intro`/);
-  // A step may carry ONE marker, the one this prompt acts on. Anything else - the other
-  // prompt's marker, or a typo of this one - is dropped at load, and the step then prints
-  // in every run, which is the opposite of what its author wrote.
+  // A step may carry ONE marker, from those this prompt acts on. Anything else - the bare
+  // name prop `run` replaced, or a typo of a real marker - is dropped at load, and the
+  // step then prints in every run, which is the opposite of what its author wrote.
   bad(
     (p) => (p.outcome[0].experiments = true),
-    /step 1 authors `experiments`, which this prompt cannot act on \(expected `skip`\)/
+    /step 1 authors `experiments`, which this prompt cannot act on \(expected `skip` or `run`\)/
   );
   bad((p) => (p.outcome[1].skipp = "summary"), /step 2 authors `skipp`/);
+  // `run` is checked against what this prompt can EVALUATE, the way `skip` is checked
+  // against the flags - the other prompt's condition included, which reads as plausible
+  // here and answers nothing.
+  bad(
+    (p) => (p.outcome[0].run = "experiments"),
+    /step 1 has `run: experiments`, which this prompt cannot evaluate \(expected one of: sca\)/
+  );
+  // ONE marker, never two: a step whose printing depended on both a flag and the review
+  // mode would take two answers to work out.
+  bad(
+    (p) => (p.outcome[1].run = "sca"),
+    /step 2 carries `skip` and `run` - a step takes ONE marker/
+  );
 });
 
 // --llm-skip-manual asks only for what reading the ADD-ON can settle: the two manual asks
@@ -1530,6 +1543,117 @@ test("--llm-skip-manual drops the manual asks and renumbers the steps", () => {
   );
 });
 
+// The prompt's OTHER marker: a step marked `run: sca` is printed only by a source code
+// review, because the build agent it spawns has nothing to read in an XPI one. The value
+// that gates it is the source root itself - the step names it and the header prints it, so
+// one value decides both and they cannot disagree.
+test("a run: sca step prints only in a source code review", () => {
+  const prompt = {
+    intro: "INTRO.",
+    issues: "ISSUES.",
+    outcomeIntro: "HOW.",
+    outcome: [
+      { skip: null, run: null, text: "A." },
+      { skip: null, run: "sca", text: "B." },
+      { skip: "manual", run: null, text: "C." },
+    ],
+  };
+  const finding = { ruleId: "r", severity: "error", message: "m" };
+  const head = ["", "── LLM Prompt ──", "", "INTRO.", "", "- ISSUES."];
+
+  // An XPI review never prints it, and what remains is numbered 1..N with no gap.
+  assert.deepEqual(llmPromptLines(prompt, [finding], []), [
+    ...head,
+    "",
+    "HOW.",
+    "",
+    "1. A.",
+    "",
+    "2. C.",
+  ]);
+  // A source code review prints it, in its authored place.
+  assert.deepEqual(llmPromptLines(prompt, [finding], [], null, [], "/x/src"), [
+    ...head,
+    "",
+    "HOW.",
+    "",
+    "1. A.",
+    "",
+    "2. B.",
+    "",
+    "3. C.",
+  ]);
+  // The two markers are independent: --llm-skip-manual withholds the QUESTIONS put to a
+  // reviewer, and the build steps are information they work from, not a question.
+  assert.deepEqual(
+    llmPromptLines(prompt, [finding], [], null, ["manual"], "/x/src"),
+    [...head, "", "HOW.", "", "1. A.", "", "2. B."]
+  );
+});
+
+// The shipped prompt carries the PAIR - one step spawns the build agent, one prints what
+// it returned - so neither can be dropped while the other stands, and an XPI review prints
+// neither. The spawn step names the source root by the name Review Details prints it
+// under, which is the only reason that block has names at all.
+test("the shipped prompt adds the build steps to a source code review only", () => {
+  const prompt = loadRegistry().llmReviewPrompt();
+  const sca = prompt.outcome.filter((step) => step.run === "sca");
+  assert.equal(
+    sca.length,
+    2,
+    "the spawn step and the step that prints its answer"
+  );
+  assert.ok(sca.some((step) => step.text.includes("SCA_ROOT")));
+  for (const [i, step] of prompt.outcome.entries()) {
+    assert.ok(step.run === null || step.run === "sca", `step ${i + 1} run`);
+    // ONE marker per step: the validator refuses two, so nothing carries both.
+    assert.ok(step.skip === null || step.run === null, `step ${i + 1} markers`);
+  }
+});
+
+// The prompt sends a sub-agent to a folder and the header prints that folder: ONE value, or
+// the agent reads somewhere the reviewer cannot see. Rendered from one `meta` here, because
+// the gate and the printed value were two expressions once and disagreed for a review that
+// keeps --sca-root and is still an XPI one.
+test("the prompt hands over the same source root the header prints", () => {
+  // Two spaces on purpose: a path is a NAME, and the block used to collapse it - which the
+  // prompt's last step turns into a verdict file naming a folder that does not exist.
+  const meta = {
+    schemaBranch: "release-mv3",
+    addon: "/x/my  src:addon",
+    shippedAddon: "/x/a.xpi",
+    scaRoot: "/x/my  src",
+    scaSource: "addon",
+  };
+  const header = headerLines(meta);
+  assert.equal(header[header.indexOf("  SCA_ROOT") + 1], "    /x/my  src");
+
+  const registry = loadRegistry();
+  const finding = { ruleId: "r", severity: "error", message: "m" };
+  const lines = llmPromptLines(
+    registry.llmReviewPrompt(),
+    [finding],
+    [],
+    null,
+    [],
+    meta.scaRoot
+  );
+  // On its own line and unwrapped, so a path with a space in it is handed over whole.
+  assert.ok(
+    lines.some((l) => l.trim() === "/x/my  src"),
+    "the request carries the path the header printed"
+  );
+
+  // An XPI review names no source root, so nothing may send an agent to one.
+  const xpi = llmPromptLines(registry.llmReviewPrompt(), [finding], []);
+  assert.ok(!xpi.some((l) => l.includes("SCA_ROOT")));
+  assert.ok(
+    !headerLines({ ...meta, scaRoot: undefined, scaSource: undefined }).some(
+      (l) => l.includes("SCA_ROOT")
+    )
+  );
+});
+
 // A step may carry a literal example, whose authored line breaks ARE the layout: a step is
 // never whitespace-collapsed like an ask. Everything after the step's first paragraph sits
 // UNDER its number - the example included, since it belongs to that step, and a paragraph
@@ -1574,11 +1698,13 @@ test("a prompt bullet is re-wrapped and hanging-indented", () => {
 });
 
 // ---- the Review Details section ----
-// An SCA review spans TWO artifacts and labels every locus [XPI]/[SCA], so the section has
-// to say what those are. Naming only the review target left the shipped XPI - the thing
-// users install - unnamed in the header AND in meta. A one-artifact review keeps one line:
-// there is nothing to disambiguate, and a downgraded SCA is one of those, because only the
-// XPI was reviewed.
+// A block of NAMED values, the shape the --llm-sca-review prompt uses for its Submission
+// block: the prompt's steps point at these by name, so a name is what the section has to
+// print. An SCA review spans TWO artifacts and labels every locus [XPI]/[SCA], so the
+// block says what those are - and names the source as the two values the run was GIVEN,
+// since an agent sent to the source root cannot be handed a path it must split first. A
+// one-artifact review names one: there is nothing to disambiguate, and a downgraded SCA is
+// one of those, because only the XPI was reviewed.
 test("the header names both artifacts in an SCA review, one otherwise", () => {
   const base = {
     schemaBranch: "release-mv3",
@@ -1586,19 +1712,34 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
     manifestVersion: 3,
   };
   const head = ["", "── Review Details ──", ""];
+  const schema = [
+    "",
+    "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
+  ];
   assert.deepEqual(
-    headerLines({ ...base, addon: "/x/src", shippedAddon: "/x/a.xpi" }),
+    headerLines({
+      ...base,
+      addon: "/x/src:addon",
+      shippedAddon: "/x/a.xpi",
+      scaRoot: "/x/src",
+      scaSource: "addon",
+    }),
     [
       ...head,
-      "Reviewed XPI: /x/a.xpi",
-      "Reviewed SCA: /x/src",
-      "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
+      "  XPI",
+      "    /x/a.xpi",
+      "  SCA_ROOT",
+      "    /x/src",
+      "  SCA_SOURCE",
+      "    addon",
+      ...schema,
     ]
   );
   assert.deepEqual(headerLines({ ...base, addon: "/x/a.xpi" }), [
     ...head,
-    "Reviewed XPI: /x/a.xpi",
-    "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
+    "  XPI",
+    "    /x/a.xpi",
+    ...schema,
   ]);
   // --llm-review writes an item file, and this section is where the review says what it
   // consists of - so the path is named here, not only in the prompt. The counts are NOT
@@ -1608,6 +1749,11 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
     addon: "/x/a.xpi",
     itemsFile: "/tmp/i.json",
   });
-  assert.equal(llm.at(-1), "Review items: /tmp/i.json");
+  assert.deepEqual(llm.slice(3, 7), [
+    "  XPI",
+    "    /x/a.xpi",
+    "  REVIEW_ITEMS",
+    "    /tmp/i.json",
+  ]);
   assert.ok(!llm.some((l) => l.includes("error(s)")));
 });

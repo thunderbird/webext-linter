@@ -35,7 +35,9 @@
         What the analysis contributes is detail the reviewer reads with it: the steps it could not
         statically follow (an opaque orchestrator, a network fetch in a script) are named in the
         escalation, and the entry anchors at the submission's own <code>package.json</code> where
-        there is one.
+        there is one. Under <code>--llm-review</code> a source-code review also spawns an agent
+        that reports how to produce the release build for Thunderbird, so the reviewer has the
+        steps in front of them — a report they work from, never a verdict on the build.
       </p>
 
       <h2>Decision flow</h2>

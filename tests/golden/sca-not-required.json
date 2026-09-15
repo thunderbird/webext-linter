@@ -4,6 +4,8 @@
     "addon": "<root>/tests/addons/sca-not-required/src",
     "addonKind": "dir",
     "shippedAddon": "<root>/tests/addons/sca-not-required/xpi",
+    "scaRoot": "<root>/tests/addons/sca-not-required/src",
+    "scaSource": ".",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

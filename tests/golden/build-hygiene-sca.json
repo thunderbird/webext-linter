@@ -4,6 +4,8 @@
     "addon": "<root>/tests/addons/build-hygiene-sca/src",
     "addonKind": "dir",
     "shippedAddon": "<root>/tests/addons/build-hygiene-sca/xpi",
+    "scaRoot": "<root>/tests/addons/build-hygiene-sca/src",
+    "scaSource": ".",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

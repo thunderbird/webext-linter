@@ -115,3 +115,22 @@ export function displayText(text) {
 export function displayLine(text) {
   return displayText(text).replace(/\s+/g, " ").trim();
 }
+
+/**
+ * The same guard again, for a one-line sink whose value is a PATH the reader COPIES -
+ * a named value in the Review Details block or in the --llm-sca-review prompt's
+ * Submission block.
+ *
+ * Control characters go, like everywhere else: a path reaches us through a folder a
+ * reviewer named and a file name a submission chose, and neither may forge a line. What
+ * stays is every ordinary space, because a path is a NAME - "/reviews/my  add-on" is not
+ * the same folder as "/reviews/my add-on", and displayLine's collapse would print one for
+ * the other. The reader hands that path back (the verdict file names the add-on it
+ * settled, and the review compares it), so a printed path that is not the path is a round
+ * trip that fails on a line nobody wrote wrong.
+ * @param {?string} text
+ * @returns {string}
+ */
+export function displayPath(text) {
+  return displayText(text).replace(/[\t\r\n]+/g, " ");
+}
