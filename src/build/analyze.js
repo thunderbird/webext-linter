@@ -1,15 +1,14 @@
-// The SCA build review's ONE analysis, run in the setup phase (like resolveVendor for
-// dependencies): it selects the build corpus (selectBuildCorpus) and stores what it found
-// on addon.buildFiles.buildReview so the input:build checks read it deterministically.
-// The classification it can reach:
-//   - "none"  no package.json entry point to follow (nothing to review).
-//   - null    there is a build corpus but nothing classifies what it does, so the build
-//             goes to a reviewer, who reproduces it from the source by hand. Reproducing
-//             the build is the reviewer's attestation and no analysis substitutes for it.
-// The deterministic `unresolved` signals from selectBuildCorpus (a network fetch / an opaque
-// orchestrator the linter could not follow) ride along for the checks to report.
+// The SCA build review's ONE look at the build, run in the setup phase (like resolveVendor
+// for dependencies): it selects the build corpus (selectBuildCorpus) and stores what it
+// found on addon.buildFiles.buildReview so the input:build checks read it deterministically.
 //
-// Belongs here: running the analysis and shaping the stored verdict. Does NOT belong here: the
+// Nothing here says what a build DOES. Reproducing it is the reviewer's attestation and no
+// analysis substitutes for it, so every build routes to them and this records only what the
+// escalation has to name: the deterministic `unresolved` signals from selectBuildCorpus (a
+// network fetch / an opaque orchestrator the linter could not follow), and the file the
+// findings and notes anchor at.
+//
+// Belongs here: running the analysis and shaping the stored record. Does NOT belong here: the
 // corpus policy (-> ./corpus.js) or the finding/manual wording (-> the input:build checks +
 // registry).
 
@@ -17,11 +16,7 @@ import { selectBuildCorpus } from "./corpus.js";
 
 /**
  * @typedef {object} BuildReview
- * @property {"ok"|"remote-fetch"|"not-from-source"|"none"|null} classification
- * @property {string} reason  One-line explanation (for the finding {{explanation}}).
- * @property {string} buildInstructions  How to build the XPI (for the manual note).
  * @property {{kind: string, detail: string}[]} unresolved  Deterministic build-corpus signals.
- * @property {boolean} analyzed  True only when the build was classified.
  * @property {?string} anchor  The file the findings/notes anchor at (package.json if present).
  */
 
@@ -34,22 +29,11 @@ import { selectBuildCorpus } from "./corpus.js";
 export function analyzeBuild({ build }) {
   const files = build?.files ?? new Map();
   const { corpus, unresolved } = selectBuildCorpus(build);
-  const anchor = files.has("package.json")
-    ? "package.json"
-    : (corpus[0] ?? null);
-  const base = {
-    classification: null,
-    reason: "",
-    buildInstructions: "",
+  return {
     unresolved,
-    analyzed: false,
-    anchor,
+    // The submission's own package.json when it ships one, else the first corpus file -
+    // and null when there is no corpus at all, so an escalation carries no locus rather
+    // than pointing the reviewer at a file the submission does not have.
+    anchor: files.has("package.json") ? "package.json" : (corpus[0] ?? null),
   };
-  // No entry point to follow -> no npm build to review.
-  if (!corpus.length) {
-    return { ...base, classification: "none" };
-  }
-  // The build corpus exists but nothing classifies it, so it stays unanalyzed: the
-  // build routes to the reviewer, who reproduces it from the source by hand.
-  return base;
 }

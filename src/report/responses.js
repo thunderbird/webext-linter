@@ -58,9 +58,9 @@ function fill(template, item, data) {
   }
   // Substitute every {{name}} in ONE pass from a fixed lookup: a slot value that
   // itself contains "{{other}}" is emitted literally, never re-scanned - so two
-  // submission-derived slots (e.g. undeclared-build-source's build steps +
-  // buildInstructions) can't bleed into each other, and a "$&"-style value can't
-  // trigger a replacement pattern. Unknown {{names}} are left untouched.
+  // submission-derived slots in one template can't bleed into each other, and a
+  // "$&"-style value can't trigger a replacement pattern. Unknown {{names}} are left
+  // untouched.
   // Every substituted value is submission-derived - an item, a path, a URL, a
   // developer's words - so each is made safe to show. The TEMPLATE is ours and is left
   // as authored.

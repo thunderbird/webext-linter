@@ -9,7 +9,7 @@
 // submission documenting no build at all still has to be checked against the XPI. The
 // deterministic `unresolved` signals from selectBuildCorpus (a network fetch, an
 // orchestrator the linter could not follow) ride along, so the entry names what could
-// not be followed, and the source's own build steps ride along when it documents any.
+// not be followed.
 //
 // Belongs here: raising the escalation and the detail it carries. Does NOT
 // belong here: the analysis (-> src/build/analyze.js), the corpus policy
@@ -30,7 +30,7 @@ export default {
     if (!review) {
       return { findings: [] };
     }
-    const { buildInstructions, unresolved } = review;
+    const { unresolved } = review;
     // Null when the source documents no build at all: the entry then carries no locus
     // rather than pointing the reviewer at a package.json the submission lacks.
     const anchor = review.anchor;
@@ -42,8 +42,6 @@ export default {
         {
           ...(anchor ? { file: anchor } : {}),
           data: {
-            buildInstructions:
-              typeof buildInstructions === "string" ? buildInstructions : "",
             unresolvedBuildSteps: formatUnresolved(unresolved),
           },
         },

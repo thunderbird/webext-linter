@@ -74,48 +74,43 @@ test("renderFindings uses the generic find-lib-on-cdn template (real library lis
 
 // Slots are filled in ONE pass from a fixed snapshot, so a submission-derived value
 // that itself contains another slot's "{{placeholder}}" is emitted literally, never
-// replaced by that slot's value. undeclared-build-source carries two such slots in one
-// item (unresolvedBuildSteps + buildInstructions), which exposes this: a stray
-// {{buildInstructions}} inside the unresolved steps must NOT splice in the real ones.
-test("renderManualItems does not cross-splice one slot's value into another", () => {
-  const items = renderManualItems(
-    [
-      {
-        ruleId: "undeclared-build-source",
-        item: null,
-        section: "manual-review",
-        data: {
-          unresolvedBuildSteps:
-            "a step mentions {{buildInstructions}} verbatim",
-          buildInstructions: "npm ci && npm run build",
-        },
-      },
-    ],
-    registry
-  );
-  assert.match(
-    items[0].instructions,
-    /mentions \{\{buildInstructions\}\} verbatim/
-  );
-  assert.doesNotMatch(items[0].instructions, /mentions npm ci/);
+// replaced by that slot's value. vendor-vulnerable-dev carries several slots in one
+// template, which exposes it: a stray {{fixed}} inside the VERSION - a string the
+// submission's own package.json supplies - must not splice in the fixed version.
+test("a slot's value is never re-read as another slot", () => {
+  const f = {
+    ruleId: "vendor-vulnerable-dev",
+    item: "left-pad",
+    message: null,
+    data: {
+      version: "mentions {{fixed}} verbatim",
+      severity: "high",
+      ids: "GHSA-1",
+      fixed: "9.9.9",
+    },
+  };
+  renderFindings([f], registry);
+  assert.match(f.message, /mentions \{\{fixed\}\} verbatim/);
+  assert.doesNotMatch(f.message, /mentions 9\.9\.9/);
+  // The template's OWN {{fixed}} is filled, so this is one-pass substitution and not a
+  // refusal to fill the slot at all.
+  assert.match(f.message, /to 9\.9\.9 or later/);
 
   // A slot value containing "$&"/"$1" (String.replace special patterns) renders
   // literally - fill() uses a function replacer, not a string replacement.
-  const dollar = renderManualItems(
-    [
-      {
-        ruleId: "undeclared-build-source",
-        item: null,
-        section: "manual-review",
-        data: {
-          unresolvedBuildSteps: "cost is $& and $1 and $$",
-          buildInstructions: "",
-        },
-      },
-    ],
-    registry
-  );
-  assert.match(dollar[0].instructions, /cost is \$& and \$1 and \$\$/);
+  const dollar = {
+    ruleId: "vendor-vulnerable-dev",
+    item: "left-pad",
+    message: null,
+    data: {
+      version: "cost is $& and $1 and $$",
+      severity: "high",
+      ids: "GHSA-1",
+      fixed: "9.9.9",
+    },
+  };
+  renderFindings([dollar], registry);
+  assert.match(dollar.message, /cost is \$& and \$1 and \$\$/);
 });
 
 // An orchestrator system finding (ruleId "check-failed") renders from the

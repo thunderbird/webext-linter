@@ -24,30 +24,32 @@
       <p>
         The build corpus is collected once, up front, by the build analysis, in
         the setup phase over the build-relevant files (collected by following the package manifest,
-        so build output and tooling the build never runs are never sent). This check reads that
-        stored classification. A <code>remote-fetch</code> classification — the build pulls code or
-        a resource from an undeclared external source — is the error. It also owns the fallback
-        lane: when the build could not be classified with confidence (offline / no token, or a step
-        the linter could not statically follow, such as an opaque orchestrator or a network fetch)
-        the whole build routes to Extended Manual Review. The other build classification
-        (not-from-source) is owned by its own check; a genuine build, and a submission with no
-        manifest to follow, produce nothing here.
+        so build output and tooling the build never runs are never sent). Nothing then says what
+        that build <em>does</em>: reproducing it is the reviewer's attestation that the shipped XPI
+        comes from the source they read, and no analysis substitutes for it. So this check emits no
+        finding of its own and escalates EVERY source-code submission to Extended Manual Review —
+        one whose source documents no build at all included, since the shipped bytes still have to
+        be accounted for.
+      </p>
+      <p>
+        What the analysis contributes is detail the reviewer reads with it: the steps it could not
+        statically follow (an opaque orchestrator, a network fetch in a script) are named in the
+        escalation, and the entry anchors at the submission's own <code>package.json</code> where
+        there is one.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Build classification<br/>(build analysis, setup phase)"] --> B{"classification =<br/>remote-fetch?"}
-  B -- yes --> ERR([ERROR: build fetches an<br/>undeclared source])
-  B -- no --> C{"Could not classify with confidence?<br/>(offline, or a step the linter<br/>could not statically follow)"}
-  C -- yes --> M([escalate to extended<br/>manual review])
-  C -- no --> OK([no finding<br/>— clean, or owned by another check])
+  A["Build corpus<br/>(build analysis, setup phase)"] --> B{"a source-code<br/>submission?"}
+  B -- no --> OK([nothing to review<br/>— an XPI submission has no build])
+  B -- yes --> M([escalate to extended manual review:<br/>the reviewer reproduces the build<br/>and compares it against the shipped XPI])
+  A --> D["steps the linter could not follow<br/>ride along with the escalation"]
+  D --> M
 
-  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
-  class ERR err;
   class OK ok;
   class M manual;
         </pre>
@@ -55,12 +57,11 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told, with the
-        explanation, that every part of the build must come only from the
-        dependencies declared in the manifest and lock file. Otherwise the build
-        is escalated to Extended Manual Review, where a reviewer reproduces the
-        build by hand — using the build steps the source documents — and confirms
-        it pulls only from the declared dependencies.
+        Every source-code submission is escalated to Extended Manual Review, where a reviewer
+        reproduces the build by hand and confirms that it produces the shipped XPI and pulls only
+        from the declared dependencies. Where they find it does not, the add-on is told that every
+        part of the build must come only from the dependencies declared in the manifest and lock
+        file.
       </div>
 
       <p class="source-note">

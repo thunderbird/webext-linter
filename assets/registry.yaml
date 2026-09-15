@@ -628,8 +628,8 @@ deterministic-phase:
 # declared dependencies (npm ci from node_modules, importing a declared package) is allowed.
 # Nothing decides that from the files, so every build escalates and the reviewer reproduces
 # it: their attestation that the source produces the shipped XPI is what the SCA review rests
-# on. {{unresolvedBuildSteps}} names the steps the linter could not follow and
-# {{buildInstructions}} how the source says to build, both in the manual instructions.
+# on. {{unresolvedBuildSteps}} names the steps the linter could not follow, in the manual
+# instructions.
 - title: Build process review
   severity: error
   sca: true
@@ -641,7 +641,7 @@ deterministic-phase:
     build and compare the result against the submitted XPI. Confirm the build pulls
     ONLY from the dependencies declared in package.json/lock - no remote code or
     resources from a raw URL, curl/wget, a git clone of an unpinned repo, a CDN, or a
-    postinstall hook. {{unresolvedBuildSteps}} {{buildInstructions}}
+    postinstall hook. {{unresolvedBuildSteps}}
   response: |-
     The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 

@@ -120,13 +120,13 @@ test("buildScaCtxs.buildCtx puts the build corpus on ctx.addon and strips manife
   const env = envWith({ mode: REVIEW_MODE.SCA, manifest: { name: "shipped" } });
   const buildFiles = new Map([["build.sh", Buffer.from("echo hi")]]);
   // A full-addon shape (manifest present) must NOT leak through: reviewView allowlists.
-  // buildReview (the setup build classification) MUST survive - the input:build checks read it.
+  // buildReview (what setup found in the build) MUST survive - the input:build checks read it.
   const buildAddon = {
     files: buildFiles,
     manifest: { name: "leak" },
     nodeModules: ["node_modules"],
     archives: ["dist.zip"],
-    buildReview: { category: "npm", analyzed: true },
+    buildReview: { unresolved: [], anchor: "package.json" },
   };
 
   const { buildCtx } = buildScaCtxs(source, parsed(source), buildAddon, env);
@@ -135,8 +135,8 @@ test("buildScaCtxs.buildCtx puts the build corpus on ctx.addon and strips manife
   assert.deepEqual(buildCtx.addon.nodeModules, ["node_modules"]); // committed-node-modules reads it
   assert.deepEqual(buildCtx.addon.archives, ["dist.zip"]); // committed-build-artifact reads it
   assert.deepEqual(buildCtx.addon.buildReview, {
-    category: "npm",
-    analyzed: true,
+    unresolved: [],
+    anchor: "package.json",
   }); // build-review checks read it
   assert.deepEqual(buildCtx.jsSources, []); // source-only, emptied
   assert.equal(buildCtx.apiUsages, undefined);

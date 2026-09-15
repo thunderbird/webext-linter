@@ -1151,33 +1151,23 @@ const buildCtx = (review) => ({
   addon: { files: new Map(), buildReview: review },
 });
 const review = (over) => ({
-  classification: null,
-  reason: "",
-  buildInstructions: "",
   unresolved: [],
-  analyzed: false,
   anchor: "package.json",
   ...over,
 });
 
 // EVERY source-code submission raises this: the reviewer's attestation that the shipped
 // XPI comes from the source they read is what the SCA review rests on, so a submission
-// documenting no build at all is still checked against the XPI. The entry carries how
-// the source says to build it and whatever steps the linter could not follow.
+// documenting no build at all is still checked against the XPI. The entry carries
+// whatever steps the linter could not follow.
 test("undeclared-build-source escalates every SCA, build documented or not", () => {
-  const out = undeclaredBuildSource.run(
-    buildCtx(review({ buildInstructions: "npm ci && npm run build" }))
-  );
+  const out = undeclaredBuildSource.run(buildCtx(review()));
   assert.equal(out.findings.length, 0);
   assert.equal(out.escalations.length, 1);
   assert.equal(out.escalations[0].file, "package.json");
   // WHERE it is listed is the entry's `escalation: manual-review`, not the case's - the
   // reviewer must reproduce the build themselves, which reading the code cannot replace.
   assert.equal(out.escalations[0].manualReview, undefined);
-  assert.equal(
-    out.escalations[0].data.buildInstructions,
-    "npm ci && npm run build"
-  );
 
   // A step the linter could not statically bound is named in the entry.
   const unresolved = undeclaredBuildSource.run(
@@ -1192,9 +1182,7 @@ test("undeclared-build-source escalates every SCA, build documented or not", () 
 
   // No build entry point at all still escalates - but with NO locus, rather than
   // pointing the reviewer at a package.json the submission does not have.
-  const none = undeclaredBuildSource.run(
-    buildCtx(review({ classification: "none", anchor: null }))
-  );
+  const none = undeclaredBuildSource.run(buildCtx(review({ anchor: null })));
   assert.equal(none.findings.length, 0);
   assert.equal(none.escalations.length, 1);
   assert.equal("file" in none.escalations[0], false);

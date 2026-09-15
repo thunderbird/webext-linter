@@ -1,8 +1,7 @@
 // Unit tests for analyzeBuild: the SCA build review's one look at the build, run in
 // setup and stored on addon.buildFiles.buildReview for the input:build checks to read.
-// Nothing classifies what a build DOES, so the record it produces says only whether
-// there is a build to reproduce - which is the question undeclared-build-source turns
-// into the reviewer's escalation.
+// Nothing says what a build DOES, so the record it produces carries only what the
+// escalation has to name - where it anchors, and what the linter could not follow.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,10 +12,9 @@ const build = (obj) => ({
   files: new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)])),
 });
 
-// A package.json with a build script is an entry point to follow, so there IS a build:
-// classification stays null and `analyzed` false, which is what routes the whole build
-// to the reviewer. The anchor is package.json when present, so the escalation lands there.
-test("analyzeBuild records a build that exists as unanalyzed, anchored at package.json", () => {
+// The anchor is the submission's own package.json when it ships one, so the escalation
+// the reviewer reads lands on the file that documents the build.
+test("analyzeBuild anchors at package.json when the submission ships one", () => {
   const out = analyzeBuild({
     build: build({
       "package.json": JSON.stringify({
@@ -25,16 +23,14 @@ test("analyzeBuild records a build that exists as unanalyzed, anchored at packag
       }),
     }),
   });
-  assert.equal(out.classification, null);
-  assert.equal(out.analyzed, false);
   assert.equal(out.anchor, "package.json");
 });
 
-// No entry point to follow means there is no build to reproduce, so the record says
-// "none" - the one value undeclared-build-source treats as nothing to report.
-test("analyzeBuild reports no build when there is no entry point", () => {
-  assert.equal(analyzeBuild({ build: build({}) }).classification, "none");
-  assert.equal(analyzeBuild({ build: undefined }).classification, "none");
+// No entry point to follow means no corpus and no file to point at, so the record
+// anchors nowhere - which is what makes the escalation carry no locus.
+test("analyzeBuild anchors nowhere when there is no entry point", () => {
+  assert.equal(analyzeBuild({ build: build({}) }).anchor, null);
+  assert.equal(analyzeBuild({ build: undefined }).anchor, null);
 });
 
 // The deterministic signals selectBuildCorpus could not follow ride along, so the
