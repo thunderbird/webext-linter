@@ -134,7 +134,7 @@ function optionLine(flag, desc) {
  * printed by `npm run help` and as the --help / usage screen (see main).
  * @returns {string}
  */
-function helpText() {
+function helpText(checkIds) {
   const cache = [
     [
       "--cache-clear",
@@ -161,7 +161,7 @@ function helpText() {
   const checks = [
     [
       "--checks-only <ids>",
-      `Only run these checks (comma-separated). Available: ${loadRegistry().checkIds().join(", ")}.`,
+      `Only run these checks (comma-separated). Available: ${checkIds.join(", ")}.`,
     ],
     ["--checks-skip <ids>", "Skip these checks (comma-separated)."],
   ];
@@ -480,6 +480,19 @@ function writeReportOut(values, rendered = "") {
  * @returns {Promise<number>} process exit code
  */
 export async function main(argv) {
+  // The registry is read and asserted FIRST, before the command line is even parsed. It is
+  // this tool's own file, identical on every run, and nothing it could be asked to do means
+  // anything while it is broken - not a review, not --help, not a usage error, which prints
+  // the check ids the registry names. One load, one answer, and no path that reaches for it
+  // before it has been judged.
+  let registry;
+  try {
+    registry = loadRegistry();
+  } catch (err) {
+    process.stderr.write(`${err.message}\nverify failed\n`);
+    return 2;
+  }
+  const checkIds = registry.checkIds();
   let parsed;
   try {
     parsed = parseArgs({
@@ -489,7 +502,7 @@ export async function main(argv) {
     });
   } catch (err) {
     emitBanner(argv);
-    process.stderr.write(`${cleanParseError(err)}\n\n${helpText()}`);
+    process.stderr.write(`${cleanParseError(err)}\n\n${helpText(checkIds)}`);
     return 2;
   }
   const { values, positionals } = parsed;
@@ -557,16 +570,6 @@ export async function main(argv) {
   // --llm-sca-review hands its reader a command built from these very flags: an id nobody
   // can run would travel into it, and the review it starts would exit 2 on a line the
   // prompt told them to run.
-  // Reading it asserts it: a malformed registry is a tool failure, not a stack trace, and
-  // it is the same answer whatever this run was going to do with the file.
-  let registry;
-  try {
-    registry = loadRegistry();
-  } catch (err) {
-    process.stderr.write(`${err.message}\nverify failed\n`);
-    return 2;
-  }
-  const checkIds = registry.checkIds();
   const badCheck =
     !values.help &&
     unknownId(
@@ -690,7 +693,7 @@ export async function main(argv) {
   }
 
   if (values.help || positionals.length === 0) {
-    process.stdout.write(helpText());
+    process.stdout.write(helpText(checkIds));
     return values.help ? 0 : 2;
   }
 
