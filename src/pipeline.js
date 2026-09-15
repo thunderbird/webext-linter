@@ -495,9 +495,10 @@ export async function runPipeline(opts) {
     addon = xpiAddon;
   }
   // What was reviewed, named by ARTIFACT rather than by role: `xpi` is the shipped add-on
-  // in EVERY review, and a source code review adds the two values it was given. One field
-  // meaning "the review target" named a different artifact in each mode, which no reader of
-  // the JSON could tell apart, and the subtree had nowhere to go but fused into it.
+  // in EVERY review, and a source code review adds the values it was given - the root, the
+  // source, and the Experiment folder when one was named. One field meaning "the review
+  // target" named a different artifact in each mode, which no reader of the JSON could tell
+  // apart, and the subtree had nowhere to go but fused into it.
   //
   // These are the names the Review Details block prints and the --llm-review prompt's steps
   // point at, so the report, the prompt and the machine-readable document say one thing.
@@ -512,6 +513,12 @@ export async function runPipeline(opts) {
           // The subtree as the review READ it - absolute like every other path here, so
           // every spelling the flag allows ("addon", "./addon/", ".") reaches one value.
           scaSource,
+          // The one input that NARROWS the review: that subtree is privileged code and is
+          // excluded from the WebExtension checks. Named only when it was given, because a
+          // name printed for a value nobody supplied says something false - and unnamed, a
+          // reader of the report or of the JSON could not see that anything was excluded,
+          // or from where.
+          ...(opts.scaExpSource ? { scaExpSource: opts.scaExpSource } : {}),
         }
       : {}),
     reviewed: true,

@@ -1735,7 +1735,8 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
       ...base,
       xpi: "/x/a.xpi",
       scaRoot: "/x/src",
-      scaSource: "addon",
+      scaSource: "/x/src/addon",
+      scaExpSource: "/x/src/addon/experiment-api",
     }),
     [
       ...head,
@@ -1744,7 +1745,11 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
       "  SCA_ROOT",
       "    /x/src",
       "  SCA_SOURCE",
-      "    addon",
+      "    /x/src/addon",
+      // The optional one of the three: what it names was excluded from the WebExtension
+      // checks, and nothing else in the report says so.
+      "  SCA_EXP_SOURCE",
+      "    /x/src/addon/experiment-api",
       ...schema,
     ]
   );

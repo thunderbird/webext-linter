@@ -448,6 +448,19 @@ test("SCA meta names the artifacts, each a real path", async () => {
     for (const value of [meta.xpi, meta.scaRoot]) {
       assert.equal(fs.existsSync(value), true, `${value} is a real path`);
     }
+    // The optional third: named only when the flag was given, because a name printed for a
+    // value nobody supplied says something false. It is also the only place a reader learns
+    // that a subtree was excluded from the WebExtension checks, and which one.
+    assert.equal(meta.scaExpSource, undefined);
+    const { meta: withExp } = await runPipeline({
+      addonPath: xpi,
+      scaRoot: src,
+      scaSource: path.join(src, "src"),
+      scaExpSource: path.join(src, "src", "experiments"),
+      ...OFFLINE,
+    });
+    assert.equal(withExp.scaExpSource, path.join(src, "src", "experiments"));
+
     // The fields a role-named meta carried, and the fused value with them.
     assert.equal(meta.addon, undefined);
     assert.equal(meta.shippedAddon, undefined);

@@ -74,7 +74,11 @@ const SEV_COLOR = {
  * @property {string} [scaRoot]  SCA review: the source root the run was given
  *   (--sca-root), resolved.
  * @property {string} [scaSource]  SCA review: the add-on's own code root within that
- *   root, normalised, or "." when the whole root is the source.
+ *   root, resolved - the root itself when no subtree was named.
+ * @property {string} [scaExpSource]  SCA review: the Experiment implementation folder
+ *   (--sca-exp-source), resolved, when one was named. Its files are privileged code and are
+ *   excluded from the WebExtension checks, so naming it is how a reader sees that anything
+ *   was.
  * @property {boolean} reviewed
  * @property {string} [schemaBranch]
  * @property {string} [schemaSource]
@@ -489,10 +493,10 @@ export function scaPromptLines(prompt, submission, review) {
  * An SCA review spans TWO artifacts and the reader has to know which is which: the report
  * labels every locus [XPI]/[SCA], and the block names the artifacts behind those labels -
  * the shipped add-on as XPI, whether it was submitted packed or as an unpacked folder, and
- * the [SCA] side as the two values it was given, SCA_ROOT and SCA_SOURCE, rather than as
- * one path composed from them. The source is named as the two values the run was GIVEN,
- * SCA_ROOT and SCA_SOURCE, rather than as the one path they compose: an agent told to read
- * the source root cannot be handed a value it has to split on a colon first.
+ * the [SCA] side as the values the run was GIVEN: SCA_ROOT, SCA_SOURCE, and SCA_EXP_SOURCE
+ * when one was named. Each stands on its own line rather than being composed into one path,
+ * because each is a value its reader hands back - to this tool as a flag, or to an agent as
+ * a folder to read.
  *
  * The schema line stays prose beneath the block: nothing looks it up by name.
  * @param {ReviewMeta} meta
@@ -504,6 +508,11 @@ export function headerLines(meta) {
   const values = [["XPI", meta.xpi]];
   if (meta.scaRoot) {
     values.push(["SCA_ROOT", meta.scaRoot], ["SCA_SOURCE", meta.scaSource]);
+  }
+  // Only when it was given: it is the optional one of the three, and what it names was
+  // excluded from the WebExtension code checks - which nothing else in the report says.
+  if (meta.scaExpSource) {
+    values.push(["SCA_EXP_SOURCE", meta.scaExpSource]);
   }
   // Only --llm-review writes one. It is named here rather than only in the prompt so
   // the section stays the one place that says what this review consists of.
