@@ -204,12 +204,17 @@ export function manifestStringRefs(manifest) {
 
 /**
  * Normalize a manifest/JS file reference to an add-on-relative key.
+ *
+ * A backslash is NOT folded to a slash. These paths are resolved by the platform as URLs
+ * under moz-extension:, where a backslash separates nothing - so "icons\\16.png" does not
+ * name icons/16.png to Thunderbird either, and matching it here would pass a reference the
+ * add-on cannot resolve at runtime. The file it names is reported missing, which is what
+ * the reviewer needs to know.
  * @param {string} p  Raw referenced path.
  * @returns {string}
  */
 export function normalizeRef(p) {
   return String(p)
-    .replace(/\\/g, "/")
     .replace(/^\.\//, "")
     .replace(/^\/+/, "")
     .replace(/[?#].*$/, "");
@@ -250,8 +255,8 @@ export function resolveRef(files, fromFile, raw) {
  * @returns {{key: string|null, escaped: boolean}}
  */
 function normalizeRefInDir(dir, raw) {
+  // No backslash folding, for the reason normalizeRef gives: these resolve as URLs.
   let p = String(raw ?? "")
-    .replace(/\\/g, "/")
     .replace(/[?#].*$/, "")
     .trim();
   if (p === "") {
