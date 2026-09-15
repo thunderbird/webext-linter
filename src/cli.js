@@ -346,7 +346,8 @@ function shellArg(value) {
  * reaches here - main() refuses one before any branch - so the truth test below only skips
  * the flags this run was not given.
  * --llm-review, --llm-verdict and the --sca-* flags cannot appear - --llm-sca-review
- * refuses to be given them - and neither can --help, which returns above.
+ * refuses to be given them - and neither can --help, which is answered before any of the
+ * guards that would reach this.
  * @param {Record<string, string|boolean>} values
  * @param {string} xpi  The built add-on's path, which the review takes as its positional.
  * @returns {{flags: string[], experiments: boolean}}
@@ -513,17 +514,6 @@ export async function main(argv) {
   // carries only the document. A text --report-out records the feed so the file
   // is a carbon copy of the screen.
   const format = values["report-format"] || "text";
-  // Checked HERE, before a single line below acts on it: every setter in this block
-  // branches on the format, and so does every branch that prints - one of which used to
-  // print nothing at all for an unknown value and exit 0. One question, asked once, at
-  // the point the value enters.
-  if (format !== "text" && format !== "json") {
-    emitBanner(argv);
-    process.stderr.write(
-      `Invalid --report-format "${format}" (expected text or json).\n`
-    );
-    return 2;
-  }
   setQuiet(format === "json");
   setVerbose(values.verbose);
   setProgress(format === "text");
@@ -542,6 +532,27 @@ export async function main(argv) {
   // below so --help and validation errors all carry it too.
   emitBanner(argv);
 
+  // --help is a request for the usage text, not a run, so it is answered before anything
+  // that judges the command line: a reader asking what the flags ARE is told, rather than
+  // refused over a flag this run will never reach. Only the two things that make an answer
+  // impossible come first - a registry this tool cannot read, and a command line it cannot
+  // parse. Every guard below can therefore assume a run, and none of them repeats the test.
+  if (values.help) {
+    process.stdout.write(helpText(checkIds));
+    return 0;
+  }
+
+  // The format decides how everything below prints, so it is judged as soon as the setters
+  // above have been given it - one question, asked once, at the point the value enters.
+  // It used to be asked after the branches that print, one of which then printed nothing at
+  // all for an unknown value and exited 0.
+  if (format !== "text" && format !== "json") {
+    process.stderr.write(
+      `Invalid --report-format "${format}" (expected text or json).\n`
+    );
+    return 2;
+  }
+
   // A flag given with no value names something and says nothing, so it is refused before
   // any branch reads one. Asked HERE, once, for every option that takes a value: what a
   // value MEANS is each reader's question - a report format is checked where the format is
@@ -550,7 +561,7 @@ export async function main(argv) {
   // "--flag=" down as "", which every reader below tests for truth and so reads as "not
   // given": a named cache silently became the default one, a named verdict file printed an
   // unsettled report, and a named format fell back to text.
-  if (!values.help) {
+  {
     const empty = Object.entries(OPTIONS).find(
       ([name, opt]) =>
         opt.type === "string" &&
@@ -570,15 +581,13 @@ export async function main(argv) {
   // --llm-sca-review hands its reader a command built from these very flags: an id nobody
   // can run would travel into it, and the review it starts would exit 2 on a line the
   // prompt told them to run.
-  const badCheck =
-    !values.help &&
-    unknownId(
-      [
-        ...(splitList(values["checks-only"]) ?? []),
-        ...(splitList(values["checks-skip"]) ?? []),
-      ],
-      checkIds
-    );
+  const badCheck = unknownId(
+    [
+      ...(splitList(values["checks-only"]) ?? []),
+      ...(splitList(values["checks-skip"]) ?? []),
+    ],
+    checkIds
+  );
   if (badCheck) {
     process.stderr.write(
       `Unknown check "${badCheck}" (--checks-only/--checks-skip). Available: ${checkIds.join(", ")}.\n`
@@ -593,7 +602,7 @@ export async function main(argv) {
   const llmFlags = Object.keys(OPTIONS).filter(
     (name) => name.startsWith("llm-") && values[name] !== undefined
   );
-  if (!values.help && values["report-out"] && llmFlags.length) {
+  if (values["report-out"] && llmFlags.length) {
     process.stderr.write(
       `--report-out cannot be given with ${listOf(llmFlags.map((f) => `--${f}`))}: ` +
         "no run of the --llm-* round trip saves its output.\n"
@@ -607,7 +616,6 @@ export async function main(argv) {
   // skip implies one of the two.
   const skips = reviewSkips(values);
   if (
-    !values.help &&
     skips.length &&
     !values["llm-review"] &&
     values["llm-sca-review"] === undefined
@@ -624,7 +632,7 @@ export async function main(argv) {
 
   // --llm-sca-review prepares a review rather than running one, so it shares nothing with
   // the flags below and is settled here, in full, before any of them are read.
-  if (!values.help && values["llm-sca-review"] !== undefined) {
+  if (values["llm-sca-review"] !== undefined) {
     const given = SCA_FLAGS.filter((f) => values[f]);
     if (given.length) {
       process.stderr.write(
@@ -692,9 +700,11 @@ export async function main(argv) {
     return 0;
   }
 
-  if (values.help || positionals.length === 0) {
+  // No add-on to review: the usage text answers what was missing, and the exit code says
+  // it was a mistake rather than a question (--help returns 0, far above).
+  if (positionals.length === 0) {
     process.stdout.write(helpText(checkIds));
-    return values.help ? 0 : 2;
+    return 2;
   }
 
   // ONE add-on per run. A second positional was silently ignored, which is how an

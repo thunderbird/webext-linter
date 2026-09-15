@@ -362,6 +362,33 @@ test("a second positional is refused (exit 2)", () => {
   assert.match(r.stderr, /"some\.xpi", "another\.xpi"/);
 });
 
+// --help is a request for the usage text, not a run, so it is answered before every guard
+// that judges the command line - a reader asking what the flags ARE is told, rather than
+// refused over a flag this run will never reach. The two exceptions are the things that
+// make an answer impossible: a command line that does not parse (and a registry that does
+// not load, which no flag can reach).
+test("--help is answered before every guard that judges a run", () => {
+  for (const extra of [
+    [],
+    ["--report-format", "xml"],
+    ["--llm-skip-manual"],
+    ["--sca-root="],
+    ["--checks-only", "no-such-check"],
+    ["--llm-review", "--report-out", "/nope/x.txt"],
+    ["some.xpi", "another.xpi"],
+  ]) {
+    const r = run(["--help", ...extra]);
+    assert.equal(r.code, 0, extra.join(" "));
+    assert.match(r.stdout, /webext-linter - verify/, extra.join(" "));
+    assert.equal(r.stderr, "", extra.join(" "));
+  }
+  // A command line that cannot be parsed has no flags to explain: the usage text comes
+  // with the refusal, and the exit code says it was one.
+  const unparsable = run(["--nope", "--help"]);
+  assert.equal(unparsable.code, 2);
+  assert.match(unparsable.stderr, /Unknown option/);
+});
+
 // No positional argument is a usage error: usage to stdout, exit 2.
 test("no add-on argument prints usage and exits 2", () => {
   const r = run([]);

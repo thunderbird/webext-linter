@@ -531,3 +531,12 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   `mkdtemp` directory per run) is not worth doing: the attacker it protects against is
   already running as the reviewer on the reviewer's own machine. Do not re-propose it.
 
+- **`--help` is answered before anything that judges the command line.** It is a request
+  for the usage text, not a run, so a reader asking what the flags ARE is told rather than
+  refused over a flag this run will never reach - an unknown check id, a blank folder, a
+  skip with no review flag, even an unknown `--report-format`. Only the two things that make
+  an answer impossible come first: a registry this tool cannot read, and a command line it
+  cannot parse. Every guard below the help branch may therefore assume a run, and none of
+  them tests for help. Do not re-add a help sentinel to a guard, and do not move a guard
+  above the branch.
+
