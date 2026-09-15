@@ -69,9 +69,8 @@ test("the setup feed of an XPI review", () => {
 
 // A source code review does the whole XPI pass FIRST (the shipped artifact is analysed in
 // both modes), then the source's own library and dependency passes, then parses the source,
-// and analyses the build last. The total says 12 while 13 run - the constant was not raised
-// when the build step was added, and it is pinned here as it IS so that a fix has to move
-// this line deliberately.
+// and analyses the build last. Thirteen steps and a total of thirteen: the total is
+// SETUP_STEPS' own length, so it cannot fall behind the steps the way a typed constant did.
 test("the setup feed of a source code review", () => {
   assert.deepEqual(
     setupFeed([
@@ -82,19 +81,19 @@ test("the setup feed of a source code review", () => {
       ".",
     ]),
     [
-      "[1/12] Reading add-on",
-      "[2/12] Fetching review schemas (release-mv3)",
-      "[3/12] Fetching library hashes",
-      "[4/12] Verifying vendored libraries",
-      "[5/12] Identifying bundled libraries on a CDN",
-      "[6/12] Auditing bundled libraries",
-      "[7/12] Parsing add-on sources",
-      "[8/12] Verifying vendored source libraries",
-      "[9/12] Auditing source dependencies",
-      "[10/12] Identifying source libraries on a CDN",
-      "[11/12] Auditing source libraries",
-      "[12/12] Parsing add-on sources",
-      "[13/12] Analyzing the build",
+      "[1/13] Reading add-on",
+      "[2/13] Fetching review schemas (release-mv3)",
+      "[3/13] Fetching library hashes",
+      "[4/13] Verifying vendored libraries",
+      "[5/13] Identifying bundled libraries on a CDN",
+      "[6/13] Auditing bundled libraries",
+      "[7/13] Parsing add-on sources",
+      "[8/13] Verifying vendored source libraries",
+      "[9/13] Auditing source dependencies",
+      "[10/13] Identifying source libraries on a CDN",
+      "[11/13] Auditing source libraries",
+      "[12/13] Parsing add-on sources",
+      "[13/13] Analyzing the build",
     ]
   );
 });

@@ -97,6 +97,78 @@ import { DEFAULT_CACHE } from "./config.js";
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
 
 /**
+ * The setup sequence: every slow pre-review step, in the order it runs, with the condition
+ * that decides whether this run has it.
+ *
+ * The ONE place that order and that count are stated. The feed's total is this list's length
+ * (filtered), so a step cannot be added without the total following it - which is exactly
+ * what went wrong when the build analysis arrived and every source code review printed
+ * [13/12]. Narration goes through `setupStep(key)`, which refuses a key that is not in the
+ * run's plan, one narrated twice, and one narrated out of this order, so the list is checked
+ * against reality on every run rather than describing it from a distance.
+ *
+ * Exported so a test can read the plan without running a review.
+ *
+ * `label` is what the reviewer sees. The steps whose label is only known as they run - the
+ * schema, which names the branch it chose, and parsing, which happens once per artifact -
+ * carry null and pass their label to setupStep instead.
+ * @type {{key: string, label: ?string,
+ *   when: (facts: {sca: boolean, isExp: boolean}) => boolean}[]}
+ */
+export const SETUP_STEPS = Object.freeze([
+  { key: "read", label: "Reading add-on", when: () => true },
+  // The one piece of setup EVERY path needs, a rejected Experiment included.
+  { key: "schema", label: null, when: () => true },
+  {
+    key: "experiments",
+    label: "Verifying bundled experiments",
+    when: (f) => f.isExp,
+  },
+  // The built XPI's own analysis, which a source review runs too: the shipped artifact is
+  // analysed the same way in both modes.
+  { key: "hashes", label: "Fetching library hashes", when: () => true },
+  {
+    key: "vendor-xpi",
+    label: "Verifying vendored libraries",
+    when: () => true,
+  },
+  {
+    key: "cdn-bundled",
+    label: "Identifying bundled libraries on a CDN",
+    when: () => true,
+  },
+  {
+    key: "audit-bundled",
+    label: "Auditing bundled libraries",
+    when: () => true,
+  },
+  { key: "parse-xpi", label: null, when: () => true },
+  // The readable source's own passes, and the build the reviewer reproduces.
+  {
+    key: "vendor-source",
+    label: "Verifying vendored source libraries",
+    when: (f) => f.sca,
+  },
+  {
+    key: "deps-source",
+    label: "Auditing source dependencies",
+    when: (f) => f.sca,
+  },
+  {
+    key: "cdn-source",
+    label: "Identifying source libraries on a CDN",
+    when: (f) => f.sca,
+  },
+  {
+    key: "audit-source",
+    label: "Auditing source libraries",
+    when: (f) => f.sca,
+  },
+  { key: "parse-source", label: null, when: (f) => f.sca },
+  { key: "build", label: "Analyzing the build", when: (f) => f.sca },
+]);
+
+/**
  * Every path opt is ABSOLUTE. The arg-array reader resolves them (pipelineOptsFromValues,
  * src/cli.js), which is the one layer that knows what each flag was written relative to -
  * the working directory for --sca-root, and --sca-root itself for the two naming a folder
@@ -225,28 +297,48 @@ export async function runPipeline(opts) {
   const xpiAddon = loadAddon(addonPath);
   const isExp = isExperiment(xpiAddon.manifest);
 
-  // The "Setup" feed: one numbered [i/total] line per slow pre-review step, matching
-  // the Activity check loop, so the otherwise-silent pre-review pause shows what is
-  // running (a no-op when progress is off - JSON, the golden harness). The total is
-  // sized from what the fast .xpi read already gives us: mode (SCA analyses BOTH
-  // artifacts - the always-run built-XPI analysis PLUS the readable source and its
-  // build - so it is longer) and whether it is an Experiment (which adds a
-  // bundled-experiment verification step). Exact for every path EXCEPT a REJECTED
-  // Experiment (an experiment add-on run WITHOUT --allow-experiments whose bundled draft
-  // is unrecognised): it skips the whole vendor block, so its counter stops MID-count
-  // (e.g. [4/8]) rather than completing. Sizing the total for that short path would need
-  // `invalidExperiment`, known only AFTER the narrated experiment fetch - i.e. a second
-  // classification pass before the banner, which we deliberately avoid; the accepted path
-  // (the reviewer's --allow-experiments flow) is exact. Every other --sca-root run is exact
-  // too: the review is never re-routed away from SCA, so the source-only steps always run.
-  const setupTotal = (preliminaryMode === "sca" ? 12 : 7) + (isExp ? 1 : 0);
-  let setupDone = 0;
+  // The steps this run will narrate, in order, filtered from the declared list. The total
+  // is that list's LENGTH - never a number typed beside it, which is how the build analysis
+  // was added without the total moving and every source review printed [13/12].
+  //
+  // Sized from what the fast .xpi read already gives us (the mode and whether this is an
+  // Experiment), so it is decided before the first step runs. Exact for every path EXCEPT a
+  // REJECTED Experiment, whose rejection is decided BY a step: everything after it is
+  // skipped, the counter stops short, and the report says the review ended there.
+  const setupFacts = { sca: preliminaryMode === "sca", isExp };
+  const setupPlan = SETUP_STEPS.filter((step) => step.when(setupFacts));
+  let lastStep = -1;
+  const narrated = new Set();
   /**
-   * Emit the next numbered "Setup" feed line.
-   * @param {string} label  Names the step shown after the [done/total] counter.
+   * Narrate one declared step. Takes its KEY, not a label: a step that is not in this run's
+   * plan, one narrated twice, and one narrated out of the declared order are each refused
+   * here rather than printing a line nobody planned.
+   * @param {string} key  The step's key in SETUP_STEPS.
+   * @param {string} [label]  For the two steps whose label is only known as they run.
    */
-  const setupStep = (label) =>
-    progress(`[${++setupDone}/${setupTotal}] ${label}`, FEED.STEP);
+  const setupStep = (key, label) => {
+    const at = setupPlan.findIndex((step) => step.key === key);
+    if (at === -1) {
+      throw new Error(`setup step "${key}" is not in this run's plan`);
+    }
+    if (narrated.has(key)) {
+      throw new Error(`setup step "${key}" narrated twice`);
+    }
+    if (at < lastStep) {
+      throw new Error(
+        `setup step "${key}" narrated after "${setupPlan[lastStep].key}", which comes later in SETUP_STEPS`
+      );
+    }
+    lastStep = at;
+    narrated.add(key);
+    progress(
+      `[${narrated.size}/${setupPlan.length}] ${label ?? setupPlan[at].label}`,
+      FEED.STEP
+    );
+  };
+  // One numbered line per slow step, matching the Activity check loop, so the
+  // otherwise-silent pre-review pause shows what is running (a no-op when progress is off -
+  // JSON, the golden harness).
   progress("── Setup ──");
   progress("");
 
@@ -256,7 +348,7 @@ export async function runPipeline(opts) {
   // `scaSource` and the Experiment exclude prefix are set there, from the resolved mode. Narrate the .xpi
   // loader's skip notices (a non-node_modules symlink, an unsafe archive path) here; the
   // source loader's notices are narrated in Phase 2.
-  setupStep("Reading add-on");
+  setupStep("read");
   for (const notice of xpiAddon.skipped ?? []) {
     warn(notice);
   }
@@ -319,7 +411,7 @@ export async function runPipeline(opts) {
     // The upstream-drafts allow-list fetch (network) - narrated, since it is one of
     // the slow pre-review steps; it stays silent+offline for a bare experiment_apis
     // declaration that bundles nothing.
-    setupStep("Verifying bundled experiments");
+    setupStep("experiments");
     xpiAddon.experiments = await verifyExperiments(xpiAddon, opts);
     invalidExperiment =
       !opts.allowExperiments &&
@@ -375,7 +467,7 @@ export async function runPipeline(opts) {
 
     // The known-library hash DB the classifier matches bytes against (fetched and cached; a
     // pre-seeded cache keeps offline runs deterministic). Both modes classify.
-    setupStep("Fetching library hashes");
+    setupStep("hashes");
     const { text: libraryHashesText } = await resolveLibraryHashes({
       cacheDir: opts.libraryHashesCache,
     });
@@ -399,7 +491,7 @@ export async function runPipeline(opts) {
     // review the XPI IS the review target, so this is that review's own analysis (Phase 3 then
     // only reuses xpiParsedSources rather than parsing again).
     xpiAddon.vendor = resolveVendor({ addon: xpiAddon });
-    setupStep("Verifying vendored libraries");
+    setupStep("vendor-xpi");
     await verifyVendor(xpiAddon, opts.vendorNet, libraryBlocks);
     classifyReview(xpiAddon, { libraryHashes });
     await identifyBundledLibraries(xpiAddon, {
@@ -410,7 +502,12 @@ export async function runPipeline(opts) {
       setupStep,
       scope: "bundled",
     });
-    xpiParsedSources = extractReview(xpiAddon, { schema, xpiAddon, setupStep });
+    xpiParsedSources = extractReview(xpiAddon, {
+      schema,
+      xpiAddon,
+      setupStep,
+      stepKey: "parse-xpi",
+    });
 
     // The submitted archive is read here because the XPI-only ADVICE below asks both what
     // KIND of source it carries and whether the shipped scripts ARE that source - which
@@ -548,14 +645,14 @@ export async function runPipeline(opts) {
       // declaration alone excluded the file from every source-level check, unverified and
       // unreported. Only the declarations: the package.json half of verifyVendor compares
       // SHIPPED copies of declared dependencies, which a source archive does not carry.
-      setupStep("Verifying vendored source libraries");
+      setupStep("vendor-source");
       await verifyVendorDeclarations(addon, opts.vendorNet, libraryBlocks);
       // The source's package.json declares its dependencies - audit each for popularity
       // (non-popular -> reject) and OSV. The readable source may ALSO vendor a library as a
       // committed copy, so full identification (Mozilla-hash + CDN + OSV, deduped against the
       // declared audit) runs on it below. An unrecognized minified file the source vendors
       // stays non-authored and is rejected.
-      setupStep("Auditing source dependencies");
+      setupStep("deps-source");
       await verifyScaDependencies(addon, opts.vendorNet, libraryBlocks);
       // 1e. Classify the source's files (library hash, minified geometry, obfuscation), seeding
       // addon.bundled and its non-authored set - AFTER the declaration audit, so the vendored
@@ -577,6 +674,7 @@ export async function runPipeline(opts) {
         schema,
         xpiAddon,
         setupStep,
+        stepKey: "parse-source",
       });
       // 1h. The BUILD files (archive minus the review source + Experiment source) - the build
       // scripts/config the review otherwise drops. buildScaCtxs wraps these as the
@@ -591,7 +689,7 @@ export async function runPipeline(opts) {
       // addon.buildFiles.buildReview for the input:build checks to read. Nothing
       // classifies what the build does, so it routes to the reviewer, who reproduces
       // it from the source by hand.
-      setupStep("Analyzing the build");
+      setupStep("build");
       addon.buildFiles.buildReview = analyzeBuild({ build: addon.buildFiles });
     } else {
       // XPI review (native, or a rejected Experiment): the built XPI IS the review target
@@ -930,15 +1028,18 @@ function classifyReview(addon, { libraryHashes }) {
  * @param {import("./addon/load.js").Addon} addon  The review target, already classified.
  * @param {{schema: object,
  *   xpiAddon: import("./addon/load.js").Addon,
- *   setupStep: (label: string) => void}} deps
+ *   setupStep: (key: string, label?: string) => void,
+ *   stepKey: string}} deps  `stepKey` says WHICH parse this is: the run parses the shipped
+ *   artifact and, in a source review, the readable source, and the two are separate steps
+ *   under one label (SETUP_STEPS).
  * @returns {import("./addon/sources.js").JsSource[]}  The parsed review sources.
  */
-function extractReview(addon, { schema, xpiAddon, setupStep }) {
+function extractReview(addon, { schema, xpiAddon, setupStep, stepKey }) {
   const jsSources = collectJsSources(addon);
   const experimentNamespaces = isExperiment(xpiAddon.manifest)
     ? experimentApiNamespaces(xpiAddon.manifest, addon.files)
     : null;
-  setupStep("Parsing add-on sources");
+  setupStep(stepKey, "Parsing add-on sources");
   runExtractionPass(jsSources, {
     schema,
     nonAuthored: addon.bundled.nonAuthored,
@@ -967,9 +1068,9 @@ async function identifyBundledLibraries(
   { net, cacheDir, cdnEnabled = true, blocks, setupStep = () => {}, scope }
 ) {
   applyUnverifiedVendor(addon);
-  setupStep(`Identifying ${scope} libraries on a CDN`);
+  setupStep(`cdn-${scope}`);
   await resolveCdnLibraries(addon, { net, cacheDir, enabled: cdnEnabled });
-  setupStep(`Auditing ${scope} libraries`);
+  setupStep(`audit-${scope}`);
   await auditIdentifiedLibraries(addon, net, blocks);
 }
 
@@ -1035,7 +1136,7 @@ export async function resolveReviewSchema({
     !hasAllCachedSchemas(cacheDir) ||
     candidates.length < SCHEMA_CHANNELS.length
   ) {
-    setupStep("Fetching review schemas (all channels)");
+    setupStep("schema", "Fetching review schemas (all channels)");
     stepped = true;
     await refreshAllSchemas({ cacheDir });
     candidates = readAnchors();
@@ -1059,7 +1160,10 @@ export async function resolveReviewSchema({
     cap > newest &&
     schemaCacheAgeDays(cacheDir, candidates) > 1
   ) {
-    setupStep("Refreshing review schemas (add-on targets a newer Thunderbird)");
+    setupStep(
+      "schema",
+      "Refreshing review schemas (add-on targets a newer Thunderbird)"
+    );
     stepped = true;
     try {
       await refreshAllSchemas({ cacheDir });
@@ -1092,7 +1196,7 @@ export async function resolveReviewSchema({
       ` → schema branch "${branch}".`
   );
   if (!stepped) {
-    setupStep(`Fetching review schemas (${branch})`);
+    setupStep("schema", `Fetching review schemas (${branch})`);
   }
   const { zipPath, source } = await resolveSchemaZip({ branch, cacheDir });
   return { zipPath, source, branch, channel };
