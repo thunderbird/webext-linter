@@ -642,7 +642,7 @@ test("checks carry the sca mode tag (true=SCA-only, undefined=both; none is XPI-
   assert.equal(sca("minified-code"), undefined);
   // The vendor/library family runs in both too: a source archive may carry its own
   // VENDOR file, verified the same way (verifyVendorDeclarations), and the CDN/hash
-  // identification runs on the source as well (identifyBundledLibraries, scope source).
+  // identification runs on the source as well (the cdn-source / audit-source steps).
   assert.equal(sca("untrusted-minified-library"), undefined);
   assert.equal(sca("untrusted-library"), undefined);
   assert.equal(sca("vendor-modified"), undefined);

@@ -21,6 +21,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { SETUP_STEPS } from "../../src/pipeline.js";
 import { seedFixtureCache } from "../seed-caches.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -53,6 +54,50 @@ function setupFeed(args) {
 
 const addon = (name) => path.join(ROOT, "tests", "addons", name);
 
+// The declaration, read on its own. The feed tests below prove what a RUN prints; these
+// prove the list it is printed from is well formed - which is the cheaper place to catch a
+// step that was declared without a way to narrate it, or a duplicated key.
+test("every declared step is narratable and named once", () => {
+  const keys = SETUP_STEPS.map((s) => s.key);
+  assert.equal(new Set(keys).size, keys.length, "keys are unique");
+  for (const step of SETUP_STEPS) {
+    assert.equal(
+      typeof step.when,
+      "function",
+      `${step.key} declares a condition`
+    );
+    if (!("label" in step)) {
+      continue; // silent: work with no feed line, and not counted
+    }
+    assert.ok(
+      step.label === null || (typeof step.label === "string" && step.label),
+      `${step.key} carries a label, or null for one it prints itself`
+    );
+  }
+});
+
+// The totals the four feeds below count towards, derived from the list the way the pipeline
+// derives them. A silent step that was counted, or a narrated one that was not, moves a
+// number here before anyone has to read a feed.
+test("the narrated count per run is the total the feed shows", () => {
+  const narrated = (facts) =>
+    SETUP_STEPS.filter((s) => "label" in s && s.when(facts)).length;
+  const facts = (over) => ({
+    sca: false,
+    isExp: false,
+    invalidExperiment: false,
+    ...over,
+  });
+  assert.equal(narrated(facts()), 7, "an XPI review");
+  assert.equal(narrated(facts({ sca: true })), 13, "a source code review");
+  assert.equal(narrated(facts({ isExp: true })), 8, "an Experiment review");
+  assert.equal(narrated(facts({ sca: true, isExp: true })), 14, "both");
+  // The rejection is decided by the third step, and the total is sized BEFORE the run: the
+  // same conditions asked with it already decided say three, and the feed still counts
+  // towards eight. That gap IS "the counter stops short".
+  assert.equal(narrated(facts({ isExp: true, invalidExperiment: true })), 3);
+});
+
 // An XPI review: read the add-on, get the schema, then the three library passes, then
 // parse. Seven steps, and the counter completes.
 test("the setup feed of an XPI review", () => {
@@ -69,8 +114,8 @@ test("the setup feed of an XPI review", () => {
 
 // A source code review does the whole XPI pass FIRST (the shipped artifact is analysed in
 // both modes), then the source's own library and dependency passes, then parses the source,
-// and analyses the build last. Thirteen steps and a total of thirteen: the total is
-// SETUP_STEPS' own length, so it cannot fall behind the steps the way a typed constant did.
+// and analyses the build last. Thirteen steps and a total of thirteen: the total is counted
+// off the same list that runs them, so it cannot fall behind the way a typed constant did.
 test("the setup feed of a source code review", () => {
   assert.deepEqual(
     setupFeed([
@@ -136,5 +181,28 @@ test("a rejected Experiment stops the setup feed where the review stops", () => 
     done,
     total,
     "the counter stops short, and that is the point"
+  );
+});
+
+// A rejected Experiment submitted as SOURCE CODE: the total is sized for the source review
+// this would have been (fourteen), the rejection is decided by step three, and the review
+// that runs is an XPI review of the shipped add-on. The silent steps that name the reviewed
+// artifact still run - the report has an add-on to name either way - which no feed line
+// shows, so the golden pins the naming and this pins the stopping.
+test("a rejected Experiment submitted as source stops at three of a source review's total", () => {
+  const dir = addon("experiment-disallowed-sca");
+  assert.deepEqual(
+    setupFeed([
+      path.join(dir, "xpi"),
+      "--sca-root",
+      path.join(dir, "src"),
+      "--sca-source",
+      ".",
+    ]),
+    [
+      "[1/14] Reading add-on",
+      "[2/14] Fetching review schemas (release-mv3)",
+      "[3/14] Verifying bundled experiments",
+    ]
   );
 });

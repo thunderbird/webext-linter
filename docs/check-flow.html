@@ -158,7 +158,7 @@ flowchart TB
 
   subgraph P2 ["runPipeline() · Phase 2 - analyse the BUILT XPI (always) → xpiAddon.bundled + its parsed sources, then resolve the mode"]
     XV["resolveVendor(XPI) → verifyVendor()<br/>the committed copies (VENDOR.md)"] --> XC["classifyReview(XPI)<br/>classifyFiles + assembleBundled<br/>library hash · minified geometry · obfuscation · vendored<br/>→ xpiAddon.bundled"]
-    XC --> XI["identifyBundledLibraries(XPI)<br/>applyUnverifiedVendor() · resolveCdnLibraries() · auditIdentifiedLibraries()<br/>FINALIZES the authored / non-authored split - ADDS + REMOVES"]
+    XC --> XI["identifyBundledLibraries(XPI) → auditIdentifiedLibraries(XPI)<br/>applyUnverifiedVendor() · resolveCdnLibraries(), then the OSV audit<br/>FINALIZES the authored / non-authored split - ADDS + REMOVES"]
     XI --> XE["Parsing the built add-on → extractReview(XPI)<br/>content extraction + api-usage on the authored remainder<br/>parse each source ONCE, drop the AST<br/>→ xpiParsedSources (Phase 4 hands them to buildXpiCtxs)"]
     XE --> MODEQ{{"--sca-root given?<br/>(the review is NEVER re-routed by what the XPI looks like)"}}
     MODEQ -- "no" --> MX2["mode = xpi"]
