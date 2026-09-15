@@ -47,7 +47,11 @@ import { isTranspiledSource } from "./util/files.js";
 import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
 import { buildXpiCtxs, buildScaCtxs } from "./checks/context.js";
-import { renderFindings, renderManualItems } from "./report/responses.js";
+import {
+  renderFindings,
+  renderManualItems,
+  withDefaultNotes,
+} from "./report/responses.js";
 import {
   headerLines,
   llmPromptLines,
@@ -645,15 +649,21 @@ export async function runPipeline(opts) {
     applicationVersion: schema.applicationVersion,
     manifestVersion: xpiAddon.manifest?.manifest_version ?? null,
     checksRun: checksRun.map((c) => c.id),
+    // The three to-do origins as ONE list, each carrying its own `default-note` where the
+    // check authors one: a case a check escalated and a by-hand manual check are the same
+    // item to whoever answers it, so the note is appended to both in one place.
     manualReview: invalidExperiment
       ? []
-      : [
-          ...renderManualItems(manualItems, registry).map((m) => ({
-            ...m,
-            extended: true,
-          })),
-          ...registry.manualChecks().map((m) => ({ ...m, extended: false })),
-        ],
+      : withDefaultNotes(
+          [
+            ...renderManualItems(manualItems, registry).map((m) => ({
+              ...m,
+              extended: true,
+            })),
+            ...registry.manualChecks().map((m) => ({ ...m, extended: false })),
+          ],
+          registry
+        ),
     // The blind-spot sweeps to run BEFORE settling this review: the shared method, then
     // one bare item per check that authors an instruction for what it cannot detect. ONE
     // request, not one per check - the sweeps read the same add-on, so what is learned on

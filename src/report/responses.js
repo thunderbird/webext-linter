@@ -103,15 +103,28 @@ export function renderFindings(findings, registry) {
 }
 
 /**
- * A response that ends on a list, with the marker that stands in for the reviewer's own
- * words beneath it. Null in, null out: a check that authors no response has nothing to
- * append to, and one that authors no default note keeps the response as written.
- * @param {?string} response
- * @param {?string} note
- * @returns {?string}
+ * Every to-do item a REVIEWER answers, with each one's default note appended to the
+ * response that ends on a list.
+ *
+ * Applied to the two kinds together - a check's escalation and a by-hand manual check are
+ * one item with two origins - because the rule is about what a reviewer is handed, not
+ * about where the entry was declared. Written once here rather than in each renderer: the
+ * escalation path had it and the manual-check path did not, so a deterministic run printed
+ * a list introduction with nothing beneath it for one of them.
+ *
+ * Null in, null out: a check that authors no response has nothing to append to, and one
+ * that authors no default note keeps its response as written.
+ * @param {import("./finding.js").ManualItem[]} items
+ * @param {import("../checks/registry.js").Registry} registry
+ * @returns {import("./finding.js").ManualItem[]}
  */
-function withDefaultNote(response, note) {
-  return response && note ? `${response}\n\n${note}` : response;
+export function withDefaultNotes(items, registry) {
+  return items.map((item) => {
+    const note = registry.defaultNote(item.ruleId);
+    return item.response && note
+      ? { ...item, response: `${item.response}\n\n${note}` }
+      : item;
+  });
 }
 
 /**
@@ -140,16 +153,11 @@ export function renderManualItems(refs, registry) {
       // case against the add-on, this is the text that goes to the developer, so
       // withholding it would leave them with a decision and nothing to send.
       //
-      // A check whose report IS what the reviewer found ends its response on a list and
-      // carries a `default-note` to stand in that list. It is appended HERE too, because
-      // this text is pasted by hand as often as it is settled through --llm-verdict, and
-      // a reviewer handed a list introduction with nothing under it has been handed half
-      // a sentence. A settled case gets the same string on its location line instead,
-      // unless the reviewer wrote their own.
-      response: withDefaultNote(
-        fill(entry?.response, ref.item, ref.data),
-        registry.defaultNote(ref.ruleId)
-      ),
+      // A check whose report IS what the reviewer found ends its response on a list, and
+      // the `default-note` that stands in that list is appended by withDefaultNotes -
+      // which sees this list and the by-hand manual checks together, so the two cannot
+      // differ in what a reviewer is handed.
+      response: fill(entry?.response, ref.item, ref.data),
       // The band a reported case lands in, printed above that response. Null for a
       // check whose cases produce no finding however they are settled.
       verdict: registry.suggestedVerdict(ref.ruleId),

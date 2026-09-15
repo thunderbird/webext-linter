@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import {
   renderFindings,
   renderManualItems,
+  withDefaultNotes,
 } from "../../src/report/responses.js";
 import { loadRegistry, Registry } from "../../src/checks/registry.js";
 import { artifactLabel } from "../../src/report/artifact.js";
@@ -329,4 +330,56 @@ test("registry.instructionsFor picks the wording and refuses an unauthored one",
     () => registry.instructionsFor("unsafe-html"),
     /authors no `instructions`/
   );
+});
+
+// A check whose report IS what the reviewer found ends its response on a list, and the
+// `default-note` stands in that list until they write one. What a reviewer is handed must
+// not depend on where the entry was declared: a case a check ESCALATED and a by-hand
+// MANUAL CHECK are the same item to whoever answers it, and a deterministic run used to
+// complete the response for the first and leave the second ending on "The following need
+// to be addressed:" with nothing beneath it.
+test("a deterministic run completes both kinds of answered item with its default note", () => {
+  const reg = loadRegistry();
+  // An escalation that authors one (the shipped Experiment check does), and a manual check
+  // given one here - the shipped registry authors none, and inventing one is a product
+  // decision, not a test's.
+  const manualEntry = reg.doc["manual-checks"][0];
+  manualEntry.response = "Fix the following:";
+  manualEntry["default-note"] = "- ...";
+
+  const items = withDefaultNotes(
+    [
+      ...renderManualItems(
+        [
+          {
+            ruleId: "experiment-manual-review",
+            item: null,
+            kind: "escalation",
+          },
+        ],
+        reg
+      ),
+      ...reg.manualChecks(),
+    ],
+    reg
+  );
+  const escalation = items.find((i) => i.ruleId === "experiment-manual-review");
+  const manualCheck = items.find((i) => i.ruleId === manualEntry.check);
+
+  for (const [what, item] of [
+    ["escalation", escalation],
+    ["manual check", manualCheck],
+  ]) {
+    assert.ok(item.instructions.length > 0, `${what} instructions`);
+    assert.ok(item.response.endsWith("\n\n- ..."), `${what} response`);
+  }
+
+  // A check that authors no default note keeps its response exactly as written.
+  const plain = items.find(
+    (i) =>
+      i.ruleId !== manualEntry.check &&
+      i.response &&
+      !i.response.includes("- ...")
+  );
+  assert.ok(plain, "an item with no default note is left alone");
 });

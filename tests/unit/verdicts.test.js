@@ -15,6 +15,7 @@ import { MAX_NOTE } from "../../src/config.js";
 import {
   renderFindings,
   renderManualItems,
+  withDefaultNotes,
 } from "../../src/report/responses.js";
 import { reviewItems } from "../../src/report/items.js";
 import { formatText, formatJson } from "../../src/report/format.js";
@@ -1131,15 +1132,82 @@ test("a check that authors a default note falls back to it", () => {
   assert.equal(other.findings[0].note, null);
 });
 
-// The response a reviewer pastes by hand ends on the same list, so the marker is appended
-// there too - a list introduction with nothing under it is half a sentence.
-test("the default note completes the response the reviewer pastes", () => {
-  const [rendered] = renderManualItems(
-    [{ ruleId: "experiment-manual-review", item: null }],
+// The response a DETERMINISTIC run prints ends on the same list, so the marker completes it
+// there too - a list introduction with nothing under it is half a sentence. Appended by
+// withDefaultNotes, which sees the escalations and the by-hand manual checks together, so
+// a reviewer is handed the same thing whichever list the item came from.
+test("the default note completes the response a deterministic run prints", () => {
+  const [rendered] = withDefaultNotes(
+    renderManualItems(
+      [{ ruleId: "experiment-manual-review", item: null }],
+      registry
+    ),
     registry
   );
   assert.match(
     rendered.response,
     /The following need to be addressed:\n\n- \.\.\.$/
   );
+});
+
+// What the reviewer said replaces the marker, whichever kind of item they said it about.
+// The default note stands in for words they did not write, so an answer that carries words
+// must leave no trace of it - and a bare "Report" must leave the marker, because the case
+// still ends on a list somebody has to fill. Asserted for both origins, since the marker is
+// resolved by ruleId and the two lists reach that lookup from different sides.
+test("a reviewer's words replace the default note, for both kinds of item", () => {
+  const reg = loadRegistry();
+  // The shipped Experiment escalation authors one; a manual check is given one here,
+  // because the shipped registry authors none and inventing one is a product decision.
+  const manualEntry = reg.doc["manual-checks"][0];
+  manualEntry["default-note"] = "- ...";
+  const marker = "- ...";
+
+  const kinds = [
+    [
+      "escalation",
+      () => mkManual("experiment-manual-review", "Experiment", null),
+    ],
+    ["manual check", () => mkStandard(manualEntry.check, "By hand")],
+  ];
+  for (const [what, make] of kinds) {
+    // Answered with their own words: the words are the note, and the marker is gone.
+    const written = [make()];
+    const findings = [];
+    applyVerdicts({
+      findings,
+      manual: written,
+      verdicts: verdicts({ 1: "two icons are missing" }),
+      registry: reg,
+    });
+    assert.equal(findings.length, 1, `${what} reported`);
+    assert.equal(findings[0].note, "two icons are missing", `${what} note`);
+    assert.ok(
+      !(findings[0].note ?? "").includes(marker),
+      `${what} marker gone`
+    );
+
+    // Answered by picking "Report": the marker stands in for the words they did not write.
+    const silent = [make()];
+    const fallback = [];
+    applyVerdicts({
+      findings: fallback,
+      manual: silent,
+      verdicts: verdicts({ 1: "Report" }),
+      registry: reg,
+    });
+    assert.equal(fallback.length, 1, `${what} reported by label`);
+    assert.equal(fallback[0].note, "...", `${what} falls back to the marker`);
+
+    // Cleared: nothing is filed at all, so no note of either kind can reach a developer.
+    const cleared = [make()];
+    const none = [];
+    applyVerdicts({
+      findings: none,
+      manual: cleared,
+      verdicts: verdicts({ 1: "Clear" }),
+      registry: reg,
+    });
+    assert.equal(none.length, 0, `${what} cleared`);
+  }
 });
