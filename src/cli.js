@@ -543,9 +543,8 @@ export async function main(argv) {
   }
 
   // The format decides how everything below prints, so it is judged as soon as the setters
-  // above have been given it - one question, asked once, at the point the value enters.
-  // It used to be asked after the branches that print, one of which then printed nothing at
-  // all for an unknown value and exited 0.
+  // above have been given it: one question, asked once, at the point the value enters, and
+  // before any branch can return without asking it.
   if (format !== "text" && format !== "json") {
     process.stderr.write(
       `Invalid --report-format "${format}" (expected text or json).\n`

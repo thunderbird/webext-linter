@@ -632,7 +632,7 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   whoever pastes the command is a threat to the reviewer's shell, not to the review. Do
   not re-propose escaping every metacharacter here.
 
-- **`{{flags}}` is not validated at load.** `llmScaReviewPrompt` refuses a missing intro
+- **`{{flags}}` is not validated at load.** `assertPrompts` refuses a missing intro
   and an empty step, but nothing requires a step to carry the `{{flags}}` slot, so a typo
   there would print the prompt with no command in it. It stays: the file is ours, one
   run of the flag shows the gap immediately, and the yaml is read by whoever edits it. Do
