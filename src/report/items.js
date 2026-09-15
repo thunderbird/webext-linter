@@ -254,9 +254,13 @@ function reviewFileBase(addon) {
     m?.name ??
     "addon";
   const at = new Date().toISOString().replace(/[:.]/g, "-");
+  // The id is the submission's, and an add-on with no gecko id lends its NAME - which has
+  // no length limit of its own, while the name this composes does (255 bytes on ext4, and
+  // the timestamp and the suffix take 30 of them). Clamped rather than hashed: what the
+  // first 80 characters name is still recognisable to whoever opens the file.
   // Anything outside this set could escape the directory or upset a shell, and the id
   // comes from the submission.
-  return `webext-linter-${id}-${m?.version ?? "0"}-${at}`.replace(
+  return `webext-linter-${id.slice(0, 80)}-${m?.version ?? "0"}-${at}`.replace(
     /[^A-Za-z0-9._@-]/g,
     "_"
   );

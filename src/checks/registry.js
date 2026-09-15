@@ -358,8 +358,8 @@ export class Registry {
    * @returns {{title: string, instructions?: string, response: ?string}[]}
    */
   manualChecks() {
-    return (this.doc["manual-checks"] || [])
-      .filter((e) => e && e.title)
+    return this.allEntries()
+      .filter((e) => e.manualCheck)
       .map((e) => ({
         title: e.title,
         instructions: e.instructions,
@@ -381,15 +381,15 @@ export class Registry {
    * @returns {string[]}
    */
   manualCheckIds() {
-    return (this.doc["manual-checks"] || [])
-      .map((e) => e && e.check)
-      .filter(Boolean);
+    return this.allEntries()
+      .filter((e) => e.manualCheck)
+      .map((e) => e.check);
   }
 
   /**
-   * The headings shown above each severity group in the Found Issues section, as a
-   * { error?, warning?, info? } -> string map (a missing key renders that group
-   * with no heading).
+   * The heading shown above each severity group in the Found Issues section, as a
+   * severity -> string map. Every severity has one and no other key is authored:
+   * assertProse asks the registry for exactly that closed set when it is read.
    * @returns {Record<string, string>}
    */
   issueHeadings() {
@@ -398,9 +398,10 @@ export class Registry {
   }
 
   /**
-   * The customer-facing verdict preamble for the Found Issues section, as a
-   * { none?, feedback?, rejected? } -> string map: `none` when there are no
-   * findings, `rejected` when any finding is an error, `feedback` otherwise.
+   * The customer-facing verdict preamble for the Found Issues section, as a VERDICT_KEYS
+   * -> string map: `none` when there are no findings, `rejected` when any is an error,
+   * `hold` when one is a hold and none is an error, `feedback` otherwise. All four are
+   * authored and no other key is: assertProse asks for that closed set at load.
    * @returns {Record<string, string>}
    */
   verdictIntros() {
@@ -661,39 +662,28 @@ export class Registry {
 }
 
 /**
- * Parse registry.yaml once into a Registry, asserting every phase section is there.
- *
- * The phase sections ARE the control flow: runChecks looks each one up BY NAME and runs
- * whatever it finds. So a renamed or misspelled section does not fail loudly - it yields an
- * empty phase, and the review silently runs without every check in it. Nothing
- * downstream can tell that apart from "this phase has no checks". Assert
- * the closed set here instead, so a broken registry aborts the review - the same contract
- * loadChecks already applies to a `check:` that names a missing module.
- *
- * Only the SHIPPED registry is asserted (see assertRequiredPhaseSections). A caller naming
- * its own file (the unit tests) is deliberately exercising one section in isolation, and a
- * partial doc is the point there.
- * @param {string} [registryPath]
- * @returns {Registry}
- */
-/**
- * Assert every phase in PHASE_SECTIONS has a non-empty section in the parsed registry `doc`.
- * A required section that is missing or empty (a yaml defect - a rename, a bad edit) would
- * leave that phase with no checks, and nothing downstream can tell "no checks" from "the
- * section vanished" - so the whole phase would be dropped from every review, silently. This
- * turns that into a loud abort. loadRegistry applies it to the SHIPPED registry only;
- * exported so the guard can be tested directly against a synthetic doc.
+ * Assert every section the review reads has entries: the phases in PHASE_SECTIONS, and
+ * `manual-checks`.
+ * The sections ARE the control flow: runChecks looks each phase up BY NAME and runs
+ * whatever it finds, and the report lists whatever `manual-checks` holds. So a renamed or
+ * misspelled section does not fail loudly - it yields an empty list, and nothing downstream
+ * can tell that apart from "this phase has no checks" or "this review asks nothing". This
+ * turns it into a loud abort. Asked of a whole registry only, never of a caller's partial
+ * one; exported so the guard can be tested directly against a synthetic doc.
  * @param {Record<string, unknown>} doc  The parsed registry document.
  * @param {string} registryPath  For the error message.
  */
 export function assertRequiredPhaseSections(doc, registryPath) {
-  for (const section of Object.values(PHASE_SECTIONS)) {
+  // `manual-checks` is asked for beside the phases because it is the same failure: it is
+  // the ONLY source of the Standard Manual Review questions, it is listed in every review,
+  // and an absent one reads as "this review has no questions" rather than as a typo.
+  for (const section of [...Object.values(PHASE_SECTIONS), "manual-checks"]) {
     const list = doc[section];
     if (!Array.isArray(list) || list.length === 0) {
       throw new Error(
-        `Registry ${registryPath}: the phase section "${section}" is missing or empty. ` +
-          "Every phase in PHASE_SECTIONS must declare its checks - an absent section " +
-          "would silently drop that whole phase from every review."
+        `Registry ${registryPath}: the section "${section}" is missing or empty. ` +
+          "Every section the review reads must declare its entries - an absent one would " +
+          "silently drop that whole list from every review."
       );
     }
   }
@@ -703,9 +693,8 @@ export function assertRequiredPhaseSections(doc, registryPath) {
  * Assert one check entry's declarative contract - everything about it that is decided by
  * the yaml alone, whatever this run was asked to check.
  *
- * Every rule here used to sit in loadChecks, AFTER --checks-only/--checks-skip and the
- * --eslint gate had filtered the list: which checks a run loaded decided which entries were
- * ever looked at, so `--checks-only unused-files` validated one entry out of eighty-six.
+ * Asked of every entry the registry declares, whatever this run was told to check: a rule
+ * that only holds for the entries a run happens to load is a rule the next run can break.
  * @param {object} entry  From registry.allEntries(), so a manual check is marked.
  * @param {string} at  The registry path, for the message.
  */
@@ -1158,7 +1147,7 @@ export function assertProse(registry, at) {
  * @param {string} at  The registry path, for the messages.
  * @param {{partial?: boolean}} [opts]
  */
-export function assertRegistry(registry, at, { partial = false } = {}) {
+function assertRegistry(registry, at, { partial = false } = {}) {
   assertEntries(registry, at);
   if (partial) {
     return;
@@ -1169,21 +1158,21 @@ export function assertRegistry(registry, at, { partial = false } = {}) {
   assertProse(registry, at);
 }
 
+/**
+ * Parse a registry file into a Registry, and assert what it says about itself.
+ *
+ * Reading it IS asserting it: everything assertRegistry asks is decided by the yaml alone,
+ * so a malformed entry, prompt, answer or heading aborts the run that read the file rather
+ * than the one that happens to print the part that is wrong. A caller naming its own file -
+ * the unit tests, which declare one section on purpose - has its entries asserted and the
+ * document-level rules skipped.
+ * @param {string} [registryPath]
+ * @returns {Registry}
+ */
 export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
   const registry = new Registry(
     YAML.parse(fs.readFileSync(registryPath, "utf8")) || {}
   );
-
-  // ONE rule module = ONE entry = ONE phase. A check's id IS its module's filename stem, so a
-  // second entry naming the same module is not a second check - it is the same check declared
-  // twice. It would run once per entry, and worse, the id -> entry index (a Map, keyed by that
-  // stem, and the only way a finding - which carries just a ruleId - reaches its severity and
-  // response text) would resolve to the LAST declaration: a duplicate can silently restamp a
-  // real check's `error` as `info`. Applies to every registry, not just the shipped one: a
-  // duplicate is a mistake in any of them.
-  // Everything the yaml says about itself, asked once, on the run that READ it - so a
-  // malformed entry, prompt, answer or heading aborts here rather than on the one run that
-  // happens to print the part that is wrong.
   assertRegistry(registry, registryPath, {
     partial: registryPath !== DEFAULT_REGISTRY,
   });

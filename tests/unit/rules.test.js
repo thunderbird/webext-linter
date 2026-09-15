@@ -660,7 +660,7 @@ test("checks carry the sca mode tag (true=SCA-only, undefined=both; none is XPI-
 });
 
 // `escalation` and `instructions` are one declaration in two halves: the section a case is
-// listed under, and the wording it is listed with. loadChecks refuses either alone, because
+// listed under, and the wording it is listed with. loadRegistry refuses either alone, because
 // both failures would otherwise surface only when a case first reached them - which may be
 // never. This pins the whole map, so a new escalating check must declare its section.
 test("every escalating check declares a section, and only those", async () => {
@@ -3631,28 +3631,31 @@ test("every phase of the shipped registry is declared and populated", async () =
 // (a rename, a bad edit) is a defect that would silently drop that whole phase from every
 // review. assertRequiredPhaseSections turns it into a loud abort. Tested directly, because in
 // loadRegistry it runs for the SHIPPED registry only (a partial test yaml must not trip it).
-test("assertRequiredPhaseSections rejects a missing or empty required phase section", () => {
+test("assertRequiredPhaseSections rejects a missing or empty required section", () => {
   const full = {
     "invalid-experiment-phase": [{ check: "experiment-not-allowed" }],
     "deterministic-phase": [{ check: "sync-xhr" }],
+    "manual-checks": [{ check: "test-add-on" }],
   };
   // The complete set is accepted.
   assert.doesNotThrow(() => assertRequiredPhaseSections(full, "ok.yaml"));
-  // A section removed entirely (a rename) throws, naming the missing one.
-  const { "invalid-experiment-phase": _dropped, ...missing } = full;
-  assert.throws(
-    () => assertRequiredPhaseSections(missing, "x.yaml"),
-    /phase section "invalid-experiment-phase" is missing or empty/
-  );
-  // A section present but empty throws too.
-  assert.throws(
-    () =>
-      assertRequiredPhaseSections(
-        { ...full, "deterministic-phase": [] },
-        "x.yaml"
-      ),
-    /phase section "deterministic-phase" is missing or empty/
-  );
+  // Each one removed entirely (a rename) throws, naming the missing one - manual-checks
+  // among them: it is the only source of the Standard Manual Review questions, so an
+  // absent one reads as "this review asks nothing" rather than as a typo.
+  for (const section of Object.keys(full)) {
+    const { [section]: _dropped, ...missing } = full;
+    assert.throws(
+      () => assertRequiredPhaseSections(missing, "x.yaml"),
+      new RegExp(`the section "${section}" is missing or empty`),
+      section
+    );
+    // Present but empty throws too.
+    assert.throws(
+      () => assertRequiredPhaseSections({ ...full, [section]: [] }, "x.yaml"),
+      new RegExp(`the section "${section}" is missing or empty`),
+      `${section} (empty)`
+    );
+  }
 });
 
 // loadChecks validates the severity token: error/warning/info/auto are allowed,
