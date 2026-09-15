@@ -683,7 +683,10 @@ export async function main(argv) {
     try {
       submission = scaSubmission(values["llm-sca-review"]);
     } catch (err) {
-      process.stderr.write(`${err.message}\n`);
+      // The flag's name is this layer's: submission.js says what it found in the folder.
+      process.stderr.write(
+        `--llm-sca-review "${values["llm-sca-review"]}": ${err.message}\n`
+      );
       return 2;
     }
     // The prompt IS the output: no review has run, and none can until its reader answers

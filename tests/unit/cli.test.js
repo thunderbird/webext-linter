@@ -1192,9 +1192,12 @@ test("--llm-sca-review refuses a folder that is not a submission", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-empty-"));
   const r = run(["--llm-sca-review", dir]);
   assert.equal(r.code, 2);
+  // The flag's name and the value that was given are the front-end's half of the message;
+  // what was found in the folder is the loader's.
+  assert.match(r.stderr, new RegExp(`--llm-sca-review "${dir}":`));
   assert.match(
     r.stderr,
-    /must hold exactly one \.xpi and exactly one other archive/
+    /a submission folder holds exactly one \.xpi and exactly one other archive/
   );
   fs.rmSync(dir, { recursive: true, force: true });
 });

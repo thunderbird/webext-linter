@@ -9,7 +9,9 @@
 // Belongs here: locating those two files, and refusing a folder that is not that pair.
 //
 // Does NOT belong here: reading either file (src/addon/load.js), the prompt's wording
-// (assets/registry.yaml) or how it is printed (src/report/format.js).
+// (assets/registry.yaml), how it is printed (src/report/format.js), or the NAME of the
+// flag that asked - src/cli.js owns the options table, so it says which flag was wrong and
+// this says what was found. A caller with no command line gets an answer about the folder.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -65,9 +67,7 @@ export function scaSubmission(folder) {
   try {
     entries = fs.readdirSync(root, { withFileTypes: true });
   } catch (err) {
-    throw new Error(
-      `--llm-sca-review ${folder} is not a readable folder: ${err.message}`
-    );
+    throw new Error(`not a readable folder: ${err.message}`);
   }
   const archives = entries
     .filter(
@@ -83,9 +83,9 @@ export function scaSubmission(folder) {
     list.length ? list.map((n) => `"${n}"`).join(", ") : "none";
   if (addons.length !== 1 || sources.length !== 1) {
     throw new Error(
-      `--llm-sca-review ${folder} must hold exactly one ${ADDON_EXTENSION} and exactly ` +
-        "one other archive - the built add-on and the source it was built from. " +
-        `Found ${addons.length} add-on(s) (${found(addons)}) and ${sources.length} ` +
+      `a submission folder holds exactly one ${ADDON_EXTENSION} and exactly one other ` +
+        "archive - the built add-on and the source it was built from. Found " +
+        `${addons.length} add-on(s) (${found(addons)}) and ${sources.length} ` +
         `source archive(s) (${found(sources)}).`
     );
   }

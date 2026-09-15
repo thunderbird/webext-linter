@@ -71,9 +71,14 @@ test("anything that is not one add-on and one source archive is refused", () => 
 });
 
 // A folder that cannot be read at all says so, rather than reporting it holds no add-on.
-test("a folder that is not there says that", () => {
+// What it does NOT say is which flag named it: the front-end owns the options table, so it
+// prefixes these messages - and a caller that passed no command line gets an answer about
+// the folder rather than about a flag it never used.
+test("a folder that is not there says that, naming no flag", () => {
   assert.throws(
     () => scaSubmission(path.join(os.tmpdir(), "webext-linter-no-such-folder")),
-    /is not a readable folder/
+    (err) =>
+      /^not a readable folder:/.test(err.message) &&
+      !err.message.includes("--llm-sca-review")
   );
 });
