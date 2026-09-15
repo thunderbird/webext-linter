@@ -23,7 +23,7 @@ import { parseArgs } from "node:util";
 import { runPipeline } from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
 import { scaSubmission } from "./addon/submission.js";
-import { hasParentSegment, scaRootRelative } from "./addon/load.js";
+import { hasParentSegment, relativeInside } from "./addon/load.js";
 import { hasErrors } from "./report/finding.js";
 import { formatReview, scaPromptLines } from "./report/format.js";
 import {
@@ -210,11 +210,11 @@ function helpText(checkIds) {
     ],
     [
       "--sca-source <path>",
-      "The add-on code root, as a path relative to --sca-root (e.g. src or addon). Optional; defaults to . (the whole --sca-root reviewed as the source - a flat layout where manifest.json sits at the root). Needs --sca-root.",
+      "The add-on code root, inside --sca-root: a path relative to it (e.g. src or addon), or an absolute path within it - the spelling the report itself prints. Optional; defaults to the whole --sca-root reviewed as the source - a flat layout where manifest.json sits at the root. Needs --sca-root.",
     ],
     [
       "--sca-exp-source <path>",
-      "The Experiment implementation folder, as a path relative to --sca-root - anywhere within it (e.g. addon/experiment-api, or a sibling of the source like experiment). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-root; REQUIRED when --allow-experiments is used in SCA mode.",
+      "The Experiment implementation folder, inside --sca-root - relative to it or absolute within it, anywhere under it (e.g. addon/experiment-api, or a sibling of the source like experiment). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-root; REQUIRED when --allow-experiments is used in SCA mode.",
     ],
   ];
 
@@ -424,14 +424,10 @@ function pointsAtFolder(p) {
  *   what to do on its own - the others are worth telling what the folder is FOR.
  */
 function folderProblem(flag, value, base, inRoot = false) {
-  if (inRoot && path.isAbsolute(value)) {
-    return {
-      text:
-        `--${flag} names a folder inside --sca-root, written relative to it: ` +
-        `"${value}" is an absolute path. Name it relative to --sca-root.`,
-      escape: true,
-    };
-  }
+  // Refused on the SPELLING, which only this layer still sees: a value that walks out of a
+  // tree to name something names it by the way out, and every flag here names a folder
+  // directly. Kept as its own refusal even though the containment test below would catch
+  // most of them, because the message can say what is wrong with what was typed.
   if (hasParentSegment(value)) {
     return {
       text:
@@ -440,11 +436,25 @@ function folderProblem(flag, value, base, inRoot = false) {
       escape: true,
     };
   }
-  // Resolved by the LOADER's own function for a flag that names a folder inside
-  // --sca-root: the two refusals above are the two shapes it throws on, so by here it
-  // answers rather than throws, and the folder asked about is the folder the review reads.
-  const rel = inRoot ? scaRootRelative(value, base, `--${flag}`) : null;
-  const full = inRoot ? (rel ? path.join(base, rel) : base) : value;
+  // Resolved exactly as the arg-array reader resolves it (pipelineOptsFromValues): against
+  // --sca-root for a flag that names a folder inside it, against the working directory
+  // otherwise. One expression in both places, so the folder asked about here is the folder
+  // the review goes on to read rather than a second spelling of it.
+  const full = inRoot ? path.resolve(base, value) : path.resolve(value);
+  // A folder inside --sca-root may be written either way - relative to the root, or
+  // absolute, which is the spelling the report itself prints and a reader hands back. What
+  // is refused is what the spelling was only ever a proxy for: a path that lands OUTSIDE
+  // the root names a folder on the reviewing machine, and what it names is not part of the
+  // submission and cannot be shown to be. Asked with the loader's own function, so the
+  // guard and the review cannot answer it differently.
+  if (inRoot && relativeInside(full, base) === null) {
+    return {
+      text:
+        `--${flag} names a folder inside --sca-root: "${value}" resolves to "${full}", ` +
+        `which is outside "${path.resolve(base)}".`,
+      escape: true,
+    };
+  }
   if (!pointsAtFolder(full)) {
     return {
       text:
@@ -745,8 +755,9 @@ export async function main(argv) {
   }
 
   // --sca-root is the SCA-mode switch. --sca-source and --sca-exp-source name locations
-  // INSIDE it, so they are meaningless on their own. --sca-root alone is fine:
-  // --sca-source defaults to "." (the whole root reviewed as the source).
+  // INSIDE it, so they are meaningless on their own - and unresolvable, since this layer
+  // resolves them against it. --sca-root alone is fine: the source then defaults to the
+  // whole root.
   if (
     (values["sca-source"] || values["sca-exp-source"]) &&
     !values["sca-root"]
@@ -772,11 +783,10 @@ export async function main(argv) {
     if (value === undefined) {
       continue;
     }
-    // --sca-root stands on its own; the other two name folders INSIDE it, and the path
-    // they name is resolved BY THE LOADER'S OWN function - so the folder asked about here
-    // is the folder the review goes on to read, rather than a second spelling of it.
-    // scaRootRelative refuses the same two shapes folderProblem does (an absolute path, a
-    // ".." segment), which is why it is safe to call only once those are answered.
+    // --sca-root stands on its own; the other two name folders INSIDE it, so they are
+    // asked about after being resolved against it - the same resolution the reader applies
+    // a moment later. The two refusals before that (an absolute path, a ".." segment) are
+    // about the SPELLING the user chose, which is the only place that is still visible.
     const inRoot = flag !== "sca-root";
     const problem = folderProblem(
       flag,
@@ -832,7 +842,8 @@ export async function main(argv) {
       ]);
     }
     result = await runPipeline({
-      addonPath: positionals[0],
+      // Absolute from here on, like every other path opt (pipelineOptsFromValues).
+      addonPath: path.resolve(positionals[0]),
       ...opts,
       registry,
     });
@@ -878,10 +889,23 @@ function clearCaches(dirs) {
  * Map parsed CLI `values` (from parseArgs with OPTIONS) to runPipeline opts.
  * Shared by main() and the test harness so both honor the real flag names.
  * Does not include `action`/`addonPath` (those come from the command/path).
+ *
+ * Every path opt leaves here ABSOLUTE. This is the one layer that knows what each flag is
+ * written relative to - the working directory for --sca-root, and --sca-root itself for the
+ * two that name a folder inside it - so it is the layer that resolves them. Downstream then
+ * derives what it needs (an archive key, a containment test) from real paths instead of
+ * re-deciding what a relative string meant, which is how one spelling used to reach three
+ * functions and come back three shapes.
  * @param {Record<string, string|boolean|string[]>} values
  * @returns {Partial<PipelineOpts>}
  */
 function pipelineOptsFromValues(values) {
+  // Resolved FIRST, because the other two are resolved against it.
+  const scaRoot = values["sca-root"]
+    ? path.resolve(values["sca-root"])
+    : undefined;
+  const inRoot = (value) =>
+    value === undefined ? undefined : path.resolve(scaRoot ?? ".", value);
   return {
     schemaCache: values["cache-schema-dir"] || DEFAULT_CACHE,
     libraryHashesCache: values["cache-hash-db-dir"] || LIBRARY_HASHES_CACHE,
@@ -893,9 +917,9 @@ function pipelineOptsFromValues(values) {
     checksSkip: splitList(values["checks-skip"]),
     eslint: values.eslint,
     allowExperiments: values["allow-experiments"],
-    scaRoot: values["sca-root"],
-    scaSource: values["sca-source"],
-    scaExpSource: values["sca-exp-source"],
+    scaRoot,
+    scaSource: inRoot(values["sca-source"]),
+    scaExpSource: inRoot(values["sca-exp-source"]),
     llmReview: Boolean(values["llm-review"]),
     llmSkip: reviewSkips(values),
     llmVerdict: values["llm-verdict"],

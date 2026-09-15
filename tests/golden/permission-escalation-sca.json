@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/permission-escalation-sca/xpi",
     "scaRoot": "<root>/tests/addons/permission-escalation-sca/src",
-    "scaSource": ".",
+    "scaSource": "<root>/tests/addons/permission-escalation-sca/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

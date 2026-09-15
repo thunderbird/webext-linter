@@ -315,12 +315,16 @@ guard family had a demonstrated defect.
   escalation to every add-on with an unfollowable loader. E and F are closed by the
   TypeScript entry below.
 
-- **`--sca-source` and `--sca-exp-source` are paths relative to `--sca-root`, never
-  absolute.** Both name a folder INSIDE the extracted source; an absolute path names a
-  folder on the reviewing machine, which can be anywhere, so what it names is not part of
-  the submission and cannot be shown to be. `--sca-root` itself is a machine path and stays
-  free. Refused at the CLI with a usage line and in `scaRootRelative`, so no caller has a
-  second answer; `.` and `./` still name the root itself. Do not re-add the absolute form.
+- **`--sca-source` and `--sca-exp-source` name a folder INSIDE `--sca-root`, and the
+  refusal is about WHERE it lands, not how it is spelled.** Either spelling is accepted -
+  relative to the root, or absolute within it, which is the form the report prints and a
+  reader hands back. What is refused is a path that resolves OUTSIDE the root: that names a
+  folder on the reviewing machine, so what it names is not part of the submission and cannot
+  be shown to be. One function answers it (`relativeInside`), asked by the CLI guard for its
+  usage line and by the loader for its archive key, so no caller has a second answer.
+  Earlier this was enforced by refusing the absolute SPELLING; that stopped being tenable
+  when every path the report prints became absolute - a value the tool prints has to be a
+  value the tool accepts. Do not re-add a refusal based on spelling.
 
 - **The order authored in `llm-manual-review-choices` IS the order a reviewer sees.** It is
   the only rule about answer order: no prompt step, no code and no second list may restate

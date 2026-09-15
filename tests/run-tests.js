@@ -242,7 +242,9 @@ async function main() {
           ...base,
           addonPath: path.join(dir, "xpi"),
           scaRoot: path.join(dir, "src"),
-          scaSource: ".",
+          // The source IS the root here (a flat fixture layout), named absolutely like
+          // every other path opt.
+          scaSource: path.join(dir, "src"),
         });
       } else {
         // XPI mode: load the add-on ourselves and drop the expected.json sidecar so

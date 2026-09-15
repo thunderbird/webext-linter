@@ -137,12 +137,11 @@ export function buildReachability(ctx) {
 /**
  * SCA mode: the WebExtension code set is every readable-source file EXCEPT the
  * Experiment subtree named by ctx.scaExpSource - a source-relative path (runPipeline
- * re-bases the scaRoot-relative --sca-exp-source flag to it via scaExpSourceRelative,
- * matching the addon.files keys loadScaAddon already stripped of the scaSource
- * prefix). Files equal to `<exp>` or under `<exp>/` are excluded;
- * an empty/absent value excludes nothing - the case when --sca-exp-source is unset OR
- * lies outside the review source (scaExpSourceRelative returns "" for both), where the
- * Experiment is not in this file set to begin with.
+ * derives it from the --sca-exp-source path via expExcludePrefix, matching the addon.files
+ * keys loadScaAddon already stripped of the scaSource prefix). Files equal to `<exp>` or
+ * under `<exp>/` are excluded; an empty/absent value excludes nothing - the case when
+ * --sca-exp-source is unset OR lies outside the review source (expExcludePrefix returns ""
+ * for both), where the Experiment is not in this file set to begin with.
  * @param {Map<string, Buffer>} files
  * @param {?string} scaExpSource
  * @returns {Set<string>}

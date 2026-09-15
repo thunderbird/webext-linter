@@ -93,8 +93,8 @@ test("SCA e2e: a flat layout (--sca-source == --sca-root) is accepted and fully 
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(FLAT_SRC);
   try {
-    // "." and "./" alike name the root itself.
-    for (const scaSource of [".", "./"]) {
+    // The root itself, named either by omitting the flag or by passing the root.
+    for (const scaSource of [undefined, src]) {
       const { findings, meta } = await runPipeline({
         addonPath: xpi,
         scaRoot: src,
@@ -285,7 +285,7 @@ test("SCA e2e: a flat layout audits the root package.json dependencies", async (
     const { findings } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: ".",
+      scaSource: src,
       ...OFFLINE,
       vendorNet,
     });
@@ -370,7 +370,7 @@ test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-au
     const { findings } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: ".",
+      scaSource: src,
       ...OFFLINE,
       vendorNet,
       cdnLookupCache: cdnCache,
@@ -412,7 +412,7 @@ test("SCA: the --sca-root archive is read once, not twice", async () => {
     await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     assert.equal(rootReads, 1, "--sca-root walked once, not twice");
@@ -436,12 +436,15 @@ test("SCA meta names the artifacts, each a real path", async () => {
     const { meta } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "./src/",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     assert.equal(meta.xpi, xpi);
     assert.equal(meta.scaRoot, src);
-    assert.equal(meta.scaSource, "src");
+    // Absolute, like every other path here: the flag's spellings are resolved by the
+    // arg-array reader (src/cli.js), and what reaches meta is the folder that was read.
+    assert.equal(meta.scaSource, path.join(src, "src"));
+    assert.equal(fs.existsSync(meta.scaSource), true);
     for (const value of [meta.xpi, meta.scaRoot]) {
       assert.equal(fs.existsSync(value), true, `${value} is a real path`);
     }
@@ -467,7 +470,7 @@ test("an SCA --llm-review names a build report beside the add-on", async () => {
     const { meta } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       llmReview: true,
       ...OFFLINE,
     });
@@ -501,7 +504,7 @@ test("SCA e2e: code checks review the source; manifest/WAR resolve against the X
     const result = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     const { findings } = result;
@@ -551,7 +554,7 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
     const base = {
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     };
     // Without the flag, the privileged Experiment code is reviewed as WebExtension
@@ -571,7 +574,7 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
     // the real defect in main.js is still caught.
     const withExp = await runPipeline({
       ...base,
-      scaExpSource: "src/experiments",
+      scaExpSource: path.join(src, "src", "experiments"),
     });
     assert.ok(
       !has(
@@ -586,14 +589,13 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
       "the WebExtension code is still reviewed with --sca-exp-source"
     );
 
-    // Both source flags name a folder within --sca-root, written relative to it: an
-    // absolute path names one on the reviewing machine, which is not the submission's.
+    // What a source flag may NOT name is a folder outside --sca-root: that one sits on the
+    // reviewing machine and is not the submission's. The spelling is free - every path opt
+    // reaching the pipeline is absolute (src/cli.js resolves them) - so this is a question
+    // about where it lands.
     await assert.rejects(
-      runPipeline({
-        ...base,
-        scaExpSource: path.join(src, "src", "experiments"),
-      }),
-      /must be relative to --sca-root/
+      runPipeline({ ...base, scaExpSource: path.join(xpi, "experiments") }),
+      /is not inside --sca-root/
     );
   } finally {
     fs.rmSync(xpi, { recursive: true, force: true });
@@ -610,9 +612,14 @@ test("SCA e2e: --sca-exp-source may be a sibling of --sca-source under --sca-roo
     "experiment/exp.js": `ChromeUtils.importESModule("resource:///x.sys.mjs");\n`,
   });
   try {
-    const base = { addonPath: xpi, scaRoot: src, scaSource: "src", ...OFFLINE };
-    // Accepted (no throw) when the sibling folder is named relative to --sca-root.
-    for (const scaExpSource of ["experiment", "./experiment"]) {
+    const base = {
+      addonPath: xpi,
+      scaRoot: src,
+      scaSource: path.join(src, "src"),
+      ...OFFLINE,
+    };
+    // Accepted (no throw) when the sibling folder sits anywhere under --sca-root.
+    for (const scaExpSource of [path.join(src, "experiment")]) {
       const res = await runPipeline({ ...base, scaExpSource });
       // The review source is still reviewed...
       assert.ok(
@@ -647,7 +654,7 @@ test("SCA e2e: unused-files flags the build's dead files, not source scaffolding
     const { findings } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     // unused-files describes the SHIPPED artifact: the XPI's dead file is flagged...
@@ -685,7 +692,7 @@ test("SCA e2e: locale checks evaluate _locales against the XPI, not the source",
     const { findings } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     // The shipped XPI satisfies default_locale, so there is no false reject - even
@@ -722,7 +729,7 @@ test("SCA e2e: missing-english-localization checks the XPI's _locales, not sourc
     const { findings } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     assert.ok(
@@ -764,7 +771,7 @@ test("SCA e2e: background-module judges the XPI's background script, not the ESM
     const a = await runPipeline({
       addonPath: xpiClassic,
       scaRoot: srcEsm,
-      scaSource: "src",
+      scaSource: path.join(srcEsm, "src"),
       ...OFFLINE,
     });
     assert.ok(
@@ -774,7 +781,7 @@ test("SCA e2e: background-module judges the XPI's background script, not the ESM
     const b = await runPipeline({
       addonPath: xpiEsm,
       scaRoot: srcEsm,
-      scaSource: "src",
+      scaSource: path.join(srcEsm, "src"),
       ...OFFLINE,
     });
     assert.ok(
@@ -808,7 +815,7 @@ test("SCA e2e: trademark-violation resolves a localized name via the XPI's _loca
     const { findings } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     assert.ok(
@@ -866,7 +873,7 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
     const { findings } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
       vendorNet,
     });
@@ -900,7 +907,7 @@ test("SCA e2e: a build script outside the source is reviewed by undeclared-build
     const { meta } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     // The check ran (SCA-eligible)...
@@ -936,7 +943,7 @@ test("SCA e2e: build-policy checks flag yarn + a redirected registry offline", a
     const { findings } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     assert.ok(
@@ -968,7 +975,7 @@ test("SCA e2e: a clean npm build fires neither build-policy check", async () => 
     const { findings } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     assert.ok(!has(findings, "unsupported-build-tool"));
@@ -1000,7 +1007,7 @@ test("SCA e2e: TypeScript and Vue source is parsed and its defects are caught", 
     const { findings, meta } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     // (1) The .ts file is parsed and API-resolved.
@@ -1041,7 +1048,7 @@ test("SCA e2e: a minified file in the source is rejected by minified-code", asyn
     const { findings } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     // The prefix is stripped by loadScaAddon, so the review file is "blob.min.js".
@@ -1073,7 +1080,7 @@ test("SCA e2e: a package.json install hook escalates to a reviewer", async () =>
     const { findings, meta } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     assert.ok(
@@ -1107,7 +1114,7 @@ test("SCA e2e: a committed build archive is rejected anywhere in --sca-root", as
     const { findings } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     assert.ok(
@@ -1141,7 +1148,7 @@ test("SCA e2e: a committed node_modules folder is rejected", async () => {
     const { findings } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     assert.ok(
@@ -1197,7 +1204,7 @@ test("SCA e2e: a transpiled source withholds the XPI-only advice; a typed file o
     const a = await runPipeline({
       addonPath: xpi,
       scaRoot: outside,
-      scaSource: "src",
+      scaSource: path.join(outside, "src"),
       ...OFFLINE,
     });
     assert.equal(a.mode, REVIEW_MODE.SCA, "the review is never re-routed");
@@ -1209,7 +1216,7 @@ test("SCA e2e: a transpiled source withholds the XPI-only advice; a typed file o
     const b = await runPipeline({
       addonPath: xpi,
       scaRoot: inside,
-      scaSource: "src",
+      scaSource: path.join(inside, "src"),
       ...OFFLINE,
     });
     assert.equal(b.mode, REVIEW_MODE.SCA, "still SCA, as always");
@@ -1243,7 +1250,7 @@ test("SCA e2e: a readable XPI that IS the source is advised to submit XPI-only, 
     const result = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: ".",
+      scaSource: src,
       ...OFFLINE,
     });
     const { findings, mode } = result;
@@ -1292,7 +1299,7 @@ test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", 
     const { findings, mode } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: "src",
+      scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
     assert.equal(
@@ -1333,7 +1340,7 @@ test("SCA e2e: a VENDOR-declared file still needs a source twin (a declaration c
     const { findings, mode, meta } = await runPipeline({
       addonPath: xpi,
       scaRoot: src,
-      scaSource: ".",
+      scaSource: src,
       ...OFFLINE,
     });
     assert.equal(

@@ -40,7 +40,7 @@ import {
   loadAddon,
   loadScaAddon,
   selectScaBuildFiles,
-  scaExpSourceRelative,
+  expExcludePrefix,
   scaRootRelative,
 } from "./addon/load.js";
 import { isTranspiledSource } from "./util/files.js";
@@ -97,8 +97,13 @@ import { DEFAULT_CACHE } from "./config.js";
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
 
 /**
+ * Every path opt is ABSOLUTE. The arg-array reader resolves them (pipelineOptsFromValues,
+ * src/cli.js), which is the one layer that knows what each flag was written relative to -
+ * the working directory for --sca-root, and --sca-root itself for the two naming a folder
+ * inside it. Nothing here re-resolves one, and a caller handing in a relative path gets
+ * whatever the working directory makes of it.
  * @typedef {object} PipelineOpts
- * @property {string} addonPath
+ * @property {string} addonPath  The shipped add-on, absolute.
  * @property {string} [schemaCache]
  * @property {string} [experimentsCache]  Where to cache the fetched experiments
  *   zip.
@@ -107,23 +112,25 @@ import { DEFAULT_CACHE } from "./config.js";
  * @property {boolean} [eslint]  Run the opt-in ESLint code-sanity check (off by
  *   default); when unset, the code-sanity check is skipped entirely.
  * @property {boolean} [allowExperiments]
- * @property {string} [scaRoot]  SCA mode: path to the source
- *   archive root, an extracted folder, holding package.json/lock. Setting it switches the
+ * @property {string} [scaRoot]  SCA mode: the source archive root, absolute - an extracted
+ *   folder holding package.json/lock. Setting it switches the
  *   review to SCA mode - the readable source (scaSource) is reviewed and its declared
  *   dependencies are audited; the positional XPI is the shipped artifact against which
  *   the manifest, experiments and file-completeness (`input: xpi`) checks all run (a
  *   separate shipped context the orchestrator routes them to - see buildXpiCtxs in
  *   src/checks/context.js).
- * @property {string} [scaSource]  The add-on code root, as a path relative to scaRoot
- *   (e.g. "src" or "addon"). Optional; defaults to "." (the whole scaRoot
- *   reviewed as the source - a flat layout with manifest.json at the root).
+ * @property {string} [scaSource]  The add-on code root, absolute and inside scaRoot
+ *   (--sca-source names it relative to the root). Optional; defaults to scaRoot itself -
+ *   a flat layout with manifest.json at the root.
  * @property {string} [scaExpSource]  SCA mode: the Experiment implementation folder,
- *   relative to scaRoot, anywhere under it (e.g. "addon/experiment-api");
- *   runPipeline re-bases it to a source-relative ctx.scaExpSource. Its privileged, non-WebExtension
- *   files are excluded from the WebExtension code checks (which review all of the
- *   readable source, having no reachability tree there). Optional in general, but
- *   REQUIRED when allowExperiments is set in SCA mode (the CLI enforces this) -
- *   without it, Experiment code cannot be told apart from WebExtension code.
+ *   absolute and inside scaRoot, which is not necessarily inside scaSource. runPipeline
+ *   derives from it the prefix to exclude from the review source (expExcludePrefix), which
+ *   is what reaches ctx.scaExpSource - a source-relative path, and "" when the Experiment
+ *   sits outside the reviewed subtree. Its privileged, non-WebExtension files are excluded
+ *   from the WebExtension code checks (which review all of the readable source, having no
+ *   reachability tree there). Optional in general, but REQUIRED when allowExperiments is
+ *   set in SCA mode (the CLI enforces this) - without it, Experiment code cannot be told
+ *   apart from WebExtension code.
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
  * @property {boolean} [cdnLookup]  Identify an unrecognized bundled library (minified,
  *   or a large readable file) by a jsDelivr content-hash lookup (on by default;
@@ -168,11 +175,10 @@ import { DEFAULT_CACHE } from "./config.js";
  */
 export async function runPipeline(opts) {
   const { addonPath } = opts;
-  // The shipped add-on's path, resolved ONCE and read from here on. An Addon carries no
-  // path of its own (src/addon/load.js), so this is the single value the run has for
-  // "which add-on": what the report names, what a verdict file is checked against, and
-  // where the description file goes.
-  const xpiPath = path.resolve(addonPath);
+  // `addonPath` IS the shipped add-on's path, absolute, and the single value the run has
+  // for "which add-on": what the report names, what a verdict file is checked against, and
+  // where the description file goes. An Addon carries no path of its own
+  // (src/addon/load.js), and nothing here resolves one - the arg-array reader did.
   // SCA (source code archive) mode is on when --sca-root is set (--sca-source is
   // optional, defaulting to "."). It splits the review across TWO add-on artifacts
   // with a fixed ROLE each, resolved here ONCE so nothing downstream re-branches on the mode:
@@ -203,7 +209,8 @@ export async function runPipeline(opts) {
   // `preliminaryMode` sizes the Setup feed only (the counter is fixed before the first
   // step). The EFFECTIVE mode is set below and differs only for a REJECTED Experiment, which
   // stays an XPI review even with --sca-root. Everything mode-dependent (the source load,
-  // scaSource, scaExpSource, meta) is then DERIVED from it, so nothing is mutated afterward.
+  // scaSource, the Experiment exclude prefix, meta) is then DERIVED from it, so nothing is
+  // mutated afterward.
   const preliminaryMode = opts.scaRoot ? "sca" : "xpi";
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly).
@@ -247,7 +254,7 @@ export async function runPipeline(opts) {
   // 1a. Mark the start of the review. The .xpi was already read pre-banner (above); the SCA
   // source archive is read below (for the XPI-only advice) and reused in Phase 2 - only a
   // rejected Experiment never reads it. The review target (`addon`) and the derived
-  // `scaSource`/`scaExpSource` are set there, from the resolved mode. Narrate the .xpi
+  // `scaSource` and the Experiment exclude prefix are set there, from the resolved mode. Narrate the .xpi
   // loader's skip notices (a non-node_modules symlink, an unsafe archive path) here; the
   // source loader's notices are narrated in Phase 2.
   setupStep("Reading add-on");
@@ -261,7 +268,7 @@ export async function runPipeline(opts) {
    * advice (resolveXpiOnlyAdvice), which compares their bytes against the shipped ones. */
   let sourceFiles;
   let scaSource;
-  let scaExpSource;
+  let expExclude;
 
   // 1b. The review schema: fetched, annotated, indexed. It is resolved from the SHIPPED
   // XPI's manifest alone (manifest_version + strict_max_version pick the channel), so it
@@ -420,7 +427,7 @@ export async function runPipeline(opts) {
     if (opts.scaRoot) {
       scaArchive = loadAddon(opts.scaRoot);
       const rel = scaRootRelative(
-        opts.scaSource || ".",
+        opts.scaSource || opts.scaRoot,
         opts.scaRoot,
         "--sca-source"
       );
@@ -448,13 +455,14 @@ export async function runPipeline(opts) {
   }
 
   // Phase 2: everything mode-dependent, DERIVED from the resolved mode - no mutation. The
-  // review target `addon`, `scaSource`, `scaExpSource`, the experiment mirror, and `meta`
+  // review target `addon`, `scaSource`, the Experiment exclude prefix, the experiment mirror, and `meta`
   // all follow it. Only a rejected Experiment takes the XPI arm with --sca-root set.
   if (mode?.sca) {
     // The archive was read ONCE above, for the mode decision (and is shared with
     // selectScaBuildFiles below); the review addon is the source subtree carrying the
     // XPI's manifest.
-    scaSource = opts.scaSource || ".";
+    // The review source, absolute: the whole root when --sca-source named nothing.
+    scaSource = opts.scaSource || opts.scaRoot;
     scaArchive = scaArchive ?? loadAddon(opts.scaRoot);
     addon = loadScaAddon(scaArchive, scaSource, opts.scaRoot);
     for (const notice of scaArchive.skipped ?? []) {
@@ -463,19 +471,16 @@ export async function runPipeline(opts) {
     // Mirror the XPI's experiment classification onto the review addon (the experiment
     // checks read ctx.experiments from it; in XPI mode the two are one addon anyway).
     addon.experiments = xpiAddon.experiments;
-    // --sca-exp-source is relative to --sca-root; re-base it into the
-    // review-source keyspace so the WebExtension-code checks can exclude the Experiment
-    // subtree. Warn when it matches nothing - a mis-typed path would silently exclude
-    // nothing and flood the report with false positives on the privileged Experiment code.
-    scaExpSource = scaExpSourceRelative(
-      opts.scaExpSource,
-      scaSource,
-      opts.scaRoot
-    );
+    // Where the Experiment subtree sits WITHIN the review source, so the
+    // WebExtension-code checks can exclude it - "" when it sits elsewhere under the root,
+    // which is already outside the reviewed file set. Not the flag: that one is absolute
+    // and stays on opts. Warn when it matches nothing - a mis-typed path would silently
+    // exclude nothing and flood the report with false positives on the privileged code.
+    expExclude = expExcludePrefix(opts.scaExpSource, scaSource, opts.scaRoot);
     if (
-      scaExpSource &&
+      expExclude &&
       ![...addon.files.keys()].some(
-        (f) => f === scaExpSource || f.startsWith(`${scaExpSource}/`)
+        (f) => f === expExclude || f.startsWith(`${expExclude}/`)
       )
     ) {
       warn(
@@ -486,7 +491,7 @@ export async function runPipeline(opts) {
   } else {
     // XPI review (native, or a rejected Experiment): the review target IS the .xpi.
     addon = xpiAddon;
-    scaExpSource = undefined;
+    expExclude = undefined;
   }
   // What was reviewed, named by ARTIFACT rather than by role: `xpi` is the shipped add-on
   // in EVERY review, and a source code review adds the two values it was given. One field
@@ -499,14 +504,13 @@ export async function runPipeline(opts) {
     action: "review",
     // RESOLVED, both of them: a reader resolves these, and an agent handed a relative one
     // would resolve it against its own directory.
-    xpi: xpiPath,
+    xpi: addonPath,
     ...(mode?.sca
       ? {
-          scaRoot: path.resolve(opts.scaRoot),
-          // Normalised the way the LOADER normalises it, so "./addon/" and "addon" are one
-          // value and it names the subtree the review actually read.
-          scaSource:
-            scaRootRelative(scaSource, opts.scaRoot, "--sca-source") || ".",
+          scaRoot: opts.scaRoot,
+          // The subtree as the review READ it - absolute like every other path here, so
+          // every spelling the flag allows ("addon", "./addon/", ".") reaches one value.
+          scaSource,
         }
       : {}),
     reviewed: true,
@@ -601,7 +605,7 @@ export async function runPipeline(opts) {
     schema,
     options: { allowExperiments: opts.allowExperiments, libraryHashes },
     mode,
-    scaExpSource,
+    scaExpSource: expExclude,
     scaNotRequired,
     invalidExperiment,
     manifest: xpiAddon.manifest ?? null,
@@ -711,7 +715,7 @@ export async function runPipeline(opts) {
   let summaryPath = null;
   let buildPath = null;
   if (opts.llmReview) {
-    const files = reviewFilePaths(xpiAddon, xpiPath);
+    const files = reviewFilePaths(xpiAddon, addonPath);
     meta.itemsFile = files.items;
     summaryPath = skip.includes("summary") ? null : files.summary;
     buildPath = mode?.sca ? files.build : null;
@@ -741,10 +745,10 @@ export async function runPipeline(opts) {
     // An index means nothing on its own, so the file has to name the submission its
     // verdicts were reached on. Compared against the shipped add-on, which is the path
     // the Review Details section printed under the name XPI.
-    if (path.resolve(settled.xpi) !== xpiPath) {
+    if (path.resolve(settled.xpi) !== addonPath) {
       throw new Error(
         `--llm-verdict ${opts.llmVerdict} was written for "${settled.xpi}", but this ` +
-          `review is of "${xpiPath}" - its item indices mean nothing here`
+          `review is of "${addonPath}" - its item indices mean nothing here`
       );
     }
     const { applied, added } = applyVerdicts({

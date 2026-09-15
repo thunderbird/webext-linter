@@ -317,11 +317,24 @@ test("a folder flag refuses a .. segment (exit 2)", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-folder-"));
   fs.mkdirSync(path.join(dir, "src"));
 
-  // A folder INSIDE --sca-root is written relative to it: an absolute path names one on
-  // the reviewing machine, which can be anywhere, so what it names is not the submission's
-  // - true for a path that happens to sit inside the root as much as for one that does not.
+  // A folder INSIDE --sca-root may be named either way - relative to the root, or absolute,
+  // which is the spelling the report prints and a reader hands straight back. What is
+  // refused is where it LANDS: outside the root it names a folder on the reviewing machine,
+  // so what it names is not the submission's and cannot be shown to be.
+  const inside = run([
+    "some.xpi",
+    "--sca-root",
+    dir,
+    "--sca-source",
+    path.join(dir, "src"),
+  ]);
+  assert.doesNotMatch(
+    inside.stderr,
+    /--sca-source/,
+    "an absolute path inside is taken"
+  );
   for (const argv of [
-    ["some.xpi", "--sca-root", dir, "--sca-source", path.join(dir, "src")],
+    ["some.xpi", "--sca-root", dir, "--sca-source", "/tmp"],
     [
       "some.xpi",
       "--sca-root",
@@ -334,7 +347,7 @@ test("a folder flag refuses a .. segment (exit 2)", () => {
   ]) {
     const r = run(argv);
     assert.equal(r.code, 2, argv.join(" "));
-    assert.match(r.stderr, /is an absolute path/, argv.join(" "));
+    assert.match(r.stderr, /which is outside/, argv.join(" "));
   }
 
   for (const argv of [
@@ -651,10 +664,28 @@ test("JSON + --report-out writes a plain JSON file", () => {
 
 // --sca-root / --sca-source flow through to the source-code submission pipeline
 // opts (the pipeline derives SCA mode from both being set).
+// The reader is where a path stops being a spelling and becomes a place: --sca-root against
+// the working directory, and the two that name a folder inside it against the RESOLVED root.
+// Everything downstream is handed absolutes and re-resolves nothing.
 test("--sca-root / --sca-source map to the sca pipeline opts", () => {
   const o = pipelineOptsFromArgv(["--sca-root", "pkg", "--sca-source", "src"]);
-  assert.equal(o.scaRoot, "pkg");
-  assert.equal(o.scaSource, "src");
+  assert.equal(o.scaRoot, path.resolve("pkg"));
+  assert.equal(o.scaSource, path.resolve("pkg", "src"));
+  // Every spelling of the same folder arrives as one value.
+  for (const written of [
+    "src",
+    "./src",
+    "./src/",
+    path.resolve("pkg", "src"),
+  ]) {
+    const each = pipelineOptsFromArgv([
+      "--sca-root",
+      "pkg",
+      "--sca-source",
+      written,
+    ]);
+    assert.equal(each.scaSource, path.resolve("pkg", "src"), written);
+  }
   assert.ok(!pipelineOptsFromArgv([]).scaRoot);
   assert.ok(!pipelineOptsFromArgv([]).scaSource);
 });

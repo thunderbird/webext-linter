@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/sca-dependency-audit/xpi",
     "scaRoot": "<root>/tests/addons/sca-dependency-audit/src",
-    "scaSource": ".",
+    "scaSource": "<root>/tests/addons/sca-dependency-audit/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

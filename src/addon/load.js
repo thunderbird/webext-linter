@@ -208,41 +208,56 @@ const SCA_MANIFEST_FILES = [
 ];
 
 /**
- * Resolve an SCA source-path flag (--sca-source / --sca-exp-source) to a posix path
- * relative to scaRoot.
+ * The archive key for a path INSIDE scaRoot: where it sits relative to the root, keyed the
+ * way an archive keys its entries.
  *
- * The value is a path WITHIN scaRoot, written relative to it - an absolute one is
- * refused. Judged as the PLATFORM spells paths (node's `path` is posix here and win32
- * there), never by rewriting a separator first: a backslash is a separator on Windows and
- * an ordinary character in a POSIX file name, and only the platform knows which this is. A submission names its own folders, and an absolute path names a folder on
- * the reviewing machine: it can point anywhere, so what it names is not part of the
- * submission and cannot be shown to be. Relative is also the only spelling the review
- * can repeat on another machine.
- * @param {string} value  The raw flag value.
- * @param {string} scaRoot  The --sca-root path.
+ * Both are absolute by the time they reach here - the arg-array reader resolved them
+ * (src/cli.js), which is the one layer that knows what each flag was written relative to -
+ * so this asks one question of two real paths rather than deciding again what a relative
+ * string meant. A path that is not inside the root is refused: the files map has no key for
+ * it, and a review cannot be shown to cover what sits outside the tree it was given.
+ *
+ * Judged as the PLATFORM spells paths (node's `path` is posix here and win32 there), never
+ * by rewriting a separator first: a backslash is a separator on Windows and an ordinary
+ * character in a POSIX file name, and only the platform knows which this is. The answer is
+ * keyed posix, like every other add-on-internal path.
+ * @param {string} value  The absolute path to locate.
+ * @param {string} scaRoot  The absolute --sca-root path.
  * @param {string} [flag]  The flag name to name in the error (e.g. "--sca-source").
  * @returns {string} A posix path relative to scaRoot ("" for the root itself).
  */
 export function scaRootRelative(value, scaRoot, flag = "SCA path") {
-  const v = String(value ?? "");
-  if (path.isAbsolute(v)) {
+  const rel = relativeInside(value, scaRoot);
+  if (rel === null) {
     throw new Error(
-      `${flag} "${value}" must be relative to --sca-root (${scaRoot}), not an absolute path`
+      `${flag} "${value}" is not inside --sca-root (${scaRoot}) - it names a folder ` +
+        "within the source root, never a way out of one"
     );
   }
-  if (hasParentSegment(v)) {
-    throw new Error(
-      `${flag} "${value}" carries a ".." segment - it names a folder inside --sca-root, ` +
-        "never a way out of one"
-    );
+  return rel;
+}
+
+/**
+ * The same question without the throw: where `value` sits inside `scaRoot`, or null when it
+ * sits outside it.
+ *
+ * Two layers ask it - the CLI guard, which turns the answer into a usage line naming the
+ * flag, and the loader, which turns it into an archive key - and they must not be able to
+ * disagree, so both ask HERE. Either path may be written absolute or relative; both are
+ * resolved first, so "inside" is a fact about the filesystem rather than about spelling.
+ * @param {string} value
+ * @param {string} scaRoot
+ * @returns {?string} A posix path relative to scaRoot ("" for the root itself), or null.
+ */
+export function relativeInside(value, scaRoot) {
+  const rel = path.relative(
+    path.resolve(scaRoot),
+    path.resolve(String(value ?? ""))
+  );
+  if (path.isAbsolute(rel) || hasParentSegment(rel)) {
+    return null;
   }
-  // NORMALISED, never stripped: "." and "./" mean the root itself, "a//b" and "a/./b" mean
-  // "a/b", and a dot that is part of a NAME stays in it. Stripping a leading run of dots
-  // and slashes read ".src" as "src" - a folder that exists, is not the one named, and was
-  // reviewed without a word (the CLI had asked the filesystem about ".src" and found it).
-  // Normalised by the PLATFORM, then keyed posix like every other add-on-internal path.
-  const rel = path.normalize(v).replace(/[\\/]+$/, "");
-  return rel === "." ? "" : rel.split(path.sep).join("/");
+  return rel === "" ? "" : rel.split(path.sep).join("/");
 }
 
 /**
@@ -265,23 +280,25 @@ export function hasParentSegment(value) {
 }
 
 /**
- * The Experiment folder as a path relative to the review SOURCE (scaSource), from
- * the --sca-exp-source flag which - like --sca-source - is a path relative to scaRoot.
- * Both flags share that base; when the Experiment lives inside the
- * review source this strips the scaSource prefix so scaWebExtensionFiles can match it
- * against the (already source-stripped) file keys. --sca-exp-source may sit anywhere
- * under scaRoot, though: when it lies outside the review source it is not part of the
- * reviewed WebExtension file set at all (loadScaAddon loads only the scaSource
- * subtree), so there is nothing to strip or exclude here and "" is returned -
- * selectScaBuildFiles still excludes it from the build corpus via its scaRoot-relative
- * path.
- * @param {string|undefined} scaExpSource  The --sca-exp-source flag ("" when unset).
- * @param {string} scaSource  The --sca-source flag.
- * @param {string} scaRoot  The --sca-root flag.
+ * The Experiment folder as a path relative to the review SOURCE (scaSource), from the
+ * --sca-exp-source path, which - like --sca-source - is absolute and inside scaRoot by the
+ * time it arrives. When the Experiment lives inside the review source this strips the
+ * scaSource prefix so scaWebExtensionFiles can match it against the (already
+ * source-stripped) file keys. It may sit anywhere under scaRoot, though: when it lies
+ * outside the review source it is not part of the reviewed WebExtension file set at all
+ * (loadScaAddon loads only the scaSource subtree), so there is nothing to strip or exclude
+ * here and "" is returned - selectScaBuildFiles still excludes it from the build corpus by
+ * its own key.
+ * Named for what it RETURNS, not for what it is relative to: the prefix to exclude, which
+ * is empty both when no Experiment folder was named and when the one named sits outside the
+ * reviewed subtree. A caller holding this does not hold the flag.
+ * @param {string|undefined} scaExpSource  The --sca-exp-source path, absolute ("" when unset).
+ * @param {string} scaSource  The --sca-source path, absolute.
+ * @param {string} scaRoot  The --sca-root path, absolute.
  * @returns {string} A posix path relative to scaSource, or "" when unset or when the
  *   Experiment folder lies outside the review source.
  */
-export function scaExpSourceRelative(scaExpSource, scaSource, scaRoot) {
+export function expExcludePrefix(scaExpSource, scaSource, scaRoot) {
   if (!scaExpSource) {
     return "";
   }
@@ -312,9 +329,9 @@ export function scaExpSourceRelative(scaExpSource, scaSource, scaRoot) {
  * manifest, so it is left untouched here.
  * @param {Addon} archive  The scaRoot archive, loaded ONCE by the caller (loadAddon)
  *   and shared with selectScaBuildFiles - so the source tree is not read twice.
- * @param {string} scaSource  The add-on code root, as a path relative to scaRoot
- *   (e.g. "src" or "addon"), or "." for the root itself.
- * @param {string} scaRoot  Path to the source archive root (for the path math).
+ * @param {string} scaSource  The add-on code root, absolute and inside scaRoot (the
+ *   arg-array reader resolved it, src/cli.js). Equal to scaRoot for a flat layout.
+ * @param {string} scaRoot  The source archive root, absolute (for the path math).
  * @returns {Addon}
  */
 export function loadScaAddon(archive, scaSource, scaRoot) {
@@ -372,11 +389,10 @@ export function loadScaAddon(archive, scaSource, scaRoot) {
  * the two feed different checks, and the package.json trace keeps the build corpus tight.
  * @param {Addon} archive  The scaRoot archive, loaded ONCE by the caller and shared
  *   with loadScaAddon (the tree is not read twice).
- * @param {string} scaSource  The --sca-source flag (the review source subtree).
- * @param {string} scaRoot  Path to the source archive root (for the path math).
- * @param {string} [scaExpSource]  The --sca-exp-source flag; its subtree is excluded
- *   too. Resolved relative to scaRoot, so it may sit anywhere under the root (not only
- *   inside scaSource).
+ * @param {string} scaSource  The review source subtree, absolute and inside scaRoot.
+ * @param {string} scaRoot  The source archive root, absolute (for the path math).
+ * @param {string} [scaExpSource]  The Experiment folder, absolute; its subtree is excluded
+ *   too. It may sit anywhere under the root, not only inside scaSource.
  * @returns {{files: Map<string, Buffer>, nodeModules: string[], archives: string[]}}
  */
 export function selectScaBuildFiles(archive, scaSource, scaRoot, scaExpSource) {

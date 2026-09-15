@@ -11,7 +11,8 @@ import {
   loadScaAddon,
   selectScaBuildFiles,
   scaRootRelative,
-  scaExpSourceRelative,
+  relativeInside,
+  expExcludePrefix,
 } from "../../src/addon/load.js";
 
 // Loading a directory keeps a real .js file but drops a symlink pointing at it,
@@ -85,7 +86,7 @@ test("loadScaAddon partitions scaSource, keeps root package.json + parses the so
   // The pipeline reads the --sca-root archive ONCE and shares it with both the review
   // loader and the build-corpus loader, so the tree is never walked twice.
   const archive = loadAddon(root);
-  const addon = loadScaAddon(archive, "src", root);
+  const addon = loadScaAddon(archive, path.join(root, "src"), root);
 
   assert.ok(addon.files.has("background.js"), "src file, prefix stripped");
   assert.ok(!addon.files.has("src/background.js"), "prefix not retained");
@@ -145,9 +146,9 @@ test("selectScaBuildFiles returns the build files outside scaSource + scaExpSour
 
   const { files, nodeModules } = selectScaBuildFiles(
     loadAddon(root),
-    "src",
+    path.join(root, "src"),
     root,
-    "src/experiment"
+    path.join(root, "src", "experiment")
   );
   assert.deepEqual([...files.keys()].sort(), [
     ".npmrc",
@@ -185,7 +186,7 @@ test("selectScaBuildFiles with scaSource at the archive root keeps the root as b
     '{"scripts":{"build":"x"}}'
   );
   fs.writeFileSync(path.join(root, "background.js"), "1;\n");
-  const { files } = selectScaBuildFiles(loadAddon(root), ".", root, "");
+  const { files } = selectScaBuildFiles(loadAddon(root), root, root, "");
   assert.ok(
     files.has("package.json"),
     "the root package.json is a build candidate"
@@ -197,48 +198,44 @@ test("selectScaBuildFiles with scaSource at the archive root keeps the root as b
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// Both SCA source flags name a folder WITHIN --sca-root, written relative to it, and this
-// is the ONE function that says which folder that is - src/cli.js resolves through it
-// before asking the filesystem, so the folder the guard finds is the folder the review
-// reads. The table is the point: a value is NORMALISED ("." and "./" are the root, "a//b"
-// and "a/./b" are "a/b"), never stripped. Stripping a leading run of dots and slashes read
-// ".src" as "src" - a real folder, not the one named, reviewed without a word.
-test("scaRootRelative normalizes a relative path, and a dot in a NAME survives", () => {
+// Both SCA source flags name a folder WITHIN --sca-root, and this is the ONE function that
+// says WHERE inside - src/cli.js asks it before the filesystem, the loader asks it for the
+// archive key, so the folder the guard finds is the folder the review reads. Both paths are
+// absolute by now (the arg-array reader resolved them), so this asks about the filesystem
+// rather than about spelling: a dot in a NAME survives because nothing here strips prefixes.
+test("scaRootRelative keys a path inside the root, and refuses one outside", () => {
   const root = "/tmp/wrr-root";
-  for (const [written, resolved] of [
-    ["addon", "addon"],
-    ["./addon/", "addon"],
-    [".", ""],
-    ["./", ""],
-    ["a//b", "a/b"],
-    ["a/./b", "a/b"],
+  for (const [given, key] of [
+    [`${root}/addon`, "addon"],
+    [`${root}/a/b`, "a/b"],
+    [`${root}/a/./b`, "a/b"],
+    [`${root}//a`, "a"],
+    [root, ""],
+    [`${root}/`, ""],
+    [`${root}/.src`, ".src"],
+    [`${root}/..src`, "..src"],
+    [`${root}/.hidden/x`, ".hidden/x"],
     // A backslash is a separator on Windows and an ordinary character in a POSIX file
     // name, so which it is here is the platform's answer, never ours to rewrite.
-    [`sub${path.sep}dir`, "sub/dir"],
-    [".src", ".src"],
-    ["..src", "..src"],
-    [".hidden/x", ".hidden/x"],
+    [`${root}${path.sep}sub${path.sep}dir`, "sub/dir"],
   ]) {
-    assert.equal(scaRootRelative(written, root), resolved, written);
+    assert.equal(scaRootRelative(given, root), key, given);
   }
-  // An absolute path names a folder on the reviewing machine - it can point anywhere, so
-  // what it names is not part of the submission - and is refused, inside the root as out.
-  for (const abs of [`${root}/addon`, root, "/elsewhere/x"]) {
+  // Outside the root is refused, however it got there: another tree, the root's own parent,
+  // or a way back out of it. What it names is not part of the submission.
+  for (const outside of [
+    "/elsewhere/x",
+    `${root}/../sibling`,
+    path.dirname(root),
+    `${root}/a/../..`,
+  ]) {
     assert.throws(
-      () => scaRootRelative(abs, root, "--sca-source"),
-      /must be relative to --sca-root/,
-      abs
+      () => scaRootRelative(outside, root, "--sca-source"),
+      /is not inside --sca-root/,
+      outside
     );
-  }
-  // A ".." SEGMENT is refused here, not only at the CLI: every caller resolves through
-  // this, including the ones that never pass a command line. As written, so a value that
-  // lands back inside is refused too - it names a folder by the way out of another.
-  for (const escape of ["../x", "x/../y", "..", "a/../.."]) {
-    assert.throws(
-      () => scaRootRelative(escape, root, "--sca-source"),
-      /carries a ".." segment/,
-      escape
-    );
+    // The same question without the throw, which is what the CLI guard asks.
+    assert.equal(relativeInside(outside, root), null, outside);
   }
 });
 
@@ -247,19 +244,48 @@ test("scaRootRelative normalizes a relative path, and a dot in a NAME survives",
 // scaWebExtensionFiles. When it lives anywhere ELSE under --sca-root it is outside the
 // reviewed source set, so "" is returned (nothing to exclude here - the build-file
 // selection excludes it via its scaRoot-relative path).
-test("scaExpSourceRelative re-bases an in-source exp path, else returns ''", () => {
+test("expExcludePrefix re-bases an in-source exp path, else returns ''", () => {
   const root = "/tmp/wrr-root";
   assert.equal(
-    scaExpSourceRelative("addon/experiment-api", "addon", root),
+    expExcludePrefix(
+      path.join(root, "addon/experiment-api"),
+      path.join(root, "addon"),
+      root
+    ),
     "experiment-api"
   );
   assert.equal(
-    scaExpSourceRelative("addon/experiment-api/x", "addon", root),
+    expExcludePrefix(
+      path.join(root, "addon/experiment-api/x"),
+      path.join(root, "addon"),
+      root
+    ),
     "experiment-api/x"
   );
-  assert.equal(scaExpSourceRelative(undefined, "addon", root), ""); // unset
+  assert.equal(expExcludePrefix(undefined, path.join(root, "addon"), root), ""); // unset
   // Outside the review source (but under --sca-root): not in the reviewed set -> "".
-  assert.equal(scaExpSourceRelative("experiment", "src", root), ""); // sibling of the source
-  assert.equal(scaExpSourceRelative("experiment-api", "addon", root), "");
-  assert.equal(scaExpSourceRelative("other/exp", "addon", root), "");
+  assert.equal(
+    expExcludePrefix(
+      path.join(root, "experiment"),
+      path.join(root, "src"),
+      root
+    ),
+    ""
+  ); // sibling of the source
+  assert.equal(
+    expExcludePrefix(
+      path.join(root, "experiment-api"),
+      path.join(root, "addon"),
+      root
+    ),
+    ""
+  );
+  assert.equal(
+    expExcludePrefix(
+      path.join(root, "other/exp"),
+      path.join(root, "addon"),
+      root
+    ),
+    ""
+  );
 });

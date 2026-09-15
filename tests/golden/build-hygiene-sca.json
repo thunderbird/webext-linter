@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/build-hygiene-sca/xpi",
     "scaRoot": "<root>/tests/addons/build-hygiene-sca/src",
-    "scaSource": ".",
+    "scaSource": "<root>/tests/addons/build-hygiene-sca/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/sca-two-artifact-split/xpi",
     "scaRoot": "<root>/tests/addons/sca-two-artifact-split/src",
-    "scaSource": ".",
+    "scaSource": "<root>/tests/addons/sca-two-artifact-split/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

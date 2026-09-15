@@ -203,9 +203,10 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   "all readable-source files" pureWebExtensionReachable fallback applies only to
  *   the review source, not the built XPI (whose entry points resolve).
  * @property {string} [scaExpSource]  SCA mode: the Experiment folder as a source-
- *   relative path (runPipeline re-bases it from the scaRoot-relative --sca-exp-source
- *   flag). buildReachability excludes it from pureWebExtensionReachable so the
- *   WebExtension code checks skip privileged Experiment code.
+ *   relative path - the prefix to exclude, which runPipeline derives from the
+ *   --sca-exp-source path (expExcludePrefix) and which is "" when that folder sits outside
+ *   the reviewed source. buildReachability excludes it from pureWebExtensionReachable so
+ *   the WebExtension code checks skip privileged Experiment code.
  * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
  *   --allow-experiments is off: the review short-circuits to the reject check
  *   only (see runChecks and buildXpiCtxs).

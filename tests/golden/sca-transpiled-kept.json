@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/sca-transpiled-kept/xpi",
     "scaRoot": "<root>/tests/addons/sca-transpiled-kept/src",
-    "scaSource": ".",
+    "scaSource": "<root>/tests/addons/sca-transpiled-kept/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
