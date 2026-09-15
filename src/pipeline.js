@@ -40,8 +40,8 @@ import {
   loadAddon,
   loadScaAddon,
   selectScaBuildFiles,
-  expExcludePrefix,
   scaRootRelative,
+  relativeInside,
 } from "./addon/load.js";
 import { isTranspiledSource } from "./util/files.js";
 import { runChecks, loadRegistry } from "./checks/registry.js";
@@ -123,10 +123,10 @@ import { DEFAULT_CACHE } from "./config.js";
  *   (--sca-source names it relative to the root). Optional; defaults to scaRoot itself -
  *   a flat layout with manifest.json at the root.
  * @property {string} [scaExpSource]  SCA mode: the Experiment implementation folder,
- *   absolute and inside scaRoot, which is not necessarily inside scaSource. runPipeline
- *   derives from it the prefix to exclude from the review source (expExcludePrefix), which
- *   is what reaches ctx.scaExpSource - a source-relative path, and "" when the Experiment
- *   sits outside the reviewed subtree. Its privileged, non-WebExtension files are excluded
+ *   absolute and inside scaRoot, which is not necessarily inside scaSource. It reaches a
+ *   check AS GIVEN (ctx.scaExpSource, beside ctx.scaSource); where it sits WITHIN the review
+ *   source is derived at the one read that wants it (src/lib/reachability.js), in the
+ *   keyspace the review addon's keys live in. Its privileged, non-WebExtension files are excluded
  *   from the WebExtension code checks (which review all of the readable source, having no
  *   reachability tree there). Optional in general, but REQUIRED when allowExperiments is
  *   set in SCA mode (the CLI enforces this) - without it, Experiment code cannot be told
@@ -268,7 +268,6 @@ export async function runPipeline(opts) {
    * advice (resolveXpiOnlyAdvice), which compares their bytes against the shipped ones. */
   let sourceFiles;
   let scaSource;
-  let expExclude;
 
   // 1b. The review schema: fetched, annotated, indexed. It is resolved from the SHIPPED
   // XPI's manifest alone (manifest_version + strict_max_version pick the channel), so it
@@ -471,12 +470,15 @@ export async function runPipeline(opts) {
     // Mirror the XPI's experiment classification onto the review addon (the experiment
     // checks read ctx.experiments from it; in XPI mode the two are one addon anyway).
     addon.experiments = xpiAddon.experiments;
-    // Where the Experiment subtree sits WITHIN the review source, so the
-    // WebExtension-code checks can exclude it - "" when it sits elsewhere under the root,
-    // which is already outside the reviewed file set. Not the flag: that one is absolute
-    // and stays on opts. Warn when it matches nothing - a mis-typed path would silently
-    // exclude nothing and flood the report with false positives on the privileged code.
-    expExclude = expExcludePrefix(opts.scaExpSource, scaSource, opts.scaRoot);
+    // Warn when --sca-exp-source matches nothing under the review source: a mis-typed path
+    // would silently exclude nothing and flood the report with false positives on the
+    // privileged Experiment code. Derived HERE, for this warning only - the checks are
+    // handed the two paths and ask the same question of them where they use it
+    // (src/lib/reachability.js). "" means there is nothing to exclude, which is also the
+    // answer when the folder sits elsewhere under the root: it was never in this file set.
+    const expExclude = opts.scaExpSource
+      ? (relativeInside(opts.scaExpSource, scaSource) ?? "")
+      : "";
     if (
       expExclude &&
       ![...addon.files.keys()].some(
@@ -491,7 +493,6 @@ export async function runPipeline(opts) {
   } else {
     // XPI review (native, or a rejected Experiment): the review target IS the .xpi.
     addon = xpiAddon;
-    expExclude = undefined;
   }
   // What was reviewed, named by ARTIFACT rather than by role: `xpi` is the shipped add-on
   // in EVERY review, and a source code review adds the two values it was given. One field
@@ -605,7 +606,8 @@ export async function runPipeline(opts) {
     schema,
     options: { allowExperiments: opts.allowExperiments, libraryHashes },
     mode,
-    scaExpSource: expExclude,
+    scaSource,
+    scaExpSource: opts.scaExpSource,
     scaNotRequired,
     invalidExperiment,
     manifest: xpiAddon.manifest ?? null,

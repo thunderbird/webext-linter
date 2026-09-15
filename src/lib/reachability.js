@@ -46,6 +46,7 @@ import {
   isOverBroadResource,
 } from "./web-accessible-resources.js";
 import { scanHtmlRemoteRefs } from "../scan/html.js";
+import { relativeInside } from "../addon/load.js";
 import { scanCssRemoteRefs } from "../scan/css.js";
 import {
   localImportsOf,
@@ -135,19 +136,38 @@ export function buildReachability(ctx) {
 }
 
 /**
+ * Where --sca-exp-source sits WITHIN --sca-source, in the keyspace this module works in, or
+ * "" when there is nothing to exclude.
+ *
+ * Derived HERE rather than carried on ctx: the answer only means something against the
+ * review addon's own keys, and "" stands for three different situations (no flag, a folder
+ * elsewhere under the root, the folder being the whole source) - so a check is handed the
+ * two PATHS the run was given and this asks them the one question it has.
+ * @param {object} ctx
+ * @returns {string}
+ */
+function expExcludeOf(ctx) {
+  return ctx.scaExpSource && ctx.scaSource
+    ? (relativeInside(ctx.scaExpSource, ctx.scaSource) ?? "")
+    : "";
+}
+
+/**
  * SCA mode: the WebExtension code set is every readable-source file EXCEPT the
- * Experiment subtree named by ctx.scaExpSource - a source-relative path (runPipeline
- * derives it from the --sca-exp-source path via expExcludePrefix, matching the addon.files
- * keys loadScaAddon already stripped of the scaSource prefix). Files equal to `<exp>` or
- * under `<exp>/` are excluded; an empty/absent value excludes nothing - the case when
- * --sca-exp-source is unset OR lies outside the review source (expExcludePrefix returns ""
- * for both), where the Experiment is not in this file set to begin with.
+ * Experiment subtree named by --sca-exp-source, as a path relative to the review SOURCE -
+ * the keyspace loadScaAddon left these files in, having stripped that prefix. Files equal
+ * to `<exp>` or under `<exp>/` are excluded; an empty value excludes nothing, which is the
+ * answer when --sca-exp-source is unset, when it lies outside the review source, and when
+ * it IS the whole source - in all three the Experiment is not in this file set to begin
+ * with (a sibling under --sca-root is excluded from the BUILD corpus instead, by its own
+ * key, and its code is reviewed from the XPI).
  * @param {Map<string, Buffer>} files
- * @param {?string} scaExpSource
+ * @param {?string} expExclude  Where the Experiment sits WITHIN the review source, from
+ *   expExcludeOf.
  * @returns {Set<string>}
  */
-function scaWebExtensionFiles(files, scaExpSource) {
-  const exp = String(scaExpSource ?? "")
+function scaWebExtensionFiles(files, expExclude) {
+  const exp = String(expExclude ?? "")
     .replace(/^[./]+/, "")
     .replace(/\/+$/, "");
   const all = [...files.keys()];
@@ -411,7 +431,7 @@ function compute(ctx) {
   // implementation code.)
   const pureWebExtensionReachable =
     ctx.mode?.sca && !ctx.isShippedView
-      ? scaWebExtensionFiles(files, ctx.scaExpSource)
+      ? scaWebExtensionFiles(files, expExcludeOf(ctx))
       : bfs(new Set([...generalSeeds, ...htmlInjectedSeeds]), outEdges);
 
   const webReachable = bfs(webSeeds, outEdges);

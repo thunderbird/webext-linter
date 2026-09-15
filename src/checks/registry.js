@@ -202,11 +202,14 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   context (never the review target). buildReachability reads it so the SCA
  *   "all readable-source files" pureWebExtensionReachable fallback applies only to
  *   the review source, not the built XPI (whose entry points resolve).
- * @property {string} [scaExpSource]  SCA mode: the Experiment folder as a source-
- *   relative path - the prefix to exclude, which runPipeline derives from the
- *   --sca-exp-source path (expExcludePrefix) and which is "" when that folder sits outside
- *   the reviewed source. buildReachability excludes it from pureWebExtensionReachable so
- *   the WebExtension code checks skip privileged Experiment code.
+ * @property {string} [scaSource]  SCA mode: the review source root (--sca-source),
+ *   absolute. Carried for the question below, never to address a file: a check addresses
+ *   files by the keys of ctx.addon.files, which this prefix was already stripped from.
+ * @property {string} [scaExpSource]  SCA mode: the Experiment folder (--sca-exp-source),
+ *   absolute, which may sit inside the review source or elsewhere under --sca-root.
+ *   buildReachability asks where it sits within scaSource and excludes that subtree from
+ *   pureWebExtensionReachable, so the WebExtension code checks skip privileged Experiment
+ *   code.
  * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
  *   --allow-experiments is off: the review short-circuits to the reject check
  *   only (see runChecks and buildXpiCtxs).

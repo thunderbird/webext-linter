@@ -23,6 +23,7 @@ const envWith = (over = {}) => ({
   schema: { s: 1 },
   options: {},
   mode: REVIEW_MODE.XPI,
+  scaSource: undefined,
   scaExpSource: undefined,
   scaNotRequired: false,
   invalidExperiment: false,
@@ -102,6 +103,22 @@ test("buildXpiCtxs carries the XPI's own sources; isShippedView only in SCA", ()
   assert.equal(inSca.apiUsages.length, xpiParsed.length); // the XPI's OWN api-usage
   assert.equal(inSca.apiUsages[0].file, "app.js");
   assert.equal(inSca.isShippedView, true); // gates reachability's SCA fallback
+
+  // The two SCA paths reach a check AS GIVEN, absolute - never a prefix derived from them.
+  // Where the Experiment sits inside the source is a question about the review addon's own
+  // keys, so it is asked at the read (src/lib/reachability.js), not answered here: the same
+  // "" would otherwise stand for three unrelated situations.
+  const withPaths = buildXpiCtxs(
+    xpi,
+    xpiParsed,
+    envWith({
+      mode: REVIEW_MODE.SCA,
+      scaSource: "/r/src",
+      scaExpSource: "/r/src/experiments",
+    })
+  ).xpiCtx;
+  assert.equal(withPaths.scaSource, "/r/src");
+  assert.equal(withPaths.scaExpSource, "/r/src/experiments");
 
   const inXpi = buildXpiCtxs(
     xpi,

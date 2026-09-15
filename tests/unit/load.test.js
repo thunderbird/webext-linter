@@ -12,7 +12,6 @@ import {
   selectScaBuildFiles,
   scaRootRelative,
   relativeInside,
-  expExcludePrefix,
 } from "../../src/addon/load.js";
 
 // Loading a directory keeps a real .js file but drops a symlink pointing at it,
@@ -239,53 +238,29 @@ test("scaRootRelative keys a path inside the root, and refuses one outside", () 
   }
 });
 
-// --sca-exp-source shares the --sca-root base. When it lives INSIDE the review source
-// it is re-based to a source-relative path (the --sca-source prefix stripped) for
-// scaWebExtensionFiles. When it lives anywhere ELSE under --sca-root it is outside the
-// reviewed source set, so "" is returned (nothing to exclude here - the build-file
-// selection excludes it via its scaRoot-relative path).
-test("expExcludePrefix re-bases an in-source exp path, else returns ''", () => {
+// The question --sca-exp-source turns into, now asked where it is used: where does the
+// Experiment folder sit INSIDE the review source? relativeInside answers it, and null - the
+// caller's "nothing to exclude" - is the answer for every folder outside that source, which
+// was never in the reviewed file set to begin with (it is the build corpus's, and the
+// Experiment's own code is reviewed from the XPI).
+test("relativeInside places an in-source exp folder, else answers null", () => {
   const root = "/tmp/wrr-root";
+  const src = path.join(root, "addon");
   assert.equal(
-    expExcludePrefix(
-      path.join(root, "addon/experiment-api"),
-      path.join(root, "addon"),
-      root
-    ),
+    relativeInside(path.join(src, "experiment-api"), src),
     "experiment-api"
   );
   assert.equal(
-    expExcludePrefix(
-      path.join(root, "addon/experiment-api/x"),
-      path.join(root, "addon"),
-      root
-    ),
+    relativeInside(path.join(src, "experiment-api/x"), src),
     "experiment-api/x"
   );
-  assert.equal(expExcludePrefix(undefined, path.join(root, "addon"), root), ""); // unset
-  // Outside the review source (but under --sca-root): not in the reviewed set -> "".
+  // The folder IS the whole source: nothing under it to strip.
+  assert.equal(relativeInside(src, src), "");
+  // Outside the review source, however it is arranged under --sca-root.
+  assert.equal(relativeInside(path.join(root, "experiment-api"), src), null);
+  assert.equal(relativeInside(path.join(root, "other/exp"), src), null);
   assert.equal(
-    expExcludePrefix(
-      path.join(root, "experiment"),
-      path.join(root, "src"),
-      root
-    ),
-    ""
-  ); // sibling of the source
-  assert.equal(
-    expExcludePrefix(
-      path.join(root, "experiment-api"),
-      path.join(root, "addon"),
-      root
-    ),
-    ""
-  );
-  assert.equal(
-    expExcludePrefix(
-      path.join(root, "other/exp"),
-      path.join(root, "addon"),
-      root
-    ),
-    ""
+    relativeInside(path.join(root, "experiment"), path.join(root, "src")),
+    null
   );
 });

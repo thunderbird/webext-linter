@@ -280,42 +280,6 @@ export function hasParentSegment(value) {
 }
 
 /**
- * The Experiment folder as a path relative to the review SOURCE (scaSource), from the
- * --sca-exp-source path, which - like --sca-source - is absolute and inside scaRoot by the
- * time it arrives. When the Experiment lives inside the review source this strips the
- * scaSource prefix so scaWebExtensionFiles can match it against the (already
- * source-stripped) file keys. It may sit anywhere under scaRoot, though: when it lies
- * outside the review source it is not part of the reviewed WebExtension file set at all
- * (loadScaAddon loads only the scaSource subtree), so there is nothing to strip or exclude
- * here and "" is returned - selectScaBuildFiles still excludes it from the build corpus by
- * its own key.
- * Named for what it RETURNS, not for what it is relative to: the prefix to exclude, which
- * is empty both when no Experiment folder was named and when the one named sits outside the
- * reviewed subtree. A caller holding this does not hold the flag.
- * @param {string|undefined} scaExpSource  The --sca-exp-source path, absolute ("" when unset).
- * @param {string} scaSource  The --sca-source path, absolute.
- * @param {string} scaRoot  The --sca-root path, absolute.
- * @returns {string} A posix path relative to scaSource, or "" when unset or when the
- *   Experiment folder lies outside the review source.
- */
-export function expExcludePrefix(scaExpSource, scaSource, scaRoot) {
-  if (!scaExpSource) {
-    return "";
-  }
-  const exp = scaRootRelative(scaExpSource, scaRoot, "--sca-exp-source");
-  const src = scaRootRelative(scaSource, scaRoot, "--sca-source");
-  if (!src) {
-    return exp; // the review source IS the archive root
-  }
-  if (exp === src || !exp.startsWith(`${src}/`)) {
-    // The Experiment sits elsewhere under scaRoot (or IS the whole source), so it is
-    // already outside the reviewed WebExtension file set - nothing to strip here.
-    return "";
-  }
-  return exp.slice(src.length + 1);
-}
-
-/**
  * Load a source code archive. The readable add-on code lives at `scaSource`
  * within the extracted `scaRoot` archive; package.json/lock live at the
  * archive root. Returns a review Addon whose `files` are the scaSource subtree

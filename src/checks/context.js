@@ -23,11 +23,12 @@ import { apiUsageOf } from "./extract.js";
  * @typedef {object} ReviewEnv  The review-level state shared by every sibling ctx, built ONCE
  *   by the pipeline (src/pipeline.js) and handed to both ctx builders. It carries only what is
  *   the SAME across artifacts, so a sibling can never drift from another: the schema, the
- *   shipped manifest/experiments, the review mode (+ scaExpSource/scaNotRequired), the
+ *   shipped manifest/experiments, the review mode (+ the two SCA paths/scaNotRequired), the
  *   and the invalid-Experiment flag.
  * @property {import("../schema/index.js").SchemaIndex} schema
  * @property {{allowExperiments?: boolean, libraryHashes?: Map<string, object>}} options
  * @property {object} mode  The REVIEW_MODE enum member (XPI/SCA); read as `mode?.sca`.
+ * @property {string} [scaSource]
  * @property {string} [scaExpSource]
  * @property {boolean} scaNotRequired
  * @property {boolean} invalidExperiment
@@ -123,8 +124,13 @@ function projectCtx(
     // "xpi" (a built add-on) or "sca" (a source-code archive review, --sca-root). Gates checks
     // via scaEligible.
     mode: env.mode,
-    // SCA mode: the Experiment folder as a source-relative path, excluded from the WebExtension
-    // code checks by buildReachability. Undefined in XPI mode.
+    // SCA mode: the two paths the run was GIVEN, absolute. buildReachability asks them
+    // where the Experiment subtree sits inside the review source, and excludes it from the
+    // WebExtension code checks. Both undefined in XPI mode. The question is asked at the
+    // read rather than answered here, because the answer only means anything in the review
+    // addon's own keyspace - and a value that reads "" in three different situations is not
+    // one a check should be handed instead of the facts.
+    scaSource: env.scaSource,
     scaExpSource: env.scaExpSource,
     // The shipped XPI turned out to BE the submitted source, so an XPI-only submission would
     // have been enough; the sca-not-required check reads this to say so. Advice only - this
