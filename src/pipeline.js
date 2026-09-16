@@ -168,12 +168,12 @@ export const SETUP_STEPS = Object.freeze([
     label: "Parsing add-on sources",
     when: (f) => !f.invalidExperiment,
   },
-  // What the submission IS, and what this review makes of it: the effective mode, the
-  // review target it resolves to, and the record of what was reviewed. The target is two
-  // entries rather than one arm each side of an `if`, so the list - not a branch inside a
-  // step - holds the pin that a REJECTED Experiment stays an XPI review even with
-  // --sca-root, and meta is the one step every path reaches.
-  { key: "mode", when: (f) => !f.invalidExperiment },
+  // What the submission IS, and what this review makes of it: the submitted source archive,
+  // the review target, and the record of what was reviewed. The target is two entries rather
+  // than one arm each side of an `if`, so the list - not a branch inside a step - holds the
+  // pin that a REJECTED Experiment is reviewed as its shipped XPI even with --sca-root,
+  // and `meta` is reached on every path.
+  { key: "source-archive", when: (f) => !f.invalidExperiment },
   { key: "target-source", when: (f) => f.sca && !f.invalidExperiment },
   { key: "target-xpi", when: (f) => !f.sca || f.invalidExperiment },
   { key: "meta", when: () => true },
@@ -313,25 +313,20 @@ export async function runPipeline(opts) {
   // check gate (ctx.mode -> scaEligible). Minified code is non-authored (and rejected)
   // in both modes: a source-code submission's promise is readable source, so a minified
   // file in --sca-source is rejected like one in an XPI, not scanned as authored.
-  // --sca-source may name a nested subfolder OR the archive root itself (a flat
-  // layout: manifest.json at the root, with the build tooling intermingled). The root
-  // case (scaRootRelative resolves "." and "./" alike to "")
-  // is handled throughout: loadScaAddon reviews every file, and selectScaBuildFiles still
-  // traces the build off the root package.json (there is no source subtree to exclude).
-  // --sca-root alone switches to SCA mode; --sca-source is optional and defaults to "."
-  // (the whole root reviewed as the source - the common flat-layout case).
+  // The root case (scaRootRelative keys it as "") is handled throughout: loadScaAddon
+  // reviews every file, and selectScaBuildFiles traces the build off the root
+  // package.json (there is no source subtree to exclude).
   //
-  // `preliminaryMode` sizes the Setup feed only (the counter is fixed before the first
-  // step). The EFFECTIVE mode is set below and differs only for a REJECTED Experiment, which
-  // stays an XPI review even with --sca-root. Everything mode-dependent (the source load,
-  // scaSource, the Experiment exclude prefix, meta) is then DERIVED from it, so nothing is
-  // mutated afterward.
-  const preliminaryMode = opts.scaRoot ? "sca" : "xpi";
+  // The review mode is DERIVED from the two facts below and assigned nowhere, so it cannot
+  // drift from the steps that ran: --sca-root makes it a source code review, and a REJECTED
+  // Experiment takes it back to an XPI review (its rejection is decided from the shipped XPI
+  // alone, so the readable source is never read). Setup itself never reads it - each step
+  // says which facts it needs - and everything after setup reads the one derivation.
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly).
   const registry = opts.registry ?? loadRegistry();
 
-  // 1. Load the .xpi archive (a fast in-memory unzip). Read before the "Setup" banner
+  // Load the .xpi archive (a fast in-memory unzip). Read before the "Setup" banner
   // because it sizes the feed - it gives the mode and whether the add-on is an
   // Experiment. Every slow NETWORK step below (the experiment fetch, schema fetch, vendor
   // verification, CDN lookups) plus the AST parse is narrated as a Setup step. The add-on
@@ -342,33 +337,29 @@ export async function runPipeline(opts) {
   const xpiAddon = loadAddon(addonPath);
   const isExp = isExperiment(xpiAddon.manifest);
 
-  // The steps this run takes, in order, filtered from the declared list; the loop at the
-  // end of setup walks it. The feed's total is the count of the narrated ones - never a
-  // number typed beside the steps, which is how the build analysis was added without the
-  // total moving and every source code review printed [13/12].
-  //
-  // Sized from what the fast .xpi read already gives us (the mode and whether this is an
-  // Experiment), so it is decided before the first step runs. Exact for every path EXCEPT a
-  // REJECTED Experiment, whose rejection is decided BY a step: everything after it is
-  // dropped, the counter stops short, and the report says the review ended there.
+  // The facts each step's `when` is asked of, from what the fast .xpi read already gives
+  // us: the mode, and whether this is an Experiment.
   let invalidExperiment = false;
   const setupFacts = {
-    sca: preliminaryMode === "sca",
+    sca: Boolean(opts.scaRoot),
     isExp,
     // Live rather than a snapshot: the experiments step decides this one, and the loop
-    // re-asks each step's condition as it reaches it. It is false while the plan is sized,
-    // which is why a rejected Experiment's counter stops short of a total sized for the
-    // review that would have continued.
+    // asks each step's condition as it reaches it.
     get invalidExperiment() {
       return invalidExperiment;
     },
+    // What the review IS, from the two above. Read after setup, by the ctx builders and the
+    // report; no step reads it, because a step says which FACTS it needs.
+    get mode() {
+      return this.sca && !invalidExperiment ? REVIEW_MODE.SCA : REVIEW_MODE.XPI;
+    },
   };
-  // The total is sized here, from the facts as they stand before anything runs - which is
-  // what makes a rejected Experiment's counter stop short of it. Only the steps that
-  // declare a line are counted; the silent ones are work, not narration.
+  // The total, sized by asking the same conditions the loop will ask - but of the facts as
+  // they stand HERE, before any step has run. That is the whole of why a rejected
+  // Experiment's counter stops short: the step that rejects it has not run yet, so the
+  // total is the one the review would have had, and the report says where it ended.
   const setupTotal = SETUP_STEPS.filter(
-    (step) =>
-      "label" in step && step.when({ ...setupFacts, invalidExperiment: false })
+    (step) => "label" in step && step.when(setupFacts)
   ).length;
   let setupDone = 0;
   /**
@@ -404,14 +395,8 @@ export async function runPipeline(opts) {
   let schemaSource;
   let schemaBranch;
   let schemaChannel;
-  // The review target: the SHIPPED XPI, or the readable source whenever --sca-root was
-  // given. Stays `xpi` for a rejected Experiment even with --sca-root, because its rejection
-  // is decided entirely from the shipped XPI's bundled experiments - reviewing the readable
-  // source would be pointless, so the source archive is never read at all. That pin is
-  // the ONLY thing that can make an SCA submission an XPI review.
-  let mode = REVIEW_MODE.XPI;
-  // Set by `mode` when the shipped XPI turns out to BE the source, so an XPI-only submission
-  // would have been enough. Pure advice - it changes nothing about this review. Read by the
+  // Set by `source-archive` when the shipped XPI turns out to BE the source, so an XPI-only
+  // submission would have been enough. Pure advice - it changes nothing about this review. Read by the
   // sca-not-required check via ctx.
   let scaNotRequired = false;
   // The known-library hash DB the bundled classifier matches files against. An empty Map
@@ -567,18 +552,12 @@ export async function runPipeline(opts) {
       xpiParsedSources = extractReview(xpiAddon, { schema, xpiAddon });
     },
 
-    // The effective mode. The submitted archive is read here because the XPI-only ADVICE
-    // below asks both what KIND of source it carries and whether the shipped scripts ARE
-    // that source - which needs bytes, not just names. They cost nothing extra: loadAddon
-    // has already decompressed them into memory, and the steps below reuse this same
-    // archive.
-    //
-    // Reading bytes is not what the no-claims rule forbids. The archive is unverified, so
-    // it may only ever ADD scrutiny - and everything here can only WITHHOLD the advice,
-    // never shrink the review (the review no longer routes on this at all). What stays
-    // forbidden is consulting a CLAIM - a VENDOR declaration, package.json - before
-    // Phase 3 has verified it.
-    mode: () => {
+    // The submitted source archive, read ONCE for every later reader of it. It is read
+    // here because the XPI-only ADVICE below asks both what KIND of source it carries and
+    // whether the shipped scripts ARE that source - which needs bytes, not just names. They
+    // cost nothing extra: loadAddon has already decompressed them into memory, and the
+    // steps below reuse this same archive.
+    "source-archive": () => {
       if (setupFacts.sca) {
         scaArchive = loadAddon(opts.scaRoot);
         const rel = scaRootRelative(
@@ -597,16 +576,13 @@ export async function runPipeline(opts) {
 
       // An SCA submission is ALWAYS reviewed as SCA - this only decides whether to TELL the
       // developer an XPI-only submission would have done, so their next one skips the longer
-      // review. See resolveXpiOnlyAdvice for why nothing routes on it any more.
+      // review. See resolveXpiOnlyAdvice for why nothing routes on it.
       scaNotRequired = resolveXpiOnlyAdvice(
         opts,
         xpiAddon.bundled,
         xpiAddon,
         sourceFiles
       );
-      if (setupFacts.sca) {
-        mode = REVIEW_MODE.SCA;
-      }
       if (scaNotRequired) {
         // Advice only - the source review runs either way. The sca-not-required check
         // emits the formal finding; this feed line says it as it is decided.
@@ -673,7 +649,10 @@ export async function runPipeline(opts) {
         // RESOLVED, both of them: a reader resolves these, and an agent handed a relative one
         // would resolve it against its own directory.
         xpi: addonPath,
-        ...(mode?.sca
+        // Named iff the readable source is what was reviewed: `scaSource` is set by
+        // `target-source`, which runs only then. meta names the artifacts this review
+        // READ, so the step that loaded one is what decides whether it appears here.
+        ...(scaSource
           ? {
               scaRoot: opts.scaRoot,
               // The subtree as the review READ it - absolute like every other path here, so
@@ -815,10 +794,13 @@ export async function runPipeline(opts) {
     }
   }
 
-  // Phase 4: build the sibling RunContexts the checks read - the last step of setup. The
+  // Phase 4: build the sibling RunContexts the checks read, once the step list has run. The
   // review-level singletons are built ONCE here and shared by every sibling ctx, so they can
   // never drift between artifacts or double-cost. Nothing is parsed here: Phase 2/3 parsed
   // each artifact's sources.
+
+  // Both facts are settled - the loop has run - so the review mode follows from them.
+  const mode = setupFacts.mode;
 
   // The shared review env every sibling ctx projects (buildXpiCtxs / buildScaCtxs). The
   // manifest/experiments are the SHIPPED artifact's - authoritative like the schema, so no
