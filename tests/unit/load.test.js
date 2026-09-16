@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import AdmZip from "adm-zip";
 
 import {
   loadAddon,
@@ -262,4 +263,119 @@ test("relativeInside places an in-source exp folder, else answers null", () => {
     relativeInside(path.join(root, "experiment"), path.join(root, "src")),
     null
   );
+});
+
+// A ZIP entry name is taken as written - entryKey strips a leading "./" and nothing else -
+// so a name carrying path SYNTAX rather than names ("." , "" or "..") keys a file where the
+// manifest's own reference can never find it (normalizeRefInDir drops both), and two
+// spellings of one path would collide in `files`, letting entry order decide which bytes are
+// reviewed. Such an archive is refused whole, not repaired and not partly read: a file we
+// will not take is a review that would silently cover less than the submission.
+test("a zip entry name that is not a plain path refuses the whole archive", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-zipname-"));
+  // AdmZip's WRITER normalizes these away, so the name is stamped onto the entry after it
+  // is added - which is what an archive whose central directory was written by hand holds.
+  const packed = (entryName, n) => {
+    const zip = new AdmZip();
+    zip.addFile(
+      "manifest.json",
+      Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+    );
+    zip.addFile("MARKER.js", Buffer.from("browser.runtime.id;\n"));
+    zip.getEntries().find((e) => e.entryName === "MARKER.js").entryName =
+      entryName;
+    const file = path.join(dir, `bad-${n}.xpi`);
+    zip.writeZip(file);
+    return file;
+  };
+
+  const refused = [
+    "a/./MARKER.js", // a dot segment: the shape that opened this
+    "a//MARKER.js", // an empty segment, from a naive path join
+    "../MARKER.js", // outside the package
+    "/MARKER.js", // absolute
+    "C:/MARKER.js", // absolute, Windows
+  ];
+  refused.forEach((entryName, n) => {
+    const file = packed(entryName, n);
+    assert.throws(
+      () => loadAddon(file),
+      (err) => {
+        // Exactly one sentence, naming the archive. The entry name is the submission's
+        // own text and stays out of it - a refusal is not a place to escape user data.
+        assert.equal(err.message, `Could not read archive: ${file}`);
+        assert.doesNotMatch(err.message, /MARKER/);
+        return true;
+      },
+      entryName
+    );
+  });
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The one non-canonical form that is repaired rather than refused: `zip -r ./dir` writes a
+// leading "./" on every entry, it names the package root unambiguously, and entryKey has
+// always stripped it. Pinned so the refusal above is never "tidied up" to cover it too.
+test("a leading ./ on a zip entry is repaired, not refused", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-zipdot-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  zip.addFile("a/b.js", Buffer.from("browser.runtime.id;\n"));
+  zip.getEntries().find((e) => e.entryName === "a/b.js").entryName = "./a/b.js";
+  const file = path.join(dir, "leading-dot.xpi");
+  zip.writeZip(file);
+
+  const addon = loadAddon(file);
+  assert.ok(addon.files.has("a/b.js"), "keyed without the leading ./");
+  assert.equal(addon.manifest.name, "x");
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An archive we cannot open, and one whose entry will not inflate, are the same answer as
+// one holding a name we will not take: one sentence about the archive. AdmZip's own wording
+// either names its internals ("No END header found") or quotes a file name out of the
+// archive ("CRC32 checksum failed"), and the second is submission text - which a refusal
+// must not start carrying.
+test("an unreadable archive is refused in our own words", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-zipbad-"));
+  const refuses = (file) =>
+    assert.throws(
+      () => loadAddon(file),
+      (err) => {
+        assert.equal(err.message, `Could not read archive: ${file}`);
+        assert.doesNotMatch(err.message, /ADM-ZIP|END header|CRC32|SECRET/i);
+        return true;
+      },
+      file
+    );
+
+  // The container itself: not a zip at all.
+  const truncated = path.join(dir, "truncated.xpi");
+  fs.writeFileSync(truncated, "PK\u0003\u0004 and then nothing that is a zip");
+  refuses(truncated);
+
+  // One entry that does not inflate: the archive opens and every name is fine, but the
+  // stored checksum does not match the bytes. Written by corrupting the crc32 field (byte
+  // 14) of each local file header in an otherwise valid zip.
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  zip.addFile("SECRET.js", Buffer.from("browser.runtime.id; ".repeat(40)));
+  const buf = zip.toBuffer();
+  const SIG = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+  for (let at = buf.indexOf(SIG); at !== -1; at = buf.indexOf(SIG, at + 4)) {
+    buf.writeUInt32LE(0xdeadbeef, at + 14);
+  }
+  const badCrc = path.join(dir, "bad-crc.xpi");
+  fs.writeFileSync(badCrc, buf);
+  refuses(badCrc);
+
+  fs.rmSync(dir, { recursive: true, force: true });
 });

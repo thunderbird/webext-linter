@@ -439,8 +439,9 @@ export async function runPipeline(opts) {
 
     // Mark the start of the review. The .xpi was already read pre-banner (above); the
     // SCA source archive is read by `source-archive` and reused after it - in a source
-    // review, and not when a rejected Experiment drops that step. Narrate the .xpi loader's skip notices (a non-node_modules symlink,
-    // an unsafe archive path) here; the source loader's notices are narrated by `target-source`.
+    // review, and not when a rejected Experiment drops that step. Narrate the .xpi loader's
+    // skip notices (a non-node_modules symlink, so only ever an unpacked submission) here;
+    // the source loader's notices are narrated by `target-source`.
     read: () => {
       for (const notice of xpiAddon.skipped ?? []) {
         warn(notice);

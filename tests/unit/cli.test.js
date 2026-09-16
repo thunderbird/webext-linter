@@ -196,9 +196,11 @@ test("an unknown --report-format is refused on every path (exit 2)", () => {
 });
 
 // --sca-root is the EXTRACTED source, and the guard asks one question: does the path
-// point at a folder? A packed root is the case that motivates it - handed to AdmZip, a
-// .tar.gz comes back with "No END header found", an error about a format nobody claimed
-// to support - but a missing path and a trailing slash are the same answer.
+// point at a folder? A packed root is the case that motivates it: the loader reads .xpi
+// archives and nothing else, so a .tar.gz reaches it as a file it cannot open - and the
+// answer a reviewer needs is about the FLAG they got wrong, not about the bytes. A missing
+// path and a trailing slash are the same answer. The loader's own refusal is asserted
+// against below: this guard has to come first, or the usage error never gets printed.
 test("--sca-root must point at a folder (exit 2)", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-sca-root-"));
   const zip = path.join(dir, "source.zip");
@@ -216,7 +218,12 @@ test("--sca-root must point at a folder (exit 2)", () => {
     const r = run(["some.xpi", "--sca-root", root]);
     assert.equal(r.code, 2, root);
     assert.match(r.stderr, /--sca-root must point at a folder/, root);
-    assert.doesNotMatch(r.stderr, /END header|unsupported zip/i, root);
+    // Neither the loader's refusal nor AdmZip's: this never reached the read.
+    assert.doesNotMatch(
+      r.stderr,
+      /END header|unsupported zip|Could not read archive/i,
+      root
+    );
   }
 
   // The other two name folders INSIDE the root, and are asked the same question. The
@@ -249,6 +256,39 @@ test("--sca-root must point at a folder (exit 2)", () => {
     /--sca-exp-source is required with --allow-experiments/
   );
   assert.doesNotMatch(ok.stderr, /must point at a folder/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An .xpi the loader will not take ends the run before a review exists - the tool-failure
+// channel, exit 2, no report - rather than reviewing whatever part of it could be read. Here
+// the archive holds an entry whose name carries a "." segment, so the key it would land under
+// is not the key the manifest's own reference resolves to (tests/unit/load.test.js covers
+// each refused shape). Driven through the CLI for the one thing only this layer shows: that
+// the refusal reaches stderr as the linter's own sentence, and that nothing from inside the
+// archive rides along with it.
+test("an archive the loader will not take fails the run (exit 2)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-badzip-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  zip.addFile("SECRET.js", Buffer.from("browser.runtime.id;\n"));
+  // AdmZip's writer normalizes, so the name is stamped on after the entry is added.
+  zip.getEntries().find((e) => e.entryName === "SECRET.js").entryName =
+    "a/./SECRET.js";
+  const file = path.join(dir, "addon.xpi");
+  zip.writeZip(file);
+
+  const r = run([file, ...OFFLINE_FLAGS]);
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /Could not read archive: /);
+  assert.match(r.stderr, /verify failed/);
+  // The entry name is the submission's, and the refusal carries none of it.
+  assert.doesNotMatch(r.stderr, /SECRET/);
+  // No review was produced: the run stopped at the read.
+  assert.doesNotMatch(r.stdout, /Found Issues|Summary/);
+
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

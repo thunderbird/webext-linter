@@ -134,7 +134,7 @@ flowchart TB
   SUB(["called from src/cli.js -<br/>a built XPI / folder (+ a source archive, --sca-root)"]) --> LOAD
 
   subgraph P1 ["runPipeline() · Phase 1 - load, schema, experiments"]
-    LOAD["Reading add-on<br/>loadAddon(XPI)"] --> LDQ{{"the archive reads, and fits the size cap?"}}
+    LOAD["Reading add-on<br/>loadAddon(XPI)"] --> LDQ{{"the archive opens, every entry name is a plain path,<br/>every entry inflates, and it fits the size cap?"}}
     LDQ -- no --> P1F((("THROW<br/>exit 2")))
     LDQ -- yes --> SCH["Fetching review schemas<br/>resolveReviewSchema()<br/>pick the channel from manifest_version +<br/>strict_max_version, fetch it, index it"]
 

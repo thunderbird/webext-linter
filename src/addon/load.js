@@ -124,7 +124,10 @@ import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
  *   --sca-root (before the source/build split), so one is caught wherever it sits. Set by
  *   loadAddon only.
  * @property {string[]} [skipped]  Ready-to-narrate notices for entries skipped at
- *   load (a non-node_modules symlink, an unsafe archive path); empty when none.
+ *   load (a non-node_modules symlink); empty when none. A DIRECTORY submission is the
+ *   only source: it describes how the reviewer's tree is laid out rather than what the
+ *   developer packaged, which is why it is narrated and not reported. An archive names
+ *   nothing here - a name readZip will not take refuses the whole archive instead.
  *   The loader collects them; the pipeline narrates them under "Reading add-on",
  *   so a pre-banner sizing load prints nothing before the Setup banner. Set by
  *   loadAddon only.
@@ -404,12 +407,35 @@ function addonTooLargeError() {
 }
 
 /**
+ * One sentence for an archive we cannot read, shared by readZip's three refusals: the
+ * container will not open, an entry name is not one we take, an entry will not inflate.
+ * They are one answer because they have one consequence - no review of this submission can
+ * be complete - and because the alternative is AdmZip's own wording, which either names its
+ * internals or quotes a file name out of the archive.
+ *
+ * It names the archive and NOTHING from inside it. The path is the caller's own (they typed
+ * it); an entry name is the submission's text, and a refusal is not a place to start
+ * escaping user data.
+ * @param {string} zipPath
+ * @returns {Error}
+ */
+function unreadableArchiveError(zipPath) {
+  return new Error(`Could not read archive: ${zipPath}`);
+}
+
+/**
  * @param {string} zipPath  Path to the .xpi/.zip archive.
  * @returns {{files: Map<string, Buffer>, nodeModules: string[], archives: string[],
  *   skipped: string[]}}
  */
 function readZip(zipPath) {
-  const zip = new AdmZip(zipPath);
+  let zip;
+  try {
+    zip = new AdmZip(zipPath);
+  } catch {
+    // The container itself: truncated, or not a zip at all.
+    throw unreadableArchiveError(zipPath);
+  }
   const files = new Map();
   const nodeModules = new Set();
   const archives = new Set();
@@ -420,14 +446,13 @@ function readZip(zipPath) {
       continue;
     }
     const name = entryKey(entry.entryName);
-    // Reject path-traversal / absolute entry names from a (possibly malicious)
-    // archive so they can never reach a filesystem write or the output package.
+    // An entry name we will not take is an archive we cannot review: every file in the
+    // package has to be accounted for, so passing over the ENTRY would leave a review
+    // silently covering less than the submission. Refused rather than repaired - rewriting
+    // a name can invent a directory the archive does not have, and two spellings of one
+    // path would collide in `files`, letting entry order decide which bytes are reviewed.
     if (!isSafeAddonPath(name)) {
-      // The entry name is whatever the archive says, before any validation.
-      skipped.push(
-        `Skipping unsafe archive entry: ${displayLine(entry.entryName)}`
-      );
-      continue;
+      throw unreadableArchiveError(zipPath);
     }
     // Never decompress an installed-dependency tree: record the outer node_modules
     // directory and skip BEFORE getData(), so its contents never enter memory.
@@ -449,7 +474,15 @@ function readZip(zipPath) {
     if (unpacked + entry.header.size > ADDON_MAX_UNPACKED_BYTES) {
       throw addonTooLargeError();
     }
-    const data = entry.getData();
+    let data;
+    try {
+      data = entry.getData();
+    } catch {
+      // The container opened and the name was fine, but this entry does not inflate: a
+      // failed CRC, a damaged stream. The bytes are part of the submission, so a review
+      // without them is not a review of it.
+      throw unreadableArchiveError(zipPath);
+    }
     unpacked += data.length;
     if (unpacked > ADDON_MAX_UNPACKED_BYTES) {
       throw addonTooLargeError();
@@ -525,6 +558,11 @@ function readDir(dir) {
  * slashes '/' as opposed to backwards slashes") - so nothing is rewritten here. A
  * backslash in an entry name is therefore part of the NAME, which is the only reading that
  * cannot invent a directory that the archive does not have.
+ *
+ * The leading "./" is the one exception, because `zip -r ./dir` writes it on every entry
+ * and it names the package root unambiguously. Every other non-canonical spelling is
+ * refused by the caller rather than repaired here (isSafeAddonPath), so this returns a key
+ * or the archive is not read at all.
  * @param {string} p  An entry name as the archive spells it.
  * @returns {string}
  */
@@ -553,5 +591,13 @@ function isSafeAddonPath(p) {
   if (!p || p.startsWith("/") || /^[a-zA-Z]:/.test(p)) {
     return false;
   }
-  return !p.split("/").includes("..");
+  // Every segment must NAME something. "..", "." and "" are path SYNTAX, not names: they
+  // make one file addressable by two spellings, so the key an entry lands under stops being
+  // the key the manifest's own reference resolves to (normalizeRefInDir drops both while
+  // this loader keeps them), and ".." can additionally point outside the package.
+  //
+  // entryKey has already stripped a LEADING "./" by this point. That is what `zip -r ./dir`
+  // produces, it names the package root unambiguously, and it is the one form repaired
+  // rather than refused - the asymmetry is deliberate.
+  return !p.split("/").some((s) => s === ".." || s === "." || s === "");
 }
