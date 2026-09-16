@@ -34,16 +34,15 @@ Run the `node` script directly:
 node verify.js <xpi|folder> [options]
 ```
 
-Or install it as a command and run it from anywhere:
+Or put it on your PATH and run it from anywhere:
 
 ```sh
-npm install -g .    # from a clone of this repo
+npm link            # from a clone of this repo
 webext-linter <xpi|folder> [options]
 ```
 
-For development, use `npm link` instead of `npm install -g .` so the command
-tracks your working copy. Once the package is published to npm,
-`npm install -g webext-linter` and `npx webext-linter` work as well.
+`npm link` points the command back at the clone, so it always runs your working
+copy: edit the source and the next run picks it up.
 
 The schema review picks the matching schema **automatically** from the add-on's
 own manifest — no channel flag. Two dimensions:
