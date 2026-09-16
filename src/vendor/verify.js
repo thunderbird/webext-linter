@@ -494,7 +494,7 @@ export async function auditIdentifiedLibraries(
  * source line - the developer sees the declared github URL, never the resolved
  * npm one); an unresolved entry is recorded on vendor.unaudited for the
  * vendor-vuln-unknown check.
- * @param {VendorEntry & {trusted: boolean, pinned: boolean}} entry
+ * @param {import("../normalize/vendor.js").VendorEntry & {trusted: boolean, pinned: boolean}} entry
  * @param {VendorSource} src  The classified github source (carries repo + ref).
  * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
  * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist (applied to a
@@ -663,8 +663,8 @@ const SEVERITY_RANK = [
 
 /**
  * A human severity label for an OSV vuln: the database-specific label (GHSA's
- * LOW/MODERATE/HIGH/CRITICAL) when present, else derived coarsely from a CVSS
- * vector, else "unknown".
+ * LOW/MODERATE/HIGH/CRITICAL) when present, else "unknown" - a CVSS vector carries no
+ * numeric base score here, so it is left unlabelled rather than guessed.
  * @param {OsvVuln} v  An OSV vuln record.
  * @returns {string}
  */
@@ -815,7 +815,6 @@ async function verifyPackage(pkg, addon, vendor, net) {
     rethrowIfNetworkGone(err);
     return; // can't list the package - its files (if shipped) are scanned as-is
   }
-  // Index the published files by their SRI hash ("<algo>-<base64>" -> path).
   const byHash = indexBySri(listing);
   const algos = [...new Set([...byHash.keys()].map((k) => k.split("-")[0]))];
   let popular = null; // looked up once, lazily, only if a file actually matches

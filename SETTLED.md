@@ -445,7 +445,8 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   scoping is dropped: authored files are scanned, vendored and library files are not, and no
   CSP or reachability condition gates it. Do not reintroduce a scoping condition here - not
   the WebExtension skip, and not a `privileged || the CSP permits eval` variant, which was
-  explored and rejected.
+  explored and rejected. The decision is settled; removing the skip from `getEvalScan` is
+  open work (`TODO.md`), so the scan still narrows until that lands.
 
 - **A TypeScript type check is not worth adopting, in either form proposed.** Both were
   judged on whether they clear an entire check of false negatives.

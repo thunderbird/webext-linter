@@ -13,7 +13,7 @@
 // library, and emitting one finding per such file.
 //
 // Does NOT belong here: the classification heuristics themselves (->
-// src/checks/ lib/bundled.js, classifyAddonJs), the library-signal verdict and
+// src/lib/bundled.js, classifyAddonJs), the library-signal verdict and
 // its finding (-> missing-library.js), the minified-only verdict (->
 // minified-code.js), authored wording (-> assets/registry.yaml), severity (-> that
 // registry entry, stamped by src/checks/registry.js), and report formatting (->

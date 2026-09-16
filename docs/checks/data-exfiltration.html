@@ -26,9 +26,9 @@
         is a remote or dynamically-built host. Whether a valid opt-in exists — a
         documented options-page setting where the user enters the destination, or
         an explicit off-by-default opt-in for a hard-coded URL — is a judgement
-        call, so each such sink is escalated for the reviewer to settle. The
-        add-on's own options page, where such an opt-in would live, is named in the
-        to-do. This check emits no finding of its own.
+        call, so each such sink is escalated for the reviewer to settle. The to-do
+        points the reviewer at the add-on's own options page as the place such an
+        opt-in would live. This check emits no finding of its own.
         Disguising transmission as a resource load is a separate, always-error
         concern handled by the disguised-* checks; this check covers only the
         overt channels.
@@ -54,7 +54,7 @@ flowchart TD
         The add-on is told the listed code locations send user data to a remote
         server without an explicit opt-in, and that user data may be transmitted
         only when the user actively enables it on an options page that discloses
-        what is sent. Locations the scan cannot resolve are escalated instead.
+        what is sent.
       </div>
 
       <p class="source-note">

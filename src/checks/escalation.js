@@ -20,6 +20,10 @@
  * @property {string} [file]  Locus, listed under the manual entry (like a
  *   finding) so the reviewer sees where; the report groups by message.
  * @property {{line?: number, column?: number}} [loc]
+ * @property {string} [hint]  Per-locus suffix shown after `file:line`, independent
+ *   of `item`.
+ * @property {{id: string, file: string, line: ?number, token: string}[]} [occurrences]
+ *   The token sites the check located for this item.
  */
 
 /**

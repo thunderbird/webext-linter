@@ -156,8 +156,6 @@ test("selectScaBuildFiles returns the build files outside scaSource + scaExpSour
     "scripts/build.sh",
     "webpack.config.js",
   ]);
-  // The review source (src/*), the Experiment source, node_modules at any depth, and
-  // dotfiles/dotfolders are excluded; a plain .npmrc is kept; kept keys are unstripped.
   assert.ok(files.has(".npmrc"));
   assert.ok(!files.has("background.js") && !files.has("src/background.js"));
   assert.ok(!files.has("src/experiment/exp.js"));
@@ -197,9 +195,10 @@ test("selectScaBuildFiles with scaSource at the archive root keeps the root as b
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// Both SCA source flags name a folder WITHIN --sca-root, and this is the ONE function that
-// says WHERE inside - src/cli.js asks it before the filesystem, the loader asks it for the
-// archive key, so the folder the guard finds is the folder the review reads. Both paths are
+// Both SCA source flags name a folder WITHIN --sca-root, and relativeInside is the ONE
+// function that says WHERE inside - src/cli.js asks it before the filesystem, the loader
+// asks it through scaRootRelative for the archive key, so the folder the guard finds is
+// the folder the review reads. Both paths are
 // absolute by now (the arg-array reader resolved them), so this asks about the filesystem
 // rather than about spelling: a dot in a NAME survives because nothing here strips prefixes.
 test("scaRootRelative keys a path inside the root, and refuses one outside", () => {
@@ -238,7 +237,7 @@ test("scaRootRelative keys a path inside the root, and refuses one outside", () 
   }
 });
 
-// The question --sca-exp-source turns into, now asked where it is used: where does the
+// The question --sca-exp-source turns into, asked where it is used: where does the
 // Experiment folder sit INSIDE the review source? relativeInside answers it, and null - the
 // caller's "nothing to exclude" - is the answer for every folder outside that source, which
 // was never in the reviewed file set to begin with (it is the build corpus's, and the

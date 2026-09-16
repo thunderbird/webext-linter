@@ -22,9 +22,10 @@
       <p>
         Before the review, every GitHub-sourced VENDOR entry is run through a
         resolution step that tries to prove an npm identity for the bundled
-        bytes by content-hash match: first the repository name at the declared
-        ref, proved by the
-        same hash. Entries it can resolve are audited against the OSV database by
+        bytes by content-hash match against one candidate: the repository name at
+        the declared ref. The hash is the proof, so a package whose name differs from
+        its repo — a scoped or renamed one — stays unresolved rather than guessed at.
+        Entries it can resolve are audited against the OSV database by
         the vulnerable-dependency check instead. First-party trusted-org GitHub
         sources are accepted by provenance and produce nothing here. Whatever
         remains unresolved is recorded as unaudited, and this check surfaces one
@@ -55,7 +56,7 @@ flowchart TD
         <strong>When it fires</strong>
         The add-on is told a third-party file was sourced from a CDN where its
         known-vulnerability status could not be determined automatically, and is
-        nudged to switch to an npm-hosted source (a unpkg or jsDelivr package
+        nudged to switch to an npm-hosted source (an unpkg or jsDelivr package
         pinned to an exact version) so it can be audited against the OSV
         database.
       </div>

@@ -7,11 +7,10 @@
 // obfuscator family (see src/lib/obfuscation.js).
 //
 // The classification keys off the raw shipped bytes (the library hash, and each
-// detector's parse of the shipped source), so it is resolved ONCE up front - before the
-// normalizer reformats files - by the pipeline into addon.bundled (classifyBundled), the
-// same "compute once, checks read it" pattern as addon.vendor. Were it computed during
-// the review, build/lint mode (which pretty-prints first) would change the bytes and
-// miss all three.
+// detector's parse of the shipped source), so it is resolved ONCE up front by the pipeline
+// into addon.bundled (classifyBundled), the same "compute once, checks read it" pattern as
+// addon.vendor: one answer per artifact, taken from the bytes the add-on ships and shared
+// by every check that asks.
 //
 // Belongs here: classifyBundled (the one-shot classification + non-authored skip
 // set) and the per-file tagging it uses. classifyAddonJs / nonAuthoredJs are thin
@@ -58,7 +57,9 @@ import { isMinified, isMinifiedJs } from "./minified.js";
  *   discarded like a miss (a vendored copy inside an unrelated package - see
  *   src/lib/cdn-lookup.js). */
 /** @typedef {{classified: BundleTag[], nonAuthored: Set<string>,
- *   untrusted: Array<{file: string, source?: string, name?: string, unreadable: boolean}>}} Bundled */
+ *   untrusted: Array<{file: string, source?: string, name?: string, unreadable: boolean}>,
+ *   inline?: object[]}} Bundled  `inline` is the per-site inline-script verdict, memoized
+ *   at check time by classifyInlineScripts. */
 
 /**
  * Classify the add-on's JS and CSS once: per-file library/minified/obfuscated tags
@@ -78,23 +79,18 @@ import { isMinified, isMinifiedJs } from "./minified.js";
  * The `library` tag is a content-hash match (libraryHashes); the matched release
  * is named on tag.libraryId, which missing-library surfaces and which
  * auditIdentifiedLibraries (src/vendor/verify.js) OSV-audits so an undeclared
- * vulnerable bundle is caught. TODO: extend the same hashing to recognize
- * minified/obfuscated bundles.
+ * vulnerable bundle is caught. The hash recognizes a library shipped as its published
+ * bytes; a minified or obfuscated bundle of one does not match, and falls to the
+ * CDN lookup and the untrusted family instead.
  *
- * Composed of classifyFiles (the per-file library/minified/obfuscated tags +
- * non-authored skip set) and assembleBundled (the thin finalizer that seeds the empty
- * `untrusted` list). Every mode and caller shares this one path - there is no separate
- * precomputed-verdict route, since the obfuscation detector is self-contained.
+ * Every mode and caller shares this one path - there is no separate precomputed-verdict
+ * route, since the obfuscation detector is self-contained.
  *
  * @param {Addon} addon
  * @param {{libraryHashes?: Map<string, LibraryId>}} [opts]
  *   libraryHashes: the known-library `sha256 -> {name, version}` map - a file whose
  *   raw hash is a key is tagged `library` (and identified). Empty map = nothing
- *   recognized. A minified-by-geometry file (an unidentifiable webpack/tsc bundle) is
- *   non-authored (skipped by the source-level scanners and rejected by minified-code),
- *   in both XPI and source-code submission reviews. A hash-identified library is real
- *   third-party code, so it - like the obfuscated tag and VENDOR.md-declared /
- *   experiment-trusted files - stays non-authored.
+ *   recognized.
  * @returns {Bundled}
  */
 export function classifyBundled(addon, { libraryHashes = new Map() } = {}) {
@@ -138,13 +134,13 @@ export function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
     if ((!JS_EXTENSIONS.has(ext) && !CSS_EXTENSIONS.has(ext)) || vend) {
       continue;
     }
-    // The floor guards the two questions that need it, not the one that does not. A
-    // tiny file is too small to be a library release, and the obfuscation detector's
-    // array-replacement heuristic fires on an ordinary string-lookup table at these
-    // sizes (a day-name array). Minification is neither: it is statement density on a
-    // long line, as precise at 700 bytes as at 700 KB - and skipping it here hid real
-    // packed build chunks (a Vite modulepreload polyfill, a webpack chunk) and let a
-    // bundle split into sub-floor pieces ship unasked.
+    // The floor guards the two questions that need it - a tiny file is too small to be a
+    // library release, and the obfuscation detector's array-replacement heuristic fires on
+    // an ordinary string-lookup table at these sizes (a day-name array) - not the one that
+    // does not: minification is statement density on a long line, as precise at 700 bytes
+    // as at 700 KB, and skipping it here would hide real packed build chunks (a Vite
+    // modulepreload polyfill, a webpack chunk) and let a bundle split into sub-floor
+    // pieces ship unasked.
     const small = buf.length < MIN_CLASSIFY_BYTES;
     // The size-independence argument is about STATEMENT DENSITY, which only the JS
     // branch measures: for CSS, isMinified is pure geometry (one long line surviving a
@@ -154,8 +150,6 @@ export function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
       continue;
     }
     const text = buf.toString("utf8");
-    // The library tag is a true content-hash match against the known-library DB;
-    // a hit also names the matched release (libraryId) for missing-library.
     const libraryId = small ? undefined : libraryHashes.get(rawSha256(buf));
     const content = classify(text, file, { detectObfuscation: !small });
     const tag = { file, library: Boolean(libraryId), ...content };
@@ -163,10 +157,6 @@ export function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
       tag.libraryId = libraryId;
     }
     classified.push(tag);
-    // A library/minified/obfuscated file is not the developer's reviewable source, so
-    // it joins the skip set: identified libraries are declared third-party, minified
-    // and obfuscated files are rejected (and their original source requested) rather
-    // than scanned.
     if (tag.library || tag.minified || tag.obfuscation.fail) {
       nonAuthored.add(file);
     }
@@ -236,15 +226,12 @@ export function markUntrusted(addon, { file, source, name, unreadable }) {
  *                network itself is gone - src/util/net.js)
  *   no-url       nothing was declared as the source at all
  *
- * All four say the same thing: the claim is unsupported. markUntrusted then routes by
- * readability - a readable file is reviewed as the developer's own code and flagged
- * (info) by untrusted-library, an unreadable one stays unscanned and
- * untrusted-minified-library rejects it, asking for source. A declaration cannot
- * exempt a file the tool was never able to check.
+ * All four say the same thing: the claim is unsupported, so markUntrusted routes the file
+ * by readability. A declaration cannot exempt a file the tool was never able to check.
  *
  * Runs as a pipeline step AFTER classifyBundled (which builds addon.bundled), since
  * verifyVendor runs before it. A reconciled result is REMOVED from vendor.results:
- * the untrusted family is now where that file's status is read, so leaving the row
+ * the untrusted family is where that file's status is read, so leaving the row
  * would let a second consumer reach its own conclusion about it. The CDN not-popular
  * case is handled in cdn-lookup.js, which already runs after classifyBundled. No-op
  * without a bundled store or vendor results.
@@ -264,8 +251,8 @@ export function applyUnverifiedVendor(addon) {
     // Only files whose CONTENT is reviewed have anything to reconcile. A folder
     // declaration covers whatever sits under it - fonts, images, JSON - and nothing
     // reads those, so there is no exemption to withdraw and no readable/unreadable
-    // question to answer. Judging them anyway called a one-line .woff2 "minified"
-    // and rejected the add-on for it.
+    // question to answer. Judging them anyway would call a one-line .woff2 "minified"
+    // and reject the add-on for it.
     if (!CODE_EXTENSIONS.has(extname(result.path))) {
       continue;
     }
@@ -283,18 +270,15 @@ export function applyUnverifiedVendor(addon) {
 }
 
 /**
- * The bundled classification for this review: the pipeline's pre-normalize
- * addon.bundled, or a lazy compute for callers that ran no pre-step (unit tests,
- * which never normalize). Memoized on the addon so the ~8 consumers share it.
+ * The bundled classification for this review: the addon.bundled the pipeline computed in
+ * setup, or a lazy compute for a caller that ran no setup step (unit tests). Memoized on
+ * the addon so the ~8 consumers share it.
  * @param {RunContext} ctx
  * @returns {Bundled}
  */
 function getBundled(ctx) {
-  // The pipeline pre-classifies the review target in setup (and, in SCA, the built XPI
-  // too - in XPI mode they are one artifact), so this lazy fallback only fires for a
-  // caller that ran no pre-step (a rejected Experiment or a direct unit ctx). Minified
-  // is classified identically in every mode and artifact - a minified non-library is
-  // non-authored (and rejected).
+  // In SCA the pipeline pre-classifies the built XPI too; in XPI mode they are one
+  // artifact. The fallback fires only for a rejected Experiment or a direct unit ctx.
   return (ctx.addon.bundled ??= classifyBundled(ctx.addon, {
     libraryHashes: ctx.options?.libraryHashes,
   }));
@@ -335,9 +319,6 @@ export function classifyInlineSources(sources, skip = new Set()) {
     if (!src.inline || skip.has(src.file)) {
       continue;
     }
-    // Floor as in classifyFiles: it bounds the obfuscation detector, not the minified
-    // question - which is why a page's inline bodies cannot be shrunk below it to hide
-    // packed code.
     const small = Buffer.byteLength(src.code, "utf8") < MIN_CLASSIFY_BYTES;
     // The parse hint is the source's own (`parseAs`), never the container's path: a
     // Vue <script lang="ts"> lives in a .vue, and judging it by that extension parses
@@ -435,6 +416,9 @@ export function isObfuscatedFirstParty(c) {
  * Not subsumed by the shipped-bytes test that runs beside it: a minified file COMMITTED to
  * the archive has a twin there, and only this question objects to it.
  * @param {?Bundled} bundled  A classifyBundled result.
+ * @param {import("../addon/load.js").Addon} [addon]  The artifact those tags describe,
+ *   for the inline scripts its pages carry - a page's own <script> is unreviewable code
+ *   too, and no file-level tag covers it. Omitted asks the file-level question alone.
  * @returns {boolean}
  */
 export function hasUnreviewableCode(bundled, addon) {
@@ -469,6 +453,8 @@ export function hasUnreviewableCode(bundled, addon) {
  * only; both detectors parse `text` internally, offline).
  * @param {string} text
  * @param {string} file
+ * @param {{detectObfuscation?: boolean}} [opts]  `detectObfuscation: false` asks the
+ *   minified question alone, for a caller that has no use for the AST verdict.
  * @returns {{minified: boolean, obfuscation: import("./enum.js").Verdict}}
  */
 function classify(text, file, { detectObfuscation = true } = {}) {

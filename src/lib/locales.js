@@ -1,6 +1,7 @@
 // The add-on's _locales state, scanned once and shared. The
 // default-locale-missing, default-locale-unused and trademark checks read these
-// results, so each file scan runs a single time per review - the same "compute
+// results (missing-english-localization takes isEnglishLocale only), so each file
+// scan runs a single time per review - the same "compute
 // once, checks read it" pattern as addon.outboundSinks / addon.bundled.
 //
 // Belongs here: getLocales - collecting the _locales/<lang> directories present

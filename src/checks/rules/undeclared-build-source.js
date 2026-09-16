@@ -13,7 +13,7 @@
 //
 // Belongs here: raising the escalation and the detail it carries. Does NOT
 // belong here: the analysis (-> src/build/analyze.js), the corpus policy
-// (-> build-corpus.js), or the wording (-> assets/registry.yaml).
+// (-> src/build/corpus.js), or the wording (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
 
@@ -23,7 +23,7 @@ import { VERDICT } from "../../lib/enum.js";
 export default {
   /**
    * @param {RunContext} ctx
-   * @returns {{findings: [], escalations: Escalation[]}}
+   * @returns {{findings: [], escalations?: Escalation[]}}
    */
   run(ctx) {
     const review = ctx.addon?.buildReview;

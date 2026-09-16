@@ -46,8 +46,7 @@ export default {
       VERDICT.UNSURE
     );
     // A whole-add-on reminder: no locus, so it renders as the instruction +
-    // suggested response alone under Extended Manual Review (unknown-api lists the
-    // specific APIs).
+    // suggested response alone under Extended Code Review.
     return { findings: [], escalations: [{}] };
   },
 };

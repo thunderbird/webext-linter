@@ -35,7 +35,7 @@
         <pre class="mermaid">
 flowchart TD
   A["A trusted, pinned vendored file"] --> B{"Could the source<br/>be fetched?"}
-  B -- no --> X([escalated to<br/>manual review])
+  B -- no --> X([reviewed as authored code —<br/>untrusted library])
   B -- yes --> C{"Bytes match the source<br/>(EOL-tolerant)?"}
   C -- yes --> OK([no finding — verified])
   C -- no --> ERR([ERROR: modified<br/>vendored library])

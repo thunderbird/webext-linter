@@ -335,16 +335,16 @@ function scanIsBlindToObfuscation(ctx) {
  * entries declare usage `tokens` that appear NOWHERE in the add-on's live code
  * (comments excluded) or manifest is deterministically unused - a finding (see the
  * blindness guard below for when this path stands down). Every other permission
- * escalates as a case for a reviewer to settle (see
- * escalation) . Host match patterns are
+ * escalates as a case for a reviewer to settle. Host match patterns are
  * minimize-host-permissions' concern and are skipped. Backs the unused-permission
  * producer.
  * @param {RunContext} ctx
  * @param {?object[]} [prompts]  LoadedCheck.permissionTokens: the permission-prompts entries
  *   carrying the usage tokens. Absent/empty -> no deterministic verdicts,
  *   escalate all.
- * @returns {{findings: {item: string, file: string, loc: ?object}[], escalations:
- *   {item: string, file: string, loc: ?object}[]}}
+ * @returns {{findings: import("../report/finding.js").Finding[], escalations:
+ *   {item: string, file: string, loc: ?object,
+ *   occurrences: {id: string, file: string, line: ?number, token: string}[]}[]}}
  */
 export function enumerateUnusedPermissions(ctx, prompts) {
   const used = getPermissionAnalysis(ctx).usedPermissions;
@@ -494,10 +494,6 @@ function locateTokens(ctx, tokens) {
   if (!tokens.size) {
     return located;
   }
-  // A DOTTED token `ns.member` is an API call, not a text word: it is resolved against
-  // the api-usage analysis (namespace + member), which distinguishes tabs.executeScript
-  // from scripting.executeScript and never matches a bare identifier, a property read on
-  // a non-API object, or a comment. A BARE token is a plain word matched textually.
   const dotted = [...tokens].filter((t) => t.includes("."));
   const bare = [...tokens].filter((t) => !t.includes("."));
 
@@ -559,7 +555,7 @@ function locateTokens(ctx, tokens) {
 /**
  * The token sites of one permission, merged across its tokens and deduped by
  * `file:line` (two tokens on the same line collapse to one site), each stamped with
- * an orchestrator-minted id naming the site, so a verdict can be echoed back
+ * an id naming the site (<permission>#<n>), so a verdict can be echoed back
  * against. Empty when the permission has no tokens (a token-less permission) or when
  * none of its tokens occur in the reviewed corpus - the escalation then names the
  * permission with no site to point at.

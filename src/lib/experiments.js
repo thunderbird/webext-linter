@@ -3,8 +3,9 @@
 // the experiment verifier (src/experiments/verify.js), reachability seeding, and
 // the experiment-overrides-api check.
 //
-// Belongs here: extracting the declared API paths, the implementation file refs,
-// and the bundle subtree root from experiment_apis. Does NOT belong here:
+// Belongs here: extracting the declared API paths, the API namespaces and manifest
+// keys the bundled schemas declare, the implementation file refs, and the bundle
+// subtree root from experiment_apis. Does NOT belong here:
 // detecting Experiment status (-> isExperiment in util.js), hashing/verifying
 // the files (-> src/experiments/verify.js), or any verdict.
 

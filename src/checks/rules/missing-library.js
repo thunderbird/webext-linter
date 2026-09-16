@@ -32,8 +32,6 @@ export default {
   run(ctx) {
     const findings = [];
     for (const c of classifyAddonJs(ctx)) {
-      // A hash match identifies the exact release; name it on the finding so the
-      // report says which library and version was found undeclared.
       const id = c.libraryId
         ? `${c.libraryId.name} ${c.libraryId.version}`
         : null;

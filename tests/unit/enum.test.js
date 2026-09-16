@@ -40,8 +40,8 @@ test("cross-case and unknown access throws", () => {
 
 // THE load-bearing invariant: a verdict has no string form, so it can never be
 // string-compared or serialized. Every coercion path throws - String(), template,
-// JSON, `.state`, and (the subtle one) loose equality. If this regresses, code could
-// drift back to `v == "fail"`; this test is the tripwire.
+// JSON, `.state`, and (the subtle one) loose equality. Lose any of them and code can
+// silently compare `v == "fail"`; this test is the tripwire.
 test("a verdict cannot be string-compared or serialized", () => {
   const v = VERDICT.FAIL;
   assert.throws(() => v == "fail", ReferenceError);

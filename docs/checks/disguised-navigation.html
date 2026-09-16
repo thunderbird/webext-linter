@@ -19,8 +19,9 @@
       <h2>What it detects</h2>
       <p class="lead">
         Data smuggled out of the add-on by hiding it inside a page navigation.
-        Navigating the location to a remote address — through location.assign or
-        location.replace — built up with runtime data appended to it sends that
+        Navigating the location to a remote address — through location.assign,
+        location.replace or an assignment to location.href — built up with runtime
+        data appended to it sends that
         data to the remote host while looking like an ordinary page navigation.
       </p>
       <p>
@@ -41,7 +42,7 @@
 flowchart TD
   A["An outbound sink in the<br/>add-on's authored JavaScript"] --> B{"Authored code?<br/>(not a bundled library)"}
   B -- no --> S([skip])
-  B -- yes --> C{"Sink is a navigation?<br/>location.assign / location.replace"}
+  B -- yes --> C{"Sink is a navigation?<br/>location.assign / .replace / .href"}
   C -- no --> OK([no finding — left to<br/>another check])
   C -- yes --> D{"Covert channel to a<br/>non-local destination?"}
   D -- no --> OK

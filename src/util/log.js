@@ -8,8 +8,8 @@ import { displayText } from "./text.js";
 // text --report-out), every emitted line is also recorded so the file is a
 // carbon copy of the screen.
 //
-// Belongs here: the narration feed - info, debug (verbose), warn, progress, and
-// the verbose/progress/quiet/capture toggles.
+// Belongs here: the narration feed - info, debug (verbose), warn, progress, report,
+// the FEED levels and feedIndent, and the verbose/progress/feed/quiet/capture toggles.
 //
 // Does NOT belong here: user-facing report content (findings, summaries), which
 // is built and emitted by src/report/*. Real tool errors (CLI writes those to

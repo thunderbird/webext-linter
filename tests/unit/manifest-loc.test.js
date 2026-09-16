@@ -1,6 +1,6 @@
-// Unit tests for position-aware manifest line attribution (buildManifestLoc)
-// and its use by a migrated check. Covers the two failure modes of the old
-// substring search: \uXXXX escaping and a value that appears more than once.
+// Unit tests for position-aware manifest line attribution (buildManifestLoc) and its
+// use by a check. A path lookup survives the two cases a text search for the value
+// cannot: \uXXXX escaping, and a value that appears more than once.
 
 import { withManifest } from "./manifest-ctx.js";
 import { test } from "node:test";
@@ -27,8 +27,8 @@ test("buildManifestLoc resolves the exact line for an escaped, repeated value", 
   const loc = buildManifestLoc(TEXT);
   assert.equal(loc.lineAt(["host_permissions", 0]), 6);
   assert.equal(loc.lineAt(["web_accessible_resources", 0, "matches", 0]), 4);
-  // The old substring search misses entirely (the value is \u-escaped) - the
-  // reason we switched to path lookup.
+  // A quoted-token search misses entirely here (the value is \u-escaped) - which is
+  // why the line comes from a path lookup.
   assert.equal(manifestTokenLine(TEXT, "<all_urls>"), null);
 });
 

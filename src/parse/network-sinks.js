@@ -9,7 +9,7 @@
 // Belongs here: locating each sink, classifying its destination (remote/local/
 // dynamic/embedded), recording its scheme (cleartext vs encrypted), host and the
 // destination expression as written, and flagging whether data is appended to the
-// URL or a user-data API call sits in the argument. The static-vs-dynamic value test mirrors unsafe-html.js.
+// URL or a user-data API call sits in the argument.
 //
 // Does NOT belong here: the verdict and wording (-> src/checks/rules/
 // disguised-*.js, cleartext-transmission.js, privacy-policy.js,
@@ -413,8 +413,8 @@ function worstStaticUrlInfo(urls) {
   return gravest.find((info) => info.cleartext) ?? gravest[0];
 }
 
-// A local (non-network) destination: no cleartext/privacy/exfil concern. Shared
-// by the no-URL case and a resolved loopback destination.
+// A local (non-network) destination: no cleartext/privacy/exfil concern. The
+// answer for a resolved loopback destination.
 const LOCAL_DEST = {
   destClass: URL_CLASS.LOCAL,
   cleartext: false,

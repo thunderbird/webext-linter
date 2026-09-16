@@ -6,8 +6,8 @@
 //
 // The timeout covers the WHOLE operation - the connection AND the body read - because
 // `consume` runs while the abort signal is still armed. A timeout that only guarded
-// the headers (the shape vendor/verify.js uses for its small JSON) would still hang on
-// a body that never arrives.
+// the headers would still hang on a body that never arrives, so every caller reads
+// through `consume` rather than after the fetch resolves.
 //
 // It also decides, per request, whether a failure means "this load failed" or "there
 // is no network". Nothing in Node can answer that from the outside: `navigator.onLine`

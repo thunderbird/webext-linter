@@ -31,7 +31,7 @@ import {
  * @property {string} code  JavaScript text.
  * @property {number} lineOffset  Lines to add to AST-reported lines
  *   (0 for .js files).
- * @property {boolean} inline  True if extracted from a <script> BODY - an HTML inline
+ * @property {boolean} [inline]  True if extracted from a <script> BODY - an HTML inline
  *   script or an SFC block. Not set for code a scanner lifts out of an attribute:
  *   that is synthesized, so a consumer judging what the add-on ships must not see it.
  * @property {boolean} [declaredJs]  Whether the tag declares this body as JavaScript,
@@ -152,7 +152,7 @@ function declaresJs(type) {
  * than the body's start line so AST lines map back to the HTML.
  * @param {string} file  Add-on-relative path of the HTML document.
  * @param {string} html  Full HTML source text.
- * @returns {Array<{file:string,code:string,lineOffset:number,inline:boolean}>}
+ * @returns {Array<{file:string,code:string,lineOffset:number,inline:boolean,declaredJs:boolean}>}
  */
 function extractInlineScripts(file, html) {
   const out = [];

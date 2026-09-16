@@ -102,11 +102,11 @@ export function isVendored(vendor, file) {
  * row must never name a DIRECTORY. An outcome that rejects instead (unpinned-source,
  * modified) re-decides nothing per file, so its row names the declaration.
  *
- * That mattered: a row naming a directory reached markUntrusted, which withdraws a
+ * That matters: a row naming a directory reaches markUntrusted, which withdraws a
  * file's exemption by removing it from the non-authored set. Removing "lib" is a
  * no-op - the skipped entries are "lib/..." - so a folder declaration against a
- * source we could not check left its files exempt AND unscanned, while the same
- * source declared file-by-file was reviewed. Expanding here means the consumers are
+ * source we cannot check would leave its files exempt AND unscanned, while the same
+ * source declared file-by-file is reviewed. Expanding here means the consumers are
  * right by construction rather than by remembering.
  *
  * Only files with reviewable content are reconciled (CODE_EXTENSIONS, see

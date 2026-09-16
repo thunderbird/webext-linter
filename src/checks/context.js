@@ -7,7 +7,7 @@
 // per-artifact fields for each sibling.
 //
 // Belongs here: assembling the per-artifact sibling ctxs from the shared review env -
-// orchestrating addon/sources.js into the RunContext shape that registry.js documents.
+// projecting the already-parsed JsSources into the RunContext shape registry.js documents.
 //
 // Does NOT belong here: PARSING. The extraction pass (src/checks/extract.js) parses each source
 // once, up front, and its results arrive already parsed - this module never reaches for an AST.
@@ -23,7 +23,7 @@ import { apiUsageOf } from "./extract.js";
  * @typedef {object} ReviewEnv  The review-level state shared by every sibling ctx, built ONCE
  *   by the pipeline (src/pipeline.js) and handed to both ctx builders. It carries only what is
  *   the SAME across artifacts, so a sibling can never drift from another: the schema, the
- *   shipped manifest/experiments, the review mode (+ the two SCA paths/scaNotRequired), the
+ *   shipped manifest/experiments, the review mode (+ the two SCA paths/scaNotRequired)
  *   and the invalid-Experiment flag.
  * @property {import("../schema/index.js").SchemaIndex} schema
  * @property {{allowExperiments?: boolean, libraryHashes?: Map<string, object>}} options
@@ -43,14 +43,14 @@ import { apiUsageOf } from "./extract.js";
  * The check-facing artifact: the routed add-on projected to only its INTRINSIC data - the
  * fields a check legitimately reads off ctx.addon. An ALLOWLIST, not a strip: a field not
  * named here CANNOT reach a check, so a new Addon field can never leak onto the check surface
- * by omission (a blocklist would leak until someone remembered to delete it - which is how
- * buildFiles once exposed the SCA build tree to input:source checks). If this list is ever
+ * by omission (a blocklist would leak until someone remembered to delete it - all it takes
+ * for a field like buildFiles to put the SCA build tree in front of an input:source check). If this list is ever
  * INCOMPLETE, a check reads undefined and the tests fail loudly - the safe failure direction.
  *
  * `files` is the addon's own Map (referenced, not cloned), so a check reads the real bytes.
  * `vendor`/`bundled` are the pipeline's pre-computed, reconciled classification (the lazy
  * fallbacks would recompute a less-complete one). `nodeModules`/`archives`/`buildReview` serve
- * the SCA build corpus (reviewView also projects addon.buildFiles for the input:build checks);
+ * the SCA build corpus (the build ctx is projected from addon.buildFiles itself);
  * they are undefined on the xpi/source/manifest routes, which is harmless. The lazy caches
  * (locales/localizedNames/evalScan/outboundSinks/permissionAnalysis/apiResolution, and the
  * bundled fallback)
@@ -92,7 +92,7 @@ function deriveApiUsages(jsSources) {
 /**
  * Project one sibling RunContext from the shared review `env` onto a single artifact. Every
  * review-level field (schema, the shipped manifest/experiments, mode, the
- * diff baseline) is copied from `env`, so all siblings share them
+ * two SCA paths) is copied from `env`, so all siblings share them
  * by reference and cannot drift; only the per-artifact `addon` (via reviewView), its parsed
  * `jsSources`/`apiUsages`, and the shipped-view flag differ. The manifest/experiments are
  * shipped-authoritative (read off `env`, never off `addon`), so a check cannot read one
@@ -113,9 +113,6 @@ function projectCtx(
 ) {
   /** @type {RunContext} */
   const ctx = {
-    // The check-facing artifact is the routed add-on's INTRINSIC view (reviewView): files +
-    // self-healing derivations, with the manifest/experiments stripped so they can only be read
-    // through the shipped-authoritative env fields below.
     addon: reviewView(addon),
     schema: env.schema,
     jsSources,
@@ -206,9 +203,9 @@ export function buildXpiCtxs(xpiAddon, xpiParsedSources, env) {
  *   - `scaCtx`    the review target (the readable source subtree) the code checks
  *                 analyse. It is siblings.source in an SCA review.
  *   - `buildCtx`  the SCA BUILD files (scripts/configs/package.json outside the review source,
- *                 node_modules/dotfiles excluded) on ctx.addon, for the `input: build` check -
+ *                 node_modules/dotfiles excluded) on ctx.addon, for the `input: build` checks -
  *                 read off ctx.addon via the same one-place `input` routing, no separate field.
- * Both project the shipped manifest/experiments + the diff baseline from `env`
+ * Both project the shipped manifest/experiments from `env`
  * (so no artifact's manifest leaks against another's files, and the review-level singletons stay
  * single-instance). The source MUST arrive parsed.
  * @param {import("../addon/load.js").Addon} source  The readable review source.

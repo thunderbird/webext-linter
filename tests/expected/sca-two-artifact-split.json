@@ -1,5 +1,5 @@
 {
-  "_comment": "SCA (src/ + xpi/) covering the two-artifact split: unsafe-html is the deterministic SOURCE finding (Comp.vue's innerHTML sink), while orphan.js is XPI-anchored and reached only through loader.js's dynamic loader, so whether it ships unused is a judgement the scan cannot make and it escalates to a person.",
+  "_comment": "SCA (src/ + xpi/) covering the two-artifact split: unsafe-html is the deterministic SOURCE finding (Comp.vue's innerHTML sink), while orphan.js is XPI-anchored and statically reachable from nothing - loader.js imports a path built at runtime, so whether it ships unused is a judgement the scan cannot make and it escalates to a person.",
   "expect": {
     "unsafe-html": [
       "Comp.vue:7"

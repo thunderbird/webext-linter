@@ -240,9 +240,6 @@ test("a chain rooted on the global object yields one usage, same as the bare nam
   ]);
 });
 
-// A feature test written on the global object is a guard like any other, so the
-// usages it protects are not reported as unsupported.
-
 // Handing the API object to a function is the same event as aliasing it: the root leaves
 // for a parameter whose uses resolve nowhere, so every check reading the usage set is
 // blind to what happens to it. Recording it is what lets those checks KNOW they are

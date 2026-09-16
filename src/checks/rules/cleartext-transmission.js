@@ -4,8 +4,9 @@
 // regardless of what is sent (no payload gate).
 //
 // Scoped to overt transmission APIs (fetch and friends). Covert resource loads
-// that smuggle data through a URL are already a hard error in the disguised-*
-// checks; flagging them here too would double-report the same line.
+// that smuggle data through a URL are already handled by the disguised-* checks (a
+// hard error, or an escalation for the weak case); flagging them here too would
+// double-report the same line.
 //
 // Belongs here: turning each overt cleartext remote sink into a finding. Does
 // NOT belong here: the sink scan (-> src/parse/network-sinks.js, aggregated once

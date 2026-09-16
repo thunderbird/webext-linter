@@ -2,13 +2,17 @@
 // setup. Each fragment under assets/schema-annotations/ mirrors a schema-files
 // namespace object, so it merges onto the schema by hierarchy - the same shape the
 // Thunderbird comm-central annotations use. It carries entries the published
-// schema does not yet have, pending the upstream update, in two shapes:
+// schema does not yet have, pending the upstream update, in four shapes:
 //   - the `web_api` permission grounding on a permission enum value (navigator.*
 //     calls the browser.* schema cannot gate) -> SchemaIndex.permissionWebApis;
 //   - a `required_permissions` annotation on a manifest-key property naming the
 //     permission(s) that key requires (extensionScripts.json: compose_scripts ->
 //     compose, message_display_scripts -> messagesModify) ->
-//     SchemaIndex.manifestKeyPermissions.
+//     SchemaIndex.manifestKeyPermissions;
+//   - a `note` annotation on a namespace function/event (tabs.json's version-bounded
+//     tabs.query notes) -> SchemaIndex.memberNotes;
+//   - a native schema field on a manifest-type property the published schema omits
+//     (theme.json's ThemeManifest.icons patternProperties).
 //
 // The merge OVERWRITES an enum-value annotation (an existing one is replaced), and
 // APPENDS a fragment's `annotations` onto a loaded property or member, deduping
@@ -18,7 +22,7 @@
 // upstream carries the same entry.
 //
 // Belongs here: loadSchemaAnnotations (locate + read the bundled fragments) and
-// applySchemaAnnotations (the in-place overwrite merge). Does NOT belong here: the
+// applySchemaAnnotations (the in-place merge). Does NOT belong here: the
 // append-merge that assembles the schema itself (src/schema/merge.js), reading the
 // schema files (src/schema/load.js), the query surface (src/schema/index.js), or
 // deciding when to apply it (src/pipeline.js).

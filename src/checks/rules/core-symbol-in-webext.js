@@ -25,11 +25,8 @@ export default {
   run(ctx) {
     const out = [];
     const skip = nonAuthoredJs(ctx); // a core symbol in a bundled library is not the dev's
-    // Only check files in the pure WebExtension dependency tree: reachable from a
-    // WebExtension entry point without crossing into an Experiment API. This excludes
-    // privileged Experiment/core code (and the mixed/"unsure" files), which
-    // legitimately uses these symbols, and dead code that never runs - positively,
-    // without depending on how completely the Experiment tree was traced.
+    // The pure WebExtension tree only (see the header); the mixed/"unsure" files
+    // count as Experiment code and are excluded with it.
     const webext = buildReachability(ctx).pureWebExtensionReachable;
     for (const src of ctx.jsSources) {
       if (skip.has(src.file) || !webext.has(src.file)) {

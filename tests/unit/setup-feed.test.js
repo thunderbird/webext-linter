@@ -1,10 +1,8 @@
-// The Setup feed, pinned line for line - a CHARACTERIZATION test, written against the
-// pipeline as it is so that a change to how setup is composed has to reproduce it or
-// declare itself.
+// The Setup feed, pinned line for line, so that a change to how setup is composed has to
+// reproduce it or declare itself.
 //
 // It locks three things at once that nothing else covers:
-//   - the ORDER the slow pre-review steps run in, which today is the order the statements
-//     happen to sit in and is enforced by nothing;
+//   - the ORDER the slow pre-review steps run in, which is SETUP_STEPS' order;
 //   - their LABELS, which are the only thing a reviewer sees while the tool is silent;
 //   - the [done/total] counter, whose total is sized before the steps run.
 //
@@ -76,7 +74,7 @@ test("every declared step is narratable and named once", () => {
   }
 });
 
-// The totals the four feeds below count towards, derived from the list the way the pipeline
+// The totals the five feeds below count towards, derived from the list the way the pipeline
 // derives them. A silent step that was counted, or a narrated one that was not, moves a
 // number here before anyone has to read a feed.
 test("the narrated count per run is the total the feed shows", () => {
@@ -98,8 +96,8 @@ test("the narrated count per run is the total the feed shows", () => {
   assert.equal(narrated(facts({ isExp: true, invalidExperiment: true })), 3);
 });
 
-// An XPI review: read the add-on, get the schema, then the three library passes, then
-// parse. Seven steps, and the counter completes.
+// An XPI review: read the add-on, get the schema, fetch the library hashes, then the three
+// library passes, then parse. Seven steps, and the counter completes.
 test("the setup feed of an XPI review", () => {
   assert.deepEqual(setupFeed([addon("clean")]), [
     "[1/7] Reading add-on",
@@ -115,7 +113,7 @@ test("the setup feed of an XPI review", () => {
 // A source code review does the whole XPI pass FIRST (the shipped artifact is analysed in
 // both modes), then the source's own library and dependency passes, then parses the source,
 // and analyses the build last. Thirteen steps and a total of thirteen: the total is counted
-// off the same list that runs them, so it cannot fall behind the way a typed constant did.
+// off the same list that runs them, so it cannot fall behind the steps.
 test("the setup feed of a source code review", () => {
   assert.deepEqual(
     setupFeed([

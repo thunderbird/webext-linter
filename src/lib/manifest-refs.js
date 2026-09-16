@@ -8,8 +8,8 @@
 //     independent of the file existing, so existence cannot be the filter here.
 //     Coverage is therefore the schema's: every key it types as extension-relative is
 //     followed, and one it types loosely (l10n_resources) or not at all is not. Noticing
-//     that a single key lost its format would need a list of the keys to expect, which is
-//     the artefact this replaced - so do not add one back.
+//     that a single key lost its format would need a list of the keys to expect - do not
+//     add one.
 //   - manifestStringRefs: EVERY string in the manifest (outside experiment_apis).
 //     reachability seeds from it, keeping only those that resolve to a packaged
 //     file - so existence is the filter, and there is no per-key list to keep.
@@ -19,9 +19,10 @@
 //
 // Belongs here: manifestFileRefs and manifestStringRefs (manifest -> paths),
 // normalizeRef (raw path -> relative key, purely lexical), resolveRef (raw path +
-// referrer -> packaged key, directory-aware), and resolveInDir (raw path +
-// explicit base directory -> packaged key; the page-relative variant resolveRef
-// delegates to).
+// referrer -> packaged key, directory-aware), resolveInDir (raw path + explicit base
+// directory -> packaged key; the page-relative variant resolveRef delegates to), and
+// their resolveRefStatus / resolveInDirStatus variants, which tell a root escape apart
+// from a missing file.
 //
 // Does NOT belong here: walking the reference graph - that is reachability.js.
 // web_accessible_resources shapes - web-accessible-resources.js. The
@@ -40,8 +41,8 @@ import { MANIFEST_ROOT_TYPES, REL_URL_FORMATS } from "../schema/index.js";
  * ExtensionURL / ExtensionFileUrl / IconPath / ImageDataOrExtensionURL / ThemeIcons).
  *
  * The schema is the authority on which keys carry a path, so there is no list to maintain
- * and no key to forget. A hand-written list of keys was one, and it did not name `icons` -
- * a shipped add-on with a manifest pointing at an icon it does not package was reported by
+ * and no key to forget. A hand-written list silently omits keys - miss `icons` and a
+ * shipped add-on whose manifest points at an icon it does not package is reported by
  * nothing.
  *
  * `where` is the JSON path to the leaf (["icons","48"]), not a label: one file named in
@@ -235,18 +236,6 @@ export function resolveRef(files, fromFile, raw) {
 }
 
 /**
- * Resolve a reference against an explicit base DIRECTORY, or null if it is not a
- * packaged file. `dir` null means extension-root-relative (as for the manifest /
- * getURL); `dir === ""` is the add-on root; any other value is that directory. A
- * leading "/" in `raw` is always root-relative. Used (via script-hosts.js) to
- * resolve a page-relative loader path against the calling script's HOST PAGE
- * directory. `.`/`..` are normalized, with ".." clamped at the package root.
- * @param {Map<string, Buffer>} files
- * @param {string|null} dir
- * @param {string} raw
- * @returns {string|null}
- */
-/**
  * Normalize `raw` against base directory `dir` and collapse `.`/`..` to a packaged
  * key. Returns the collapsed key (null for an empty/blank reference) AND whether a
  * ".." climbed above the package root - which resolveInDir clamps silently but
@@ -286,6 +275,18 @@ function normalizeRefInDir(dir, raw) {
   return { key: parts.join("/"), escaped };
 }
 
+/**
+ * Resolve a reference against an explicit base DIRECTORY, or null if it is not a
+ * packaged file. `dir` null means extension-root-relative (as for the manifest /
+ * getURL); `dir === ""` is the add-on root; any other value is that directory. A
+ * leading "/" in `raw` is always root-relative. Used (via script-hosts.js) to
+ * resolve a page-relative loader path against the calling script's HOST PAGE
+ * directory. `.`/`..` are normalized, with ".." clamped at the package root.
+ * @param {Map<string, Buffer>} files
+ * @param {string|null} dir
+ * @param {string} raw
+ * @returns {string|null}
+ */
 export function resolveInDir(files, dir, raw) {
   const { key } = normalizeRefInDir(dir, raw);
   return key != null && files.has(key) ? key : null;

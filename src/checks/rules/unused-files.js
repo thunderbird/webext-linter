@@ -29,7 +29,6 @@ import {
 } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
-/** @typedef {import("../../lib/reachability.js").Reachability} Reachability */
 
 // Never flag: dependency manifests / lock files and locale message catalogs.
 // Documentation / project metadata is exempted separately by isDocMetadataFile
@@ -51,7 +50,7 @@ export default {
   /**
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[],
-   *   escalations: import("../escalation.js").Escalation[]}}
+   *   escalations?: import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
     // Registry `input: xpi`: ctx.addon is the built XPI. A file bundled but reached
@@ -65,11 +64,10 @@ export default {
     }
     const reach = buildReachability(ctx);
     // Recognized third-party files are not the developer's authored code, so an
-    // unreached one is not the developer's unused file - exempt it. This reads the
-    // XPI's OWN classification (getBundled over ctx.addon), intrinsic to the artifact
-    // under review, so it needs no cross-artifact review-target metadata: the
-    // non-authored set (hash-identified libraries, minified bundles, obfuscated code,
-    // vendored files), all skipped so a bundle is never orphaned by its loader.
+    // unreached one is not the developer's unused file - exempt it. The set
+    // (hash-identified libraries, minified bundles, obfuscated code, vendored files)
+    // is the XPI's own classification (getBundled over ctx.addon), intrinsic to the
+    // artifact under review, so it needs no cross-artifact review-target metadata.
     const skip = new Set(nonAuthoredJs(ctx));
     // An Experiment loads its files by mechanisms static analysis can't trace, so
     // "not reachable" is unreliable there - we'd mostly flag working experiment code.

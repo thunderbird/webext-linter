@@ -26,15 +26,16 @@
       <p>
         <strong>This is advice, not a routing decision.</strong> A source archive is always
         reviewed as one — the finding changes nothing about the review it appears in, and only
-        tells the developer their next submission can be XPI-only. Routing on it is what the tool
-        used to do, and it was a bypass: a committed, unminified <code>dist/</code> inside
-        <code>--sca-source</code> is its own twin under any content test, so a build could always
-        be dressed up as source and shrink its own review.
+        tells the developer their next submission can be XPI-only. Routing on it would be a bypass:
+        a committed, unminified <code>dist/</code> inside <code>--sca-source</code> is its own
+        twin under any content test, so a build could be dressed up as source and shrink its own
+        review.
       </p>
       <p>
         Three questions, all of which must say yes. Is the shipped code <em>readable</em> — the
-        same minified/obfuscated first-party signal <code>minified-code</code> and
-        <code>obfuscated-code</code> use, recognized libraries excluded? Does the archive carry no
+        same signal <code>minified-code</code>, <code>obfuscated-code</code> and
+        <code>untrusted-minified-library</code> use, over files and a page's own inline
+        scripts alike, recognized libraries excluded? Does the archive carry no
         <em>transpiled source kind</em> (<code>.ts</code>, <code>.vue</code>, <code>.scss</code>…),
         which is what catches a non-JS build whose scripts are copied verbatim? And is every
         shipped script <em>byte-identical</em> to a same-named file in the archive — the question
@@ -47,19 +48,19 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["--sca-root submitted"] --> S["mode = sca — the source IS reviewed,<br/>whatever the answers below"]
+  A["--sca-root submitted"] --> S["a source code review — the source IS reviewed,<br/>whatever the answers below"]
   S --> B{"Shipped XPI has minified/<br/>obfuscated first-party code?"}
   B -- yes --> OK([no finding — the archive was needed])
   B -- no --> T{"Archive carries a transpiled<br/>source kind (.ts/.vue/.scss)?"}
   T -- yes --> OK
   T -- no --> X{"Every shipped script byte-identical<br/>to a same-named file in the archive?"}
   X -- "no (bundled / built / missing)" --> OK
-  X -- yes --> WARN([INFO: an XPI-only submission would have been enough])
+  X -- yes --> INFO([INFO: an XPI-only submission would have been enough])
 
-  classDef warn fill:#eef2f7,stroke:#5a6b7d,color:#33414f;
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef step fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
-  class WARN warn;
+  class INFO info;
   class OK ok;
   class S step;
         </pre>

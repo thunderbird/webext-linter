@@ -6,8 +6,9 @@
 //
 // Belongs here: pattern detection for dynamic/remote code execution - eval, the
 // Function constructor, code-string timers, remote imports/importScripts, a
-// script element's remote src, and fetch -> eval/wasm - each tagged with a
-// `type`.
+// script element's remote src, a remote <script> injected as an HTML string
+// (innerHTML/outerHTML, document.write(ln), insertAdjacentHTML), and fetch ->
+// eval/wasm - each tagged with a `type`.
 //
 // Does NOT belong here: the verdict, severity, and any review escalation - those
 // live in the eval checks (via src/lib/eval-scan.js) and

@@ -1,5 +1,6 @@
 // Normal data transmission (fetch, XMLHttpRequest, WebSocket, EventSource,
-// navigator.sendBeacon) to a remote host is allowed only if the user actively
+// navigator.sendBeacon, an HTML form submission) to a remote host is allowed only if
+// the user actively
 // enabled it - by entering the destination URL/credentials on an options page
 // that lists what is transmitted, or via an explicit off-by-default opt-in for a
 // hard-coded URL. Thunderbird has no built-in data-collection prompt. Whether a

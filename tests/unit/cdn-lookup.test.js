@@ -30,7 +30,7 @@ const addonWith = (files) => ({
 
 // A net that answers the jsDelivr hash lookup for known hashes AND the popularity
 // trust-bar lookups (npm last-month downloads / GitHub stars) resolveCdnLibraries
-// now makes for each hit. `downloads`/`stars` default well above the bars
+// makes for each hit. `downloads`/`stars` default well above the bars
 // (VENDOR_NPM_MIN_DOWNLOADS=1000 / VENDOR_GITHUB_MIN_STARS=100) so a hit is popular
 // unless a test overrides them. Records every URL it was asked.
 function netFor(map, { downloads = 5000, stars = 500 } = {}) {
@@ -102,7 +102,7 @@ test("a hit promotes the bundle into the vendored family (library + libraryId + 
   );
   assert.ok(addon.bundled.nonAuthored.has("app/fuse.min.js"));
 
-  // The new check reports it; minified-code and missing-library do NOT.
+  // find-lib-on-cdn reports it; minified-code and missing-library do NOT.
   const ctx = { addon };
   assert.deepEqual(
     findLibOnCdn.run(ctx).findings.map((f) => [f.file, f.item, f.hint]),

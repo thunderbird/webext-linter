@@ -1,6 +1,7 @@
 // The SCA build review's ONE look at the build, run in the setup phase (like resolveVendor
-// for dependencies): it selects the build corpus (selectBuildCorpus) and stores what it
-// found on addon.buildFiles.buildReview so the input:build checks read it deterministically.
+// for dependencies): it selects the build corpus (selectBuildCorpus) and returns what it
+// found, which the pipeline stores on addon.buildFiles.buildReview for the input:build
+// checks to read deterministically.
 //
 // Nothing here says what a build DOES. Reproducing it is the reviewer's attestation and no
 // analysis substitutes for it, so every build routes to them and this records only what the
@@ -23,7 +24,8 @@ import { selectBuildCorpus } from "./corpus.js";
 /**
  * Look at the SCA build once, in setup.
  * @param {object} params
- * @param {{files: Map<string, Buffer>}} params.build  The build files (addon.buildFiles).
+ * @param {{files: Map<string, Buffer>}} [params.build]  The build files
+ *   (addon.buildFiles); absent is an empty corpus.
  * @returns {BuildReview}
  */
 export function analyzeBuild({ build }) {

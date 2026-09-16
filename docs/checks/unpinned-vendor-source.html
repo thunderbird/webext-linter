@@ -34,7 +34,7 @@
         <pre class="mermaid">
 flowchart TD
   A["A VENDOR entry's source URL"] --> B{"On a trusted host?"}
-  B -- no --> X([escalated to<br/>manual review])
+  B -- no --> X([reviewed as authored code —<br/>untrusted library])
   B -- yes --> C{"Pinned to a version,<br/>tag, or commit?"}
   C -- yes --> OK([no finding — fetched<br/>and byte-compared])
   C -- no --> ERR([ERROR: unpinned<br/>vendored source])

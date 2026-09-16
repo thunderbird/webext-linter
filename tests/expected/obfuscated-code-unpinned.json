@@ -1,4 +1,4 @@
 {
-  "_comment": "Two background scripts the obfuscation library recognizes, each under a family that is NOT pinned: a revealing-module IIFE, and a settings table with mostly five-letter keys (the shape that rejected hand-written source in issue #5). An unpinned family decides nothing, so neither file is a finding and neither reaches a reviewer - the golden locks that silence.",
+  "_comment": "Two background scripts the obfuscation library recognizes, each under a family that is NOT pinned: a revealing-module IIFE, and a settings table with mostly five-letter keys (the shape that makes hand-written source look machine-generated). An unpinned family decides nothing, so neither file is a finding and neither reaches a reviewer - the golden locks that silence.",
   "expect": {}
 }

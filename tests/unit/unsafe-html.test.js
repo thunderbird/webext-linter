@@ -23,7 +23,7 @@ test("flags dynamic innerHTML / outerHTML / insertAdjacentHTML", () => {
   ]);
 });
 
-// Static content is now flagged too - the only sanctioned insertion method is
+// Static content is flagged too - the only sanctioned insertion method is
 // Element.setHTML(), so a non-empty static string, a static concatenation, and a
 // fully-static ternary all produce a hit, just like dynamic content.
 test("flags static (non-empty) HTML content too", () => {

@@ -1,5 +1,5 @@
 {
-  "_comment": "Two kinds of missing reference, so both halves of the schema-driven walk are pinned. content_scripts names missing.js, a key the old hand-written list covered. icons names icon.png at two sizes, a key it did NOT - a manifest declaring an icon it does not ship was reported by nothing. Both sizes are listed because whether a file is packaged is a property of the slot, and the two slots anchor at their own manifest lines.",
+  "_comment": "Two kinds of missing reference, so both halves of the schema-driven walk are pinned. content_scripts names missing.js, a scripts-style path key. icons names icon.png at two sizes, an icon key - a manifest declaring an icon it does not ship must be reported just as one declaring a missing script is. Both sizes are listed because whether a file is packaged is a property of the slot, not of the path.",
   "expect": {
     "bundled-files": [
       "manifest.json:5",

@@ -30,9 +30,9 @@ removed cleanly.
 packaged file exactly as an add-on's is.
 
 The fragment retypes it to match. `bundled-files` walks the manifest against its schema
-types and reports a declared path that is not in the package, so with the bare-string
-typing a theme's missing icon was invisible to it, and any other consumer reading the
-schema to learn which keys carry a file path would draw the same wrong conclusion.
+types and reports a declared path that is not in the package, so under the bare-string
+typing a theme's missing icon is invisible to it, and any other consumer reading the
+schema to learn which keys carry a file path draws the same wrong conclusion.
 
 Remove this fragment once `theme.json` upstream types the value as `ExtensionFileUrl`.
 
@@ -63,8 +63,9 @@ grounding (`analyzePermissions` in `src/lib/permissions.js`) grounds a
 declared key's permission as used and flags an undeclared one as missing.
 
 An entry may carry a `min_strict_version`/`max_strict_version` bound, so a
-version-dependent requirement is several entries the grounding version-filters (see
-the boundary-crossing check).
+version-dependent requirement is several entries the grounding version-filters (pinned
+by "message_display_scripts version-filters scripting on the 154 boundary" in
+tests/unit/rules.test.js).
 
 ## `tabs.json` — version-bounded review notes
 

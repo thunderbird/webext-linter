@@ -22,7 +22,7 @@ import { nonAuthoredJs } from "../../lib/bundled.js";
 export default {
   run(ctx) {
     const out = [];
-    const skip = nonAuthoredJs(ctx); // skip non-authored bundles (see nonAuthoredJs)
+    const skip = nonAuthoredJs(ctx); // a library's own sink write is not the dev's
     for (const src of ctx.jsSources) {
       if (skip.has(src.file)) {
         continue;

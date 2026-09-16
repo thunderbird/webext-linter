@@ -38,7 +38,7 @@ export default {
     const escalations = [];
     for (const site of getRemoteRefs(ctx).upstream) {
       escalations.push({
-        // The destination whole: it is the fact the judgement turns on.
+        // The whole destination: it is the fact the judgement turns on.
         item: site.url,
         file: site.file,
         loc: site.loc,

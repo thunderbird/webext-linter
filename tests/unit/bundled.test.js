@@ -1,5 +1,5 @@
 // Unit tests for the bundled-JS classification "check memory": classifyBundled
-// (the one-shot, addon-keyed pre-step), the build/lint correctness fix (the
+// (the pure per-file pass the pipeline runs once), the normalize ordering (the
 // classification is computed before normalize, so a reformatted minified file is
 // still caught), and the per-review memoization the readers share.
 
@@ -37,8 +37,8 @@ const libHashes = (addon, ...keys) =>
 // shortcut. >= 1024 bytes so it is classified, not skipped.
 const MINIFIED = `var a=0;${"a=a+1;".repeat(250)}`;
 // The SAME geometry (one long line, >= 1024 bytes) but a single DATA literal, not code:
-// one statement, so it is readable data, NOT minified. This is the false positive the
-// statement-density signal fixes (the old geometry flagged it).
+// one statement, so it is readable data, NOT minified. Line geometry alone would flag
+// it; statement density is what keeps it readable source.
 const DATA_BLOB = `var data=[${"1,".repeat(700)}1];`;
 // A readable file whose one long line is a single string payload (an inline icon): also
 // one statement -> not minified, and it must stay scannable authored code.
@@ -193,7 +193,7 @@ test("a file only an unpinned family matches is ordinary authored code", () => {
   );
 });
 
-test("classification done before normalize survives reformatting (the fix)", () => {
+test("classification done before normalize survives reformatting", () => {
   const addon = addonWith({ "lib/blob.js": MINIFIED });
   // Pipeline pre-step: classify BEFORE normalize.
   addon.bundled = classifyBundled(addon);

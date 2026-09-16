@@ -1,8 +1,9 @@
 // Escalates a whole-add-on manual review for every Experiment submission:
 // Experiments (experiment_apis) run with full access to Thunderbird's internals,
 // so they need a careful human code review beyond the automated checks. Emits one
-// locus-less manual-review reminder (no findings, so no severity). Silent for
-// non-Experiments; an unsupported experiment never reaches here (it aborts via
+// locus-less manual-review reminder; it raises no finding, and a reported case
+// carries its registry entry's error severity. Silent for non-Experiments. Without
+// --allow-experiments an unsupported experiment never reaches here (it aborts via
 // experiment-not-allowed in the invalid-experiment phase).
 //
 // Belongs here: the isExperiment gate and the single escalation. Does NOT belong

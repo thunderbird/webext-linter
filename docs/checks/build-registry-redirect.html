@@ -15,17 +15,16 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        A source-code submission whose build configuration points the package
-        install at a registry other than the default public one. A legitimate
-        build never needs to set a registry, because the package manager already
-        defaults to the public registry, so any registry setting is rejected
-        outright.
+        A source-code submission whose committed .npmrc sets a package registry.
+        A legitimate build never needs to set one, because npm already defaults to
+        the public registry, so any registry setting is rejected outright — the
+        value is never inspected.
       </p>
       <p>
         This check applies only to source-code submissions, where the reviewer
-        builds the add-on from the readable source. It scans every build-config
-        dotfile that names a registry, at the root or in a subfolder, because a
-        build may run from a nested directory. A custom registry can pull the
+        builds the add-on from the readable source. It scans every .npmrc in the
+        build corpus, at the root or in a subfolder, because a build may run from
+        a nested directory. A custom registry can pull the
         same declared package names from an undeclared source, leaving the
         declared dependencies and the lock file a clean decoy. The value is not
         inspected — the mere presence of a registry setting is the rejection.
@@ -35,8 +34,8 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A build-config dotfile<br/>in the build corpus"] --> B{"Is it a registry-config<br/>dotfile (root or nested)?"}
-  B -- no --> S([skip — not a<br/>registry-config file])
+  A["A file in the build corpus"] --> B{"Is it an .npmrc<br/>(root or nested)?"}
+  B -- no --> S([skip — not an .npmrc])
   B -- yes --> C{"A line sets a package<br/>registry (default or per-scope)?"}
   C -- no --> OK([no finding — comments,<br/>auth, or other keys])
   C -- yes --> ERR([ERROR: build registry override])

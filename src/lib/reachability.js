@@ -348,9 +348,8 @@ function compute(ctx) {
     const p = resolveRef(files, null, raw);
     if (p) {
       generalSeeds.add(p);
-      // The manifest walk is role-blind (it seeds scripts, icons, themes alike), so this is
-      // role-blind too: the manifest declares a packaged file whose type we do not recognize
-      // at all. Whatever its role, that is worth a look.
+      // Role-blind, like the walk itself: a packaged file whose type we do not recognize
+      // at all is worth a look whatever its role.
       noteUnrecognized(p, "manifest.json", RECOGNIZED_EXTS);
     }
   }

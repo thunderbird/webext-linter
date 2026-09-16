@@ -219,7 +219,7 @@ export function selectBuildCorpus(build) {
 
   // Seeds: package.json (the declared deps + scripts) and every .npmrc (registry config).
   // NOT the lock file - it is large, mostly integrity hashes, and adds no build-safety
-  // build-safety signal of its own; the dep/registry checks read it directly.
+  // signal of its own; the dep/registry checks read it directly.
   if (files.has("package.json")) {
     keep.add("package.json");
   }
@@ -339,9 +339,10 @@ export function selectBuildCorpus(build) {
     }
   };
 
-  // One level into a referenced shell script: recognize the tools it invokes (collect
-  // their configs), collect the local files it names, and flag any network fetch. Bounded -
-  // a build shell is small and we do not chase deeply.
+  // Into a referenced shell script: recognize the tools it invokes (collect their
+  // configs), collect the local files it names, and flag any network fetch. A shell it
+  // invokes in turn is followed the same way, bounded at depth 5 - a build shell is
+  // small and we do not chase deeply.
   const followShell = (key, depth) => {
     if (depth > 5) {
       return;

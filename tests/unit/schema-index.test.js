@@ -210,7 +210,7 @@ test("required permissions merge namespace + function level", () => {
 
 // A function whose ONLY extra permission is function-level (archive -> messagesMove,
 // delete -> messagesDelete) still yields it, unioned with the namespace's
-// messagesRead. This is the path the unused-permission alias fix depends on.
+// messagesRead. unused-permission reads this path to credit a function-level permission.
 test("required permissions include a function-level-only permission", () => {
   const archive = schema.resolveApi(["messages", "archive"]);
   assert.equal(archive.kind, "function");

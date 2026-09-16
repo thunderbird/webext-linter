@@ -36,7 +36,7 @@ export default {
   /**
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[],
-   *   escalations: import("../escalation.js").Escalation[]}}
+   *   escalations?: import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
     // Registry `input: xpi`: ctx.addon is the built XPI. web_accessible_resources -
@@ -52,13 +52,16 @@ export default {
     const reach = buildReachability(ctx);
     const files = addon.files;
     const text = ctx.manifestText;
-    /** @param {string} item  The WAR entry's manifest line as a loc, or null. */
+    /**
+     * @param {string} item  The manifest token to anchor on.
+     * @returns {?{line: number}}  Its manifest line as a loc, or null.
+     */
     const lineOf = (item) => {
       const line = manifestTokenLine(text, item);
       return line ? { line } : null;
     };
     const findings = [];
-    /** @type {{ids: string[], finding: object}[]} per WAR file. */
+    /** @type {import("../escalation.js").Escalation[]} one per unresolved WAR file. */
     const escalations = [];
     const seen = new Set();
     /**

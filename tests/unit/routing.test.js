@@ -1,5 +1,5 @@
-// The check-routing primitives: routeCtx (which artifact ctx a check RUNS on, by its
-// `input`) and ctxForRule (which corpus a rule's OUTPUT is labelled against). Routing is
+// The check-routing primitive routeCtx: which artifact ctx a check RUNS on, by its
+// `input`. Routing is
 // total and explicit - `source` is a first-class sibling, there is no default artifact to
 // fall through to, and a declared input with no sibling throws.
 //

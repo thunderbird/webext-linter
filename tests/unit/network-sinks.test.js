@@ -85,7 +85,7 @@ test("a concat-prefix loopback URL is local (no cleartext, no dataAppended)", ()
 
 // A real remote host is unaffected by the loopback exemption - including a
 // hostname that merely starts with "127." (only all-numeric 127.x is loopback).
-test("a real remote http sink still flags cleartext after the loopback fix", () => {
+test("a real remote http sink flags cleartext despite the loopback downgrade", () => {
   const hit = one('fetch("http://api.example.com/collect");');
   assert.equal(hit.destClass, URL_CLASS.REMOTE);
   assert.equal(hit.cleartext, true);

@@ -89,7 +89,7 @@ test("unrecognized cache/cdn flag strings are unknown options", () => {
   }
 });
 
-// The renamed cache/cdn flags map to the internal pipeline opts.
+// The cache/cdn flags map to the internal pipeline opts.
 test("cache/cdn flags map to the pipeline opts", () => {
   assert.equal(pipelineOptsFromArgv([]).cdnLookup, true); // default on
   assert.equal(
@@ -178,8 +178,8 @@ test("--allow-experiments in SCA mode requires --sca-exp-source (exit 2)", () =>
 });
 
 // The format decides how everything below it is routed, so it is checked where it is
-// read. It used to be checked after the --llm-sca-review branch, which then printed
-// nothing at all and exited 0 for an unknown value.
+// read - before the --llm-sca-review branch, which would otherwise print nothing at all
+// and exit 0 for an unknown value.
 test("an unknown --report-format is refused on every path (exit 2)", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-fmt-"));
   fs.writeFileSync(path.join(dir, "a.xpi"), "");
@@ -196,9 +196,9 @@ test("an unknown --report-format is refused on every path (exit 2)", () => {
 });
 
 // --sca-root is the EXTRACTED source, and the guard asks one question: does the path
-// point at a folder? A packed root is the case that motivated it - a .tar.gz used to
-// reach AdmZip and come back with "No END header found", an error about a format nobody
-// claimed to support - but a missing path and a trailing slash are the same answer.
+// point at a folder? A packed root is the case that motivates it - handed to AdmZip, a
+// .tar.gz comes back with "No END header found", an error about a format nobody claimed
+// to support - but a missing path and a trailing slash are the same answer.
 test("--sca-root must point at a folder (exit 2)", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-sca-root-"));
   const zip = path.join(dir, "source.zip");
@@ -220,8 +220,8 @@ test("--sca-root must point at a folder (exit 2)", () => {
   }
 
   // The other two name folders INSIDE the root, and are asked the same question. The
-  // Experiment one is why this is a refusal and not a warning: it used to warn and carry
-  // on, and the review then read the Experiment's privileged code as WebExtension code.
+  // Experiment one is why this is a refusal and not a warning: warn and carry on, and the
+  // review reads the Experiment's privileged code as WebExtension code.
   for (const flag of ["--sca-source", "--sca-exp-source"]) {
     const r = run([
       "some.xpi",
@@ -254,9 +254,10 @@ test("--sca-root must point at a folder (exit 2)", () => {
 
 // A flag given with no value names something and says nothing. Asked of EVERY option that
 // takes one, before any branch reads one: parseArgs hands "--flag=" down as "", which every
-// reader tests for truth and so reads as "not given" - a named cache silently became the
-// default one, a named verdict file printed an unsettled report, a named format fell back
-// to text, and a named source root reviewed the XPI alone. Whitespace counts as none.
+// reader tests for truth and so reads as "not given" - a named cache would silently be the
+// default one, a named verdict file would print an unsettled report, a named format would
+// fall back to text, and a named source root would review the XPI alone. Whitespace counts
+// as none.
 test("a flag given no value is refused (exit 2)", () => {
   for (const [argv, flag] of [
     [["some.xpi", "--report-format="], "--report-format"],
@@ -277,14 +278,14 @@ test("a flag given no value is refused (exit 2)", () => {
 });
 
 // The guard asks the LOADER which folder a value names, rather than spelling the path math
-// a second time. ".src" used to be validated as ".src" (found) and then read as "src" - a
-// real folder, not the one named, reviewed in silence. Pinned from the CLI end, because the
-// defect was the two ends disagreeing.
+// a second time. Spelled twice, ".src" validates as ".src" (found) and reads as "src" - a
+// real folder, but not the one named, reviewed in silence. Pinned from the CLI end, because
+// what fails there is the two ends disagreeing.
 test("a folder flag is checked against the folder the review will read", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-dotdir-"));
   fs.mkdirSync(path.join(dir, "src"));
 
-  // Only src/ exists: naming .src refuses, where it used to review src/ without a word.
+  // Only src/ exists: naming .src refuses, rather than reviewing src/ without a word.
   const missing = run(["some.xpi", "--sca-root", dir, "--sca-source", ".src"]);
   assert.equal(missing.code, 2);
   assert.match(missing.stderr, /--sca-source must point at a folder: "\.src"/);
@@ -309,11 +310,12 @@ test("a folder flag is checked against the folder the review will read", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A ".." segment is the value this guard and the loader read differently: the loader strips
-// leading dots, so the folder that answered here is not the folder the review reads, and for
-// --sca-exp-source "nothing" is also the legitimate answer for an Experiment outside the
-// source - so the mistake was silent at both ends.
-test("a folder flag refuses a .. segment (exit 2)", () => {
+// Where a folder flag LANDS is the question, asked with the loader's own relativeInside so
+// the guard and the review cannot answer it differently: a ".." segment names a folder by
+// the way out of another, and a path resolving outside --sca-root names one on the reviewing
+// machine. For --sca-exp-source "nothing to exclude" is also the legitimate answer for an
+// Experiment outside the source, so neither mistake announces itself.
+test("a folder flag takes an absolute path inside the root, and refuses one outside it or with a .. segment (exit 2)", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-folder-"));
   fs.mkdirSync(path.join(dir, "src"));
 
@@ -372,9 +374,9 @@ test("a folder flag refuses a .. segment (exit 2)", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// One add-on per run. A second positional was silently ignored, which is how an unquoted
-// path with a space in it reviewed the half before the space and said nothing about the
-// rest - the shape --llm-sca-review's printed command could produce.
+// One add-on per run. A second positional silently ignored is how an unquoted path with a
+// space in it would review the half before the space and say nothing about the rest - the
+// shape --llm-sca-review's printed command could produce.
 test("a second positional is refused (exit 2)", () => {
   const r = run(["some.xpi", "another.xpi"]);
   assert.equal(r.code, 2);
@@ -448,8 +450,8 @@ test("reviewing a fixture renders to stdout with a severity-based exit", () => {
 // The seam between the two: a source code review's own steps send a sub-agent to paths, and
 // the Review Details block names them. Both come from what the review RESOLVED to be, never
 // from the flags it was given - a rejected Experiment keeps --sca-root and is still an XPI
-// review, and reading the flag there sent an agent to a root nothing had read, under a name
-// the block never printed. Driven through the CLI because that is the seam: rendering the
+// review, and reading the flag there would send an agent to a root nothing had read, under
+// a name the block never prints. Driven through the CLI because that is the seam: rendering the
 // two halves from a hand-built meta cannot catch a pipeline that feeds them different
 // values.
 test("a source code review's steps carry exactly the paths its header names", () => {
@@ -1000,12 +1002,6 @@ test("--llm-sca-review prints the prompt, names both files, and reviews nothing"
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The contract the review rests on: the flags printed are this run's own, with the flag
-// swapped and the add-on in place of the folder, plus the ones its reader works out. A
-// flag invented or dropped here reviews a different submission than the reviewer asked
-// about - --allow-experiments most of all, which decides whether the review runs at all.
-// They print in the order OPTIONS declares them, never the order they were typed: composed
-// from the parsed values, so the command reads the same however it was written.
 // The block NAMES the files and the command RUNS on them, so the two have to name one
 // file. A run of spaces is what separates them: only one of the two sanitisers keeps it,
 // and every other test here builds its folder with mkdtemp, whose names have none.
@@ -1028,6 +1024,12 @@ test("the command --llm-sca-review prints names the file its block names", () =>
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// The contract the review rests on: the flags printed are this run's own, with the flag
+// swapped and the add-on in place of the folder, plus the ones its reader works out. A
+// flag invented or dropped here reviews a different submission than the reviewer asked
+// about - --allow-experiments most of all, which decides whether the review runs at all.
+// They print in the order OPTIONS declares them, never the order they were typed: composed
+// from the parsed values, so the command reads the same however it was written.
 test("--llm-sca-review prints the flags the review is run with", () => {
   const dir = submissionFolder();
   const xpi = path.join(dir, "addon.xpi");
@@ -1068,8 +1070,8 @@ test("--llm-sca-review prints the flags the review is run with", () => {
   );
 
   // A boolean flag is never paired with what follows it, wherever it sits: the OPTIONS
-  // table says which flags take a value, so nothing is guessed from the token shapes. A
-  // trailing one used to be printed with the argument after it, which was "undefined".
+  // table says which flags take a value, so nothing is guessed from the token shapes -
+  // a trailing one printed with the argument after it would print "undefined".
   assert.doesNotMatch(
     run(["--llm-sca-review", dir, "--eslint"]).stdout,
     /undefined/
@@ -1117,7 +1119,7 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
 
 // The prompt tells its reader to run the printed command "with exactly these flags, and
 // nothing else", so the one thing worth asserting about it is that it RUNS. Every guard
-// this round added lives between that command and a review - the empty-value rule, the
+// between that command and a review - the empty-value rule, the
 // unknown check id, --report-out, the folder questions - and each of them could turn the
 // handed-back command into a usage error without a single test noticing.
 test("the command --llm-sca-review prints is one the tool accepts", () => {

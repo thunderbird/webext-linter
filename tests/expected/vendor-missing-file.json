@@ -1,5 +1,5 @@
 {
-  "_comment": "VENDORS.md declares lib/ghost.js and lib/phantom.js (each with a source URL) but neither file is in the package, so missing-vendor-file flags both (warning). Each finding lists its missing path, while the item is the VENDOR filename - the same for both, so they share a message and collapse into one entry listing both paths. Decided offline, no fetch (the missing entry is never resolved or fetched). unparsedVendor stays false, so vendor-unverified does not also escalate it.",
+  "_comment": "VENDORS.md declares lib/ghost.js and lib/phantom.js (each with a source URL) but neither file is in the package, so missing-vendor-file flags both (warning). Each finding lists its missing path, while the item is the VENDOR filename - the same for both, so they share a message and collapse into one entry listing both paths. Decided offline, no fetch (the missing entry is never resolved or fetched). unparsedVendor stays false, so vendor-unparseable does not also fire.",
   "expect": {
     "missing-vendor-file": ["lib/ghost.js", "lib/phantom.js"]
   }

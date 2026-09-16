@@ -847,7 +847,7 @@ test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () =
   assert.match(xpi, /run this automated review yourself/);
 });
 
-// Submission text reaches a person through four sinks - a substituted {{slot}}, the
+// Submission text reaches a person through a handful of sinks - a substituted {{slot}}, the
 // locus line, the machine-readable report and the live feed. An escape sequence in
 // any of them repaints the terminal around the finding, erasing what sits above it.
 // displayText guards each sink rather than the hundreds of places a check composes a
@@ -996,10 +996,10 @@ test("the enumeration is exactly the order the report prints", () => {
   assert.ok(withheld.every((x) => typeof x.index === "number"));
 });
 
-// The regression that forced the one-sequence design. A finding with no locus used to
-// join the entry of findings that DO have one, where it contributed no line: an item in
-// the sequence that the page never showed, silently pushing every later number out of
-// step with what a reader counts. Locus status is now part of the entry key, so such a
+// Why the numbering is ONE sequence. A finding with no locus joining the entry of findings
+// that DO have one contributes no line: an item in the sequence the page never shows,
+// silently pushing every later number out of
+// step with what a reader counts. Locus status is part of the entry key, so such a
 // finding is its own entry and IS printed - as its message alone, which is how a
 // whole-add-on finding has always rendered.
 test("a locus-less finding is its own entry, so every item is on the page", () => {
@@ -1014,7 +1014,7 @@ test("a locus-less finding is its own entry, so every item is on the page", () =
     hint: null,
     listItem: false,
   });
-  // Same message, one with a location and one without - the shape that used to hide it.
+  // Same message, one with a location and one without - the shape that would hide it.
   const findings = [f("A", "a.js"), f("A", null), f("B", "b.js")];
   const out = formatText({
     findings,
@@ -1544,9 +1544,9 @@ test("--llm-skip-manual drops the manual asks and renumbers the steps", () => {
 });
 
 // The prompt's OTHER marker: a step marked `run: sca` is printed only by a source code
-// review, because the build agent it spawns has nothing to read in an XPI one. The value
-// that gates it is the source root itself - the step names it and the header prints it, so
-// one value decides both and they cannot disagree.
+// review, because the build agent it spawns has nothing to read in an XPI one. What gates
+// it is what the review RESOLVED - the source root and the build file its steps name - so
+// the same value fills the step and the header, and they cannot disagree.
 test("a run: sca step prints only in a source code review", () => {
   const prompt = {
     intro: "INTRO.",
@@ -1613,12 +1613,12 @@ test("the shipped prompt adds the build steps to a source code review only", () 
 
 // The prompt sends a sub-agent to TWO paths - the folder it reads and the file it writes -
 // and the header prints both: one set of values, or the agent works somewhere the reviewer
-// cannot see. Rendered from one `meta` here, because the gate and the printed value were
-// two expressions once and disagreed for a review that keeps --sca-root and is still an XPI
-// one.
+// cannot see. Rendered from one `meta` here, so the gate and the printed value are ONE
+// expression: a review that keeps --sca-root and is still an XPI one must print neither
+// name and send no agent.
 test("the prompt hands over the same paths the header prints", () => {
-  // Two spaces on purpose: a path is a NAME, and the block used to collapse it - which the
-  // prompt's last step turns into a verdict file naming a folder that does not exist.
+  // Two spaces on purpose: a path is a NAME, and a block that collapsed them would hand
+  // the prompt's last step a verdict file naming a folder that does not exist.
   const meta = {
     schemaBranch: "release-mv3",
     xpi: "/x/a.xpi",
@@ -1715,10 +1715,10 @@ test("a prompt bullet is re-wrapped and hanging-indented", () => {
 // A block of NAMED values, the shape the --llm-sca-review prompt uses for its Submission
 // block: the prompt's steps point at these by name, so a name is what the section has to
 // print. An SCA review spans TWO artifacts and labels every locus [XPI]/[SCA], so the
-// block says what those are - and names the source as the two values the run was GIVEN,
-// since an agent sent to the source root cannot be handed a path it must split first. A
-// one-artifact review names one: there is nothing to disambiguate, and a downgraded SCA is
-// one of those, because only the XPI was reviewed.
+// block says what those are - and names the source as the values the run was GIVEN, since
+// an agent sent to the source root cannot be handed a path it must split first. A
+// one-artifact review names one: there is nothing to disambiguate, and a rejected Experiment
+// submitted with --sca-root is one of those, because only the shipped XPI was reviewed.
 test("the header names both artifacts in an SCA review, one otherwise", () => {
   const base = {
     schemaBranch: "release-mv3",

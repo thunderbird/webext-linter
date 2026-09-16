@@ -3,7 +3,7 @@
 // draft). Such a submission stays on the normal review path (so the developer
 // gets full feedback) but is rejected by this error until they bundle the
 // unmodified latest upstream copy. Silent for non-Experiments, pristine
-// experiments, and unsupported ones (those abort via experiment-not-allowed).
+// experiments, and unsupported ones (no upstream draft exists to compare against).
 //
 // Belongs here: turning the per-experiment classification
 // (ctx.experiments, from src/experiments/verify.js) into one finding per

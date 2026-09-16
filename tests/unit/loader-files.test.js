@@ -159,8 +159,8 @@ test("tags document-relative loaders base:page, root loaders base:root", () => {
 
 // Chain bases resolve through the shared api-base index, so the common
 // Thunderbird feature-detection alias and a captured namespace load like a
-// direct call - the shape that previously produced unused-files false positives
-// (an aliased getURL ref created no reachability edge).
+// direct call. An aliased getURL ref that failed to resolve would create no
+// reachability edge, and its target would be reported as an unused file.
 test("resolves loader calls through an aliased root and a captured namespace", () => {
   const code = `
     const api = typeof messenger !== "undefined" ? messenger : browser;
@@ -200,8 +200,8 @@ test("an aliased getURL inside a loader url slot does not set hasDynamic", () =>
   assert.equal(out.hasDynamic, false);
 });
 
-// A local named like a root is not the API global - scope-aware resolution
-// rejects it where literal-name matching used to accept it.
+// A local named like a root is not the API global - scope-aware resolution rejects it
+// where literal-name matching cannot.
 test("a shadowed root name yields no loader refs", () => {
   const out = scanLoaderRefs(
     `function f(browser) { browser.runtime.getURL("x.html"); }`,

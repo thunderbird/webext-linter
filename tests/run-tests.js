@@ -103,9 +103,9 @@ function installFetchMock(dir, network) {
 // so a fixture can exercise a flag-gated check through the same parsing the CLI uses.
 //
 // It lives OUTSIDE the add-on, in tests/expected/, because the add-on folder is the artifact
-// under review: a file kept inside it is a file the review sees the add-on shipping, which
-// is what once made the harness load the add-on itself and delete the key before handing it
-// over - and that in turn is what put a test-only input on runPipeline.
+// under review: a file kept inside it is a file the review sees the add-on shipping, and
+// hiding one would mean the harness loading the add-on itself and deleting the key before
+// handing it over - a test-only input on runPipeline.
 function loadFixture(dir) {
   const file = path.join(EXPECTED_DIR, `${path.basename(dir)}.json`);
   const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -225,10 +225,9 @@ async function main() {
     let problems;
     const restoreFetch = installFetchMock(dir, network);
     try {
-      // Pure schema review: no pretty-print, no packing — keeps lines stable. A fixture's
-      // flag "options" parse in first; the core review opts win, because
-      // pipelineOptsFromArgv supplies the REAL cache directories as defaults and the
-      // harness must keep its own.
+      // The review opts every fixture runs with. A fixture's flag "options" parse in
+      // first; the harness's cache opts win, because pipelineOptsFromArgv supplies the
+      // REAL cache directories as defaults and the harness must keep its own.
       //
       // The CDN identifier is off unless a fixture asks for it: most declare no `network`
       // answer for the lookup, and leaving it on would have every one of them try it. The

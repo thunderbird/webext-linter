@@ -29,10 +29,11 @@
         can be used safely if it is
         guarded so it runs only where it exists (optional chaining, a typeof or
         existence test, a guard clause earlier in the function that returns or throws
-        when the API is missing, or a runtime version gate). A call that carries such a
-        guard signal is the ambiguous case: only there does the linter ask the
-        reviewer whether the guard truly protects the call. An API used unguarded
-        anywhere becomes the hard finding outright.
+        when the API is missing, or a runtime version gate). Which constructions do so
+        is open-ended, and reading a real guard out of the AST is a judgement whose
+        wrong answer rejects a working add-on — so every site escalates and a reader
+        settles it in the call's own file. Each call site is listed separately: a flag
+        can cover one use and not the next.
       </p>
 
       <h2>Decision flow</h2>
@@ -47,15 +48,11 @@ flowchart TD
   C -- no --> S2([skip — unknown or<br/>always-available API])
   C -- yes --> D{"version_added newer than<br/>strict_min_version?"}
   D -- no --> OK([no finding])
-  D -- yes --> E{"Any use of this API<br/>unguarded?"}
-  E -- yes --> ERR([ERROR: too-new API<br/>called unconditionally])
-  E -- "no, only guarded uses" --> MAN(["escalate — the reviewer decides whether<br/>the guard really protects the call"])
+  D -- yes --> MAN(["escalate — the reviewer decides whether<br/>the call is kept off the versions<br/>that lack the API"])
 
-  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
-  class ERR err;
   class OK ok;
   class S skip;
   class S2 skip;

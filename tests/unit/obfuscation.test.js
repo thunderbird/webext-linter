@@ -81,10 +81,10 @@ test("a structure only an unpinned family matches is PASS", () => {
   assert.ok(obfuscationVerdict(MODULE_PATTERN).pass);
 });
 
-// Issue #5: a readable object literal whose keys happen to be mostly five letters long.
+// A readable object literal whose keys happen to be mostly five letters long.
 // An unpinned family recognizes that shape, and it is common enough in hand-written
 // source that letting it decide rejects real add-ons - which is what pinning prevents.
-test("readable code an unpinned family recognizes is PASS (issue #5)", () => {
+test("readable code an unpinned family recognizes is PASS", () => {
   const source = Array.from(
     { length: 10 },
     (_, i) =>

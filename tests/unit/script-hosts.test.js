@@ -81,8 +81,8 @@ test("background.scripts get the generated root page's base", () => {
 });
 
 // A script no declared page loads has no known host context, so a page-relative
-// path falls back to root-relative resolution - behavior never regresses below
-// the old root-only rule.
+// path falls back to root-relative resolution - never worse than resolving every
+// path at the root.
 test("a script with no declared host page falls back to root-relative", () => {
   const manifest = { manifest_version: 2 };
   const files = {

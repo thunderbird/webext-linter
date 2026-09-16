@@ -96,10 +96,8 @@ function bindingSource(file, a) {
   if (expr === "") {
     return null;
   }
-  // v-html writes its expression to innerHTML: lift it to exactly that sink so
-  // scanUnsafeHtml flags it. A v-on/@ handler is a statement body (it may hold
-  // several statements), lifted as an arrow so it parses; every other binding is
-  // an expression, lifted bare. Either way the value is scanned, no false HTML sink.
+  // v-html -> the innerHTML sink it is; a v-on/@ handler -> a statement body; every
+  // other binding -> a bare expression (see the file header).
   const code =
     name === "v-html"
       ? `__vhtml.innerHTML=(${expr})`

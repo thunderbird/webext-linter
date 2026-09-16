@@ -28,10 +28,10 @@
         A deterministic pre-flight resolves the clear cases: an over-broad
         resource pattern becomes a finding outright, and a concrete exposed file that is
         web-reachable is cleared. An exposed file that nothing web-facing loads,
-        and that is named only by dead code with no dynamic loader, is reported
+        and that is named by nothing, or only by dead code, with no dynamic loader, is reported
         as needless. When live code names the file or the add-on builds load
         paths at runtime, each suspected loader site is named for the reviewer,
-        which judges whether that site exposes the file to a web context; the
+        who judges whether that site exposes the file to a web context; the
         exposure is needless only if no site does.
       </p>
 
@@ -45,7 +45,7 @@ flowchart TD
   B -- yes --> WARN([WARNING: over-broad<br/>exposure])
   B -- no --> C{"Concrete exposed file<br/>reachable by a web context?"}
   C -- yes --> OK([no finding — exposure needed])
-  C -- no --> D{"Named only by dead code<br/>AND no dynamic loaders?"}
+  C -- no --> D{"Named by nothing or only dead code,<br/>AND no dynamic loaders?"}
   D -- yes --> WARN2([WARNING: needless exposure])
   D -- no --> M(["escalate — the reviewer decides whether<br/>a web context really needs the file"])
 

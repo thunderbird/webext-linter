@@ -70,7 +70,7 @@ test("exempts a key declared by an experiment schema's manifest block", () => {
   assert.deepEqual(items(out), ["bogus_key"]);
 });
 
-// The pre-existing exemption: a key that NAMES an experiment_apis entry.
+// The other exemption: a key that NAMES an experiment_apis entry.
 test("exempts a key that names an experiment_apis entry", () => {
   const out = rule.run(
     withManifest(

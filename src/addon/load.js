@@ -114,17 +114,20 @@ import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
  *   can never return the manifest (in SCA it would be the source's pre-build one, not
  *   the shipped manifest). Read the manifest through those fields. (The SCA `build`
  *   corpus is selected separately and is not covered by this guarantee.)
- * @property {string[]} nodeModules  Posix paths of node_modules directories
+ * @property {string[]} [nodeModules]  Posix paths of node_modules directories
  *   skipped at load (their contents are never read); empty when none. In SCA
- *   mode the committed-node-modules check rejects each.
- * @property {string[]} archives  Posix paths of committed binary archives
+ *   mode the committed-node-modules check rejects each. Set by loadAddon, so an
+ *   add-on assembled from a file set (loadScaAddon) carries none.
+ * @property {string[]} [archives]  Posix paths of committed binary archives
  *   (.zip/.xpi/... anywhere in the submission); empty when none. In SCA mode the
  *   committed-build-artifact check rejects each. Recorded at load, spanning the whole
- *   --sca-root (before the source/build split), so one is caught wherever it sits.
- * @property {string[]} skipped  Ready-to-narrate notices for entries skipped at
+ *   --sca-root (before the source/build split), so one is caught wherever it sits. Set by
+ *   loadAddon only.
+ * @property {string[]} [skipped]  Ready-to-narrate notices for entries skipped at
  *   load (a non-node_modules symlink, an unsafe archive path); empty when none.
  *   The loader collects them; the pipeline narrates them under "Reading add-on",
- *   so a pre-banner sizing load prints nothing before the Setup banner.
+ *   so a pre-banner sizing load prints nothing before the Setup banner. Set by
+ *   loadAddon only.
  * @property {?Manifest} manifest  Parsed; null if missing/invalid.
  * @property {string} manifestText  Raw manifest.json text ("" if none), lifted off
  *   the corpus so checks read it here, not via files.get("manifest.json").
@@ -148,16 +151,8 @@ export function loadAddon(source) {
     ? readDir(resolved)
     : readZip(resolved);
   const addon = assembleAddon(files);
-  // Installed-dependency directories are skipped at load (never read) and only their
-  // paths are recorded - a committed node_modules is a hard fail (committed-node-modules
-  // in SCA mode), never reviewable input.
   addon.nodeModules = nodeModules;
-  // Committed binary archives (.zip/.xpi/...) are recorded by path - a committed built
-  // archive is a hard fail (committed-build-artifact in SCA mode), never authored input.
   addon.archives = archives;
-  // Skipped-entry notices (symlinks, unsafe archive paths): the loader stays silent and
-  // hands them back for the pipeline to narrate under the "Reading add-on" step, so a
-  // pre-banner sizing load never prints before the Setup banner.
   addon.skipped = skipped;
   return addon;
 }
@@ -339,12 +334,9 @@ export function loadScaAddon(archive, scaSource, scaRoot) {
  * as the SCA-only `input: build` checks' ctx.addon, so its files never enter the review
  * addon that the other checks scan.
  *
- * A pure EXCLUDE rule (no allow-list to maintain): whatever remains after removing the
- * add-on source, the Experiment source, and dot-prefixed paths is the build candidate
+ * A pure EXCLUDE rule (no allow-list to maintain): what remains is the build candidate
  * pool, from which the setup build analysis (analyzeBuild) selects the build-relevant
- * subset by tracing package.json (src/build/corpus.js). Dotfiles/folders
- * (.git, .github, .idea, .yarnrc, ...) are dropped as VCS/editor/CI noise - EXCEPT .npmrc,
- * the npm/pnpm registry config the build-tooling checks read.
+ * subset by tracing package.json (src/build/corpus.js).
  *
  * When scaSource IS the archive root (a flat layout: manifest.json at the root, with the
  * build tooling intermingled), there is no source subtree to remove, so the candidate pool
@@ -377,11 +369,9 @@ export function selectScaBuildFiles(archive, scaSource, scaRoot, scaExpSource) {
     }
   }
   for (const [p, buf] of archive.files) {
-    // node_modules never reaches here - loadAddon skips it at load (never read) and
-    // reports it as archive.nodeModules for the committed-node-modules check.
-    // Dot-prefixed paths at any depth are VCS/editor/CI noise (.git, .github, .idea,
-    // .yarnrc, ...) - EXCEPT a plain .npmrc, the npm/pnpm registry config the
-    // build-registry-redirect check reads (kept unless itself buried in a dotfolder).
+    // Dot-prefixed paths at any depth are VCS/editor/CI noise, except a plain .npmrc -
+    // the registry config build-registry-redirect reads - unless it is itself buried in
+    // a dotfolder. node_modules never reaches here: loadAddon skips it at load.
     const segments = p.split("/");
     const dotSegments = segments.filter((s) => s.startsWith("."));
     if (
@@ -415,7 +405,7 @@ function addonTooLargeError() {
 
 /**
  * @param {string} zipPath  Path to the .xpi/.zip archive.
- * @returns {{files: Map<string, Buffer>, nodeModules: string[],
+ * @returns {{files: Map<string, Buffer>, nodeModules: string[], archives: string[],
  *   skipped: string[]}}
  */
 function readZip(zipPath) {
@@ -476,7 +466,7 @@ function readZip(zipPath) {
 
 /**
  * @param {string} dir  Root directory of the unpacked add-on.
- * @returns {{files: Map<string, Buffer>, nodeModules: string[],
+ * @returns {{files: Map<string, Buffer>, nodeModules: string[], archives: string[],
  *   skipped: string[]}}
  */
 function readDir(dir) {

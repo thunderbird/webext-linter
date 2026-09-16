@@ -8,8 +8,8 @@
 // Sinks: assignment to .innerHTML / .outerHTML / .srcdoc, and
 // .insertAdjacentHTML(pos, x).
 //
-// Belongs here: detecting those JS sinks and the static-vs-dynamic value test,
-// emitting one hit per unsafe write.
+// Belongs here: detecting those JS sinks and the empty-clear test, emitting one
+// hit per unsafe write.
 //
 // Does NOT belong here: the verdict and wording - those live in
 // src/checks/rules/unsafe-html.js and assets/registry.yaml. Parsing markup in

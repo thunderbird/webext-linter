@@ -1,7 +1,7 @@
 // The machine-readable form of a review, written for --llm-review: one entry per item
 // the report lists, as an ARRAY in the order the report lists them. A position in the
 // array IS the item's number, so whoever settles the review addresses an item by reading
-// a field instead of counting lines - which is where every off-by-one came from.
+// a field instead of counting lines, which is where off-by-ones come from.
 //
 // It carries what settling an item needs and nothing more: the locus, the wording the
 // report showed, and for a to-do item the instructions and what a reported case would
@@ -53,8 +53,8 @@
 // 0..N-1 aligned with indices 1..N for everything that does have one.
 //
 // Belongs here: the shape of that file, and the paths this run names - the item file it
-// writes, and the description file its reader writes (reviewFilePaths), which share one
-// name so neither can drift from the review it belongs to.
+// writes, and the description and build-report files its reader writes (reviewFilePaths),
+// which share one name so none can drift from the review it belongs to.
 //
 // Does NOT belong here: the ORDER and the numbering (src/report/order.js), the wording
 // (assets/registry.yaml, resolved before this runs), and when the file is claimed and
@@ -81,7 +81,7 @@ import { SECTION_TITLES, manualQuestion } from "./format.js";
  *   offers, from registry.manualReviewChoices(), in the order the reviewer sees them.
  *   REQUIRED, and not defaulted: a question with no answers is one a reviewer cannot
  *   answer, which the registry itself refuses to author.
- * @param {?{intro: string, items: object[]}} [args.preSweep]  The blind-spot sweep,
+ * @param {?{agentIntro: string, items: object[]}} [args.preSweep]  The blind-spot sweep,
  *   appended as the unnumbered tail: one entry carrying the shared method and the bare
  *   items.
  * @param {boolean} [args.skipManual]  --llm-skip-manual: omit the two manual sections,
@@ -159,20 +159,14 @@ export function reviewItems({
           // finding however it goes.
           suggestedVerdict: t.verdict ?? null,
           ...locus,
-          // An item a reviewer is asked carries the finished question - what they are
-          // asked, how far through they are, and the answers it offers - and NOT the
-          // parts it was composed from: a reader told to ask the question as written
-          // should not also be handed the material to write a different one.
-          //
-          // An item settled by reading the add-on carries the opposite: no question, and
-          // the `instructions` that say how to settle it.
+          // A question carries the finished text, its progress label and its answers;
+          // an item settled by reading the add-on carries `instructions` instead (header).
           ...(asked.has(x)
             ? {
                 label: asked.get(x),
                 message: manualQuestion(t, labelOf),
-                // The label and description the reviewer reads, and nothing else: the
-                // verdict each answer settles the item with is this linter's business,
-                // and what comes back is the reviewer's answer, not a verdict.
+                // Label and description only: the verdict each answer settles the item
+                // with never leaves this process.
                 answers: choices.map(({ label, description }) => ({
                   label,
                   description,
@@ -221,13 +215,13 @@ export function reviewItems({
  * reads neither; it only says where they go, so a name cannot drift from the review it
  * belongs to.
  *
- * One base for both: a name and a version do not identify a review - two submissions can
+ * One base for all three: a name and a version do not identify a review - two submissions can
  * share both (a fork, a resubmission, an add-on reviewed twice in a session) - so the run's
  * own moment separates them, and a later run does not open what an earlier one left
  * behind. Millisecond resolution, which separates reviews a person runs; two started in
  * the same millisecond would still collide, and nothing here pretends otherwise.
  * @param {import("../addon/load.js").Addon} addon  The shipped add-on - read for the name
- *   it lends the pair (its id and version).
+ *   it lends all three (its id and version).
  * @param {string} xpiPath  Where that add-on IS, absolute. An Addon carries no path of its
  *   own, so the caller passes the one the run was given (src/pipeline.js), which resolved
  *   it - nothing re-resolves it here.
@@ -263,8 +257,8 @@ function reviewFileBase(addon) {
   // no length limit of its own, while the name this composes does (255 bytes on ext4, and
   // the timestamp and the suffix take 30 of them). Clamped rather than hashed: what the
   // first 80 characters name is still recognisable to whoever opens the file.
-  // Anything outside this set could escape the directory or upset a shell, and the id
-  // comes from the submission.
+  // Anything outside [A-Za-z0-9._@-] could escape the directory or upset a shell, and
+  // the id comes from the submission.
   return `webext-linter-${id.slice(0, 80)}-${m?.version ?? "0"}-${at}`.replace(
     /[^A-Za-z0-9._@-]/g,
     "_"

@@ -1,6 +1,5 @@
-// JSON canonicalization shared by the schema merger, the bump-only diff check,
-// and a reviewer context builder: deep-sort object keys so deeply-equal values
-// serialize to identical bytes.
+// JSON canonicalization for the schema merger: deep-sort object keys so
+// deeply-equal values serialize to identical bytes.
 //
 // Belongs here: deterministic JSON shaping (sortKeys, canonicalJson) and the
 // tiny shared JSON-text helper stripBom (used by the trusted-upstream JSON5

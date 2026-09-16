@@ -104,10 +104,15 @@
         parsed - the pipeline's first job, and it does every expensive thing
         exactly once. The amber boxes are the ones that matter: they
         <strong>resolve the review state</strong> -
-        <code>invalidExperiment</code>, the <code>mode</code> (plus the advisory
-        <code>scaNotRequired</code>) and the
+        <code>invalidExperiment</code>, the submitted source archive (plus the
+        advisory <code>scaNotRequired</code>) and the
         <strong>review target</strong> - and everything after them, every check,
-        keys off those. After Phase&nbsp;4, Phase&nbsp;5 runs the review (a
+        keys off those. The <code>mode</code> is not one of them: it is DERIVED
+        from <code>--sca-root</code> and the Experiment verdict, so it cannot
+        disagree with the steps that ran. Their order is not the order the
+        statements sit in either - it is declared in <code>SETUP_STEPS</code>
+        and walked by one loop, which is also where the feed's
+        <code>[n/total]</code> comes from. After Phase&nbsp;4, Phase&nbsp;5 runs the review (a
         single <code>runChecks()</code> call, detailed in
         <em>The orchestrator</em>) then finalizes the <code>Review</code> for
         the report.
@@ -156,27 +161,27 @@ flowchart TB
 
   BLK --> XV
 
-  subgraph P2 ["runPipeline() · Phase 2 - analyse the BUILT XPI (always) → xpiAddon.bundled + its parsed sources, then resolve the mode"]
+  subgraph P2 ["runPipeline() · Phase 2 - analyse the BUILT XPI (always) → xpiAddon.bundled + its parsed sources, then read the submitted source archive"]
     XV["resolveVendor(XPI) → verifyVendor()<br/>the committed copies (VENDOR.md)"] --> XC["classifyReview(XPI)<br/>classifyFiles + assembleBundled<br/>library hash · minified geometry · obfuscation · vendored<br/>→ xpiAddon.bundled"]
     XC --> XI["identifyBundledLibraries(XPI) → auditIdentifiedLibraries(XPI)<br/>applyUnverifiedVendor() · resolveCdnLibraries(), then the OSV audit<br/>FINALIZES the authored / non-authored split - ADDS + REMOVES"]
     XI --> XE["Parsing the built add-on → extractReview(XPI)<br/>content extraction + api-usage on the authored remainder<br/>parse each source ONCE, drop the AST<br/>→ xpiParsedSources (Phase 4 hands them to buildXpiCtxs)"]
     XE --> MODEQ{{"--sca-root given?<br/>(the review is NEVER re-routed by what the XPI looks like)"}}
-    MODEQ -- "no" --> MX2["mode = xpi"]
-    MODEQ -- "yes" --> KEEP["mode = sca"]
+    MODEQ -- "no" --> MX2["an XPI review<br/>(mode derives to xpi)"]
+    MODEQ -- "yes" --> KEEP["a source code review<br/>(mode derives to sca)"]
     KEEP --> ADVQ{{"resolveXpiOnlyAdvice(xpiAddon.bundled, sourceFiles)<br/>readable? · no transpiled source kind?<br/>· every shipped script byte-identical in the archive?"}}
-    ADVQ -- "all three yes" --> DOWN["scaNotRequired = true<br/>(advice only - still mode = sca)"]
-    SETINV["invalidExperiment = true<br/>mode = xpi · reads no code"]
+    ADVQ -- "all three yes" --> DOWN["scaNotRequired = true<br/>(advice only - still a source code review)"]
+    SETINV["invalidExperiment = true<br/>→ mode derives to xpi · reads no code"]
   end
 
   KEEP --> LSRC
   IQ -- yes --> SETINV
 
   subgraph P3 ["runPipeline() · Phase 3 - SCA only: analyse the readable SOURCE → its parsed sources + the build corpus"]
-    LSRC["load the source archive → loadScaAddon()<br/>addon.experiments = xpiAddon.experiments"] --> LSQ{{"--sca-source resolves within --sca-root,<br/>and matches files?"}}
+    LSRC["the review target, from the archive Phase 2 read → loadScaAddon()<br/>addon.experiments = xpiAddon.experiments"] --> LSQ{{"--sca-source resolves within --sca-root,<br/>and matches files?"}}
     LSQ -- no --> P3F((("THROW<br/>exit 2")))
     LSQ -- yes --> SV["resolveVendor(source) → verifyScaDependencies()<br/>the source's package.json"]
     SV --> SC["classifyReview(source)<br/>library hash · minified · obfuscation · vendored"]
-    SC --> SI["identifyBundledLibraries(source)<br/>CDN + not-popular-vendor - FINALIZES the split"]
+    SC --> SI["identifyBundledLibraries(source) → auditIdentifiedLibraries(source)<br/>CDN + not-popular-vendor, then the OSV audit - FINALIZES the split"]
     SI --> SE["Parsing source → extractReview(source)<br/>content extraction + api-usage on the authored remainder<br/>→ preParsedJsSources (the review target's sources)"]
     SE --> SB["selectScaBuildFiles()<br/>Analyzing the build → analyzeBuild() → the build corpus"]
     HP1(( ))
@@ -202,7 +207,7 @@ flowchart TB
   end
 
   subgraph P5 ["runPipeline() · Phase 5 - run the review, then render the findings"]
-    RCBOX[["runChecks()<br/>detailed under The orchestrator below"]] --> META["merge findings + assemble meta<br/>manual-review list = invalidExperiment ? [ ]<br/>: renderManualItems(manualItems) + registry.manualChecks(diff-gated on ctx.previous)"]
+    RCBOX[["runChecks()<br/>detailed under The orchestrator below"]] --> META["merge findings + assemble meta<br/>manual-review list = invalidExperiment ? [ ]<br/>: renderManualItems(manualItems) + registry.manualChecks() (every review)"]
     META --> RFIND["renderFindings()<br/>fill each finding's message from its registry response"]
   end
 
@@ -241,31 +246,28 @@ flowchart TB
       <div class="outcome">
         <strong>The built XPI is analysed first, and always.</strong>
         Phase&nbsp;2 runs the full XPI analysis - vendor, classify, identify,
-        parse - <em>before</em> the mode is known, yielding
+        parse - in <em>both</em> modes, yielding
         <code>xpiAddon.bundled</code> and the XPI's parsed sources; Phase&nbsp;4
         then projects those into the
         <strong>shipped ctx</strong> (<code>siblings.xpi</code>) that every
         <code>input: xpi</code> check reads. Because the XPI is analysed the
         same way in both modes, an <code>input: xpi</code> check sees the
-        identical artifact whether the run is SCA or XPI - the reason for the
-        rework. There is no separate &ldquo;light&rdquo; classification pass any
-        more: the <strong>XPI-only advice</strong> reads that same
+        identical artifact whether the run is SCA or XPI. One classification pass
+        serves everything: the <strong>XPI-only advice</strong> reads that same
         <code>xpiAddon.bundled</code>. That advice is all it is -
         <code>--sca-root</code> alone decides the mode, and an SCA submission is
         <strong>always</strong> reviewed as SCA. <code>resolveXpiOnlyAdvice()</code>
-        only asks whether the developer could have skipped the archive: is the
-        shipped code readable, does the archive carry no transpiled source kind,
-        and is every shipped script byte-identical to one in the archive? All
-        three yes and <code>sca-not-required</code> (info) says so for next time.
-        Routing on that answer is what the tool used to do, and it was a bypass: a
-        committed, unminified <code>dist/</code> inside <code>--sca-source</code>
-        is its own twin under any content test. In SCA the readable source is
+        asks only whether the developer could have skipped the archive; all three
+        answers yes and <code>sca-not-required</code> (info) says so for next time.
+        Routing on that answer would be a bypass: a committed, unminified
+        <code>dist/</code> inside <code>--sca-source</code> is its own twin under
+        any content test, so a build could be dressed up as source and shrink its
+        own review. In SCA the readable source is
         then analysed on its own in Phase&nbsp;3 (<code>siblings.source</code>);
         in an XPI review there is no second artifact, so
         <code>siblings.source</code> simply aliases the shipped ctx. An invalid
         Experiment skips the analysis entirely (it reads no code), and is the one
-        thing that still pins an <code>--sca-root</code> run to
-        <code>mode = xpi</code>.
+        thing that still makes an <code>--sca-root</code> run an XPI review.
       </div>
       <p>
         The invalid-Experiment path is not an early exit - it runs on to the
@@ -409,7 +411,6 @@ flowchart LR
   s_reachability -.-> k_bundled_files["bundled-files"]
   s_reachability -.-> k_war["minimize-web-accessible-resources"]
   s_reachability -.-> k_unrecognized["unrecognized-file-type"]
-  s_reachability -.-> k_api_coverage
   s_reachability -.-> k_core_symbol
 
   r_apiusage -.-> k_unparsable["unparsable-file"]
@@ -440,7 +441,7 @@ flowchart LR
   class s_schema,s_vendor,s_bundled,s_apiusage,s_webapiperms,s_loaderrefs,s_localimports,s_modulesyntax,s_experimentrefs,s_sinks,s_remotejs,s_codeatoms,s_unsafehtml,s_syncxhr,s_debugger,s_asyncmsg,s_coresym,s_localefiles store;
   class s_apiresolution,s_permanalysis,s_outboundsinks,s_evalscan,s_locales,s_reachability cache;
   class r_apiusage,r_codeatoms,r_modsyntax,r_remotejs,r_unsafehtml,r_syncxhr,r_debugger,r_asyncmsg,r_coresym,r_vendor,r_bundled relay;
-  class k_unknown_api,k_deprecated_api,k_smin,k_smax,k_exp_unknown_api,k_api_coverage,k_unparsable,k_missing_perm,k_unused_perm,k_missing_key,k_eval_call,k_fn_ctor,k_string_timer,k_remote_eval,k_csp_eval,k_csp_inline,k_loc_missing,k_loc_unused,k_vendor_mod,k_vendor_vuln,k_unpinned_dep,k_banned_lib,k_minified,k_obfuscated,k_untrusted_lib,k_cdn,k_code_sanity,k_exfil,k_disguised,k_cleartext,k_privacy,k_disg_nav,k_disg_win,k_disg_style,k_disg_res,k_remote_script,k_unused_files,k_bundled_files,k_war,k_unsafe_html,k_sync_xhr,k_debugger_stmt,k_async_onmsg,k_core_symbol,k_bg_module,k_bg_page_module,k_unrecognized check;
+  class k_unknown_api,k_deprecated_api,k_smin,k_smax,k_exp_unknown_api,k_unparsable,k_missing_perm,k_unused_perm,k_missing_key,k_eval_call,k_fn_ctor,k_string_timer,k_remote_eval,k_csp_eval,k_csp_inline,k_loc_missing,k_loc_unused,k_vendor_mod,k_vendor_vuln,k_unpinned_dep,k_banned_lib,k_minified,k_obfuscated,k_untrusted_lib,k_cdn,k_code_sanity,k_exfil,k_disguised,k_cleartext,k_privacy,k_disg_nav,k_disg_win,k_disg_style,k_disg_res,k_remote_script,k_unused_files,k_bundled_files,k_war,k_unsafe_html,k_sync_xhr,k_debugger_stmt,k_async_onmsg,k_core_symbol,k_bg_module,k_bg_page_module,k_unrecognized check;
         </pre>
       </div>
 
@@ -568,10 +569,8 @@ flowchart LR
         </tbody>
       </table>
       <p>
-        In an XPI review there is one artifact, so
-        <code>siblings.source</code> and <code>siblings.xpi</code> are the same
-        ctx. Every check declares an <code>input</code>, and that is both the ctx
-        it runs on and the artifact its output is labelled as -
+        An <code>input</code> is also the artifact a check&rsquo;s output is
+        labelled as -
         <code>ctxForRule</code> recovers the latter for the report&rsquo;s
         [XPI]/[SCA] labels and the folder-collapse, once findings come back as a
         flat list carrying only a rule id.
@@ -616,15 +615,10 @@ flowchart LR
       </table>
 
       <p>
-        <code>runChecks()</code> (<code>src/checks/registry.js</code>) runs the
-        whole review: the phase's checks in its main loop, then the unused-folder
-        collapse. It returns the finished findings, manual items and the checks
-        that ran; <code>runPipeline()</code>&rsquo;s Phase&nbsp;5
-        (<code>src/pipeline.js</code>) just calls it and assembles the
-        <code>Review</code>. Every check goes through the same per-check runner,
-        <code>runOneCheck()</code>. The two diagrams below expand the
-        <code>runChecks()</code> box from the pipeline diagram above - its
-        orchestration, then the phase-runner loop each check runs through.
+        The two diagrams below expand the <code>runChecks()</code> box from the
+        pipeline diagram above (<code>src/checks/registry.js</code>) - its
+        orchestration, then the phase-runner loop every check goes through,
+        <code>runOneCheck()</code>.
       </p>
       <div class="flow">
         <pre class="mermaid">
@@ -633,7 +627,7 @@ title: runChecks()
 ---
 flowchart TB
   IN(["called by runPipeline() · Phase 5 with<br/>registry · opts (only · skip · eslint) · siblings"]) --> LC["loadChecks()<br/>one list per phase section · the --eslint gate drops code-sanity before import (eslintEligible)"]
-  LC --> GATE["select each phase's eligible checks<br/>diff gate reads ctx.previous · sca gate reads ctx.mode"]
+  LC --> GATE["select each phase's eligible checks<br/>the sca gate reads ctx.mode; the --eslint gate ran in loadChecks"]
   GATE --> QIE{{"ctx.invalidExperiment?"}}
 
   QIE -- yes --> RIE[["run the invalid-experiment-phase"]]
@@ -666,8 +660,8 @@ flowchart TB
         <code>check-failed</code> finding so the rest still run; and only the
         orchestrator routes anything to manual review. This loop is also where
         the <strong>lazy caches</strong> are computed - the first check to read
-        one builds it inside its <code>run()</code> and memoizes it on
-        <code>ctx.addon</code> for every later check (see <em>The stores</em>).
+        one builds it inside its <code>run()</code> and memoizes it for every later
+        check (see <em>The stores</em>).
       </p>
       <div class="flow">
         <pre class="mermaid">
@@ -683,7 +677,7 @@ flowchart TB
 
   ROUTE --> RUN["runOneCheck(checkCtx, check) → check.run()"]
   RUN -. throws .-> CF["one check-failed finding"]
-  RUN -.-> LZ["the lazy caches are computed here, inside run():<br/>permissionAnalysis · apiResolution ·<br/>outboundSinks · evalScan · locales"]
+  RUN -.-> LZ["the lazy caches are computed here, inside run():<br/>permissionAnalysis · apiResolution · outboundSinks ·<br/>evalScan · locales · reachability"]
   RUN --> QLANE{{"what did run() return?"}}
   QLANE -- "escalations" --> ME["manualEscalations()<br/>repack the escalations as to-do items<br/>stamping the section from the check's `escalation`"]
   QLANE -- "a plain Finding[]" --> STAMP
@@ -696,7 +690,6 @@ flowchart TB
   NEXT(["next check"]) --> HEAD
 
   classDef work fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
-  classDef state fill:#fdf3e0,stroke:#b07d2b,color:#6b4a12;
   classDef term fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
   classDef fail fill:#fdecea,stroke:#c0392b,color:#7b241c;

@@ -7,8 +7,8 @@
 //   - no _locales at all -> language-detect the hardcoded user-facing text
 //     (HTML visible text + manifest name/description) with franc: confident
 //     English passes, confident non-English is a finding, and too little or
-//     ambiguous text escalates to manual review (the orchestrator routes a
-//     deterministic check's escalation straight to a manual note, no judgement).
+//     ambiguous text escalates as a code-review case, for a reader to settle the
+//     language from the add-on's own strings.
 //
 // Belongs here: collecting the _locales set, gathering the user-facing text, and
 // turning a franc verdict into pass / finding / manual escalation. Does NOT
@@ -117,8 +117,6 @@ function detectHardcodedLanguage(ctx, addon) {
   // Too little text, or franc cannot tell - a human decides (manual review).
   if (text.length < MIN_CONFIDENT || topLang === "und") {
     note("too little user-facing text to detect a language", VERDICT.UNSURE);
-    // Anchored to manifest.json, matching the confident finding below, so both
-    // outcomes point the reviewer at the same place.
     return { findings: [], escalations: [{ file: "manifest.json" }] };
   }
   if (topLang === "eng") {

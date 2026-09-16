@@ -42,7 +42,7 @@ flowchart TD
   A["A JavaScript file in the add-on"] --> B{"Authored by the developer?<br/>not a bundled or minified library"}
   B -- no --> S([skip])
   B -- yes --> C["Scan for HTML sinks:<br/>innerHTML, outerHTML, srcdoc,<br/>insertAdjacentHTML"]
-  C --> D{"An empty/null clear,<br/>or Element.setHTML()?"}
+  C --> D{"An empty/null clear<br/>(el.innerHTML = &quot;&quot;)?"}
   D -- yes --> OK([no finding])
   D -- no --> WARN([INFO: HTML written<br/>to a sink, use setHTML&#40;&#41;])
 

@@ -1,5 +1,4 @@
-// Unit tests for small shared helpers: src/lib/util.js, src/util/files.js and
-// src/util/log.js.
+// Unit tests for small shared helpers: src/lib/util.js and src/util/files.js.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

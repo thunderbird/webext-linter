@@ -5,8 +5,7 @@ coding agent) from the repository root. It regenerates / updates the static
 documentation site under `docs/` so it stays in sync with the checks the tool
 actually implements.
 
-Unlike the initial bring-up, this refresh is **not** limited to the first 10
-checks — it must cover **every** check the tool runs.
+This refresh covers **every** check the tool runs - no subset.
 
 ---
 
@@ -42,14 +41,16 @@ that no longer exist.
    check's `title`, `severity` (`error` / `warning` / `info` / `hold-or-error` /
    `auto` - `auto` means the check itself picks the severity per finding, and the
    badge class is `auto`; `hold-or-error` blocks the review without rejecting on its
-   own and badges as `hold-or-error`, never shortened to `hold` - and `escalation`, a
+   own and badges as `hold-or-error`, never shortened to `hold` - and `none`, a
    check that can never emit a finding, only escalations),
    `check` (the kebab-case id), `response` (developer-facing message),
    `instructions` (the to-do text a reviewer is shown for a case the check could not
-   settle), and often a leading comment block describing intent. EVERY check entry
-   declares a `severity` - the loader refuses one that does not. Only the `manual-checks`
-   entries have none. Entries may also carry `input`, `diff`, `sca`,
-   `eslint` or `escalation`. The check-bearing sections ARE
+   settle), and often a leading comment block describing intent. EVERY entry declares a
+   `severity`, the `manual-checks` ones included - the loader refuses one that does not.
+   Entries may also carry `input`, `sca`, `eslint`, `escalation`, `sweep-instruction`
+   (the class of code the check cannot see, listed in the report's Standard Code Review
+   section) or `default-note` (the marker a reported case carries when the reviewer wrote
+   nothing). The check-bearing sections ARE
    the phases — a check's phase IS the section it lives in, never a field on the
    entry: `invalid-experiment-phase` (the only phase that runs for an invalid
    Experiment) and `deterministic-phase` (every other check). `manual-checks` is NOT
@@ -60,18 +61,21 @@ that no longer exist.
    (e.g. `permissions.js`, `reachability.js`) — read those when a rule delegates
    to them.
 3. `README.md` — overall framing (findings vs escalations vs manual checks, and
-   the three to-do sections an item is sorted into), and the **Standard** vs
-   **Source code archive (SCA)** review modes.
+   the three to-do sections an item is sorted into), and the **XPI** vs
+   **source code archive (SCA)** review modes.
 4. `src/pipeline.js` — the review pipeline (`runPipeline`): with
    `src/checks/registry.js`, the ground truth for the review-pipeline page
    (`check-flow.html`). Read the stage order OFF THE CODE rather than from this
-   list: the whole shipped-XPI chain (resolveVendor → verifyVendor → classifyReview
-   → identifyBundledLibraries → extractReview) runs BEFORE the review mode is known,
-   because `resolveReviewMode` reads the classification it produces. Getting this
-   backwards inverts the diagram. It also shows the
-   `mode === "sca"` forks (the source /
-   dependency / build / shipped-XPI / shipped-manifest split, routed via `routeCtx`
-   over the sibling ctxs built by `buildXpiCtxs` / `buildScaCtxs`).
+   list - and read it off `SETUP_STEPS`, the declared list one loop walks, not off the
+   order the statements happen to sit in. The whole shipped-XPI chain (resolveVendor
+   → verifyVendor → classifyReview → identifyBundledLibraries →
+   auditIdentifiedLibraries → extractReview) runs in BOTH modes and before the
+   source is read: the shipped artifact is analysed the same way either way, and
+   `resolveXpiOnlyAdvice` reads the classification it produces. Getting this backwards
+   inverts the diagram. The review mode is DERIVED (`--sca-root`, minus a rejected
+   Experiment) and assigned nowhere. The file also shows the `mode?.sca` forks (the
+   source / dependency / build / shipped-XPI / shipped-manifest split, routed via
+   `routeCtx` over the sibling ctxs built by `buildXpiCtxs` / `buildScaCtxs`).
 5. `src/checks/registry.js` — the orchestrator (`runChecks`), which runs the whole
    review inside that single Phase-5 call: the phase's checks in its main loop, then
    the unused-folder collapse. The pipeline only calls `runChecks` and assembles the
@@ -105,12 +109,11 @@ that no longer exist.
    - a **source-note** footer pointing at the `.js` file and registry.
 4. **Handle the special cases** the registry encodes:
    - the badge is always the entry's declared `severity`, copied verbatim - never
-     inferred from the rule. `escalation` is a severity like the others: it marks a check
+     inferred from the rule. `none` is a severity like the others: it marks a check
      that can never emit a finding (the loader refuses one from it), so the page must not
-     promise a rejection. `manual-checks` entries have no severity and are badged
-     `manual`. Five `manual-checks` entries DO declare `severity: hold-or-error`; that
-     does not change their badge, which stays `manual` because it names the list they
-     belong to rather than the band they resolve at;
+     promise a rejection. `manual-checks` entries are badged `manual` whatever severity
+     they declare - four say `hold-or-error`, five `error`, one `info` - because the badge
+     names the list they belong to rather than the band they resolve at;
    - escalating checks — make clear what the scan settles on its own and what it
      hands to the reviewer. **The tool calls no model: there is no verdict step, so a
      diagram must never draw a pass/fail/unsure fan-out.** A check pushes its

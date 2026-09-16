@@ -34,7 +34,8 @@ function tmpDir(files) {
 // web-accessible resource. This is a self-consistent built add-on. background.js ships
 // MINIFIED (first-party, one dense line) so the XPI is not directly reviewable - which is
 // what makes an SCA submission legitimate. An XPI whose first-party code is readable is
-// downgraded to a plain XPI review (sca-not-required), so these SCA-mode tests need one.
+// still reviewed as SCA and merely collects the advisory sca-not-required finding, so
+// these SCA-mode tests ship an unreviewable one.
 const XPI_FILES = {
   "manifest.json": JSON.stringify({
     manifest_version: 3,
@@ -164,7 +165,7 @@ test("SCA e2e: the rendered report carries [XPI]/[SCA] labels + the footer", asy
 
 // MODE-INVARIANCE: the built XPI is analysed the SAME way whether it is reviewed inside an
 // SCA submission (a second artifact) or as a standalone XPI review (the review target). So
-// the input:xpi checks - which read siblings.xpi's classification, reachability, and (now)
+// the input:xpi checks - which read siblings.xpi's classification, reachability and
 // api-usage - must produce the IDENTICAL findings for the same XPI in either mode. That is
 // the whole point of building siblings.xpi one way regardless of mode; without it an
 // input:xpi finding could silently depend on how the run was invoked.
@@ -299,11 +300,11 @@ test("SCA e2e: a flat layout audits the root package.json dependencies", async (
 });
 
 // A third-party library bundled into the readable SOURCE (a committed copy the Mozilla
-// hash DB misses) that is NOT declared in package.json now gets the full identification the
-// XPI review already ran: a jsDelivr content-hash match (so it is recognized as a library -
+// hash DB misses) that is NOT declared in package.json gets the full identification the
+// XPI review runs: a jsDelivr content-hash match (so it is recognized as a library -
 // excluded from content review, not rejected by minified-code) and an OSV audit (so a
-// vulnerable one is caught by vendor-vulnerable). On HEAD the SCA source got no CDN/OSV pass,
-// so this file would be rejected as minified and its vulnerability missed.
+// vulnerable one is caught by vendor-vulnerable). Without that pass over the SCA source
+// this file would be rejected as minified and its vulnerability missed.
 test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-audited", async () => {
   const LIB = `var s=0;${"s=s+1;".repeat(240)}`; // one dense line of statements -> minified
   const { rawSha256 } = await import("../../src/normalize/hash.js");
@@ -393,10 +394,10 @@ test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-au
   }
 });
 
-// Regression: the --sca-root tree is read ONCE and the archive is shared by the review
-// loader (loadScaAddon) and the build-corpus loader (selectScaBuildFiles), so it is not
-// walked (nor its symlinks warned) twice. Before the dedupe each loader called
-// loadAddon(scaRoot), reading the root twice.
+// The --sca-root tree is read ONCE and the archive is shared by the review loader
+// (loadScaAddon) and the build-corpus loader (selectScaBuildFiles), so it is not walked
+// (nor its symlinks warned) twice - a loadAddon(scaRoot) per loader would read the root
+// twice.
 test("SCA: the --sca-root archive is read once, not twice", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);
@@ -425,8 +426,8 @@ test("SCA: the --sca-root archive is read once, not twice", async () => {
 
 // What the report and the machine-readable document SAY was reviewed: the shipped add-on,
 // and separately the two values the run was given. Named by ARTIFACT rather than by role,
-// each a real path, and none of them fused - the source used to carry its subtree glued on
-// with a colon ("<root>:src"), which no reader could resolve and none could split back,
+// each a real path, and none of them fused: a source gluing its subtree on with a colon
+// ("<root>:src") is a value no reader could resolve and none could split back,
 // since a directory name may hold one. The subtree is normalised the way the loader
 // normalises it, so the value names what was read whichever spelling the flag was given.
 test("SCA meta names the artifacts, each a real path", async () => {
@@ -582,9 +583,9 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
       "without --sca-exp-source the experiment file is (falsely) flagged"
     );
 
-    // With the flag - relative to --sca-root, like --sca-source (so "src/experiments",
-    // NOT "experiments") - the experiment subtree is excluded, no false positive, while
-    // the real defect in main.js is still caught.
+    // With the flag - an absolute path inside --sca-root, like --sca-source - the
+    // experiment subtree is excluded, no false positive, while the real defect in main.js
+    // is still caught.
     const withExp = await runPipeline({
       ...base,
       scaExpSource: path.join(src, "src", "experiments"),
@@ -618,8 +619,8 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
 
 test("SCA e2e: --sca-exp-source may be a sibling of --sca-source under --sca-root", async () => {
   const xpi = tmpDir(XPI_FILES);
-  // The Experiment lives OUTSIDE the review source (src/), as a sibling under --sca-root.
-  // This is the layout that used to throw "must be a folder within --sca-source".
+  // The Experiment lives OUTSIDE the review source (src/), as a sibling under --sca-root:
+  // a valid layout, and the one a "must be a folder within --sca-source" rule would refuse.
   const src = tmpDir({
     ...SRC_FILES,
     "experiment/exp.js": `ChromeUtils.importESModule("resource:///x.sys.mjs");\n`,
@@ -1001,7 +1002,7 @@ test("SCA e2e: a clean npm build fires neither build-policy check", async () => 
 
 // Framework/TypeScript source (.ts/.tsx and .vue SFCs) is authored code the SCA
 // review must analyze - a compiled XPI never contains it, so it is reviewed only
-// here. Each file carries a real defect the code checks must now catch, proving the
+// here. Each file carries a real defect the code checks must catch, proving the
 // source is parsed (TS/JSX) and, for the SFC, that its <script> and its v-html
 // template binding are both scanned.
 test("SCA e2e: TypeScript and Vue source is parsed and its defects are caught", async () => {
@@ -1111,8 +1112,6 @@ test("SCA e2e: a package.json install hook escalates to a reviewer", async () =>
   }
 });
 
-// A committed node_modules folder in --sca-root is a hard fail; its contents are never
-// read (loadAddon skips it, recording only the directory).
 // A committed built archive (.xpi/.zip) anywhere in --sca-root is a hard reject, caught at
 // load like node_modules - so an archive in the build tree AND one inside the review source
 // both fire, regardless of the source/build split.
@@ -1151,6 +1150,8 @@ test("SCA e2e: a committed build archive is rejected anywhere in --sca-root", as
   }
 });
 
+// A committed node_modules folder in --sca-root is a hard fail; its contents are never
+// read (loadAddon skips it, recording only the directory).
 test("SCA e2e: a committed node_modules folder is rejected", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
@@ -1177,9 +1178,9 @@ test("SCA e2e: a committed node_modules folder is rejected", async () => {
 
 // A readable built XPI (no minified/obfuscated first-party code) makes a --sca-root
 // submission a false SCA: the shipped add-on can be reviewed directly, so its source
-// archive adds nothing. The pipeline downgrades to a plain XPI review and reports it
-// (sca-not-required). The decision is purely the XPI's own classification - the source
-// content is never consulted.
+// archive adds nothing. The review stays an SCA review and says so with the advisory
+// sca-not-required finding, which asks two further questions of the archive: is it a
+// transpiled source, and does every shipped script have a byte-identical twin in it.
 const READABLE_XPI = {
   "manifest.json": JSON.stringify({
     manifest_version: 3,

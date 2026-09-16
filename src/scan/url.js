@@ -57,7 +57,8 @@ const CLASS_BY_EXPOSURE = [
  * The gravest of the classes an expression could resolve to - what a reference
  * with several possible values must be judged as, since any one of them is the
  * value it may take at runtime (see staticValues in src/parse/ast.js).
- * @param {import("../lib/enum.js").UrlClass[]} classes  At least one class.
+ * @param {import("../lib/enum.js").UrlClass[]} classes  The classes the expression
+ *   could resolve to; may be empty.
  * @returns {import("../lib/enum.js").UrlClass}  LOCAL for an empty list.
  */
 export function worstUrlClass(classes) {

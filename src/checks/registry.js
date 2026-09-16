@@ -144,15 +144,13 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @typedef {object} LoadedCheck
  * @property {string} id
  * @property {string} title
- * @property {Severity} severity  Impact stamped onto the check's findings.
- * @property {"source"|"xpi"|"build"|"manifest"|undefined} input  Which add-on artifact is
- *   ctx.addon when the check runs. "source" = the review target, the readable submitted code
- *   (the readable --sca-source in an SCA review, the built XPI in an XPI review); "xpi" = always
- *   the built XPI (the shipped artifact), for the structure checks that describe what ships;
- *   "build" = the SCA build files, for the build review; "manifest" = the shipped manifest only,
- *   on a ctx with an empty file corpus (buildXpiCtxs' manifestCtx), for pure-manifest checks. Required for
- *   every check - runChecks routes it to that artifact's context (see buildXpiCtxs /
- *   buildScaCtxs), and it is also what the check's output is labelled as ([XPI]/[SCA]).
+ * @property {Severity|"auto"|"none"|"hold-or-error"} severity  The entry's declared
+ *   severity, stamped onto the check's findings unless it delegates (see runOneCheck).
+ * @property {boolean} [sca]  The review-mode gate (scaEligible); undefined when unset.
+ * @property {"source"|"xpi"|"build"|"manifest"|undefined} input  Which artifact is
+ *   ctx.addon when the check runs (VALID_CHECK_INPUTS above), and what its output is
+ *   labelled as ([XPI]/[SCA]). Required for every check; runChecks routes it (see
+ *   buildXpiCtxs / buildScaCtxs).
  * @property {string} [instructions]  The to-do wording for a case this check escalates.
  * @property {string} [escalation]  Which to-do section its escalations are listed under
  *   ("code-review" / "manual-review"); absent when the check never escalates.
@@ -185,9 +183,8 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {string} manifestText  The shipped manifest.json raw text (manifestTokenLine
  *   reads it); "" when absent.
  * @property {?object} experiments  The Experiment classification (verifyExperiments),
- *   computed from the SHIPPED XPI. Shipped-authoritative and shared like the manifest,
- *   so the experiment checks read ctx.experiments, not ctx.addon.experiments. Null for
- *   a non-Experiment add-on.
+ *   computed from the SHIPPED XPI, shared like the manifest. Null for a non-Experiment
+ *   add-on.
  * @property {{allowExperiments?: boolean,
  *   libraryHashes?: Map<string, {name: string, version: string}>}} options  The only run
  *   options a check reads (experiment-not-allowed, the lazy bundled classifier).
@@ -221,7 +218,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  */
 
 /**
- * Check filename stem - the finding ruleId, also used by --checks/--skip.
+ * Check filename stem - the finding ruleId, also used by --checks-only/--checks-skip.
  * @param {string} checkFile
  * @returns {string}
  */
@@ -303,7 +300,8 @@ export class Registry {
   }
 
   /**
-   * Ids of every linked check, across every phase section (for --checks help).
+   * Ids of every linked check, across every phase section (for the --checks-only /
+   * --checks-skip help).
    * @returns {string[]}
    */
   checkIds() {
@@ -359,7 +357,8 @@ export class Registry {
    * {title, instructions, response} shape (these carry no `{{item}}`). Emitted
    * unconditionally for every review - what a check ESCALATES is surfaced by the
    * orchestrator (escalation.js), not here.
-   * @returns {{title: string, instructions?: string, response: ?string}[]}
+   * @returns {{title: string, instructions?: string, response: ?string, ruleId: string,
+   *   verdict: ?string}[]}
    */
   manualChecks() {
     return this.allEntries()
@@ -468,7 +467,8 @@ export class Registry {
   /**
    * Every check that authors a sweep instruction, in registry order - which is the order
    * the report, the item file and the prompt all list them in, so the three agree.
-   * @returns {{check: string, title: string, severity: string, instruction: string}[]}
+   * @returns {{check: string, title: string, severity: string, instruction: string,
+   *   response: ?string}[]}
    */
   sweepInstructions() {
     return this.checkEntries()
@@ -477,8 +477,8 @@ export class Registry {
       .map(({ entry, id }) => ({
         check: id,
         title: entry.title,
-        // Non-null for every entry that reaches here: loadChecks refuses a sweep
-        // instruction on a check with no band to stamp an addition with.
+        // Non-null for every entry that reaches here: the registry assert refuses a
+        // sweep instruction on a check with no band to stamp an addition with.
         severity: this.suggestedVerdict(id),
         instruction: this.sweepInstruction(id),
         // What the developer would be told if the sweep finds something - the same text
@@ -602,7 +602,7 @@ export class Registry {
    * check, because a check's cases all land in one section (its `escalation`) and so all
    * ask the same question - a check needing two questions is two checks.
    *
-   * loadChecks already refuses an entry that declares one half without the other, so a
+   * assertEntry already refuses an entry that declares one half without the other, so a
    * loaded check that escalates has wording. This still raises rather than returning
    * null, because the alternative ships a to-do item with no text.
    * @param {string} ruleId
@@ -1005,8 +1005,8 @@ const SCA_PROMPT_RUNS = ["experiments"];
  * The step rules are one helper because both prompts are laid out by one renderer. What
  * differs is the MARKER a step may carry, and each is asserted against the vocabulary that
  * gives it: `skip` against the flags (PROMPT_SKIPS), `run` against the conditions each
- * prompt can evaluate. A marker no flag gives, or a flag with no step to withhold, is a
- * prompt that quietly asks for the wrong work.
+ * prompt can evaluate. A `skip` no flag gives, a flag with no step to withhold, or a `run`
+ * nothing evaluates, is a prompt that quietly asks for the wrong work.
  * @param {Registry} registry
  * @param {string} at  The registry path, for the message.
  */
@@ -1220,7 +1220,7 @@ export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
  * phase is which list it lands in (its registry section), so no LoadedCheck carries one.
  * Every phase in PHASE_SECTIONS gets a list (loadRegistry has already asserted that none of
  * their sections is missing or empty; a list can still come out empty here once the
- * sca gate and --checks/--skip have been applied). A `check:` that names a missing
+ * sca gate and --checks-only/--checks-skip have been applied). A `check:` that names a missing
  * module, or a module without a `run` export, throws hard - a broken registry should abort
  * the review, not silently drop a check.
  * @param {Registry} registry
@@ -1323,9 +1323,9 @@ export function formatNote(file, loc, item, verdict, label = "") {
  * `sca: true` only in SCA mode (a source code archive,
  * triggered by `--sca-root`), `sca: false` only in XPI mode (reviewing a built
  * add-on), an omitted `sca` in both. The `--sca-root` build and dependency checks are
- * `sca: true`; nothing declares `sca: false` today - the vendor and library checks did,
- * which exempted a source archive's declared files from review with nothing verifying
- * the declaration. The gate stays for a check that genuinely cannot run on an archive.
+ * `sca: true`; nothing declares `sca: false` today, and the gate is there for a check
+ * that genuinely cannot run on a source archive. It is not a way to exempt a source
+ * archive's declared files from review - a declaration nothing verified exempts nothing.
  * @param {{sca?: boolean}} entry @param {boolean} inScaMode
  * @returns {boolean}
  */
@@ -1380,7 +1380,7 @@ function eslintEligible(entry, inEslintMode) {
  * @returns {RunContext}
  */
 export function routeCtx(check, siblings) {
-  // No `input` => the review-level source ctx. loadChecks requires an input on every
+  // No `input` => the review-level source ctx. assertEntry requires an input on every
   // check, so this is a floor, not a routing rule.
   if (check.input === undefined) {
     return siblings.source;
@@ -1416,10 +1416,9 @@ export function ctxForRule(registry, ruleId, siblings) {
 /**
  * Run the selected checks. A check returns its verdicts as findings, and may
  * also return `escalations` (cases it could not settle), which this orchestrator
- * - the sole authority on manual review - repacks every check's escalations as
- * manual items via escalation.js. Every finding is stamped with the owning
- * check's id and severity (the registry
- * entry is the only source of severity). A check that throws is reported as a
+ * - the sole authority on manual review - repacks as manual items via escalation.js. Every finding is stamped with the owning
+ * check's id and severity (the registry entry is the source of severity, unless it
+ * declares `auto`). A check that throws is reported as a
  * system finding and the rest still run.
  * @param {Registry} registry
  * @param {{only?: string[], skip?: string[], eslint?: boolean}} [opts]
@@ -1445,16 +1444,12 @@ export async function runChecks(registry, opts = {}, siblings) {
     );
   }
   const byPhase = await loadChecks(registry, opts);
-  // The `sca` gate keys off the review mode (ctx.mode): the source-dependency and build
-  // checks (`sca: true`) are added for a source-code submission and dropped for an
-  // XPI-only one. An omitted `sca` runs in both, and nothing declares `sca: false`.
-  // A gated-out check never runs and never appears in the feed or meta.checksRun.
+  // The `sca` gate (scaEligible) keys off the review mode. A gated-out check never runs
+  // and never appears in the feed or meta.checksRun.
   const inScaMode = sourceCtx.mode?.sca;
-  // The orchestrator NAMES the phases it runs, in the order it runs them - a check's
-  // phase is simply which list it is in, so a phase never asked for here does not run
-  // (that is what makes an unrecognized registry section inert). An invalid Experiment
-  // short-circuits the whole review to the reject phase and nothing else; a normal
-  // review runs the deterministic phase. The two gates above apply within each phase.
+  // An invalid Experiment short-circuits the whole review to the reject phase and
+  // nothing else; a normal review runs the deterministic phase. The gates apply within
+  // each phase.
   const inPhase = (phase) =>
     (byPhase.get(phase) ?? []).filter((c) => scaEligible(c, inScaMode));
   const checks = sourceCtx.invalidExperiment
@@ -1500,10 +1495,8 @@ export async function runChecks(registry, opts = {}, siblings) {
       debug(`feed note skipped: ${err.message}`);
     }
   };
-  // Each sibling ctx gets a note bound to the input that routes to it, so a feed note
-  // is labelled by the artifact its check ran over. siblings.source (the source ctx) is
-  // set explicitly; the loop then labels the rest, skipping any that alias it (in an XPI
-  // review siblings.xpi IS the source ctx).
+  // The loop skips any sibling that aliases the source ctx (in an XPI review
+  // siblings.xpi IS the source ctx), which is why source is set explicitly first.
   sourceCtx.note = makeNote("source");
   for (const [input, sib] of Object.entries(siblings)) {
     if (sib && sib !== sourceCtx) {
@@ -1517,7 +1510,7 @@ export async function runChecks(registry, opts = {}, siblings) {
   progress("");
   for (const [i, check] of checks.entries()) {
     // Route the check to its declared input artifact - the ONE place the choice is
-    // made (shared with the pipeline's deferred loop via routeCtx). The check reads
+    // made (routeCtx, also asked directly by the routing tests). The check reads
     // only its ctx.addon and has no way to reach another artifact.
     const checkCtx = routeCtx(check, siblings);
     const out = await runOneCheck(checkCtx, check, `[${i + 1}/${total}]`);
@@ -1558,9 +1551,6 @@ export async function runOneCheck(ctx, check, label) {
   const findings = [];
   const manualItems = [];
   try {
-    // ctx is already the artifact the caller routed this check to (runChecks /
-    // pipeline, keyed on check.input). The check reads only ctx.addon; there is no
-    // way here to reach the other artifact.
     // ONE return shape: { findings, escalations? }. A bare array is refused rather
     // than read as findings, because that shorthand made the two lanes look optional:
     // a rule that grew an escalation path and kept returning its findings array lost

@@ -11,7 +11,7 @@
 // in-memory Linter per authored source, and emitting a finding per message.
 // Does NOT belong here: the non-authored skip-list this relies on to avoid
 // linting vendored/minified code (-> src/lib/bundled.js), library and
-// minified/obfuscated detection (-> bundled-files.js, minified-code.js and
+// minified/obfuscated detection (-> missing-library.js, minified-code.js and
 // obfuscated-code.js),
 // authored wording (-> assets/registry.yaml - here the lint ruleId and message
 // are the item, not authored prose), severity (-> that registry entry, stamped

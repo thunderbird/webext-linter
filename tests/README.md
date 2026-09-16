@@ -3,10 +3,13 @@
 This tool uses two test layers to validate itself:
 
 - **Add-on tests** (`run-tests.js` over `addons/`) are black-box: each is a
-  whole sample add-on run through the full review pipeline, asserting each
-  rule's finding *locations* (`file:line`). They prove the right checks fire (at
-  the right spots, and stay quiet elsewhere) and that the pipeline composes end
-  to end. Coarse, but cheap to add - a folder plus a spec file, no test code.
+  whole sample add-on run through the full review pipeline, asserting two things -
+  each rule's finding *locations* (`file:line`) against its spec, and the whole
+  rendered report (text and JSON) against a byte-exact golden. They prove the right
+  checks fire (at the right spots, and stay quiet elsewhere) and that the pipeline,
+  the orchestrator and the formatter compose end to end. Coarse, but cheap to add -
+  a folder plus a spec file, no test code. Regenerate an intended report change with
+  `UPDATE_GOLDEN=1 npm test`.
 - **Unit tests** (`unit/*.test.js`) are white-box: they import one module and
   assert its exact behavior - messages, edge cases, branches - that an add-on
   test (which only checks rule + location) can't pin down. Fine-grained and
@@ -33,16 +36,19 @@ npm run test:unit       # run just the unit tests (node --test)
   review sees the add-on shipping.
 - `expected/` - one `<add-on name>.json` per fixture: what that add-on is expected
   to trigger.
+- `golden/` - one `<add-on name>.txt` and `.json` per fixture: the rendered report
+  itself, locked byte for byte.
+- `experiments-fixture/`, `library-hashes-fixture.txt`, `seed-caches.js` - the
+  pre-seeded caches every suite runs against, which is what keeps them offline.
 - `unit/` - npm unit test files (`*.test.js`).
 - `schema-fixture/` - a small offline subset of the annotated WebExtension
   schema, so the suite needs no download. Used by the harness and by the
-  schema/pipeline unit tests. Namespaces: `browserAction`, `clipboard`,
-  `legacy`, `manifest`, `messages`, `runtime`, `storage`.
+  schema/pipeline unit tests (described below).
 
 
 ### Add-on tests (`addons/`)
 
-Each add-on is run through `runPipeline` in **review** mode against
+Each add-on is run through `runPipeline` in **XPI** mode against
 `schema-fixture/`. Per rule, the findings' `file:line` locations are collected
 and compared (order-insensitive, duplicates significant) to that add-on's spec in
 `expected/<name>.json`:
@@ -64,6 +70,12 @@ flags**, parsed the same way the CLI parses them (the core review opts always
 win), so a fixture can exercise a flag-gated check - e.g.
 `"options": { "--allow-experiments": true }`.
 
+It may also carry a `"network"` map keyed by URL, saying what that URL serves:
+`{ "sameAs": "<path in the fixture>" }`, `{ "body": "<text>" }`, `{ "json": <value> }`
+or `{ "status": <code> }`. Every URL a fixture does not declare answers 404, which is
+what a fixture with no `"network"` map relies on: a declared vendor source is then
+unfetchable, so the file it names is reviewed as authored code rather than exempted.
+
 **Add an add-on test:** drop a folder under `addons/` with a `manifest.json`
 (plus any JS/HTML/CSS it needs), and an `expected/<that folder's name>.json`
 listing the `file:line` locations you expect per rule. (Tip: run the harness once -
@@ -75,6 +87,8 @@ tree, e.g. a Vue `.vue`) - is run in **SCA** mode (source-code archive) rather t
 XPI mode. The layout is auto-detected (no flag needed), and its spec sits in
 `expected/` like every other. Use one when a check depends on the source/shipped split
 or on a source format that only exists pre-build.
+
+A selection, not the catalogue - every folder under `addons/` is a fixture:
 
 | Add-on | Exercises |
 | --- | --- |
@@ -88,7 +102,7 @@ or on a source format that only exists pre-build.
 | `optional-permission` | An optional (runtime-granted) permission is not flagged as unused. |
 | `manifest-key-ok` | A required manifest key (`action`) is declared - no false positive, and `manifest:action` is not reported as a missing permission. |
 | `manifest-key-wrong-version` | A wrong-MV manifest key (`browser_action` on MV3) → `missing-permission` + `unrecognized-manifest-key`. |
-| `invalid-manifest` | `invalid-manifest` (a missing required key, a bad permission value) + `unrecognized-manifest-key` (an unknown top-level key). |
+| `invalid-manifest` | `manifest-missing-key` (a missing required key) + `manifest-unknown-permission` (a bad permission value) + `unrecognized-manifest-key` (an unknown top-level key). |
 | `bundled-files` | `bundled-files`: a referenced file (`content_scripts`) isn't packaged. |
 | `remote-code` | `remote-resources` (remote `<script src>` + remote `@import`) and `eval-call`. |
 | `unsafe-html` | `unsafe-html`: every `innerHTML` write is flagged (static and dynamic alike); only an empty/null clear is exempt. |
@@ -112,17 +126,19 @@ check module, fake a minimal `ctx` instead of running the pipeline (a check
 returns its findings + escalations; repacking those as manual-review items is the
 orchestrator's job, covered by `escalation.test.js`).
 
+A selection, not the catalogue - `unit/` holds one file per module or scanner:
+
 | File | Covers |
 | --- | --- |
 | `api-usage.test.js` | The Babel-based API-usage extractor - `browser`/`messenger`/`chrome` call chains, plus the aliasing/dynamic-access limitations it reports. |
 | `bundled-files.test.js` | `bundled-files` robustness against malformed/partial manifests, plus schema-directed / bridge detection of files referenced by loader API calls. |
 | `escalation.test.js` | `manualEscalations` - a check's cases repacked as manual refs, carrying locus, data and the code-review / manual-review bucket flag. |
 | `format.test.js` | The text / JSON report renderers - notably that the Manual review list is in the text report but omitted from JSON. |
-| `html-parse.test.js` | HTML parsing via parse5 - inline vs `src` scripts, and `>` inside attribute values - the cases the old regex scanner mishandled. |
-| `invalid-manifest.test.js` | The `invalid-manifest` check (error-level defects) and `unrecognized-manifest-key` (unknown keys + deep ajv value-type validation). |
+| `html-parse.test.js` | HTML parsing via parse5 - inline vs `src` scripts, and `>` inside attribute values - the cases a regex scanner mishandles. |
+| `invalid-manifest.test.js` | The `manifest-*` error-level checks (invalid JSON, missing manifest or key, version mismatch, unknown permission) and `unrecognized-manifest-key` / `mistyped-manifest-value` (unknown keys + deep ajv value-type validation). |
 | `load.test.js` | Add-on directory loading - symlinks are skipped, real files kept. |
 | `loader-files.test.js` | The file-loader extractor (`scanLoaderRefs`) - schema-directed type walking for derived loaders, plus the bridge for `getURL`/`executeScript`/`insertCSS`/`tabs.create`/`setPopup`. |
-| `pipeline.test.js` | End-to-end `review` pipeline against the schema fixture (read-only: line numbers match the source, nothing written back). |
+| `pipeline.test.js` | End-to-end `runPipeline` against the schema fixture (read-only: line numbers match the source, nothing written back). |
 | `remote-code.test.js` | The remote-code scanners and the `remote-resources` / `eval-call` checks. |
 | `responses.test.js` | The report-assembly resolver - filling a finding's message from the registry `response` (by ruleId), system `messages`, and manual-item `instructions`, with `{{item}}` substitution. |
 | `rules.test.js` | The deterministic rule modules and the `Registry`-driven loader (`loadRegistry`, `loadChecks` - including its hard-throw on a missing module). |
@@ -142,7 +158,8 @@ JSON format** the tool consumes. (The real download nests its files under a
 fixture uses.)
 
 One file per namespace (`action`, `clipboard`, `compose`, `legacy`, `manifest`,
-`messageDisplayScripts`, `messages`, `runtime`, `storage`, `tabs`), each an
+`messageDisplayScripts`, `messages`, `runtime`, `scripting`, `storage`, `tabs`),
+each an
 array of namespace objects with `functions` / `events` / `properties` /
 `types`. The entries are deliberately seeded with the annotations the checks
 key off:
@@ -152,7 +169,7 @@ key off:
 | `permissions` (namespace / function) | `missing-permission`, `unused-permission` | `messages` → `messagesRead`; `messages.move` → `accountsRead` + `messagesMove` |
 | `deprecated` | `deprecated-api` | the whole `legacy` namespace; `messages.oldOne` |
 | `version_added` vs `manifest.applicationVersion` | `deprecated-api` (API newer than the target) | target `128.0`, so `messages.future` (added `200`) is too new |
-| `$extend` of `manifest` types | the valid permission + manifest-key sets for `missing-permission` / `invalid-manifest` | the `Permission` enum; `manifest:action` |
+| `$extend` of `manifest` types | the valid permission + manifest-key sets for `missing-permission` / `manifest-unknown-permission` | the `Permission` enum; `manifest:action` |
 
 To exercise a new schema shape, add or extend a file here (and update the
 affected add-on's spec in `expected/`).

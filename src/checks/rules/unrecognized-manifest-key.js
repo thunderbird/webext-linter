@@ -1,5 +1,5 @@
 // A top-level manifest key the schema does not define - Thunderbird ignores it.
-// A warning, since the manifest still loads (unlike the manifest-* errors).
+// Info, since the manifest still loads (unlike the manifest-* errors).
 //
 // Belongs here: detecting unknown top-level keys against schema.validManifestKeys,
 // plus the exception for experiment-owned keys: a key that names an experiment_apis
@@ -26,9 +26,7 @@ export default {
       return { findings: [] };
     }
     const text = ctx.manifestText;
-    // Experiment-owned keys are not unknown: a key that NAMES an experiment_apis
-    // entry, or one an experiment's bundled schema DECLARES via a `manifest`
-    // $extend block (e.g. calendar_item_action). Both are the developer's own.
+    // The experiment-owned keys the header names: the add-on's own config.
     const expKeys = new Set(
       Object.keys(asObject(ctx.manifest.experiment_apis))
     );

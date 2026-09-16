@@ -3,8 +3,9 @@
 // One neutral home (importable from every layer) so the extension sets cannot
 // drift between the source collector, the normalizer, and the checks.
 //
-// Belongs here: pure path/extension string helpers (extname, basename) and the
-// JS_EXTENSIONS / CSS_EXTENSIONS / HTML_EXTENSIONS sets. No filesystem IO and no
+// Belongs here: pure path/extension string helpers (extname, basename, dirname), the
+// extension sets (JS / CSS / HTML / SFC / CODE / ARCHIVE / RECOGNIZED), and the
+// transpiled-source test built on them. No filesystem IO and no
 // dependencies. Does NOT belong here: reading files off disk or out of an
 // archive - that is src/addon/load.js for the add-on and src/schema/load.js for
 // schemas.
@@ -37,7 +38,7 @@ export const CSS_EXTENSIONS = new Set([".css"]);
 export const HTML_EXTENSIONS = new Set([".html", ".htm", ".xhtml"]);
 
 /** Single-file-component extensions - one file carrying template + script + style,
- *  split by its own parser (src/addon/sources.js extractVueSfc). Named rather than
+ *  split by its own parser (src/scan/vue-sfc.js extractVueSfc). Named rather than
  *  spelled inline so the suffix lives in exactly one place, like every other type. */
 export const SFC_EXTENSIONS = new Set([".vue"]);
 

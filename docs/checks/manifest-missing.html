@@ -30,7 +30,7 @@
         <pre class="mermaid">
 flowchart TD
   A["The loaded add-on"] --> B{"Is a manifest.json present<br/>at the root?"}
-  B -- yes --> OK([no finding])
+  B -- "present and parsed" --> OK([no finding])
   B -- "present but unparsable" --> OK2([no finding — reported by<br/>invalid manifest JSON])
   B -- "absent entirely" --> ERR([ERROR: missing manifest])
 

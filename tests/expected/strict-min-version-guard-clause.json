@@ -1,4 +1,4 @@
 {
-  "_comment": "Realistic regression fixture modeled on the markdown_here submission: strict_min_version 115.0 while messages.tags.list was added in Thunderbird 121, but the call sits below a guard clause that returns when the API is absent. The guard signal makes it a judgement call, so strict-min-version-api emits NO finding here - the site goes to manual review instead (see the golden .txt). Contrast tests/addons/strict-min-version-api, whose identical call is unguarded and is rejected.",
+  "_comment": "Modeled on the markdown_here submission: strict_min_version 115.0 while messages.tags.list was added in Thunderbird 121, but the call sits below a guard clause that returns when the API is absent. strict-min-version-api never rejects - whether a construction keeps the call off the versions that lack the API is a judgement - so the site is raised for a reader under Extended Code Review (see the golden .txt). What this pins is that a GUARDED call is still shown: the reader needs the site in order to point at the guard and settle it.",
   "expect": {}
 }

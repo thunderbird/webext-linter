@@ -655,7 +655,7 @@ deterministic-phase:
 # Only when all three say the XPI stands on its own is ctx.scaNotRequired set, which this check
 # reports. ADVICE ONLY - the review is never re-routed: an SCA submission is always reviewed as
 # SCA, so a wrong answer here costs a wrong suggestion, not a narrowed review. `sca: true`
-# because it can now only ever fire in an SCA review.
+# because it can only ever fire in an SCA review.
 - title: Source archive not required
   severity: info
   check: sca-not-required
@@ -697,7 +697,6 @@ deterministic-phase:
   response: |-
     One or more files listed in "{{item}}" are not present in the submission. Add each file to the submission, or remove its entry from "{{item}}".
 
-# Flags a VENDOR file that exists but yields no parseable entry (no block pairs a
 # More than one file in the package root names itself the VENDOR manifest, so which
 # one the review reads would be decided by the archive's order rather than by the
 # developer.
@@ -709,6 +708,7 @@ deterministic-phase:
     This add-on ships more than one file that names itself the VENDOR manifest. Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different manifest after a rebuild. Keep the one that lists your bundled third-party libraries and remove the others.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
+# Flags a VENDOR file that exists but yields no parseable entry (no block pairs a
 # bundled library file with a source URL pointing to a file), so the declared
 # libraries cannot be verified.
 - title: Unparseable VENDOR file
@@ -960,12 +960,10 @@ deterministic-phase:
 # instead of becoming a finding, and the entry's `instructions` is what the
 # reviewer is shown for each one.
 
-# functions/events added after the declared strict_min_version. The
-# deterministic pre-flight (strict-min-version-api.js) emits an UNGUARDED too-new
-# call as a finding directly; a call carrying a guard signal (optional chaining, a
-# typeof/existence check, an earlier guard clause, a getBrowserInfo version gate)
-# escalates instead, for the reviewer to judge from the call's file whether the guard
-# really keeps the call off the versions that lack the API. Only real, schema-resolved
+# functions/events added after the declared strict_min_version. Every such call
+# escalates (strict-min-version-api.js emits no finding of its own): which
+# constructions keep a call off the versions that lack the API is open-ended, so the
+# reviewer judges from the call's own file rather than the scan guessing. Only real, schema-resolved
 # APIs reach here; a non-existent API is unknown-api's concern.
 - title: API newer than strict_min_version
   severity: error
@@ -1185,10 +1183,6 @@ permission-prompts:
   - permissions: webRequestBlocking
     tokens:
       - blocking
-    # The example event `onAfterSendHeaders` below is DELIBERATELY fictional (real ones are
-    # onBeforeSendHeaders / onSendHeaders / onBeforeRequest / ...): it forces the reviewer to
-    # match the PATTERN (a webRequest.on* addListener with "blocking" in an array arg) and
-    # apply it to the real event in the code, not echo the example. Do NOT "correct" it.
   - permissions: unlimitedStorage
   # The Thunderbird-154 own-page exemption is version-dependent. It is recorded as two
   # bounded `note` annotations on tabs.query (assets/schema-annotations/tabs.json), which
@@ -1407,22 +1401,6 @@ verdict-intros:
   hold: "Thank you for your contribution."
   rejected: "Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form."
 
-# The verification prompt --llm-review prints, directly above the Review Details section
-# that names the item file it works from. It is the whole output of such a run: the report
-# itself is not printed, so this text and that file are all its reader gets.
-#
-# Three parts, in the order a reader needs them: `intro` says what the job is and where
-# the review IS, each ask is an INVENTORY line naming one section of it, and `outcome` is
-# the PROCEDURE - numbered steps, because a model follows a numbered list far more
-# reliably than prose, and every rule sits on the step it governs instead of being
-# collected at the end.
-#
-# `intro` always, `issues` only when the Found Issues section carries a finding,
-# `code-review` only when the "Extended Code Review" section carries an item, and the two
-# manual ones only when their own section does - a prompt must not ask for work the report
-# does not contain, and must not leave out work it does. `outcome` closes the prompt
-# whenever any ask printed: with nothing to settle there is nothing to hand back.
-# Printed text, so the wording lives here like all the rest.
 # The sweep framing, authored twice - once for each reader.
 #
 # Both carry the one rule that decides a sweep - judge by effect, not by method - because
@@ -1491,6 +1469,23 @@ llm-sca-review-prompt:
     - text: |-
         That review prints a prompt of its own. Follow it from there - this one is done.
 
+# The verification prompt --llm-review prints, directly above the Review Details section
+# that names the item file it works from. It is the whole output of such a run: the report
+# itself is not printed, so this text and that file are all its reader gets.
+#
+# Three parts, in the order a reader needs them: `intro` says what the job is and where
+# the review IS, each ask is an INVENTORY line naming one section of it, and `outcome` is
+# the PROCEDURE - numbered steps, because a model follows a numbered list far more
+# reliably than prose, and every rule sits on the step it governs instead of being
+# collected at the end.
+#
+# `intro` always, `issues` only when the Found Issues section carries a finding,
+# `pre-sweep` only when the Standard Code Review entry carries one, `code-review` only
+# when the "Extended Code Review" section carries an item, and the two manual ones only
+# when their own section does - a prompt must not ask for work the report does not
+# contain, and must not leave out work it does. `outcome` closes the prompt whenever any
+# ask printed: with nothing to settle there is nothing to hand back.
+# Printed text, so the wording lives here like all the rest.
 llm-review-prompt:
   intro: |-
     Please verify this review and settle its items. Every item you are asked to settle is in the JSON array named REVIEW_ITEMS under "Review Details" below, in report order, each carrying its own "index" and the report section it is listed under.

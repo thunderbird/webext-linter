@@ -16,7 +16,7 @@
 // a `message` is the resolver's job (src/report/responses.js), and that prose
 // lives in assets/registry.yaml. The finding data shape is defined in
 // src/report/finding.js. Verdict/escalation decisions live in
-// src/checks/escalation.js. Reuse the shared sortKeys/canonicalJson helpers in
+// src/checks/escalation.js. Reuse the shared canonicalJson helper in
 // src/util/json.js rather than adding JSON utilities here.
 
 import {
@@ -58,7 +58,7 @@ const SEV_COLOR = {
  *   headings ({ error?, warning?, info? }), registry-owned.
  * @property {Record<string, string>} [verdictIntros]  Issues-section preamble
  *   ({ none?, feedback?, hold?, rejected? }), registry-owned.
- * @property {string} [mode]  Review mode ("sca" | "xpi"). In "sca" each finding's
+ * @property {import("../lib/enum.js").ReviewMode} [mode]  The review mode. In SCA each finding's
  *   file:line is labelled by artifact ([XPI]/[SCA]) and the Found Issues section gets a
  *   legend footer; XPI reviews add neither. See src/report/artifact.js.
  * @property {Map<string, string>} [ruleInputs]  ruleId -> routed input
@@ -98,7 +98,7 @@ const SEV_COLOR = {
  *   `section` (which of the two extended lists it belongs to). The report splits it
  *   into three sections on those two tags - see src/report/order.js. Text-only;
  *   dropped from JSON.
- * @property {?{intro: string, items: object[]}} [preSweep]  The blind-spot sweep to run
+ * @property {?{intro: string, agentIntro: string, items: object[]}} [preSweep]  The blind-spot sweep to run
  *   before settling the review: the shared method, then one bare item per check that
  *   authors an instruction for what it cannot detect. ONE request, not one per check.
  *   Carries no finding and no locus - it is the job, not its result. Text-only; dropped
@@ -313,14 +313,10 @@ export function promptAsks(
  * The --llm-review verification prompt, printed above the header so the model that
  * is handed the report reads its instructions before the report itself.
  *
- * Only the instructions the report can actually be checked against are printed, and every
- * one it can: the issues ask needs a finding to verify, and each to-do ask needs an item in
- * its OWN section. One ask per section, because a review that happens to have no Extended
- * Manual Review items must not be told to work them. Both tests come from the same place the
- * report's own sections do - `findings` and the ordered sequence - so the prompt cannot
- * ask for a section the reader will not find. The ordered steps - how the work is done and
- * the verdicts come back - close the prompt whenever any ask was made, and are absent when
- * none was: with nothing to settle there is nothing to hand back.
+ * The asks are promptAsks' - it decides which sections this run can be checked against.
+ * The ordered steps - how the work is done and the verdicts come back - close the prompt
+ * whenever any ask was made, and are absent when none was: with nothing to settle there is
+ * nothing to hand back.
  *
  * `skip` is what the run was told to leave out: "summary" (--llm-skip-summary) withholds
  * the add-on description steps, "manual" (--llm-skip-manual) the steps that put the manual
@@ -503,8 +499,8 @@ export function scaPromptLines(prompt, submission, review) {
  * @returns {string[]}
  */
 export function headerLines(meta) {
-  // Past tense throughout: the pipeline prints this header AFTER runChecks, so the
-  // review is over by the time a reader sees it.
+  // The pipeline prints this section AFTER runChecks, so every value here names
+  // something the review has already read.
   const values = [["XPI", meta.xpi]];
   if (meta.scaRoot) {
     values.push(["SCA_ROOT", meta.scaRoot], ["SCA_SOURCE", meta.scaSource]);
@@ -549,8 +545,8 @@ export function headerLines(meta) {
  * read off the sequence, never decided here (src/report/order.js).
  *
  * A registry-owned verdict preamble opens the section: with no findings it is
- * the whole body (`verdictIntros.none`). With findings it is `rejected` (any
- * error) or `feedback` (warnings/info only), glued directly to the FIRST
+ * the whole body (`verdictIntros.none`). With findings it is `rejected` (any error),
+ * `hold` (a hold and no error) or `feedback` (warnings/info only), glued to the FIRST
  * severity heading - one space, no blank line - and printed verbatim (no
  * rewrap), like the findings below it.
  * @param {import("./order.js").OrderedItem[]} items  The findings half of the ordered
@@ -559,7 +555,7 @@ export function headerLines(meta) {
  * @param {Record<string, string>} [verdictIntros]
  * @param {(f: import("./finding.js").Finding) => string} [labelOf]  Artifact label
  *   ([XPI]/[SCA]) for a finding's file:line, "" when none (see reviewBodyLines).
- * @param {string} [mode]  Review mode; "sca" appends the label legend footer.
+ * @param {import("../lib/enum.js").ReviewMode} [mode]  The review mode; SCA appends the label legend footer.
  * @returns {string[]}
  */
 function issuesLines(items, issueHeadings, verdictIntros, labelOf, mode) {
@@ -570,7 +566,6 @@ function issuesLines(items, issueHeadings, verdictIntros, labelOf, mode) {
     out.push(intros.none ?? "The automated review did not find any issues.");
     return out;
   }
-  // One preamble for the whole section, glued onto the first rendered heading.
   const intro = intros[verdictKey(issues)];
   let n = 0;
   let band = null;
@@ -617,7 +612,8 @@ function issuesLines(items, issueHeadings, verdictIntros, labelOf, mode) {
  * numbering (src/report/order.js), so this only finds the boundaries - there is no
  * second opinion here about what goes where.
  * @param {import("./order.js").OrderedItem[]} items
- * @returns {{section: string, members: object[], shown: object[], withheld: number}[]}
+ * @returns {{key: string, section: string, members: object[], shown: object[],
+ *   withheld: number}[]}
  */
 function entriesOf(items) {
   const out = [];
@@ -682,9 +678,11 @@ function renderLocusList(entry, labelOf) {
  * surfaces the SUBJECT (`item`) after "file:line" when the message did not name it
  * (`listItem`), then the DETAIL (`hint`) is appended after " - ", and a reviewer's
  * `note` closes the line in parentheses - so a finding with all of them renders
- * "file:line - item - hint (note)". Manual review still wraps - see manualLines.
+ * "file:line - item - hint (note)". Manual review still wraps - see manualSection.
  * @param {number} n  1-based entry number.
- * @param {import("./finding.js").Finding[]} findings  All sharing one message.
+ * @param {{key: string, members: import("./finding.js").Finding[], shown: object[],
+ *   withheld: number}} entry  One grouped entry - its members all share a message, and
+ *   the first speaks for the group.
  * @param {(f: import("./finding.js").Finding) => string} [labelOf]  Artifact label.
  * @returns {string[]}
  */
@@ -718,11 +716,14 @@ function excludedMarker(n) {
  * labelled "Suggested response:" and printed under the instructions in dim grey,
  * flush-left and verbatim (a ready-to-send block) so it does not pull focus
  * from the blue instructions. Each item that carries a locus is then listed
- * beneath as "- file:line - item", in the same grey as the response. Standalone
+ * beneath as "- file:line - item", in the same grey as the response, which a
+ * "Suggested verdict:" line precedes when the check declares a band. Standalone
  * reminders (no locus) carry no list. Returns [] when there are no items, so an
  * absent section prints nothing.
  * @param {import("./finding.js").ManualItem[]} items
  * @param {string} title  Section heading, e.g. "Extended Manual Review".
+ * @param {(s: string) => string} [accent]  Color for the heading and the numbers.
+ * @param {(f: import("./finding.js").Finding) => string} [labelOf]  Artifact label.
  * @returns {string[]}
  */
 function manualSection(items, title, accent = blue, labelOf) {
@@ -743,17 +744,14 @@ function manualSection(items, title, accent = blue, labelOf) {
     out.push("");
     // The reviewer-facing instructions (the section's accent, 80-col wrapped).
     out.push(...wrapText(`${++n}) ${body}`).map(accent));
-    // The developer-facing response, if any: labelled "Suggested response:" and
-    // printed in dim grey, flush-left at column 0 (verbatim, like the Found Issues
-    // responses), sitting between the instructions and the locus list so it
-    // reads as a ready-to-send block without pulling focus from the blue
-    // instructions. Shared across the group, so taken from the first item.
-    // The band a confirmed case lands in, above the response so its weight is known
+    // The band a reported case lands in, above the response so its weight is known
     // before the text is sent. Absent for a check that produces no finding either way.
     const verdict = group[0].verdict;
     if (verdict) {
       out.push(grey(`Suggested verdict: ${verdict}`));
     }
+    // Shared across the group, so taken from the first item; verbatim like the Found
+    // Issues responses (a ready-to-send block).
     const response = group[0].response;
     if (response) {
       const lines = response.split("\n");
@@ -830,13 +828,16 @@ function preSweepSection(sweep) {
 
 /**
  * Summary: issue counts by severity plus one count per to-do section, in the body's
- * section order (code review, manual review, then the always-shown checklist).
+ * section order (the two extended sections, then the two standard ones every submission
+ * carries).
  *
  * Also printed on its own by a --llm-review run, which has no report body for it to close:
  * without it that run's output would not say whether the add-on is ready to sign off or
  * still has work waiting.
  * @param {import("./finding.js").Finding[]} issues
  * @param {import("./finding.js").ManualItem[]} [manual]
+ * @param {?object} [preSweep]  The blind-spot sweep this review carries, counted with the
+ *   to-do items; null when the review has none to run.
  * @returns {string[]}
  */
 export function summaryLines(issues, manual = [], preSweep = null) {
@@ -849,7 +850,7 @@ export function summaryLines(issues, manual = [], preSweep = null) {
 /**
  * The counts, on three lines: what the review FOUND, then what it raised about this
  * submission in particular, then what it carries for every submission. One run-on line
- * read as a first number followed by noise, and the three groups are three different
+ * reads as a first number followed by noise, and the three groups are three different
  * questions about the review.
  *
  * "item(s)", not "step(s)": each one is a thing listed in a section above, and a reader
@@ -899,9 +900,8 @@ function bucketCounts(manual) {
  * @returns {string}
  */
 export function formatJson(review) {
-  // The manual-review to-do list is human-only, not
-  // machine-verifiable, so they are dropped from JSON (ATN consumes this for
-  // auto-verification). findings are already issues only. The pre-sweep list goes for
+  // The manual-review to-do list is human-only, not machine-verifiable, so it is
+  // dropped from JSON (ATN consumes this for auto-verification). The pre-sweep list goes for
   // the same reason and a sharper one: it is an instruction TO A READER, not a statement
   // about the add-on, so it says nothing this document is for. What a sweep finds does
   // reach here - as a finding of the check that owns it, indistinguishable from one the
@@ -938,7 +938,7 @@ export function formatJson(review) {
  * The artifact label ([XPI]/[SCA]) for one finding/manual item's file:line - "" in an
  * XPI review (one artifact). Applied wherever locationLine renders a locus, and by the
  * verdict enumeration, so an item's reference string is the line the report printed.
- * @param {string} [mode]
+ * @param {import("../lib/enum.js").ReviewMode} [mode]
  * @param {Map<string, string>} [ruleInputs]
  * @returns {(x: object) => string}
  */
@@ -979,7 +979,7 @@ function section(title) {
  * "lib/x.js - lib/x.js - <source>". The guard lives here, not in the rules, so no rule
  * can reintroduce it and none has to know that its subject might BE the locus. The
  * finding still carries both fields: this decides what is printed, not what is recorded,
- * so the JSON report is unchanged.
+ * so the JSON report carries both.
  *
  * In an SCA review a `[XPI] `/`[SCA] ` artifact label prefixes the file (only when
  * there is a file - an item-only locus names no path to disambiguate).
@@ -1055,7 +1055,7 @@ export function manualQuestion(m, labelOf) {
  * Count findings by severity.
  *
  * @param {import("./finding.js").Finding[]} findings
- * @returns {{error: number, warning: number, info: number}}
+ * @returns {{error: number, hold: number, warning: number, info: number}}
  */
 function tally(findings) {
   // Keyed off the one severity ordering, so a new band is counted the day it exists

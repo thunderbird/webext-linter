@@ -21,17 +21,18 @@
         execution, which is not allowed.
       </p>
       <p>
-        The shared dynamic-execution scan parses the manifest's content security
-        policy and records whether it allows 'unsafe-eval'. This check reports a
-        single finding when that flag is set, anchored to the policy line in
-        manifest.json.
+        The shared dynamic-execution scan reads the directive that governs script
+        execution — script-src (or script-src-elem), falling back to default-src —
+        and records whether it allows 'unsafe-eval'. The keyword anywhere else
+        governs assets, not code, so it does not fire. This check reports a single
+        finding when the flag is set, anchored to the policy line in manifest.json.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The manifest content security policy"] --> B{"Does the policy allow<br/>'unsafe-eval'?"}
+  A["The manifest content security policy"] --> B{"Does the script-governing directive<br/>(script-src, else default-src)<br/>allow 'unsafe-eval'?"}
   B -- no --> OK([no finding])
   B -- yes --> ERR([ERROR: CSP allows unsafe-eval])
 

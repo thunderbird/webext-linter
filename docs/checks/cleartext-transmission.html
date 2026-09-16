@@ -43,7 +43,7 @@ flowchart TD
   C -- no --> OK([no finding — covert sinks<br/>handled by disguised-* checks])
   C -- yes --> D{"Destination scheme is non-TLS?<br/>http / ws / ftp"}
   D -- no --> OK2([no finding — encrypted<br/>transmission is fine])
-  D -- yes --> ERR([ERROR: cleartext data<br/>send to a remote host])
+  D -- yes --> ERR([ERROR: cleartext data<br/>sent to a remote host])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;

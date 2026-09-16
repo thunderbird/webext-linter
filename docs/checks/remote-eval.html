@@ -26,8 +26,8 @@
         the content security policy — are handled by separate deterministic
         checks. This check covers only the ambiguous case: a deterministic scan
         finds each fetch-then-execute site, and because whether the executed code
-        is remote cannot be decided statically, each site is escalated,
-        which judges whether the code is fetched from a remote source.
+        is remote cannot be decided statically, each site is escalated to a reviewer,
+        who judges whether the code is fetched from a remote source.
       </p>
       <p>
         Like the other dynamic-execution checks, the shared scan looks only

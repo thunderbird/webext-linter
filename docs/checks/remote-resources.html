@@ -36,8 +36,8 @@
         loaded code is remote.
       </p>
       <p>
-        One kind of remote load is neither a finding nor a question for the
-        reviewer: one inside an HTML or CSS file whose content matches a published
+        One kind of remote load is not a finding, and not a question about whether
+        it is remote: one inside an HTML or CSS file whose content matches a published
         file of a known upstream library release. That line is the release's,
         not something the developer wrote — so it goes to the reviewer (is
         shipping it as published acceptable here?) as a manual-review case, since
@@ -47,17 +47,14 @@
         remote loads stay findings.
       </p>
       <p>
-        Three limits are worth knowing. The match is EOL-normalized, so it says
-        the content is the release's, not that every byte is identical. It can
-        also be earned without any declaration, by an exact content-hash match
-        against a published file of a pinned <em>package.json</em> dependency —
-        so the matched file is not necessarily one the add-on needs. And only
-        the shipped XPI is ever matched against upstream, so a source-code (SCA)
-        review never reaches this lane. Such an item reaches the human report
-        only, which is the point of raising it: the JSON report carries only
-        what the tool is certain of, so a case that would otherwise be an error
-        there stops being grounds to reject the submission before anyone has
-        read it.
+        That match is EOL-normalized, and can be earned without any declaration by a
+        content-hash match against a published file of a pinned
+        <em>package.json</em> dependency — so it says the content is the release's,
+        never that the add-on needs the file. Only the shipped XPI is matched, so a
+        source-code (SCA) review never reaches that lane. Such an item reaches the
+        human report only: the JSON report carries just what the tool is certain of,
+        so a case that would otherwise be an error there stops being grounds to
+        reject the submission before anyone has read it.
       </p>
 
       <h2>Decision flow</h2>

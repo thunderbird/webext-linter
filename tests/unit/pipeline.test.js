@@ -27,8 +27,8 @@ function tmpAddon(files) {
 // Review reports the finding at its original line 1 (no pretty-print shift) and
 // leaves the source file on disk untouched (read-only: no reformat, no pack).
 // (Uses a debugger statement as the probe: a WebExtension background script
-// cannot run eval & friends without a permissive CSP, so those file checks no
-// longer scan it - see eval-scan.js.)
+// cannot run eval & friends without a permissive CSP, so those file checks skip it -
+// see src/lib/eval-scan.js.)
 test("review: read-only; line numbers match the submitted source", async () => {
   const src = tmpAddon({
     "manifest.json":
@@ -67,7 +67,7 @@ const EXPERIMENT_MANIFEST =
 
 // The eval lives in the privileged Experiment implementation (impl.js), which is
 // OUTSIDE the pure WebExtension tree - the one place the eval-call file check
-// still scans (a WebExtension sandbox needs a permissive CSP to run eval, flagged
+// scans (a WebExtension sandbox needs a permissive CSP to run eval, flagged
 // separately by csp-unsafe-*).
 
 // An Experiment add-on submitted without --allow-experiments rejects outright:

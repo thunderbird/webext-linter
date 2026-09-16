@@ -21,11 +21,12 @@
       </p>
       <p>
         The check looks only at the developer's own authored code; bundled,
-        minified or otherwise non-authored files are skipped. A
-        <em>debugger</em> statement placed inside an <em>if</em> is treated as
-        gated behind a config flag and allowed — since a debugger statement
-        cannot be made conditional any other way, an enclosing <em>if</em> is the
-        signal of intent. Only statements that always execute are flagged.
+        minified or otherwise non-authored files are skipped. Every remaining
+        <em>debugger</em> statement is raised for a reviewer. An enclosing
+        <em>if</em> is not read as a licence: a condition on runtime data — a
+        message, a tab, a user setting — still fires in normal use, so only
+        reading the condition says whether a build or configuration flag keeps
+        the statement away from users.
       </p>
 
       <h2>Decision flow</h2>
@@ -35,23 +36,21 @@ flowchart TD
   A["A JavaScript file in the add-on"] --> B{"Authored by the developer?<br/>not a bundled or minified library"}
   B -- no --> S([skip])
   B -- yes --> C["For each debugger statement"]
-  C --> D{"Enclosed by an if?<br/>gated behind a config flag"}
-  D -- yes --> OK([no finding — allowed])
-  D -- no --> ERR([ERROR: unconditional<br/>debugger statement])
+  C --> M(["escalate — the reviewer reads the enclosing<br/>condition and decides whether a build or<br/>configuration flag keeps it from users"])
 
-  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
-  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
-  class ERR err;
-  class OK ok;
+  class M manual;
   class S skip;
         </pre>
       </div>
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told it contains an unconditional debugger statement and is
-        asked to remove it or move it behind a config flag.
+        The reviewer is asked to read the enclosing condition, if any, and decide
+        whether a build or configuration flag keeps the statement away from users.
+        Where they conclude it runs unconditionally, the add-on is asked to remove
+        it or move it behind such a flag.
       </div>
 
       <p class="source-note">

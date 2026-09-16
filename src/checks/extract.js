@@ -20,11 +20,9 @@
 // either mode.
 //
 // The `xOf(src)` accessors are the ONE seam a consumer uses to read a result, and they
-// are PURE READS. A CHECK NEVER PARSES: a source that reaches a check without having been
-// through a pass is a wiring bug in setup, and the accessor throws rather than quietly
-// parsing it - which would put an AST in the check's call stack and break both the
-// single-AST memory bound and the "two checks asking the same question always agree"
-// guarantee.
+// are PURE READS - parsing inside one would put an AST in the check's call stack and
+// break both the single-AST memory bound and the "two checks asking the same question
+// always agree" guarantee (see resultsOf).
 //
 // Belongs here: orchestrating the per-source parse + the per-concern extractors,
 // and the read accessors. Does NOT belong here: the extractors themselves (each

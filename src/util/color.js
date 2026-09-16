@@ -5,7 +5,7 @@
 // --report-out copy is run through stripColor, so the saved file is plain even
 // when the screen was colored.
 //
-// Belongs here: setColor, the red/green/yellow/blue/grey wrappers, and
+// Belongs here: setColor, the red/green/yellow/blue/brightCyan/grey wrappers, and
 // stripColor. Does NOT belong here: WHICH text is colored (the feed note in
 // src/checks/registry.js, the issues in src/report/format.js) or WHEN color is
 // enabled (src/cli.js reads process.stdout.isTTY).
@@ -22,7 +22,7 @@ export function setColor(v) {
 
 /**
  * Wrap text in an ANSI SGR color when enabled, else return it unchanged.
- * @param {number} code  The SGR color code.
+ * @param {number|string} code  The SGR color code (or a compound "1;96").
  * @param {string} s
  * @returns {string}
  */

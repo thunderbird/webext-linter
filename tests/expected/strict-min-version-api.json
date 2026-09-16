@@ -1,4 +1,4 @@
 {
-  "_comment": "Realistic regression fixture modeled on the mboxsleuth submission: strict_min_version 115.0 while messages.tags.list/create were added in Thunderbird 121. Every call site is raised for a reader instead of rejecting, including the SECOND use of tags.list in refresh() - whatever protects one call need not protect another, so a site nobody is shown is a site nobody can settle. The golden pins all three under Extended Code Review with their file:line.",
+  "_comment": "Modeled on the mboxsleuth submission: strict_min_version 115.0 while messages.tags.list/create were added in Thunderbird 121. Every call site is raised for a reader instead of rejecting, including the SECOND use of tags.list in refresh() - whatever protects one call need not protect another, so a site nobody is shown is a site nobody can settle. The golden pins all three under Extended Code Review with their file:line.",
   "expect": {}
 }

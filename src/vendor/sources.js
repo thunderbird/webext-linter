@@ -50,10 +50,11 @@ const VERSION = /^v?\d+(\.\d+)*([.-][0-9a-z.-]+)?$/i;
 // A pinned git ref: a version tag or a full 40-hex commit SHA.
 const GIT_REF = /^(v?\d+(\.\d+)*([.-][0-9a-z.-]+)?|[0-9a-f]{40})$/i;
 
-// An accepted INPUT host that is not itself a fetch host: a github.com/.../blob
-// URL is rewritten to raw.githubusercontent.com (which IS in VENDOR_TRUSTED_HOSTS)
-// before fetch, so github.com is allowed as an alias but never listed as a fetch
-// host in config.
+// An accepted INPUT host allowed alongside the config fetch hosts: a
+// github.com/.../blob URL is rewritten to raw.githubusercontent.com (which IS in
+// VENDOR_TRUSTED_HOSTS) before fetch, while a /tree/ folder source is fetched as the
+// repo archive ZIP from github.com itself - which is why the host is accepted here
+// rather than listed in config.
 const GITHUB_INPUT_HOST = "github.com";
 
 // Per-host URL parsers. The keys are the only hosts classifySource will parse;

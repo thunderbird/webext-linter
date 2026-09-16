@@ -105,7 +105,7 @@ export const MAX_NOTE = 2000;
  *
  * Read from every layer of that round trip, which is why it lives here: src/cli.js offers
  * the flags, src/checks/registry.js refuses a step marked with anything else, and
- * src/report/format.js drops the steps and asks a skip names.
+ * src/report/format.js drops the steps and asks that a skip names.
  */
 export const PROMPT_SKIPS = ["summary", "manual"];
 
@@ -131,10 +131,11 @@ export const REACHABILITY_SKIPS_NON_AUTHORED = false;
 // read its result.
 
 /**
- * The only hosts vendor verification fetches a declared source from. A source
- * on any other host is sent to manual review, never requested. All three pin an
- * immutable version or tag, so a byte comparison is stable. A
- * github.com/.../blob URL is rewritten to raw.githubusercontent.com first.
+ * The hosts vendor verification fetches a declared source from. A source on any
+ * other host is sent to manual review, never requested. All four pin an immutable
+ * version or tag, so a byte comparison is stable. A github.com/.../blob URL is
+ * rewritten to raw.githubusercontent.com first; a github.com/.../tree/ folder source
+ * is fetched as the repo archive ZIP from github.com itself.
  */
 export const VENDOR_TRUSTED_HOSTS = [
   "unpkg.com",

@@ -1,5 +1,5 @@
 {
-  "_comment": "Every innerHTML write is flagged: the two dynamic writes (location.hash/search) and the static string alike. They share one message, so the Issues section groups them into a single numbered entry listing all three locations. The trailing innerHTML = \"\" is an empty clear and is exempt. The outerHTML write and the insertAdjacentHTML() call name different sinks, so they are their own entries: the item is the sink, and grouping per sink keeps each entry's advice about the sink it names.",
+  "_comment": "Every innerHTML write is flagged: the two dynamic writes (location.hash/search) and the static string alike. They share one message with the two markup sinks below, so the Issues section groups all five locations into a single numbered entry. The innerHTML = \"\" on line 8 is an empty clear and is exempt. The outerHTML write and the insertAdjacentHTML() call name different sinks, which each locus line states - so the reader sees which sink was hit without the entry splitting.",
   "expect": {
     "unsafe-html": ["bg.js:12", "bg.js:14", "bg.js:2", "bg.js:4", "bg.js:6"]
   }

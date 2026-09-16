@@ -94,8 +94,8 @@ test("flags a genuinely missing content script, not a present one", () => {
 });
 
 // The schema is the only thing that says which keys carry a path, and `icons` is the key a
-// hand-written list forgot - a shipped add-on whose manifest points at an icon it does not
-// package was reported by nothing. Its size map is also where the walk needs three guards
+// hand-written list forgets - so a manifest pointing at an icon the add-on does not
+// package is caught. Its size map is also where the walk needs three guards
 // that the AST twin (walkType) deliberately lacks, so they are pinned together here.
 test("icons are walked, and the three shape guards hold", () => {
   const run = (manifest, files) =>
@@ -198,8 +198,8 @@ test("anchors a missing manifest reference at its manifest.json line", () => {
   assert.equal(out[0].loc.line, 4); // the line citing the path
 });
 
-// Without a packaged manifest.json text to locate the path in, the finding still
-// names the file but carries no line (graceful fallback to the prior behavior).
+// Without a packaged manifest.json text to locate the path in, the finding names the
+// file and carries no line - degraded, never dropped.
 test("missing manifest reference falls back to no line when manifest.json text is absent", () => {
   const out = bundledFiles.run(
     manifestCtx({ content_scripts: [{ js: ["missing.js"] }] })

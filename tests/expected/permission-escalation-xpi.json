@@ -1,5 +1,5 @@
 {
-  "_comment": "XPI review exercising the permission scan's site location, including a DOTTED (api-resolved) injection token. messagesRead/accountsRead/compose each escalate with one located site: relatedMessageId (bare), displayedFolder (bare), and messenger.scripting.executeScript (compose's dotted token, resolved via api-usage). scripting is grounded by that call and dropped. Runs with --verbose so the golden keeps the per-site feed detail.",
+  "_comment": "XPI review exercising the permission scan's site location, including a DOTTED (api-resolved) injection token. messagesRead/accountsRead/compose each escalate with one located site: relatedMessageId (bare), displayedFolder (bare), and messenger.scripting.executeScript (compose's dotted token, resolved via api-usage). scripting is grounded by that call and dropped. The per-site detail lives in the activity feed, which the goldens do not capture; what they pin is that all three escalate and scripting does not.",
   "options": {
     "--verbose": true
   },

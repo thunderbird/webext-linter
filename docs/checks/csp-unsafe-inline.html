@@ -22,17 +22,20 @@
         run, which is a form of dynamic code execution, and is not allowed.
       </p>
       <p>
-        The shared dynamic-execution scan parses the manifest's content security
-        policy and records whether it allows 'unsafe-inline'. This check reports a
-        single finding when that flag is set, anchored to the policy line in
-        manifest.json.
+        The shared dynamic-execution scan reads the directive that governs script
+        execution — script-src (or script-src-elem), falling back to default-src —
+        and records whether it allows 'unsafe-inline'. The same keyword in
+        style-src is asset policy, not code execution, and a policy with no
+        script-governing directive leaves scripts on the restrictive platform
+        default, so neither fires. This check reports a single finding when the
+        flag is set, anchored to the policy line in manifest.json.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The manifest content security policy"] --> B{"Does the policy allow<br/>'unsafe-inline'?"}
+  A["The manifest content security policy"] --> B{"Does the script-governing directive<br/>(script-src, else default-src)<br/>allow 'unsafe-inline'?"}
   B -- no --> OK([no finding])
   B -- yes --> ERR([ERROR: CSP allows unsafe-inline])
 

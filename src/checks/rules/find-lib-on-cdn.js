@@ -36,10 +36,7 @@ export default {
       if (!c.cdn) {
         continue;
       }
-      // Only a POPULAR CDN match is the benign "declare it" case. A not-popular
-      // match did not clear the trust bar (cdn-lookup), so it is tagged untrusted
-      // and reviewed as authored code (untrusted-library / -minified-library) -
-      // stay silent here.
+      // Only a POPULAR match is the benign "declare it" case - see the header.
       if (!c.cdn.popular) {
         continue;
       }

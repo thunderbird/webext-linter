@@ -186,9 +186,8 @@ test("present and missing library entries coexist", () => {
 // an add-on that ships `lib/js/popper.min.js` and declares `popper.min.js` is told
 // the file is not there, rather than the declaration being quietly rebound.
 //
-// Every spelling reports it the same way. That is the point of the parse no longer
-// consulting the submission: before, only the keyed form could produce a miss and
-// the one-line spellings produced nothing at all.
+// Every spelling reports it the same way, because the parse never consults the
+// submission: a miss cannot depend on which spelling the developer chose.
 test("a bare filename means the package ROOT, in every spelling", () => {
   const U = "https://unpkg.com/popper@2.11.8/dist/popper.min.js";
   const shipped = { "lib/js/popper.min.js": LIB };
@@ -216,10 +215,10 @@ test("a bare filename means the package ROOT, in every spelling", () => {
   );
 });
 
-// Regression: several declarations in ONE block with NO blank lines
+// Several declarations in ONE block with NO blank lines
 // between them - each a `bundled file`/`source file` pair - must keep their OWN
-// url. The old block-pooling stamped the block's FIRST file URL onto every file
-// (so jsep/zip wrongly "did not match" d3-dsv's url). The library-name and licence
+// url. Pooling a block's URLs would stamp its FIRST onto every file, so jsep and zip
+// would each "not match" d3-dsv's url. The library-name and licence
 // bullets carry no file/url token and are inert.
 test("an unindented list with no blank lines pairs each file with its own url", () => {
   const files = {
@@ -254,7 +253,7 @@ test("an unindented list with no blank lines pairs each file with its own url", 
   ]);
 });
 
-// Regression: some declarations name a file the library
+// Some declarations name a file the library
 // heuristic does NOT recognize (a small readable .mjs). We TRUST the declaration, so
 // that file is its own entry with its own source - and, crucially, it does not leak
 // its URL onto the NEXT file (the off-by-one). Every declared file keeps its own URL.
@@ -299,7 +298,7 @@ test("a keyed source before its keyed file pairs correctly", () => {
 
 // TWO declarations crammed into ONE block, with no blank line and no indent to tell
 // them apart, is not two declarations - it is a block naming two sources, and which
-// file belongs to which is a guess. The old scan guessed by position. Separate them
+// file belongs to which is a guess, and guessing by position is not reading. Separate them
 // with a blank line (or a heading) and both parse.
 test("pinned failure: two sources in one block discards the file", () => {
   const crammed = {
@@ -351,8 +350,8 @@ test("two blocks citing one source are both parsed (resolve flags ambiguous)", (
 });
 
 // A block declares ONE item. Two file keys, or a file key beside a "path:" header,
-// is the developer saying two things in one place - and the old scan resolved it by
-// keeping whichever came last, dropping the other with no fault raised.
+// is the developer saying two things in one place. Keeping whichever came last would
+// drop the other with no fault raised.
 test("pinned failure: a block may not declare two items", () => {
   const files = {
     "vendor/a.min.js": LIB,
@@ -480,8 +479,8 @@ test("pinned failure: a labelled block does not pair with a bare URL line", () =
 });
 
 // ONLY the first line. Elsewhere a lone path is prose - a consumer list names files
-// the library is used BY, and reading those as declarations is how the old scan
-// declared an add-on's own modules as third-party code.
+// the library is used BY, and reading those as declarations would declare the
+// add-on's own modules third-party code.
 test("pinned failure: a lone path below the first line is prose", () => {
   const U = "https://unpkg.com/alpha@1.0.0/dist/alpha.min.js";
   assert.deepEqual(
@@ -543,8 +542,8 @@ test("invalid: library file with only a repository URL (no file URL)", () => {
 });
 
 // A path inside a SENTENCE is a sentence. "Used by `modules/own.js`" names a
-// consumer of the library, not the vendored file - the old scan pulled the path out
-// of the prose and declared the add-on's own module as third-party code. Nothing
+// consumer of the library, not the vendored file - pulling the path out of prose
+// would declare the add-on's own module third-party code. Nothing
 // marks it as the pair of that source, so the block is half a declaration and the
 // file is discarded.
 test("pinned failure: a path named in prose is not a declaration", () => {
@@ -610,8 +609,8 @@ test("the one-line spellings all read the same declaration", () => {
     `[lib/alpha.min.js](${U})`,
     `[lib/alpha.min.js](<${U}>)`,
     // A trailing note is prose about the declaration in EVERY spelling - the link
-    // form used to require the link to be the whole line, so a note silently
-    // yielded nothing at all.
+    // form must not require the link to be the whole line, or a note silently
+    // yields nothing at all.
     `[lib/alpha.min.js](${U}) (unmodified)`,
     `[lib/alpha.min.js](${U}), built from Release 1.0.0`,
     `lib/alpha.min.js: <${U}>.`,
@@ -711,8 +710,8 @@ test("a control or format character refuses the file", () => {
 });
 
 // One declaration does not run to a hundred lines. Past that the block is not a
-// declaration with notes under it - and reading it as one is how a single block came
-// to hold enough one-line declarations to overflow the stack.
+// declaration with notes under it - and reading it as one lets a single block hold
+// enough one-line declarations to overflow the stack.
 test("a block longer than a hundred lines is refused", () => {
   const U = "https://unpkg.com/alpha@1.0.0/dist/alpha.min.js";
   const files = { "lib/alpha.min.js": LIB };
@@ -754,7 +753,7 @@ test("a folder resolves however its path is spelled", () => {
 
 // Decoration comes off in matched pairs, and the KEY is undecorated like every other
 // token - so all six pairs read alike rather than the two a pattern could describe
-// inline. A key wearing decoration used to kill the declaration silently.
+// inline. A key wearing decoration must not kill the declaration silently.
 test("a key reads the same however it is decorated", () => {
   const U = "https://unpkg.com/alpha@1.0.0/dist/alpha.min.js";
   const files = { "lib/alpha.min.js": LIB };

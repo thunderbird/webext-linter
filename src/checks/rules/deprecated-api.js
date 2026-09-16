@@ -1,4 +1,5 @@
-// Warns about deprecated APIs. Reads the shared resolution and reports a
+// Flags deprecated APIs (an advisory - info severity). Reads the shared resolution
+// and reports a
 // deprecated function/event/property once. Unlike unknown-api / strict-min-version-api
 // this is a FINDING and not a question for a reader: a deprecated API still exists and
 // still runs, so no construction around the call makes the migration note moot. There is
@@ -55,8 +56,7 @@ export default {
           finding({
             file,
             loc,
-            // The schema's deprecation message (a migration note) when it has
-            // one. A bare `deprecated: true` carries no text, so no hint.
+            // A bare `deprecated: true` carries no message, so no hint.
             hint: typeof dep === "string" ? dep : null,
             item: full,
           })

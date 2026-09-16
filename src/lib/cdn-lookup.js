@@ -123,7 +123,7 @@ export async function resolveCdnLibraries(
     // A file below the classification floor is too small to be a library release (the
     // reason the local hash lookup is floored too), so a lookup could only fingerprint
     // it - which is the one thing the size floor above exists to prevent. `minified`
-    // waives the READABLE floor, not this one: it is asked at every size now, so
+    // waives the READABLE floor, not this one: it is asked at every size, so
     // without this a 700-byte first-party chunk would be hashed to a third party.
     if (buf.length < MIN_CLASSIFY_BYTES) {
       continue;

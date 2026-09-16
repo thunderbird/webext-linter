@@ -13,9 +13,6 @@ import { basename } from "../util/files.js";
 import { apiBasesOf, calleeApiPath } from "./api-base.js";
 import { SCHEME_RE } from "../lib/util.js";
 
-// A scheme-bearing parameter (resource:, chrome:, moz-extension:, ...) is matched by
-// name (SCHEME_RE); a relative path is resolved root-relative.
-
 /**
  * Classify a string passed to an Experiment API as a packaged-file reference: a
  * relative path is root-relative (WebExtension code passes add-on-relative paths),

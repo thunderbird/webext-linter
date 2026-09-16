@@ -1,5 +1,6 @@
-// Unit tests for the text utilities: the wrapText width-wrapper (reflowing
-// printed prose to a column width) and the humanSize byte formatter.
+// Unit tests for the text utilities: the wrapText width-wrapper (reflowing printed prose
+// to a column width), the humanSize byte formatter, and the three print guards for
+// submission text - displayText, displayLine, displayPath.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

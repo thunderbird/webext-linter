@@ -78,10 +78,8 @@ export default {
 };
 
 /**
- * Does a packaged JS file use ES module syntax? Read the precomputed moduleSyntaxOf verdict
- * for a source the extraction pass saw (every JS-corpus file). A target NOT in the corpus is
- * not JS-parseable (a non-JS suffix) - it is not a classic .js script this check governs, and
- * unrecognized-file-type reports it instead; the check never parses to answer here.
+ * Does a packaged JS file use ES module syntax? Reads the precomputed moduleSyntaxOf
+ * verdict; a target the extraction pass never saw is not a .js script (see run()).
  * @param {Map<string, object>} sources  ctx.jsSources keyed by file.
  * @param {string} file  Add-on-relative path.
  * @returns {boolean}

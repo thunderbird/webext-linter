@@ -4,13 +4,13 @@
 // both. A check that cannot settle a case returns an escalation. Only the
 // orchestrator (escalation.js) routes it to a reviewer or to manual review.
 //
-// Belongs here: generic, dependency-light check helpers - dedupe,
-// the asArray/asObject manifest guards, isMatchPattern/isBroadHost,
-// trunc, manifestTokenLine, isExperiment/strictMaxVersion, the version family
-// (strictMinVersion, parseVersion, cmpVersion, versionInBounds - shared by the
-// unused-permission token selection), the
-// suspected-loader helper referrerSupported, and the feed-note
-// builder loaderTrace.
+// Belongs here: generic, dependency-light check helpers - dedupe, the
+// asArray/asObject manifest guards, isMatchPattern/isBroadHost, trunc, SCHEME_RE,
+// escapeRegExp/wholeWordRe, the line locators (manifestTokenLine, manifestPathLine,
+// lineContaining), the doc/dependency-file tests (isDocMetadataFile, isDocFile,
+// DEPENDENCY_FILE_RE), isExperiment/strictMaxVersion, the version family
+// (strictMinVersion, parseVersion, cmpVersion, versionInBounds), the suspected-loader
+// helper referrerSupported, and the feed-note builder loaderTrace.
 //
 // Does NOT belong here: anything with a heavier dependency or a single home -
 // reachability lives in reachability.js, permission analysis in permissions.js,
@@ -118,8 +118,8 @@ export function isDocFile(file) {
 }
 
 /**
- * Drop findings that duplicate file+line+column+item+data (the discriminators
- * now that findings carry no message).
+ * Drop findings that duplicate file+line+column+item+data - the discriminators,
+ * since a finding carries no message.
  * @param {import("../report/finding.js").Finding[]} findings
  * @returns {import("../report/finding.js").Finding[]}
  */
@@ -284,8 +284,7 @@ export function cmpVersion(a, b) {
  * min 154 / max 153, meeting at the 154 boundary). An absent or unparsable
  * strict_min_version counts as oldest: it fails any min but satisfies any max.
  * Shared by the manifest-key permission grounding, the permission-prompts filter,
- * and the
- * unused-permission producer's token selection.
+ * and the unused-permission producer's token selection.
  * @param {?object} manifest
  * @param {?string} min  Inclusive lower bound, or null.
  * @param {?string} max  Inclusive upper bound, or null.

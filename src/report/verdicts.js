@@ -233,7 +233,8 @@ function readAddition(file, i, raw) {
  * @param {number} index
  * @param {{label: string, verdict: string, description: string}[]} choices  The answers a
  *   question offered, read once per review by the caller: the registry cannot change
- *   between two answers of one file, and an accessor that says "read once" should be.
+ *   between two answers of one file, and an accessor documented as "read once" is read
+ *   once.
  * @returns {{verdict: string, note: ?string}}
  */
 function settleAnswer(answer, item, index, choices) {
@@ -315,7 +316,8 @@ function reviewerNote(text) {
  *
  * Every answer must land. An index past the end of the list throws: it means the file was
  * written against a different review, and applying the rest of it would settle cases
- * nobody looked at. readVerdicts has already checked the file names this add-on.
+ * nobody looked at. The caller has already checked the file names this add-on
+ * (src/pipeline.js).
  * @param {object} args
  * @param {import("./finding.js").Finding[]} args.findings  Mutated in place.
  * @param {import("./finding.js").ManualItem[]} args.manual  Mutated in place.

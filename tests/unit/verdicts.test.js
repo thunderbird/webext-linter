@@ -215,7 +215,7 @@ test("a malformed verdict file is rejected with a reason", () => {
   const ok = '{"xpi": "/x/a.xpi", "verdicts": {"2": "cleared"}}';
   assert.throws(() => readVerdicts(write("{")), /is not readable JSON/);
   assert.throws(() => readVerdicts(write("[]")), /must be an object/);
-  // The add-on is the whole guard, so a file without it is refused.
+  // The "xpi" path is the whole guard, so a file without it is refused.
   assert.throws(
     () => readVerdicts(write('{"verdicts": {"2": "cleared"}}')),
     /names no "xpi"/
@@ -521,7 +521,7 @@ test("an addition is filed as a finding of the check it names", () => {
   assert.match(f.message, /send user data to a remote server/);
 });
 
-// The regression that matters most. orderReview numbers items AFTER sorting findings into
+// Why an addition is filed after the index map is built. orderReview numbers items AFTER
 // severity bands, so an addition filed before the index map is built would push every
 // later item down and silently re-aim each verdict at its neighbour. The map must be
 // built from the review as the reader saw it.

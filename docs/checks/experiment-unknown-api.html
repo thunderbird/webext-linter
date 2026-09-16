@@ -29,8 +29,8 @@
         API name, so if it does not match the API the code calls, that API is
         effectively undefined even when the manifest declares it. This check
         fires only when the submission is an Experiment and at least one such
-        unrecognized usage exists, and escalates the whole add-on to manual
-        review as a single reminder — the companion unknown-api finding already
+        unrecognized usage exists, and escalates the whole add-on to Extended
+        Code Review as a single reminder — the companion unknown-api finding already
         lists the specific APIs, so this one adds no locus and re-lists nothing.
       </p>
 
@@ -42,7 +42,7 @@ flowchart TD
   E -- no --> S([skip])
   E -- yes --> U{"Any reachable API usage the<br/>schema does not recognize?<br/>(unknown namespace, unknown<br/>member, or unsupported)"}
   U -- no --> S
-  U -- yes --> M([escalate to manual review:<br/>verify the experiment schemas])
+  U -- yes --> M([escalate to Extended Code Review:<br/>verify the experiment schemas])
 
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;

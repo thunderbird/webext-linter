@@ -27,9 +27,9 @@
         — for example <code>bootstrap 5.3.0</code>.
       </p>
       <p>
-        It is the backup for a forgotten VENDOR declaration: declared and
-        experiment-trusted files are excluded before the lookup, so everything it
-        reports is genuinely undeclared. Since a match is a precise, byte-verified
+        It is the backup for a forgotten VENDOR declaration: files declared in a
+        VENDOR file are excluded before the lookup, so everything it reports is
+        genuinely undeclared. Since a match is a precise, byte-verified
         release, the finding is advisory (<span class="badge info">info</span>),
         not a blocker. A bundled file the database does not recognise is
         <em>not</em> treated as a library here — if minified it is reported by
@@ -37,7 +37,7 @@
         scanned as the developer's own source.
       </p>
       <p>
-        Because the match identifies an exact release, an identified library is
+        The same exact release id means an identified library is
         also audited for known vulnerabilities just like a declared dependency —
         an undeclared but vulnerable bundle is reported by
         <code>vendor-vulnerable</code>, since it is real third-party code, not the

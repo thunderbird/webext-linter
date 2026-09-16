@@ -472,7 +472,7 @@ export class SchemaIndex {
 
   /**
    * @typedef {object} ApiResolution
-   * @property {"root"|"namespace"|"function"|"event"|"property"|
+   * @property {"root"|"namespace"|"function"|"event"|"property"|"experiment"|
    *            "unknown-member"|"unknown-namespace"} kind  Resolution kind.
    * @property {string} [namespace]  Matched namespace name.
    * @property {string} [member]  Matched member name.

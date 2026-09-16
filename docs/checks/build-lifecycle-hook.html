@@ -43,7 +43,7 @@
 flowchart TD
   A["The build files (input: build)"] --> B{"package.json present<br/>with a scripts block?"}
   B -- no --> OK([no escalation])
-  B -- yes --> C{"Any install lifecycle hook?<br/>preinstall / install / postinstall /<br/>prepare / prepublish / prepack"}
+  B -- yes --> C{"Any install lifecycle hook?<br/>preinstall / install / postinstall / prepare /<br/>prepublish / prepublishOnly / prepack"}
   C -- no --> OK
   C -- yes --> M(["escalate — the reviewer reads each command<br/>and decides whether it runs anything remote"])
 

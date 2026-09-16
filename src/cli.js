@@ -177,9 +177,8 @@ function helpText(checkIds) {
   // What an LLM agent runs, in the order it runs: --llm-sca-review prepares a source code
   // review (and is over before one starts), then --llm-review asks - leaving out whatever
   // its two --llm-skip-* flags name, given to either - and --llm-verdict applies the
-  // answers. Their own
-  // section, because none is a report format: the first two replace the report with a
-  // prompt, the last rebuilds it from settled verdicts.
+  // answers. They get a section of their own, because none is a report format: the first
+  // two replace the report with a prompt, the last rebuilds it from settled verdicts.
   const llm = [
     [
       "--llm-review",
@@ -187,7 +186,7 @@ function helpText(checkIds) {
     ],
     [
       "--llm-skip-summary",
-      "With --llm-review or --llm-sca-review: leave out the add-on description. The prompt no longer asks for one and names no file for it; everything else is unchanged.",
+      "With --llm-review or --llm-sca-review: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes.",
     ],
     [
       "--llm-skip-manual",
@@ -331,7 +330,7 @@ function shellArg(value) {
  * The whole command, not a template to assemble: the flags are known here, so printing
  * them saves its reader the one step where a flag can go missing. This run's own flags
  * first - with --llm-sca-review replaced by --llm-review and the add-on the submission
- * folder holds - then the three the reader works out. Anything dropped or invented here
+ * folder holds - then the ones the reader works out. Anything dropped or invented here
  * reviews a different submission than the reviewer asked about, --allow-experiments above
  * all, which is also why --sca-exp-source is named only when Experiments are allowed:
  * nothing reads it otherwise.
@@ -341,13 +340,8 @@ function shellArg(value) {
  * the guess lives in whichever file prints the command - so both spellings of every flag
  * collapse here, once, and the renderer lays out what it is handed.
  *
- * A --llm-skip-* is carried like any other flag: it names part of the prompt the prepared
- * review will print, which is the run this command starts. A flag given no value never
- * reaches here - main() refuses one before any branch - so the truth test below only skips
- * the flags this run was not given.
- * --llm-review, --llm-verdict and the --sca-* flags cannot appear - --llm-sca-review
- * refuses to be given them - and neither can --help, which is answered before any of the
- * guards that would reach this.
+ * A flag given no value never reaches here - main() refuses one before any branch - so
+ * the truth test below only skips the flags this run was not given.
  * @param {Record<string, string|boolean>} values
  * @param {string} xpi  The built add-on's path, which the review takes as its positional.
  * @returns {{flags: string[], experiments: boolean}}
@@ -407,10 +401,11 @@ function pointsAtFolder(p) {
  * Does it stay INSIDE the tree it names? A ".." segment names a folder by the way out of
  * another, which is a value someone will misread whether or not it lands back inside;
  * hasParentSegment is the same test the loader applies to every value it resolves, so the
- * two cannot part company. A flag that names a folder INSIDE --sca-root (`inRoot`) answers
- * the same question about an ABSOLUTE path: it names a folder on the reviewing machine,
- * which can be anywhere, so what it names is not part of the submission and cannot be
- * shown to be.
+ * two cannot part company. A flag that names a folder INSIDE --sca-root (`inRoot`) is
+ * asked one more: does it LAND inside that root? Written relative or absolute makes no
+ * difference - a value resolving outside names a folder on the reviewing machine, which
+ * can be anywhere, so what it names is not part of the submission and cannot be shown
+ * to be.
  *
  * Does it point at a FOLDER? Asked of the resolved path, so a trailing slash cannot answer
  * it differently. A file, a missing path and an unreadable one are all "no".
@@ -418,16 +413,14 @@ function pointsAtFolder(p) {
  * @param {string} value  The value as it was given.
  * @param {string} base  What the value is relative to: --sca-root for a flag that names a
  *   folder inside it, and the value's own path otherwise.
- * @param {boolean} [inRoot]  Whether the flag names a folder inside --sca-root, which an
- *   absolute path cannot be written as.
+ * @param {boolean} [inRoot]  Whether the flag names a folder inside --sca-root, which the
+ *   value must resolve into however it was written.
  * @returns {?{text: string, escape: boolean}}  `escape` marks the ".." refusal, which says
  *   what to do on its own - the others are worth telling what the folder is FOR.
  */
 function folderProblem(flag, value, base, inRoot = false) {
-  // Refused on the SPELLING, which only this layer still sees: a value that walks out of a
-  // tree to name something names it by the way out, and every flag here names a folder
-  // directly. Kept as its own refusal even though the containment test below would catch
-  // most of them, because the message can say what is wrong with what was typed.
+  // Kept as its own refusal even though the containment test below would catch most of
+  // them, because the message can say what is wrong with what was typed.
   if (hasParentSegment(value)) {
     return {
       text:
@@ -441,12 +434,8 @@ function folderProblem(flag, value, base, inRoot = false) {
   // otherwise. One expression in both places, so the folder asked about here is the folder
   // the review goes on to read rather than a second spelling of it.
   const full = inRoot ? path.resolve(base, value) : path.resolve(value);
-  // A folder inside --sca-root may be written either way - relative to the root, or
-  // absolute, which is the spelling the report itself prints and a reader hands back. What
-  // is refused is what the spelling was only ever a proxy for: a path that lands OUTSIDE
-  // the root names a folder on the reviewing machine, and what it names is not part of the
-  // submission and cannot be shown to be. Asked with the loader's own function, so the
-  // guard and the review cannot answer it differently.
+  // Asked with the loader's own function, so the guard and the review cannot answer it
+  // differently.
   if (inRoot && relativeInside(full, base) === null) {
     return {
       text:
@@ -568,8 +557,8 @@ export async function main(argv) {
   // read, a folder where the folder is opened - but whether one was given at all is the
   // parser's, and a run that returns early must not be able to skip it. parseArgs hands
   // "--flag=" down as "", which every reader below tests for truth and so reads as "not
-  // given": a named cache silently became the default one, a named verdict file printed an
-  // unsettled report, and a named format fell back to text.
+  // given": a named cache would silently be the default one, a named verdict file would
+  // print an unsettled report, and a named format would fall back to text.
   {
     const empty = Object.entries(OPTIONS).find(
       ([name, opt]) =>
@@ -719,9 +708,8 @@ export async function main(argv) {
     return 2;
   }
 
-  // ONE add-on per run. A second positional was silently ignored, which is how an
-  // unquoted path with a space in it ("/my sub/a.xpi") reviewed "/my" and said nothing
-  // about the rest. Anything that is not a flag and is not the add-on is a mistake.
+  // ONE add-on per run. A silently ignored second positional is how an unquoted path with
+  // a space in it ("/my sub/a.xpi") reviews "/my" and says nothing about the rest.
   if (positionals.length > 1) {
     process.stderr.write(
       `Only one add-on can be reviewed at a time, and ${positionals.length} were given: ` +
@@ -769,14 +757,14 @@ export async function main(argv) {
   }
 
   // Every --sca-* flag names a FOLDER that is there. The root is the extracted source -
-  // this tool unpacks the submitted .xpi and nothing else, so extracting is the reviewer's,
-  // and then every format works because tar handles what we do not - and the other two name
+  // this tool unpacks the submitted .xpi and nothing else, so extracting the source
+  // archive is the reviewer's, whatever format it came in - and the other two name
   // directories inside it. Asked in root-first order, so the root's own validity is settled
   // before anything is looked up inside it.
   //
-  // Asked here rather than left to the loader because only one of the three failed loudly:
-  // a --sca-exp-source that names nothing was a WARNING, and the review then read the
-  // Experiment's privileged code as WebExtension code - the thing that flag exists to
+  // Asked here rather than left to the loader because only one of the three fails loudly
+  // there: a --sca-exp-source that names nothing is a WARNING, and the review then reads
+  // the Experiment's privileged code as WebExtension code - the thing that flag exists to
   // prevent - on a typo.
   for (const flag of SCA_FLAGS) {
     const value = values[flag];
@@ -785,8 +773,8 @@ export async function main(argv) {
     }
     // --sca-root stands on its own; the other two name folders INSIDE it, so they are
     // asked about after being resolved against it - the same resolution the reader applies
-    // a moment later. The two refusals before that (an absolute path, a ".." segment) are
-    // about the SPELLING the user chose, which is the only place that is still visible.
+    // a moment later. The ".." refusal before that is about the SPELLING the user chose,
+    // which is the only place that is still visible.
     const inRoot = flag !== "sca-root";
     const problem = folderProblem(
       flag,
@@ -855,9 +843,8 @@ export async function main(argv) {
     return 2;
   }
 
-  // The full report comes from the report layer: formatReview assembles the body, the advisory
-  // review summaries (text only), and the verdict tally LAST, in the shipped order. The CLI just
-  // writes it.
+  // The full report comes from the report layer: formatReview assembles the body - Found
+  // Issues and the to-do sections - and the verdict tally LAST. The CLI just writes it.
   //
   // Except under --llm-review, which produced the item file INSTEAD: the prompt tells its
   // reader to work from that array, and printing the same review as prose alongside it
@@ -888,14 +875,14 @@ function clearCaches(dirs) {
 /**
  * Map parsed CLI `values` (from parseArgs with OPTIONS) to runPipeline opts.
  * Shared by main() and the test harness so both honor the real flag names.
- * Does not include `action`/`addonPath` (those come from the command/path).
+ * Does not include `addonPath` (that comes from the positional path).
  *
  * Every path opt leaves here ABSOLUTE. This is the one layer that knows what each flag is
  * written relative to - the working directory for --sca-root, and --sca-root itself for the
  * two that name a folder inside it - so it is the layer that resolves them. Downstream then
- * derives what it needs (an archive key, a containment test) from real paths instead of
- * re-deciding what a relative string meant, which is how one spelling used to reach three
- * functions and come back three shapes.
+ * derives what it needs (an archive key, a containment test) from real paths rather than
+ * re-deciding what a relative string meant: one spelling reaching several functions is one
+ * spelling answered several ways.
  * @param {Record<string, string|boolean|string[]>} values
  * @returns {Partial<PipelineOpts>}
  */

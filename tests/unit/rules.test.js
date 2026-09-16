@@ -153,8 +153,8 @@ test("sync-xhr flags open(..., false), not async/omitted", () => {
 
 // ---- debugger ----
 // Every shipped `debugger` is a question for a reader and none is a finding. The rows
-// that matter are the CONDITIONAL ones: an `if` used to be read as a config flag and
-// silently cleared the statement, so `if (message.author.includes("@")) { debugger; }` -
+// that matter are the CONDITIONAL ones: read an `if` as a config flag and the statement
+// clears silently, so `if (message.author.includes("@")) { debugger; }` -
 // which halts Thunderbird for any user who receives such a message - was reported to
 // nobody. An enclosing `if` is a shape, not evidence about who can reach the statement.
 test("debugger-statement raises every statement, conditional or not", () => {
@@ -626,10 +626,9 @@ test("code-sanity is gated by the --eslint flag", async () => {
 // The SCA mode gate (scaEligible, mirrors the diff gate): the build and dependency
 // checks are sca:true (they review an archive, absent from an XPI-only submission), and
 // everything else is untagged - it runs in both modes and the orchestrator switches the
-// review SOURCE under it. NO entry declares sca:false today: the vendor and library
-// checks used to, which silently exempted a source archive's declared files from review
-// while nothing verified the declaration. The gate itself remains for a check that
-// genuinely cannot run on a source archive.
+// review SOURCE under it. NO entry declares sca:false today, and the gate is there for a
+// check that genuinely cannot run on a source archive - never to exempt a source archive's
+// declared files from review, which a declaration nothing verified cannot buy.
 test("checks carry the sca mode tag (true=SCA-only, undefined=both; none is XPI-only)", async () => {
   const checks = allChecks(await loadChecks(loadRegistry()));
   const sca = (id) => checks.find((x) => x.id === id)?.sca;
@@ -1089,8 +1088,9 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "unused-permission",
   ]);
   // input: build reads the SCA build files (archive minus source minus node_modules).
-  // The three build-review checks (gated on the setup classification) plus the
-  // deterministic build-policy checks; extending this set is deliberate too.
+  // The one build-review check (undeclared-build-source, which reads the setup record off
+  // ctx.addon.buildReview) plus the deterministic build-policy checks; extending this set
+  // is deliberate too.
   const build = checks
     .filter((c) => c.input === "build")
     .map((c) => c.id)
@@ -1970,7 +1970,7 @@ test("unused-permission credits function-level permissions (archive/delete)", ()
 });
 
 // A permission that gates no callable API (unlimitedStorage) can never be proved
-// used by static analysis. It is no longer hand-exempt: it escalates like any other
+// used by static analysis, and is not hand-exempt for it: it escalates like any other
 // not-provably-used permission, escalated for a reviewer to settle (the registry
 // grounds it on whether the add-on persists data) or reviewed by hand.
 test("unused-permission escalates unlimitedStorage (gates no API)", () => {
@@ -2140,8 +2140,8 @@ test("unknown-api escalates every unavailable reference", () => {
 });
 
 // The cross-browser shim (browser.menus ?? browser.contextMenus) is a reader's question
-// like any other. It used to be settled here, by reading the other arm of the
-// short-circuit - which is the same silent clear this check no longer makes anywhere. An
+// like any other. Settling it here, by reading the other arm of the short-circuit, is the
+// silent clear this check makes nowhere. An
 // LLM reads a shim without help, and the one that turns out not to be a shim is exactly
 // the case a reader is needed for.
 test("unknown-api escalates a shim rather than settling it", () => {
@@ -2179,9 +2179,8 @@ test("unknown-api escalates a shim rather than settling it", () => {
 });
 
 // End-to-end through the real parser: a name the schema does not have reaches a reader
-// whatever surrounds it. These shapes used to be partitioned - the first three settled as
-// shims, the rest rejected - and the partition is what produced both failure directions.
-// Now the report says the same thing about all of them, and none of them rejects.
+// whatever surrounds it. Partitioning these shapes - the first three settled as shims, the
+// rest rejected - is what produces both failure directions, so none of them is settled.
 test("unknown-api: every shape around an absent namespace escalates, none rejects", () => {
   const run = (src) => {
     const { usages } = parseApiUsage(src);
@@ -2655,9 +2654,9 @@ test("missing-permission ignores usages in dead (unreachable) files", () => {
   );
 });
 
-// The broadened alias resolution surfaces a permission reached ONLY via a captured
-// namespace (previously invisible - a false negative). Parsing an aliased
-// `m.archive([1])` with no declared permissions must now flag messagesMove (function
+// Alias resolution surfaces a permission reached ONLY via a captured namespace, which no
+// literal-name scan can see. Parsing an aliased
+// `m.archive([1])` with no declared permissions must flag messagesMove (function
 // level) + messagesRead (namespace level) as missing.
 test("missing-permission fires for a permission reached only via a namespace alias", () => {
   const src = `const m = browser.messages; m.archive([1]);`;
@@ -4249,10 +4248,10 @@ test("unrecognized-manifest-key accepts experiment-owned keys", () => {
 // The other experiment-owned exemption: a key an experiment's bundled SCHEMA declares
 // (a `manifest` namespace $extend of WebExtensionManifest). The schema PATH resolves
 // against ctx.addon.files - the built XPI for this `input: xpi` check, where the built
-// path exists. Regression guard for the SCA false positive: as `input: source` the check
-// ran over the readable source, the built schema path was absent there, the exemption
-// silently returned nothing, and a legitimate experiment key (e.g. calendar_item_action)
-// was flagged. Routing it to the XPI (registry `input: xpi`) restores the pairing.
+// path exists. That pairing is the point: as `input: source` the check would run over the
+// readable source, where the built schema path is absent, so the exemption would silently
+// return nothing and a legitimate experiment key (e.g. calendar_item_action) would be
+// flagged.
 test("unrecognized-manifest-key accepts a key declared by an experiment's bundled schema", () => {
   const manifest = {
     name: "x",

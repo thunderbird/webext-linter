@@ -18,7 +18,8 @@ test("style-src 'unsafe-inline' does not flag unsafeInline", () => {
   assert.equal(r.unsafeEval, false);
 });
 
-// A real script-affecting unsafe-inline still flags (regression guard).
+// A real script-affecting unsafe-inline flags: narrowing to the script directive must
+// not cost the true positive.
 test("script-src 'unsafe-inline' flags unsafeInline", () => {
   assert.equal(csp("script-src 'self' 'unsafe-inline'").unsafeInline, true);
 });

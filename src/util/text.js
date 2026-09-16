@@ -98,7 +98,7 @@ export function humanSize(bytes) {
  *
  * NOT applied to our own authored prose: the registry's wording is ours, carries none
  * of this, and stripping it would hide an authoring mistake rather than a submission.
- * Nor does it lay anything out - a caller wanting one line asks for one (srcText).
+ * Nor does it lay anything out - a caller wanting one line asks for one (displayLine).
  * @param {?string} text
  * @returns {string}
  */

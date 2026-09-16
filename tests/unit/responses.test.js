@@ -281,9 +281,9 @@ test("renderManualItems renders a manual-review item from its own wording", () =
   assert.equal(item.hint, "https://cdn.example/lib@1.0.0/lib.css");
 });
 
-// The same ref without the flag is the ordinary escalation, unchanged - which is what
-// makes the assertions above about the flag rather than about this entry.
-test("renderManualItems renders the same ref without the flag as before", () => {
+// remote-resources is the ordinary escalation, which is what makes the assertions above
+// about vendored-remote-resources' own wording rather than about the shared template.
+test("renderManualItems renders the plain remote-resources escalation", () => {
   const [item] = renderManualItems(
     [{ ruleId: "remote-resources", item: "x" }],
     registry
@@ -309,8 +309,8 @@ test("renderManualItems refuses a to-do item whose check authors no wording", ()
   );
 });
 
-// One text per check, so the wording follows the ruleId alone - the two questions that
-// used to share an entry are two checks now. The raise belongs to the registry, not to
+// One text per check, so the wording follows the ruleId alone - two questions are two
+// checks, never one entry serving both. The raise belongs to the registry, not to
 // responses.js, which resolves templates and does not police who authored what.
 test("registry.instructionsFor picks the wording and refuses an unauthored one", () => {
   assert.match(
@@ -330,9 +330,9 @@ test("registry.instructionsFor picks the wording and refuses an unauthored one",
 // A check whose report IS what the reviewer found ends its response on a list, and the
 // `default-note` stands in that list until they write one. What a reviewer is handed must
 // not depend on where the entry was declared: a case a check ESCALATED and a by-hand
-// MANUAL CHECK are the same item to whoever answers it, and a deterministic run used to
-// complete the response for the first and leave the second ending on "The following need
-// to be addressed:" with nothing beneath it.
+// MANUAL CHECK are the same item to whoever answers it, so completing the response for
+// the first and not the second would leave a reviewer on "The following need to be
+// addressed:" with nothing beneath it.
 test("a deterministic run completes both kinds of answered item with its default note", () => {
   const reg = loadRegistry();
   // An escalation that authors one (the shipped Experiment check does), and a manual check

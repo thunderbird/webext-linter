@@ -1,8 +1,8 @@
 // Optional chaining (`?.()`) must not evade any scanner. `fetch(x)` and `fetch?.(x)`
 // parse as different node types (CallExpression vs OptionalCallExpression), and a
-// callee `x?.foo` as OptionalMemberExpression; the security scanners historically
-// matched only the plain forms, so one `?.` hid a call from every one of them (a
-// clean-looking, one-character malware disguise). These tests pin the invariant:
+// callee `x?.foo` as OptionalMemberExpression. A scanner that matched only the plain
+// forms would let one `?.` hide a call from it - a clean-looking, one-character malware
+// disguise. These tests pin the invariant:
 // for each scanner, the optional form is detected exactly like its plain form.
 
 import { test } from "node:test";

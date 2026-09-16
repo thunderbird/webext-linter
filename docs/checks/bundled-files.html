@@ -28,11 +28,10 @@
       </p>
       <p>
         Coverage is therefore the schema's. A key it types loosely, or does not
-        declare, is not followed &mdash; and noticing that one key had lost its
-        typing would need a list of the keys to expect, which is exactly the
-        hand-maintained artefact this replaced. A list like that had already
-        forgotten <code>icons</code>, so an add-on whose manifest pointed at an icon
-        it did not package was reported by nothing.
+        declare, is not followed &mdash; and noticing that would need a
+        hand-maintained list of the keys to expect, which is the thing the schema
+        walk exists to avoid: such a list silently loses a key (<code>icons</code>
+        is easy to forget) and nothing then reports the file it pointed at.
       </p>
       <p>
         Only references that look like packaged files are judged — relative or
@@ -43,10 +42,12 @@
         <code>icons.48</code> for one image is the norm &mdash; gives each slot its
         own line rather than repeating the first. A localized
         <code>__MSG_…__</code> path is skipped, since which file it names depends on
-        the locale. Page-
-        relative loader references are resolved against the calling script's host
-        page directory, the rest against the package root. Each candidate that
-        is absent from the package produces a finding.
+        the locale. Page-relative loader references are resolved against the
+        calling script's host
+        page directory, the rest against the package root. Loader references are
+        read only in scripts reachable from an entry point — an orphan script never
+        runs, so its references are dead-code noise, an unused-files matter. Each
+        remaining candidate that is absent from the package produces a finding.
       </p>
 
       <h2>Decision flow</h2>

@@ -14,8 +14,8 @@
 // has is a verdict we can no longer produce, so it throws rather than quietly
 // narrowing what we reject on.
 //
-// Minification is a SEPARATE, geometric signal (src/lib/bundled.js classify) and
-// is deliberately not decided here: a minified-but-clean library is allowed with source,
+// Minification is a SEPARATE signal (statement density - src/lib/minified.js, applied
+// per file by src/lib/bundled.js classify) and is deliberately not decided here: a minified-but-clean library is allowed with source,
 // only obfuscation is forbidden outright.
 //
 // Belongs here: the library import, the pinned family list, the flAST parse the detectors

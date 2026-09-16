@@ -25,10 +25,10 @@ const PLACEHOLDER = "{{item}}";
 /**
  * Tidy a filled registry template for display: collapse runs of spaces/tabs to a
  * single space and trim, but PRESERVE newlines. Found Issues responses are printed
- * VERBATIM (src/report/format.js renderFinding), so a line break authored in the
+ * VERBATIM (src/report/format.js renderGroup), so a line break authored in the
  * response - e.g. the deliberate one before "Read more:" - shows in the report.
  * Keep each registry response on one physical line except such breaks.
- * Manual-review instructions are re-collapsed by manualLines, so their wraps
+ * Manual-review instructions are re-collapsed by manualBody, so their wraps
  * don't survive there regardless.
  * @param {string} s
  * @returns {string}
@@ -52,7 +52,6 @@ function fill(template, item, data) {
   if (template == null) {
     return null;
   }
-  // A {{item}} template with no item can't be filled - signal the caller to fall back.
   if (template.includes(PLACEHOLDER) && item == null) {
     return null;
   }
@@ -108,9 +107,9 @@ export function renderFindings(findings, registry) {
  *
  * Applied to the two kinds together - a check's escalation and a by-hand manual check are
  * one item with two origins - because the rule is about what a reviewer is handed, not
- * about where the entry was declared. Written once here rather than in each renderer: the
- * escalation path had it and the manual-check path did not, so a deterministic run printed
- * a list introduction with nothing beneath it for one of them.
+ * about where the entry was declared. Written once here rather than in each renderer: one
+ * renderer appending it and another not is a reviewer reading a list introduction with
+ * nothing beneath it.
  *
  * Null in, null out: a check that authors no response has nothing to append to, and one
  * that authors no default note keeps its response as written.
@@ -134,7 +133,7 @@ export function withDefaultNotes(items, registry) {
  * carried through, and `listItem` is set exactly as for findings - so the report
  * can list "file:line - item" under an item-free instructions message.
  * @param {{ruleId: string, item: ?string, file?: ?string, loc?: object|null,
- *   section?: ?string,
+ *   section?: ?string, hint?: ?string,
  *   data?: Record<string, string|number>|null}[]} refs
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {import("./finding.js").ManualItem[]}
@@ -143,7 +142,7 @@ export function renderManualItems(refs, registry) {
   return refs.map((ref) => {
     const entry = registry.checkEntry(ref.ruleId);
     // One text per check: the registry's call, and instructionsFor raises if the entry
-    // authored none (loadChecks already refuses that pairing).
+    // authored none (assertEntry already refuses that pairing).
     const template = registry.instructionsFor(ref.ruleId);
     return {
       title: entry?.title ?? ref.ruleId,
@@ -161,7 +160,7 @@ export function renderManualItems(refs, registry) {
       // The band a reported case lands in, printed above that response. Null for a
       // check whose cases produce no finding however they are settled.
       verdict: registry.suggestedVerdict(ref.ruleId),
-      // The slot values behind {{name}} in the texts above. Kept so a CONFIRMED case
+      // The slot values behind {{name}} in the texts above. Kept so a REPORTED case
       // can be re-resolved as a finding from the same inputs (src/report/verdicts.js)
       // rather than from the already-rendered prose.
       data: ref.data ?? null,

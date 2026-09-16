@@ -20,21 +20,8 @@
       <p class="lead">
         This check flags the developer's own JavaScript when it ships obfuscated —
         code deliberately written to hide its behavior — and so cannot be reviewed
-        as it stands. Obfuscation is recognized structurally: the file is matched
-        against the AST shape of a known obfuscator family (obfuscator.io, array- and
-        function-replacement transforms, caesar-plus) via the
-        <code>obfuscation-detector</code> library.
-      </p>
-      <p>
-        The families a match is drawn from are <strong>pinned</strong>. The library
-        ships more detectors than the check consults and gains new ones in minor
-        releases, and one it has always shipped — the revealing-module pattern
-        (<code>const X = (() =&gt; {…})(); X.init();</code>) — fits ordinary readable
-        code. A family that is not pinned decides nothing, so it can neither reject an
-        add-on nor cost a reviewer a look, and every family that is pinned is one a
-        match needs no second opinion about. The price is paid deliberately: a pinned
-        family the library no longer has is a verdict that can no longer be produced,
-        so the review stops rather than quietly rejecting less than it claims to.
+        as it stands. Obfuscation is recognized structurally, by matching the file's
+        AST against the <code>obfuscation-detector</code> library.
       </p>
       <p>
         A file that looks like a recognised third-party library is excluded here,
@@ -48,14 +35,14 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A JavaScript file<br/>in the add-on"] --> Z{"Declared in a VENDOR file,<br/>or too small to be a bundle?"}
+  A["A JavaScript file, or an inline<br/>&lt;script&gt; in a page"] --> Z{"Declared in a VENDOR file,<br/>or too small to be a bundle?"}
   Z -- yes --> S([skip])
   Z -- no --> L{"Recognized third-party library?"}
   L -- yes --> S2([skip — missing-library's concern])
-  L -- no --> B{"Pinned obfuscator-family match?"}
-  B -- "no pinned family<br/>(an unpinned one decides nothing)" --> OK([no finding — a merely-minified<br/>file is minified-code's concern])
-  B -- "a pinned family matched" --> ERR([ERROR: obfuscated code])
-  B -- "a pinned family is gone<br/>from the library" --> STOP(["the review stops — a verdict<br/>it can no longer produce"])
+  L -- no --> B{"Obfuscated?"}
+  B -- no --> OK([no finding — a merely-minified<br/>file is minified-code's concern])
+  B -- yes --> ERR([ERROR: obfuscated code])
+  B -- "the detector is unavailable" --> STOP(["the review stops rather than<br/>rejecting less than it claims to"])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;

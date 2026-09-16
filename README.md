@@ -64,8 +64,8 @@ downloaded once and reused; the CDN lookup cache fills incrementally as a best-e
 side-channel.
 
 A channel branch is a moving target, so a cached schema is a snapshot. When an add-on's
-`strict_max_version` reaches past every cached train and the snapshot is more than a day
-old, the schemas are re-downloaded before the review - otherwise an API added since the
+`strict_max_version` reaches past every cached train - or it declares none at all - and
+the snapshot is more than a day old, the schemas are re-downloaded before the review - otherwise an API added since the
 snapshot would be reported as unknown rather than as needing a newer `strict_min_version`.
 
 | Option | Description |
@@ -91,7 +91,7 @@ is monitored and upstream changes are ported manually.
 | Option | Description |
 | --- | --- |
 | `--report-format <text\|json>` | Report output format (default `text`). |
-| `--report-out <file>` | Write the report to a file in addition to stdout. Refused with any `--llm-*` flag: no run of that round trip saves its output. |
+| `--report-out <file>` | Write a plain copy of the run to a file in addition to stdout - the activity feed and the report (a `--report-format json` run writes the report alone). Refused with any `--llm-*` flag: no run of that round trip saves its output. |
 
 **LLM review:** what an LLM agent runs, in the order it runs it — `--llm-sca-review`
 prepares a source code review and is over before one starts, then `--llm-review` asks
@@ -102,7 +102,7 @@ prepares a source code review and is over before one starts, then `--llm-review`
 | --- | --- |
 | `--llm-sca-review <folder>` | Print the prompt for preparing a source code review of a submission folder — one built `.xpi` and one archive of the source it was built from — and exit without reviewing anything. The prompt says how to reach the source, and hands back this command with `--llm-review` in place of this flag for the reader to run with the `--sca-*` arguments they worked out. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-review` | Print a verification prompt and write the review as a JSON item array to a temp file, instead of the report. The prompt explains how to settle the items and pass them back. Refused with `--report-format json`. |
-| `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt no longer asks for one and names no file for it; everything else is unchanged. |
+| `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
 | `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. The prompt does not put them to a reviewer and the item file does not carry them — they stay in the report, for the reviewer to work through later. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-verdict <file>` | Apply settled verdicts and print the settled report, from a JSON file written as the prompt describes. Normally run by the agent that settled the review rather than by a person. Verdicts are keyed by index and settle only what they name, so a file written under `--llm-skip-manual` leaves the manual items listed. |
 
@@ -110,9 +110,9 @@ prepares a source code review and is over before one starts, then `--llm-review`
 
 | Option | Description |
 | --- | --- |
-| `--sca-root <folder>` | The **extracted** source root (holds `package.json`/lock) - a folder, not a packed archive: this tool unpacks the submitted `.xpi` and nothing else, so extract the source yourself. Switches to SCA mode. The readable source is reviewed for code defects and its declared dependencies are audited for popularity + vulnerabilities; the built XPI (the positional path) is the shipped artifact - it supplies the manifest, experiments, file-completeness checks (bundled/web-accessible/unused). See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
-| `--sca-source <path>` | The add-on code root, **inside** `--sca-root`: relative to it (e.g. `src` or `addon`) or absolute within it — the spelling the report prints, so it can be handed straight back. Optional; defaults to the whole `--sca-root` reviewed as the source - a flat layout with `manifest.json` at the root. Needs `--sca-root`. |
-| `--sca-exp-source <path>` | The Experiment implementation folder, **inside** `--sca-root` - relative to it or absolute within it, anywhere under it (e.g. `addon/experiment-api`, or a sibling of the source like `experiment`). Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--sca-root`; required when `--allow-experiments` is used in SCA mode. |
+| `--sca-root <folder>` | The **extracted** source root (holds `package.json`/lock) - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
+| `--sca-source <path>` | The add-on code root, **inside** `--sca-root`: relative to it (e.g. `src`) or absolute within it. Optional; defaults to the whole `--sca-root` reviewed as the source. Needs `--sca-root`. |
+| `--sca-exp-source <path>` | The Experiment implementation folder, **inside** `--sca-root`, anywhere under it. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--sca-root`; required when `--allow-experiments` is used in SCA mode. |
 
 **Other:**
 
@@ -171,13 +171,17 @@ appears in.
   never shipped in a source submission), must not point the package registry elsewhere
   (an `.npmrc` `registry=` is rejected), and any `package.json` install hook
   (`postinstall`, …) is flagged. The build corpus is collected once in setup (over
-  the files reached from `package.json`), and two checks gate on it: it must **not
-  fetch code or a resource from an undeclared source** (a raw URL, `curl|sh`, an
-  unpinned `git clone`, a CDN, a postinstall hook), and must be **built from the source**
-  (not packaged from committed artifacts).
+  the files reached from `package.json`), and `undeclared-build-source` reads it.
+  Nothing in those files says what the build **does**, so every source submission is
+  escalated to Extended Manual Review: the reviewer reproduces the build and confirms
+  it produces the shipped XPI from the declared dependencies alone - no raw URL,
+  `curl|sh`, unpinned `git clone`, CDN or postinstall hook. Any step the linter could
+  not follow statically is named in that escalation.
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest, the experiments and the file-completeness checks (bundled /
-  web-accessible / unused / locales). The
+  web-accessible / unused / locales). It is analysed in full in either mode - the
+  same vendor, library and parse passes - so those checks see the shipped add-on
+  the same way whether or not a source archive came with it.
 - `--sca-exp-source` names an Experiment implementation folder - anywhere within
   `--sca-root`, relative to it or absolute inside it (e.g.
   `addon/experiment-api`, or a sibling of the source like `experiment`) - so its
@@ -202,12 +206,12 @@ in order. A section it never asks for is inert.
 - **`deterministic-phase`** - every check. Each case is decided in code, offline apart
   from the one-time vendor source fetch, and becomes either a finding or an escalation
   of a case the code cannot settle. A few checks are gated by review mode
-  (`diff: true`/`false`, `sca: true`/`false`).
+  (`sca: true` - a check only a source code submission can answer).
 - **`manual-checks`** - checks the tool can't make itself, surfaced as a todo list. Not
   a phase: the orchestrator never asks for this section.
 
-The full flow - setup, the stores it computes, the orchestrator, and how one check of
-each phase runs - is described in
+The full flow - setup, the stores it computes, the orchestrator, and how a case the
+code cannot settle is escalated - is described in
 [docs/check-flow.html](docs/check-flow.html) ("The review pipeline").
 
 The tables below are an illustrative selection, not the full catalogue. For the
@@ -229,9 +233,11 @@ not in the package), `native-messaging` (likewise, what the listing discloses ab
 native app), `undeclared-build-source` (reproducing the build is the reviewer's own
 attestation that the source produces the shipped XPI), `trademark-thunderbird-name` (an
 add-on name written directly in the manifest carries no locale tag, so the language has
-to be settled before the trademark form can be judged at all), and `vendored-remote-resources`
+to be settled before the trademark form can be judged at all), `vendored-remote-resources`
 (a remote `@import` inside a file matching a published release is that release's line,
-not the developer's, so accepting it is a judgement a person owns).
+not the developer's, so accepting it is a judgement a person owns), and
+`experiment-manual-review` (an Experiment runs with Thunderbird's own internals in reach,
+so no scan of its surface settles what it does).
 
 Which section a check's cases land in is the check's own property, declared in the
 registry beside its severity - never decided per case. A check that would need both
@@ -342,7 +348,7 @@ Extending the list moves that boundary without closing it.
 Such a check declares a **`sweep-instruction:`** in the yaml, describing the
 *class* of code it cannot see and the test to judge it by - never a list of
 candidate forms, which would only rebuild the same blind spot in prose. Every
-check that declares one is listed in the report's **Pre-Sweep** section, whether
+check that declares one is listed in the report's **Standard Code Review** section, whether
 or not it found anything: a check that found nothing is exactly the one whose
 blind spot is worth reading.
 
@@ -383,8 +389,7 @@ travel with it.
 Those words are the one thing in this file a person writes. They are printed on
 that case's location line - in parentheses after the location, or as the line
 itself when the case has none, where the reviewer's own line breaks are kept and
-each line becomes an item of its own. The response paragraph above stays the
-registry's, word for word.
+each line becomes an item of its own.
 
 The crossings are refused, each naming the item so the question can be asked
 again rather than an answer being made to fit: a verb on a question, a

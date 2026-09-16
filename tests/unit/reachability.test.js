@@ -321,8 +321,7 @@ test("reachability finds files registered via a schema-derived loader", () => {
   assert.ok(buildReachability(ctx).reachable.has("inject.js"));
 });
 
-// A schema-derived loader (messageDisplayScripts.register, from the fixture
-// schema) and a bridge one (tabs.create) both add reachability edges.
+// A bridge loader (tabs.create) adds an edge the same way.
 test("reachability follows schema-derived and bridge loader APIs", () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {

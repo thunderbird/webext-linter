@@ -1,6 +1,6 @@
 // Unit tests for vendor verification: source classification (pure), the network
 // batch verifyVendor (fetch + EOL-tolerant compare + popularity + package.json
-// file matching, with the network injected), and each of the four vendor checks
+// file matching, with the network injected), and each of the vendor checks
 // reading the precomputed addon.vendor store. No real network.
 
 import { test } from "node:test";
@@ -239,8 +239,6 @@ const pinnedEntry = (path, sourceUrl) => ({
   pinned: true,
 });
 
-// ---- verifyScaDependencies (SCA mode dependency audit) ----
-
 // ---- missing-vendor-file ----
 // A declaration naming a file the submission does not ship. The check only reads
 // addon.vendor.missing (resolveVendor decides what is missing), so this pins the
@@ -272,6 +270,8 @@ test("missing-vendor-file: says nothing when every declared file is shipped", ()
   const ctx = { addon: { files: new Map(), vendor: { missing: [] } } };
   assert.deepEqual(missingVendorFile.run(ctx).findings, []);
 });
+
+// ---- verifyScaDependencies (SCA mode dependency audit) ----
 
 test("verifyScaDependencies: a non-popular declared dep is recorded as unreviewable", async () => {
   const addon = addonWith(
@@ -686,9 +686,9 @@ test("verifyVendor: a hash match for a niche package is not-popular", async () =
 // unpkg's real "?meta" is a FLAT files array whose entries carry the MIME type in
 // `type` (not the literal "file") plus a per-file sha256 `integrity`. A packaged
 // file is matched by hashing it locally and comparing to that integrity - no
-// bytes are fetched (`throwOnFetch` proves it). (Regression: keying off
-// type === "file" extracted zero files, so vendored copies were never
-// whitelisted; and fetching every file made a big package hang.)
+// bytes are fetched (`throwOnFetch` proves it). Matching on a literal type === "file"
+// would extract nothing from this listing and leave every vendored copy unrecognized;
+// downloading each file instead of hashing locally would hang on a big package.
 test("verifyVendor: a flat ?meta file is matched by sha256 integrity, no download", async () => {
   const body = "WA\n";
   const sri = `sha256-${createHash("sha256").update(body).digest("base64")}`;
@@ -962,8 +962,8 @@ test("blocklist: an unadvised identified library is recorded but still OSV-audit
   assert.equal(addon.vendor.blocked[0].status, "unadvised");
 });
 
-// Regression: a banned library that is BOTH a declared dep (already on vendor.blocked
-// from verifyVendor) AND hash-identified must NOT be recorded twice -
+// A banned library that is BOTH a declared dep (already on vendor.blocked from
+// verifyVendor) AND hash-identified must NOT be recorded twice -
 // auditIdentifiedLibraries seeds its `seen` dedup from vendor.blocked as well as
 // vendor.vulnerabilities.
 test("blocklist: a declared-AND-bundled banned library is recorded once, not twice", async () => {
@@ -990,7 +990,7 @@ test("blocklist: a declared-AND-bundled banned library is recorded once, not twi
   assert.equal(addon.vendor.blocked.length, 1); // not double-recorded
 });
 
-// Regression: a banned SCA devDependency is never shipped, so it must NOT be recorded
+// A banned SCA devDependency is never shipped, so it must NOT be recorded
 // as a banned-library, and it must STILL be OSV-audited (into devVulnerabilities) -
 // verifyScaDependencies passes no `blocks` for the dev-dep audit.
 test("blocklist: a banned SCA devDependency is not blocked and is still OSV-audited", async () => {
@@ -1133,7 +1133,7 @@ test("auditGithub: a github source whose npm twin matches by hash is OSV-audited
   assert.deepEqual(addon.vendor.unaudited, []);
 });
 
-// ---- the four checks (pure readers of addon.vendor) ----
+// ---- the vendor checks (pure readers of addon.vendor) ----
 
 test("vendor-vulnerable: a recorded vulnerability becomes a finding at the package.json line", () => {
   const pkg = '{\n  "dependencies": {\n    "lodash": "4.17.20"\n  }\n}';
@@ -1212,7 +1212,7 @@ test("vendor-vulnerable: no recorded vulnerabilities -> no findings", () => {
   assert.deepEqual(vendorVulnerable.run(ctx).findings, []);
 });
 
-// vendor-vuln-unknown is now a pure reader of vendor.unaudited (verify.js does
+// vendor-vuln-unknown is a pure reader of vendor.unaudited (verify.js does
 // the github->npm resolution and decides what lands there). It emits one info per
 // entry, anchored at its VENDOR source line.
 test("vendor-vuln-unknown: one info per unaudited entry, at its VENDOR source line", () => {
@@ -1317,7 +1317,7 @@ test("vendor-unparseable: an unparsable VENDOR file is an error finding", () => 
 // A bundled file is exempt from review because we fetched its declared source and
 // the bytes matched. Nothing else earns it - so every way that can fail says the same
 // thing, and all of them land in the untrusted family rather than in a manual step
-// that asked a reviewer to vouch for provenance they could not check.
+// asking a reviewer to vouch for provenance they cannot check.
 //
 // markUntrusted then routes by readability, which is the whole point: a readable file
 // can be reviewed as the developer's own code, an unreadable one cannot be reviewed at
@@ -1431,7 +1431,7 @@ test("a NetworkGoneError propagates out of every vendor entry point", async () =
   );
 });
 
-// The other half, and the one all 79 goldens rest on: an ORDINARY failure is still
+// The other half, and the one every golden rests on: an ORDINARY failure is still
 // swallowed. The offline harness throws plain Errors, so a fixture run must stay a
 // clean review with no matches - never an abort.
 test("an ordinary fetch failure is still swallowed, not fatal", async () => {

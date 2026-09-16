@@ -1,4 +1,4 @@
 {
-  "_comment": "messagesMove is optional (runtime-granted), so no declared-but-unused finding; messagesRead is used.",
+  "_comment": "messagesMove is optional (runtime-granted) and unused, so it is no deterministic finding - the golden raises it for a reader under Possibly unused permissions instead. messagesRead and accountsRead are grounded by messages.list.",
   "expect": {}
 }

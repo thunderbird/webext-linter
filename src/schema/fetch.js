@@ -71,9 +71,8 @@ export function hasAllCachedSchemas(cacheDir) {
 
 /**
  * (Re)download the whole canonical branch set into the cache, to populate an
- * empty/partial cache or re-sync a corrupt one, so the six branches are always
- * fetched together (same train). `refresh:true` re-downloads even branches that
- * happen to already exist, keeping the whole set on one train.
+ * empty/partial cache or re-sync a corrupt one. Every branch is re-downloaded, even one
+ * that already exists, so the six always come from one train.
  * @param {{cacheDir: string}} opts
  * @returns {Promise<void>}
  */

@@ -19,7 +19,7 @@
       <h2>What it detects</h2>
       <p class="lead">
         A remote load — a script, style, frame or media reference — sitting inside a
-        bundled file whose content matches, byte for byte, a published file of a known
+        bundled file whose content matches a published file of a known
         upstream release. The line is that release's own, so it is not something the
         developer wrote and not theirs to defend.
       </p>
@@ -39,8 +39,8 @@
         Both checks read one shared scan, so the add-on is walked once. Two limits are
         worth knowing: only the shipped XPI carries verified vendor results, so a
         source-code archive review never reaches this lane, and a vendored
-        <code>.js</code> is dropped from the scan entirely — this applies to HTML and CSS
-        references.
+        <code>.js</code> is dropped from the scan entirely, so this lane covers only
+        HTML and CSS references.
       </p>
 
       <h2>Decision flow</h2>

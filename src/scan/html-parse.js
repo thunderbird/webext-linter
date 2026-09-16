@@ -236,16 +236,17 @@ function eachXmlElement(html, callback) {
 function toXmlElement(node, starts) {
   // Attribute names are NOT lowercased: XML is case-sensitive, so `SRC` is a different
   // attribute from `src` and the browser reads them that way. Folding the case here
-  // collapsed the two onto one key and let the last one win, so a decoy `SRC="local.js"`
-  // hid a real remote `src`, and a `Src=` on an inline script made us skip a body the
-  // browser runs. The HTML path lowercases because HTML does.
+  // would collapse the two onto one key and let the last one win, so a decoy
+  // `SRC="local.js"` would hide a real remote `src`, and a `Src=` on an inline script
+  // would hide a body the browser runs. The HTML path lowercases because HTML does.
   const attrs = new Map(Object.entries(node.attribs || {}));
   const line = lineAt(starts, node.startIndex ?? 0);
   // The whole body, not its first fragment. In XML a <script> is an ordinary element,
   // so its content is a LIST of nodes - text, CDATA sections, comments - and the usual
   // `<script>` newline `<![CDATA[ ... ]]>` shape puts whitespace first. Reading only the
-  // first text node returned that whitespace, so every body written that way looked
-  // empty. Joining them gives what parse5's single rawtext node gives on the HTML side.
+  // first text node would yield that whitespace, so every body written that way would
+  // read as empty. Joining them gives what parse5's single rawtext node gives on the
+  // HTML side.
   const pieces = [];
   let startIndex = null;
   for (const child of node.children || []) {

@@ -58,7 +58,6 @@
         { id: "missing-library", group: "Deterministic phase", title: "Missing third-party library reference", severity: "info" },
         { id: "find-lib-on-cdn", group: "Deterministic phase", title: "Library identified on a CDN", severity: "info" },
         { id: "minified-code", group: "Deterministic phase", title: "Minified code cannot be reviewed", severity: "error" },
-        { id: "obfuscated-code", group: "Deterministic phase", title: "Obfuscated code is not permitted", severity: "error" },
         { id: "untrusted-minified-library", group: "Deterministic phase", title: "Source Archive (unverified library) required", severity: "error" },
         { id: "untrusted-library", group: "Deterministic phase", title: "Library reviewed as authored code", severity: "info" },
         { id: "unpopular-source-dependency", group: "Deterministic phase", title: "Unreviewable build dependency", severity: "error" },
@@ -72,8 +71,8 @@
         { id: "unpinned-dependency", group: "Deterministic phase", title: "Unpinned dependency", severity: "error" },
         { id: "unsupported-dependency", group: "Deterministic phase", title: "Unsupported dependency source", severity: "error" },
         { id: "vendor-vulnerable", group: "Deterministic phase", title: "Vulnerable dependency", severity: "auto" },
-        { id: "vendor-vulnerable-dev", group: "Deterministic phase", title: "Vulnerable build dependency", severity: "auto" },
         { id: "banned-library", group: "Deterministic phase", title: "Banned library", severity: "auto" },
+        { id: "vendor-vulnerable-dev", group: "Deterministic phase", title: "Vulnerable build dependency", severity: "auto" },
         { id: "unsupported-build-tool", group: "Deterministic phase", title: "Unsupported build tool", severity: "error" },
         { id: "build-registry-redirect", group: "Deterministic phase", title: "Build registry override", severity: "error" },
         { id: "committed-node-modules", group: "Deterministic phase", title: "Committed node_modules folder", severity: "error" },
@@ -106,6 +105,7 @@
         { id: "csp-unsafe-eval", group: "Deterministic phase", title: "CSP allows 'unsafe-eval'", severity: "error" },
         { id: "csp-unsafe-inline", group: "Deterministic phase", title: "CSP allows 'unsafe-inline'", severity: "error" },
         { id: "missing-english-localization", group: "Deterministic phase", title: "Missing English localization", severity: "warning" },
+        { id: "obfuscated-code", group: "Deterministic phase", title: "Obfuscated code is not permitted", severity: "error" },
         { id: "strict-min-version-api", group: "Deterministic phase", title: "API newer than strict_min_version", severity: "error" },
         { id: "unused-files", group: "Deterministic phase", title: "Unused, hidden or duplicate files or folders", severity: "warning" },
         { id: "minimize-web-accessible-resources", group: "Deterministic phase", title: "Minimize web_accessible_resources", severity: "warning" },
@@ -124,7 +124,8 @@
         { id: "icon-trademark-imitation", group: "Manual review", title: "Check the icon for trademark or logo imitation", severity: "manual" },
         { id: "missing-atn-description", group: "Manual review", title: "Missing ATN description or details", severity: "manual" },
         { id: "missing-english-atn-localization", group: "Manual review", title: "Missing English ATN localization", severity: "manual" },
-        { id: "forked-add-on", group: "Manual review", title: "Forked add-on", severity: "manual" },      ];
+        { id: "forked-add-on", group: "Manual review", title: "Forked add-on", severity: "manual" },      
+      ];
 
       // Orientation pages (not checks, so no severity badge): standalone pages
       // under docs/ that explain how the tool works. Listed first so the docs open
@@ -133,8 +134,8 @@
         { id: "check-flow", group: "How it works", title: "The review pipeline", file: "check-flow.html" },
       ];
 
-      // The full left-nav list: the orientation pages, then the review flows, then
-      // every check. Each check's page lives at checks/<id>.html unless it carries an
+      // The full left-nav list: the orientation pages, then every check. Each
+      // check's page lives at checks/<id>.html unless it carries an
       // explicit file. NAV[0] is also the page select() falls back to when the hash
       // names nothing - so the docs open on the big-picture flow.
       const NAV = [

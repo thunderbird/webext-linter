@@ -22,8 +22,8 @@
 // Belongs here: the version_added vs strict_min comparison. Does NOT
 // belong here: resolving usage against the schema over the WebExtension tree (->
 // src/lib/api-resolution.js), extracting browser.* usage (src/parse/api-usage.js via
-// ctx.apiUsages), reading schema annotations (SchemaIndex), the verdict mapping
-// (lib/verdict-resolve.js), or the wording / severity (assets/registry.yaml).
+// ctx.apiUsages), reading schema annotations (SchemaIndex), or the wording /
+// severity (assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
 import { SchemaIndex } from "../../schema/index.js";
@@ -34,7 +34,7 @@ export default {
   /**
    * @param {import("../registry.js").RunContext} ctx
    * @returns {{findings: object[],
-   *   escalations: import("../escalation.js").Escalation[]}}
+   *   escalations?: import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
     const minStr = ctx.manifest ? strictMinVersion(ctx.manifest) : undefined;

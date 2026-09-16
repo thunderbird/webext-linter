@@ -222,14 +222,14 @@ test("JS scan flags runtime script injection with a literal remote src", () => {
 
 // A remote <script> inside an HTML string passed to document.write/innerHTML is
 // flagged remote-script-html, including when an attribute value contains '>'
-// (an AST/HTML parse case the old regex missed); a local src is not flagged.
+// (an AST/HTML parse case a regex cannot see); a local src is not flagged.
 test("JS scan detects a remote script in injected HTML, even with '>' in an attr", () => {
   assert.ok(
     types(
       `document.write('<script src="https://cdn.example.com/x.js"></script>');`
     ).includes("remote-script-html")
   );
-  // The regex version missed this: '>' inside data-x truncated the match.
+  // '>' inside data-x would truncate a regex match; the HTML parse reads the tag whole.
   assert.ok(
     types(
       `el.innerHTML = '<script data-x="a>b" src="https://cdn.example.com/x.js">';`
@@ -777,8 +777,8 @@ test("remote-resources refuses the exemption for a file marked untrusted", () =>
   assert.deepEqual(out.escalations, []);
 });
 
-// An undecidable site in a verified vendored file goes to the reviewer too, not the
-// reviewer: the only thing resolving it could do is produce a finding this file is
+// An undecidable site in a verified vendored file goes to the vendored lane too, not
+// the developer's: the only thing resolving it could do is produce a finding this file is
 // exempt from, so the undecidable question is not asked about it at all.
 test("an undecidable site in a verified vendored file asks the other question too", () => {
   const ctx = withManifest(
@@ -794,8 +794,8 @@ test("an undecidable site in a verified vendored file asks the other question to
   assert.equal(vendoredRemote.run(ctx).escalations.length, 1);
 });
 
-// The scanners can report one site twice; the findings lane has always deduped, and a
-// reviewer should be asked once too.
+// The scanners can report one site twice; the findings lane dedupes, and a reviewer
+// should be asked once too.
 test("vendored-remote-resources dedupes its escalations like the findings", () => {
   const dup = `<link rel="stylesheet" href="https://cdn.example/a.css"><link rel="stylesheet" href="https://cdn.example/a.css">`;
   const ctx = fakeCtx(

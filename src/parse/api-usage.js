@@ -81,7 +81,7 @@ export function parseApiUsage(code, lineOffset = 0, parsed) {
    * shapes a base can take, so a root reached through the global object is
    * reported exactly like one reached by name.
    * @param {object} path  The chain base's path.
-   * @param {AliasTarget} target  What the base resolves to.
+   * @param {import("./api-base.js").AliasTarget} target  What the base resolves to.
    */
   const recordUsage = (path, target) => {
     const climbed = climbChain(path);
@@ -203,8 +203,8 @@ function isMemberish(path) {
 }
 
 /**
- * From a root identifier, walk up the chain of member expressions collecting
- * property names. Stops at the first computed/non-literal access (marked as a
+ * From a chain base - an identifier, or the member expression that names a root on the
+ * global object - walk up the chain of member expressions collecting property names. Stops at the first computed/non-literal access (marked as a
  * dynamic tail). Optional-chained links (`?.`) are traversed and flagged.
  * @param {BabelPath} rootPath
  * @returns {{segments:string[], dynamicTail:boolean, dynamicAt:object|null,

@@ -15,7 +15,7 @@
 //
 // Does NOT belong here: extracting manifest file refs (-> src/lib/
 // manifest-refs.js), extracting loader-API file refs (->
-// src/parse/loader-files. js), URL classification (-> src/scan/url.js), the
+// src/parse/loader-files.js), URL classification (-> src/scan/url.js), the
 // remote-source verdict (-> remote-resources.js), authored wording (->
 // assets/registry.yaml), severity (-> that registry entry, stamped by
 // src/checks/registry.js), and report formatting (-> src/report/format.js).

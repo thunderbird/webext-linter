@@ -1,5 +1,5 @@
 // A settings table whose keys happen to be mostly five letters long - the shape a
-// detector family added to the library after our list was pinned recognizes.
+// detector family outside the pinned list recognizes.
 const PANEL_DEFAULTS = {
   count: 12,
   label: "Inbox",

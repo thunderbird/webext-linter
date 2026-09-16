@@ -350,9 +350,9 @@ test("resolveXpiOnlyAdvice: a .d.ts is not a transpiled source", () => {
   );
 });
 
-// Question 3: are the shipped bytes THE SOURCE? Without it the first two answered
-// "is the XPI readable?" and called it "is the XPI the source?", so every bundler
-// submission - webpack, Vite, a build copying from submodules - was wrongly advised.
+// Question 3: are the shipped bytes THE SOURCE? The first two only answer "is the XPI
+// readable?"; without this one, every bundler submission - webpack, Vite, a build
+// copying from submodules - would be advised it needed no source archive.
 test("resolveXpiOnlyAdvice: a shipped script absent from the archive withholds the advice", () => {
   assert.equal(
     resolveXpiOnlyAdvice(
@@ -476,7 +476,8 @@ test("a schema snapshot is stale only when the add-on outreaches it AND it is ol
   assert.equal(stale(153, 153, 999), false);
   // No cap at all reads as reaching past everything, so only age holds it back.
   assert.equal(stale(Infinity, 153, 2), true);
-  // An unreadable cache asks to be refreshed.
+  // An unreadable cache (age Infinity) asks to be refreshed only when the add-on also
+  // outreaches the cached trains.
   assert.equal(stale(140, 153, Infinity), false);
   assert.equal(stale(Infinity, 153, Infinity), true);
 });

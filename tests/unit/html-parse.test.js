@@ -1,5 +1,5 @@
-// Tests for HTML parsing via parse5 — the cases that the old regex scanner got
-// wrong, especially an attribute value containing ">".
+// Tests for HTML parsing via parse5 - the cases a regex scanner cannot get right,
+// especially an attribute value containing ">".
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -147,9 +147,7 @@ test("visibleText reads an XML document and skips its script text", () => {
 
 // Wrapping a script in `<![CDATA[ ... ]]>` is the ordinary XHTML idiom - it is how a
 // document keeps `<` and `&` out of the parser's way, which is exactly what real code
-// needs. The section is its own node wrapping the text, so a lookup that only reads a
-// script's direct text child finds nothing and the body reads as empty.
-// The body is a LIST of nodes in XML - text, CDATA, comments - so reading only the
+// needs. The body is a LIST of nodes in XML - text, CDATA, comments - so reading only the
 // first fragment returns the whitespace before `<![CDATA[`, which is how the idiom is
 // almost always written, and every such body reads as empty. Empty bodies are dropped,
 // so the code vanishes with nothing said about it.

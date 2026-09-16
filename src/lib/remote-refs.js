@@ -99,12 +99,11 @@ function scan(ctx) {
   }
 
   // Skip non-authored JS (see nonAuthoredJs). A vendored .js is in that set, so this
-  // lane DROPS it - silently, with no site recorded at all. That is not the rule the
-  // HTML/CSS lanes above follow, and the asymmetry is deliberate only in that the
-  // vendored JS skip is declaration-based by an earlier call; a remote load inside a
-  // verified vendored .js is therefore never surfaced. Remote refs in HTML/CSS and the
-  // CSP hosts below still apply - those are not per-file JS scans, and nothing skips a
-  // vendored .html/.css.
+  // lane DROPS it - silently, with no site recorded at all - and a remote load inside
+  // a verified vendored .js is never surfaced. The HTML/CSS lanes above do not follow
+  // that rule: they ask verifiedVendorSource per file and record the site as
+  // upstream's instead of dropping it. Remote refs in HTML/CSS and the CSP hosts below
+  // therefore still apply, and nothing skips a vendored .html/.css.
   const skip = nonAuthoredJs(ctx);
   for (const src of ctx.jsSources ?? []) {
     if (skip.has(src.file)) {

@@ -1,7 +1,7 @@
 // Unit tests for the minified seam (src/lib/minified.js): a file is minified when one
 // line packs many STATEMENTS (machine-packed code), not merely because it has a long
-// line - a long line that is a single data literal is readable source. The thresholds
-// (long line > 500, >= 10 statements on a line) are exercised at their boundaries, and
+// line - a long line that is a single data literal is readable source. Both thresholds
+// (long line > 500, >= 10 statements on a line) are exercised on either side, and
 // the license-header case (statements on the packed line, not per total line) is pinned.
 
 import { test } from "node:test";
@@ -70,9 +70,9 @@ test("isMinifiedJs judges a source as JS whatever the container is named", () =>
   );
 });
 
-// isMinified keeps deciding by extension for FILES - that is its job, and the JS branch
-// is now the shared implementation rather than a second copy of the test.
-test("isMinified still routes a .js file through the JS rule", () => {
+// isMinified decides by extension for FILES - that is its job - and its JS branch is
+// isMinifiedJs itself, so the two can never disagree about a .js file.
+test("isMinified routes a .js file through the JS rule", () => {
   const packed = `var a=0;${"a=a+1;".repeat(250)}`;
   assert.equal(
     isMinified(packed, "bundle.js"),

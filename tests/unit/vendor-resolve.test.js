@@ -1,5 +1,6 @@
-// Unit tests for resolveVendor: the deterministic parse
-// parse fallback (transport injected, so no network).
+// Unit tests for resolveVendor: the deterministic VENDOR parse, the package.json
+// dependency classification, and verifiedVendorSource / declaredFiles. Offline by
+// construction - resolveVendor reads only the submission.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -375,8 +376,8 @@ test("declaredFiles expands a folder declaration to the files under it", () => {
 });
 
 // A FILE declaration is returned as declared, packaged or not - this helper only
-// answers which files a declaration covers, and changing that for files would alter
-// behaviour unrelated to the folder bug.
+// answers which files a declaration covers; expanding a file declaration is not its
+// job.
 test("declaredFiles leaves a file declaration alone", () => {
   const addon = fakeAddon({ "lib/a.js": "a" });
   assert.deepEqual(declaredFiles(addon, { path: "lib/a.js", kind: "file" }), [

@@ -18,10 +18,11 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        This check flags the developer's own JavaScript when it ships minified —
+        This check flags the developer's own code when it ships unreadable —
         mechanically stripped of whitespace and meaningful names — and so cannot be
-        reviewed as it stands. It detects minified line geometry: at least one very
-        long line, dense on average.
+        reviewed as it stands. The signal is structural, not a long line on its own:
+        one source line that packs ten or more statement starts (a long line of data
+        is a single expression, and readable).
       </p>
       <p>
         A file that looks like a recognised third-party library is excluded here,
@@ -35,13 +36,13 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A JavaScript file<br/>in the add-on"] --> Z{"Declared in a VENDOR file,<br/>or too small to be a bundle?"}
+  A["A JavaScript or CSS file, or an<br/>inline &lt;script&gt; in a page"] --> Z{"Declared in a VENDOR file?<br/>(CSS only: too small to judge)"}
   Z -- yes --> S([skip])
   Z -- no --> L{"Recognized third-party library?"}
   L -- yes --> S2([skip — missing-library's concern])
   L -- no --> O{"Obfuscated?"}
   O -- yes --> S3([skip — obfuscated-code's concern])
-  O -- no --> B{"Minified?<br/>a very long, dense line"}
+  O -- no --> B{"Minified?<br/>one line packing many statements"}
   B -- no --> OK([no finding — readable])
   B -- yes --> ERR([ERROR: minified code])
 
@@ -65,14 +66,13 @@ flowchart TD
       </div>
 
       <p>
-        This check runs in <strong>both</strong> review modes. In an ordinary review
-        it flags minified JavaScript shipped in the built add-on; in a source code
-        archive review (<code>--sca-root</code>) it flags a
-        minified file sitting in the readable source, because that source is what gets
-        reviewed — a minified file there defeats the submission's purpose (readable
-        source). Either way the remedy is the same: provide the original,
-        human-readable code, or declare a genuine third-party library and link its
-        source. Obfuscated code is rejected separately by obfuscated-code.
+        It runs in <strong>both</strong> review modes: in an ordinary review it flags
+        packed code in the built add-on, and in a source code archive review
+        (<code>--sca-root</code>) a packed file in the readable source, which defeats
+        that submission's whole purpose. A stylesheet packed the same way, and an
+        inline &lt;script&gt; in a packaged page, are flagged alike; a .js file that
+        will not parse at all counts as packed, since nothing there can be reviewed
+        either.
       </p>
 
       <p class="source-note">
