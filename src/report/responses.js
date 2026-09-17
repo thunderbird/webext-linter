@@ -98,6 +98,10 @@ export function renderFindings(findings, registry) {
     f.message = fill(template, f.item, f.data) ?? f.message;
     f.listItem =
       f.item != null && template != null && !template.includes(PLACEHOLDER);
+    // How its entry asks for repeats to be LISTED, resolved here beside the other two
+    // display decisions rather than where the review is numbered - orderReview reads it
+    // off the item and needs no registry, so its six callers cannot order differently.
+    f.collapse = registry.collapseOf(f.ruleId);
   }
 }
 
@@ -179,6 +183,9 @@ export function renderManualItems(refs, registry) {
       hint: ref.hint ?? null,
       listItem:
         ref.item != null && template != null && !template.includes(PLACEHOLDER),
+      // As for findings: the entry's `collapse`, carried on the item so the sequence
+      // that numbers the review reads it here rather than looking the check up again.
+      collapse: registry.collapseOf(ref.ruleId),
     };
   });
 }

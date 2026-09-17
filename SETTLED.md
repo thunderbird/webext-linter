@@ -501,11 +501,11 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   rather than through a mode word.
 
   A mode VALUE on `--llm-review` is still refused, for the reason the old entry gave: that
-  flag takes no value - the item file is the linter's to name - so a mode word could only
+  flag takes no value - the review's files are the linter's to name - so a mode word could only
   arrive as a POSITIONAL, and that slot belongs to the add-on.
 
-  Two shape decisions go with it. The prompt's `outcome` is an ARRAY of steps, each
-  optionally marked with the skip that withholds it, rather than authored variants of one
+  Two shape decisions go with it. A phase's `steps` are an ARRAY, each optionally marked
+  with the skip or the condition that withholds it, rather than authored variants of one
   scalar: the variants would duplicate ~60 lines of the highest-value prose in the repo and
   drift. A step with no marker is printed by every run, the builder numbers the survivors,
   so no step may number itself, and anything one skip drops is either worded neutrally or
@@ -513,16 +513,17 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   yourself" and "their answers need no report" clauses sit in the dropped steps rather than
   in the surviving ones they used to qualify.
 
-  And a skip omits what it withholds from the ITEM FILE as well as from the prompt, rather
-  than listing items it never asks about. That is safe because the manual sections are the
-  last ones `orderReview` numbers, so the file truncates rather than developing a hole: an
-  index means the same item in a cut-down file, a full file and the report alike, and
-  `applyVerdicts` resolves it against the full ordered review either way.
+  And a skip omits what it withholds from the REVIEW FILE as well as from the prompt,
+  rather than handing over entries it never asks about. That is safe because the manual
+  sections are the last ones `orderReview` numbers, so the hand-over truncates rather than
+  developing a hole: an index means the same item in a cut-down file, a full file and the
+  report alike, and `applyVerdicts` resolves it against the full ordered review either way.
 
   Both skips may also be given to `--llm-sca-review`, which prepares a review rather than
   printing a prompt of its own: it hands them back in the command it prints. `--llm-verdict`
-  takes neither - it prints a settled report, not a prompt - so the round trip's last step
-  says to drop them along with the review flag.
+  takes neither - each pass is handed the review file and nothing else, and what the run
+  was told to leave out is in the state - so the round trip says to drop them along with
+  the review flag.
 
 - **A reviewer's note is not carried past the per-entry display cap, and that is fine.** An
   entry prints at most `MAX_ENTRIES_PER_CATEGORY` locations, so the note on a 26th case of
@@ -546,7 +547,7 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   names has added no information, so none is lost. Do not re-propose exempting notes from
   the dedup or diagnosing the drop.
 
-- **The item file is not hardened against a local attacker.** It is written to the system
+- **The review's files are not hardened against a local attacker.** They are written to the system
   temp directory under a name built from the submission's own manifest, and the run claims
   it by writing an empty string - which follows a symlink, so a path pre-created by someone
   else is truncated rather than refused. The run's timestamp is in the name to keep two
@@ -576,7 +577,7 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   line of a note gets the report's own "- ", so a line can read like a locus or like the
   "and N more, excluded from this list" marker. The words are the REVIEWER's, and the
   model that transcribes them into the verdict file already writes that whole file - it
-  could file a fabricated addition or withdraw a real finding without any formatting
+  could file a fabricated finding or withdraw a real one without any formatting
   trick. Escaping or fencing the note buys nothing against an actor that already has the
   pen. Do not re-raise it as an injection finding.
 
@@ -585,8 +586,9 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   typed - and everything else carries one of the linter's verbs. One vocabulary would cost
   more than it saves in either direction: labels everywhere make the model's own
   conclusions read as something a person said, and verbs everywhere put the model back to
-  interpreting what the reviewer meant, which is what this shape removed. The item file
-  says which applies: a question is exactly an item carrying `answers`.
+  interpreting what the reviewer meant, which is what this shape removed. The PHASE says
+  which applies: the one that puts entries to a reviewer is the one whose answers are
+  theirs, and those entries are exactly the ones carrying `answers`.
 
 - **The answer vocabulary for a question is OPEN, so anything that is not a label reports
   the case.** "Clear.", "no", "nothing found" are not labels and not verbs, so they are
@@ -608,11 +610,13 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   as holding neither. Reviewers download into the folder they review; do not re-propose
   following links.
 
-- **An addition's `check` is echoed into its refusal as written.** The two throws in the
-  addition loop (`src/report/verdicts.js`) name the check the verdict file gave, control
+- **A swept result's `check` is echoed into its refusal as written.** The two throws in
+  `mergeSweepResults` (`src/report/sweep.js`) name the check the sweep file gave, control
   characters and all, where the same value is stripped on every path that RENDERS it. It
   stays: the string comes from the agent that just ran the review, not from the submission,
-  and the run exits 2 on the spot. Do not re-propose `displayLine` there.
+  and the run exits 2 on the spot. Do not re-propose `displayLine` there. (Settled when
+  these throws were in the verdict file's addition loop; the loop moved, the reasoning did
+  not.)
 
 - **A WRONG entry in a verdict file is not a defect to chase.** The file is written by the
   agent this tool just instructed, against a document this tool wrote, and every shape the
@@ -645,13 +649,14 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   deleted - and neither is reachable by any input: the shipped code does the right thing in
   both, and only an edit makes it otherwise. Report a defect SOME INPUT REACHES, with the
   input. "If someone changed this line, no test would fail" is a note about the test suite,
-  and the standing gap there is already recorded (nothing drives `--llm-review` end to
-  end). Where a missing test IS worth raising: it guards a rule the code states about
+  not a defect. (The gap that used to be recorded here - that nothing drove the LLM review
+  end to end - is closed: `tests/unit/loop.test.js` drives every phase of it from canned
+  hand-backs, with no agent.) Where a missing test IS worth raising: it guards a rule the code states about
   itself, or it covers behaviour the same commit changed - and then it is a test to write,
   not a defect to fix.
 
-- **A mis-authored registry is not a finding.** `assertPrompts` refuses a missing intro and
-  an empty step, and nothing more is owed. No load-time contract requires a step to carry
+- **A mis-authored registry is not a finding.** `assertPhases` refuses a missing text, a
+  lost placeholder and an empty step, and nothing more is owed. No load-time contract requires a step to carry
   the `{{flags}}` or `{{scaRoot}}` slot, requires each `run:` condition to have a step, or
   proves that a condition the loader accepts is one a renderer evaluates - so yes, a typo
   or a half-finished edit in `assets/registry.yaml` can print a prompt with no command in
@@ -684,9 +689,9 @@ worth the change. Re-raising one costs a round trip, so the reasoning is here.
   do neither. Do not re-propose filling a build-instructions slot deterministically.
 
 - **The build agent's request is authored in the step that hands it over.** Not a prose key
-  of its own, and not an entry in `items.json`. The sweep's request lives in that file
-  because the sweep needs a data LIST alongside its intro, and that file holds what carries
-  an index and gets settled - a request settles nothing. This one is prose, read in place
+  of its own, and not an entry in the review file. The sweep's request is handed over as
+  that phase's rows because the sweep needs a data LIST alongside its intro, and the review
+  file holds what gets answered - a request is answered by nobody. This one is prose, read in place
   and relayed, with nothing to look up and no second place to drift from, exactly like the
   description agent's. Do not re-propose moving it.
 

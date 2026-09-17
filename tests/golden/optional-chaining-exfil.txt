@@ -38,16 +38,17 @@ Suggested response: The following code location(s) send user data to a remote se
 Continue manual review for the following checks:
 
 1) Remote data transmission needs a privacy policy: This add-on transmits data
-   to one or more hardcoded remote servers. Confirm the ATN listing carries a
-   privacy policy that discloses what data is collected and why. The privacy
-   policy must be pasted into the ATN field directly (links to remotely hosted
-   policies are not allowed).
+   to one or more remote servers the developer chose - fixed in the add-on, not
+   entered by the user. Confirm the ATN listing carries a privacy policy that
+   discloses what data is collected and why. The privacy policy must be pasted
+   into the ATN field directly (links to remotely hosted policies are not
+   allowed).
 Suggested verdict: hold
 Suggested response: Please add a privacy policy to this add-on that details which user data is being sent and to what services. The critical things to describe in the policy are how your extension collects, uses, stores, shares or discloses information about people. If your add-on makes it apparent to websites that it is installed, this must also be mentioned. The policy should be about the extension only, not a copy of the website’s privacy policy. It should also be the actual text, as opposed to a link to a privacy policy on a website. The privacy policy can be added in the add-on settings under "Manage Authors & License" on addons.thunderbird.net. For more information, please check our Review Policies [1], and Mozilla’s own privacy policy [2] as an example.
 
 [1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
 [2]: https://www.mozilla.org/en-US/privacy/
- - evil.example.com
+ - bg.js:7 - evil.example.com
 
 ── Standard Code Review ──
 

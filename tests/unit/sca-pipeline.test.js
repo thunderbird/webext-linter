@@ -491,8 +491,8 @@ test("an SCA --llm-review names a build report beside the add-on", async () => {
     assert.match(meta.buildFile, /\.build\.md$/);
     assert.equal(path.dirname(meta.buildFile), path.dirname(xpi));
     assert.equal(meta.buildFile.startsWith(`${xpi}${path.sep}`), false);
-    // One name and one moment for all three, so none can drift from this review.
-    const base = path.basename(meta.itemsFile, ".items.json");
+    // One name and one moment for all of them, so none can drift from this review.
+    const base = path.basename(meta.reviewFile, ".review.json");
     assert.equal(path.basename(meta.buildFile), `${base}.build.md`);
     assert.equal(path.basename(meta.summaryFile), `${base}.summary.md`);
     // Named, never written: this tool only says where it goes.

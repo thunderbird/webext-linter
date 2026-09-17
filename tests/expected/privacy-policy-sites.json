@@ -1,0 +1,4 @@
+{
+  "_comment": "Pins what privacy-policy raises per transmission SITE, which no other fixture covers: two sites of one host (two cases, one printed line carrying '+1 elsewhere'), a second host on its own, and a site whose host is assembled at run time (reported, and marked rather than named). The check emits no findings - it escalates - so the whole contract is in the golden.",
+  "expect": {}
+}

@@ -378,3 +378,30 @@ test("a deterministic run completes both kinds of answered item with its default
   );
   assert.ok(plain, "an item with no default note is left alone");
 });
+
+// `collapse` is the third display decision resolved from the registry when an item is
+// rendered, beside the filled message and `listItem`. It is stamped onto the item rather
+// than looked up where the review is numbered (src/report/order.js), so the six callers
+// of orderReview cannot order the same review differently - the drift that module exists
+// to prevent. This pins the whole chain: the yaml declares it, the accessor reads it, and
+// both kinds of item carry it.
+test("collapse is read from the registry and carried on the item", () => {
+  assert.equal(registry.collapseOf("privacy-policy"), "subject");
+  // Omitted is the default - one line per case - and must not read as a mode.
+  assert.equal(registry.collapseOf("unused-files"), null);
+  assert.equal(registry.collapseOf("no-such-check"), null);
+
+  const [manual] = renderManualItems(
+    [{ ruleId: "privacy-policy", item: "host.example.com", file: "bg.js" }],
+    registry
+  );
+  assert.equal(manual.collapse, "subject");
+
+  const f = {
+    ruleId: "privacy-policy",
+    item: "host.example.com",
+    message: null,
+  };
+  renderFindings([f], registry);
+  assert.equal(f.collapse, "subject");
+});

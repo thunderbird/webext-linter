@@ -39,6 +39,18 @@ function headerValue(stdout, name) {
   return at === -1 ? undefined : lines[at + 1].trim();
 }
 
+/** The review file a prompt names, and what is in it. The prompt is the only place any
+ *  path is given out, which is exactly what a test should read. */
+function reviewFile(stdout) {
+  const at = stdout.match(/(\S+\.review\.json)/);
+  return at ? at[1] : undefined;
+}
+function entriesOf(stdout) {
+  const file = reviewFile(stdout);
+  assert.ok(file, "the prompt names the review file");
+  return JSON.parse(fs.readFileSync(file, "utf8")).entries;
+}
+
 /** Run a root entry file, capturing stdout/stderr/exit code. */
 function runFile(file, args = []) {
   const r = spawnSync(process.execPath, [file, ...args], { encoding: "utf8" });
@@ -540,14 +552,23 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const on = run([addon, ...OFFLINE_FLAGS, "--llm-review"]);
   const lines = on.stdout.split("\n");
-  const intro = lines.findIndex((l) => l.startsWith("Please verify"));
-  const target = lines.findIndex((l) => l.trim() === "XPI");
-  assert.ok(intro > -1, "prompt is printed");
-  assert.ok(intro < target, "prompt comes before the Review Details section");
-  // Wrapped at 80 columns, so match only single tokens: any phrase can straddle a break
-  // the next wording change happens to move. The answers themselves are not here - they
-  // travel on each question in the item file - so the prompt names the field instead.
-  assert.match(on.stdout, /"answers"/);
+  const intro = lines.findIndex((l) =>
+    l.startsWith("This review runs in passes")
+  );
+  assert.ok(intro > -1, "the loop's preamble is printed");
+  // The prompt is the WHOLE output: no header block beside it, because every value a step
+  // uses is printed by that step, and no Summary, because the tally is about to change.
+  assert.doesNotMatch(on.stdout, /── Review Details ──/, "no header block");
+  assert.doesNotMatch(on.stdout, /── Summary ──/, "no tally");
+  // The first pass is the SPAWN phase, and it says nothing about the questions: a later
+  // pass asks those, and the agent only ever sees what the pass in front of it needs.
+  assert.doesNotMatch(on.stdout, /"answers"/, "the questions are a later pass");
+  assert.match(on.stdout, /\.review\.json/, "the file to hand back is named");
+  assert.match(
+    on.stdout,
+    /--llm-verdict/,
+    "and the command that hands it back"
+  );
   // The description is a file the reader writes and the reviewer opens: this run names
   // the path, and never reads what lands there.
   assert.match(headerValue(on.stdout, "ADDON_DESCRIPTION"), /\.summary\.md$/);
@@ -559,44 +580,24 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   assert.ok(!on.stdout.includes("── Found Issues ──"), "no prose report");
   assert.ok(!on.stdout.includes("── Setup ──"), "no feed");
 
-  // The path is named in the output, and the file behind it is the review as an array.
-  const named = headerValue(on.stdout, "REVIEW_ITEMS");
-  assert.ok(named, "the item file is named");
-  const items = JSON.parse(fs.readFileSync(named, "utf8"));
-  assert.ok(Array.isArray(items) && items.length > 0);
-  // The numbered review is the head of the array, and a position in it IS the item's
-  // number. The pre-sweep entries are the tail and carry no index at all: they settle
-  // nothing, so there is no number for a verdict to name them by.
-  const numbered = items.filter((x) => x.index !== undefined);
-  const tail = items.slice(numbered.length);
-  assert.deepEqual(
-    numbered.map((x) => x.index),
-    numbered.map((_, i) => i + 1),
-    "index is the position in the array"
-  );
-  // Exactly one, because the sweep is ONE request: the shared method, then the bare
-  // per-check items it is asking about.
-  assert.deepEqual(
-    tail.map((x) => x.kind),
-    ["pre-sweep"],
-    "one unnumbered pre-sweep entry follows the numbered items"
-  );
-  const sweep = tail[0];
-  assert.equal(sweep.index, undefined, "the sweep carries no index");
-  assert.ok(sweep.intro, "the sweep carries the shared method");
+  // The prompt names the review file, and the file behind it holds what THIS pass asks
+  // about - the sweep's rows, one per check, each unanswered.
+  const entries = entriesOf(on.stdout);
+  assert.ok(entries.length > 0);
   assert.ok(
-    sweep.items.length > 0 &&
-      sweep.items.every((s) => s.check && s.severity && s.instruction),
-    "each item names its check, the band it would file at, and what to look for"
+    entries.every((e) => e.check && e.answer === null),
+    "one unanswered row per check that declared a sweep instruction"
   );
-  for (const x of items) {
-    assert.ok(["finding", "todo", "pre-sweep"].includes(x.kind));
-    // The section is named as the report prints it, not by an internal key.
-    assert.match(
-      x.section,
-      /^(Found Issues|Extended Code Review|Extended Manual Review|Standard Code Review|Standard Manual Review)$/
-    );
-  }
+  // No index: a sweep takes no verdict and produces cases rather than being one, so it
+  // must not consume a number from a sequence it is not in.
+  assert.ok(
+    entries.every((e) => e.index === undefined),
+    "the sweep carries no index"
+  );
+  assert.ok(
+    entries.every((e) => e.instruction),
+    "each row carries the check's own instruction"
+  );
 
   const off = run([addon, ...OFFLINE_FLAGS]);
   assert.ok(!off.stdout.includes("Please verify"), "off by default");
@@ -613,14 +614,14 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   assert.match(json.stderr, /--llm-review is text only/);
 });
 
-// The item file is the linter's to name, so the flag takes no value at all - which is what
-// lets it sit anywhere on the command line, including before the add-on, where a flag with
-// an optional value would have swallowed the path and left nothing to review. The name
+// The review file is the linter's to name, so the flag takes no value at all - which is
+// what lets it sit anywhere on the command line, including before the add-on, where a flag
+// with an optional value would have swallowed the path and left nothing to review. The name
 // carries the moment as well as the add-on, so no second run can open the file a reader is
 // still working from.
-test("--llm-review names its own item file and swallows no argument", () => {
+test("--llm-review names its own review file and swallows no argument", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
-  const named = (r) => headerValue(r.stdout, "REVIEW_ITEMS");
+  const named = (r) => reviewFile(r.stdout);
 
   // After the add-on, before it, and before another option: the same review either way.
   const written = [
@@ -630,10 +631,10 @@ test("--llm-review names its own item file and swallows no argument", () => {
   ];
   for (const file of written) {
     assert.ok(file && fs.existsSync(file), `${file} was written`);
-    assert.ok(Array.isArray(JSON.parse(fs.readFileSync(file, "utf8"))));
+    assert.ok(Array.isArray(JSON.parse(fs.readFileSync(file, "utf8")).entries));
     assert.match(
       path.basename(file),
-      /^webext-linter-Clean-1\.0-.*\.items\.json$/
+      /^webext-linter-Clean-1\.0-.*\.review\.json$/
     );
   }
   assert.equal(
@@ -747,10 +748,14 @@ test("the two skips withhold the description and the manual items", () => {
     "--llm-skip-manual",
   ]);
   const lines = on.stdout.split("\n");
-  const intro = lines.findIndex((l) => l.startsWith("Please verify"));
-  const target = lines.findIndex((l) => l.trim() === "XPI");
-  assert.ok(intro > -1, "prompt is printed");
-  assert.ok(intro < target, "prompt comes before the Review Details section");
+  const intro = lines.findIndex((l) =>
+    l.startsWith("This review runs in passes")
+  );
+  assert.ok(intro > -1, "the loop's preamble is printed");
+  // The prompt is the WHOLE output: no header block beside it, because every value a step
+  // uses is printed by that step, and no Summary, because the tally is about to change.
+  assert.doesNotMatch(on.stdout, /── Review Details ──/, "no header block");
+  assert.doesNotMatch(on.stdout, /── Summary ──/, "no tally");
   assert.ok(!on.stdout.includes("── Found Issues ──"), "no prose report");
   assert.ok(!on.stdout.includes("── Setup ──"), "no feed");
 
@@ -764,35 +769,13 @@ test("the two skips withhold the description and the manual items", () => {
   // ...while the step that closes the round trip survives the renumbering.
   assert.match(on.stdout, /--llm-verdict/);
 
-  const named = headerValue(on.stdout, "REVIEW_ITEMS");
-  assert.ok(named, "the item file is named");
-  const items = JSON.parse(fs.readFileSync(named, "utf8"));
-  assert.ok(Array.isArray(items) && items.length > 0);
-  const numbered = items.filter((x) => x.index !== undefined);
-  // TRUNCATED, never renumbered: the manual sections are the last ones the review numbers,
-  // so what survives is still 1..M at positions 0..M-1 and an index means the same item
-  // here as it does in the report.
-  assert.deepEqual(
-    numbered.map((x) => x.index),
-    numbered.map((_, i) => i + 1),
-    "index is still the position in the array"
+  // Both skips are off the spawn phase, so its only step is the sweep - and the manual
+  // items are not dropped from the REVIEW, only from what a phase puts to anyone. They
+  // are still in the report the last pass prints.
+  assert.ok(
+    entriesOf(on.stdout).every((e) => e.check),
+    "the first pass asks about the sweep and nothing else"
   );
-  for (const item of items) {
-    assert.ok(
-      !["Extended Manual Review", "Standard Manual Review"].includes(
-        item.section
-      ),
-      `item file carries a manual entry: ${item.section}`
-    );
-  }
-  // The pre-sweep block is still the tail, and still unnumbered.
-  const tail = items.slice(numbered.length);
-  assert.equal(tail.length, 1);
-  assert.equal(tail[0].index, undefined);
-
-  // The Summary still prints, and still counts the manual items the reviewer owes: they
-  // were withheld from the PROMPT, not dropped from the review.
-  assert.match(on.stdout, /standard manual review item\(s\)/);
   assert.equal(on.code, 0);
 });
 
@@ -801,11 +784,7 @@ test("the two skips withhold the description and the manual items", () => {
 // file carries - because the two must agree about what the reader is being asked to settle.
 test("each skip leaves out its own part and nothing else", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
-  const itemsOf = (r) => {
-    const named = headerValue(r.stdout, "REVIEW_ITEMS");
-    assert.ok(named, "the item file is named");
-    return JSON.parse(fs.readFileSync(named, "utf8"));
-  };
+  const itemsOf = (r) => entriesOf(r.stdout);
   const manualSections = ["Extended Manual Review", "Standard Manual Review"];
 
   // The description goes, the questions stay: the file still offers answers.
@@ -817,10 +796,12 @@ test("each skip leaves out its own part and nothing else", () => {
   ]);
   assert.equal(noSummary.code, 0, noSummary.stderr);
   assert.ok(!noSummary.stdout.includes("ADDON_DESCRIPTION"));
-  assert.ok(noSummary.stdout.includes('"answers"'), "questions still asked");
+  // The questions are a later pass, so the first prompt names none either way. What the
+  // skip decides is whether the FILE still carries them.
+
   assert.ok(
-    itemsOf(noSummary).some((x) => manualSections.includes(x.section)),
-    "the manual items are still in the file"
+    !noSummary.stdout.includes("ADDON_DESCRIPTION"),
+    "no description agent is spawned"
   );
 
   // The questions go, the description stays: the file carries no manual entry.
@@ -855,12 +836,18 @@ test("a review with nothing to settle names no description file", () => {
   ]);
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /── LLM Prompt ──/);
-  assert.doesNotMatch(r.stdout, /^1\. /m, "no steps were printed");
-  assert.equal(headerValue(r.stdout, "ADDON_DESCRIPTION"), undefined);
-  // The item file is still named and still written - it is simply empty.
-  const named = headerValue(r.stdout, "REVIEW_ITEMS");
-  assert.ok(named);
-  assert.deepEqual(JSON.parse(fs.readFileSync(named, "utf8")), []);
+  // A review with nothing to SETTLE still has something to DO: the description is for the
+  // reviewer, who still gets a report. So the spawn phase prints, and the phases that
+  // settle entries do not - which is the rule, not an exception to it.
+  assert.match(r.stdout, /^1\. Spawn an independent sub-agent/m);
+  assert.doesNotMatch(r.stdout, /Verify every entry/, "nothing to verify");
+  assert.doesNotMatch(r.stdout, /Settle each entry/, "nothing to settle");
+  // The step that spawns the description agent names the file it writes - printed by the
+  // step that uses it, which is the only place any path is given out.
+  assert.match(r.stdout, /ADDON_DESCRIPTION\n\s+\S+\.summary\.md/);
+  // The review file is handed over with nothing to answer: this phase has a step to do
+  // and no entries, which is work either way.
+  assert.deepEqual(entriesOf(r.stdout), []);
 });
 
 // Each skip names part of the --llm-review prompt, so neither says anything without it:
@@ -885,6 +872,12 @@ test("a skip without --llm-review is refused", () => {
     /--llm-skip-summary and --llm-skip-manual name parts/
   );
   assert.match(both.stderr, /they need --llm-review, or --llm-sca-review/);
+
+  // --llm-skip-sweep is not one of them - it names no `skip:` step, so it feeds the
+  // `run: sweep` condition instead - but the rule it lives under is the same one.
+  const sweep = run([addon, ...OFFLINE_FLAGS, "--llm-skip-sweep"]);
+  assert.equal(sweep.code, 2);
+  assert.match(sweep.stderr, /--llm-skip-sweep names part/);
 });
 
 // --llm-review carries its own guards, and a skip changes none of them: the prompt is
@@ -919,6 +912,10 @@ test("a skipped review carries the same guards", () => {
 // every other opt alone. The skips arrive as the registry's own words, which is what
 // format.js and items.js match them against.
 test("a review flag carries only the prompt decision into the run", () => {
+  // The hand-back command is a closure over the parsed flags, so two runs never produce
+  // the same function object however alike the flags were. Compared by what it BUILDS
+  // instead, below; dropped from the structural comparisons, which it would always fail.
+  const shape = ({ llmSweepCommand: _drop, ...rest }) => rest;
   const bare = pipelineOptsFromArgv([]);
   assert.equal(bare.llmReview, false);
   assert.deepEqual(bare.llmSkip, []);
@@ -926,7 +923,7 @@ test("a review flag carries only the prompt decision into the run", () => {
   const full = pipelineOptsFromArgv(["--llm-review"]);
   assert.equal(full.llmReview, true);
   assert.deepEqual(full.llmSkip, []);
-  assert.deepEqual({ ...full, llmReview: false }, bare);
+  assert.deepEqual(shape({ ...full, llmReview: false }), shape(bare));
 
   const cut = pipelineOptsFromArgv([
     "--llm-review",
@@ -935,77 +932,100 @@ test("a review flag carries only the prompt decision into the run", () => {
   ]);
   // Authored order, never the order the flags were given: the registry names the steps.
   assert.deepEqual(cut.llmSkip, ["summary", "manual"]);
-  assert.deepEqual({ ...cut, llmReview: false, llmSkip: [] }, bare);
+  assert.deepEqual(
+    shape({ ...cut, llmReview: false, llmSkip: [] }),
+    shape(bare)
+  );
+
+  // The skips do not ride along in a hand-back any more: the run that was given them puts
+  // them in the state, and every pass after reads that. So a later pass needs no flags at
+  // all beyond the file it hands back.
 });
 
 // The retired flags parse as unknown options (exit 2), so a stale command line fails
 // loudly instead of being quietly ignored.
 test("retired flags are unknown options", () => {
-  for (const flag of ["--ai-review", "--full-summary", "--diff-summary"]) {
+  for (const flag of [
+    "--ai-review",
+    "--full-summary",
+    "--diff-summary",
+    "--llm-sweep-results",
+  ]) {
     const r = run(["x.xpi", flag]);
     assert.equal(r.code, 2, `${flag} should exit 2`);
     assert.match(r.stderr, /Unknown option/, `${flag} should be unknown`);
   }
 });
 
-// The addition path end to end: a swept finding enters through --llm-verdict and comes
-// out the far side as a finding of the check that owns it, worded by that check's
-// registry response. This is the chain the unit tests cannot see - applyVerdicts ->
-// renderFindings -> resolveHolds -> formatText - and it is where a check whose response
-// carried a placeholder, or whose band could not be stamped, would actually break.
-test("a swept addition is reported as a finding of the check that owns it", () => {
+// The sweep path end to end: a swept case enters through --llm-sweep-results, is settled
+// through --llm-verdict, and comes out the far side as a finding of the check that owns
+// it, worded by that check's registry response. This is the chain the unit tests cannot
+// see - mergeSweepResults -> reviewItems -> applyVerdicts -> renderFindings -> formatText
+// - and it is where a check whose response carried a placeholder, or whose band could not
+// A sweep, end to end through the loop. The blind spot the sweep covers is the one thing
+// the deterministic checks cannot find for themselves, so what it hands back has to become
+// an item of the check it names - routed, numbered, and settled like any other.
+//
+// APPENDED, never inserted: a swept case takes the next index after every one that already
+// existed, so nothing is renumbered and an index means the same case for the life of the
+// review.
+test("a swept case becomes an item of its check and settles like any other", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-addition-"));
-  const vfile = path.join(dir, "v.json");
-  fs.writeFileSync(
-    vfile,
-    JSON.stringify({
-      xpi: addon,
-      additions: [
-        {
-          check: "data-exfiltration",
-          file: "background.js",
-          line: 12,
-          hint: "<a ping> attribute carries the message digest",
-        },
-      ],
-    })
-  );
+  const first = run([addon, ...OFFLINE_FLAGS, "--llm-review"]);
+  assert.equal(first.code, 0, first.stderr);
+  const file = first.stdout.match(/(\S+\.review\.json)/)[1];
 
-  const errorsIn = (stdout) =>
-    Number(stdout.match(/(\d+) error\(s\)/)?.[1] ?? -1);
-  const baseline = run([addon, ...OFFLINE_FLAGS]);
-  const out = run([addon, ...OFFLINE_FLAGS, "--llm-verdict", vfile]);
+  // The spawn phase asks one row per check that declared a sweep instruction, and every
+  // row must be answered: an empty list is "swept and clean", null is "never looked".
+  const handed = JSON.parse(fs.readFileSync(file, "utf8"));
+  assert.ok(
+    handed.entries.every((e) => e.check && e.answer === null),
+    "one unanswered row per check"
+  );
+  handed.entries = handed.entries.map((e) => ({
+    ...e,
+    answer:
+      e.check === "data-exfiltration"
+        ? [
+            {
+              file: "background.js",
+              line: 12,
+              hint: "<a ping> attribute carries the message digest",
+            },
+          ]
+        : [],
+  }));
+  fs.writeFileSync(file, JSON.stringify(handed, null, 1));
+
+  // The next pass carries it as a case of its own check, with its locus and its hint.
+  const second = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  assert.equal(second.code, 0, second.stderr);
+  const next = JSON.parse(fs.readFileSync(file, "utf8"));
+  const swept = next.entries.find((e) => e.ruleId === "data-exfiltration");
+  assert.ok(swept, "the swept case is an entry of its own check");
+  assert.equal(swept.hint, "<a ping> attribute carries the message digest");
+  assert.match(second.stdout, /Settle each entry yourself/);
+
+  // Settled like any other, and the developer reads the OWNING check's words - not the
+  // sweeping agent's, which never leave the hint.
+  next.entries = next.entries.map((e) => ({ ...e, answer: "reported" }));
+  fs.writeFileSync(file, JSON.stringify(next, null, 1));
+  let out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  while (/── LLM Prompt ──/.test(out.stdout)) {
+    const doc = JSON.parse(fs.readFileSync(file, "utf8"));
+    doc.entries = doc.entries.map((e) => ({ ...e, answer: "Clear" }));
+    fs.writeFileSync(file, JSON.stringify(doc, null, 1));
+    out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  }
   assert.equal(out.code, 1, out.stderr);
-  // Exactly one more error than the same review without it: the addition enters the
-  // tally as a finding of data-exfiltration, at the band that check declares.
-  assert.equal(errorsIn(out.stdout), errorsIn(baseline.stdout) + 1);
-  // Counted apart from the verdicts, because an addition settles nothing - it adds.
-  assert.match(out.stdout, /Added 1 swept finding\(s\)/);
-  // The developer reads the owning check's own words, not the reader's.
   assert.match(
     out.stdout,
     /send user data to a remote server without an explicit opt-in/
   );
-  // The locus and the hint, on the location line where a detected finding puts them.
   assert.match(
     out.stdout,
     /background\.js:12 - <a ping> attribute carries the message digest/
   );
-
-  // The XPI binding guards an addition as much as a verdict: it CREATES a finding, so
-  // a file written elsewhere would invent one here.
-  fs.writeFileSync(
-    vfile,
-    JSON.stringify({
-      xpi: path.join(ROOT, "tests", "addons", "all-checks"),
-      additions: [{ check: "data-exfiltration", file: "a.js", line: 1 }],
-    })
-  );
-  const wrong = run([addon, ...OFFLINE_FLAGS, "--llm-verdict", vfile]);
-  assert.notEqual(wrong.code, 0);
-  assert.match(wrong.stderr + wrong.stdout, /was written for/);
-  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // ---- --llm-sca-review ----
@@ -1332,4 +1352,36 @@ test("--llm-sca-review refuses a folder that is not a submission", () => {
     /a submission folder holds exactly one \.xpi and exactly one other archive/
   );
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An answer that reaches settle() already invalid - too long to have been typed into the
+// question it answers - fails cleanly, not as a raw stack trace. It cannot be redone: the
+// answer is already in the state by the time settle() sees it, so this is a terminal
+// failure of the review, the same as a state file this build cannot read - not a
+// HandbackRefused, which exists only for a hand-back that can still be corrected.
+test("an answer too long for settle() to apply fails cleanly, not as a crash", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const first = run([
+    addon,
+    ...OFFLINE_FLAGS,
+    "--llm-review",
+    "--llm-skip-sweep",
+  ]);
+  assert.equal(first.code, 0, first.stderr);
+  const file = first.stdout.match(/(\S+\.review\.json)/)[1];
+
+  let out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  while (/── LLM Prompt ──/.test(out.stdout)) {
+    const doc = JSON.parse(fs.readFileSync(file, "utf8"));
+    doc.entries = doc.entries.map((e) => ({
+      ...e,
+      answer: "answers".repeat(400),
+    }));
+    fs.writeFileSync(file, JSON.stringify(doc, null, 1));
+    out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  }
+  assert.equal(out.code, 2, out.stdout);
+  assert.match(out.stderr, /carries a \d+-character answer and the limit is/);
+  assert.match(out.stderr, /verify failed/);
+  assert.doesNotMatch(out.stderr, /at settleAnswer|at applyVerdicts|at Object/);
 });

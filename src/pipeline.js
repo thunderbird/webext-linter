@@ -21,7 +21,6 @@
 // (src/checks/registry.js plus src/report/responses.js).
 
 import fs from "node:fs";
-import path from "node:path";
 import {
   resolveSchemaZip,
   refreshAllSchemas,
@@ -53,16 +52,11 @@ import {
   renderManualItems,
   withDefaultNotes,
 } from "./report/responses.js";
-import {
-  headerLines,
-  llmPromptLines,
-  promptAsks,
-  summaryLines,
-} from "./report/format.js";
 import { resolveHolds } from "./report/finding.js";
-import { locusLabeler } from "./report/format.js";
-import { readVerdicts, applyVerdicts } from "./report/verdicts.js";
-import { reviewItems, reviewFilePaths } from "./report/items.js";
+import { STATE_VERSION } from "./report/state.js";
+import { issue } from "./report/loop.js";
+import { headerLines, loopPromptLines, packageLines } from "./report/format.js";
+import { reviewFilePaths } from "./report/items.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import {
   verifyVendor,
@@ -265,14 +259,14 @@ export const SETUP_STEPS = Object.freeze([
  *   questions this review asks: findings withdrawn, to-do items reported or cleared.
  *   A reported case is worded by its own check; the only wording an answer brings is what
  *   a reviewer typed instead of picking one, which travels on that case's location line.
- * @property {boolean} [llmReview]  Print the verification prompt above the review header,
- *   addressing the report to a model that is asked to check it, and write the review to an
- *   item file instead of printing it. Changes nothing about the review itself, only what
- *   is printed before it and what the item file carries.
+ * @property {boolean} [llmReview]  Run the review and hand out the first phase of it -
+ *   printing that prompt and writing the state every later pass reads - instead of
+ *   printing the report. Changes nothing about the review itself, only what is printed
+ *   and what is written for the passes that follow.
  * @property {string[]} [llmSkip]  What that prompt leaves out (PROMPT_SKIPS, src/config.js):
  *   "summary" (--llm-skip-summary) drops the add-on description and the file named for it;
  *   "manual" (--llm-skip-manual) drops the steps that put the manual items to a reviewer,
- *   and those items leave the item file with them - they stay in the report, for the
+ *   and no phase puts them to anyone - they stay in the report, for the
  *   reviewer to work through later.
  */
 
@@ -911,26 +905,46 @@ export async function runPipeline(opts) {
     preSweep: invalidExperiment ? null : preSweepOf(registry, ranIds),
   });
 
-  // --llm-review writes the review's items to a file, named in the Review Details section.
-  // Claim it now, empty: a directory we cannot write to has to fail before the report is
-  // built rather than when the finished items are written to it.
   // What this run was told to leave out (--llm-skip-summary / --llm-skip-manual). Read
-  // once: the prompt drops steps by it, the item file drops sections by it, and the
+  // once: a phase drops steps by it, the routing drops entries by it, and the
   // description file is named by it.
   const skip = opts.llmSkip ?? [];
   // Where the prompt's reader writes the add-on description, and where it writes what
-  // building the add-on takes. Both share the item file's name and moment, and this tool
+  // building the add-on takes. Both share the review's name and moment, and this tool
   // writes neither and reads neither. Held until the prompt is built, because whether either
   // is NAMED depends on whether the step that writes it prints - the description is withheld
   // by --llm-skip-summary, the build report by a review that is not a source code one.
   let summaryPath = null;
   let buildPath = null;
-  if (opts.llmReview) {
+  // The REVIEW LOOP's state, built once the review is final and handed to `issue` below.
+  // A LOCAL, never hung off meta: it carries the report, and the report carries meta.
+  let loopState = null;
+  // Whether this run SWEEPS: it asked for one, it was not told to leave it out, and there
+  // is a blind spot to cover. Every `run: sweep` step hangs off this - spawning the agent,
+  // waiting for it, recording what it found - so a review with nothing to sweep and one
+  // told not to read the same, and neither mentions a sweep that is not happening.
+  const sweeping =
+    opts.llmReview &&
+    !opts.llmSkipSweep &&
+    Boolean(meta.preSweep?.items?.length);
+  // A run that PROMPTS is the loop's first pass, and the only one that reads the add-on:
+  // everything after it works from the state this run writes.
+  const prompting = opts.llmReview && !opts.llmVerdict;
+  if (prompting) {
+    // Said plainly, because two readers need it and neither should infer it from whether
+    // some file happens to have been named: this run HANDS OUT A PHASE, so its whole
+    // output is that prompt and the report is not printed beside it.
+    meta.prompting = true;
     const files = reviewFilePaths(xpiAddon, addonPath);
-    meta.itemsFile = files.items;
     summaryPath = skip.includes("summary") ? null : files.summary;
     buildPath = mode?.sca ? files.build : null;
-    fs.writeFileSync(meta.itemsFile, "");
+    // Claimed empty, so a directory this run cannot write to fails before the review is
+    // built rather than when the finished review is written to it.
+    fs.writeFileSync(files.state, "");
+    // The REVIEW LOOP's two files, claimed before the review is built for the reason
+    // a directory this run cannot write to has to fail before the review is built.
+    meta.stateFile = files.state;
+    meta.reviewFile = files.review;
   }
 
   // Fill each finding's display message from its registry response (with the
@@ -938,84 +952,51 @@ export async function runPipeline(opts) {
   // wording. The registry is the only source of this text.
   renderFindings(findings, registry);
 
-  // How a locus names its artifact ([XPI]/[SCA]) in this review - a no-op in an XPI one.
-  // Both readers of it below say the same thing about a case: the verdict narration and
-  // the question the item file carries.
-  const labelOf = locusLabeler(mode, registry.checkInputs());
-
-  let appliedLine;
-  let addedLine;
-  // Settle the review against the answers a reviewer (or a model) gave it. AFTER
-  // renderFindings, because a verdict names an item by its position in the printed
-  // report and that order depends on the rendered message - findings are grouped by it,
-  // and a locus shows its subject only when the message did not. BEFORE the holds
-  // resolve, because a reported case can be a hold itself and has to be counted among
-  // the findings that decide whether any hold stands.
-  if (opts.llmVerdict) {
-    const settled = readVerdicts(opts.llmVerdict);
-    // An index means nothing on its own, so the file has to name the submission its
-    // verdicts were reached on. Compared against the shipped add-on, which is the path
-    // the Review Details section printed under the name XPI.
-    if (path.resolve(settled.xpi) !== addonPath) {
-      throw new Error(
-        `--llm-verdict ${opts.llmVerdict} was written for "${settled.xpi}", but this ` +
-          `review is of "${addonPath}" - its item indices mean nothing here`
-      );
-    }
-    const { applied, added } = applyVerdicts({
-      findings,
-      manual: meta.manualReview,
-      verdicts: settled.verdicts,
-      additions: settled.additions,
-      registry,
-      labelOf,
-    });
-    // A reported case, and a swept addition, became a finding carrying only its locus and
-    // slots, so word both from the registry like any other - the same text either way.
-    renderFindings(findings, registry);
-    // The sweep is settled too, so it stops being asked. A verdict file is the answer to
-    // the whole review - its `additions` ARE what the sweep found - and the settled manual
-    // items have just been spliced out of the list for the same reason. Leaving the sweep
-    // standing would re-ask a reviewer for work whose results are in the report above it,
-    // and leave the two standard sections disagreeing about whether the review was done.
-    meta.preSweep = null;
-    // Audible, so a misaimed verdict shows up as one line here instead of being
-    // buried in a re-rendered report. Emitted below, under Review Details, because that
-    // section names the review these verdicts were applied to.
-    if (applied.length) {
-      appliedLine = `Applied ${applied.length} verdict(s): ${applied.join(", ")}`;
-    }
-    // Counted separately: an addition settles nothing, it ADDS a case no check found, so
-    // folding it into the verdict tally would overstate what was settled.
-    if (added.length) {
-      addedLine = `Added ${added.length} swept finding(s): ${added.join(", ")}`;
-    }
-  }
-
   // Settle every provisional hold against the rest of the review - the one moment a
   // hold-or-error check's band is decided. After any verdict has been applied and
   // before anything reads a severity, so the report, the tally and the JSON all see
   // the same value.
   resolveHolds(findings);
 
-  // Fill the file claimed above: the review as an array in the order the report lists
-  // them, so whoever settles it addresses an item by reading its index instead of counting
-  // lines. Written HERE, after renderFindings gave every finding its wording and
-  // resolveHolds settled every band - an array built any earlier would carry a null
-  // message and a provisional severity.
-  if (meta.itemsFile) {
-    const itemsList = reviewItems({
-      findings,
+  // The REVIEW LOOP's state, written once the review is final: everything a later pass
+  // reads, since none of them runs the review again.
+  if (prompting) {
+    // The REVIEW LOOP's state: the review itself, so no later pass has to rebuild it.
+    // Everything formatText reads that the registry cannot recompute goes in here -
+    // ruleInputs, issueHeadings and verdictIntros are the registry's, and a copy here
+    // would outlive an edit to it.
+    loopState = {
+      version: STATE_VERSION,
+      review: meta.reviewFile,
+      report: { findings, meta, sca: Boolean(mode?.sca) },
       manual: meta.manualReview,
-      choices: registry.manualReviewChoices(),
       preSweep: meta.preSweep,
-      skipManual: skip.includes("manual"),
-      // So a question names its case as the settled report will: in an SCA review
-      // "package.json" alone is a file in either artifact, and a reviewer asked about one
-      // of them has to be told which.
-      labelOf,
-    });
-    fs.writeFileSync(meta.itemsFile, `${JSON.stringify(itemsList, null, 2)}\n`);
+      // What this run was told, recorded ONCE. Every pass reads it from here - a second
+      // copy handed in beside the state is a second answer, and the two deciding
+      // differently is a phase issued for entries it never shows.
+      run: {
+        skip,
+        sca: Boolean(mode?.sca),
+        // Not derived from preSweep: --llm-skip-sweep leaves the instructions standing
+        // and withholds the asking, so the two are different facts.
+        sweep: sweeping,
+      },
+      sweep: null,
+      paths: {
+        review: meta.reviewFile,
+        description: summaryPath,
+        build: buildPath,
+        schemaCache: opts.schemaCache,
+        scaRoot: opts.scaRoot ?? null,
+        // The block a phase that READS the add-on prints: which artifact, and the schema
+        // snapshot its verdicts mean anything against. Built once, from the same meta the
+        // report's header is built from.
+        package: packageLines(meta, opts.schemaCache).join("\n"),
+      },
+      answers: {},
+      route: {},
+      issued: [],
+    };
   }
 
   // Narrate the document's own opening, now that the review is final. It has to come after
@@ -1026,66 +1007,63 @@ export async function runPipeline(opts) {
   // report(), not feed: these belong to the document, so they reach a --report-out copy and
   // survive --llm-review switching the Setup and Activity sections off. Absent from JSON (a
   // machine contract) and from the golden harness for free, like the rest of the narration.
-  if (opts.llmReview) {
-    const prompt = registry.llmReviewPrompt();
+  if (prompting) {
+    // THE REVIEW LOOP's first pass. The deterministic review just ran, and it runs ONCE:
+    // its result goes into the state, and every pass after this reads that instead of
+    // rebuilding it. So this is the only run that needs the add-on at all.
+    //
+    // Which phase goes out is `issue`'s to decide, from what has work - a run with no
+    // sweep and no description agent starts at `verify`, and never mentions either.
+    const texts = registry.llmPhases();
+    const state = loopState;
     // A path printed for a file nobody is asked to write is an instruction with no step
-    // behind it. Two things withhold that step: --llm-skip-summary names it, and a review
-    // with nothing to settle prints no steps at all. Both are answered here, from the
-    // asks the prompt itself is built from, so the name and the step cannot part company.
-    const asked = promptAsks(
-      prompt,
-      findings,
-      meta.manualReview,
-      meta.preSweep,
-      skip
-    ).length;
-    if (summaryPath && asked) {
-      meta.summaryFile = summaryPath;
+    // behind it, so the header names one only when its step survived the markers.
+    const first = issue(state, meta.stateFile, texts.phases, registry);
+    if (first) {
+      const named = new Set(
+        first.steps.map((step) => step.skip ?? step.run ?? "")
+      );
+      if (summaryPath && named.has("summary")) {
+        meta.summaryFile = summaryPath;
+      }
+      if (buildPath && named.has("sca")) {
+        meta.buildFile = buildPath;
+      }
+      for (const line of loopPromptLines(
+        texts,
+        first.phase,
+        first.steps,
+        {
+          review: state.review,
+          command: `node verify.js --llm-verdict ${state.review}`,
+          schemaCache: state.paths.schemaCache ?? "",
+          description: summaryPath ?? "",
+          build: buildPath ?? "",
+          scaRoot: state.paths.scaRoot ?? "",
+          package: state.paths.package,
+        },
+        // The preamble prints once, and this is the run that is once.
+        true
+      )) {
+        report(line);
+      }
     }
-    if (buildPath && asked) {
-      meta.buildFile = buildPath;
-    }
-    for (const line of llmPromptLines(
-      prompt,
-      findings,
-      meta.manualReview,
-      meta.preSweep,
-      skip,
-      // What a source code review's own steps need, or null in an XPI one - which is what
-      // gates them. Read off meta, never off the flags: a rejected Experiment keeps
-      // --sca-root and is still an XPI review, and these steps would then send an agent to
-      // a root nothing read. The same values the header prints, so the steps and the block
-      // name the same paths or neither does.
-      meta.scaRoot ? { root: meta.scaRoot, buildFile: meta.buildFile } : null
-    )) {
+  }
+  // The prompt IS the whole output of a run that hands out a phase. Neither the header
+  // nor the Summary is printed beside it:
+  //
+  // - the header is a block of VALUES the steps point at by name, and this prompt's steps
+  //   carry the two they use. A name printed with no step behind it is an instruction with
+  //   nothing to do.
+  // - the Summary is a tally of a review that is about to change. The agent is here to
+  //   withdraw findings and settle cases; a count printed before it starts is a number it
+  //   could work back from, and the finished report carries the real one.
+  if (!prompting) {
+    for (const line of headerLines(meta)) {
       report(line);
     }
-  }
-  for (const line of headerLines(meta)) {
-    report(line);
-  }
-  if (appliedLine || addedLine) {
     report("");
-    if (addedLine) {
-      report(addedLine);
-    }
-    if (appliedLine) {
-      report(appliedLine);
-    }
   }
-  // A --llm-review run prints no report, so its Summary is printed here instead: a
-  // reviewer has to see from the output alone whether the add-on can be signed off or
-  // still has work waiting. Every other run gets it as the report's closing section.
-  if (meta.itemsFile) {
-    for (const line of summaryLines(
-      findings,
-      meta.manualReview,
-      meta.preSweep
-    )) {
-      report(line);
-    }
-  }
-  report("");
 
   return {
     findings,
@@ -1303,12 +1281,13 @@ export async function resolveReviewSchema({
  * repeated on every item - and eight near-identical paragraphs teach a reader to skim the
  * part that matters.
  *
- * Both intros travel: the report prints the human one, the item file carries the agent
+ * Both intros travel: the report prints the human one, the sweep's rows carry the agent
  * one. They differ only in that the agent is also told what to hand back.
  * @param {import("./checks/registry.js").Registry} registry
  * @param {Set<string>} ranIds  Ids of the checks that actually ran.
  * @returns {?{intro: string, agentIntro: string, items: object[]}}
  */
+
 function preSweepOf(registry, ranIds) {
   const items = registry.sweepInstructions().filter((s) => ranIds.has(s.check));
   return items.length

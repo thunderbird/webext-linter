@@ -2,10 +2,10 @@
 // or JSON. Text goes to stdout so it can be read directly. JSON is
 // machine-consumable for CI.
 //
-// It also renders the two texts that are NOT a finished review: the prompt printed above
-// one (llmPromptLines) and the prompt that prepares one (scaPromptLines, the whole output
-// of a run in which no review has happened and none can). Both are layout over values
-// decided elsewhere, which is why they are here and not in the front-end.
+// It also renders the two texts that are NOT a finished review: one pass of the review
+// loop (loopPromptLines) and the prompt that PREPARES a review (scaPromptLines, the whole
+// output of a run in which no review has happened and none can). Both are layout over
+// values decided elsewhere, which is why they are here and not in the front-end.
 //
 // Belongs here: report LAYOUT and chrome - the ReviewMeta typedef, section
 // titles, ordering/sorting, line wrapping, the summary line, and the text +
@@ -26,13 +26,7 @@ import {
   countByRule,
   verdictKey,
 } from "./finding.js";
-import {
-  orderReview,
-  hasLocus,
-  manualBody,
-  collapseBody,
-  MANUAL_SECTIONS,
-} from "./order.js";
+import { orderReview, hasLocus, manualBody, collapseBody } from "./order.js";
 import { artifactLabel } from "./artifact.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
 import { displayLine, displayPath, wrapText } from "../util/text.js";
@@ -91,8 +85,9 @@ const SEV_COLOR = {
  *   file's name. Named by this tool, written and read by neither.
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
  *   in a source code review, where the reviewer reproduces the build.
- * @property {string} [itemsFile]  Path of the machine-readable item file, when one was
- *   written (--llm-review). Named in the Review Details section.
+ * @property {boolean} [prompting]  This run handed out a PHASE of the review loop, so
+ *   its whole output is that prompt: the report is not printed beside it, and neither is
+ *   the header or the Summary.
  * @property {import("./finding.js").ManualItem[]} [manualReview]  The manual-review
  *   to-do list, each item tagged with `extended` (it escalated from a check) and
  *   `section` (which of the two extended lists it belongs to). The report splits it
@@ -106,7 +101,7 @@ const SEV_COLOR = {
  */
 
 // The titles the report prints over its sections, keyed by the section a sequence item
-// carries (src/report/order.js). One definition, because the item file names an item's
+// carries (src/report/order.js). One definition, because an entry names an item's
 // section with the same string the prose prints - and the --llm-review prompt refers to
 // both by that name.
 //
@@ -197,15 +192,6 @@ function reviewBodyLines(review) {
   ];
 }
 
-/** The prompt text that asks for each section a REVIEWER answers, keyed by the section
- *  name order.js numbers it under. A section named in MANUAL_SECTIONS with no ask here is
- *  a section the prompt cannot put to anyone, so llmPromptLines refuses it rather than
- *  printing one ask fewer than the item file carries entries. */
-const MANUAL_ASKS = Object.freeze({
-  extendedManual: "extendedManualReview",
-  standard: "standardManualReview",
-});
-
 /**
  * One numbered step of a prompt: the first paragraph carries the "N. " marker and every
  * paragraph after it is indented to sit beneath it.
@@ -215,25 +201,30 @@ const MANUAL_ASKS = Object.freeze({
  * carries, which belongs to that step. The numbers are the caller's: it numbers what
  * survived its own filtering, which is why no step may number itself.
  *
- * Authored line breaks inside a paragraph are the layout and wrapText keeps them. `block`
- * lets a caller render ONE paragraph itself, matched by its whole authored text: its lines
- * are printed VERBATIM, however many there are, because they are not prose. Both users need
- * that for the same reason - a command split across lines is a command to reassemble (the
- * SCA prompt's flags), and so is a table of named values (the paths a review hands its
- * build agent).
+ * Authored line breaks inside a paragraph are the layout and wrapText keeps them. `blocks`
+ * let a caller render a paragraph itself, each matched by its whole authored text: its
+ * lines are printed VERBATIM, however many there are, because they are not prose. Every
+ * user needs that for the same reason - a command split across lines is a command to
+ * reassemble (the SCA prompt's flags, and the review prompt's own hand-back), and so is a
+ * table of named values (the paths a review hands its build agent).
+ *
+ * A LIST rather than one, because a single prompt can carry two of them: an SCA review
+ * that also sweeps hands its build agent a path table and its sweep a command, and the
+ * step carrying each is a different step.
  * @param {number} n  The step's number, as printed.
  * @param {string} text  The authored step.
- * @param {?{name: string, lines: string[]}} [block]  A paragraph the caller renders.
+ * @param {{name: string, lines: string[]}[]} [blocks]  Paragraphs the caller renders.
  * @returns {string[]}
  */
-function stepLines(n, text, block = null) {
+function stepLines(n, text, blocks = []) {
   const marker = `${n}. `;
   const indent = " ".repeat(marker.length);
   const [first, ...rest] = text.split("\n\n");
   const out = [...wrapText(`${marker}${first}`)];
   for (const paragraph of rest) {
     out.push("");
-    if (block && paragraph.trim() === block.name) {
+    const block = blocks.find((b) => paragraph.trim() === b.name);
+    if (block) {
       out.push(...block.lines.map((line) => `${indent}${line}`));
     } else {
       out.push(...wrapText(paragraph, indent));
@@ -243,145 +234,102 @@ function stepLines(n, text, block = null) {
 }
 
 /**
- * What a --llm-review prompt ASKS this run's reader for, as the authored ask texts in the
- * order they print - empty when the review has nothing to settle.
+ * One pass of the REVIEW LOOP, printed: the prompt the agent reads this time round.
  *
- * Only the instructions the report can actually be checked against are asked for, and
- * every one it can: the issues ask needs a finding to verify, and each to-do ask needs an
- * item in its OWN section - a review that happens to have no Extended Manual Review items
- * must not be told to work them. Both tests come from the same place the report's own
- * sections do, so the prompt cannot ask for a section the reader will not find.
+ * Five layers, and only the middle two vary by phase:
  *
- * Exported because the asks decide more than their own lines: the steps close the prompt
- * only when an ask was made (with nothing to settle there is nothing to hand back), so the
- * step that writes the add-on description prints only then - and the pipeline names that
- * file only when it does. One computation, or the path and the step that writes it are
- * decided by two.
- * @param {object} prompt  From registry.llmReviewPrompt().
- * @param {import("./finding.js").Finding[]} findings
- * @param {import("./finding.js").ManualItem[]} manual
- * @param {?{items: object[]}} [preSweep]
- * @param {string[]} [skip]  The parts this run leaves out (PROMPT_SKIPS, src/config.js).
+ *   PREAMBLE  once, on the first run. What is about to happen, and the one standing rule
+ *             about reading code against the schema. No input path is named here - a block
+ *             headed "what is being reviewed" reads as an assignment, and invites the agent
+ *             to go and read it before a step asks.
+ *   FRAME     the file, and that it changed since the last pass. The linter's, every pass.
+ *   INTRO     the phase's, and often empty: an intro earns its text only where the steps
+ *             alone would let the agent do work that is not its own.
+ *   STEPS     the phase's, numbered over what survived its markers. No step numbers itself.
+ *   HANDOVER  ONE text, appended as the last numbered step, so no phase can forget to say
+ *             how to hand back and no author has to know which phase is last.
+ *
+ * The values a step names are filled here rather than carried in the file: `{{paths}}`-style
+ * blocks are printed by the step that uses them, which is the same rule today's prompt
+ * follows - a path is printed by the thing that needs it.
+ * @param {{preamble: string, frame: string, handover: string}} texts  From
+ *   registry.llmPhases().
+ * @param {{name: string, intro: string}} phase
+ * @param {{text: string}[]} steps  Already filtered by src/report/phases.js stepsOf.
+ * @param {Object<string, string>} values  What the texts and steps name: review, command,
+ *   schemaCache, description, build, scaRoot.
+ * @param {boolean} [first]  Print the preamble, which one run does and the rest do not.
  * @returns {string[]}
  */
-export function promptAsks(
-  prompt,
-  findings,
-  manual,
-  preSweep = null,
-  skip = []
-) {
-  // The manual sections go together: a run that does not put them to a reviewer must not
-  // be asked to work them either, or the reader hunts for entries the item file does not
-  // carry.
-  const skipped = new Set(skip);
-  const asks = [];
-  if (findings.length) {
-    asks.push(prompt.issues);
+export function loopPromptLines(texts, phase, steps, values, first = false) {
+  // Everything BUT the value blocks, which stepLines lays out unwrapped below.
+  const fill = (text) =>
+    Object.entries(values).reduce(
+      (acc, [name, value]) =>
+        name === "package" ? acc : acc.split(`{{${name}}}`).join(value),
+      text
+    );
+  const lines = [...section("LLM Prompt"), ""];
+  if (first) {
+    lines.push(...promptProse(fill(texts.preamble)), "");
   }
-  // Listed first among the asks, because it is the first thing done: the sweeps add
-  // findings, and everything below settles the review those findings are part of.
-  if (preSweep?.items?.length) {
-    asks.push(prompt.preSweep);
+  lines.push(...promptProse(fill(texts.frame)));
+  if (phase.intro) {
+    lines.push("", ...promptProse(fill(phase.intro)));
   }
-  const sections = new Set(orderReview([], manual).map((x) => x.section));
-  if (sections.has("code")) {
-    asks.push(prompt.codeReview);
-  }
-  // The sections a reviewer answers are asked for in MANUAL_SECTIONS' own order, each
-  // through the prompt text that names it: the list that decides which sections a skip
-  // withholds from the item file is the list that decides which asks print, so an ask for
-  // a section the file omits cannot arise.
-  if (!skipped.has("manual")) {
-    for (const name of MANUAL_SECTIONS) {
-      if (!sections.has(name)) {
-        continue;
-      }
-      const ask = prompt[MANUAL_ASKS[name]];
-      if (!ask) {
-        throw new Error(
-          `no prompt ask for manual section "${name}" (src/report/format.js)`
-        );
-      }
-      asks.push(ask);
-    }
-  }
-  return asks;
+  // A block of named values is handed to stepLines rather than substituted into the
+  // prose: it must NOT be wrapped. A path split across two lines is a path nobody can
+  // copy, and the agent is being told where to look.
+  const blocks = values.package
+    ? [{ name: "{{package}}", lines: values.package.split("\n") }]
+    : [];
+  // The handover is the last numbered step, not a trailer: the agent follows a numbered
+  // list, and a hand-back tacked on as prose is the one instruction it can skim past.
+  const all = [...steps.map((s) => s.text), texts.handover];
+  all.forEach((text, i) => {
+    lines.push("", ...stepLines(i + 1, fill(text), blocks));
+  });
+  return lines;
 }
 
 /**
- * The --llm-review verification prompt, printed above the header so the model that
- * is handed the report reads its instructions before the report itself.
+ * A block of authored prose: paragraphs wrapped to the report width and kept apart.
  *
- * The asks are promptAsks' - it decides which sections this run can be checked against.
- * The ordered steps - how the work is done and the verdicts come back - close the prompt
- * whenever any ask was made, and are absent when none was: with nothing to settle there is
- * nothing to hand back.
+ * The source line breaks do NOT survive. A registry text is authored as wrapped YAML, so
+ * its breaks are an artefact of where the author's editor ended a line - re-wrapping here
+ * is what stops one turning up mid-sentence in the prompt.
  *
- * `skip` is what the run was told to leave out: "summary" (--llm-skip-summary) withholds
- * the add-on description steps, "manual" (--llm-skip-manual) the steps that put the manual
- * entries to a reviewer AND the asks for those sections. The surviving steps are
- * renumbered, which is why no step authors its own number. src/report/items.js withholds
- * the same two sections from the item file under the same skip, so the prompt and the file
- * agree about what the reader is being asked to settle.
- *
- * `sca` decides the other marker: a step marked `run: sca` is printed only in a source code
- * review, because the work it asks for - discovering how the add-on is built, so the
- * reviewer can reproduce it - has nothing to read in an XPI review. It carries the PATHS
- * rather than a flag because those steps PRINT them, filling their `{{paths}}` paragraph:
- * the request they hand a sub-agent has to carry the folder to read and the file to write,
- * and a request relayed "and nothing else" cannot have either added to it afterwards. The
- * caller passes what the review resolved, so the prompt and the header name the same paths
- * or neither does.
- * @param {{intro: string, issues: string, preSweep: string, codeReview: string,
- *   extendedManualReview: string, standardManualReview: string, outcomeIntro: string,
- *   outcome: {skip: ?string, run: ?string, text: string}[]}} prompt
- * @param {import("./finding.js").Finding[]} findings
- * @param {import("./finding.js").ManualItem[]} manual
- * @param {?{items: object[]}} [preSweep]
- * @param {string[]} [skip]  The parts this run leaves out (PROMPT_SKIPS, src/config.js).
- * @param {?{root: string, buildFile: string}} [sca]  What a source code review's own steps
- *   name: the source root to read, and the file to write. Null in an XPI review.
- * @returns {string[]}
+ * A VALUE BLOCK is the exception, and is printed exactly as authored: every line of it is
+ * a name and a path, or a path alone. Those must not be wrapped - a wrapped path is a path
+ * nobody can copy - and must not be collapsed, or two values become one line.
  */
-export function llmPromptLines(
-  prompt,
-  findings,
-  manual,
-  preSweep = null,
-  skip = [],
-  sca = null
-) {
-  const skipped = new Set(skip);
-  const asks = promptAsks(prompt, findings, manual, preSweep, skip);
-  const lines = [...section("LLM Prompt"), "", ...wrapText(prompt.intro), ""];
-  for (const ask of asks) {
-    lines.push(...wrapText(`- ${ask.replace(/\s+/g, " ").trim()}`));
-  }
-  if (asks.length) {
-    lines.push("", ...wrapText(prompt.outcomeIntro));
-    const steps = prompt.outcome.filter(
-      (step) => !skipped.has(step.skip) && (step.run !== "sca" || sca)
-    );
-    // The values a step carries rather than names, laid out as the block the reader already
-    // knows from Review Details: never wrapped, so a path with a space in it is handed on
-    // whole rather than in halves.
-    const paths = sca
-      ? {
-          name: "{{paths}}",
-          lines: valueLines([
-            ["SCA_ROOT", sca.root],
-            ["BUILD_PROCESS", sca.buildFile],
-          ]),
-        }
-      : null;
-    steps.forEach((step, i) => {
-      // Numbered HERE, over what survived the skips, so the steps a run prints read
-      // 1..N with no gaps.
-      lines.push("", ...stepLines(i + 1, step.text, paths));
-    });
-  }
-  return lines;
+function promptProse(text) {
+  const out = [];
+  text.split("\n\n").forEach((paragraph, i) => {
+    if (i > 0) {
+      out.push("");
+    }
+    if (isValueBlock(paragraph)) {
+      out.push(
+        ...paragraph
+          .trim()
+          .split("\n")
+          .map((l) => `  ${l.trim()}`)
+      );
+      return;
+    }
+    out.push(...wrapText(paragraph.replace(/\s+/g, " ").trim()));
+  });
+  return out;
+}
+
+/** Whether every line opens with a NAME - an all-caps token and then its value, which is
+ *  what a block of named paths looks like and what no sentence does. Such a block is
+ *  printed exactly as given: a wrapped path is one nobody can copy, and a collapsed one
+ *  joins two values into a line that names neither. */
+function isValueBlock(paragraph) {
+  const lines = paragraph.trim().split("\n");
+  return lines.every((l) => /^[A-Z][A-Z0-9_]*\s/.test(l.trim()));
 }
 
 /** The values --llm-sca-review hands its reader, in the order the steps use them. Named
@@ -470,15 +418,56 @@ export function scaPromptLines(prompt, submission, review) {
     // lines is a command to reassemble - so they are rendered here and slotted in.
     lines.push(
       "",
-      ...stepLines(i + 1, step.text, { name: "{{flags}}", lines: flags })
+      ...stepLines(i + 1, step.text, [{ name: "{{flags}}", lines: flags }])
     );
   });
   return lines;
 }
 
 /**
- * Review Details: what was reviewed, against which schema, and - when --llm-review wrote
- * one - where the machine-readable item file is.
+ * What a phase that READS the add-on is told: which artifact is under review, and the
+ * schema snapshot it is judged against.
+ *
+ * Built from the same `meta` the report's own header is, so the two can never name
+ * different artifacts. An XPI review names the one it has; a source code review names the
+ * extracted root and the subtree inside it that IS the add-on's code - which is the only
+ * way an agent can know which files are the developer's and which are build scaffolding.
+ *
+ * SCHEMA is a line, not a path: the cache holds several branches, and the one this review
+ * read is the only one its verdicts mean anything against.
+ * @param {import("./format.js").ReviewMeta} meta
+ * @param {?string} schemaCache  Where the snapshots live.
+ * @returns {string[]}
+ */
+export function packageLines(meta, schemaCache) {
+  const values = [];
+  if (meta.scaRoot) {
+    values.push(["SCA_ROOT", meta.scaRoot], ["SCA_SOURCE", meta.scaSource]);
+    if (meta.scaExpSource) {
+      values.push(["SCA_EXP_SOURCE", meta.scaExpSource]);
+    }
+  } else {
+    values.push(["XPI", meta.xpi]);
+  }
+  if (schemaCache) {
+    values.push(["SCHEMA_CACHE", schemaCache]);
+  }
+  values.push([
+    "SCHEMA",
+    `${meta.schemaBranch} · Thunderbird ${meta.applicationVersion ?? "?"}` +
+      (meta.manifestVersion != null
+        ? ` · manifest_version ${meta.manifestVersion}`
+        : ""),
+  ]);
+  return values.map(([name, value]) => `${name} ${value}`);
+}
+
+/**
+ * Review Details: what was reviewed, and against which schema.
+ *
+ * Printed with the REPORT, and never beside a prompt: a phase that reads the add-on prints
+ * the values it needs itself (packageLines), and a name printed with no step behind it is
+ * an instruction with nothing to do.
  *
  * The paths are a block of NAMED values (valueLines), the shape the --llm-sca-review
  * prompt uses for its own Submission block. Named, because the --llm-review prompt's steps
@@ -512,9 +501,9 @@ export function headerLines(meta) {
   }
   // Only --llm-review writes one. It is named here rather than only in the prompt so
   // the section stays the one place that says what this review consists of.
-  if (meta.itemsFile) {
-    values.push(["REVIEW_ITEMS", meta.itemsFile]);
-  }
+  // Where the sweep's results GO, like the description below: this run writes no such
+  // file either. Named only by a run that sweeps, because only that run prints the step
+  // that writes it and the hand-back that reads it back.
   // Where the description GOES, not where it is: this run writes no such file. The
   // prompt's reader does, and the reviewer is handed a link to it.
   if (meta.summaryFile) {
@@ -612,8 +601,11 @@ function issuesLines(items, issueHeadings, verdictIntros, labelOf, mode) {
  * numbering (src/report/order.js), so this only finds the boundaries - there is no
  * second opinion here about what goes where.
  * @param {import("./order.js").OrderedItem[]} items
- * @returns {{key: string, section: string, members: object[], shown: object[],
- *   withheld: number}[]}
+ * @returns {{key: string, section: string, members: object[],
+ *   shown: {target: object, collapsed: number}[], withheld: number}[]}
+ *   `shown` carries the ORDERED items, not the bare targets: a line has to print the
+ *   count of what it stands for, and that count was decided with the rest of the
+ *   sequence rather than here.
  */
 function entriesOf(items) {
   const out = [];
@@ -622,8 +614,10 @@ function entriesOf(items) {
     if (last && last.key === item.entry && last.section === item.section) {
       last.members.push(item.target);
       if (item.shown) {
-        last.shown.push(item.target);
-      } else {
+        last.shown.push(item);
+      } else if (!item.folded) {
+        // A case folded into another's line is not "withheld": the line standing for it
+        // says so itself, and counting it here too would report it twice.
         last.withheld++;
       }
       continue;
@@ -632,8 +626,8 @@ function entriesOf(items) {
       key: item.entry,
       section: item.section,
       members: [item.target],
-      shown: item.shown ? [item.target] : [],
-      withheld: item.shown ? 0 : 1,
+      shown: item.shown ? [item] : [],
+      withheld: item.shown || item.folded ? 0 : 1,
     });
   }
   return out;
@@ -646,19 +640,28 @@ function entriesOf(items) {
  * sections. What is shown and what is withheld was decided in src/report/order.js - the
  * cap is not applied a second time here, because a second opinion about it is exactly
  * how the printed numbers and the addressable ones came apart.
- * @param {{shown: object[], withheld: number}} entry
+ * A line standing for cases of the same subject elsewhere says how many, because "this
+ * host, and others like it" and "this host, in two more files" are different facts and a
+ * reader cannot tell them apart from the entry alone. Counted in order.js; printed here.
+ * @param {{shown: {target: object, collapsed: number}[], withheld: number}} entry
  * @param {(x: object) => string} [labelOf]  Artifact label prefix (SCA only).
  * @returns {string[]}
  */
 function renderLocusList(entry, labelOf) {
   const lines = [];
-  for (const x of entry.shown) {
-    if (hasLocus(x)) {
+  for (const { target, collapsed } of entry.shown) {
+    if (hasLocus(target)) {
       // A reviewer's answer can be a LIST, and locationLine keeps their lines when the
       // answer is all this case has. Each becomes an item of its own here, which is what
       // they wrote it as - and is a single line for everything else, which is what every
       // other locus is.
-      for (const line of locationLine(x, labelOf?.(x)).split("\n")) {
+      const own = locationLine(target, labelOf?.(target)).split("\n");
+      // On the LAST of them, so a multi-line answer reads as one case with a count at
+      // its end rather than a count buried inside it.
+      if (collapsed) {
+        own[own.length - 1] += ` (+${collapsed} elsewhere)`;
+      }
+      for (const line of own) {
         lines.push(` - ${line}`);
       }
     }
@@ -804,14 +807,14 @@ function preSweepSection(sweep) {
     // Laid out exactly like a manual-review entry (manualBody): "N) title: body", with
     // the authored newlines collapsed so the item re-wraps to the report's width instead
     // of keeping the yaml's. The check id and its band are NOT repeated here - the agent
-    // reads them as fields of the item file, and the title already says which check this
+    // reads them as fields of the entry, and the title already says which check this
     // is in the words the rest of the report uses.
     const body = entry.instruction.replace(/\s+/g, " ").trim();
     out.push(...wrapText(`${++n}) ${entry.title}: ${body}`).map(blue));
     // The band and the wording a find would carry, laid out exactly as a manual-review
     // entry lays them out: this section asks the same kind of question, so it should
     // answer the same question a reviewer asks of one - if I find this, what happens,
-    // and what does the developer read? An addition is worded from this same text.
+    // and what does the developer read? A swept case is worded from this same text.
     if (entry.severity) {
       out.push(grey(`Suggested verdict: ${entry.severity}`));
     }
@@ -908,12 +911,12 @@ export function formatJson(review) {
   // scan made itself, which is the point.
   const { manualReview: _omitted, preSweep: _sweeps, ...meta } = review.meta;
   const issues = review.findings;
-  // `data` (template-resolution input, baked into `message`) and `listItem` (a
-  // text-layout flag) are internal, so they are dropped from the machine output.
+  // `data` (template-resolution input, baked into `message`), `listItem` and `collapse`
+  // (text-layout flags) are internal, so they are dropped from the machine output.
   // Consumed by tooling rather than a terminal, but a consumer may print it, so the
   // submission-derived fields carry no more than the text report shows.
   const publicFindings = sortFindings(issues).map(
-    ({ data: _d, listItem: _li, note, ...f }) => ({
+    ({ data: _d, listItem: _li, collapse: _c, note, ...f }) => ({
       ...f,
       ...(f.file == null ? {} : { file: displayLine(f.file) }),
       ...(f.item == null ? {} : { item: displayLine(f.item) }),
@@ -1020,7 +1023,7 @@ export function locationLine(f, label = "") {
 }
 
 /**
- * The question ONE manual-review item is put to the reviewer as, for the item file
+ * The question ONE manual-review item is put to the reviewer as, for the entry
  * --llm-review writes (src/report/items.js): the check's title in brackets, its
  * instructions, and the case it is about in parentheses.
  *

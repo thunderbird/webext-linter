@@ -93,18 +93,47 @@ is monitored and upstream changes are ported manually.
 | `--report-format <text\|json>` | Report output format (default `text`). |
 | `--report-out <file>` | Write a plain copy of the run to a file in addition to stdout - the activity feed and the report (a `--report-format json` run writes the report alone). Refused with any `--llm-*` flag: no run of that round trip saves its output. |
 
-**LLM review:** what an LLM agent runs, in the order it runs it — `--llm-sca-review`
-prepares a source code review and is over before one starts, then `--llm-review` asks
-(leaving out whatever the two `--llm-skip-*` flags name, given to either), then
-`--llm-verdict` applies the answers.
+**LLM review:** what an LLM agent runs. `--llm-sca-review` prepares a source code review
+and is over before one starts. Then `--llm-review` runs the review ONCE and hands out the
+first of its phases; every `--llm-verdict` run after that takes a phase back and hands out
+the next, until nothing is left to issue and the last one carries the report.
+
+The agent opens ONE file, ever: the review file the prompt names. It fills in each entry's
+empty `"answer"` and hands the same path back — the command is in the prompt. Everything
+the linter needs between passes is in a state file beside it that the agent is never
+pointed at, which is why `--llm-verdict` takes no add-on path: the deterministic review ran
+once, and nothing re-derives it.
+
+The phases are `spawn` (start the sub-agents, hand back what the sweep found, one row per
+check), `verify` (the findings), `settle` (what a check could not settle) and `ask` (what
+only a reviewer can answer). A phase with nothing to do is not issued, so a review with no
+sweep never mentions one.
+
+What an entry's `"answer"` may say depends on WHO THE PHASE ASKS. A phase the agent settles
+by reading the add-on takes one of the linter's verbs: `verify` takes `reported` or
+`withdrawn`, `settle` takes `reported`, `cleared` or `ask` - the last of which does not
+settle the case but sends it on to the reviewer, keeping its number. The `ask` phase takes
+what the reviewer answered: the label of one of the answers that question offered (`Clear`,
+`Report`, listed under the entry's `answers`), or the words they typed instead, which report
+the case and carry those words with it.
+
+Those words are the one thing in the file a person writes, and they are printed on that
+case's location line - in parentheses after the location, or as the line itself when the case
+has none, where the reviewer's own line breaks are kept and each becomes an item of its own.
+
+Crossing the two is refused, naming the entry so the question can be asked again rather than
+an answer made to fit: a verb where a reviewer was asked, a reviewer's answer where the agent
+settles, an answer with nothing in it, and one past the length the question tells the reviewer
+they have (`MAX_NOTE`).
 
 | Option | Description |
 | --- | --- |
 | `--llm-sca-review <folder>` | Print the prompt for preparing a source code review of a submission folder — one built `.xpi` and one archive of the source it was built from — and exit without reviewing anything. The prompt says how to reach the source, and hands back this command with `--llm-review` in place of this flag for the reader to run with the `--sca-*` arguments they worked out. Refused beside any `--sca-*` flag, which is what it exists to produce. |
-| `--llm-review` | Print a verification prompt and write the review as a JSON item array to a temp file, instead of the report. The prompt explains how to settle the items and pass them back. Refused with `--report-format json`. |
+| `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Refused with `--report-format json`. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
-| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. The prompt does not put them to a reviewer and the item file does not carry them — they stay in the report, for the reviewer to work through later. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
-| `--llm-verdict <file>` | Apply settled verdicts and print the settled report, from a JSON file written as the prompt describes. Normally run by the agent that settled the review rather than by a person. Verdicts are keyed by index and settle only what they name, so a file written under `--llm-skip-manual` leaves the manual items listed. |
+| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer — they stay in the report, for the reviewer to work through later. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
+| `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. The prompt neither spawns it nor asks for it, and the Standard Code Review section stays in the report for the reviewer to sweep by hand. |
+| `--llm-verdict <file>` | Take a phase back and hand out the next, from the review file the prompt named — or, when nothing is left to issue, print the settled report. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file beside this one. Normally run by the agent working through the review rather than by a person. |
 
 **Source code archive (SCA):**
 
@@ -303,7 +332,7 @@ machine.
 | `non-experiment-strict-max-version` | A non-Experiment that pins `strict_max_version` (warning - it only blocks installs on newer Thunderbird). |
 | `minified-code` | A JS file (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error). |
 | `obfuscated-code` | A JS file (not a recognized library) shipped obfuscated - recognized by the AST structure of a known obfuscator family via the `obfuscation-detector` library. The families a match is drawn from are pinned, so a family the library gains later decides nothing and a match needs no second opinion. High precision, partial recall - some obfuscators evade it. |
-| `privacy-policy` | Data transmitted to a hardcoded remote host by an overt API - routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
+| `privacy-policy` | Data transmitted by an overt API to a remote host the developer chose (fixed in the add-on, not entered by the user) - one case per transmission site, naming its host. A host the add-on assembles while it runs is reported too, marked rather than named, since dropping it would hide the site the tool can say least about. Routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
 | `string-timer` | A code string passed to `setTimeout`/`setInterval` (it is eval'd) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
 | `sync-xhr` | Synchronous `XMLHttpRequest` (`open(..., false)`). |
 | `trademark-violation` | Add-on name (resolved from `_locales` for a `__MSG__` name) using a Mozilla brand term - `Firefox`/`Mozilla`/`MZLA` anywhere, in any locale (error, case-insensitive). Needs no knowledge of the language, so it is always a finding, and each offending name is reported once naming every locale that states it. `Thunderbird` is the two checks below, and a name carrying a brand term is left to this one alone, since it is refused either way. The icon is a separate manual check. |
@@ -352,49 +381,36 @@ check that declares one is listed in the report's **Standard Code Review** secti
 or not it found anything: a check that found nothing is exactly the one whose
 blind spot is worth reading.
 
-What a reader finds is not a verdict on the sweep. It enters through
-`--llm-verdict` as an **addition**, carrying the check it belongs to and where it
-was found, and is filed as a finding **of that check** - its ruleId, its band, and
-the response text its own registry entry authors:
+What a reader finds is not a verdict on the sweep, and not a classification
+either: the agent that sweeps reads the add-on, not the linter, so it cannot know
+whether what it found is something that check would have filed, escalated, or
+deliberately excluded. It hands back the location and what is there; the routing
+is the linter's.
+
+The `spawn` phase carries one row per swept check, and the sweep's own words fill
+it in - an empty list where that check is clean, which is what separates "found
+nothing" from "never looked":
 
 ```json
-{
-  "xpi": "/path/to/the-reviewed.xpi",
-  "additions": [
-    { "check": "data-exfiltration", "file": "background.js", "line": 40,
-      "hint": "<a ping> attribute carries the message digest" }
-  ],
-  "verdicts": {
-    "3": "cleared",
-    "9": "Clear",
-    "11": "the German listing text is outdated too"
-  }
-}
+{ "check": "data-exfiltration",
+  "instruction": "Message content and headers, attachments, contacts, ...",
+  "answer": [ { "file": "background.js", "line": 40,
+                "hint": "<a ping> attribute carries the message digest" } ] }
 ```
 
-An addition carries no item index - an index belongs to the linter's numbering of
-the document it wrote, and an addition was never in it. The `hint` is a locus
-annotation naming what sits at that line; the paragraph the developer reads stays
-the registry's.
+Each result is then routed by the owning check's **`escalation:`** - the one
+property that says who can settle that check's cases:
 
-Every value is a string, and which strings are legal depends on **who settles the
-item**. Item 3 is settled by reading the add-on - a finding, or an Extended Code
-Review case - so it takes one of the linter's verbs: `reported`, `cleared`, or
-`withdrawn` (a finding takes only `withdrawn`). Items 9 and 11 were put to a
-reviewer as questions, so they carry what the reviewer answered: the label of one
-of the answers that question offered (`Clear`, `Report` - the item file lists
-them under `answers`), or the words they typed instead, which report the case and
-travel with it.
+| The check's `escalation:` | Where a swept result lands |
+| --- | --- |
+| `manual-review` | A question put to the **reviewer**. The check's own cases cannot be settled from the package at all (a privacy policy lives in the ATN listing), so a swept one cannot be either - it is not inspected, not verified, not cleared. |
+| anything else | An **Extended Code Review** item, settled by reading the add-on like any other, and filed on `reported` under that check's ruleId, band and response. |
 
-Those words are the one thing in this file a person writes. They are printed on
-that case's location line - in parentheses after the location, or as the line
-itself when the case has none, where the reviewer's own line breaks are kept and
-each line becomes an item of its own.
-
-The crossings are refused, each naming the item so the question can be asked
-again rather than an answer being made to fit: a verb on a question, a
-reviewer's answer on an item nobody was asked, an answer with nothing in it, and
-one past the length the question tells the reviewer they have (`MAX_NOTE`).
+Either way it arrives as a numbered entry of the phase that settles it, appended
+after every index that already existed and deduplicated against what the
+deterministic pass listed, so nothing downstream can tell a swept case from one a
+check found. The `hint` is a locus annotation naming
+what sits at that line; the paragraph the developer reads stays the registry's.
 
 | Check id (`check:`) | The blind spot its sweep covers |
 | --- | --- |

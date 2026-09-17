@@ -1,70 +1,48 @@
-// The machine-readable form of a review, written for --llm-review: one entry per item
-// the report lists, as an ARRAY in the order the report lists them. A position in the
-// array IS the item's number, so whoever settles the review addresses an item by reading
-// a field instead of counting lines, which is where off-by-ones come from.
+// Renders the review into the material a phase hands the agent: one per item the report
+// lists, in the order the report lists them, each carrying the locus, the wording the
+// report showed, and for a to-do item BOTH wordings its two possible readers need.
 //
-// It carries what settling an item needs and nothing more: the locus, the wording the
-// report showed, and for a to-do item the instructions and what a reported case would
-// become. It is NOT the `--report-format json` document: that one is the upload filter
-// ATN auto-verifies against, deliberately free of unsettled to-do items. This one exists
-// for the opposite purpose, so it is a separate file with a separate contract.
+// This is NOT the `--report-format json` document: that one is the upload filter ATN
+// auto-verifies against, deliberately free of unsettled to-do items. This renders the
+// opposite thing, for the opposite reader.
 //
-// EVERY item the reader is asked to settle is here, including one the page had no room to
-// print. The cap bounds the PAGE, and a reader working from this file would otherwise
-// settle the items they were handed while the rest passed unexamined - and a verdict
-// naming one of them would be refused as out of range. The two documents still number
-// identically, because the numbering counts every item on both sides.
+// EVERY item is rendered, including one the page had no room to print. The cap bounds the
+// PAGE; a phase that asked about only the printed ones would settle those and let the rest
+// pass unexamined, and an answer naming one of them would be refused as out of range. The
+// two still number identically, because the numbering counts every item on both sides.
 //
-// --llm-skip-manual is the one case where "asked to settle" is narrower than "listed":
-// its prompt does not put the two MANUAL sections to a reviewer, so the file does not
-// carry them either - the rest passing unexamined is the point there, and they stay in the
-// report for the reviewer to work through later. It TRUNCATES the numbering and never
-// renumbers: those are the last sections orderReview numbers, so what survives is still
-// 1..M at positions 0..M-1, and an index means the same item in a skipped file, a whole
-// file and the report alike.
+// Every to-do item is worded BOTH ways: `instructions`, which the agent follows to settle
+// it, and `message` plus the `answers` it offers, which is how a person is asked about it
+// (src/report/format.js manualQuestion writes the question, as it writes every other
+// user-facing string). Both, on every one of them, because an item cannot know who will be
+// asked about it - a case the agent sends on with `ask` is put to a reviewer while keeping
+// the section it was filed under.
 //
-// An item of the two MANUAL sections carries the question it is put to the reviewer as:
-// `message` is what they are asked (src/report/format.js manualQuestion writes it, as it
-// writes every other user-facing string) and `label` says how far through the questions
-// they are ("3/13"). `label` is theirs alone - the only items a reviewer is asked - and a
-// progress label on anything else would count a question nobody asks. `message` is not:
-// a finding carries one too, the wording the report showed for it, and which of the two a
-// `message` is follows from the item's `kind`.
+// `message` on a FINDING is a different thing: the wording the report showed for it, which
+// is the developer's. Which of the two it is follows from the item's `kind`.
 //
-// The label is the progress, NOT the number a verdict names - that is still `index`, and
-// the two differ by every finding and code-review item ahead of the questions.
+// `answers` carries every label and description the reviewer will read, in order. They are
+// the same for every item, and repeated on every item all the same: what it takes to ask
+// one is then in one place, and a reader assembling a question from two places is a reader
+// that can assemble it from one of them alone.
 //
-// A question carries no `title` and no `instructions`. They are what `message` was
-// composed FROM, and the prompt tells its reader to ask the question as written - so
-// handing over the parts as well is handing over the means to write a different one. The
-// items settled by reading the add-on keep their `instructions`, which is the one thing
-// their reader follows.
+// Belongs here: what an item carries, and the paths this run names - the two loop files,
+// and the description and build-report files its agents write (reviewFilePaths), which
+// share one name so none can drift from the review it belongs to.
 //
-// Each question also carries the `answers` it offers - every label and description the
-// reviewer will read, in order. They are the same for every question, and they are
-// repeated on every question all the same: what it takes to ask one is then in one place,
-// and a reader assembling a question from two places is a reader that can assemble it
-// from one of them alone.
-//
-// The one exception to "a position IS the number" is the PRE-SWEEP tail. Those entries
-// are not items of the review: they settle nothing, they are jobs to do BEFORE settling
-// it, and what they produce is addressed by check and locus rather than by a number. So
-// they carry no `index` and no `entry`, and they sit at the END, which keeps positions
-// 0..N-1 aligned with indices 1..N for everything that does have one.
-//
-// Belongs here: the shape of that file, and the paths this run names - the item file it
-// writes, and the description and build-report files its reader writes (reviewFilePaths),
-// which share one name so none can drift from the review it belongs to.
-//
-// Does NOT belong here: the ORDER and the numbering (src/report/order.js), the wording
-// (assets/registry.yaml, resolved before this runs), and when the file is claimed and
-// filled (src/pipeline.js, which owns both moments).
+// Does NOT belong here: WHICH of the two wordings an entry is handed over with, and the
+// progress label counting what a hand-over puts to a person - both are the phase's, at the
+// moment it hands out (src/report/handback.js entriesFor). Nor the ORDER and the numbering
+// (src/report/order.js), WHICH entries a phase asks about (src/report/phases.js), the
+// wording (assets/registry.yaml, resolved before this runs), or when the files are claimed
+// (src/pipeline.js).
 
 import os from "node:os";
 import path from "node:path";
 
-import { orderReview, isQuestion } from "./order.js";
+import { orderReview } from "./order.js";
 import { SECTION_TITLES, manualQuestion } from "./format.js";
+import { STATE_SUFFIX, REVIEW_SUFFIX } from "./state.js";
 
 /**
  * The item array for a finished review.
@@ -81,42 +59,20 @@ import { SECTION_TITLES, manualQuestion } from "./format.js";
  *   offers, from registry.manualReviewChoices(), in the order the reviewer sees them.
  *   REQUIRED, and not defaulted: a question with no answers is one a reviewer cannot
  *   answer, which the registry itself refuses to author.
- * @param {?{agentIntro: string, items: object[]}} [args.preSweep]  The blind-spot sweep,
- *   appended as the unnumbered tail: one entry carrying the shared method and the bare
- *   items.
- * @param {boolean} [args.skipManual]  --llm-skip-manual: omit the two manual sections,
- *   which the prompt does not ask about either under that flag.
  * @param {(x: object) => string} [args.labelOf]  Artifact label ([XPI]/[SCA]) for a
  *   question's locus, from src/report/format.js locusLabeler - in an SCA review
  *   "package.json" alone names a file in either artifact, and the question has to say
  *   which.
  * @returns {object[]}
  */
-export function reviewItems({
-  findings,
-  manual,
-  choices,
-  preSweep = null,
-  skipManual = false,
-  labelOf,
-}) {
+export function reviewItems({ findings, manual, choices, labelOf }) {
   const entryNumbers = new Map();
   const counters = new Map();
-  // Filtered AFTER orderReview, never by handing it a filtered `manual`: orderReview
-  // numbers what it is GIVEN, so a pre-filtered list would renumber the survivors and
-  // every index here would name a different item than the report does. Dropping them
-  // afterwards leaves each survivor the index the report printed.
-  const ordered = orderReview(findings, manual);
-  const listed = skipManual ? ordered.filter((x) => !isQuestion(x)) : ordered;
-  // The reviewer's questions, in the order they are asked: the two manual sections, which
-  // are the last of the review and so are already contiguous. Their count is the total a
-  // label states, taken from the LISTED items - a --llm-skip-manual file holds none,
-  // and a total counting items that file never carried would be a progress bar for a
-  // review nobody is being shown.
-  const questions = listed.filter(isQuestion);
-  const asked = new Map(
-    questions.map((x, i) => [x, `${i + 1}/${questions.length}`])
-  );
+  // The WHOLE review, never a filtered `manual`: orderReview numbers what it is GIVEN, so
+  // a pre-filtered list would renumber the survivors and every index here would name a
+  // different item than the report does. A phase picks the entries it asks about
+  // afterwards, by index (src/report/loop.js phaseEntries).
+  const listed = orderReview(findings, manual);
   const items = listed.map((x) => {
     const t = x.target;
     // The entry number the report shows for it. Found Issues numbers continuously across
@@ -159,73 +115,54 @@ export function reviewItems({
           // finding however it goes.
           suggestedVerdict: t.verdict ?? null,
           ...locus,
-          // A question carries the finished text, its progress label and its answers;
-          // an item settled by reading the add-on carries `instructions` instead (header).
-          ...(asked.has(x)
-            ? {
-                label: asked.get(x),
-                message: manualQuestion(t, labelOf),
-                // Label and description only: the verdict each answer settles the item
-                // with never leaves this process.
-                answers: choices.map(({ label, description }) => ({
-                  label,
-                  description,
-                })),
-              }
-            : { instructions: t.instructions ?? null }),
+          // BOTH wordings, on every item: the instruction addressed to the agent, and
+          // the question addressed to a person. WHICH of them an entry carries is the
+          // phase's to decide as it hands the item out (handback.js entriesFor). An item
+          // cannot know who will be asked about it - a case the agent sends on with `ask`
+          // is put to a reviewer while keeping the section it was filed under - so
+          // deciding it here, from the item, could only ever be a guess.
+          instructions: t.instructions ?? null,
+          message: manualQuestion(t, labelOf),
+          // Label and description only: the verdict each answer settles the item
+          // with never leaves this process.
+          answers: choices.map(({ label, description }) => ({
+            label,
+            description,
+          })),
           suggestedResponse: t.response ?? null,
         };
   });
-  if (!preSweep) {
-    return items;
-  }
-  // The unnumbered tail: ONE entry, because it is one request. `intro` is the AGENT's
-  // framing - how to judge, and what to hand back - and each item is only the class of
-  // code its own check is looking for. The report prints the reviewer's framing instead;
-  // the two differ only in the hand-back contract, which a person does not produce. `check` rather than `ruleId`, deliberately: it is the value
-  // an addition copies verbatim into the verdict file, so both documents spell it the
-  // same way. `severity` is the band an addition for that check would land in, stated up
-  // front so a reader knows the weight of what they are being asked to look for.
-  return [
-    ...items,
-    {
-      kind: "pre-sweep",
-      section: SECTION_TITLES.preSweep,
-      intro: preSweep.agentIntro,
-      items: preSweep.items.map((s) => ({
-        check: s.check,
-        severity: s.severity,
-        title: s.title,
-        instruction: s.instruction,
-      })),
-    },
-  ];
+  return items;
 }
 
 /**
- * The three files this run names, sharing one name and one moment:
+ * The four files this run names, sharing one name and one moment:
  *
- * - `items`, the machine-readable item file, in the system temp directory. Not beside the
- *   submission - a review does not write into what it is reviewing.
- * - `summary`, where the prompt's reader writes the add-on description for the reviewer.
- * - `build`, where it writes what building the add-on takes, in a source code review.
+ * - `state`, the linter's own record of the review, and `review`, the file it hands the
+ *   agent one phase at a time. Both in the system temp directory. They SHARE A STEM, which
+ *   is what makes the pointer in the handed-back file checkable rather than trusted.
+ * - `summary`, where a sub-agent writes the add-on description for the reviewer.
+ * - `build`, where another writes what building the add-on takes, in a source code review.
  *
  * The last two sit BESIDE the submitted .xpi, in the folder the reviewer is working out of,
  * so the links they are handed open where they are looking. This linter writes neither and
  * reads neither; it only says where they go, so a name cannot drift from the review it
  * belongs to.
  *
- * One base for all three: a name and a version do not identify a review - two submissions can
+ * One base for all four: a name and a version do not identify a review - two submissions can
  * share both (a fork, a resubmission, an add-on reviewed twice in a session) - so the run's
  * own moment separates them, and a later run does not open what an earlier one left
  * behind. Millisecond resolution, which separates reviews a person runs; two started in
  * the same millisecond would still collide, and nothing here pretends otherwise.
+ * A review is named ONCE, by the run that builds it. Every pass after that is handed the
+ * review file's path and finds the rest from it, so no later run has to recompute a moment
+ * it does not have.
  * @param {import("../addon/load.js").Addon} addon  The shipped add-on - read for the name
- *   it lends all three (its id and version).
+ *   it lends all four (its id and version).
  * @param {string} xpiPath  Where that add-on IS, absolute. An Addon carries no path of its
  *   own, so the caller passes the one the run was given (src/pipeline.js), which resolved
  *   it - nothing re-resolves it here.
- * @returns {{items: string, summary: string, build: string}}
+ * @returns {{summary: string, build: string, state: string, review: string}}
  */
 export function reviewFilePaths(addon, xpiPath) {
   const base = reviewFileBase(addon);
@@ -234,9 +171,13 @@ export function reviewFilePaths(addon, xpiPath) {
   // reviewed. Taken once, so the two files cannot land in different folders.
   const beside = path.dirname(xpiPath);
   return {
-    items: path.join(os.tmpdir(), `${base}.items.json`),
     summary: path.join(beside, `${base}.summary.md`),
     build: path.join(beside, `${base}.build.md`),
+    // The REVIEW LOOP's pair. They share this stem so `base` in the file the agent hands
+    // back is CHECKABLE rather than trusted: the linter derives the state path from the
+    // review path it was given and compares the two.
+    state: path.join(os.tmpdir(), `${base}${STATE_SUFFIX}`),
+    review: path.join(os.tmpdir(), `${base}${REVIEW_SUFFIX}`),
   };
 }
 

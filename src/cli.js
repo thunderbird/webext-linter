@@ -25,7 +25,14 @@ import { loadRegistry } from "./checks/registry.js";
 import { scaSubmission } from "./addon/submission.js";
 import { hasParentSegment, relativeInside } from "./addon/load.js";
 import { hasErrors } from "./report/finding.js";
-import { formatReview, scaPromptLines } from "./report/format.js";
+import {
+  formatReview,
+  scaPromptLines,
+  loopPromptLines,
+} from "./report/format.js";
+import { readState } from "./report/state.js";
+import { accept, issue, settle, HandbackRefused } from "./report/loop.js";
+import { readHandback } from "./report/handback.js";
 import {
   DEFAULT_CACHE,
   EXPERIMENTS_CACHE,
@@ -182,7 +189,7 @@ function helpText(checkIds) {
   const llm = [
     [
       "--llm-review",
-      "Print a verification prompt and write the review as a JSON item array to a temp file, instead of the report. The prompt explains how to settle the items and pass them back with --llm-verdict. Refused with --report-format json.",
+      "Start the review loop instead of printing the report: print the first prompt and write the file it names to a temp directory. Each pass fills that file in and hands it back with --llm-verdict, which answers with the next prompt. Refused with --report-format json.",
     ],
     [
       "--llm-skip-summary",
@@ -190,7 +197,11 @@ function helpText(checkIds) {
     ],
     [
       "--llm-skip-manual",
-      "With --llm-review or --llm-sca-review: leave out the manual review items. The prompt does not put them to a reviewer and the item file does not carry them - they stay in the report, for the reviewer to work through later. Given with --llm-skip-summary, the review verifies only the add-on's code.",
+      "With --llm-review or --llm-sca-review: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later. Given with --llm-skip-summary, the review verifies only the add-on's code.",
+    ],
+    [
+      "--llm-skip-sweep",
+      "With --llm-review or --llm-sca-review: leave out the sweep. The prompt neither spawns it nor stops for it, so the review is one prompt rather than two - and the Standard Code Review section stays in the report, for the reviewer to sweep by hand.",
     ],
     [
       "--llm-sca-review <folder>",
@@ -198,7 +209,7 @@ function helpText(checkIds) {
     ],
     [
       "--llm-verdict <file>",
-      "Apply settled verdicts and print the settled report, from a JSON file written as the --llm-review prompt describes. Normally run by the agent that settled the review rather than by a person.",
+      "Take one pass of the review loop: apply what the file carries and print the next prompt, or the settled report when nothing is left to ask. The file is the one --llm-review named, and no add-on is named again. Normally run by the agent working through the review rather than by a person.",
     ],
   ];
 
@@ -291,6 +302,7 @@ const OPTIONS = {
   "llm-review": { type: "boolean" },
   "llm-skip-summary": { type: "boolean" },
   "llm-skip-manual": { type: "boolean" },
+  "llm-skip-sweep": { type: "boolean" },
   "llm-verdict": { type: "string" },
   verbose: { type: "boolean" },
   help: { type: "boolean" },
@@ -609,9 +621,24 @@ export async function main(argv) {
   }
 
   // A skip names part of the --llm-review prompt to leave out, so it says nothing without a
-  // review to cut down. --llm-sca-review takes them too: it prepares a review, and hands
-  // them back in the command it prints. Refused FIRST, so every guard below can assume a
-  // skip implies one of the two.
+  // review to cut down. Two flags take them, not one: --llm-sca-review prepares a review
+  // and hands them back in the command it prints. The loop's later passes need none - the
+  // run they belong to recorded them, and every pass after reads that. Refused FIRST, so
+  // every guard below can assume a skip implies one of the two.
+  // Not collected by reviewSkips - it names no `skip:` step - so the rule the others get
+  // for free is spelled out for it.
+  if (
+    values["llm-skip-sweep"] &&
+    !values["llm-review"] &&
+    values["llm-sca-review"] === undefined
+  ) {
+    process.stderr.write(
+      "--llm-skip-sweep names part of the --llm-review prompt to leave out, so it needs " +
+        "--llm-review, or --llm-sca-review to hand to the review it prepares: a run that " +
+        "prints its report has no prompt to cut down.\n"
+    );
+    return 2;
+  }
   const skips = reviewSkips(values);
   if (
     skips.length &&
@@ -622,8 +649,9 @@ export async function main(argv) {
     process.stderr.write(
       `${listOf(skips.map((s) => `--llm-skip-${s}`))} ${many ? "name parts" : "names part"} ` +
         `of the --llm-review prompt to leave out, so ${many ? "they need" : "it needs"} ` +
-        "--llm-review, or --llm-sca-review to hand to the review it prepares: a run that " +
-        "prints its report has no prompt to cut down.\n"
+        "--llm-review, or " +
+        "--llm-sca-review to hand to the review it prepares: a run that prints its " +
+        "report has no prompt to cut down.\n"
     );
     return 2;
   }
@@ -701,6 +729,22 @@ export async function main(argv) {
     return 0;
   }
 
+  if (values["llm-review"] && values["llm-verdict"]) {
+    process.stderr.write(
+      "--llm-review and --llm-verdict are the two ends of one review and cannot share a " +
+        "run: --llm-review starts it, --llm-verdict carries it on.\n"
+    );
+    return 2;
+  }
+
+  // THE REVIEW LOOP, every pass after the first. No add-on is named and none is read: the
+  // deterministic review ran ONCE, in the --llm-review run, and its result is in the state
+  // the file handed back points at. That is why there is no add-on path here, and why
+  // nothing can shift under an index between passes.
+  if (values["llm-verdict"]) {
+    return runLoopPass(values["llm-verdict"], registry, format);
+  }
+
   // No add-on to review: the usage text answers what was missing, and the exit code says
   // it was a mistake rather than a question (--help returns 0, far above).
   if (positionals.length === 0) {
@@ -719,28 +763,21 @@ export async function main(argv) {
     return 2;
   }
 
-  // A review flag's whole output is a prompt and an item file. JSON is the machine
+  // A review flag's whole output is a prompt. JSON is the machine
   // contract for ATN, which wants neither, and asking for both leaves nothing coherent to
   // print - so say so rather than silently favouring one.
   if (values["llm-review"] && format === "json") {
     process.stderr.write(
-      "--llm-review is text only: it prints a prompt and writes an item file, " +
+      "--llm-review is text only: it prints a prompt and writes the files the review " +
         "which is not what --report-format json produces.\n"
     );
     return 2;
   }
 
-  // The two halves of one round trip, one run each: a review flag asks the questions,
-  // --llm-verdict applies the answers. Together they would print a prompt asking for
-  // verdicts on a report that already has them, so the answer file would be written
-  // against a review nobody ran. Refuse rather than pick one.
-  if (values["llm-review"] && values["llm-verdict"]) {
-    process.stderr.write(
-      "--llm-review and --llm-verdict are the two halves of one round trip and cannot " +
-        "be used together: run --llm-review first, then --llm-verdict with the answers.\n"
-    );
-    return 2;
-  }
+  // The two ENDS of the loop: --llm-review starts one, --llm-verdict continues one. Each
+  // run is one or the other. Together they would start a review and answer a different one
+  // in the same breath, so the file handed back would belong to neither. Refuse rather
+  // than pick one.
 
   // --sca-root is the SCA-mode switch. --sca-source and --sca-exp-source name locations
   // INSIDE it, so they are meaningless on their own - and unresolvable, since this layer
@@ -846,11 +883,11 @@ export async function main(argv) {
   // The full report comes from the report layer: formatReview assembles the body - Found
   // Issues and the to-do sections - and the verdict tally LAST. The CLI just writes it.
   //
-  // Except under --llm-review, which produced the item file INSTEAD: the prompt tells its
-  // reader to work from that array, and printing the same review as prose alongside it
-  // would invite them to settle the report they can see rather than the items they can
-  // address. The settled report comes from the --llm-verdict run that follows.
-  const rendered = result.meta.itemsFile ? "" : formatReview(result, format);
+  // Except under --llm-review, which hands out the first PHASE instead: the prompt tells
+  // its reader to work from the file it names, and printing the same review as prose
+  // alongside it would invite them to settle the report they can see rather than the
+  // entries they can address. The settled report comes from the last pass of the loop.
+  const rendered = result.meta.prompting ? "" : formatReview(result, format);
   if (rendered) {
     process.stdout.write(rendered + "\n");
   }
@@ -909,6 +946,10 @@ function pipelineOptsFromValues(values) {
     scaExpSource: inRoot(values["sca-exp-source"]),
     llmReview: Boolean(values["llm-review"]),
     llmSkip: reviewSkips(values),
+    // Not a PROMPT_SKIPS member: it names no `skip:` step. What it withholds is the
+    // `run: sweep` condition, and with it every step that spawns the sweep, waits for it
+    // or records what it found (src/report/phases.js stepsOf).
+    llmSkipSweep: Boolean(values["llm-skip-sweep"]),
     llmVerdict: values["llm-verdict"],
   };
 }
@@ -953,4 +994,94 @@ function splitList(value) {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+/**
+ * One pass of the review loop: take a phase back, then hand out the next - or, when
+ * nothing is left to issue, print the finished report.
+ *
+ * A REFUSAL is answered differently from every other failure here. The prompt is NOT
+ * re-printed: the agent still has it, and re-issuing the same text against the same input
+ * invites a loop where the same mistake is made again. Nothing in the state changed, so a
+ * corrected hand-back resumes exactly where it was - and "abort and say why" is the loud
+ * failure, because a review that cannot finish has to say so rather than quietly produce a
+ * report out of half a pass.
+ * @param {string} file  The review file the agent handed back.
+ * @param {import("./checks/registry.js").Registry} registry
+ * @param {string} format
+ * @returns {Promise<number>}
+ */
+async function runLoopPass(file, registry, format) {
+  const texts = registry.llmPhases();
+  const handed = path.resolve(file);
+  let state, stateFile;
+  try {
+    // `readHandback` names the state before accept() re-reads the same file for its
+    // entries - two reads of what the agent handed back, not two ways of finding it.
+    ({ state: stateFile } = readHandback(handed));
+    state = readState(stateFile);
+    accept(state, handed, texts.phases, registry);
+  } catch (err) {
+    if (err instanceof HandbackRefused) {
+      process.stdout.write(
+        `${fillSlots(texts.refused, { problem: err.problem })}\n`
+      );
+      return 2;
+    }
+    process.stderr.write(`${err.message}\n${red("verify failed")}\n`);
+    return 2;
+  }
+  const next = issue(state, stateFile, texts.phases, registry);
+  if (next) {
+    for (const line of loopPromptLines(texts, next.phase, next.steps, {
+      review: state.review,
+      command: `node verify.js --llm-verdict ${state.review}`,
+      schemaCache: state.paths.schemaCache ?? "",
+      description: state.paths.description ?? "",
+      build: state.paths.build ?? "",
+      scaRoot: state.paths.scaRoot ?? "",
+      package: state.paths.package,
+    })) {
+      process.stdout.write(`${line}\n`);
+    }
+    process.stdout.write("\n");
+    return 0;
+  }
+  // Settled. The last prompt differs from every other only in carrying the report.
+  let review, applied, header, links;
+  try {
+    ({ review, applied, header, links } = settle(state, registry));
+  } catch (err) {
+    // Unlike a hand-back, this cannot be redone: the answer settle() refuses is already
+    // recorded, and nothing re-prints a prompt for one that was already accepted. The
+    // review ends here - a clean failure, not a stack trace, same as a state this build
+    // cannot read.
+    process.stderr.write(`${err.message}\n${red("verify failed")}\n`);
+    return 2;
+  }
+  const rendered = formatReview(review, format);
+  process.stdout.write(`${fillSlots(texts.final, { links })}\n`);
+  for (const line of header) {
+    process.stdout.write(`${line}\n`);
+  }
+  // Audible, so a misaimed verdict shows up as one line here rather than buried in a
+  // re-rendered report - the same line a settled report has always printed.
+  if (applied.length) {
+    process.stdout.write(
+      `\nApplied ${applied.length} verdict(s): ${applied.join(", ")}\n`
+    );
+  }
+  process.stdout.write(`\n${rendered}\n`);
+  // No --report-out: it cannot be given beside any --llm-* flag, so no pass of this loop
+  // has one to honour.
+  return hasErrors(review.findings) ? 1 : 0;
+}
+
+/** Fill a linter-owned text's placeholders. The same substitution the prompt uses, so a
+ *  slot means the same thing wherever it appears. */
+function fillSlots(text, values) {
+  return Object.entries(values).reduce(
+    (acc, [name, value]) => acc.split(`{{${name}}}`).join(value),
+    text
+  );
 }

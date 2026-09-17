@@ -6,9 +6,9 @@ import { REVIEW_MODE } from "../../src/lib/enum.js";
 
 import {
   formatText,
+  loopPromptLines,
   formatJson,
   headerLines,
-  llmPromptLines,
   locusLabeler,
   locationLine,
 } from "../../src/report/format.js";
@@ -17,7 +17,7 @@ import { renderManualItems } from "../../src/report/responses.js";
 import {
   assertChoices,
   assertProse,
-  assertPrompts,
+  assertScaPrompt,
   loadRegistry,
 } from "../../src/checks/registry.js";
 import { PROMPT_SKIPS } from "../../src/config.js";
@@ -709,6 +709,121 @@ test("an error among warnings shows only 'rejected'; later headings stay plain",
   assert.ok(out.indexOf("REJECTED-MSG") < out.indexOf("WARN:"));
 });
 
+// ---- collapse: subject ----
+// An entry whose check declares `collapse: subject` says one thing per SUBJECT: the first
+// case of each keeps its line and counts the others onto it, so a host reached from three
+// files reads as one line rather than three saying the same thing. Decided in order.js
+// beside the cap, because both answer "does this line print".
+//
+// What it must NOT do is lose a case: every one is still numbered and still settled, which
+// is what makes the collapse a display decision rather than a review one.
+test("collapse:subject prints one line per subject and counts the rest", () => {
+  const at = (file, line, item) => ({
+    ruleId: "r",
+    severity: "warning",
+    message: "one subject, several places",
+    file,
+    loc: { line },
+    item,
+    hint: null,
+    listItem: true,
+    collapse: "subject",
+  });
+  const findings = [
+    at("a.js", 1, "host.example.com"),
+    at("b.js", 2, "host.example.com"),
+    at("c.js", 3, "host.example.com"),
+    at("d.js", 4, "other.example.com"),
+  ];
+  const out = formatText({
+    findings,
+    meta: { action: "review", xpi: "x", reviewed: true },
+  });
+  const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
+
+  // Two lines for four cases: the first of each subject, with a count of its siblings.
+  assert.match(issues, /^ - a\.js:1 - host\.example\.com \(\+2 elsewhere\)$/m);
+  assert.match(issues, /^ - d\.js:4 - other\.example\.com$/m);
+  assert.equal((issues.match(/^ - /gm) || []).length, 2);
+  assert.ok(
+    !issues.includes("b.js"),
+    "a folded case prints no line of its own"
+  );
+
+  // A folded case is NOT "withheld": that marker speaks for cases past the display cap,
+  // and the line above already says how many this one stands for.
+  assert.ok(!issues.includes("excluded from this list"));
+
+  // Display only - every case is still counted, still numbered, still settleable.
+  assert.match(out, /4 warning\(s\)/);
+  const ordered = orderReview(findings);
+  assert.equal(ordered.length, 4);
+  assert.deepEqual(
+    ordered.map((x) => x.index),
+    [1, 2, 3, 4]
+  );
+  assert.deepEqual(
+    ordered.map((x) => x.shown),
+    [true, false, false, true]
+  );
+  assert.deepEqual(
+    ordered.map((x) => x.collapsed),
+    [2, 0, 0, 0]
+  );
+});
+
+// Two cases of one subject that differ in their DETAIL say different things, so neither
+// stands for the other and both print.
+test("collapse:subject keys on the detail as well as the subject", () => {
+  const at = (file, item, hint) => ({
+    ruleId: "r",
+    severity: "warning",
+    message: "same host, different detail",
+    file,
+    loc: { line: 1 },
+    item,
+    hint,
+    listItem: true,
+    collapse: "subject",
+  });
+  const out = formatText({
+    findings: [
+      at("a.js", "host.example.com", "POST"),
+      at("b.js", "host.example.com", "GET"),
+      at("c.js", "host.example.com", "POST"),
+    ],
+    meta: { action: "review", xpi: "x", reviewed: true },
+  });
+  const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
+  assert.match(
+    issues,
+    /^ - a\.js:1 - host\.example\.com - POST \(\+1 elsewhere\)$/m
+  );
+  assert.match(issues, /^ - b\.js:1 - host\.example\.com - GET$/m);
+  assert.equal((issues.match(/^ - /gm) || []).length, 2);
+});
+
+// Without the declaration nothing changes: every case keeps its own line.
+test("an entry with no collapse declaration lists every case", () => {
+  const at = (file) => ({
+    ruleId: "r",
+    severity: "warning",
+    message: "every place listed",
+    file,
+    loc: { line: 1 },
+    item: "host.example.com",
+    hint: null,
+    listItem: true,
+  });
+  const out = formatText({
+    findings: [at("a.js"), at("b.js"), at("c.js")],
+    meta: { action: "review", xpi: "x", reviewed: true },
+  });
+  const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
+  assert.equal((issues.match(/^ - /gm) || []).length, 3);
+  assert.ok(!issues.includes("elsewhere"));
+});
+
 // ---- display cap (MAX_ENTRIES_PER_CATEGORY) ----
 // A grouped Issues entry lists at most 25 locations, then one "… and N more,
 // excluded from this list" marker. The cap is display only: the summary count
@@ -1114,93 +1229,6 @@ test("a hold beside an error becomes an error, everywhere at once", () => {
   assert.equal(JSON.parse(formatJson(review)).summary.hold, 0);
 });
 
-// ---- the --llm-review verification prompt ----
-// The prompt asks for the work the report contains and for all of it: the issues ask needs
-// a finding, the code-review ask needs an Extended Code Review item, and the manual ask
-// needs an item in either of the other two to-do sections. Asking for an absent section
-// sends the reader hunting for something never printed; leaving one out hands over a
-// section of the review unasked.
-test("the prompt asks only for the sections the report actually has", () => {
-  const prompt = {
-    intro: "INTRO.",
-    issues: "ISSUES.",
-    codeReview: "CODE.",
-    extendedManualReview: "EXT.",
-    standardManualReview: "STD.",
-    outcomeIntro: "HOW.",
-    outcome: [
-      { skip: null, text: "A." },
-      { skip: "manual", text: "B." },
-      { skip: null, text: "C." },
-    ],
-  };
-  const finding = { ruleId: "r", severity: "error", message: "m" };
-  const codeItem = { extended: true, section: "code-review", title: "t" };
-  const manualItem = { extended: true, section: "manual-review", title: "t" };
-  const standardItem = { extended: false, section: null, title: "t" };
-
-  // Its own section, like every other block in the report. `outcome` - how the verdicts
-  // come back - closes it whenever something was asked, and is absent when nothing was.
-  const head = ["", "── LLM Prompt ──", "", "INTRO.", ""];
-  // The steps, numbered over what a full run prints - all of them.
-  const tail = ["", "HOW.", "", "1. A.", "", "2. B.", "", "3. C."];
-  assert.deepEqual(llmPromptLines(prompt, [], []), head);
-  assert.deepEqual(llmPromptLines(prompt, [finding], []), [
-    ...head,
-    "- ISSUES.",
-    ...tail,
-  ]);
-  assert.deepEqual(llmPromptLines(prompt, [], [codeItem]), [
-    ...head,
-    "- CODE.",
-    ...tail,
-  ]);
-  assert.deepEqual(llmPromptLines(prompt, [finding], [codeItem]), [
-    ...head,
-    "- ISSUES.",
-    "- CODE.",
-    ...tail,
-  ]);
-  // One ask per to-do section, so a review with no Extended Manual Review items is not
-  // told to work them.
-  assert.deepEqual(llmPromptLines(prompt, [], [manualItem]), [
-    ...head,
-    "- EXT.",
-    ...tail,
-  ]);
-  assert.deepEqual(llmPromptLines(prompt, [], [standardItem]), [
-    ...head,
-    "- STD.",
-    ...tail,
-  ]);
-  // All four at once, in the order the report prints their sections.
-  assert.deepEqual(
-    llmPromptLines(prompt, [finding], [codeItem, manualItem, standardItem]),
-    [...head, "- ISSUES.", "- CODE.", "- EXT.", "- STD.", ...tail]
-  );
-});
-
-// The registry is the only place this wording lives, and all three texts are needed the
-// moment the flag is used - which one a review prints depends on its own content, so a
-// missing text would quietly drop an instruction instead of failing.
-test("the prompt texts come from the registry and all three are required", () => {
-  const prompt = loadRegistry().llmReviewPrompt();
-  for (const key of [
-    "intro",
-    "issues",
-    "codeReview",
-    "extendedManualReview",
-    "standardManualReview",
-    "outcomeIntro",
-  ]) {
-    assert.equal(typeof prompt[key], "string");
-    assert.ok(prompt[key].length > 0, key);
-  }
-  const registry = loadRegistry();
-  delete registry.doc["llm-review-prompt"].issues;
-  assert.throws(() => assertPrompts(registry, "t.yaml"), /authors no `issues`/);
-});
-
 // The answers a question offers are authored once and asked of every reviewer, so a run
 // that cannot read them has no question to ask. Each way the yaml can be wrong refuses by
 // name, rather than reaching the reviewer as an answer with no label or no description.
@@ -1238,6 +1266,20 @@ test("the manual review answers come from the registry and are whole", () => {
       () => assertChoices(broken, "t.yaml"),
       new RegExp(`answer ${i + 1} authors no \\\`${key}\\\``),
       key
+    );
+  }
+
+  // A verdict is a WORD that has to name one. A misspelling reaches the apply step as no
+  // verdict at all, where every branch declines it and the case is dropped with no finding
+  // - the reviewer's "Report" silently clearing the very thing they reported. And `ask`
+  // moves an item to the phase that asks a person, which is where this answer came from.
+  for (const bad of ["cleard", "ask"]) {
+    const broken = loadRegistry();
+    broken.doc["llm-manual-review-choices"][0].verdict = bad;
+    assert.throws(
+      () => assertChoices(broken, "t.yaml"),
+      /is not a verdict a reviewer's answer can carry/,
+      bad
     );
   }
 });
@@ -1328,12 +1370,12 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   assert.equal(prompt.outcome.filter((s) => s.run === "experiments").length, 1);
   const noIntro = loadRegistry();
   delete noIntro.doc["llm-sca-review-prompt"].intro;
-  assert.throws(() => assertPrompts(noIntro, "t.yaml"), /authors no `intro`/);
+  assert.throws(() => assertScaPrompt(noIntro, "t.yaml"), /authors no `intro`/);
 
   const noSteps = loadRegistry();
   noSteps.doc["llm-sca-review-prompt"].outcome = [];
   assert.throws(
-    () => assertPrompts(noSteps, "t.yaml"),
+    () => assertScaPrompt(noSteps, "t.yaml"),
     /authors no `outcome` steps/
   );
 
@@ -1343,7 +1385,7 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
     { text: "" },
   ];
   assert.throws(
-    () => assertPrompts(blankStep, "t.yaml"),
+    () => assertScaPrompt(blankStep, "t.yaml"),
     /step 2 authors no `text`/
   );
 
@@ -1353,7 +1395,7 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   const badMarker = loadRegistry();
   badMarker.doc["llm-sca-review-prompt"].outcome[0].run = "experiment";
   assert.throws(
-    () => assertPrompts(badMarker, "t.yaml"),
+    () => assertScaPrompt(badMarker, "t.yaml"),
     /step 1 has `run: experiment`, which this prompt cannot evaluate \(expected one of: experiments\)/
   );
 
@@ -1361,7 +1403,7 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   const selfNumbered = loadRegistry();
   selfNumbered.doc["llm-sca-review-prompt"].outcome[0].text = "1. Do it.";
   assert.throws(
-    () => assertPrompts(selfNumbered, "t.yaml"),
+    () => assertScaPrompt(selfNumbered, "t.yaml"),
     /step 1 numbers itself/
   );
 
@@ -1371,301 +1413,15 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   const wrongMarker = loadRegistry();
   wrongMarker.doc["llm-sca-review-prompt"].outcome[1].skip = "manual";
   assert.throws(
-    () => assertPrompts(wrongMarker, "t.yaml"),
+    () => assertScaPrompt(wrongMarker, "t.yaml"),
     /step 2 authors `skip`, which this prompt cannot act on \(expected `run`\)/
   );
   const typo = loadRegistry();
   typo.doc["llm-sca-review-prompt"].outcome[2].experiments = true;
   assert.throws(
-    () => assertPrompts(typo, "t.yaml"),
+    () => assertScaPrompt(typo, "t.yaml"),
     /step 3 authors `experiments`/
   );
-});
-
-// Every step must declare a `skip` a flag can actually give, the way every check entry
-// must declare its severity: a typo in the marker would silently leave the step in every
-// prompt, and nothing downstream validates this wording. The steps must not number
-// themselves either - the prompt numbers what survives, so a literal number would render
-// twice.
-test("every outcome step authors text and a skip a flag can give", () => {
-  const prompt = loadRegistry().llmReviewPrompt();
-  assert.ok(Array.isArray(prompt.outcome) && prompt.outcome.length > 0);
-  for (const [i, step] of prompt.outcome.entries()) {
-    assert.ok(
-      step.skip === null || PROMPT_SKIPS.includes(step.skip),
-      `step ${i + 1} skip`
-    );
-    assert.equal(typeof step.text, "string", `step ${i + 1} text`);
-    assert.ok(step.text.length > 0, `step ${i + 1} text`);
-    assert.doesNotMatch(step.text, /^\d+[.)]\s/, `step ${i + 1} self-numbers`);
-  }
-  for (const skip of PROMPT_SKIPS) {
-    assert.ok(
-      prompt.outcome.some((step) => step.skip === skip),
-      `--llm-skip-${skip} would withhold nothing`
-    );
-  }
-});
-
-// The clause MOVES that let a one-word marker carry the whole feature: the instructions
-// about the description agent and about the reviewer's answers live in the steps their own
-// skip drops, never in one it keeps. Left behind, a cut-down prompt would command work it
-// never asked for - which no other test would catch.
-test("no step a skip keeps refers to the work that skip drops", () => {
-  const dropped = {
-    summary: ["describe the add-on", "description agent", "ADDON_DESCRIPTION"],
-    manual: [
-      "to the reviewer in index order",
-      "the words they typed",
-      "the label they picked",
-    ],
-  };
-  const steps = loadRegistry().llmReviewPrompt().outcome;
-  for (const skip of PROMPT_SKIPS) {
-    for (const step of steps.filter((step) => step.skip !== skip)) {
-      for (const stray of dropped[skip]) {
-        assert.ok(
-          !step.text.includes(stray),
-          `a --llm-skip-${skip} step still mentions "${stray}"`
-        );
-      }
-    }
-  }
-});
-
-test("a malformed outcome step is refused", () => {
-  const bad = (mutate, re) => {
-    const registry = loadRegistry();
-    mutate(registry.doc["llm-review-prompt"]);
-    assert.throws(() => assertPrompts(registry, "t.yaml"), re);
-  };
-  bad((p) => delete p.outcome, /authors no `outcome` steps/);
-  bad((p) => (p.outcome = []), /authors no `outcome` steps/);
-  bad(
-    (p) => (p.outcome = [{ text: "a" }, "nope"]),
-    /step 2 is not a step mapping/
-  );
-  bad((p) => (p.outcome[0].skip = "nonsense"), /step 1 has `skip: nonsense`/);
-  bad((p) => (p.outcome[0].skip = true), /step 1 has `skip: true`/);
-  bad((p) => (p.outcome[1].text = ""), /step 2 authors no `text`/);
-  bad(
-    (p) => (p.outcome[0].text = "1. Run the sweep."),
-    /step 1 numbers itself/
-  );
-  bad(
-    (p) => p.outcome.forEach((s) => delete s.skip),
-    /has no `skip: summary` step/
-  );
-  bad((p) => delete p["outcome-intro"], /authors no `outcome-intro`/);
-  // A step may carry ONE marker, from those this prompt acts on. Anything else - the bare
-  // name prop `run` replaced, or a typo of a real marker - is dropped at load, and the
-  // step then prints in every run, which is the opposite of what its author wrote.
-  bad(
-    (p) => (p.outcome[0].experiments = true),
-    /step 1 authors `experiments`, which this prompt cannot act on \(expected `skip` or `run`\)/
-  );
-  bad((p) => (p.outcome[1].skipp = "summary"), /step 2 authors `skipp`/);
-  // `run` is checked against what this prompt can EVALUATE, the way `skip` is checked
-  // against the flags - the other prompt's condition included, which reads as plausible
-  // here and answers nothing.
-  bad(
-    (p) => (p.outcome[0].run = "experiments"),
-    /step 1 has `run: experiments`, which this prompt cannot evaluate \(expected one of: sca\)/
-  );
-  // ONE marker, never two: a step whose printing depended on both a flag and the review
-  // mode would take two answers to work out.
-  bad(
-    (p) => (p.outcome[1].run = "sca"),
-    /step 2 carries `skip` and `run` - a step takes ONE marker/
-  );
-});
-
-// --llm-skip-manual asks only for what reading the ADD-ON can settle: the two manual asks
-// are withheld, and so are the steps that need a person. What is left is renumbered, which
-// is the whole reason no step authors its own number.
-test("--llm-skip-manual drops the manual asks and renumbers the steps", () => {
-  const prompt = {
-    intro: "INTRO.",
-    issues: "ISSUES.",
-    preSweep: "SWEEP.",
-    codeReview: "CODE.",
-    extendedManualReview: "EXT.",
-    standardManualReview: "STD.",
-    outcomeIntro: "HOW.",
-    outcome: [
-      { skip: null, text: "A." },
-      { skip: "manual", text: "B." },
-      { skip: null, text: "C." },
-    ],
-  };
-  const finding = { ruleId: "r", severity: "error", message: "m" };
-  const codeItem = { extended: true, section: "code-review", title: "t" };
-  const manualItem = { extended: true, section: "manual-review", title: "t" };
-  const standardItem = { extended: false, section: null, title: "t" };
-  const head = ["", "── LLM Prompt ──", "", "INTRO.", ""];
-
-  // The manual items are in the review and still print in the report - they are simply
-  // not asked about, and step B (which would put them to a reviewer) is gone with them.
-  assert.deepEqual(
-    llmPromptLines(
-      prompt,
-      [finding],
-      [codeItem, manualItem, standardItem],
-      null,
-      ["manual"]
-    ),
-    [...head, "- ISSUES.", "- CODE.", "", "HOW.", "", "1. A.", "", "2. C."]
-  );
-  // The same call in a full run asks for everything and prints every step.
-  assert.deepEqual(
-    llmPromptLines(prompt, [finding], [codeItem, manualItem, standardItem]),
-    [
-      ...head,
-      "- ISSUES.",
-      "- CODE.",
-      "- EXT.",
-      "- STD.",
-      "",
-      "HOW.",
-      "",
-      "1. A.",
-      "",
-      "2. B.",
-      "",
-      "3. C.",
-    ]
-  );
-  // A cut-down run whose only ask is the sweep still closes with the steps: the work it
-  // asks for is the sweep's, and the hand-back instruction is in a surviving step.
-  assert.deepEqual(
-    llmPromptLines(prompt, [], [standardItem], { items: [{}] }, ["manual"]),
-    [...head, "- SWEEP.", "", "HOW.", "", "1. A.", "", "2. C."]
-  );
-});
-
-// The prompt's OTHER marker: a step marked `run: sca` is printed only by a source code
-// review, because the build agent it spawns has nothing to read in an XPI one. What gates
-// it is what the review RESOLVED - the source root and the build file its steps name - so
-// the same value fills the step and the header, and they cannot disagree.
-test("a run: sca step prints only in a source code review", () => {
-  const prompt = {
-    intro: "INTRO.",
-    issues: "ISSUES.",
-    outcomeIntro: "HOW.",
-    outcome: [
-      { skip: null, run: null, text: "A." },
-      { skip: null, run: "sca", text: "B." },
-      { skip: "manual", run: null, text: "C." },
-    ],
-  };
-  const finding = { ruleId: "r", severity: "error", message: "m" };
-  const head = ["", "── LLM Prompt ──", "", "INTRO.", "", "- ISSUES."];
-
-  // An XPI review never prints it, and what remains is numbered 1..N with no gap.
-  assert.deepEqual(llmPromptLines(prompt, [finding], []), [
-    ...head,
-    "",
-    "HOW.",
-    "",
-    "1. A.",
-    "",
-    "2. C.",
-  ]);
-  // A source code review prints it, in its authored place.
-  assert.deepEqual(llmPromptLines(prompt, [finding], [], null, [], "/x/src"), [
-    ...head,
-    "",
-    "HOW.",
-    "",
-    "1. A.",
-    "",
-    "2. B.",
-    "",
-    "3. C.",
-  ]);
-  // The two markers are independent: --llm-skip-manual withholds the QUESTIONS put to a
-  // reviewer, and the build steps are information they work from, not a question.
-  assert.deepEqual(
-    llmPromptLines(prompt, [finding], [], null, ["manual"], "/x/src"),
-    [...head, "", "HOW.", "", "1. A.", "", "2. B."]
-  );
-});
-
-// The shipped prompt carries the PAIR - one step spawns the build agent, one prints what
-// it returned - so neither can be dropped while the other stands, and an XPI review prints
-// neither. The spawn step names the source root by the name Review Details prints it
-// under, which is the only reason that block has names at all.
-test("the shipped prompt adds the build steps to a source code review only", () => {
-  const prompt = loadRegistry().llmReviewPrompt();
-  const sca = prompt.outcome.filter((step) => step.run === "sca");
-  assert.equal(
-    sca.length,
-    2,
-    "the spawn step and the step that prints its answer"
-  );
-  assert.ok(sca.some((step) => step.text.includes("SCA_ROOT")));
-  for (const [i, step] of prompt.outcome.entries()) {
-    assert.ok(step.run === null || step.run === "sca", `step ${i + 1} run`);
-    // ONE marker per step: the validator refuses two, so nothing carries both.
-    assert.ok(step.skip === null || step.run === null, `step ${i + 1} markers`);
-  }
-});
-
-// The prompt sends a sub-agent to TWO paths - the folder it reads and the file it writes -
-// and the header prints both: one set of values, or the agent works somewhere the reviewer
-// cannot see. Rendered from one `meta` here, so the gate and the printed value are ONE
-// expression: a review that keeps --sca-root and is still an XPI one must print neither
-// name and send no agent.
-test("the prompt hands over the same paths the header prints", () => {
-  // Two spaces on purpose: a path is a NAME, and a block that collapsed them would hand
-  // the prompt's last step a verdict file naming a folder that does not exist.
-  const meta = {
-    schemaBranch: "release-mv3",
-    xpi: "/x/a.xpi",
-    scaRoot: "/x/my  src",
-    scaSource: "addon",
-    buildFile: "/x/webext-linter-a-1.0-t.build.md",
-  };
-  const header = headerLines(meta);
-  assert.equal(header[header.indexOf("  SCA_ROOT") + 1], "    /x/my  src");
-  assert.equal(
-    header[header.indexOf("  BUILD_PROCESS") + 1],
-    `    ${meta.buildFile}`
-  );
-
-  const registry = loadRegistry();
-  const finding = { ruleId: "r", severity: "error", message: "m" };
-  const lines = llmPromptLines(
-    registry.llmReviewPrompt(),
-    [finding],
-    [],
-    null,
-    [],
-    { root: meta.scaRoot, buildFile: meta.buildFile }
-  );
-  // Each on its own line and unwrapped, so a path with a space in it is handed over whole.
-  for (const value of [meta.scaRoot, meta.buildFile]) {
-    assert.ok(
-      lines.some((l) => l.trim() === value),
-      `the request carries ${value}`
-    );
-  }
-  // The agent writes there and the orchestrator does not read it back: the step says so,
-  // and the report's own copy is a link, never the content.
-  assert.ok(lines.some((l) => l.includes("do not read it")));
-
-  // An XPI review names neither, so nothing may send an agent to one.
-  const xpi = llmPromptLines(registry.llmReviewPrompt(), [finding], []);
-  assert.ok(!xpi.some((l) => l.includes("SCA_ROOT")));
-  assert.ok(!xpi.some((l) => l.includes("BUILD_PROCESS")));
-  const xpiHeader = headerLines({
-    ...meta,
-    scaRoot: undefined,
-    scaSource: undefined,
-    buildFile: undefined,
-  });
-  assert.ok(!xpiHeader.some((l) => l.includes("SCA_ROOT")));
-  assert.ok(!xpiHeader.some((l) => l.includes("BUILD_PROCESS")));
 });
 
 // A step may carry a literal example, whose authored line breaks ARE the layout: a step is
@@ -1673,14 +1429,11 @@ test("the prompt hands over the same paths the header prints", () => {
 // UNDER its number - the example included, since it belongs to that step, and a paragraph
 // left flush-left reads as a step of its own.
 test("a step's paragraphs sit under its number, line breaks and all", () => {
-  const prompt = {
-    intro: "Go.",
-    issues: "i",
-    outcomeIntro: "HOW.",
-    outcome: [{ text: 'lead in\n\n{"a": 1,\n"b": 2}\n\ntail out' }],
-  };
-  const lines = llmPromptLines(prompt, [{ ruleId: "r" }], []);
-  assert.deepEqual(lines.slice(-6), [
+  const texts = { preamble: "P", frame: "F", handover: "H" };
+  const phase = { name: "p", intro: "" };
+  const steps = [{ text: 'lead in\n\n{"a": 1,\n"b": 2}\n\ntail out' }];
+  const lines = loopPromptLines(texts, phase, steps, {});
+  assert.deepEqual(lines.slice(-8, -2), [
     "1. lead in",
     "",
     '   {"a": 1,',
@@ -1693,19 +1446,16 @@ test("a step's paragraphs sit under its number, line breaks and all", () => {
 // A registry text is authored as wrapped YAML, so its source line breaks must not survive
 // into the prompt - the bullet is re-wrapped to the report width, hanging-indented under
 // its marker like every other wrapped list in the report.
-test("a prompt bullet is re-wrapped and hanging-indented", () => {
-  const prompt = {
-    intro: "Go.",
-    issues: "one two\nthree " + "w".repeat(70) + " tail",
-    codeReview: "c",
-    outcomeIntro: "HOW.",
-    outcome: [{ text: "o" }],
-  };
-  const lines = llmPromptLines(prompt, [{ ruleId: "r" }], []).slice(3);
-  assert.deepEqual(lines[0], "Go.");
-  assert.equal(lines[1], "");
-  assert.equal(lines[2], "- one two three");
-  assert.equal(lines[3], "  " + "w".repeat(70) + " tail");
+test("an authored text is re-wrapped, and its source line breaks do not survive", () => {
+  const long = "one two\nthree " + "w".repeat(70) + " tail";
+  const lines = loopPromptLines(
+    { preamble: "P", frame: long, handover: "H" },
+    { name: "p", intro: "" },
+    [],
+    {}
+  );
+  assert.ok(lines.includes("one two three"));
+  assert.ok(lines.includes("w".repeat(70) + " tail"));
   for (const line of lines) {
     assert.ok(!line.includes("\n"));
   }
@@ -1759,19 +1509,57 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
     "    /x/a.xpi",
     ...schema,
   ]);
-  // --llm-review writes an item file, and this section is where the review says what it
-  // consists of - so the path is named here, not only in the prompt. The counts are NOT
-  // here: they are the Summary's, which closes every run.
-  const llm = headerLines({
-    ...base,
-    xpi: "/x/a.xpi",
-    itemsFile: "/tmp/i.json",
+  // This section names what was REVIEWED, and nothing about how it is being settled. A
+  // run that hands out a phase prints no header at all - the phase that reads the add-on
+  // prints the values it needs itself - so nothing here varies with a review flag.
+  assert.deepEqual(
+    headerLines({ ...base, xpi: "/x/a.xpi", prompting: true }),
+    headerLines({ ...base, xpi: "/x/a.xpi" })
+  );
+  // The counts are the Summary's, which closes the report.
+  assert.ok(
+    !headerLines({ ...base, xpi: "/x/a.xpi" }).some((l) =>
+      l.includes("error(s)")
+    )
+  );
+});
+
+// A reviewer's own words are never folded away. The display cap does lose a note past 25
+// locations and that is settled - a submission with 26 cases of one check is not a review
+// anybody finishes - but two places for one host is ordinary, so the same loss here would
+// be routine. Cases fold only when their lines would have said the same thing.
+test("collapse:subject keeps a case a reviewer wrote about", () => {
+  const at = (file, note) => ({
+    ruleId: "r",
+    severity: "warning",
+    message: "one host, two answers",
+    file,
+    loc: { line: 1 },
+    item: "host.example.com",
+    hint: null,
+    listItem: true,
+    collapse: "subject",
+    note,
   });
-  assert.deepEqual(llm.slice(3, 7), [
-    "  XPI",
-    "    /x/a.xpi",
-    "  REVIEW_ITEMS",
-    "    /tmp/i.json",
-  ]);
-  assert.ok(!llm.some((l) => l.includes("error(s)")));
+  const out = formatText({
+    findings: [
+      at("a.js", "reviewer said THIS"),
+      at("b.js", "reviewer said THAT"),
+      at("c.js", null),
+      at("d.js", null),
+    ],
+    meta: { action: "review", xpi: "x", reviewed: true },
+  });
+  const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
+  // Each distinct answer keeps its own line; only the unanswered cases fold.
+  assert.match(
+    issues,
+    /^ - a\.js:1 - host\.example\.com \(reviewer said THIS\)$/m
+  );
+  assert.match(
+    issues,
+    /^ - b\.js:1 - host\.example\.com \(reviewer said THAT\)$/m
+  );
+  assert.match(issues, /^ - c\.js:1 - host\.example\.com \(\+1 elsewhere\)$/m);
+  assert.equal((issues.match(/^ - /gm) || []).length, 3);
 });

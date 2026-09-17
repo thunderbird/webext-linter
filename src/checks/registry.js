@@ -41,6 +41,7 @@ import { displayLine } from "../util/text.js";
 import { finding, SEVERITY, VERDICT_KEYS } from "../report/finding.js";
 import { MAX_NOTE, PROMPT_SKIPS } from "../config.js";
 import { artifactLabel } from "../report/artifact.js";
+import { VERB, VERB_NAMES, verbNamed } from "../report/verbs.js";
 import { progress, debug, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
 import { manualEscalations } from "./escalation.js";
@@ -88,6 +89,22 @@ const VALID_CHECK_SEVERITIES = new Set([
 // checks (see remote-resources / vendored-remote-resources).
 const ESCALATION_SECTIONS = new Set(["code-review", "manual-review"]);
 
+// How an entry's repeated cases are LISTED, when listing every one of them says the same
+// thing several times. Omitted is the default every entry has today: one line per case.
+//
+// "subject" is for a check whose cases repeat one SUBJECT in several places - the same
+// remote host reached from three files. The first place keeps its line and counts the rest
+// onto it; the rest are numbered and settled like any other case, they just do not print
+// (src/report/order.js, the same mechanism as the display cap).
+//
+// Two cases fold together only when their lines would have said the SAME THING apart from
+// where they are - the subject, its detail, and any note a reviewer wrote. A differing
+// note is a person's own words about one case, and folding it away would lose them.
+//
+// A display decision, never a review one: nothing here changes what is found, what is
+// asked, or what a verdict can settle.
+const COLLAPSE_MODES = new Set(["subject"]);
+
 // The `input` a check entry declares - which add-on artifact is ctx.addon when the
 // check runs. "source" = the REVIEW TARGET, the readable submitted code (the readable
 // --sca-source in an SCA review, the built XPI in an XPI review - the only artifact
@@ -99,20 +116,6 @@ const ESCALATION_SECTIONS = new Set(["code-review", "manual-review"]);
 // check to its artifact's context, so the check reads one artifact and has no way to reach another (see
 // buildXpiCtxs / buildScaCtxs).
 const VALID_CHECK_INPUTS = new Set(["source", "xpi", "build", "manifest"]);
-
-/** The --llm-review prompt's authored texts: the yaml key, and the field llmReviewPrompt
- *  hands it over as. One list, so the assert and the reader cannot ask for different
- *  things - a key added to one and not the other is a prompt that loads and prints
- *  "undefined". */
-const PROMPT_TEXTS = Object.freeze({
-  intro: "intro",
-  issues: "issues",
-  "pre-sweep": "preSweep",
-  "code-review": "codeReview",
-  "extended-manual-review": "extendedManualReview",
-  "standard-manual-review": "standardManualReview",
-  "outcome-intro": "outcomeIntro",
-});
 
 // The check-bearing yaml sections ARE the phases: a check's phase IS the section it
 // lives in, so the two can never disagree and no entry declares a phase of its own.
@@ -421,6 +424,19 @@ export class Registry {
    * @param {string} ruleId
    * @returns {?string}
    */
+  /**
+   * How this check's repeated cases are listed - its entry's `collapse`, or null for the
+   * default of one line per case. Read once per item when the review is rendered
+   * (src/report/responses.js) and carried on the item, so the sequence that numbers the
+   * review (src/report/order.js) needs no registry of its own and every caller of it
+   * cannot help but order the same way.
+   * @param {string} ruleId
+   * @returns {?string}
+   */
+  collapseOf(ruleId) {
+    return this.checkEntry(ruleId)?.collapse ?? null;
+  }
+
   suggestedVerdict(ruleId) {
     const s = this.checkEntry(ruleId)?.severity;
     // A hold-or-error case is suggested as the hold it is on its own. It only becomes
@@ -437,9 +453,10 @@ export class Registry {
    * A check scans for what it can name, and code outside that boundary leaves no trace to
    * key on - an enumerated set of transmission APIs says nothing about the sender it does
    * not list. Where the boundary cannot be closed by naming more, the check authors an
-   * instruction for a reader instead, and what the reader finds is filed as a finding of
-   * THIS check, in its band and its words. Presence is the whole declaration: a check with
-   * no blind spot authors none.
+   * instruction for a reader instead, and what the reader finds belongs to THIS check -
+   * routed by its `escalation` to a finding in its band and its words, or to the question
+   * only a reviewer can answer. Presence is the whole declaration: a check with no blind
+   * spot authors none.
    * @param {string} ruleId
    * @returns {?string}
    */
@@ -466,7 +483,7 @@ export class Registry {
 
   /**
    * Every check that authors a sweep instruction, in registry order - which is the order
-   * the report, the item file and the prompt all list them in, so the three agree.
+   * the report and every phase list them in, so the two agree.
    * @returns {{check: string, title: string, severity: string, instruction: string,
    *   response: ?string}[]}
    */
@@ -478,46 +495,51 @@ export class Registry {
         check: id,
         title: entry.title,
         // Non-null for every entry that reaches here: the registry assert refuses a
-        // sweep instruction on a check with no band to stamp an addition with.
+        // sweep instruction on a check with no band to stamp a reported case with.
         severity: this.suggestedVerdict(id),
         instruction: this.sweepInstruction(id),
         // What the developer would be told if the sweep finds something - the same text
-        // an addition is worded with once filed. For the REPORT only: the agent hands
-        // back a locus and is filed under this check, so it has no use for the wording
-        // and is told not to produce any.
+        // a reported case is worded with. For the REPORT only: the agent hands back a
+        // locus and the routing is the linter's, so it has no use for the wording and is
+        // told not to produce any.
         response: entry.response ?? null,
       }));
   }
 
   /**
-   * The texts of the --llm-review verification prompt: one per to-do section it can ask
-   * about, plus the intro and the ordered steps. Read only when a review flag is set, and
-   * all of them are required then - which of them a given review prints depends on what the
-   * report contains and on the flag used, so a missing one would silently drop a whole
-   * instruction from the prompt instead of failing.
+   * The REVIEW LOOP's prompts: the four texts the linter owns, and the phases it hands out
+   * one per pass.
    *
-   * The steps come back WITH the marker that decides them and in authored order, never
-   * filtered here: which of them a run prints is layout, decided beside the ask selection
-   * in src/report/format.js. `skip: summary` is withheld by --llm-skip-summary and
-   * `skip: manual` by --llm-skip-manual, `run: sca` is printed only by a source code
-   * review, and a step with no marker is printed by every run.
-   * @returns {{intro: string, issues: string, preSweep: string, codeReview: string,
-   *   extendedManualReview: string, standardManualReview: string, outcomeIntro: string,
-   *   outcome: {skip: ?string, run: ?string, text: string}[]}}
+   * `preamble`, `frame`, `handover`, `refused` and `final` are the linter's - authored once
+   * and printed the same way every time, so no phase can forget to say how to hand back, or
+   * that the file has changed since the last pass. The phases author only what differs:
+   * their `intro` (often empty) and their `steps`.
+   *
+   * A step's marker comes back as null when it carries none, the same shape the SCA
+   * prompt's steps come back in, so the caller filters by one shape: `skip` against the flags the run was given,
+   * `run` against the conditions this review meets.
+   * @returns {{preamble: string, frame: string, handover: string, refused: string,
+   *   final: string, phases: {name: string, verbs: string[], intro: string,
+   *   steps: {skip: ?string, run: ?string, text: string}[]}[]}}
    */
-  llmReviewPrompt() {
-    const p = this.doc["llm-review-prompt"];
+  llmPhases() {
+    const p = this.doc["llm-phases"];
     return {
-      ...Object.fromEntries(
-        Object.entries(PROMPT_TEXTS).map(([key, field]) => [field, p[key]])
-      ),
-      // A step's marker comes back as null when it carries none: every run prints it.
-      // `run: sca` marks a step only a source code review prints - the build agent it
-      // spawns has nothing to read in an XPI review.
-      outcome: p.outcome.map((step) => ({
-        skip: step.skip ?? null,
-        run: step.run ?? null,
-        text: step.text,
+      preamble: p.preamble,
+      frame: p.frame,
+      handover: p.handover,
+      refused: p.refused,
+      final: p.final,
+      phases: p.phases.map((phase) => ({
+        name: phase.name,
+        answer: phase.answer,
+        verbs: [...phase.verbs],
+        intro: phase.intro,
+        steps: phase.steps.map((step) => ({
+          skip: step.skip ?? null,
+          run: step.run ?? null,
+          text: step.text,
+        })),
       })),
     };
   }
@@ -526,9 +548,9 @@ export class Registry {
    * The answers a manual review question offers, in the order the reviewer sees them.
    *
    * Each carries the `label` and `description` the reviewer reads and the `verdict` it
-   * settles the item with - the last of which never leaves this process: the item file
-   * carries the first two, the answer comes back as the reviewer gave it, and mapping it
-   * to a verdict happens here. Read once per review, and required: a question with no
+   * settles the item with - the last of which never leaves this process: the entry the
+   * agent relays carries the first two, the answer comes back as the reviewer gave it,
+   * and mapping it to a verdict happens here. Read once per review, and required: a question with no
    * answers to offer cannot be asked.
    * @returns {{label: string, verdict: string, description: string}[]}
    */
@@ -783,6 +805,15 @@ function assertEntry(entry, at) {
           `(expected one of: ${[...ESCALATION_SECTIONS].join(", ")})`
       );
     }
+    // Optional, and a typo would otherwise read as "the default" - silently listing every
+    // case where the entry asked for one line per subject.
+    const collapse = entry.collapse;
+    if (collapse !== undefined && !COLLAPSE_MODES.has(collapse)) {
+      throw new Error(
+        `${where} has an invalid \`collapse\` ${JSON.stringify(collapse)} ` +
+          `(expected one of: ${[...COLLAPSE_MODES].join(", ")})`
+      );
+    }
     // Every check must declare a valid `input`, which drives runOneCheck's artifact
     // routing (routing is total - there is no default artifact to fall through to).
     const input = entry.input;
@@ -814,14 +845,14 @@ function assertEntry(entry, at) {
 
 /**
  * A `sweep-instruction` sends a reader after what this check cannot detect, and what they
- * find is filed AS this check. Three things must hold for that to be possible, and all
- * three are config, so they fail here rather than when an addition first arrives - which
+ * find becomes a case OF this check. Three things must hold for that to be possible, and
+ * all three are config, so they fail here rather than when a result first arrives - which
  * may be never.
  *
- * Note what is NOT required: an `escalation`. That pairing exists because an escalation is
- * a case LISTED in the report for someone to settle. A sweep instruction lists no case; it
- * produces findings directly, so a check with no escalation section authors one just as
- * well.
+ * Note what is NOT required: an `escalation`. Not because a swept case always becomes a
+ * finding - `escalation: manual-review` routes it to the reviewer instead
+ * (src/report/sweep.js) - but because a check with no escalation section has a route all
+ * the same, and it is the ordinary one.
  * @param {object} entry
  * @param {string} where  How the entry is named in a message.
  * @param {string} severity  The entry's (already validated) severity.
@@ -837,21 +868,21 @@ function assertSweepInstruction(entry, where, severity) {
         `${JSON.stringify(sweepInstruction)} (expected a non-empty string)`
     );
   }
-  // An addition is stamped with the check's own band. `auto` leaves the band to each
-  // finding and `none` says the check emits none, so neither has one to give - the
-  // sweep would return findings nothing could file.
+  // A swept case that is reported is stamped with the check's own band. `auto` leaves the
+  // band to each finding and `none` says the check emits none, so neither has one to give
+  // - the sweep would return cases nothing could file.
   if (!isConcreteSeverity(severity) && severity !== HOLD_OR_ERROR) {
     throw new Error(
       `${where} authors a \`sweep-instruction\` but its severity ` +
         `${JSON.stringify(severity)} gives a reported case no band to carry`
     );
   }
-  // An addition carries no `item` and no `data`, so a placeholder in the response
+  // A swept case carries no `item` and no `data`, so a placeholder in the response
   // would reach the developer literally, or leave the message unfilled entirely.
   if (typeof entry.response === "string" && entry.response.includes("{{")) {
     throw new Error(
       `${where} authors a \`sweep-instruction\` but its \`response\` carries a ` +
-        "{{placeholder}} - an addition brings no item to fill it with"
+        "{{placeholder}} - a swept case brings no item to fill it with"
     );
   }
 }
@@ -996,62 +1027,167 @@ function assertStep(step, i, where, markers) {
 /** What `run:` can name in each prompt: the things about a run that decide whether a step
  *  of it is printed. No flag spells these - unlike PROMPT_SKIPS, which the CLI offers - so
  *  they live here, beside the messages that name them. */
-const REVIEW_PROMPT_RUNS = ["sca"];
+const REVIEW_PROMPT_RUNS = ["sca", "sweep"];
+
+/**
+ * The loop texts the LINTER owns, and the placeholder each one exists to carry. An empty
+ * slot means the text names no value - it is the same words every pass.
+ */
+const PHASE_TEXTS = {
+  preamble: "",
+  frame: "{{review}}",
+  handover: "{{command}}",
+  refused: "{{problem}}",
+  final: "",
+};
+
+/**
+ * Every verdict the loop knows. A PHASE accepts a subset of these, declared beside its
+ * steps - `verify` takes `reported`/`withdrawn`, `settle` takes `reported`/`cleared`/`ask` -
+ * because what an answer may be is a property of the phase, never of the file's shape.
+ */
+const LOOP_VERBS = VERB_NAMES;
+
+/** What one entry of a phase is answered WITH, which decides the shape the entry is handed
+ *  over in and what the linter accepts back: `hints` is what a sweep found, a list per
+ *  check; `verdict` is one of the phase's own verbs; `words` is a person's answer, theirs
+ *  to write and not ours to judge. Named as data because the loop reads it rather than the
+ *  phase's name - a phase carries its vocabulary AND the kind of answer that vocabulary
+ *  belongs to, and neither is inferred from what it is called. */
+const ANSWER_KINDS = ["hints", "verdict", "words"];
+
+/** The one condition the SCA prompt can evaluate: whether this review allows
+ *  Experiments, which decides whether it asks its reader for --sca-exp-source. */
 const SCA_PROMPT_RUNS = ["experiments"];
 
 /**
- * Assert both LLM prompts: the texts each authors, and the steps they share.
+ * The REVIEW LOOP's texts, checked at load: the five the linter owns, and every phase's
+ * intro and steps.
  *
- * The step rules are one helper because both prompts are laid out by one renderer. What
- * differs is the MARKER a step may carry, and each is asserted against the vocabulary that
- * gives it: `skip` against the flags (PROMPT_SKIPS), `run` against the conditions each
- * prompt can evaluate. A `skip` no flag gives, a flag with no step to withhold, or a `run`
- * nothing evaluates, is a prompt that quietly asks for the wrong work.
+ * The placeholders are checked because each one is the only way a value reaches the agent:
+ * a `handover` with no `{{command}}` leaves it holding a decision and no way to hand it
+ * back, and a `frame` with no `{{review}}` names no file at all.
+ *
+ * `verbs` is checked BOTH WAYS against the phase's own steps. A verb the phase accepts but
+ * no step names is one the agent is never told it may use; a verb a step names but the
+ * phase does not accept is one the agent will be refused for using. Either is a drafting
+ * error, and neither is visible by reading one of the two alone.
  * @param {Registry} registry
- * @param {string} at  The registry path, for the message.
+ * @param {string} at
  */
-export function assertPrompts(registry, at) {
-  const review = registry.doc["llm-review-prompt"];
-  const reviewAt = `llm-review-prompt (${at})`;
-  if (!review || typeof review !== "object") {
-    throw new Error(`${reviewAt} authors no prompt`);
+export function assertPhases(registry, at) {
+  const doc = registry.doc["llm-phases"];
+  const where = `llm-phases (${at})`;
+  if (!doc || typeof doc !== "object") {
+    throw new Error(`${where} authors no loop prompts`);
   }
-  for (const [key, field] of Object.entries(PROMPT_TEXTS)) {
-    if (typeof review[key] !== "string" || review[key] === "") {
-      throw new Error(`${reviewAt} authors no \`${key}\` (${field})`);
+  for (const [key, slot] of Object.entries(PHASE_TEXTS)) {
+    if (typeof doc[key] !== "string" || doc[key] === "") {
+      throw new Error(`${where} authors no \`${key}\``);
     }
-  }
-  const steps = review.outcome;
-  if (!Array.isArray(steps) || steps.length === 0) {
-    throw new Error(`${reviewAt} authors no \`outcome\` steps`);
-  }
-  steps.forEach((step, i) => {
-    assertStep(step, i, "llm-review-prompt", ["skip", "run"]);
-    if (step.skip !== undefined && !PROMPT_SKIPS.includes(step.skip)) {
+    if (slot && !doc[key].includes(slot)) {
       throw new Error(
-        `llm-review-prompt \`outcome\` step ${i + 1} has \`skip: ${step.skip}\`, which no ` +
-          `flag gives (expected one of: ${PROMPT_SKIPS.join(", ")}) (${at})`
-      );
-    }
-    // The mirror of the skip check, against what this prompt can EVALUATE rather than what
-    // a flag gives: a condition nothing answers would print the step in every run.
-    if (step.run !== undefined && !REVIEW_PROMPT_RUNS.includes(step.run)) {
-      throw new Error(
-        `llm-review-prompt \`outcome\` step ${i + 1} has \`run: ${step.run}\`, which this ` +
-          `prompt cannot evaluate (expected one of: ${REVIEW_PROMPT_RUNS.join(", ")}) ` +
-          `(${at})`
-      );
-    }
-  });
-  for (const skip of PROMPT_SKIPS) {
-    if (!steps.some((step) => step.skip === skip)) {
-      throw new Error(
-        `llm-review-prompt \`outcome\` has no \`skip: ${skip}\` step, so ` +
-          `--llm-skip-${skip} would withhold nothing (${at})`
+        `${where} \`${key}\` carries no ${slot} - the linter fills it there, and nothing ` +
+          "else names that value"
       );
     }
   }
+  const phases = doc.phases;
+  if (!Array.isArray(phases) || phases.length === 0) {
+    throw new Error(`${where} authors no \`phases\``);
+  }
+  const seen = new Set();
+  for (const phase of phases) {
+    const name = phase?.name;
+    if (typeof name !== "string" || name === "") {
+      throw new Error(`${where} authors a phase with no \`name\``);
+    }
+    if (seen.has(name)) {
+      throw new Error(`${where} authors \`${name}\` twice`);
+    }
+    seen.add(name);
+    const at2 = `${where} phase \`${name}\``;
+    if (typeof phase.intro !== "string") {
+      throw new Error(
+        `${at2} authors no \`intro\` (empty string when it needs none)`
+      );
+    }
+    if (!ANSWER_KINDS.includes(phase.answer)) {
+      throw new Error(
+        `${at2} authors \`answer: ${phase.answer}\`, which is not a kind of answer this ` +
+          `review knows (expected one of: ${ANSWER_KINDS.join(", ")})`
+      );
+    }
+    // A verdict phase states its vocabulary; the other two take no verb, and a verb
+    // authored beside them would never be offered to anyone.
+    if ((phase.answer === "verdict") !== phase.verbs?.length > 0) {
+      throw new Error(
+        `${at2} answers with \`${phase.answer}\` but accepts \`${(phase.verbs ?? []).join(", ")}\` - ` +
+          "only a `verdict` phase names verbs, and it must name at least one"
+      );
+    }
+    if (!Array.isArray(phase.verbs)) {
+      throw new Error(
+        `${at2} authors no \`verbs\` (empty list when it takes none)`
+      );
+    }
+    for (const verb of phase.verbs) {
+      if (!LOOP_VERBS.includes(verb)) {
+        throw new Error(
+          `${at2} accepts \`${verb}\`, which is not a verdict this review knows ` +
+            `(expected one of: ${LOOP_VERBS.join(", ")})`
+        );
+      }
+    }
+    if (!Array.isArray(phase.steps) || phase.steps.length === 0) {
+      throw new Error(`${at2} authors no \`steps\``);
+    }
+    phase.steps.forEach((step, i) => {
+      assertStep(step, i, `llm-phases phase \`${name}\``, ["skip", "run"]);
+      if (step.skip !== undefined && !PROMPT_SKIPS.includes(step.skip)) {
+        throw new Error(
+          `${at2} step ${i + 1} is skipped by \`${step.skip}\`, which no flag gives ` +
+            `(expected one of: ${PROMPT_SKIPS.join(", ")})`
+        );
+      }
+      if (step.run !== undefined && !REVIEW_PROMPT_RUNS.includes(step.run)) {
+        throw new Error(
+          `${at2} step ${i + 1} runs on \`${step.run}\`, which this prompt cannot ` +
+            `evaluate (expected one of: ${REVIEW_PROMPT_RUNS.join(", ")})`
+        );
+      }
+    });
+    // Both ways, over the phase's own step text. A verb is named the way the agent reads
+    // it: quoted, as `"reported"`.
+    const prose = phase.steps.map((x) => x.text).join("\n");
+    for (const verb of phase.verbs) {
+      if (!prose.includes(`"${verb}"`)) {
+        throw new Error(
+          `${at2} accepts \`${verb}\` but no step names it, so the agent is never told ` +
+            "it may answer that"
+        );
+      }
+    }
+    for (const verb of LOOP_VERBS) {
+      if (prose.includes(`"${verb}"`) && !phase.verbs.includes(verb)) {
+        throw new Error(
+          `${at2} names \`${verb}\` in a step but does not accept it, so the agent ` +
+            "would be refused for doing what it was told"
+        );
+      }
+    }
+  }
+}
 
+/**
+ * The --llm-sca-review prompt, checked at load.
+ *
+ * Its whole output is that prompt - no review runs beside it - so a missing key is a run
+ * with nothing to print, and it refuses rather than printing half an instruction.
+ * @param {Registry} registry
+ * @param {string} at
+ */
+export function assertScaPrompt(registry, at) {
   const sca = registry.doc["llm-sca-review-prompt"];
   const scaAt = `llm-sca-review-prompt (${at})`;
   if (!sca || typeof sca !== "object") {
@@ -1099,6 +1235,19 @@ export function assertChoices(registry, at) {
           `llm-manual-review-choices answer ${i + 1} authors no \`${key}\` (${at})`
         );
       }
+    }
+    // The verdict must NAME one, and one that settles. A word that spells no verb reaches
+    // the apply step as nothing at all, where every branch declines it and the case is
+    // dropped with no finding - a reviewer's "Report" silently clearing the thing they
+    // reported. `ask` is refused for its own reason: it moves an item to the phase that
+    // asks a person, and a person is already answering.
+    const verb = verbNamed(c.verdict);
+    if (!verb || verb === VERB.ask) {
+      throw new Error(
+        `llm-manual-review-choices answer ${i + 1} settles with \`${c.verdict}\`, which is ` +
+          "not a verdict a reviewer's answer can carry " +
+          `(expected one of: ${VERB_NAMES.filter((v) => v !== String(VERB.ask)).join(", ")}) (${at})`
+      );
     }
   });
 }
@@ -1189,7 +1338,8 @@ function assertRegistry(registry, at, { partial = false } = {}) {
     return;
   }
   assertRequiredPhaseSections(registry.doc, at);
-  assertPrompts(registry, at);
+  assertPhases(registry, at);
+  assertScaPrompt(registry, at);
   assertChoices(registry, at);
   assertProse(registry, at);
 }

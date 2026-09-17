@@ -1,25 +1,11 @@
 ── Found Issues ──
-
-Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
-
-1) Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
- - background.js:4 - cleartext send "http://api.example.com/collect"
-
-You can run this automated review yourself before submitting:
-https://github.com/thunderbird/webext-linter
+The automated review did not find any issues.
 
 ── Extended Code Review ──
 
 Continue manual review for the following checks:
 
-1) Possibly unused permissions: Review whether the following declared
-   permissions are used, and ask the developer to remove any that are not
-   needed.
-Suggested verdict: warning
-Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
- - manifest.json:5 - nativeMessaging
-
-2) Missing English localization: This add-on ships no English localization, so
+1) Missing English localization: This add-on ships no English localization, so
    user-facing text may be hardcoded in another language. Review its strings by
    hand and confirm if an English localization is provided.
 Suggested verdict: warning
@@ -27,7 +13,7 @@ Suggested response: Please include an English localization. English serves as th
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
 
-3) User-data exfiltration: The following code locations send data to a remote
+2) User-data exfiltration: The following code locations send data to a remote
    server. User data - message content, attachments, contacts, credentials - may
    be transmitted only if the user actively enabled it: by entering the
    destination URL or credentials on an options page that states what is sent,
@@ -38,9 +24,10 @@ An example can be found here: https://github.com/thunderbird/webext-examples/tre
    that kind exists.
 Suggested verdict: error
 Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
- - background.js:4 - fetch() "http://api.example.com/collect"
- - background.js:7 - fetch() "https://metrics.example.com/p"
- - background.js:8 - fetch() "https://logs.example.com/l"
+ - background.js:5 - fetch() "https://api.example.com/one"
+ - background.js:6 - fetch() "https://api.example.com/two"
+ - background.js:9 - fetch() "https://logs.example.net/x"
+ - background.js:15 - fetch() `https://${server}/api`
 
 ── Extended Manual Review ──
 
@@ -57,16 +44,9 @@ Suggested response: Please add a privacy policy to this add-on that details whic
 
 [1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
 [2]: https://www.mozilla.org/en-US/privacy/
- - background.js:4 - api.example.com
- - background.js:7 - metrics.example.com
- - background.js:8 - logs.example.com
-
-2) Native messaging needs disclosure: This add-on requests the "nativeMessaging"
-   permission. Confirm the add-on listing page on ATN discloses what information
-   is exchanged with the local app and that it complies with the No Surprises
-   policy.
-Suggested verdict: hold
-Suggested response: This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged.
+ - background.js:5 - api.example.com (+1 elsewhere)
+ - background.js:9 - logs.example.net
+ - background.js:15 - a remote server - host assembled at run time
 
 ── Standard Code Review ──
 
@@ -206,6 +186,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 hold, 0 warning(s), 0 info,
+0 error(s), 0 hold, 0 warning(s), 0 info,
 5 extended code review item(s), 4 extended manual review item(s),
 8 standard code review item(s), 10 standard manual review item(s)

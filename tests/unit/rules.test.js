@@ -4086,24 +4086,66 @@ test("cleartext-transmission flags overt http/ws/ftp remote sends only", () => {
 });
 
 // ---- privacy-policy ----
-// One manual-review escalation per distinct remote host of every overt
-// transmission (the hosts list as the "where"); covert and local destinations
-// do not trigger it.
-test("privacy-policy escalates one entry per distinct remote host", () => {
+// One manual-review escalation per transmission SITE, each carrying its host as the
+// subject and its own file:line. The entry still reads one line per host - the registry
+// declares `collapse: subject`, so the report folds the repeats (src/report/order.js) -
+// but every site stays an item a reviewer can be pointed at and can settle. Covert and
+// local destinations do not trigger it.
+test("privacy-policy escalates one case per transmission site", () => {
   const esc = (code) =>
     privacyPolicy.run(withManifest(jsCtx(code))).escalations;
+
   const single = esc('fetch("https://api.example.com/x");');
   assert.equal(single.length, 1);
   assert.equal(single[0].item, "api.example.com");
+  assert.ok(single[0].file, "carries the file it transmits from");
+  assert.equal(typeof single[0].loc?.line, "number");
+
+  // Two sites of ONE host are two cases. Collecting hosts kept only the first, so the
+  // second site could never be listed or answered; the collapse is the report's job.
+  const sameHost = esc(
+    'fetch("https://a.example.com/x");\nfetch("https://a.example.com/y");'
+  );
+  assert.deepEqual(
+    sameHost.map((e) => e.item),
+    ["a.example.com", "a.example.com"]
+  );
+  assert.notEqual(sameHost[0].loc.line, sameHost[1].loc.line);
+
+  // Source order, not sorted by host: a case is listed where it is, like every other
+  // locus in the review.
   const two = esc(
-    'fetch("https://b.example.com/x"); fetch("https://a.example.com/y");'
+    'fetch("https://b.example.com/x");\nfetch("https://a.example.com/y");'
   );
   assert.deepEqual(
     two.map((e) => e.item),
-    ["a.example.com", "b.example.com"] // one per distinct host, sorted
+    ["b.example.com", "a.example.com"]
   );
+
   assert.equal(esc('fetch("./local.json");').length, 0); // local
   assert.equal(esc('img.src = "https://x/?d=" + body;').length, 0); // covert
+
+  // A host assembled at run time IS escalated, like any other site, and MARKED rather
+  // than dropped. Dropping it made the case depend on unrelated state: reported when it
+  // stood alone, invisible beside a host that resolved. The `hint` is what keeps the
+  // entry's question - which reads as being about the developer's servers - from
+  // silently claiming this one.
+  const runtime = "fetch(`https://${server}/api`, {method:'POST', body:b});";
+  const alone = esc(runtime);
+  assert.equal(alone.length, 1);
+  assert.equal(alone[0].item, "a remote server");
+  assert.equal(alone[0].hint, "host assembled at run time");
+  assert.ok(alone[0].file, "an unnamed destination still says where it is");
+
+  // And beside a host that DID resolve, where the old shape lost it entirely.
+  const beside = esc(
+    `${runtime}\nfetch("https://a.example.com/y", {method:"POST", body:b});`
+  );
+  assert.deepEqual(
+    beside.map((e) => e.item),
+    ["a remote server", "a.example.com"]
+  );
+  assert.equal(beside[1].hint, undefined, "only the unnamed one is marked");
 });
 
 // ---- native-messaging ----

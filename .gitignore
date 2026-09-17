@@ -3,6 +3,7 @@ node_modules/
 !tests/addons/**/node_modules/
 tmp_extract/
 logs/
+plans/
 .schema-cache/
 .experiments-cache/
 .lib-mozilla-hash-db-cache/

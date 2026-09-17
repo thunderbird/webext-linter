@@ -9,13 +9,16 @@
 // and each drift silently moved every later number.
 //
 // EVERY item is numbered, including one the page will not have room to print. The
-// display cap is a property of the page, not of the review: the item file --llm-review
-// writes must carry every item, or the reader settles the ones they were handed and the
-// rest pass unexamined, and a verdict naming one of them must resolve rather than fail.
-// `shown` carries the page's decision separately, for the renderer to act on.
+// display cap is a property of the page, not of the review: the phase that asks about an
+// item must be handed every one of them, or the agent settles the ones it was given and
+// the rest pass unexamined, and an answer naming one must resolve rather than fail.
+// `shown` carries the page's decision separately, for the renderer to act on. A case
+// folded into another's line (`collapse: subject`) is the same bargain for the same
+// reason: it is asked and settled like any other, it just does not print.
 //
 // Belongs here: the sequence, the entry boundaries within it, the numbering, which items
-// the page has room for, and which sections of it a reviewer answers.
+// the page has room for, which of them say the same thing as another (collapse), and
+// which sections of it a reviewer answers.
 //
 // Does NOT belong here: how an entry is drawn (src/report/format.js), what it says
 // (assets/registry.yaml), or which items a verdict changes (src/report/verdicts.js).
@@ -43,7 +46,7 @@ export function hasLocus(x) {
 /**
  * One line out of authored prose. The registry wraps its texts, and those wraps are the
  * YAML's layout rather than the sentence's, so anything rendering an item's instructions
- * as a body flattens them the same way. Shared with the question the item file carries
+ * as a body flattens them the same way. Shared with the question an `ask` entry carries
  * (src/report/format.js manualQuestion): the report and the reviewer's question say the
  * same sentence, and one definition is what keeps them from flattening it differently.
  * @param {?string} text
@@ -85,25 +88,21 @@ function bucketOf(m) {
 const TODO_SECTIONS = Object.freeze(["code", "extendedManual", "standard"]);
 
 /** The to-do sections a person answers, as opposed to the ones settled by reading the
- *  add-on. --llm-skip-manual withholds BOTH the prompt's asks for them
- *  (src/report/format.js, which walks this list to print them) and their entries in the
- *  item file (src/report/items.js, through isQuestion); named once here because those two
- *  must never disagree - an ask for a section the file omits
- *  sends the reader hunting for entries that are not there. They are the LAST sections
- *  TODO_SECTIONS numbers, which is what makes omitting them truncate the numbering rather
- *  than punch a hole in it. */
-export const MANUAL_SECTIONS = Object.freeze(["extendedManual", "standard"]);
+ *  add-on. It has ONE reader, `isQuestion` below, and through it decides the phase an item
+ *  starts in. They are the LAST sections TODO_SECTIONS numbers, which is what makes
+ *  omitting them truncate the numbering rather than punch a hole in it. */
+const MANUAL_SECTIONS = Object.freeze(["extendedManual", "standard"]);
 
 /**
- * Whether this ordered entry is a question a REVIEWER was asked - the one property that
- * decides, for an item, which vocabulary its answer is written in: a question is answered
- * with one of the labels the item file offered (or the reviewer's own words), everything
- * else with one of the linter's verbs.
+ * Whether this ordered entry is a question only a REVIEWER can answer, as opposed to a
+ * case settled by reading the add-on. It decides ONE thing: which phase an item starts in
+ * (src/report/phases.js phaseOf).
  *
- * Spelled once because three readers must agree on it: the item file leaves these out
- * under --llm-skip-manual, it offers `answers` for exactly these, and --llm-verdict reads
- * an answer as a label only for these. Two of them disagreeing would refuse a label the
- * third had just offered.
+ * Where an item STARTS, never where it is now. The `ask` verdict sends a case on to a
+ * reviewer without changing the section it was filed under, so anything asking "is a
+ * person answering this" reads the item's current phase instead (phases.js phaseNow) -
+ * which is what the file a phase hands out and the answer it takes back are both built
+ * from.
  * @param {OrderedItem} x
  * @returns {boolean}
  */
@@ -120,7 +119,13 @@ export function isQuestion(x) {
  * @property {number} index  The number this item is listed under. Every item has one,
  *   whether or not the page prints its line.
  * @property {boolean} shown  Whether the report prints a location line for it, or folds
- *   it into the entry's "and N more" marker (past the per-entry display cap).
+ *   it into the entry's "and N more" marker (past the per-entry display cap), or prints
+ *   nothing because another case of the same subject stands for it (`collapse: subject`).
+ * @property {boolean} folded  Whether it is the second kind: another case's line stands
+ *   for it, so it is not one of the ones an "and N more" marker speaks for.
+ * @property {number} collapsed  How many OTHER cases this one's line stands for, when its
+ *   entry collapses on the subject; 0 everywhere else. The renderer appends it to the
+ *   line, so the count a reader sees is the one counted here.
  * @property {object} target  The Finding or ManualItem itself.
  */
 
@@ -145,16 +150,56 @@ export function orderReview(findings, manual = []) {
   const items = [];
   let n = 0;
   const push = (kind, section, key, members) => {
+    // An entry whose check declares `collapse: subject` prints one line per SUBJECT: the
+    // first case keeps its line and carries a count of the others, the rest do not print.
+    // Decided HERE, with the cap, because both answer the same question - does this item's
+    // line print - and one answer in one place is what keeps the printed numbers and the
+    // addressable ones together. The renderer prints what this decided; it decides nothing.
+    //
+    // This is NOT the entry grouping, which is settled above and reads only the body and
+    // whether an item has a locus at all. Grouping decides what is ONE entry; this decides
+    // which of that entry's lines print. Nothing here changes what was found, what is
+    // asked, or what a verdict can settle - every case keeps its index either way.
+    const keeperOf = new Map();
+    const collapsed = new Array(members.length).fill(0);
+    const folded = members.map((m, i) => {
+      if (m.collapse !== "subject") {
+        return false;
+      }
+      // Everything the line would say EXCEPT where it is: subject, detail, and a
+      // reviewer's own words. A line may stand for another only when the two would have
+      // said the same thing - a differing detail is a different case, and a differing
+      // NOTE is a person having written something about this one that is theirs alone.
+      // The display cap does lose a note, and that is settled (26 cases of one check is
+      // not a review anyone finishes); this must not, because two places for one host is
+      // an ordinary submission.
+      const subject = JSON.stringify([m.item, m.hint, m.note]);
+      const keeper = keeperOf.get(subject);
+      if (keeper === undefined) {
+        keeperOf.set(subject, i);
+        return false;
+      }
+      collapsed[keeper]++;
+      return true;
+    });
+    // The cap counts LINES, so a folded case never uses one of them up.
+    let printed = 0;
     members.forEach((target, i) => {
-      // Past the cap the page prints a marker instead of the line. The item is numbered
-      // all the same: it is still part of the review, still in the item file, and still
-      // addressable by a verdict.
+      // Past the cap the page prints a marker instead of the line, and a folded case
+      // prints none at all. The item is numbered either way: it is still part of the
+      // review, still asked about, and still addressable by an answer.
+      const shown = !folded[i] && printed < MAX_ENTRIES_PER_CATEGORY;
+      if (shown) {
+        printed++;
+      }
       items.push({
         kind,
         section,
         entry: key,
         index: ++n,
-        shown: i < MAX_ENTRIES_PER_CATEGORY,
+        shown,
+        folded: folded[i],
+        collapsed: collapsed[i],
         target,
       });
     });
