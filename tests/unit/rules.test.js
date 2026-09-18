@@ -658,20 +658,33 @@ test("checks carry the sca mode tag (true=SCA-only, undefined=both; none is XPI-
   assert.equal(sca("unknown-api"), undefined);
 });
 
-// `escalation` and `instructions` are one declaration in two halves: the section a case is
-// listed under, and the wording it is listed with. loadRegistry refuses either alone, because
-// both failures would otherwise surface only when a case first reached them - which may be
-// never. This pins the whole map, so a new escalating check must declare its section.
-test("every escalating check declares a section, and only those", async () => {
-  const checks = allChecks(await loadChecks(loadRegistry(), { eslint: true }));
+// A check's section is DERIVED from who it wrote its question for, so this pins both ends
+// at once: the whole map, and that each id in it authors the wording its section implies.
+// Asked of the loaded checks, because `section` is what the orchestrator actually stamps
+// onto a case - reading the yaml back would only restate the derivation.
+test("every escalating check lands in the section its reader implies", async () => {
+  const registry = loadRegistry();
+  const checks = allChecks(await loadChecks(registry, { eslint: true }));
   const bySection = {};
+  const authored = (id, key) => {
+    const text = registry.checkEntry(id)?.[key];
+    return typeof text === "string" && text !== "";
+  };
   for (const c of checks) {
-    if (c.escalation) (bySection[c.escalation] ??= []).push(c.id);
-    // The two halves travel together: no check has one without the other.
+    if (c.section) (bySection[c.section] ??= []).push(c.id);
+    // Every escalation has a text a person can be asked, whatever its section - that is
+    // what lets a review with no agent in it put all of them to a reviewer.
     assert.equal(
-      Boolean(c.escalation),
-      Boolean(c.instructions),
-      `${c.id}: escalation and instructions must be declared together`
+      Boolean(c.section),
+      authored(c.id, "instructions") ||
+        authored(c.id, "instructions-for-human"),
+      `${c.id}: a section and a human wording imply each other`
+    );
+    // And a code-review section means, exactly, that an agent has something to read.
+    assert.equal(
+      c.section === "code-review",
+      authored(c.id, "instructions") || authored(c.id, "instructions-for-llm"),
+      `${c.id}: code-review iff the check authors wording for an agent`
     );
   }
   for (const k of Object.keys(bySection)) bySection[k].sort();
@@ -714,8 +727,8 @@ test("every escalating check declares a section, and only those", async () => {
 // entry cannot acquire a band by omission - the assertion below is the declared value.
 // `none` is the band for a check that emits no findings: it has nothing to report at, and
 // runOneCheck refuses a finding from one, so nothing can reach the upload filter at a
-// severity nobody chose. WHERE such a check's cases are listed is a separate field
-// (`escalation`), pinned by its own test.
+// severity nobody chose. WHERE such a check's cases are listed follows from a separate
+// declaration - the reader it authored wording for - pinned by its own test.
 test("every check's severity is pinned to its band", async () => {
   // eslint: true so the opt-in code-sanity check is loaded and pinned like the rest.
   const checks = allChecks(await loadChecks(loadRegistry(), { eslint: true }));
@@ -1146,8 +1159,9 @@ test("undeclared-build-source escalates every SCA, build documented or not", () 
   assert.equal(out.findings.length, 0);
   assert.equal(out.escalations.length, 1);
   assert.equal(out.escalations[0].file, "package.json");
-  // WHERE it is listed is the entry's `escalation: manual-review`, not the case's - the
-  // reviewer must reproduce the build themselves, which reading the code cannot replace.
+  // WHERE it is listed follows from the entry authoring only `instructions-for-human`,
+  // and is not the case's to say - the reviewer must reproduce the build themselves,
+  // which reading the code cannot replace.
   assert.equal(out.escalations[0].manualReview, undefined);
 
   // A step the linter could not statically bound is named in the entry.

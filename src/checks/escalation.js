@@ -1,9 +1,9 @@
 // The orchestrator's escalation policy: how a case a check could not settle on its own
 // becomes a to-do note. A check returns `escalations` of cases a person must inspect and
 // manualEscalations repacks them as manual items. WHICH section they are listed under is
-// the check's `escalation` field - the section the registry derived from the reader that
-// check authored wording for - and not a property of the case: every case a check raises
-// asks the same question, so a check needing two questions is two checks.
+// the check's `section` - derived by the registry from the reader that check authored
+// wording for - and never a property of the case: every case a check raises asks the same
+// question, so a check needing two questions is two checks.
 //
 // Belongs here: manualEscalations, the ManualRef shape, and narrating each check's
 // per-site verdicts to the live feed. Does NOT belong here: building the escalations
@@ -37,7 +37,7 @@
  * @property {?string} file  Locus path, listed under the manual entry, or null.
  * @property {{line?: number, column?: number}|null} loc  Locus line, or null.
  * @property {?string} section  The to-do section this is listed under, from the owning
- *   check's `escalation` field (src/checks/registry.js sectionFor derives it).
+ *   check's `section` (src/checks/registry.js sectionFor derives it).
  * @property {Record<string, string|number>|null} data  Extra `{{slot}}` values
  *   for the instructions template (null when the case carries none).
  * @property {?{id: string, file: string, line: ?number, token: string}[]}
@@ -60,7 +60,7 @@ function manualRef(check, c) {
     hint: c.hint ?? null,
     file: c.file ?? null,
     loc: c.loc ?? null,
-    section: check.escalation ?? null,
+    section: check.section ?? null,
     data: c.data ?? null,
     occurrences: c.occurrences ?? null,
   };
@@ -68,9 +68,8 @@ function manualRef(check, c) {
 
 /**
  * Repack a check's escalations as manual refs. Nothing is adjudicated here: the check
- * already decided it cannot settle these, and its `escalation` field - derived from who
- * that check wrote its question for - says which of the two to-do sections they are
- * listed under.
+ * already decided it cannot settle these, and its `section` - derived from who that check
+ * wrote its question for - says which of the two to-do sections they are listed under.
  * @param {LoadedCheck} check
  * @param {Escalation[]} escalations
  * @returns {{findings: object[], manualItems: ManualRef[]}}

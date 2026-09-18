@@ -10,7 +10,7 @@ const check = {
   id: "unused-files",
   title: "Unused",
   severity: "error",
-  escalation: "code-review",
+  section: "code-review",
 };
 
 // A deterministic check's escalations route straight to manual refs, carrying any
@@ -56,7 +56,7 @@ test("manualEscalations maps each escalation to a manual ref", () => {
 // The section follows the check: the same cases from a manual-review check land there.
 test("manualEscalations stamps the section from the check", () => {
   const { manualItems } = manualEscalations(
-    { ...check, id: "privacy-policy", escalation: "manual-review" },
+    { ...check, id: "privacy-policy", section: "manual-review" },
     [{ item: "example.com" }]
   );
   assert.equal(manualItems[0].section, "manual-review");

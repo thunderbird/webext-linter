@@ -18,7 +18,7 @@
 // findings: the cases it could not settle. The orchestrator (runChecks) repacks
 // those as to-do items via escalation.js and is the sole authority on the to-do
 // sections: which one a check's cases are listed under follows from the reader the
-// check authored wording for, not from a property of the case.
+// check authored wording for, and is never a property of the case.
 //
 // The shared `ctx` passed to run() is the RunContext typedef below, which is the
 // one description of it: what a check may read, and from where.
@@ -146,10 +146,10 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   ctx.addon when the check runs (VALID_CHECK_INPUTS above), and what its output is
  *   labelled as ([XPI]/[SCA]). Required for every check; runChecks routes it (see
  *   buildXpiCtxs / buildScaCtxs).
- * @property {string} [instructions]  The to-do wording a PERSON reads for a case this
- *   check escalates.
- * @property {?string} [escalation]  Which to-do section its escalations are listed under
- *   (SECTION in src/report/finding.js); null when the check never escalates.
+ * @property {?string} section  Which to-do section its escalations are listed under
+ *   (SECTION in src/report/finding.js), derived by sectionFor from the reader this check
+ *   authored wording for; null when it never escalates. The wording itself is NOT carried
+ *   here - it is resolved per reader when an item is built (src/report/responses.js).
  * @property {object[]} [permissionTokens]  The permission-prompts token entries
  *   ({permissions, tokens, version bounds}), carried by every check and read by
  *   the one that scans for them.
@@ -1466,8 +1466,7 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
       severity: entry.severity,
       input: entry.input,
       sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
-      instructions: entry["instructions-for-human"] ?? entry.instructions,
-      escalation: registry.sectionFor(id),
+      section: registry.sectionFor(id),
       // The permission-prompts token entries, like `instructions` above: registry
       // data every check carries, read by the one that scans for them. It version-filters at run time (versionInBounds) with the reviewed
       // manifest, so every entry is handed over here.
