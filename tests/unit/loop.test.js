@@ -61,7 +61,9 @@ function review(
       review: `${base}.review.json`,
       report: {
         findings: findings ? [finding(1, "a"), finding(2, "b")] : [],
-        meta: {},
+        // What the Review Details block is built from - the artifacts this review is of,
+        // which is the whole reason a phase hands that block over.
+        meta: { xpi: `${dir}/a.xpi`, extractedDir: `${dir}/a.extracted` },
         mode: "xpi",
       },
       manual: [
@@ -660,11 +662,14 @@ test("every combination of the skips issues exactly the phases it should", () =>
     if (seen.includes("ask")) {
       assert.equal(details, "", `${where}: the ask phase handed it over`);
     } else {
+      // Written for a chat: a list of links, then what the verdicts mean anything
+      // against. The heading above it is the agent's to write, so it is not in here.
       assert.match(
         details,
-        /── Review Details ──/,
+        /^\* XPI: \[/m,
         `${where}: the report hands it over`
       );
+      assert.match(details, /^schema /m, `${where}: and says what against`);
     }
   }
 });

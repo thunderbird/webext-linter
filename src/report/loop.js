@@ -25,7 +25,7 @@ import { reviewItems } from "./items.js";
 import { mergeSweepResults } from "./sweep.js";
 import { resolveHolds } from "./finding.js";
 import {
-  headerLines,
+  detailLinkLines,
   issuesBodyLines,
   locusLabeler,
   summaryBodyLines,
@@ -200,9 +200,12 @@ function phaseEntries(state, registry, phase, run) {
  * @returns {string}
  */
 function detailBlock(state) {
+  // Carries its own heading line, unlike the copy the `ask` phase hands over: there the
+  // step text names the heading, and here the part is conditional - a sentence introducing
+  // it would be left introducing nothing on every review that asked something.
   return (state.issued ?? []).includes("ask")
     ? ""
-    : `\n${reviewDetails(state)}\n`;
+    : `\nUnder "Review details", this:\n\n${reviewDetails(state)}\n`;
 }
 
 /**
@@ -211,9 +214,9 @@ function detailBlock(state) {
  * @returns {string}
  */
 export function reviewDetails(state) {
-  // Without the blank `section` opens with: the block is handed over as a thing of its
-  // own here, not as one section among others in a report.
-  return headerLines(reportMeta(state)).join("\n").replace(/^\n/, "");
+  // The chat renderer, not the report's: what a phase hands over is read in a client, not
+  // in a terminal, so its paths are links rather than an aligned block.
+  return detailLinkLines(reportMeta(state)).join("\n");
 }
 
 /**

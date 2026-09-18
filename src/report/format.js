@@ -29,6 +29,7 @@ import {
 import { orderReview, hasLocus, manualBody, collapseBody } from "./order.js";
 import { artifactLabel } from "./artifact.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
+import path from "node:path";
 import { displayLine, displayPath, wrapText } from "../util/text.js";
 
 /** @param {string} s @returns {string} */
@@ -541,10 +542,65 @@ export function headerLines(meta) {
     "",
     ...valueLines(values),
     "",
+    schemaLine(meta),
+  ];
+}
+
+/** What the review's verdicts mean anything against, in one line. Shared by the two
+ *  renderers below and above it, because it is the same sentence either way - only the
+ *  paths differ between a terminal and a chat. */
+function schemaLine(meta) {
+  return (
     `schema ${meta.schemaBranch} · Thunderbird ${meta.applicationVersion ?? "?"}` +
-      (meta.manifestVersion != null
-        ? ` · manifest_version ${meta.manifestVersion}`
-        : ""),
+    (meta.manifestVersion != null
+      ? ` · manifest_version ${meta.manifestVersion}`
+      : "")
+  );
+}
+
+/**
+ * The same facts as headerLines, written for a CHAT rather than a terminal.
+ *
+ * Two renderers rather than one with a flag, because almost nothing survives the crossing:
+ * a terminal gets an aligned block of indented paths, a chat gets a list of links a reader
+ * can click. The two agree on WHICH facts are named and on nothing else, and a single
+ * renderer trying to be both would be a chain of conditionals around every line.
+ *
+ * Each row carries its own link text rather than deriving one. A path the reviewer supplied
+ * reads well as its own file name; one this tool named is a timestamped string nobody wants
+ * to read, and what matters about it is what it IS.
+ * @param {ReviewMeta} meta
+ * @returns {string[]}
+ */
+export function detailLinkLines(meta) {
+  const rows = [];
+  if (meta.xpi) {
+    rows.push(["XPI", path.basename(meta.xpi), meta.xpi]);
+  }
+  if (meta.extractedDir) {
+    rows.push(["XPI data", "extracted folder", meta.extractedDir]);
+  }
+  if (meta.scaRoot) {
+    rows.push(
+      ["SCA_ROOT", "source archive", meta.scaRoot],
+      ["SCA_SOURCE", "add-on source", meta.scaSource]
+    );
+  }
+  if (meta.scaExpSource) {
+    rows.push(["SCA_EXP_SOURCE", "experiment source", meta.scaExpSource]);
+  }
+  if (meta.summaryFile) {
+    rows.push(["ADDON_DESCRIPTION", "summary.md", meta.summaryFile]);
+  }
+  if (meta.buildFile) {
+    rows.push(["BUILD_PROCESS", "build.md", meta.buildFile]);
+  }
+  return [
+    ...rows.map(
+      ([name, text, target]) => `* ${name}: [${text}](${displayPath(target)})`
+    ),
+    "",
+    schemaLine(meta),
   ];
 }
 

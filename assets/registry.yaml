@@ -1646,13 +1646,15 @@ llm-phases:
   refused: |-
     The file you handed back is not what this pass expected: {{problem}}. You still have the prompt you were following. Read it again carefully and redo that pass. If it fails a second time, abort the review and say why.
   final: |-
-    The review is settled. Wait for every agent you spawned to come back, then report your own decisions in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why.
+    The review is settled. Wait for every agent you spawned to come back, then give the reviewer what follows, each part under a heading of its own and in this order. Print nothing between the parts and nothing after them.
     {{details}}
-    Then give the reviewer the summary below, as it is written here:
+    Under "LLM decisions", your own account in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why. This part is yours to write and the only part that is.
+
+    Under "Summary", this, as it is written here:
 
     {{tally}}
 
-    Then the report, in a code block, unchanged - this is the text the reviewer sends to the developer, so nothing may be added to it, left out of it, or reworded:
+    Under "Review report", this, in a code block and unchanged - it is the text the reviewer sends to the developer, so nothing may be added to it, left out of it, or reworded:
 
     {{report}}
   # The phases, in the order they are issued. A phase is issued when it has WORK - steps that
@@ -1805,11 +1807,11 @@ llm-phases:
       intro: ""
       steps:
         - text: |-
-            Wait for every agent you spawned to come back, then give the reviewer this block before you put anything to them, exactly as it is written here and with nothing added:
+            Wait for every agent you spawned to come back, then give the reviewer this block before you put anything to them, under a "Review details" heading and otherwise exactly as it is written here:
 
             {{details}}
 
-            It names what this review is and where to read it. Write nothing of your own about it: no summary, no excerpt, no link of your own making. Where a path names a file another agent wrote, the reviewer reads it themselves, while you work.
+            It names what this review is and where to read it, and its links are written for their client to open. Write nothing of your own about it: no summary, no excerpt, no link of your own making. Where a path names a file another agent wrote, the reviewer reads it themselves, while you work.
         - skip: manual
           text: |-
             Put every entry in the file to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each entry's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that entry's "answers", in the order they are listed, each with the label and description written there and no wording of your own.
