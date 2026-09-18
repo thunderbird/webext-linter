@@ -1,6 +1,6 @@
 # TODO
 
-Open work. Background, rationale and anything already decided are in `SETTLED.md`.
+Open work.
 
 ## Tag path parameters in the schema, then delete the bridge entries
 
@@ -57,7 +57,5 @@ and at runtime it is undefined.
 - Keep today's opaque prefix wherever `experimentApiNamespaces` (`src/lib/experiments.js`)
   falls back to the manifest because the schema is missing, unreadable or unparseable - a
   malformed developer file must not turn into a wave of unknown-member reports.
-- Leave `experiment-unknown-api` and the built-in namespace collision alone: both settled
-  (`SETTLED.md`).
 - Check against a real Experiment add-on that declares many members (`phoenity_icons-3.19`,
   the SmartTemplates versions) - it must gain no finding for an API its schema does declare.

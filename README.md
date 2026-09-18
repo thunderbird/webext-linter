@@ -398,19 +398,24 @@ nothing" from "never looked":
                 "hint": "<a ping> attribute carries the message digest" } ] }
 ```
 
-Each result is then routed by the owning check's **`escalation:`** - the one
-property that says who can settle that check's cases:
+A sweep is a DETECTOR and nothing more. What comes back is a hint - a location
+that check's own detectors missed - and from there the case is one of that
+check's, handled exactly as a case it found for itself:
 
-| The check's `escalation:` | Where a swept result lands |
+| The owning check | Where a swept result lands |
 | --- | --- |
-| `manual-review` | A question put to the **reviewer**. The check's own cases cannot be settled from the package at all (a privacy policy lives in the ATN listing), so a swept one cannot be either - it is not inspected, not verified, not cleared. |
-| anything else | An **Extended Code Review** item, settled by reading the add-on like any other, and filed on `reported` under that check's ruleId, band and response. |
+| escalates | An escalation of that check, in the section its `escalation:` names, asking the question that check asks - its own `instructions`, never the text the sweep agent was sent. |
+| does not escalate | A **finding** of that check. Such a check settles its cases as findings, so a swept one is a finding too, and the `verify` phase audits it like every other claim. |
 
-Either way it arrives as a numbered entry of the phase that settles it, appended
-after every index that already existed and deduplicated against what the
-deterministic pass listed, so nothing downstream can tell a swept case from one a
-check found. The `hint` is a locus annotation naming
-what sits at that line; the paragraph the developer reads stays the registry's.
+So a `sweep-instruction` says what to LOOK FOR, and is read in exactly two
+places: the request handed to the sweep agent, and the Standard Code Review list
+above. It never says what confirming something means - that is the owning
+check's to say.
+
+Either way the case is deduplicated against what the deterministic pass already
+covered, as a to-do item or as a finding, so nothing downstream can tell a swept
+case from one a check found. The `hint` is a locus annotation naming what sits at
+that line; the paragraph the developer reads stays the registry's.
 
 | Check id (`check:`) | The blind spot its sweep covers |
 | --- | --- |

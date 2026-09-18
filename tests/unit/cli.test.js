@@ -966,9 +966,8 @@ test("retired flags are unknown options", () => {
 // the deterministic checks cannot find for themselves, so what it hands back has to become
 // an item of the check it names - routed, numbered, and settled like any other.
 //
-// APPENDED, never inserted: a swept case takes the next index after every one that already
-// existed, so nothing is renumbered and an index means the same case for the life of the
-// review.
+// This one ESCALATES, so a swept case becomes an escalation of it, asking the question that
+// check asks. The route below it covers the other kind.
 test("a swept case becomes an item of its check and settles like any other", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const first = run([addon, ...OFFLINE_FLAGS, "--llm-review"]);
@@ -1026,6 +1025,62 @@ test("a swept case becomes an item of its check and settles like any other", () 
     out.stdout,
     /background\.js:12 - <a ping> attribute carries the message digest/
   );
+});
+
+// A check with NO escalation settles its cases as FINDINGS - `cleartext-transmission` sees
+// http:// and files one. So a hint its detectors missed is a finding too, and the verify
+// phase audits it exactly like a detected one: same phase, same two verbs, and the report
+// words it from that check's own response. The sweep's own text settles nothing.
+test("a swept case of a check that files findings is verified like one", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const first = run([
+    addon,
+    ...OFFLINE_FLAGS,
+    "--llm-review",
+    "--llm-skip-summary",
+  ]);
+  assert.equal(first.code, 0, first.stderr);
+  const file = first.stdout.match(/(\S+\.review\.json)/)[1];
+
+  const handed = JSON.parse(fs.readFileSync(file, "utf8"));
+  handed.entries = handed.entries.map((e) => ({
+    ...e,
+    answer:
+      e.check === "cleartext-transmission"
+        ? [{ file: "sync.js", line: 12, hint: "posts over http://" }]
+        : [],
+  }));
+  fs.writeFileSync(file, JSON.stringify(handed, null, 1));
+
+  // It arrives in VERIFY, as a finding: a locus and the agent's hint, and no `instructions`
+  // - a finding carries no question, because it is a claim to be audited.
+  const second = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  assert.equal(second.code, 0, second.stderr);
+  assert.match(second.stdout, /Verify every entry in ONE pass/);
+  const verify = JSON.parse(fs.readFileSync(file, "utf8"));
+  const swept = verify.entries.find(
+    (e) => e.ruleId === "cleartext-transmission"
+  );
+  assert.ok(swept, "the swept hint is a verify entry of its own check");
+  assert.equal(swept.hint, "posts over http://");
+  assert.equal(
+    swept.instructions,
+    undefined,
+    "a finding carries no instructions"
+  );
+
+  // Confirmed, it reaches the developer worded by the OWNING check - never by the sweep.
+  verify.entries = verify.entries.map((e) => ({ ...e, answer: "reported" }));
+  fs.writeFileSync(file, JSON.stringify(verify, null, 1));
+  let out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  while (/── LLM Prompt ──/.test(out.stdout)) {
+    const doc = JSON.parse(fs.readFileSync(file, "utf8"));
+    doc.entries = doc.entries.map((e) => ({ ...e, answer: "Clear" }));
+    fs.writeFileSync(file, JSON.stringify(doc, null, 1));
+    out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  }
+  assert.match(out.stdout, /Data is sent over an unencrypted connection/);
+  assert.match(out.stdout, /sync\.js:12 - posts over http:\/\//);
 });
 
 // ---- --llm-sca-review ----

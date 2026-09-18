@@ -1,10 +1,9 @@
 // The REVIEW LOOP, driven end to end with no agent: every phase handed out, answered from
 // a canned decision, and handed back.
 //
-// This file is the safety net for the whole round trip. `SETTLED.md` records that nothing
-// drove --llm-review end to end, which is why the shippedCtx crash shipped; 182 goldens
-// contain no prompt output at all, so the golden suite cannot catch a regression here and
-// will not need regenerating either. Everything this half of the tool does that is testable
+// This file is the safety net for the whole round trip. 182 goldens contain no prompt
+// output at all, so the golden suite cannot catch a regression here and will not need
+// regenerating either. Everything this half of the tool does that is testable
 // is testable because `state + a filled review file -> the next state` is a pure
 // transformation.
 import test from "node:test";

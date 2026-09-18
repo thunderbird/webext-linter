@@ -280,7 +280,7 @@ export function settle(state, registry) {
   };
 }
 
-/** The meta a SETTLED report names: the review's own artifacts, and none of the files a
+/** The meta a settled report names: the review's own artifacts, and none of the files a
  *  pass uses to ASK about them - those belong to the asking, not to the answer. */
 function reportMeta(state) {
   const {
@@ -296,15 +296,15 @@ function reportMeta(state) {
 }
 
 /**
- * Send what the sweep found where its check's cases go.
+ * Send what the sweep found where its check's own cases go.
  *
- * A hint becomes an item of the check it names - a question for the reviewer where only
- * they can settle it, an Extended Code Review case otherwise - so everything downstream
- * sees ONE list and cannot tell a swept case from a deterministic one.
+ * A hint becomes a case of the check it names - an escalation where that check escalates, a
+ * finding where it does not - so everything downstream sees the SAME two lists and cannot
+ * tell a swept case from a deterministic one.
  *
- * Appended, never inserted: a swept case takes the next index after every one that already
- * existed, so nothing is renumbered and an index means the same case for the life of the
- * review.
+ * This runs while accepting the `spawn` phase, whose rows are keyed by check and carry no
+ * index; `verify` is the first pass that hands one out. So nothing is renumbered by what is
+ * added here, because nothing has been numbered yet.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {string[]}  What was routed, for the audit line.
@@ -316,16 +316,23 @@ function routeSweep(state, registry) {
   if (results.length === 0) {
     return [];
   }
-  const { manual, applied } = mergeSweepResults({
+  const { manual, findings, applied } = mergeSweepResults({
     results,
     manual: state.manual,
+    findings: state.report.findings,
     preSweep: state.preSweep,
     registry,
     file: state.review,
   });
   state.manual = manual;
+  state.report.findings = findings;
+  // Worded NOW, not left to `settle`. orderReview groups findings by their message, and a
+  // swept one arrives with none - so an unrendered finding would group one way while the
+  // verify phase asks about it and another once the report is built, moving items under an
+  // index that is supposed to mean the same case for the life of the review.
+  renderFindings(state.report.findings, registry);
   // The sweep is over: leaving it standing would ask a reviewer for work that is now in
-  // the list above it.
+  // the lists above it.
   state.preSweep = null;
   return applied;
 }

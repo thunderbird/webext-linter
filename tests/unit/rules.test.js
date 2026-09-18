@@ -853,8 +853,9 @@ test("the checks that sweep their own blind spot are exactly these", () => {
       ["disguised-transmission", "error"],
     ]
   );
-  // Every one of them can actually receive what its sweep finds: a band to stamp an
-  // addition with, and a response with no placeholder an addition brings nothing to fill.
+  // Every one of them can actually receive what its sweep finds: a band to stamp the case
+  // with - a finding where the check does not escalate, an escalation where it does - and a
+  // response with no placeholder, since a swept case carries no `item` or `data` to fill one.
   for (const s of reg.sweepInstructions()) {
     assert.ok(s.severity, `${s.check} has a band`);
     assert.ok(

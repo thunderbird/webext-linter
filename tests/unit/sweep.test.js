@@ -1,8 +1,7 @@
-// Unit tests for --llm-sweep-results: taking what a sweep found and routing each result
-// to the section its check's cases go to. The agent that swept classifies nothing, so
-// every guard here exists because a result routed by anything other than the check's own
-// `escalation` would land a case in front of whoever cannot settle it - which is the
-// defect this path was built to end.
+// Taking what a sweep found and routing each result the way its own check routes its own
+// cases. The agent that swept classifies nothing, so every guard here exists because a
+// result routed by anything other than what that check already does would land a case in
+// front of whoever cannot settle it - which is the defect this path was built to end.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -29,10 +28,11 @@ function result(check, file, line, hint = null) {
   return { check, file, line, hint };
 }
 
-function merge(results, manual = []) {
+function merge(results, manual = [], findings = []) {
   return mergeSweepResults({
     results,
     manual,
+    findings,
     preSweep: asked,
     registry,
     file: "/s.json",
@@ -70,19 +70,22 @@ test("a malformed sweep result is rejected with a reason", () => {
 
 // ---- the routing ----
 
-// The whole point of this file. `escalation: manual-review` says the check's cases cannot
-// be settled from the package, so a swept one cannot be either: it goes to the reviewer.
-// Everything else is settled by reading the add-on, which is what Extended Code Review is.
+// The whole point of this file. A sweep is a DETECTOR: what comes back is a hint its
+// check's own detectors missed, and from that point it is one of that check's cases,
+// handled the way that check already handles them. Three routes, one rule.
 test("a result goes where its check's own cases go", () => {
-  const { manual, applied } = merge([
+  const { manual, findings, applied } = merge([
     result("privacy-policy", "providers/Gravatar.js", 23, "gravatar.com"),
     result("data-exfiltration", "bg.js", 40, "<a ping> carries the digest"),
+    result("cleartext-transmission", "sync.js", 12, "posts over http://"),
   ]);
   assert.deepEqual(applied, [
-    "privacy-policy (providers/Gravatar.js:23) -> question",
-    "data-exfiltration (bg.js:40) -> code review",
+    "privacy-policy (providers/Gravatar.js:23) -> manual-review",
+    "data-exfiltration (bg.js:40) -> code-review",
+    "cleartext-transmission (sync.js:12) -> finding",
   ]);
 
+  // Only a reviewer can settle this check's cases, so a swept one is a question too.
   const question = manual.find((m) => m.ruleId === "privacy-policy");
   assert.equal(question.section, "manual-review");
   assert.equal(question.extended, true);
@@ -90,20 +93,39 @@ test("a result goes where its check's own cases go", () => {
     [question.file, question.loc.line],
     ["providers/Gravatar.js", 23]
   );
-  // The question's wording is the check's, filled by renderManualItems - not the sweep's.
   assert.match(question.instructions, /privacy policy/i);
 
+  // This one escalates to code review, so a swept case asks the SAME question a detected
+  // one asks - the check's own `instructions`, never the text the sweep agent was sent.
   const code = manual.find((m) => m.ruleId === "data-exfiltration");
   assert.equal(code.section, "code-review");
-  // A check that files findings authors no `instructions`, so the instruction is its own
-  // `sweep-instruction`: the text the agent was sent after says what confirming it means.
   assert.equal(
     code.instructions,
-    registry.sweepInstruction("data-exfiltration")
+    registry.instructionsFor("data-exfiltration")
   );
-  // The band a reported case lands in is the registry's, never the sweep's.
-  assert.equal(code.verdict, registry.suggestedVerdict("data-exfiltration"));
+  assert.notEqual(
+    code.instructions,
+    registry.sweepInstruction("data-exfiltration"),
+    "the sweep's own text settles nothing"
+  );
   assert.equal(code.hint, "<a ping> carries the digest");
+
+  // This one does not escalate at all: it settles its cases as findings, so a swept one is
+  // a finding - which the verify phase audits like every other claim.
+  assert.equal(
+    manual.some((m) => m.ruleId === "cleartext-transmission"),
+    false,
+    "not a to-do item"
+  );
+  assert.equal(findings.length, 1);
+  const [swept] = findings;
+  assert.equal(swept.ruleId, "cleartext-transmission");
+  assert.equal(
+    swept.severity,
+    registry.suggestedVerdict("cleartext-transmission")
+  );
+  assert.deepEqual([swept.file, swept.loc.line], ["sync.js", 12]);
+  assert.equal(swept.hint, "posts over http://");
 });
 
 // A result nothing can be done with is a sweep half applied, so it fails the run rather
@@ -123,14 +145,18 @@ test("a result for a check nobody swept refuses the run", () => {
 
 // Deduplication is the linter's, not the reader's: a sweep escalation is passed through
 // untouched, so the agent must not be the one deciding that two of its lines are one case.
-test("a location already listed for that check is merged once", () => {
+//
+// Asked of BOTH lists, because which one the deterministic pass used depends on whether
+// that check escalates - and a sweep naming a location either already holds is naming what
+// is already in the review.
+test("a location already covered for that check is merged once", () => {
   const twice = merge([
     result("privacy-policy", "a.js", 1),
     result("privacy-policy", "a.js", 1),
   ]);
   assert.equal(twice.applied.length, 1);
 
-  // Already raised by the deterministic pass, at the same locus.
+  // Already raised by the deterministic pass as a to-do item, at the same locus.
   const already = [
     {
       ruleId: "privacy-policy",
@@ -148,4 +174,25 @@ test("a location already listed for that check is merged once", () => {
   const other = merge([result("privacy-policy", "a.js", 2)], already);
   assert.equal(other.applied.length, 1);
   assert.equal(other.manual.length, 2);
+
+  // And already FILED by the deterministic pass, which is what a check with no escalation
+  // does with its cases. Without this the sweep would file the finding a second time.
+  const filed = [
+    { ruleId: "cleartext-transmission", file: "sync.js", loc: { line: 12 } },
+  ];
+  const dup = merge(
+    [result("cleartext-transmission", "sync.js", 12)],
+    [],
+    filed
+  );
+  assert.deepEqual(dup.applied, []);
+  assert.equal(dup.findings.length, 1, "the one the pass filed, and no second");
+
+  const elsewhere = merge(
+    [result("cleartext-transmission", "sync.js", 99)],
+    [],
+    filed
+  );
+  assert.equal(elsewhere.applied.length, 1);
+  assert.equal(elsewhere.findings.length, 2);
 });
