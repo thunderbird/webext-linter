@@ -703,6 +703,7 @@ test("every escalating check lands in the section its reader implies", async () 
       "remote-resources",
       "strict-min-version-api",
       "trademark-thunderbird-locale",
+      "unacceptable-package-content",
       "unknown-api",
       "unused-files",
       "unused-permission",
@@ -788,6 +789,7 @@ test("every check's severity is pinned to its band", async () => {
       "trademark-thunderbird-locale",
       "trademark-thunderbird-name",
       "trademark-violation",
+      "unacceptable-package-content",
       "undeclared-build-source",
       "unknown-api",
       "unpinned-dependency",
@@ -865,6 +867,7 @@ test("the checks that sweep their own blind spot are exactly these", () => {
       ["privacy-policy", "hold"],
       ["data-exfiltration", "error"],
       ["disguised-transmission", "error"],
+      ["unacceptable-package-content", "error"],
     ]
   );
   // Every one of them can actually receive what its sweep finds: a band to stamp the case
@@ -1129,9 +1132,11 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     .map((c) => c.id)
     .sort();
   // The ONLY checks that read the built XPI instead of the review target: the file /
-  // _locales / reachability-structure checks, plus unused-permission (it judges whether a
-  // declared permission is exercised in the SHIPPED bytes). Extending this set is deliberate -
-  // update the check AND this pin together.
+  // _locales / reachability-structure checks, unused-permission (it judges whether a
+  // declared permission is exercised in the SHIPPED bytes), and
+  // unacceptable-package-content, which scans nothing itself but must be able to reach
+  // everything the package ships for what its sweep finds. Extending this set is
+  // deliberate - update the check AND this pin together.
   assert.deepEqual(xpi, [
     "background-module",
     "background-page-module",
@@ -1143,6 +1148,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "trademark-thunderbird-locale",
     "trademark-thunderbird-name",
     "trademark-violation",
+    "unacceptable-package-content",
     "unrecognized-file-type",
     "unrecognized-manifest-key",
     "unused-files",
@@ -1413,7 +1419,7 @@ test("manualChecks emits every entry, ungated", () => {
   const reg = loadRegistry();
   const titles = reg.manualChecks().map((m) => m.title);
   assert.ok(titles.includes("Forked add-on"));
-  assert.ok(titles.includes("Check the package for unacceptable content"));
+  assert.ok(titles.includes("Check the listing for unacceptable content"));
   assert.equal(titles.length, reg.manualCheckIds().length);
 });
 
@@ -1426,7 +1432,7 @@ test("manual checks have unique, doc-backed check ids distinct from rule ids", (
   const manualIds = reg.manualCheckIds();
   const manualTitles = reg.manualChecks();
   // One id per manual-checks entry.
-  assert.equal(manualIds.length, 10);
+  assert.equal(manualIds.length, 9);
   assert.equal(new Set(manualIds).size, manualIds.length, "ids are unique");
   // Manual ids are NOT in the runnable check namespace (no rule module).
   const runnable = new Set(reg.checkIds());

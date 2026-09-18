@@ -430,6 +430,7 @@ that line; the paragraph the developer reads stays the registry's.
 | `disguised-window` | Data in the URL of a window or tab the add-on opens. |
 | `disguised-navigation` | Data in the URL an already-open context is sent to. |
 | `privacy-policy` | The add-on reaching a developer-chosen remote service by an unlisted route. |
+| `unacceptable-package-content` | Content the add-on ships - its name and description, an icon, or bundled text, images or media - that is spam, inappropriate, misleading or low-effort, or breaches Mozilla's Acceptable Use Policy. |
 
 ### Manual checks
 
@@ -440,7 +441,6 @@ report's **Standard Manual Review** to-do list. They carry a severity like every
 
 | Check id (`check:`) | What the reviewer verifies |
 | --- | --- |
-| `unacceptable-package-content` | What the add-on ships - its name and description in `manifest.json`, its icons, and any bundled text, images or media - for spam, inappropriate, misleading or low-effort content, and against Mozilla's Acceptable Use Policy. Every fix here needs a new version. |
 | `test-add-on` | Functionality in a test profile, fail if credentials or other info are needed to continue. |
 | `no-surprises-policy` | The code diff for behavior not documented on the ATN listing that could surprise the user. |
 | `missing-payment-disclosure` | Whether the add-on requires payment but the "needs payment" flag is not set on ATN. |

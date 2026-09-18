@@ -880,7 +880,9 @@ test("a reviewer's words replace the default note, for both kinds of item", () =
   const reg = loadRegistry();
   // The shipped Experiment escalation authors one; a manual check is given one here,
   // because the shipped registry authors none and inventing one is a product decision.
-  const manualEntry = reg.doc["manual-checks"][0];
+  const manualEntry = reg.doc["manual-checks"].find(
+    (e) => e.check === "test-add-on"
+  );
   manualEntry["default-note"] = "- ...";
   const marker = "- ...";
 

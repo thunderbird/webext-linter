@@ -365,7 +365,9 @@ test("a deterministic run completes both kinds of answered item with its default
   // An escalation that authors one (the shipped Experiment check does), and a manual check
   // given one here - the shipped registry authors none, and inventing one is a product
   // decision, not a test's.
-  const manualEntry = reg.doc["manual-checks"][0];
+  const manualEntry = reg.doc["manual-checks"].find(
+    (e) => e.check === "test-add-on"
+  );
   manualEntry.response = "Fix the following:";
   manualEntry["default-note"] = "- ...";
 

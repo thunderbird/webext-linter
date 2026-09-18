@@ -1234,6 +1234,38 @@ deterministic-phase:
   response: |-
     The following code location(s) appear to send data through a channel not meant for data transmission - a URL used for loading, styling, opening or navigating, with data riding in it. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
+# Nothing about spam or low-effort content is decidable from the bytes, so this check
+# scans nothing: it exists to carry the blind spot. Its `sweep-instruction` is what the
+# report lists for a reviewer covering that by hand, and what an agent sweeps for when one
+# is reviewing. A hint the sweep returns becomes a case of this check, screened against
+# the LLM text and handed to the reviewer if it survives - which is why it offers `ask`
+# and not `reported`: whether shipped content breaches the policy is a person's ruling.
+- title: Check the package for unacceptable content
+  severity: error
+  check: unacceptable-package-content
+  input: xpi
+  settle-verbs: [cleared, ask]
+  instructions-for-llm: |-
+    The location below was returned as content that may not meet the add-on
+    content requirements. Read it as it ships. Clear it where it is ordinary
+    functional content - an interface string, a placeholder, a library asset -
+    and hand it to the reviewer where it may be spam, inappropriate, misleading
+    or low-effort. Whether it breaches the policy is the reviewer's to decide,
+    not yours.
+  instructions-for-human: |-
+    Look at the content at the location below as it ships, and decide whether it
+    is spam, inappropriate, misleading or low-effort, or otherwise breaches
+    Mozilla's Acceptable Use Policy
+    (https://www.mozilla.org/about/legal/acceptable-use/). Only content inside
+    the submitted package belongs here; the ATN listing is a separate check.
+    Report it if it breaches the policy, and clear it if it does not.
+  sweep-instruction: |-
+    Content shipped inside the package - the name and description in manifest.json,
+    an icon, or any bundled text, image or media - that is spam, inappropriate,
+    misleading or low-effort, or that breaches Mozilla's Acceptable Use Policy.
+  response: |-
+    Content shipped inside this add-on does not meet our content requirements. It must not be spam, inappropriate, misleading, or low-effort, and it must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please correct the affected content and submit a new version.
+
 # The token vocabulary the unused-permission check scans for, one entry per
 # permission group. Each entry may carry min_strict_version / max_strict_version (an
 # INCLUSIVE bound on the add-on's strict_min_version, compared at the bound's own
@@ -1352,22 +1384,6 @@ permission-prompts:
 
 
 manual-checks:
-# Manual: the content the add-on SHIPS. Everything here is inside the submitted
-# package, so every fix needs a new version - which is what separates it from
-# unacceptable-listing-content.
-- title: Check the package for unacceptable content
-  check: unacceptable-package-content
-  severity: error
-  instructions: |-
-    Inspect what the add-on ships: its name and description in manifest.json, its
-    icons, and any text, images or media bundled in the package. Determine whether
-    any of it is spam, inappropriate, misleading, or low-effort, or breaches
-    Mozilla's Acceptable Use Policy
-    (https://www.mozilla.org/about/legal/acceptable-use/). Only content inside the
-    submitted package belongs here. The ATN listing is a separate check.
-  response: |-
-    Content shipped inside this add-on does not meet our content requirements. It must not be spam, inappropriate, misleading, or low-effort, and it must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please correct the affected content and submit a new version.
-
 # Manual: exercise the add-on in a test profile; may need credentials or info.
 - title: Test the add-on and request testing information if needed
   check: test-add-on

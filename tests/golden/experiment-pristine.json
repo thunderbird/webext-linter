@@ -83,7 +83,8 @@
       "vendored-remote-resources",
       "remote-eval",
       "data-exfiltration",
-      "disguised-transmission"
+      "disguised-transmission",
+      "unacceptable-package-content"
     ]
   },
   "summary": {

@@ -11,23 +11,32 @@
       <header class="check-header">
         <h1>
           Check the package for unacceptable content
-          <span class="badge manual">manual</span>
+          <span class="badge error">error</span>
         </h1>
         <div class="check-id">unacceptable-package-content</div>
       </header>
 
       <h2>What it detects</h2>
       <p class="lead">
-        This is a human-review item with no automated logic behind it. A
-        reviewer inspects what the add-on ships: its name and description in
+        This check scans nothing. Whether what an add-on ships is spam,
+        inappropriate, misleading or low-effort is not decidable from the bytes,
+        so what it contributes is a blind spot: a standing brief naming what to
+        look for in the package - its name and description in
         <code>manifest.json</code>, its icons, and any text, images or media
-        bundled in the package.
+        bundled with it.
       </p>
       <p>
-        Each is weighed for spam, inappropriate, misleading or low-effort
-        content, and against Mozilla's Acceptable Use Policy. Everything judged
-        here lives inside the submitted package, so every fix needs a new
-        version. The ATN listing is judged separately by
+        Every review prints that brief under <strong>Standard Code Review</strong>,
+        for a reviewer covering it by hand. When an agent is reviewing, it sweeps
+        for the same thing and hands back what it finds; each location comes back
+        as a case of this check, screened by the agent and put to the reviewer if
+        it survives. The agent can drop a candidate but never rule on one -
+        whether content breaches Mozilla's Acceptable Use Policy is a person's
+        judgement.
+      </p>
+      <p>
+        Everything judged here lives inside the submitted package, so every fix
+        needs a new version. The ATN listing is judged separately by
         <a href="unacceptable-listing-content.html"
           >unacceptable-listing-content</a
         >.
@@ -38,13 +47,21 @@
         <pre class="mermaid">
 flowchart TD
   A["Every review"] --> X{"A rejected Experiment?<br/>(bundles an unsupported draft,<br/>no --allow-experiments)"}
-  X -- yes --> S([skip — the reject phase<br/>runs alone, the whole<br/>to-do list is dropped])
-  X -- no --> M(["listed as a to-do for the reviewer<br/>to settle by hand"])
+  X -- yes --> S([skip — the reject phase<br/>runs alone])
+  X -- no --> B(["listed under Standard Code Review:<br/>what to look for in the package"])
+  B --> C{"Is an agent sweeping?"}
+  C -- no --> M([the reviewer covers it by hand])
+  C -- yes --> D{"The sweep returns a location"}
+  D -- "screened: ordinary content" --> OK([cleared — never reaches the reviewer])
+  D -- "screened: may breach the policy" --> Q(["put to the reviewer, who reports<br/>it or clears it"])
 
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   class S skip;
   class M manual;
+  class Q manual;
+  class OK ok;
         </pre>
       </div>
 
@@ -56,8 +73,9 @@ flowchart TD
       </div>
 
       <p class="source-note">
-        Source of truth: the manual-checks entry in
-        <code>assets/registry.yaml</code>.
+        Source of truth:
+        <code>src/checks/rules/unacceptable-package-content.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
       </p>
     </main>
 
