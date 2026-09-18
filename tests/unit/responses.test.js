@@ -147,10 +147,7 @@ test("renderManualItems resolves an escalation to title + instructions + locus",
     registry
   );
   assert.match(item.title, /Unused/);
-  assert.match(
-    flat(item.instructions),
-    /reachable from no manifest entry point/
-  );
+  assert.match(flat(item.instructions), /Nothing reaches them from a manifest/);
   assert.equal(item.file, "stray.js"); // listed by the report, not in the prose
   assert.ok(!item.instructions.includes("{{item}}"));
 });
@@ -274,7 +271,7 @@ test("renderManualItems renders a manual-review item from its own wording", () =
   );
   // The reviewer is asked to decide, not to establish what the check established.
   assert.match(item.instructions, /matches a published/);
-  assert.ok(!flat(item.instructions).includes("Confirm by hand"));
+  assert.ok(!flat(item.instructions).includes("Check by hand"));
   assert.match(item.response, /must be bundled with the add-on/);
   // Item-free wording, so the site and its upstream are listed per locus.
   assert.equal(item.listItem, true);
@@ -288,7 +285,7 @@ test("renderManualItems renders the plain remote-resources escalation", () => {
     [{ ruleId: "remote-resources", item: "x" }],
     registry
   );
-  assert.match(flat(item.instructions), /Confirm by hand/);
+  assert.match(flat(item.instructions), /Check by hand/);
   assert.match(item.response, /Remote sources are not allowed/);
 });
 
@@ -317,7 +314,7 @@ test("renderManualItems refuses a to-do item whose check authors no wording", ()
 test("the registry picks a wording per reader, and refuses an unauthored one", () => {
   assert.match(
     flat(registry.instructionsFor("remote-resources")),
-    /Confirm by hand/
+    /Check by hand/
   );
   assert.match(
     flat(registry.instructionsFor("vendored-remote-resources")),
@@ -327,11 +324,33 @@ test("the registry picks a wording per reader, and refuses an unauthored one", (
     () => registry.instructionsFor("unsafe-html"),
     /authors no `instructions-for-human` or `instructions`/
   );
-  // A check that authors one text serves it to either reader.
-  assert.equal(
+  // A check authoring both is asked two different things, and each reader gets its own.
+  assert.match(
+    flat(registry.llmInstructionsFor("remote-resources")),
+    /Follow the value to where it is built/
+  );
+  assert.notEqual(
     registry.llmInstructionsFor("remote-resources"),
     registry.instructionsFor("remote-resources")
   );
+  // A check authoring ONE text serves it to either reader - the shape the shipped
+  // registry no longer uses for an escalation, and still the one a manual check has.
+  const shared = new Registry({
+    "deterministic-phase": [
+      {
+        title: "X",
+        check: "sync-xhr",
+        severity: "error",
+        input: "source",
+        instructions: "one text",
+        "settle-verbs": ["reported", "cleared"],
+      },
+    ],
+  });
+  assert.equal(shared.instructionsFor("sync-xhr"), "one text");
+  assert.equal(shared.llmInstructionsFor("sync-xhr"), "one text");
+  // And a check authoring none has nothing for either: null where an agent asks,
+  // a raise where a person would have been.
   assert.equal(registry.llmInstructionsFor("unsafe-html"), null);
 });
 

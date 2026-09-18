@@ -16,20 +16,22 @@ https://github.com/thunderbird/webext-linter
 
 Continue manual review for the following checks:
 
-1) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
+1) Missing English localization: Read the strings this add-on shows the user. It
+   ships no English localization, so that text may be hardcoded in another
+   language. English is Thunderbird's default, and most users who cannot read
+   the hardcoded language will be able to read English. Report it unless the
+   user-facing text is English.
 Suggested verdict: warning
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - [XPI] manifest.json
 
-2) Unused, hidden or duplicate files or folders: The following files are
-   reachable from no manifest entry point, so decide whether anything loads them
-   at runtime. Two shapes reach here: a site that names the file literally, and
-   a runtime loader that builds load paths at run time (a dynamic import,
-   getURL, executeScript, insertCSS, setIcon and the like) and so may load it
-   without naming it. If nothing loads them, they should not ship.
+2) Unused, hidden or duplicate files or folders: Check whether anything loads
+   the files below. Nothing reaches them from a manifest entry point, but a file
+   can still be loaded by code that names it, or by a loader that builds its
+   path at run time - a dynamic import, getURL, executeScript, insertCSS,
+   setIcon and the like. A file nothing loads should not ship. Report the ones
+   you cannot trace to a loader.
 Suggested verdict: warning
 Suggested response: The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
  - [XPI] orphan.js

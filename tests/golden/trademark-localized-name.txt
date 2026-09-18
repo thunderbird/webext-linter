@@ -5,14 +5,12 @@ The automated review did not find any issues.
 
 Continue manual review for the following checks:
 
-1) Thunderbird in a localized add-on name: The add-on name below carries
-   “Thunderbird” in a form this scan cannot verify. Only “ADD-ON NAME for
-   Thunderbird” is allowed, and outside English the scan cannot tell a word
-   meaning “for” from a word that is part of the name. Read the name in EVERY
-   _locales/<locale>/messages.json, not only the ones listed, and decide for
-   each whether Thunderbird is the object of a word meaning “for” or part of the
-   add-on’s own name. Report only the names that present the add-on as a
-   Thunderbird product.
+1) Thunderbird in a localized add-on name: Read the add-on’s name in every
+   _locales/<locale>/messages.json and decide, for each, whether “Thunderbird”
+   is the object of a word meaning “for” in that language or part of the
+   add-on’s own name. Only “ADD-ON NAME for Thunderbird” is allowed. Report a
+   name that presents the add-on as a Thunderbird product; clear one that does
+   not.
 Suggested verdict: error
 Suggested response: The add-on name uses the registered trademark “Thunderbird” in a way that is unallowable under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). “Thunderbird” is generally not allowed in the add-on name, except in the format “ADD-ON NAME for Thunderbird”, including in translations of the name.
  - manifest.json:3 - Konverzace pro Thunderbird - cs

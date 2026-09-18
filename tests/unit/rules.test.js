@@ -3879,8 +3879,14 @@ test("a wording shape that names no reader is refused", () => {
   const doc = loadRegistry();
   const entry = (id) =>
     doc.doc["deterministic-phase"].find((e) => e.check === id);
-  const restore = (e, saved) => {
-    for (const k of ["instructions", "instructions-for-llm", "escalation"]) {
+  // Each case mutates one entry, asserts, and puts it back exactly as it was, so the
+  // final pass over the untouched registry is what proves nothing leaked between them.
+  const mutate = (id, change, re, why) => {
+    const e = entry(id);
+    const saved = { ...e };
+    change(e);
+    assert.throws(() => assertEntries(doc, "t.yaml"), re, why);
+    for (const k of Object.keys(e)) {
       delete e[k];
     }
     Object.assign(e, saved);
@@ -3888,39 +3894,29 @@ test("a wording shape that names no reader is refused", () => {
 
   // A section nothing reads. The report's own section follows from the wording, so an
   // entry still declaring one means something other than it says.
-  const stale = entry("remote-eval");
-  const staleSaved = { instructions: stale.instructions };
-  stale.escalation = "code-review";
-  assert.throws(
-    () => assertEntries(doc, "t.yaml"),
+  mutate(
+    "remote-eval",
+    (e) => (e.escalation = "code-review"),
     /declares `escalation`, which nothing reads/,
     "a declared section"
   );
-  restore(stale, staleSaved);
 
-  // `instructions` IS the text for either reader, so a second one is two answers to one
-  // question rather than an override.
-  const doubled = entry("data-exfiltration");
-  const doubledSaved = { instructions: doubled.instructions };
-  doubled["instructions-for-llm"] = "screen it";
-  assert.throws(
-    () => assertEntries(doc, "t.yaml"),
+  // `instructions` IS the text for either reader, so authoring it beside a per-reader
+  // one is two answers to one question rather than an override.
+  mutate(
+    "data-exfiltration",
+    (e) => (e.instructions = "either reader"),
     /authors `instructions` beside `instructions-for-llm`/,
     "both a shared text and a per-reader one"
   );
-  restore(doubled, doubledSaved);
 
   // An agent's text with none for a person: unaskable in a review with no agent in it.
-  const llmOnly = entry("unknown-api");
-  const llmOnlySaved = { instructions: llmOnly.instructions };
-  delete llmOnly.instructions;
-  llmOnly["instructions-for-llm"] = "screen it";
-  assert.throws(
-    () => assertEntries(doc, "t.yaml"),
+  mutate(
+    "unknown-api",
+    (e) => delete e["instructions-for-human"],
     /authors `instructions-for-llm` with no text a person can be asked/,
     "an agent-only question"
   );
-  restore(llmOnly, llmOnlySaved);
 
   // Restored: the real registry still passes.
   assertEntries(doc, "t.yaml");

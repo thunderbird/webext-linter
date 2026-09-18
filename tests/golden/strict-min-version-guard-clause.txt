@@ -5,20 +5,22 @@ The automated review did not find any issues.
 
 Continue manual review for the following checks:
 
-1) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
+1) Missing English localization: Read the strings this add-on shows the user. It
+   ships no English localization, so that text may be hardcoded in another
+   language. English is Thunderbird's default, and most users who cannot read
+   the hardcoded language will be able to read English. Report it unless the
+   user-facing text is English.
 Suggested verdict: warning
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
 
-2) API newer than strict_min_version: Each call below is to an API that was
-   introduced after the add-on's strict_min_version, so it throws on the
-   versions in between. Check whether the call is guarded for those versions.
-   This could be a feature detection, a cached flag, an early return, a
-   try/catch or an explicit version gate, among others. Report it - asking for a
-   higher strict_min_version - unless you can point at the guard.
+2) API newer than strict_min_version: Check whether each call below is guarded
+   for the Thunderbird versions where it throws: those between the add-on's
+   strict_min_version and the version that introduced the API. A feature
+   detection, a cached flag, an early return, a try/catch or an explicit version
+   gate all count. Report it unless you can point at the guard, which asks the
+   developer to raise strict_min_version.
 Suggested verdict: error
 Suggested response: The add-on is setting strict_min_version to 115.0 but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
  - background.js:9 - browser.messages.tags.list() - added in Thunderbird 121

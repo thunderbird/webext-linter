@@ -20,23 +20,23 @@ Suggested response: Please add a privacy policy to this add-on that details whic
  - background.js:9 - logs.example.net
  - background.js:15 - a remote server - host assembled at run time
 
-2) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
+2) Missing English localization: Read the strings this add-on shows the user. It
+   ships no English localization, so that text may be hardcoded in another
+   language. English is Thunderbird's default, and most users who cannot read
+   the hardcoded language will be able to read English. Report it unless the
+   user-facing text is English.
 Suggested verdict: warning
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
 
-3) User-data exfiltration: The following code locations send data to a remote
-   server. User data - message content, attachments, contacts, credentials - may
-   be transmitted only if the user actively enabled it: by entering the
-   destination URL or credentials on an options page that states what is sent,
-   or through an explicit off-by-default opt-in for a hard-coded URL.
-   Thunderbird has no built-in data-collection consent prompt, so there is no
-   implicit consent to rely on. The add-on's own options page, if it has one, is
-   where such an opt-in would live. Confirm for each location that consent of
-   that kind exists.
+3) User-data exfiltration: Check, for each location below, whether the user
+   actively enabled the transmission. User data - message content, attachments,
+   contacts, credentials - may be sent only where they entered the destination
+   or credentials on an options page that says what is sent, or turned on an
+   explicit off-by-default opt-in. Thunderbird has no built-in consent prompt,
+   so there is no implicit consent to fall back on. Report a location where no
+   such consent exists.
 Suggested verdict: error
 Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
  - background.js:5 - fetch() "https://api.example.com/one"

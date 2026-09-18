@@ -5,20 +5,22 @@ The automated review did not find any issues.
 
 Continue manual review for the following checks:
 
-1) Unknown or unsupported WebExtension API: Each reference below is to a name
-   the schema does not have, or marks unsupported, for the targeted Thunderbird
-   version. Check whether this reference is guarded, so the add-on still works
-   where the name is missing. A feature detection with a working fallback, a
-   shim, a try/catch all count. Report it unless you can point at the guard.
+1) Unknown or unsupported WebExtension API: Check whether each reference below
+   is guarded, so the add-on still works on a Thunderbird that does not have the
+   name. The schema does not have these names, or marks them unsupported, for
+   the version this add-on targets. A feature detection with a working fallback,
+   a shim or a try/catch all count. Report it unless you can point at the guard.
 Suggested verdict: error
 Suggested response: The following WebExtension APIs are not supported in the targeted Thunderbird version.
 Read more: https://webextension-api.thunderbird.net/.
  - background.js:3 - browser.contextMenus - unknown namespace
  - background.js:5 - browser.messages.frobnicate - unknown member
 
-2) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
+2) Missing English localization: Read the strings this add-on shows the user. It
+   ships no English localization, so that text may be hardcoded in another
+   language. English is Thunderbird's default, and most users who cannot read
+   the hardcoded language will be able to read English. Report it unless the
+   user-facing text is English.
 Suggested verdict: warning
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n

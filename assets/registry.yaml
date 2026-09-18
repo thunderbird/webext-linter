@@ -58,14 +58,20 @@ deterministic-phase:
   check: trademark-thunderbird-locale
   input: xpi
   settle-verbs: [reported, cleared]
-  instructions: |-
-    The add-on name below carries “Thunderbird” in a form this scan cannot verify.
-    Only “ADD-ON NAME for Thunderbird” is allowed, and outside English the scan
-    cannot tell a word meaning “for” from a word that is part of the name. Read the
-    name in EVERY _locales/<locale>/messages.json, not only the ones listed, and
-    decide for each whether Thunderbird is the object of a word meaning “for” or
-    part of the add-on’s own name. Report only the names that present the add-on as
-    a Thunderbird product.
+  instructions-for-llm: |-
+    The names below carry “Thunderbird” in a form the scan cannot verify.
+    Only “ADD-ON NAME for Thunderbird” is allowed, and outside English the
+    scan cannot tell a word meaning “for” from a word that is part of the
+    name. Read the name in EVERY _locales/<locale>/messages.json, not only
+    the ones listed. Report a name where Thunderbird reads as part of the
+    add-on’s own name; clear one where it is the object of a word meaning
+    “for” in that locale’s language.
+  instructions-for-human: |-
+    Read the add-on’s name in every _locales/<locale>/messages.json and
+    decide, for each, whether “Thunderbird” is the object of a word meaning
+    “for” in that language or part of the add-on’s own name. Only “ADD-ON
+    NAME for Thunderbird” is allowed. Report a name that presents the add-on
+    as a Thunderbird product; clear one that does not.
   response: |-
     The add-on name uses the registered trademark “Thunderbird” in a way that is unallowable under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). “Thunderbird” is generally not allowed in the add-on name, except in the format “ADD-ON NAME for Thunderbird”, including in translations of the name.
 
@@ -97,12 +103,19 @@ deterministic-phase:
     The following WebExtension APIs are not supported in the targeted Thunderbird version.
     Read more: https://webextension-api.thunderbird.net/.
   settle-verbs: [reported, cleared]
-  instructions: |-
+  instructions-for-llm: |-
     Each reference below is to a name the schema does not have, or marks
-    unsupported, for the targeted Thunderbird version. Check whether this
-    reference is guarded, so the add-on still works where the name is missing. A
-    feature detection with a working fallback, a shim, a try/catch all count.
-    Report it unless you can point at the guard.
+    unsupported, for the targeted Thunderbird version. Check whether the
+    reference is guarded, so the add-on still works where the name is
+    missing: a feature detection with a working fallback, a shim or a
+    try/catch all count. Clear it if you can point at the guard; report it
+    otherwise.
+  instructions-for-human: |-
+    Check whether each reference below is guarded, so the add-on still works
+    on a Thunderbird that does not have the name. The schema does not have
+    these names, or marks them unsupported, for the version this add-on
+    targets. A feature detection with a working fallback, a shim or a
+    try/catch all count. Report it unless you can point at the guard.
 
 # Flags deprecated APIs.
 - title: Deprecated WebExtension API
@@ -254,11 +267,17 @@ deterministic-phase:
   check: debugger-statement
   input: source
   settle-verbs: [reported, cleared]
-  instructions: |-
-    A debugger statement is acceptable only when it is guarded by a build or
-    configuration flag, or by a setting in the add-on's options. Read the
-    enclosing condition, if any, and decide whether it is properly guarded and
-    does not run unconditionally.
+  instructions-for-llm: |-
+    A debugger statement is acceptable only where a build flag, a
+    configuration flag or a setting in the add-on's options keeps it from
+    running in a shipped install. Read the enclosing condition, if there is
+    one. Clear it where such a guard is in place; report it where the
+    statement can run unconditionally.
+  instructions-for-human: |-
+    Read the condition around the debugger statement below, if there is one.
+    A debugger statement is acceptable only where a build flag, a
+    configuration flag or a setting in the add-on's options keeps it from
+    running in a shipped install. Report it unless it is guarded that way.
   response: |-
     Debugger statement left in shipped code. Please remove it or move it behind a build or configuration flag.
 
@@ -307,9 +326,18 @@ deterministic-phase:
   response: |-
     One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
   settle-verbs: [reported, cleared]
-  instructions: |-
-    Review whether the following declared permissions are used, and ask the
-    developer to remove any that are not needed.
+  instructions-for-llm: |-
+    Each permission below is declared in the manifest, and no call that
+    needs it was found. Read the add-on for a use of the API that permission
+    gates, counting a call reached through an alias, a helper or a bundled
+    library as a use. Clear one you can trace to a use; report one you
+    cannot.
+  instructions-for-human: |-
+    Check whether the add-on uses each permission listed below. A permission
+    counts as used when some part of the add-on calls an API that requires
+    it, including a call inside a bundled library. An add-on should request
+    only the permissions it needs, so the install-time prompt stays minimal.
+    Report the ones you cannot trace to a use.
 
 # Flags a bundled file whose content hash matches a known third-party library
 # release (named after each path) that is not declared in a VENDOR file.
@@ -457,15 +485,22 @@ deterministic-phase:
   check: experiment-unknown-api
   input: source
   settle-verbs: [reported, cleared]
-  instructions: |-
-    This Experiment calls WebExtension APIs the schema does not recognize (see the
-    "Unknown or unsupported WebExtension API" findings). For an experiment's OWN API
-    this is usually a typo in that experiment's schema: the schema's `namespace` is the
-    sole authority for the API name, so if it does not match the API the code calls
-    (regardless of the manifest's experiment_apis key or parent.paths), the API is
-    undefined. Read every experiment schema. If the names are typos, report this and
-    withdraw the "Unknown or unsupported WebExtension API" findings for those APIs. If
-    the APIs genuinely do not exist, clear this and let those findings stand.
+  instructions-for-llm: |-
+    This Experiment calls WebExtension APIs no schema defines. For an
+    Experiment's own API that is usually a typo in its schema: the
+    `namespace` there is the sole authority for the API name, so one that
+    does not match the name the code calls leaves the API undefined,
+    whatever `experiment_apis` or `parent.paths` declare. Read every
+    Experiment schema. Report this where a called name should have been
+    declared by one of them and is not; clear it where the names belong to
+    no Experiment here.
+  instructions-for-human: |-
+    Read the schema of every Experiment this add-on ships and compare the
+    API names it declares against the names the code calls. The `namespace`
+    in an Experiment's schema is the only thing that names its API: a
+    mismatch leaves it undefined at run time even though the manifest
+    declares it. Report this where a called name should have been declared
+    and is not; clear it where the names belong to no Experiment here.
   response: |-
     This Experiment calls WebExtension APIs that no schema defines. Where these are your own Experiment APIs, each experiment's schema must declare a `namespace` matching the name the code calls, since the namespace is authoritative and a mismatch leaves the API undefined even when the manifest declares it. Please correct the schema namespaces, or remove the calls to APIs that do not exist.
 
@@ -611,11 +646,18 @@ deterministic-phase:
   check: build-lifecycle-hook
   input: build
   settle-verbs: [reported, cleared]
-  instructions: |-
-    The package.json declares the install lifecycle hook(s) below, which run when the
-    reviewer installs the dependencies, before the build. Read each command and
-    confirm it only runs local build steps, fetching or executing nothing remote
-    (curl/wget, a download-and-run, or a git clone of an unpinned repo).
+  instructions-for-llm: |-
+    The install lifecycle hooks below run when the dependencies are
+    installed, before the build. Read each command. Clear it where every
+    step is local; report it where anything is fetched or executed from off
+    the machine - curl or wget, a download-and-run, or a git clone of an
+    unpinned repo.
+  instructions-for-human: |-
+    Read each install lifecycle hook the package.json declares below. They
+    run on your own machine when you install the dependencies, before the
+    build. Report them unless every command is a local build step: nothing
+    may be fetched or executed from a remote source, whether by curl or
+    wget, a download-and-run, or a git clone of an unpinned repo.
   response: |-
     The package.json declares an npm install lifecycle hook that fetches or executes remote code when the dependencies are installed. Every part of the build must come only from the dependencies declared in package.json/lock. Please remove the remote fetch or execution from the hook.
 
@@ -948,10 +990,17 @@ deterministic-phase:
   check: missing-english-localization
   input: xpi
   settle-verbs: [reported, cleared]
-  instructions: |-
-    This add-on ships no English localization, so user-facing text may be
-    hardcoded in another language. Review its strings by hand and confirm if an
-    English localization is provided.
+  instructions-for-llm: |-
+    This add-on ships no English localization, so the text it shows the user
+    may be hardcoded in another language. Read the strings it actually
+    displays. Clear it where those are English; report it where they are
+    not.
+  instructions-for-human: |-
+    Read the strings this add-on shows the user. It ships no English
+    localization, so that text may be hardcoded in another language. English is
+    Thunderbird's default, and most users who cannot read the hardcoded
+    language will be able to read English. Report it unless the user-facing
+    text is English.
   response: |-
     Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
     An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
@@ -984,13 +1033,20 @@ deterministic-phase:
   check: strict-min-version-api
   input: source
   settle-verbs: [reported, cleared]
-  instructions: |-
-    Each call below is to an API that was introduced after the add-on's
-    strict_min_version, so it throws on the versions in between. Check whether
-    the call is guarded for those versions. This could be a feature detection, a
-    cached flag, an early return, a try/catch or an explicit version gate, among
-    others. Report it - asking for a higher strict_min_version - unless you can
-    point at the guard.
+  instructions-for-llm: |-
+    Each call below is to an API introduced after the add-on's
+    strict_min_version, so it throws on the versions in between. Check
+    whether the call is guarded for those versions - a feature detection, a
+    cached flag, an early return, a try/catch or an explicit version gate
+    all count. Clear it where a guard covers it; report it otherwise, which
+    asks the developer for a higher strict_min_version.
+  instructions-for-human: |-
+    Check whether each call below is guarded for the Thunderbird versions
+    where it throws: those between the add-on's strict_min_version and the
+    version that introduced the API. A feature detection, a cached flag, an
+    early return, a try/catch or an explicit version gate all count. Report
+    it unless you can point at the guard, which asks the developer to raise
+    strict_min_version.
   response: |-
     The add-on is setting strict_min_version to {{min}} but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
 
@@ -1001,13 +1057,20 @@ deterministic-phase:
   check: unused-files
   input: xpi
   settle-verbs: [reported, cleared]
-  instructions: |-
-    The following files are reachable from no manifest entry point, so decide
-    whether anything loads them at runtime. Two shapes reach here: a site that
-    names the file literally, and a runtime loader that builds load paths at run
-    time (a dynamic import, getURL, executeScript, insertCSS, setIcon and the
-    like) and so may load it without naming it. If nothing loads them, they
-    should not ship.
+  instructions-for-llm: |-
+    The files below are reachable from no manifest entry point. Decide
+    whether anything loads them at run time: a site naming the file
+    literally, or a loader that builds its path at run time - a dynamic
+    import, getURL, executeScript, insertCSS, setIcon and the like - and so
+    loads it without naming it. Clear a file you can trace to a loader;
+    report one nothing loads.
+  instructions-for-human: |-
+    Check whether anything loads the files below. Nothing reaches them from
+    a manifest entry point, but a file can still be loaded by code that
+    names it, or by a loader that builds its path at run time - a dynamic
+    import, getURL, executeScript, insertCSS, setIcon and the like. A file
+    nothing loads should not ship. Report the ones you cannot trace to a
+    loader.
   response: |-
     The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
 
@@ -1017,14 +1080,22 @@ deterministic-phase:
   check: minimize-web-accessible-resources
   input: xpi
   settle-verbs: [reported, cleared]
-  instructions: |-
-    The following resources are exposed through web_accessible_resources and
-    nothing in the add-on was found to load them. The key is needed only when
-    something OUTSIDE the add-on reads the file: a content script (which runs in
-    the web page's world), a real web page, or another extension. The add-on
-    opening or embedding its own file from its own contexts - background, popup,
-    sidebar, options, a tab page, or an iframe within one of its own pages -
-    never needs it. Decide on that basis whether each exposure is required.
+  instructions-for-llm: |-
+    The resources below are exposed through web_accessible_resources, and
+    nothing in the add-on was found to load them. The key is needed only
+    where something OUTSIDE the add-on reads the file: a content script,
+    which runs in the web page's world, a real web page, or another
+    extension. An add-on opening or embedding its own file from its own
+    contexts - background, popup, sidebar, options, a tab page, or an iframe
+    within one of its own pages - never needs it. Clear an exposure you can
+    trace to an outside reader; report one you cannot.
+  instructions-for-human: |-
+    Decide whether each resource below needs to be in
+    web_accessible_resources. The key is needed only where something outside
+    the add-on reads the file: a content script, which runs in the web
+    page's world, a real web page, or another extension. An add-on opening
+    or embedding its own file from its own pages never needs it. Report an
+    exposure you cannot trace to an outside reader.
   response: |-
     One or more resources are registered as web_accessible_resources but may not need to be exposed. List files there only if a web page or content script must access them. Otherwise, remove these entries to reduce the add-on’s exposed surface.
 
@@ -1038,10 +1109,19 @@ deterministic-phase:
   check: remote-resources
   input: source
   settle-verbs: [reported, cleared]
-  instructions: |-
-    This site loads or injects a resource - script, style, frame or media - from
-    a source static analysis could not resolve to a packaged file. Confirm by
-    hand that it comes from a bundled file and not from a remote source.
+  instructions-for-llm: |-
+    The location below loads or injects a resource - script, style, frame or
+    media - from a source the scan could not resolve to a packaged file.
+    Follow the value to where it is built, through variables, helpers and
+    bundled libraries. Clear it only if you can name the packaged file it
+    resolves to; report it if it reaches a remote host, or if you cannot
+    tell where it points.
+  instructions-for-human: |-
+    Check by hand where this location loads its resource from: a script,
+    style, frame or media reference the scan could not resolve. Every
+    resource must be bundled with the add-on so it can be reviewed, and
+    anything fetched from a remote host is not allowed. Report it unless you
+    can point at the bundled file it loads.
   response: |-
     A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed.
 
@@ -1075,11 +1155,17 @@ deterministic-phase:
   check: remote-eval
   input: source
   settle-verbs: [reported, cleared]
-  instructions: |-
-    The following location(s) execute code assembled at run time, such as
-    fetch().then(eval).
-    Confirm by hand that the executed code is static and local, and that nothing
-    remotely fetched is executed.
+  instructions-for-llm: |-
+    The locations below execute code assembled at run time, such as
+    fetch().then(eval). Follow what is executed back to where it comes from.
+    Clear it where the executed code is static and packaged; report it where
+    anything fetched from off the machine is executed, or where you cannot
+    tell.
+  instructions-for-human: |-
+    Check by hand what the locations below execute. They run code assembled
+    at run time, such as fetch().then(eval). Report them unless you can show
+    the executed code is static and comes from a file shipped in the
+    package.
   response: |-
     Remotely fetched code is executed at the following location(s). Remote code execution is not allowed - bundle all code with the add-on so it can be reviewed.
 
@@ -1090,16 +1176,23 @@ deterministic-phase:
   check: data-exfiltration
   input: source
   settle-verbs: [reported, cleared]
-  instructions: |-
-    The following code locations send data to a remote server. User data -
-    message content, attachments, contacts, credentials - may be transmitted only
-    if the user actively enabled it: by entering the destination URL or
-    credentials on an options page that states what is sent, or through an
-    explicit off-by-default opt-in for a hard-coded URL. Thunderbird has no
-    built-in data-collection consent prompt, so there is no implicit consent to
-    rely on. The add-on's own options page, if it has one, is where such an
-    opt-in would live. Confirm for each location that consent of that kind
-    exists.
+  instructions-for-llm: |-
+    The locations below send data to a remote server. User data - message
+    content, attachments, contacts, credentials - may be transmitted only
+    where the user actively enabled it: by entering the destination URL or
+    credentials on an options page that says what is sent, or through an
+    explicit off-by-default opt-in for a hardcoded URL. Thunderbird has no
+    built-in data-collection consent prompt, so there is no implicit consent
+    to rely on. Clear a location where consent of that kind exists; report
+    one where it does not.
+  instructions-for-human: |-
+    Check, for each location below, whether the user actively enabled the
+    transmission. User data - message content, attachments, contacts,
+    credentials - may be sent only where they entered the destination or
+    credentials on an options page that says what is sent, or turned on an
+    explicit off-by-default opt-in. Thunderbird has no built-in consent
+    prompt, so there is no implicit consent to fall back on. Report a
+    location where no such consent exists.
   sweep-instruction: |-
     Message content and headers, attachments, contacts, credentials, or anything
     derived from them, reaching a remote host without the user asking.
@@ -1116,14 +1209,25 @@ deterministic-phase:
   check: disguised-transmission
   input: source
   settle-verbs: [reported, cleared]
-  instructions: |-
-    The following code locations build a URL to a remote host from a runtime
-    value on a channel not meant for data transmission - a resource src or href,
-    a stylesheet url(), a window.open(), or a page navigation. Smuggling user
-    data out this way is not allowed even with the user's consent. But building a
-    remote URL from a runtime value is also very common in legitimate code
-    (navigating to a host path, loading a CDN asset by name), so decide for each
-    whether user data actually leaves through it.
+  instructions-for-llm: |-
+    The locations below build a URL to a remote host from a runtime value,
+    on a channel not meant for carrying data - a resource src or href, a
+    stylesheet url(), a window.open(), or a page navigation. Smuggling user
+    data out this way is not allowed even with the user's consent. Building
+    a remote URL from a runtime value is also common in legitimate code,
+    such as navigating to a host path or loading a CDN asset by name. Clear
+    a location where the runtime value carries nothing about the user;
+    report one where user data leaves through it, or where you cannot tell
+    what the value holds.
+  instructions-for-human: |-
+    Decide, for each location below, whether user data leaves through it.
+    Each builds a URL to a remote host from a runtime value, on a channel
+    not meant for carrying data - a resource src or href, a stylesheet
+    url(), a window.open(), or a page navigation. Sending data this way is
+    not allowed even with the user's consent. Building such a URL is also
+    common in legitimate code, for instance navigating to a host path or
+    loading an asset by name, so the question is what the value holds.
+    Report a location where it carries something about the user.
   sweep-instruction: |-
     Any other mechanism that presents as loading, rendering, opening or navigating
     while carrying data outward in its URL. Consent is no defence.

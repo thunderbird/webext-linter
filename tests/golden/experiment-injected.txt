@@ -5,33 +5,31 @@ The automated review did not find any issues.
 
 Continue manual review for the following checks:
 
-1) Unknown or unsupported WebExtension API: Each reference below is to a name
-   the schema does not have, or marks unsupported, for the targeted Thunderbird
-   version. Check whether this reference is guarded, so the add-on still works
-   where the name is missing. A feature detection with a working fallback, a
-   shim, a try/catch all count. Report it unless you can point at the guard.
+1) Unknown or unsupported WebExtension API: Check whether each reference below
+   is guarded, so the add-on still works on a Thunderbird that does not have the
+   name. The schema does not have these names, or marks them unsupported, for
+   the version this add-on targets. A feature detection with a working fallback,
+   a shim or a try/catch all count. Report it unless you can point at the guard.
 Suggested verdict: error
 Suggested response: The following WebExtension APIs are not supported in the targeted Thunderbird version.
 Read more: https://webextension-api.thunderbird.net/.
  - background.js:4 - browser.controlBogus - unknown namespace
  - content/uipage.js:3 - browser.bogusApi - unknown namespace
 
-2) Experiment with unrecognized API usage: This Experiment calls WebExtension
-   APIs the schema does not recognize (see the "Unknown or unsupported
-   WebExtension API" findings). For an experiment's OWN API this is usually a
-   typo in that experiment's schema: the schema's `namespace` is the sole
-   authority for the API name, so if it does not match the API the code calls
-   (regardless of the manifest's experiment_apis key or parent.paths), the API
-   is undefined. Read every experiment schema. If the names are typos, report
-   this and withdraw the "Unknown or unsupported WebExtension API" findings for
-   those APIs. If the APIs genuinely do not exist, clear this and let those
-   findings stand.
+2) Experiment with unrecognized API usage: Read the schema of every Experiment
+   this add-on ships and compare the API names it declares against the names the
+   code calls. The `namespace` in an Experiment's schema is the only thing that
+   names its API: a mismatch leaves it undefined at run time even though the
+   manifest declares it. Report this where a called name should have been
+   declared and is not; clear it where the names belong to no Experiment here.
 Suggested verdict: error
 Suggested response: This Experiment calls WebExtension APIs that no schema defines. Where these are your own Experiment APIs, each experiment's schema must declare a `namespace` matching the name the code calls, since the namespace is authoritative and a mismatch leaves the API undefined even when the manifest declares it. Please correct the schema namespaces, or remove the calls to APIs that do not exist.
 
-3) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
+3) Missing English localization: Read the strings this add-on shows the user. It
+   ships no English localization, so that text may be hardcoded in another
+   language. English is Thunderbird's default, and most users who cannot read
+   the hardcoded language will be able to read English. Report it unless the
+   user-facing text is English.
 Suggested verdict: warning
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n

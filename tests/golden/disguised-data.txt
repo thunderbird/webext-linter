@@ -12,22 +12,25 @@ https://github.com/thunderbird/webext-linter
 
 Continue manual review for the following checks:
 
-1) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
+1) Missing English localization: Read the strings this add-on shows the user. It
+   ships no English localization, so that text may be hardcoded in another
+   language. English is Thunderbird's default, and most users who cannot read
+   the hardcoded language will be able to read English. Report it unless the
+   user-facing text is English.
 Suggested verdict: warning
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
 
-2) Data smuggled through a channel not meant for it: The following code
-   locations build a URL to a remote host from a runtime value on a channel not
-   meant for data transmission - a resource src or href, a stylesheet url(), a
-   window.open(), or a page navigation. Smuggling user data out this way is not
-   allowed even with the user's consent. But building a remote URL from a
-   runtime value is also very common in legitimate code (navigating to a host
-   path, loading a CDN asset by name), so decide for each whether user data
-   actually leaves through it.
+2) Data smuggled through a channel not meant for it: Decide, for each location
+   below, whether user data leaves through it. Each builds a URL to a remote
+   host from a runtime value, on a channel not meant for carrying data - a
+   resource src or href, a stylesheet url(), a window.open(), or a page
+   navigation. Sending data this way is not allowed even with the user's
+   consent. Building such a URL is also common in legitimate code, for instance
+   navigating to a host path or loading an asset by name, so the question is
+   what the value holds. Report a location where it carries something about the
+   user.
 Suggested verdict: error
 Suggested response: The following code location(s) appear to send data through a channel not meant for data transmission - a URL used for loading, styling, opening or navigating, with data riding in it. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
  - background.js:11 - a page navigation "https://example.com/u/" + userId + "/inbox"

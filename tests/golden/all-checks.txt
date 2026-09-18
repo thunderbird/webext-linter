@@ -69,47 +69,51 @@ https://github.com/thunderbird/webext-linter
 
 Continue manual review for the following checks:
 
-1) Unknown or unsupported WebExtension API: Each reference below is to a name
-   the schema does not have, or marks unsupported, for the targeted Thunderbird
-   version. Check whether this reference is guarded, so the add-on still works
-   where the name is missing. A feature detection with a working fallback, a
-   shim, a try/catch all count. Report it unless you can point at the guard.
+1) Unknown or unsupported WebExtension API: Check whether each reference below
+   is guarded, so the add-on still works on a Thunderbird that does not have the
+   name. The schema does not have these names, or marks them unsupported, for
+   the version this add-on targets. A feature detection with a working fallback,
+   a shim or a try/catch all count. Report it unless you can point at the guard.
 Suggested verdict: error
 Suggested response: The following WebExtension APIs are not supported in the targeted Thunderbird version.
 Read more: https://webextension-api.thunderbird.net/.
  - background.js:4 - browser.bogusApi - unknown namespace
  - background.js:5 - browser.messages.frobnicate - unknown member
 
-2) Debugger statement: A debugger statement is acceptable only when it is
-   guarded by a build or configuration flag, or by a setting in the add-on's
-   options. Read the enclosing condition, if any, and decide whether it is
-   properly guarded and does not run unconditionally.
+2) Debugger statement: Read the condition around the debugger statement below,
+   if there is one. A debugger statement is acceptable only where a build flag,
+   a configuration flag or a setting in the add-on's options keeps it from
+   running in a shipped install. Report it unless it is guarded that way.
 Suggested verdict: error
 Suggested response: Debugger statement left in shipped code. Please remove it or move it behind a build or configuration flag.
  - background.js:32
 
-3) Possibly unused permissions: Review whether the following declared
-   permissions are used, and ask the developer to remove any that are not
-   needed.
+3) Possibly unused permissions: Check whether the add-on uses each permission
+   listed below. A permission counts as used when some part of the add-on calls
+   an API that requires it, including a call inside a bundled library. An add-on
+   should request only the permissions it needs, so the install-time prompt
+   stays minimal. Report the ones you cannot trace to a use.
 Suggested verdict: warning
 Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
  - manifest.json:5 - clipboardWrite
  - manifest.json:5 - bogusPermission
 
-4) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
+4) Missing English localization: Read the strings this add-on shows the user. It
+   ships no English localization, so that text may be hardcoded in another
+   language. English is Thunderbird's default, and most users who cannot read
+   the hardcoded language will be able to read English. Report it unless the
+   user-facing text is English.
 Suggested verdict: warning
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
 
-5) API newer than strict_min_version: Each call below is to an API that was
-   introduced after the add-on's strict_min_version, so it throws on the
-   versions in between. Check whether the call is guarded for those versions.
-   This could be a feature detection, a cached flag, an early return, a
-   try/catch or an explicit version gate, among others. Report it - asking for a
-   higher strict_min_version - unless you can point at the guard.
+5) API newer than strict_min_version: Check whether each call below is guarded
+   for the Thunderbird versions where it throws: those between the add-on's
+   strict_min_version and the version that introduced the API. A feature
+   detection, a cached flag, an early return, a try/catch or an explicit version
+   gate all count. Report it unless you can point at the guard, which asks the
+   developer to raise strict_min_version.
 Suggested verdict: error
 Suggested response: The add-on is setting strict_min_version to 128.0 but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
  - background.js:10 - browser.messages.future() - added in Thunderbird 200

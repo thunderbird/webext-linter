@@ -12,9 +12,11 @@ https://github.com/thunderbird/webext-linter
 
 Continue manual review for the following checks:
 
-1) Possibly unused permissions: Review whether the following declared
-   permissions are used, and ask the developer to remove any that are not
-   needed.
+1) Possibly unused permissions: Check whether the add-on uses each permission
+   listed below. A permission counts as used when some part of the add-on calls
+   an API that requires it, including a call inside a bundled library. An add-on
+   should request only the permissions it needs, so the install-time prompt
+   stays minimal. Report the ones you cannot trace to a use.
 Suggested verdict: warning
 Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
  - manifest.json:5 - nativeMessaging
@@ -33,23 +35,23 @@ Suggested response: Please add a privacy policy to this add-on that details whic
  - background.js:4 - api.example.com
  - background.js:7 - metrics.example.com
 
-3) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
+3) Missing English localization: Read the strings this add-on shows the user. It
+   ships no English localization, so that text may be hardcoded in another
+   language. English is Thunderbird's default, and most users who cannot read
+   the hardcoded language will be able to read English. Report it unless the
+   user-facing text is English.
 Suggested verdict: warning
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
 
-4) User-data exfiltration: The following code locations send data to a remote
-   server. User data - message content, attachments, contacts, credentials - may
-   be transmitted only if the user actively enabled it: by entering the
-   destination URL or credentials on an options page that states what is sent,
-   or through an explicit off-by-default opt-in for a hard-coded URL.
-   Thunderbird has no built-in data-collection consent prompt, so there is no
-   implicit consent to rely on. The add-on's own options page, if it has one, is
-   where such an opt-in would live. Confirm for each location that consent of
-   that kind exists.
+4) User-data exfiltration: Check, for each location below, whether the user
+   actively enabled the transmission. User data - message content, attachments,
+   contacts, credentials - may be sent only where they entered the destination
+   or credentials on an options page that says what is sent, or turned on an
+   explicit off-by-default opt-in. Thunderbird has no built-in consent prompt,
+   so there is no implicit consent to fall back on. Report a location where no
+   such consent exists.
 Suggested verdict: error
 Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
  - background.js:4 - fetch() "http://api.example.com/collect"
