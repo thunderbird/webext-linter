@@ -146,10 +146,10 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
  * - `build`, where another writes what building the add-on takes, in a source code review.
  * - `extracted`, where the shipped package is unpacked for the reviewer to read.
  *
- * `summary` and `build` sit BESIDE the submitted .xpi, in the folder the reviewer is
- * working out of, so what they are handed opens where they are looking. This linter writes
- * none of the three and reads none of them; it only says where they go, so a name cannot
- * drift from the review it belongs to.
+ * Those three sit BESIDE the submitted .xpi, in the folder the reviewer is working out of,
+ * so what they are handed opens where they are looking - a path outside it is one their
+ * client will not follow. This linter writes none of them and reads none of them; it only
+ * says where they go, so a name cannot drift from the review it belongs to.
  *
  * One base for all five: a name and a version do not identify a review - two submissions can
  * share both (a fork, a resubmission, an add-on reviewed twice in a session) - so the run's
@@ -171,7 +171,7 @@ export function reviewFilePaths(addon, xpiPath) {
   const base = reviewFileBase(addon);
   // Beside the .xpi, which is the folder a reviewer downloaded it into. For an unpacked
   // submission that is the folder holding it, for the same reason: not inside what is being
-  // reviewed. Taken once, so the two files cannot land in different folders.
+  // reviewed. Taken once, so the three cannot land in different folders.
   const beside = path.dirname(xpiPath);
   return {
     summary: path.join(beside, `${base}.summary.md`),
@@ -182,11 +182,20 @@ export function reviewFilePaths(addon, xpiPath) {
     state: path.join(os.tmpdir(), `${base}${STATE_SUFFIX}`),
     review: path.join(os.tmpdir(), `${base}${REVIEW_SUFFIX}`),
     // Where the shipped package is unpacked for the reviewer to read while they answer.
-    // Named on the same terms as the two above: this run writes nothing here, it says
-    // where it GOES, and the prompt's reader puts it there. In tmp rather than beside the
-    // .xpi because it is a copy of what is already there, thrown away with the temp dir
-    // rather than left in the folder a reviewer keeps submissions in.
-    extracted: path.join(os.tmpdir(), `${base}.extracted`),
+    // Named on the same terms as `summary` and `build`: this run writes nothing here, it
+    // says where it GOES, and the prompt's reader puts it there. Beside the .xpi with
+    // them, because what the reviewer is handed has to be reachable from where they are
+    // working - a path outside that folder is one their client will not open.
+    //
+    // The SUBMITTED FILE's own name rather than the shared stem, because this is the one
+    // of the five whose content is not the review's: it is the package, unpacked, and a
+    // reviewer looking at `<submission>.extracted` beside `<submission>` can see that
+    // without reading a timestamp. Two reviews of one file would share it, which is
+    // harmless - unpacking the same bytes twice writes the same tree.
+    //
+    // Trailing separator, which `path.join` would drop: it is a DIRECTORY, and a link to
+    // one without it does not resolve as a folder for the reader following it.
+    extracted: `${path.join(beside, `${path.basename(xpiPath)}.extracted`)}${path.sep}`,
   };
 }
 
