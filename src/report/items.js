@@ -137,20 +137,21 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
 }
 
 /**
- * The four files this run names, sharing one name and one moment:
+ * The five paths this run names, sharing one name and one moment:
  *
  * - `state`, the linter's own record of the review, and `review`, the file it hands the
  *   agent one phase at a time. Both in the system temp directory. They SHARE A STEM, which
  *   is what makes the pointer in the handed-back file checkable rather than trusted.
  * - `summary`, where a sub-agent writes the add-on description for the reviewer.
  * - `build`, where another writes what building the add-on takes, in a source code review.
+ * - `extracted`, where the shipped package is unpacked for the reviewer to read.
  *
- * The last two sit BESIDE the submitted .xpi, in the folder the reviewer is working out of,
- * so the links they are handed open where they are looking. This linter writes neither and
- * reads neither; it only says where they go, so a name cannot drift from the review it
- * belongs to.
+ * `summary` and `build` sit BESIDE the submitted .xpi, in the folder the reviewer is
+ * working out of, so what they are handed opens where they are looking. This linter writes
+ * none of the three and reads none of them; it only says where they go, so a name cannot
+ * drift from the review it belongs to.
  *
- * One base for all four: a name and a version do not identify a review - two submissions can
+ * One base for all five: a name and a version do not identify a review - two submissions can
  * share both (a fork, a resubmission, an add-on reviewed twice in a session) - so the run's
  * own moment separates them, and a later run does not open what an earlier one left
  * behind. Millisecond resolution, which separates reviews a person runs; two started in
@@ -159,11 +160,12 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
  * review file's path and finds the rest from it, so no later run has to recompute a moment
  * it does not have.
  * @param {import("../addon/load.js").Addon} addon  The shipped add-on - read for the name
- *   it lends all four (its id and version).
+ *   it lends all five (its id and version).
  * @param {string} xpiPath  Where that add-on IS, absolute. An Addon carries no path of its
  *   own, so the caller passes the one the run was given (src/pipeline.js), which resolved
  *   it - nothing re-resolves it here.
- * @returns {{summary: string, build: string, state: string, review: string}}
+ * @returns {{summary: string, build: string, state: string, review: string,
+ *   extracted: string}}
  */
 export function reviewFilePaths(addon, xpiPath) {
   const base = reviewFileBase(addon);
@@ -179,6 +181,12 @@ export function reviewFilePaths(addon, xpiPath) {
     // review path it was given and compares the two.
     state: path.join(os.tmpdir(), `${base}${STATE_SUFFIX}`),
     review: path.join(os.tmpdir(), `${base}${REVIEW_SUFFIX}`),
+    // Where the shipped package is unpacked for the reviewer to read while they answer.
+    // Named on the same terms as the two above: this run writes nothing here, it says
+    // where it GOES, and the prompt's reader puts it there. In tmp rather than beside the
+    // .xpi because it is a copy of what is already there, thrown away with the temp dir
+    // rather than left in the folder a reviewer keeps submissions in.
+    extracted: path.join(os.tmpdir(), `${base}.extracted`),
   };
 }
 

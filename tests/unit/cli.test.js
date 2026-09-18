@@ -839,7 +839,8 @@ test("a review with nothing to settle names no description file", () => {
   // A review with nothing to SETTLE still has something to DO: the description is for the
   // reviewer, who still gets a report. So the spawn phase prints, and the phases that
   // settle entries do not - which is the rule, not an exception to it.
-  assert.match(r.stdout, /^1\. Spawn an independent sub-agent/m);
+  assert.match(r.stdout, /^1\. Unpack the submitted package/m);
+  assert.match(r.stdout, /^2\. Spawn an independent sub-agent/m);
   assert.doesNotMatch(r.stdout, /Verify every entry/, "nothing to verify");
   assert.doesNotMatch(r.stdout, /Settle each entry/, "nothing to settle");
   // The step that spawns the description agent names the file it writes - printed by the

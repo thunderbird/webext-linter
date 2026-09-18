@@ -916,6 +916,7 @@ export async function runPipeline(opts) {
   // by --llm-skip-summary, the build report by a review that is not a source code one.
   let summaryPath = null;
   let buildPath = null;
+  let extractedPath = null;
   // The REVIEW LOOP's state, built once the review is final and handed to `issue` below.
   // A LOCAL, never hung off meta: it carries the report, and the report carries meta.
   let loopState = null;
@@ -938,6 +939,15 @@ export async function runPipeline(opts) {
     const files = reviewFilePaths(xpiAddon, addonPath);
     summaryPath = skip.includes("summary") ? null : files.summary;
     buildPath = mode?.sca ? files.build : null;
+    extractedPath = files.extracted;
+    // Named on meta BEFORE the state is built: `issue` writes the state, and a field set
+    // after that never reaches the passes that read it back. A path printed for a file
+    // nobody is asked to write would be an instruction with no step behind it - which is
+    // why each is null above unless the step that writes it prints: the description is
+    // withheld by --llm-skip-summary, the build report by a review that is not a source
+    // code one, and the spawn phase that carries both steps is issued by every review.
+    meta.summaryFile = summaryPath ?? undefined;
+    meta.buildFile = buildPath ?? undefined;
     // Claimed empty, so a directory this run cannot write to fails before the review is
     // built rather than when the finished review is written to it.
     fs.writeFileSync(files.state, "");
@@ -945,6 +955,10 @@ export async function runPipeline(opts) {
     // a directory this run cannot write to has to fail before the review is built.
     meta.stateFile = files.state;
     meta.reviewFile = files.review;
+    // Where the package is unpacked for the reviewer. Unconditional, unlike the two
+    // below: the step that writes it carries no marker, so every review that hands out a
+    // phase asks for it.
+    meta.extractedDir = files.extracted;
   }
 
   // Fill each finding's display message from its registry response (with the
@@ -986,6 +1000,7 @@ export async function runPipeline(opts) {
         review: meta.reviewFile,
         description: summaryPath,
         build: buildPath,
+        extracted: extractedPath,
         schemaCache: opts.schemaCache,
         scaRoot: opts.scaRoot ?? null,
         // The block a phase that READS the add-on prints: which artifact, and the schema
@@ -1016,19 +1031,8 @@ export async function runPipeline(opts) {
     // sweep and no description agent starts at `verify`, and never mentions either.
     const texts = registry.llmPhases();
     const state = loopState;
-    // A path printed for a file nobody is asked to write is an instruction with no step
-    // behind it, so the header names one only when its step survived the markers.
     const first = issue(state, meta.stateFile, texts.phases, registry);
     if (first) {
-      const named = new Set(
-        first.steps.map((step) => step.skip ?? step.run ?? "")
-      );
-      if (summaryPath && named.has("summary")) {
-        meta.summaryFile = summaryPath;
-      }
-      if (buildPath && named.has("sca")) {
-        meta.buildFile = buildPath;
-      }
       for (const line of loopPromptLines(
         texts,
         first.phase,
@@ -1039,6 +1043,7 @@ export async function runPipeline(opts) {
           schemaCache: state.paths.schemaCache ?? "",
           description: summaryPath ?? "",
           build: buildPath ?? "",
+          extracted: extractedPath ?? "",
           scaRoot: state.paths.scaRoot ?? "",
           package: state.paths.package,
         },

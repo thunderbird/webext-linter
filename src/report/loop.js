@@ -24,7 +24,12 @@ import { writeState } from "./state.js";
 import { reviewItems } from "./items.js";
 import { mergeSweepResults } from "./sweep.js";
 import { resolveHolds } from "./finding.js";
-import { headerLines, locusLabeler } from "./format.js";
+import {
+  headerLines,
+  issuesBodyLines,
+  locusLabeler,
+  summaryBodyLines,
+} from "./format.js";
 import { applyVerdicts } from "./verdicts.js";
 import { renderFindings } from "./responses.js";
 import { VERB } from "./verbs.js";
@@ -183,29 +188,32 @@ function phaseEntries(state, registry, phase, run) {
 }
 
 /**
- * The links a reviewer is handed with the finished report, when no phase handed them over
- * already.
+ * The Review Details block a reviewer is handed with the finished report, when no phase
+ * handed it over already.
  *
- * The description exists to be read WHILE the questions are answered, so the `ask` phase
- * hands it over before it asks anything - and when there is nothing to ask, that phase is
- * never issued and the reviewer would never be told the file exists. So it travels with the
- * report instead: once, either way, and never twice.
+ * It names the files written FOR the reviewer, and they exist to be read WHILE the
+ * questions are answered - so the `ask` phase hands the block over before it asks
+ * anything. When there is nothing to ask, that phase is never issued and the reviewer
+ * would never be told those files exist, so it travels with the report instead: once,
+ * either way, and never twice.
  * @param {import("./state.js").LoopState} state
  * @returns {string}
  */
-function linkLines(state) {
-  if ((state.issued ?? []).includes("ask")) {
-    return "";
-  }
-  const at = [
-    ["the add-on description", state.paths.description],
-    ["what building this add-on takes", state.paths.build],
-  ].filter(([, p]) => p);
-  return at.length
-    ? `\nGive the reviewer one Markdown link per line, and nothing else - no summary, no\nexcerpt, no wording of your own:\n\n${at
-        .map(([what, p]) => `${what}: ${p}`)
-        .join("\n")}\n`
-    : "";
+function detailBlock(state) {
+  return (state.issued ?? []).includes("ask")
+    ? ""
+    : `\n${reviewDetails(state)}\n`;
+}
+
+/**
+ * The Review Details block itself, for the phase that hands it over.
+ * @param {import("./state.js").LoopState} state
+ * @returns {string}
+ */
+export function reviewDetails(state) {
+  // Without the blank `section` opens with: the block is handed over as a thing of its
+  // own here, not as one section among others in a report.
+  return headerLines(reportMeta(state)).join("\n").replace(/^\n/, "");
 }
 
 /**
@@ -256,11 +264,23 @@ export function settle(state, registry) {
     // stored - so this pass prints what a settled report has always printed, without the
     // add-on being read a second time.
     //
-    // The files the PROMPTING run named are left out: they belong to the pass that asked,
-    // not to the report that answers. A settled report naming the item file it was
-    // numbered against would point its reader at a document the review has finished with.
-    header: headerLines(reportMeta(state)),
-    links: linkLines(state),
+    // `details` is empty when the `ask` phase already handed the block over: it says the
+    // same thing either way, and saying it twice would have the reviewer reading a list
+    // of paths they have already been given.
+    details: detailBlock(state),
+    // The tally, which only this pass can be right about: every earlier one runs before
+    // the answers are applied, and would count items the reviewer is in the middle of
+    // settling.
+    tally: summaryBodyLines(findings, state.manual, null).join("\n"),
+    // The developer's half of the report, without the section header the linter prints
+    // around it - this is pasted into a response box, not into a terminal.
+    report: issuesBodyLines(
+      orderReview(findings, state.manual).filter((x) => x.kind === "finding"),
+      registry.issueHeadings(),
+      registry.verdictIntros(),
+      labelOf,
+      mode
+    ).join("\n"),
     review: {
       findings,
       // The sweep stops being asked: this review has been swept, and leaving it standing
@@ -280,14 +300,15 @@ export function settle(state, registry) {
   };
 }
 
-/** The meta a settled report names: the review's own artifacts, and none of the files a
- *  pass uses to ASK about them - those belong to the asking, not to the answer. */
+/** The meta the Review Details block names: the review's own artifacts, plus the files
+ *  written FOR the reviewer - the description, the build report, the unpacked package.
+ *  Those are what the block exists to hand over. The loop's own bookkeeping is not:
+ *  the state and review files are the linter talking to itself, and a reviewer has no
+ *  use for either. */
 function reportMeta(state) {
   const {
     prompting: _prompting,
     sweepFile: _sweep,
-    summaryFile: _summary,
-    buildFile: _build,
     stateFile: _state,
     reviewFile: _review,
     ...rest

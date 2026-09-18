@@ -31,7 +31,13 @@ import {
   loopPromptLines,
 } from "./report/format.js";
 import { readState } from "./report/state.js";
-import { accept, issue, settle, HandbackRefused } from "./report/loop.js";
+import {
+  accept,
+  issue,
+  settle,
+  reviewDetails,
+  HandbackRefused,
+} from "./report/loop.js";
 import { readHandback } from "./report/handback.js";
 import {
   DEFAULT_CACHE,
@@ -1039,6 +1045,8 @@ async function runLoopPass(file, registry, format) {
       schemaCache: state.paths.schemaCache ?? "",
       description: state.paths.description ?? "",
       build: state.paths.build ?? "",
+      extracted: state.paths.extracted ?? "",
+      details: reviewDetails(state),
       scaRoot: state.paths.scaRoot ?? "",
       package: state.paths.package,
     })) {
@@ -1047,10 +1055,12 @@ async function runLoopPass(file, registry, format) {
     process.stdout.write("\n");
     return 0;
   }
-  // Settled. The last prompt differs from every other only in carrying the report.
-  let review, applied, header, links;
+  // Settled. The last prompt differs from every other only in carrying what the reviewer
+  // is handed: the Review Details block (unless a phase handed it over already), the
+  // tally, and the report itself.
+  let review, applied, details, tally, report;
   try {
-    ({ review, applied, header, links } = settle(state, registry));
+    ({ review, applied, details, tally, report } = settle(state, registry));
   } catch (err) {
     // Unlike a hand-back, this cannot be redone: the answer settle() refuses is already
     // recorded, and nothing re-prints a prompt for one that was already accepted. The
@@ -1059,19 +1069,20 @@ async function runLoopPass(file, registry, format) {
     process.stderr.write(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
-  const rendered = formatReview(review, format);
-  process.stdout.write(`${fillSlots(texts.final, { links })}\n`);
-  for (const line of header) {
-    process.stdout.write(`${line}\n`);
-  }
-  // Audible, so a misaimed verdict shows up as one line here rather than buried in a
-  // re-rendered report - the same line a settled report has always printed.
+  // Audible, and printed BEFORE the prompt: it is this tool's note to whoever ran the
+  // command, and a line between the two blocks below is a line that can be copied along
+  // with one of them.
   if (applied.length) {
     process.stdout.write(
-      `\nApplied ${applied.length} verdict(s): ${applied.join(", ")}\n`
+      `Applied ${applied.length} verdict(s): ${applied.join(", ")}\n\n`
     );
   }
-  process.stdout.write(`\n${rendered}\n`);
+  // Both blocks travel in the text's own slots rather than as writes after it, so the
+  // text says which is which. Printed in sequence they would be two documents with
+  // nothing between them saying where one ends.
+  process.stdout.write(
+    `${fillSlots(texts.final, { details, tally, report })}\n`
+  );
   // No --report-out: it cannot be given beside any --llm-* flag, so no pass of this loop
   // has one to honour.
   return hasErrors(review.findings) ? 1 : 0;

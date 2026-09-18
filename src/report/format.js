@@ -85,6 +85,8 @@ const SEV_COLOR = {
  *   file's name. Named by this tool, written and read by neither.
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
  *   in a source code review, where the reviewer reproduces the build.
+ * @property {string} [extractedDir]  The same, for where the shipped package is unpacked
+ *   so the reviewer can read it while they answer.
  * @property {boolean} [prompting]  This run handed out a PHASE of the review loop, so
  *   its whole output is that prompt: the report is not printed beside it, and neither is
  *   the header or the Summary.
@@ -231,7 +233,9 @@ function stepLines(n, text, blocks = []) {
     out.push("");
     const block = blocks.find((b) => paragraph.trim() === b.name);
     if (block) {
-      out.push(...block.lines.map((line) => `${indent}${line}`));
+      // An empty line takes no indent: a line of spaces is trailing whitespace in
+      // something a reader may copy out whole.
+      out.push(...block.lines.map((line) => (line ? `${indent}${line}` : "")));
     } else {
       out.push(...wrapText(paragraph, indent));
     }
@@ -267,12 +271,18 @@ function stepLines(n, text, blocks = []) {
  * @param {boolean} [first]  Print the preamble, which one run does and the rest do not.
  * @returns {string[]}
  */
+/** The prompt values that are handed to a step as a BLOCK rather than substituted into
+ *  its prose: printed line for line, never re-wrapped. Both are tables of paths, and a
+ *  wrapped path is one nobody can copy - the package block because its reader looks values
+ *  up in it, the Review Details block because the reviewer is given it as it stands. */
+const BLOCK_VALUES = new Set(["package", "details"]);
+
 export function loopPromptLines(texts, phase, steps, values, first = false) {
   // Everything BUT the value blocks, which stepLines lays out unwrapped below.
   const fill = (text) =>
     Object.entries(values).reduce(
       (acc, [name, value]) =>
-        name === "package" ? acc : acc.split(`{{${name}}}`).join(value),
+        BLOCK_VALUES.has(name) ? acc : acc.split(`{{${name}}}`).join(value),
       text
     );
   const lines = [...section("LLM Prompt"), ""];
@@ -286,9 +296,9 @@ export function loopPromptLines(texts, phase, steps, values, first = false) {
   // A block of named values is handed to stepLines rather than substituted into the
   // prose: it must NOT be wrapped. A path split across two lines is a path nobody can
   // copy, and the agent is being told where to look.
-  const blocks = values.package
-    ? [{ name: "{{package}}", lines: values.package.split("\n") }]
-    : [];
+  const blocks = [...BLOCK_VALUES]
+    .filter((name) => values[name])
+    .map((name) => ({ name: `{{${name}}}`, lines: values[name].split("\n") }));
   // The handover is the last numbered step, not a trailer: the agent follows a numbered
   // list, and a hand-back tacked on as prose is the one instruction it can skim past.
   const all = [...steps.map((s) => s.text), texts.handover];
@@ -497,6 +507,12 @@ export function headerLines(meta) {
   // The pipeline prints this section AFTER runChecks, so every value here names
   // something the review has already read.
   const values = [["XPI", meta.xpi]];
+  // Where the package is unpacked for the reviewer to read while they answer. Named on
+  // the same terms as the two files below: this tool writes nothing there, the prompt's
+  // reader does, and naming it here is what puts it in front of the reviewer.
+  if (meta.extractedDir) {
+    values.push(["XPI (extracted)", meta.extractedDir]);
+  }
   if (meta.scaRoot) {
     values.push(["SCA_ROOT", meta.scaRoot], ["SCA_SOURCE", meta.scaSource]);
   }
@@ -554,7 +570,35 @@ export function headerLines(meta) {
  * @returns {string[]}
  */
 function issuesLines(items, issueHeadings, verdictIntros, labelOf, mode) {
-  const out = section(SECTION_TITLES.issues);
+  return [
+    ...section(SECTION_TITLES.issues),
+    ...issuesBodyLines(items, issueHeadings, verdictIntros, labelOf, mode),
+  ];
+}
+
+/**
+ * The same section WITHOUT its header: the text a developer receives.
+ *
+ * Split out because the review loop hands this to the reviewer to paste into the response
+ * box, where `── Found Issues ──` is the linter's chrome rather than anything the developer
+ * needs. Everything below the header stays - the verdict preamble, the severity headings,
+ * the numbered entries, the artifact legend and the pointer at this tool - because all of
+ * it is addressed to the developer and all of it is sent today.
+ * @param {import("./order.js").OrderedItem[]} items
+ * @param {Record<string, string>} [issueHeadings]
+ * @param {Record<string, string>} [verdictIntros]
+ * @param {(f: import("./finding.js").Finding) => string} [labelOf]
+ * @param {import("../lib/enum.js").ReviewMode} [mode]
+ * @returns {string[]}
+ */
+export function issuesBodyLines(
+  items,
+  issueHeadings,
+  verdictIntros,
+  labelOf,
+  mode
+) {
+  const out = [];
   const intros = verdictIntros ?? {};
   const issues = items.map((x) => x.target);
   if (issues.length === 0) {
@@ -846,10 +890,23 @@ function preSweepSection(sweep) {
  * @returns {string[]}
  */
 export function summaryLines(issues, manual = [], preSweep = null) {
-  const out = section("Summary");
-  out.push("");
-  out.push(...tallyLines(issues, bucketCounts(manual), preSweep));
-  return out;
+  return [
+    ...section("Summary"),
+    "",
+    ...summaryBodyLines(issues, manual, preSweep),
+  ];
+}
+
+/**
+ * The same counts WITHOUT the `── Summary ──` header, for the review loop, which titles
+ * the block itself.
+ * @param {import("./finding.js").Finding[]} issues
+ * @param {object[]} [manual]
+ * @param {?{items: object[]}} [preSweep]
+ * @returns {string[]}
+ */
+export function summaryBodyLines(issues, manual = [], preSweep = null) {
+  return tallyLines(issues, bucketCounts(manual), preSweep);
 }
 
 /**

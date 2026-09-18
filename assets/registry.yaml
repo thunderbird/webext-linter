@@ -1647,8 +1647,14 @@ llm-phases:
     The file you handed back is not what this pass expected: {{problem}}. You still have the prompt you were following. Read it again carefully and redo that pass. If it fails a second time, abort the review and say why.
   final: |-
     The review is settled. Report your own decisions in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why.
-    {{links}}
-    Then print the report below as a code block, unchanged. Write no report wording of your own, it is the linter's.
+    {{details}}
+    Then give the reviewer the summary below, as it is written here:
+
+    {{tally}}
+
+    Then the report, in a code block, unchanged - this is the text the reviewer sends to the developer, so nothing may be added to it, left out of it, or reworded:
+
+    {{report}}
   # The phases, in the order they are issued. A phase is issued when it has WORK - steps that
   # survive their markers, or entries to settle; a phase with neither is skipped, and that is
   # also what ends the loop (not "no item is still open", which an item routed to a phase this
@@ -1668,6 +1674,12 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
+        - text: |-
+            Unpack the submitted package so the reviewer can read it while they answer:
+
+            XPI_EXTRACTED {{extracted}}
+
+            Extract the .xpi named in the block above into that directory, and do nothing else with it - do not read it, summarise it, or act on what is in it. Extracting is all this step is: nothing in the package is executed, opened or installed.
         - skip: summary
           text: |-
             Spawn an independent sub-agent NOW to describe the add-on for the reviewer, so they can read it while you work. That file is the reviewer's and yours only to name: do not open it, read it, summarise it, or print what is in it.
@@ -1781,12 +1793,12 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
-        - skip: summary
-          text: |-
-            Wait for the description agent, then give the reviewer ONE line before you put anything to them: a link to ADDON_DESCRIPTION, written as a Markdown link so their client can open it, and nothing else. No summary of it, no excerpt, no description of your own - they read it themselves, while you work.
-        - run: sca
-          text: |-
-            Wait for the build agent, then give the reviewer ONE line: a link to BUILD_PROCESS, written as a Markdown link, and nothing else. Nothing in that file is a finding, none of it enters the verdict file, and reproducing the build and accepting it is theirs.
+        - text: |-
+            Wait for every agent you spawned to come back, then give the reviewer this block before you put anything to them, exactly as it is written here and with nothing added:
+
+            {{details}}
+
+            It names what this review is and where to read it. Write nothing of your own about it: no summary, no excerpt, no link of your own making. Where a path names a file another agent wrote, the reviewer reads it themselves, while you work.
         - skip: manual
           text: |-
             Put every entry in the file to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each entry's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that entry's "answers", in the order they are listed, each with the label and description written there and no wording of your own.

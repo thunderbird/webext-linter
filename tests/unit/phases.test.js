@@ -147,7 +147,9 @@ test("a step that numbers itself, or carries a marker nothing answers, is refuse
   assert.throws(() => assertPhases(badSkip, "t.yaml"), /which no flag gives/);
 
   const badRun = fresh();
-  phaseNamed(badRun, "spawn").steps[1].run = "nonsense";
+  // Found by its marker, not by position: a step added to the phase should not decide
+  // which one this mutates.
+  phaseNamed(badRun, "spawn").steps.find((x) => x.run).run = "nonsense";
   assert.throws(() => assertPhases(badRun, "t.yaml"), /cannot evaluate/);
 });
 
