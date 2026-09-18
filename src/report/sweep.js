@@ -20,11 +20,11 @@
 // never says what confirming something means - that is the owning check's to say.
 //
 // Belongs here: holding an authored result to a shape, refusing what cannot be routed, and
-// building the items. The rows themselves arrive as the spawn phase's answers
+// building the items. The rows themselves arrive as the setup phase's answers
 // (src/report/handback.js), already checked for being present and for being a list.
 // Does NOT belong here: what a settled item becomes (-> src/report/verdicts.js), the
 // wording of either (-> assets/registry.yaml), or running the sweep, which the linter
-// never does - an agent does, and hands what it found back in the spawn phase's slots.
+// never does - an agent does, and hands what it found back in the setup phase's slots.
 
 import { renderManualItems } from "./responses.js";
 import { finding } from "./finding.js";

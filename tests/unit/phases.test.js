@@ -123,7 +123,7 @@ test("a phase missing its own parts is refused by name", () => {
 
   // Empty is how a phase says it needs none; ABSENT is an author who forgot to decide.
   const noIntro = fresh();
-  delete phaseNamed(noIntro, "spawn").intro;
+  delete phaseNamed(noIntro, "setup").intro;
   assert.throws(() => assertPhases(noIntro, "t.yaml"), /authors no `intro`/);
 
   const noVerbs = fresh();
@@ -149,7 +149,7 @@ test("a step that numbers itself, or carries a marker nothing answers, is refuse
   const badRun = fresh();
   // Found by its marker, not by position: a step added to the phase should not decide
   // which one this mutates.
-  phaseNamed(badRun, "spawn").steps.find((x) => x.run).run = "nonsense";
+  phaseNamed(badRun, "setup").steps.find((x) => x.run).run = "nonsense";
   assert.throws(() => assertPhases(badRun, "t.yaml"), /cannot evaluate/);
 });
 
@@ -173,6 +173,43 @@ test("the loop's phases are refused outright when absent", () => {
 //
 // It is read as DATA everywhere the loop asks "what shape is this entry, and what may come
 // back": src/report/handback.js entriesFor and answersOf, src/report/loop.js issue and
+// Every step that starts a sub-agent says whether to wait for it, and the two that are not
+// waited for say it in the SAME words. Two spellings of one instruction is a difference for
+// the agent to interpret, and it would interpret it - the files are named side by side in
+// the same block and read by the same person.
+//
+// Each step also has to stand alone: all three carry a marker, so any of them can be the
+// only one printed, and a step referring to another that did not print is an instruction
+// about nothing.
+test("the steps that start an agent each say whether it is waited for", () => {
+  const setup = phaseNamed(fresh(), "setup");
+  const by = (marker) =>
+    setup.steps.find((x) => x.skip === marker || x.run === marker);
+  const UNATTENDED =
+    "Do not wait for it. What it writes is the reviewer's, and it is not needed until " +
+    "they are handed the review details.";
+
+  // The description and the build report: one sentence, used twice.
+  for (const marker of ["summary", "sca"]) {
+    assert.ok(
+      by(marker).text.includes(UNATTENDED),
+      `the \`${marker}\` step says it is not waited for, in the shared words`
+    );
+  }
+  // The sweep is the opposite, and says so where it is spawned rather than in a step of
+  // its own that may or may not follow.
+  assert.match(by("sweep").text, /Wait for it before going on/);
+
+  // Nothing leans on a sibling having printed.
+  for (const step of setup.steps) {
+    assert.doesNotMatch(
+      step.text,
+      /\b(the (step|agents) (above|below)|spawned above)\b/,
+      `a setup step refers to another: ${step.text.slice(0, 60)}`
+    );
+  }
+});
+
 // accept. A phase renamed in the yaml keeps its shape; nothing infers it from the name.
 test("a phase declares the kind of answer its entries take", () => {
   assert.deepEqual(
@@ -180,7 +217,7 @@ test("a phase declares the kind of answer its entries take", () => {
       .llmPhases()
       .phases.map((p) => [p.name, p.answer, p.verbs.length]),
     [
-      ["spawn", "hints", 0],
+      ["setup", "hints", 0],
       ["verify", "verdict", 2],
       ["settle", "verdict", 3],
       ["ask", "words", 0],
@@ -210,7 +247,7 @@ test("a phase declares the kind of answer its entries take", () => {
     /answers with `verdict` but accepts `` - only a `verdict` phase names verbs/
   );
 
-  for (const name of ["ask", "spawn"]) {
+  for (const name of ["ask", "setup"]) {
     const stray = fresh();
     phaseNamed(stray, name).verbs = ["reported"];
     assert.throws(

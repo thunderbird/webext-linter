@@ -113,7 +113,7 @@ function handBack(state, answerFor) {
 // asks about. Every route the loop has is exercised here - a sweep answered by check, a
 // finding withdrawn, a case settled, a case that becomes a question, and a person's own
 // words coming back.
-test("a review runs spawn -> verify -> settle -> ask and then settles", () => {
+test("a review runs setup -> verify -> settle -> ask and then settles", () => {
   const dir = tmp();
   const { state, stateFile } = review(dir);
   const seen = [];
@@ -123,7 +123,7 @@ test("a review runs spawn -> verify -> settle -> ask and then settles", () => {
     if (!out) break;
     seen.push(out.phase.name);
     const file = handBack(state, (e) => {
-      if (out.phase.name === "spawn") return [];
+      if (out.phase.name === "setup") return [];
       if (out.phase.name === "verify")
         return e.index === 1 ? "withdrawn" : "reported";
       if (out.phase.name === "settle") return "ask"; // -> becomes a question
@@ -132,7 +132,7 @@ test("a review runs spawn -> verify -> settle -> ask and then settles", () => {
     const { answers } = accept(state, file, PHASES, REGISTRY);
     answered.push([out.phase.name, [...answers.keys()].join(",")]);
   }
-  assert.deepEqual(seen, ["spawn", "verify", "settle", "ask"]);
+  assert.deepEqual(seen, ["setup", "verify", "settle", "ask"]);
   // The settle case became a question and was asked WITH its own index, beside the two
   // standard ones - three questions, not two.
   assert.equal(answered[3][1].split(",").length, 3);
@@ -157,11 +157,12 @@ test("a review runs spawn -> verify -> settle -> ask and then settles", () => {
 test("an entry is answered from its own answers, not its phase's verbs", () => {
   const dir = tmp();
   const { state, stateFile } = review(dir, { sweep: false, findings: false });
-  // --llm-skip-summary with no sweep leaves spawn with nothing to do, so settle is first.
+  // --llm-skip-summary with no sweep leaves setup with nothing to start, so settle is
+  // first once it has been issued.
   state.run = { skip: ["summary"], sca: false, sweep: false };
   // Spawn unpacks the package whatever else it does, so it is issued in every review;
   // marked done here so this test starts where it means to.
-  state.issued = ["spawn"];
+  state.issued = ["setup"];
   // What the 14 screened checks declare: settle it, or clear it. No handing it on.
   state.manual[0].settleVerbs = ["reported", "cleared"];
 
@@ -201,13 +202,13 @@ test("an entry is answered from its own answers, not its phase's verbs", () => {
 // its way out declined, which is a different sentence from the same verb chosen freely.
 test("reporting reads as the last resort only where clearing was the way out", () => {
   const dir = tmp();
-  const skipSpawn = (r) => {
+  const skipSetup = (r) => {
     r.state.run = { skip: ["summary"], sca: false, sweep: false };
-    r.state.issued = ["spawn"];
+    r.state.issued = ["setup"];
     return r;
   };
   const offered = (verbs) => {
-    const fresh = skipSpawn(review(dir, { sweep: false, findings: false }));
+    const fresh = skipSetup(review(dir, { sweep: false, findings: false }));
     fresh.state.manual[0].settleVerbs = verbs;
     issue(fresh.state, fresh.stateFile, PHASES, REGISTRY);
     const e = JSON.parse(fs.readFileSync(fresh.state.review, "utf8"))
@@ -230,7 +231,7 @@ test("reporting reads as the last resort only where clearing was the way out", (
     "keyed on `cleared`, not on the absence of `ask`"
   );
   // A finding narrows nothing, so it is worded by its own phase and never picks this up.
-  const findings = skipSpawn(
+  const findings = skipSetup(
     review(dir, { code: false, questions: false, sweep: false })
   );
   issue(findings.state, findings.stateFile, PHASES, REGISTRY);
@@ -246,7 +247,7 @@ test("reporting reads as the last resort only where clearing was the way out", (
 // A phase is issued when it has WORK - steps, or items. Neither, and it is skipped, which
 // is also what ends the loop: "no item is still open" would block forever on an item
 // routed to a phase this run never issues.
-test("spawn is issued even when it spawns nothing", () => {
+test("setup is issued even when it starts nothing", () => {
   const dir = tmp();
   const { state, stateFile } = review(dir, { sweep: false });
   // --llm-skip-summary on an XPI review with no sweep starts no agent at all. The phase
@@ -254,7 +255,7 @@ test("spawn is issued even when it spawns nothing", () => {
   // withholds.
   state.run = { skip: ["summary"], sca: false, sweep: false };
   const out = issue(state, stateFile, PHASES, REGISTRY);
-  assert.equal(out.phase.name, "spawn");
+  assert.equal(out.phase.name, "setup");
   assert.equal(out.steps.length, 1, "the one step no marker withholds");
 });
 
@@ -274,7 +275,7 @@ test("nothing to ask: the review settles after the last settle", () => {
     accept(
       state,
       handBack(state, () =>
-        out.phase.name === "spawn"
+        out.phase.name === "setup"
           ? []
           : out.phase.name === "verify"
             ? "reported"
@@ -284,7 +285,7 @@ test("nothing to ask: the review settles after the last settle", () => {
       REGISTRY
     );
   }
-  assert.deepEqual(seen, ["spawn", "verify", "settle"]);
+  assert.deepEqual(seen, ["setup", "verify", "settle"]);
   assert.equal(issue(state, stateFile, PHASES, REGISTRY), null, "settled");
 });
 
@@ -294,12 +295,12 @@ test("nothing to ask: the review settles after the last settle", () => {
 test("a wrong hand-back is refused, and changes nothing", () => {
   const dir = tmp();
   const { state, stateFile } = review(dir, { sweep: false });
-  // --llm-skip-summary as well, so spawn has nothing at all and verify is the phase in
+  // --llm-skip-summary as well, so setup starts nothing and verify is the phase in
   // flight: a refusal needs a pass that actually asked for something.
   state.run = { skip: ["summary"], sca: false, sweep: false };
   // Spawn unpacks the package whatever else it does, so it is issued in every review;
   // marked done here so this test starts where it means to.
-  state.issued = ["spawn"];
+  state.issued = ["setup"];
   assert.equal(issue(state, stateFile, PHASES, REGISTRY).phase.name, "verify");
   const before = JSON.stringify(state);
   // Each case starts from the file as it was HANDED OUT: mangling the last mangle would
@@ -373,7 +374,7 @@ test("a sweep answers per check, and an empty list is not the same as no answer"
   const dir = tmp();
   const { state, stateFile } = review(dir);
   const out = issue(state, stateFile, PHASES, REGISTRY);
-  assert.equal(out.phase.name, "spawn");
+  assert.equal(out.phase.name, "setup");
   assert.deepEqual(
     out.entries.map((e) => e.check),
     ["privacy-policy", "data-exfiltration"]
@@ -575,7 +576,7 @@ function phasesOf(state, stateFile) {
     accept(
       state,
       handBack(state, (e) =>
-        out.phase.name === "spawn"
+        out.phase.name === "setup"
           ? []
           : out.phase.name === "verify"
             ? "reported"
@@ -598,13 +599,13 @@ function phasesOf(state, stateFile) {
 test("a phase with no entries is not issued, whichever phase it is", () => {
   const cases = [
     // what the review holds                        which phases run
-    [{ findings: false, code: false, questions: false }, ["spawn"]],
-    [{ findings: true, code: false, questions: false }, ["spawn", "verify"]],
-    [{ findings: false, code: true, questions: false }, ["spawn", "settle"]],
-    [{ findings: false, code: false, questions: true }, ["spawn", "ask"]],
+    [{ findings: false, code: false, questions: false }, ["setup"]],
+    [{ findings: true, code: false, questions: false }, ["setup", "verify"]],
+    [{ findings: false, code: true, questions: false }, ["setup", "settle"]],
+    [{ findings: false, code: false, questions: true }, ["setup", "ask"]],
     [
       { findings: true, code: true, questions: true },
-      ["spawn", "verify", "settle", "ask"],
+      ["setup", "verify", "settle", "ask"],
     ],
   ];
   for (const [holds, expected] of cases) {
@@ -641,9 +642,9 @@ test("every combination of the skips issues exactly the phases it should", () =>
     if (skip.includes("summary")) {
       state.paths.description = null;
     }
-    // `spawn` always runs: it unpacks the package even when it starts no agent.
+    // `setup` always runs: it unpacks the package even when it starts no agent.
     const expected = [
-      "spawn",
+      "setup",
       "verify",
       "settle",
       // The questions are the only thing `ask` is for.
@@ -679,11 +680,11 @@ test("every combination of the skips issues exactly the phases it should", () =>
 test("a case sent on with `ask` arrives as a question, worded and answerable", () => {
   const dir = tmp();
   const { state, stateFile } = review(dir, { sweep: false, findings: false });
-  // Nothing to spawn either, so `settle` is the phase in flight.
+  // Nothing for setup to start either, so `settle` is the phase in flight.
   state.run = { skip: ["summary"], sca: false, sweep: false };
   // Spawn unpacks the package whatever else it does, so it is issued in every review;
   // marked done here so this test starts where it means to.
-  state.issued = ["spawn"];
+  state.issued = ["setup"];
   assert.equal(issue(state, stateFile, PHASES, REGISTRY).phase.name, "settle");
   accept(
     state,
@@ -718,7 +719,7 @@ test("a case sent on with `ask` is settled by the reviewer's own answer", () => 
   state.run = { skip: ["summary"], sca: false, sweep: false };
   // Spawn unpacks the package whatever else it does, so it is issued in every review;
   // marked done here so this test starts where it means to.
-  state.issued = ["spawn"];
+  state.issued = ["setup"];
 
   const sent = issue(state, stateFile, PHASES, REGISTRY);
   assert.equal(sent.phase.name, "settle");
@@ -778,7 +779,7 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
   state.run = { skip: ["summary"], sca: false, sweep: false };
   // Spawn unpacks the package whatever else it does, so it is issued in every review;
   // marked done here so this test starts where it means to.
-  state.issued = ["spawn"];
+  state.issued = ["setup"];
   // Real check ids, because a reported case becomes a finding of its own check and takes
   // the severity that check declares.
   state.manual.forEach((m, i) => {

@@ -64,7 +64,7 @@ import { VERB } from "./verbs.js";
  * @param {import("./state.js").LoopState} state
  * @returns {object[]}
  */
-function spawnRows(state) {
+function setupRows(state) {
   return state.run.sweep && state.sweep == null
     ? sweepRows(state.preSweep)
     : [];
@@ -83,7 +83,7 @@ export function issue(state, stateFile, phases, registry) {
   // worded one way here and another for the reviewer.
   const entries =
     phase.answer === "hints"
-      ? spawnRows(state)
+      ? setupRows(state)
       : phaseEntries(state, registry, phase, run);
   state.phase = phase.name;
   writeState(stateFile, state);
@@ -119,9 +119,9 @@ export function accept(state, file, phases, registry) {
   // helper rather than stored, so the two cannot disagree about what was asked.
   const asked =
     phase.answer === "hints"
-      ? // A phase can have steps and no entries - `spawn` in a run with no sweep starts
+      ? // A phase can have steps and no entries - `setup` in a run with no sweep starts
         // agents and asks nothing - and then an empty hand-back is the right one.
-        spawnRows(state)
+        setupRows(state)
       : phaseEntries(state, registry, phase, state.run);
   const keyOf = (e) =>
     phase.answer === "hints" ? e.check : String(e.index ?? "undefined");
@@ -323,7 +323,7 @@ function reportMeta(state) {
  * finding where it does not - so everything downstream sees the SAME two lists and cannot
  * tell a swept case from a deterministic one.
  *
- * This runs while accepting the `spawn` phase, whose rows are keyed by check and carry no
+ * This runs while accepting the `setup` phase, whose rows are keyed by check and carry no
  * index; `verify` is the first pass that hands one out. So nothing is renumbered by what is
  * added here, because nothing has been numbered yet.
  * @param {import("./state.js").LoopState} state

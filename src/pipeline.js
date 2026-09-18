@@ -945,7 +945,7 @@ export async function runPipeline(opts) {
     // nobody is asked to write would be an instruction with no step behind it - which is
     // why each is null above unless the step that writes it prints: the description is
     // withheld by --llm-skip-summary, the build report by a review that is not a source
-    // code one, and the spawn phase that carries both steps is issued by every review.
+    // code one, and the setup phase that carries both steps is issued by every review.
     meta.summaryFile = summaryPath ?? undefined;
     meta.buildFile = buildPath ?? undefined;
     // Claimed empty, so a directory this run cannot write to fails before the review is
@@ -1287,7 +1287,7 @@ export async function resolveReviewSchema({
  * part that matters.
  *
  * Only the report's framing travels here. What the sweeping agent is told is authored in
- * the spawn phase's own step, beside the other sub-agent requests it relays.
+ * the setup phase's own step, beside the other sub-agent requests it relays.
  * @param {import("./checks/registry.js").Registry} registry
  * @param {Set<string>} ranIds  Ids of the checks that actually ran.
  * @returns {?{items: object[]}}

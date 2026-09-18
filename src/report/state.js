@@ -95,4 +95,4 @@ export function readState(file) {
 
 /** Bumped when the shape changes in a way an older file cannot satisfy. A review in
  *  flight does not survive the upgrade, and saying so beats reading it wrongly. */
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;

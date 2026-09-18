@@ -953,8 +953,9 @@ function pipelineOptsFromValues(values) {
     llmReview: Boolean(values["llm-review"]),
     llmSkip: reviewSkips(values),
     // Not a PROMPT_SKIPS member: it names no `skip:` step. What it withholds is the
-    // `run: sweep` condition, and with it every step that spawns the sweep, waits for it
-    // or records what it found (src/report/phases.js stepsOf).
+    // `run: sweep` condition, and with it both steps that carry it - the one that spawns
+    // the sweep and waits for it, and the one that records what it found
+    // (src/report/phases.js stepsOf).
     llmSkipSweep: Boolean(values["llm-skip-sweep"]),
     llmVerdict: values["llm-verdict"],
   };

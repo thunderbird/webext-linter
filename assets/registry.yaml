@@ -1646,7 +1646,7 @@ llm-phases:
   refused: |-
     The file you handed back is not what this pass expected: {{problem}}. You still have the prompt you were following. Read it again carefully and redo that pass. If it fails a second time, abort the review and say why.
   final: |-
-    The review is settled. Report your own decisions in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why.
+    The review is settled. Wait for every agent you spawned to come back, then report your own decisions in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why.
     {{details}}
     Then give the reviewer the summary below, as it is written here:
 
@@ -1663,11 +1663,19 @@ llm-phases:
   # `intro` is EMPTY unless the steps alone would let the agent do work that is not its own.
   # Two of the four earn text, and both for that reason.
   phases:
-    # Fires every sub-agent the review needs. NOT called `sweep`: the sweep is one of three
+    # Everything the review needs prepared before anything reads the add-on: the package
+    # unpacked, and every sub-agent started. NOT called `spawn`: unpacking is the one thing
+    # it always does, while all three spawn steps are optional, so that name described the
+    # half that may not happen. NOT called `sweep` either - the sweep is one of three
     # products, and naming the phase after it pulled a sweep-specific intro into a place it
-    # did not fit. Steps 1-4 are llm-review-prompt's steps 2, 3, 1 and 4 - reordered so the
-    # wait follows the spawn it waits on, with nothing merged.
-    - name: spawn
+    # did not fit.
+    #
+    # EVERY SPAWN STEP STANDS ALONE. Each carries its own marker, so none may refer to
+    # another having printed - not "either", not "the step below", not "the agents above".
+    # Each says whether its agent is waited for, and the two that are not say it in the
+    # SAME words: a second spelling of one instruction is a difference for its reader to
+    # interpret.
+    - name: setup
       # A row per swept check, answered with what the sweep found: a list, empty when it
       # found nothing. Nothing here is a judgement, so this phase accepts no verb.
       answer: hints
@@ -1691,6 +1699,8 @@ llm-phases:
             Describe this add-on for the reviewer. Anything you quote from it - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup.
 
             Write it to ADDON_DESCRIPTION, and to nothing else: not to the chat, not to a file of your own choosing.
+
+            Do not wait for it. What it writes is the reviewer's, and it is not needed until they are handed the review details.
         - run: sca
           text: |-
             Spawn an independent sub-agent NOW to work out what building this add-on takes. This is a source code review, so the reviewer reproduces the build themselves, and nothing in the report says what that takes. That file is the reviewer's and yours only to name: do not open it, read it, summarise it, or print what is in it.
@@ -1709,6 +1719,8 @@ llm-phases:
             That is a report, never a verdict. Whether the build is accepted is settled by the reviewer reproducing it, and nothing you write settles it.
 
             Write it to BUILD_PROCESS, and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision, on the reviewer's machine.
+
+            Do not wait for it. What it writes is the reviewer's, and it is not needed until they are handed the review details.
         - run: sweep
           text: |-
             Spawn an independent sub-agent NOW to run the sweep.
@@ -1718,9 +1730,8 @@ llm-phases:
             The scans cannot settle the things listed below, so they are handed to you. Read the add-on for each of them. Judge by EFFECT, never by the METHOD used - an unfamiliar form counts as much as a familiar one. Where the thing below is about code, resolve values assembled or supplied at runtime and follow them through helpers and bundled libraries.
 
             Hand back one line per thing you find: the check it answers, the file, the line, and a short phrase naming what is there. Nothing else - no verdict, and no wording for the developer; that is the linter's.
-        - run: sweep
-          text: |-
-            Wait for the sweep to come back, and while you wait do NOTHING ELSE - do not open the add-on, and do not start verifying. The agents you spawned above keep running meanwhile; leave them be.
+
+            Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. What it finds belongs in the file this pass hands back. Any other agent this prompt started keeps running meanwhile; leave it be.
         - run: sweep
           text: |-
             Put what it returned in the "answer" of the check it answers: the file, the line, and the agent's own hint, copied as it came back, never reworded. A check it found nothing for gets an empty list.
