@@ -620,30 +620,47 @@ export class Registry {
   }
 
   /**
-   * The to-do wording for a ref of this rule: its check's `instructions`. One text per
-   * check, because a check's cases all land in one section (its `escalation`) and so all
-   * ask the same question - a check needing two questions is two checks.
+   * The to-do wording a PERSON reads for a ref of this rule: the check's
+   * `instructions-for-human`, or its `instructions` where one text serves either reader.
+   * One text per check, because a check's cases all ask the same question.
    *
-   * assertEntry already refuses an entry that declares one half without the other, so a
-   * loaded check that escalates has wording. This still raises rather than returning
-   * null, because the alternative ships a to-do item with no text.
+   * Raises rather than returning null. Every escalation has a human reader - a review with
+   * no agent in it puts each one to a reviewer - so a check that raised a to-do and
+   * authors no text a person can read is a bug in whatever raised it, and the alternative
+   * is an item printed with nothing to answer.
    * @param {string} ruleId
    * @returns {string}
    */
   instructionsFor(ruleId) {
     const entry = this.checkEntry(ruleId);
-    const text = entry?.instructions;
+    const text = entry?.["instructions-for-human"] ?? entry?.instructions;
     // Not a registry-shape rule, which is why it is asked here and not in assertRegistry:
-    // a check that never escalates authors no `instructions` and is right not to. What is
-    // wrong is a to-do REF naming such a check - a bug in whatever raised it - and the
-    // alternative is an item printed with no text for a reviewer to answer.
+    // a check that never escalates authors no wording and is right not to. What is wrong
+    // is a to-do REF naming such a check.
     if (typeof text !== "string" || text === "") {
       throw new Error(
         `"${entry?.title ?? ruleId}" raised a to-do item but authors no ` +
-          "`instructions` (assets/registry.yaml)"
+          "`instructions-for-human` or `instructions` (assets/registry.yaml)"
       );
     }
     return text;
+  }
+
+  /**
+   * The wording an AGENT is handed for a ref of this rule: the check's
+   * `instructions-for-llm`, or its `instructions` where one text serves either reader.
+   *
+   * Null where the other accessor raises, and the asymmetry is the point: a check may
+   * author a question only a person can answer, and such a check is never screened - its
+   * cases route to the phase that asks a reviewer, so nothing downstream asks it for a
+   * text it does not have.
+   * @param {string} ruleId
+   * @returns {?string}
+   */
+  llmInstructionsFor(ruleId) {
+    const entry = this.checkEntry(ruleId);
+    const text = entry?.["instructions-for-llm"] ?? entry?.instructions;
+    return typeof text === "string" && text !== "" ? text : null;
   }
 
   /**

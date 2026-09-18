@@ -297,7 +297,7 @@ test("renderManualItems renders the plain remote-resources escalation", () => {
 // are a report that misdescribes the case or one that asks for a judgement with no
 // grounds. unsafe-html never escalates, so it authors no `instructions` at all.
 test("renderManualItems refuses a to-do item whose check authors no wording", () => {
-  // unsafe-html never escalates, so it authors no `instructions` - a ref naming it is a
+  // unsafe-html never escalates, so it authors no wording at all - a ref naming it is a
   // bug, and rendering an item with no text would hide it.
   assert.throws(
     () =>
@@ -305,14 +305,16 @@ test("renderManualItems refuses a to-do item whose check authors no wording", ()
         [{ ruleId: "unsafe-html", item: "x", kind: "escalation" }],
         registry
       ),
-    /authors no `instructions`/
+    /authors no `instructions-for-human` or `instructions`/
   );
 });
 
-// One text per check, so the wording follows the ruleId alone - two questions are two
-// checks, never one entry serving both. The raise belongs to the registry, not to
-// responses.js, which resolves templates and does not police who authored what.
-test("registry.instructionsFor picks the wording and refuses an unauthored one", () => {
+// One wording per READER, both following the ruleId alone. The two accessors differ in
+// what absence means: a to-do always has a person to ask, so no human text is a bug and
+// raises; no agent text is a check only a person can answer, and is a value. The raise
+// belongs to the registry, not to responses.js, which resolves templates and does not
+// police who authored what.
+test("the registry picks a wording per reader, and refuses an unauthored one", () => {
   assert.match(
     flat(registry.instructionsFor("remote-resources")),
     /Confirm by hand/
@@ -323,8 +325,14 @@ test("registry.instructionsFor picks the wording and refuses an unauthored one",
   );
   assert.throws(
     () => registry.instructionsFor("unsafe-html"),
-    /authors no `instructions`/
+    /authors no `instructions-for-human` or `instructions`/
   );
+  // A check that authors one text serves it to either reader.
+  assert.equal(
+    registry.llmInstructionsFor("remote-resources"),
+    registry.instructionsFor("remote-resources")
+  );
+  assert.equal(registry.llmInstructionsFor("unsafe-html"), null);
 });
 
 // A check whose report IS what the reviewer found ends its response on a list, and the

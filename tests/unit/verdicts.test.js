@@ -51,6 +51,7 @@ function mkItem(ruleId, title, file, line, item) {
     ruleId,
     title,
     instructions: `inspect ${title}`,
+    llmInstructions: `inspect ${title}`,
     response: null,
     verdict: registry.suggestedVerdict(ruleId),
     data: null,
@@ -327,6 +328,8 @@ function mkManual(ruleId, title, item) {
 function mkStandard(ruleId, title) {
   return {
     ...mkItem(ruleId, title, null, 0),
+    // A by-hand check authors one text, for the person who works through it.
+    llmInstructions: null,
     extended: false,
     section: null,
     file: null,

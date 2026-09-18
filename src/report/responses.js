@@ -145,12 +145,20 @@ export function withDefaultNotes(items, registry) {
 export function renderManualItems(refs, registry) {
   return refs.map((ref) => {
     const entry = registry.checkEntry(ref.ruleId);
-    // One text per check: the registry's call, and instructionsFor raises if the entry
-    // authored none (assertEntry already refuses that pairing).
+    // One wording per READER, both resolved here. instructionsFor raises if the check
+    // authors nothing a person could read, which an escalation always must.
     const template = registry.instructionsFor(ref.ruleId);
+    const llmTemplate = registry.llmInstructionsFor(ref.ruleId);
     return {
       title: entry?.title ?? ref.ruleId,
+      // The person's. Read by the report's own entry body and by the question a reviewer
+      // is asked, which is what keeps those two saying one sentence.
       instructions: fill(template, ref.item, ref.data) ?? "",
+      // The agent's, and null for a check that authors none - a question only a person
+      // can answer. Filled from the same values, so a slot resolves the same either way.
+      llmInstructions: llmTemplate
+        ? (fill(llmTemplate, ref.item, ref.data) ?? null)
+        : null,
       // The developer-facing response (printed under the instructions). Filled like
       // the instructions. Every escalation carries one: once a reviewer settles the
       // case against the add-on, this is the text that goes to the developer, so

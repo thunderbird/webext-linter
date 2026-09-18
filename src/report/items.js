@@ -121,7 +121,7 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
           // cannot know who will be asked about it - a case the agent sends on with `ask`
           // is put to a reviewer while keeping the section it was filed under - so
           // deciding it here, from the item, could only ever be a guess.
-          instructions: t.instructions ?? null,
+          instructions: t.llmInstructions ?? null,
           message: manualQuestion(t, labelOf),
           // Label and description only: the verdict each answer settles the item
           // with never leaves this process.

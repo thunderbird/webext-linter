@@ -224,7 +224,10 @@ export function sortFindings(findings) {
  * @property {string} [ruleId]  The owning check's id (as a Finding's), so the report
  *   can label the locus by artifact ([XPI]/[SCA]) via ruleInputs. Absent for a
  *   standalone registry manual-checks reminder (which carries no locus).
- * @property {string} [instructions]
+ * @property {string} [instructions]  The wording a PERSON reads: the report's own entry
+ *   body, and the question a reviewer is asked.
+ * @property {string|null} [llmInstructions]  The wording an AGENT is handed, or null for
+ *   a check whose question only a person can answer.
  * @property {string|null} [response]  Developer-facing wording (the registry
  *   `response`), printed under the instructions in the report; null when none.
  * @property {Record<string, string|number>|null} [data]  The slot values the item's
