@@ -292,7 +292,8 @@ deterministic-phase:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/runtimeMessaging.html
 
 # ESLint correctness rules (no-redeclare/no-shadow/no-empty/no-unreachable/...)
-# over the add-on’s authored JS. Style/fixable rules are excluded (read-only tool).
+# over the add-on’s authored JS. Style/fixable rules are excluded (a review never
+# rewrites the add-on's code).
 - title: JavaScript code errors
   severity: info
   check: code-sanity

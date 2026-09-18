@@ -2,8 +2,8 @@
 // via the Linter API - no config-file resolution). Only high-signal,
 // false-positive-free single-file correctness rules are enabled (redeclare,
 // shadow, dupe/unreachable/self-* etc.). Style/fixable rules are deliberately
-// excluded - the tool is read-only, so a "rewrite this" suggestion is not a
-// review concern. `no-undef` is also NOT enabled: WebExtension scripts share a
+// excluded - a review never rewrites the add-on's code, so a "rewrite this"
+// suggestion is not a review concern. `no-undef` is also NOT enabled: WebExtension scripts share a
 // global scope at runtime, so per-file undefined-symbol detection would
 // false-positive heavily.
 //

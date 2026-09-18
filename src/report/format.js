@@ -503,11 +503,11 @@ export function packageLines(meta, schemaCache) {
  *
  * An SCA review spans TWO artifacts and the reader has to know which is which: the report
  * labels every locus [XPI]/[SCA], and the block names the artifacts behind those labels -
- * the shipped add-on as XPI, whether it was submitted packed or as an unpacked folder, and
- * the [SCA] side as the values the run was GIVEN: SCA_ROOT, SCA_SOURCE, and SCA_EXP_SOURCE
- * when one was named. Each stands on its own line rather than being composed into one path,
- * because each is a value its reader hands back - to this tool as a flag, or to an agent as
- * a folder to read.
+ * the shipped add-on as ADDON_ID (which add-on) and XPI_ROOT (where its files can be READ,
+ * whether it was submitted packed or as an unpacked folder), and the [SCA] side as the
+ * values the run was GIVEN: SCA_ROOT, SCA_SOURCE, and SCA_EXP_SOURCE when one was named.
+ * Each stands on its own line rather than being composed into one path, because each is a
+ * value its reader hands back - to this tool as a flag, or to an agent as a folder to read.
  *
  * The schema line stays prose beneath the block: nothing looks it up by name.
  * @param {ReviewMeta} meta
@@ -577,9 +577,9 @@ function schemaLine(meta) {
  * can click. The two agree on WHICH facts are named and on nothing else, and a single
  * renderer trying to be both would be a chain of conditionals around every line.
  *
- * Each row carries its own link text rather than deriving one. A path the reviewer supplied
- * reads well as its own file name; one this tool named is a timestamped string nobody wants
- * to read, and what matters about it is what it IS.
+ * Each row carries its own link text rather than deriving one from its path: every path
+ * named here is one this tool chose, and a timestamped string is not what a reader wants
+ * to click - what matters about it is what it IS.
  *
  * ADDON_ID is the one row with no link: it names which add-on, not a location, so there is
  * nothing here for a client to open.

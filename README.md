@@ -104,10 +104,12 @@ the linter needs between passes is in a state file beside it that the agent is n
 pointed at, which is why `--llm-verdict` takes no add-on path: the deterministic review ran
 once, and nothing re-derives it.
 
-The phases are `spawn` (start the sub-agents, hand back what the sweep found, one row per
+The phases are `setup` (start the sub-agents, hand back what the sweep found, one row per
 check), `verify` (the findings), `settle` (what a check could not settle) and `ask` (what
 only a reviewer can answer). A phase with nothing to do is not issued, so a review with no
-sweep never mentions one.
+sweep never mentions one — and every step of `setup` belongs to a sub-agent, starting one
+or writing down what it returned, so a review that runs none of them skips that phase too
+and opens at `verify`.
 
 What an entry's `"answer"` may say depends on WHO THE PHASE ASKS. A phase the agent settles
 by reading the add-on takes one of the linter's verbs: `verify` takes `reported` or
@@ -303,7 +305,7 @@ machine.
 | `background-module` | A background script (`background.scripts`/`service_worker`) that uses static ES module syntax (`import`/`export`) while the manifest's background is not declared `"type": "module"` - it won't load as a module (error). Background pages and content scripts are out of scope. |
 | `bundled-files` | Referenced files that aren't packaged. Both halves come from the schema, not a hardcoded list: every manifest key the schema types as an extension-relative path (scripts, pages, popups, `icons` and every `default_icon`/`theme_icons`, ruleset paths, theme images, Experiment schema and parent scripts), and packaged-file paths passed to file-loading API calls (script registration, `setIcon`, `executeScript`/`insertCSS`, `getURL`, ...) - the same schema-derived loader set that fuels the reference graph. |
 | `cleartext-transmission` | Data transmitted to a remote host over an unencrypted scheme (`http://`/`ws://`/`ftp://`) by an overt API (`fetch`, XHR, WebSocket, `sendBeacon`) - any cleartext send, regardless of payload (error). Covert disguised channels are the `disguised-*` checks. |
-| `code-sanity` | Opt-in (only runs with `--eslint`). ESLint-based code errors: `no-redeclare`, `no-shadow`, dupe/unreachable/self-* rules, empty blocks (`no-empty`, e.g. an error-swallowing empty `catch`) (info). Style/fixable rules (e.g. `prefer-const`) are excluded - the tool is read-only, so "rewrite this" is not a review concern. No `no-undef` (WebExtension scripts share a global scope). |
+| `code-sanity` | Opt-in (only runs with `--eslint`). ESLint-based code errors: `no-redeclare`, `no-shadow`, dupe/unreachable/self-* rules, empty blocks (`no-empty`, e.g. an error-swallowing empty `catch`) (info). Style/fixable rules (e.g. `prefer-const`) are excluded - a review never rewrites the add-on's code, so "rewrite this" is not a review concern. No `no-undef` (WebExtension scripts share a global scope). |
 | `csp-unsafe-eval` | A `content_security_policy` that allows `'unsafe-eval'` - permits dynamic code execution (error). |
 | `csp-unsafe-inline` | A `content_security_policy` that allows `'unsafe-inline'` - permits dynamic code execution via inline scripts (error). |
 | `debugger-statement` | Unconditional `debugger` statements. |
@@ -391,7 +393,7 @@ whether what it found is something that check would have filed, escalated, or
 deliberately excluded. It hands back the location and what is there; the routing
 is the linter's.
 
-The `spawn` phase carries one row per swept check, and the sweep's own words fill
+The `setup` phase carries one row per swept check, and the sweep's own words fill
 it in - an empty list where that check is clean, which is what separates "found
 nothing" from "never looked":
 
@@ -456,10 +458,11 @@ report's **Standard Manual Review** to-do list. They carry a severity like every
 ## Examples
 
 ```sh
-# Review a submitted xpi against the matching schema (read-only - report only)
+# Review a submitted xpi against the matching schema (report only - the submission
+# is never modified, though it is extracted to ./submission.xpi.extracted/ to be read)
 node verify.js ./submission.xpi
 
-# Review an unpacked source folder
+# Review an already-unpacked folder (nothing is extracted - it already is the folder)
 node verify.js ./my-addon
 
 # machine-readable JSON output

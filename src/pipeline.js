@@ -3,8 +3,10 @@
 // directly. It loads the add-on, resolves and verifies its vendored
 // declarations, classifies bundled code, runs the schema review, and fills each
 // finding's display text from the registry. It returns the Review. Formatting
-// and I/O are the front-end's job. The tool is read-only: it never modifies or
-// repacks the submission.
+// and I/O are the front-end's job. The submission itself is never modified or
+// repacked: the one thing this writes of it is a copy, the packed .xpi extracted
+// to XPI_ROOT so every reader - the checks, a reviewer, an agent - reads one
+// unpacked tree rather than the tool holding a second one in memory.
 //
 // Belongs here: the declared setup plan (SETUP_STEPS), the stage orchestration
 // (runPipeline), the XPI-only submission advice (resolveXpiOnlyAdvice) and the

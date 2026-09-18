@@ -303,11 +303,11 @@ export function settle(state, registry) {
   };
 }
 
-/** The meta the Review Details block names: the review's own artifacts, plus the files
- *  written FOR the reviewer - the description, the build report, the unpacked package.
- *  Those are what the block exists to hand over. The loop's own bookkeeping is not:
- *  the state and review files are the linter talking to itself, and a reviewer has no
- *  use for either. */
+/** The meta the Review Details block names: which add-on this is and where it can be read
+ *  (the unpacked package), plus the files written for the reviewer - the description and
+ *  the build report. Those are what the block exists to hand over. The loop's own
+ *  bookkeeping is not: the state and review files are the linter talking to itself, and a
+ *  reviewer has no use for either. */
 function reportMeta(state) {
   const {
     prompting: _prompting,

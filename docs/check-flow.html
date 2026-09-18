@@ -117,6 +117,17 @@
         <em>The orchestrator</em>) then finalizes the <code>Review</code> for
         the report.
       </p>
+      <p>
+        Loading is where a packed submission becomes a readable one. A
+        <code>.xpi</code> is extracted to <code>&lt;xpi&gt;.extracted/</code>
+        beside it — timestamp-suffixed if that folder is already there, so a
+        second review never lands in the first one's tree — and then read back
+        through the same directory walk an already-unpacked submission takes.
+        That folder is <code>XPI_ROOT</code>, the one place the package is read
+        from: by the checks below, by a reviewer, and by an agent under
+        <code>--llm-review</code>. A submission handed over as a folder is
+        already that, and nothing is written for it.
+      </p>
       <div class="flow">
         <pre class="mermaid">
 ---
@@ -134,7 +145,7 @@ flowchart TB
   SUB(["called from src/cli.js -<br/>a built XPI / folder (+ a source archive, --sca-root)"]) --> LOAD
 
   subgraph P1 ["runPipeline() · Phase 1 - load, schema, experiments"]
-    LOAD["Reading add-on<br/>loadAddon(XPI)"] --> LDQ{{"the archive opens, every entry name is a plain path,<br/>every entry inflates, and it fits the size cap?"}}
+    LOAD["Reading add-on<br/>loadAddon(XPI): extract a packed one<br/>to XPI_ROOT, then read that folder"] --> LDQ{{"the archive opens, every entry name is a plain path,<br/>every entry inflates, and it fits the size cap?"}}
     LDQ -- no --> P1F((("THROW<br/>exit 2")))
     LDQ -- yes --> SCH["Fetching review schemas<br/>resolveReviewSchema()<br/>pick the channel from manifest_version +<br/>strict_max_version, fetch it, index it"]
 

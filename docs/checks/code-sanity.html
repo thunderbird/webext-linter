@@ -27,7 +27,7 @@
       <p>
         Only single-file correctness rules that rarely produce false positives
         are enabled. Stylistic and auto-fixable rules are deliberately left out
-        because the tool is read-only and does not rewrite code, and
+        because a review never rewrites the add-on's code, and
         undefined-symbol detection is off because WebExtension scripts share one
         global scope at runtime and would trip it constantly. Third-party,
         vendored, minified and obfuscated files are skipped — they are not the
