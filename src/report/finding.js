@@ -238,6 +238,8 @@ export function sortFindings(findings) {
  *   body, and the question a reviewer is asked.
  * @property {string|null} [llmInstructions]  The wording an AGENT is handed, or null for
  *   a check whose question only a person can answer.
+ * @property {string[]|null} [settleVerbs]  Which answers an agent is offered for this
+ *   case, or null where the owning check narrows nothing and its phase's own verbs stand.
  * @property {string|null} [response]  Developer-facing wording (the registry
  *   `response`), printed under the instructions in the report; null when none.
  * @property {Record<string, string|number>|null} [data]  The slot values the item's

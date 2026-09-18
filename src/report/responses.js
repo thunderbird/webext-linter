@@ -172,6 +172,10 @@ export function renderManualItems(refs, registry) {
       // The band a reported case lands in, printed above that response. Null for a
       // check whose cases produce no finding however they are settled.
       verdict: registry.suggestedVerdict(ref.ruleId),
+      // Which answers an agent is offered for this case, or null where the check narrows
+      // nothing. Carried on the item so the phase handing it over reads it here rather
+      // than looking the check up again.
+      settleVerbs: registry.settleVerbsFor(ref.ruleId),
       // The slot values behind {{name}} in the texts above. Kept so a REPORTED case
       // can be re-resolved as a finding from the same inputs (src/report/verdicts.js)
       // rather than from the already-rendered prose.

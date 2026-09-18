@@ -11,9 +11,10 @@
 //
 // Belongs here: which verbs exist, and the one crossing from text to verb.
 //
-// Does NOT belong here: which verbs a PHASE offers (assets/registry.yaml, validated in
-// src/checks/registry.js), what a verb DOES to an item (src/report/verdicts.js), and where
-// `ask` sends one (src/report/loop.js).
+// Does NOT belong here: which verbs an ENTRY offers, or what each means to whoever reads
+// it (assets/registry.yaml, rendered onto the entry in src/report/handback.js), what a
+// verb DOES to an item (src/report/verdicts.js), and where `ask` sends one
+// (src/report/loop.js).
 
 /** One verdict. Frozen and unique: two Verbs are equal only when they are the same Verb,
  *  and no string is ever equal to one. `String(verb)` is how it is written down - the state
@@ -42,17 +43,18 @@ export const VERB = Object.freeze({
 export const VERB_NAMES = Object.freeze(Object.keys(VERB));
 
 /**
- * The verb a phase accepts under this spelling, or null.
+ * The verb this spelling names, if the entry it answers offered it. Null otherwise.
  *
- * THE ONLY WAY TO OBTAIN A VERB, and the only place a verb is compared to text. A phase
- * that does not offer the word gets null even when the word names a verb, so "a verdict
- * this review knows" and "a verdict THIS PHASE accepts" cannot come apart.
- * @param {{verbs: string[]}} phase  The phase that accepted the answer.
+ * THE ONLY WAY TO OBTAIN A VERB, and the only place a verb is compared to text. The
+ * allowed set is the ENTRY's, not the phase's, because two entries of one phase can offer
+ * different answers - so "a verdict this review knows" and "a verdict this ENTRY accepts"
+ * cannot come apart.
+ * @param {string[]} allowed  What the entry offered, as it was handed out.
  * @param {*} text  What came back in the slot.
  * @returns {?Verb}
  */
-export function verbOf(phase, text) {
-  return phase.verbs.includes(text) ? verbNamed(text) : null;
+export function verbOf(allowed, text) {
+  return allowed.includes(text) ? verbNamed(text) : null;
 }
 
 /**

@@ -527,6 +527,15 @@ export class Registry {
         name: phase.name,
         answer: phase.answer,
         verbs: [...phase.verbs],
+        // What each of those verbs MEANS, for the phase to render onto its entries. A
+        // copy per phase rather than a shared reference, so nothing downstream can edit
+        // the loaded registry by editing what it was handed.
+        verbProse: Object.fromEntries(
+          Object.entries(phase["verb-prose"] ?? {}).map(([verb, prose]) => [
+            verb,
+            { ...prose },
+          ])
+        ),
         intro: phase.intro,
         steps: phase.steps.map((step) => ({
           skip: step.skip ?? null,
@@ -662,6 +671,22 @@ export class Registry {
       return SECTION.CODE_REVIEW;
     }
     return authored("instructions-for-human") ? SECTION.MANUAL_REVIEW : null;
+  }
+
+  /**
+   * Which answers the `settle` phase offers for a case this check raised, or null where
+   * the check narrows nothing and the phase's own verbs stand.
+   *
+   * Declared rather than derived, because the same shape means different things: a check
+   * may author two wordings because its readers are asked two questions, or because one
+   * question simply reads better in two voices. Only the author knows which, so only the
+   * author says what an agent may answer.
+   * @param {string} ruleId
+   * @returns {?string[]}
+   */
+  settleVerbsFor(ruleId) {
+    const verbs = this.checkEntry(ruleId)?.["settle-verbs"];
+    return Array.isArray(verbs) ? [...verbs] : null;
   }
 
   /**
@@ -813,7 +838,12 @@ function assertEntry(entry, at) {
         `${where} authors no \`instructions\` - the question a reviewer answers IS the entry`
       );
     }
-    for (const key of ["escalation", "input", "sweep-instruction"]) {
+    for (const key of [
+      "escalation",
+      "input",
+      "sweep-instruction",
+      "settle-verbs",
+    ]) {
       if (entry[key] !== undefined) {
         throw new Error(
           `${where} authors \`${key}\`, which only a check that RUNS can carry - a ` +
@@ -854,6 +884,7 @@ function assertEntry(entry, at) {
           "or `instructions` for one text serving either reader"
       );
     }
+    assertSettleVerbs(entry, where, authored("instructions") || forLlm);
     // Optional, and a typo would otherwise read as "the default" - silently listing every
     // case where the entry asked for one line per subject.
     const collapse = entry.collapse;
@@ -937,6 +968,58 @@ function assertSweepInstruction(entry, where, severity) {
 }
 
 /**
+ * Assert a check's `settle-verbs`: which of the `settle` phase's answers its cases offer.
+ *
+ * Entry-local rules only. That the verbs are ones the phase actually accepts is asked
+ * separately (assertPhaseVerbSubsets), because this walk runs before the phases are
+ * validated and also runs alone over a caller's partial document, where there are none.
+ *
+ * AT LEAST TWO, because fewer is not a judgement. A check offering only `reported` can
+ * confirm its own cases but never drop one; one offering only `cleared` can only delete
+ * them. Either way the agent is rubber-stamping, and a check that wants that should not
+ * be screened at all.
+ * @param {object} entry
+ * @param {string} where  How the entry is named in a message.
+ * @param {boolean} screened  Whether the check authors wording an agent can be handed.
+ */
+function assertSettleVerbs(entry, where, screened) {
+  const verbs = entry["settle-verbs"];
+  if (verbs === undefined) {
+    if (screened) {
+      throw new Error(
+        `${where} authors wording for an agent but no \`settle-verbs\` - which answers ` +
+          "its cases accept is the check's to say, and a default nobody can see in the " +
+          "entry is one nobody can review"
+      );
+    }
+    return;
+  }
+  if (!screened) {
+    throw new Error(
+      `${where} authors \`settle-verbs\` but no wording an agent can be handed, so no ` +
+        "agent is ever asked about its cases and nothing would read them"
+    );
+  }
+  if (
+    !Array.isArray(verbs) ||
+    verbs.length === 0 ||
+    verbs.some((v) => typeof v !== "string" || v.trim() === "") ||
+    new Set(verbs).size !== verbs.length
+  ) {
+    throw new Error(
+      `${where} has an invalid \`settle-verbs\` ${JSON.stringify(verbs)} ` +
+        "(expected a non-empty list of distinct non-empty strings)"
+    );
+  }
+  if (verbs.length < 2) {
+    throw new Error(
+      `${where} offers ${JSON.stringify(verbs)} and nothing else - one answer is not a ` +
+        "judgement, it is a rubber stamp, so a screened check offers at least two"
+    );
+  }
+}
+
+/**
  * Authoring a `default-note` declares that this check's report IS what the reviewer found:
  * its response ends on a list, and the marker stands in that list when they reported the
  * case without writing one.
@@ -961,6 +1044,50 @@ function assertDefaultNote(entry, where) {
       `${where} has an invalid \`default-note\` ${JSON.stringify(note)} ` +
         "(expected a non-empty string)"
     );
+  }
+}
+
+/**
+ * Assert that every check narrowing the `settle` phase narrows it to answers that phase
+ * actually accepts.
+ *
+ * Its own pass, after assertPhases, for two reasons: the entry walk runs first and would
+ * be reading a phase list nothing had validated yet, and it also runs alone over a
+ * caller's partial document, which declares no phases at all. Splitting it keeps the
+ * entry-local rules working there while this one stays exact here.
+ *
+ * The vocabulary is read off the phase rather than spelled again, so a verb the phase
+ * does not offer - `withdrawn`, which belongs to auditing a claim - is refused without a
+ * second list to keep in step.
+ * @param {Registry} registry
+ * @param {string} at  The registry path, for the message.
+ */
+export function assertPhaseVerbSubsets(registry, at) {
+  const narrowing = registry
+    .allEntries()
+    .filter((e) => e["settle-verbs"] !== undefined);
+  if (narrowing.length === 0) {
+    return;
+  }
+  const settle = (registry.doc["llm-phases"]?.phases ?? []).find(
+    (p) => p.name === SETTLE_PHASE
+  );
+  if (!settle) {
+    throw new Error(
+      `Registry ${at}: "${stem(narrowing[0].check)}" authors \`settle-verbs\` but there ` +
+        `is no \`${SETTLE_PHASE}\` phase to narrow`
+    );
+  }
+  for (const entry of narrowing) {
+    for (const verb of entry["settle-verbs"]) {
+      if (!settle.verbs.includes(verb)) {
+        throw new Error(
+          `Registry ${at}: "${stem(entry.check)}" offers \`${verb}\`, which the ` +
+            `\`${SETTLE_PHASE}\` phase does not accept ` +
+            `(it accepts: ${settle.verbs.join(", ")})`
+        );
+      }
+    }
   }
 }
 
@@ -1098,6 +1225,11 @@ const LOOP_VERBS = VERB_NAMES;
  *  to write and not ours to judge. Named as data because the loop reads it rather than the
  *  phase's name - a phase carries its vocabulary AND the kind of answer that vocabulary
  *  belongs to, and neither is inferred from what it is called. */
+// The phase whose answers a check may narrow: the one that settles what a check could not.
+// Named here because two things need it and neither should spell it - the subset check
+// below, and nothing else in this file.
+const SETTLE_PHASE = "settle";
+
 const ANSWER_KINDS = ["hints", "verdict", "words"];
 
 /** The one condition the SCA prompt can evaluate: whether this review allows
@@ -1201,22 +1333,34 @@ export function assertPhases(registry, at) {
         );
       }
     });
-    // Both ways, over the phase's own step text. A verb is named the way the agent reads
-    // it: quoted, as `"reported"`.
-    const prose = phase.steps.map((x) => x.text).join("\n");
+    // Both ways, over the phase's `verb-prose`. A step does not name verbs: what an
+    // answer means is rendered onto the entry that offers it, so this is where the agent
+    // is told, and an unworded verb is one it is offered with nothing to choose on.
+    const prose = phase["verb-prose"] ?? {};
     for (const verb of phase.verbs) {
-      if (!prose.includes(`"${verb}"`)) {
+      const says = prose[verb]?.says;
+      if (typeof says !== "string" || says.trim() === "") {
         throw new Error(
-          `${at2} accepts \`${verb}\` but no step names it, so the agent is never told ` +
-            "it may answer that"
+          `${at2} accepts \`${verb}\` but its \`verb-prose\` says nothing about it, so ` +
+            "an entry would offer it with no wording for when it applies"
         );
       }
     }
-    for (const verb of LOOP_VERBS) {
-      if (prose.includes(`"${verb}"`) && !phase.verbs.includes(verb)) {
+    for (const verb of Object.keys(prose)) {
+      if (!phase.verbs.includes(verb)) {
         throw new Error(
-          `${at2} names \`${verb}\` in a step but does not accept it, so the agent ` +
-            "would be refused for doing what it was told"
+          `${at2} words \`${verb}\` in its \`verb-prose\` but does not accept it, so the ` +
+            "agent would be refused for doing what it was told"
+        );
+      }
+      const lastResort = prose[verb]["says-when-last-resort"];
+      if (
+        lastResort !== undefined &&
+        (typeof lastResort !== "string" || lastResort.trim() === "")
+      ) {
+        throw new Error(
+          `${at2} has an invalid \`says-when-last-resort\` for \`${verb}\` ` +
+            `${JSON.stringify(lastResort)} (expected a non-empty string)`
         );
       }
     }
@@ -1383,6 +1527,7 @@ function assertRegistry(registry, at, { partial = false } = {}) {
   }
   assertRequiredPhaseSections(registry.doc, at);
   assertPhases(registry, at);
+  assertPhaseVerbSubsets(registry, at);
   assertScaPrompt(registry, at);
   assertChoices(registry, at);
   assertProse(registry, at);

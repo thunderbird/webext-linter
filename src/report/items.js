@@ -122,6 +122,7 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
           // is put to a reviewer while keeping the section it was filed under - so
           // deciding it here, from the item, could only ever be a guess.
           instructions: t.llmInstructions ?? null,
+          settleVerbs: t.settleVerbs ?? null,
           message: manualQuestion(t, labelOf),
           // Label and description only: the verdict each answer settles the item
           // with never leaves this process.

@@ -68,6 +68,7 @@ import { parseApiUsage } from "../../src/parse/api-usage.js";
 import { getPermissionAnalysis } from "../../src/lib/permissions.js";
 import {
   assertEntries,
+  assertPhaseVerbSubsets,
   loadChecks,
   loadRegistry,
   runOneCheck,
@@ -961,6 +962,7 @@ test("a default-note must be prose, in either list", () => {
         rule({
           check: "eval-call",
           instructions: "i",
+          "settle-verbs": ["reported", "cleared"],
           "default-note": "- ...",
         }),
         rule({ check: "unsafe-html", "default-note": "- ..." }),
@@ -969,6 +971,71 @@ test("a default-note must be prose, in either list", () => {
     }),
     "t.yaml"
   );
+});
+
+// `settle-verbs` is the check's word on which answers an agent may give about its cases,
+// and it is authored rather than derived: two checks with the same instruction keys can
+// want different sets - one screening a question that stays a person's, one simply saying
+// the same thing in two voices - and nothing in the keys tells those apart.
+test("a screened check says which answers its cases accept", () => {
+  const rule = (extra) => ({
+    title: "X",
+    check: "sync-xhr",
+    severity: "error",
+    input: "source",
+    ...extra,
+  });
+  const bad = (extra, re) =>
+    assert.throws(
+      () =>
+        assertEntries(
+          new Registry({ "deterministic-phase": [rule(extra)] }),
+          "t.yaml"
+        ),
+      re,
+      JSON.stringify(extra)
+    );
+
+  // Required where an agent is asked, refused where none is.
+  bad(
+    { instructions: "i" },
+    /authors wording for an agent but no `settle-verbs`/
+  );
+  bad(
+    { "instructions-for-human": "i", "settle-verbs": ["reported", "cleared"] },
+    /authors `settle-verbs` but no wording an agent can be handed/
+  );
+
+  // Shape.
+  for (const verbs of [
+    "reported",
+    [],
+    ["reported", ""],
+    ["reported", "reported"],
+  ]) {
+    bad({ instructions: "i", "settle-verbs": verbs }, /invalid `settle-verbs`/);
+  }
+
+  // One answer is not a judgement.
+  bad(
+    { instructions: "i", "settle-verbs": ["cleared"] },
+    /one answer is not a judgement/
+  );
+
+  // And the verbs must be ones the settle phase offers - asked over the whole registry,
+  // because the phase it narrows is not in a caller's one-section document.
+  const doc = loadRegistry();
+  const entry = doc.doc["deterministic-phase"].find(
+    (e) => e.check === "unknown-api"
+  );
+  const keep = entry["settle-verbs"];
+  entry["settle-verbs"] = ["reported", "withdrawn"];
+  assert.throws(
+    () => assertPhaseVerbSubsets(doc, "t.yaml"),
+    /offers `withdrawn`, which the `settle` phase does not accept/
+  );
+  entry["settle-verbs"] = keep;
+  assertPhaseVerbSubsets(doc, "t.yaml");
 });
 
 test("a sweep-instruction no finding could be filed for is refused", () => {

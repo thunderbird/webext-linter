@@ -57,6 +57,7 @@ deterministic-phase:
   severity: error
   check: trademark-thunderbird-locale
   input: xpi
+  settle-verbs: [reported, cleared]
   instructions: |-
     The add-on name below carries “Thunderbird” in a form this scan cannot verify.
     Only “ADD-ON NAME for Thunderbird” is allowed, and outside English the scan
@@ -95,6 +96,7 @@ deterministic-phase:
   response: |-
     The following WebExtension APIs are not supported in the targeted Thunderbird version.
     Read more: https://webextension-api.thunderbird.net/.
+  settle-verbs: [reported, cleared]
   instructions: |-
     Each reference below is to a name the schema does not have, or marks
     unsupported, for the targeted Thunderbird version. Check whether this
@@ -251,6 +253,7 @@ deterministic-phase:
   severity: error
   check: debugger-statement
   input: source
+  settle-verbs: [reported, cleared]
   instructions: |-
     A debugger statement is acceptable only when it is guarded by a build or
     configuration flag, or by a setting in the add-on's options. Read the
@@ -303,6 +306,7 @@ deterministic-phase:
   input: xpi
   response: |-
     One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
+  settle-verbs: [reported, cleared]
   instructions: |-
     Review whether the following declared permissions are used, and ask the
     developer to remove any that are not needed.
@@ -452,6 +456,7 @@ deterministic-phase:
   severity: error
   check: experiment-unknown-api
   input: source
+  settle-verbs: [reported, cleared]
   instructions: |-
     This Experiment calls WebExtension APIs the schema does not recognize (see the
     "Unknown or unsupported WebExtension API" findings). For an experiment's OWN API
@@ -605,6 +610,7 @@ deterministic-phase:
   sca: true
   check: build-lifecycle-hook
   input: build
+  settle-verbs: [reported, cleared]
   instructions: |-
     The package.json declares the install lifecycle hook(s) below, which run when the
     reviewer installs the dependencies, before the build. Read each command and
@@ -927,6 +933,7 @@ deterministic-phase:
   severity: warning
   check: missing-english-localization
   input: xpi
+  settle-verbs: [reported, cleared]
   instructions: |-
     This add-on ships no English localization, so user-facing text may be
     hardcoded in another language. Review its strings by hand and confirm if an
@@ -962,6 +969,7 @@ deterministic-phase:
   severity: error
   check: strict-min-version-api
   input: source
+  settle-verbs: [reported, cleared]
   instructions: |-
     Each call below is to an API that was introduced after the add-on's
     strict_min_version, so it throws on the versions in between. Check whether
@@ -978,6 +986,7 @@ deterministic-phase:
   severity: warning
   check: unused-files
   input: xpi
+  settle-verbs: [reported, cleared]
   instructions: |-
     The following files are reachable from no manifest entry point, so decide
     whether anything loads them at runtime. Two shapes reach here: a site that
@@ -993,6 +1002,7 @@ deterministic-phase:
   severity: warning
   check: minimize-web-accessible-resources
   input: xpi
+  settle-verbs: [reported, cleared]
   instructions: |-
     The following resources are exposed through web_accessible_resources and
     nothing in the add-on was found to load them. The key is needed only when
@@ -1013,6 +1023,7 @@ deterministic-phase:
   severity: error
   check: remote-resources
   input: source
+  settle-verbs: [reported, cleared]
   instructions: |-
     This site loads or injects a resource - script, style, frame or media - from
     a source static analysis could not resolve to a packaged file. Confirm by
@@ -1049,6 +1060,7 @@ deterministic-phase:
   severity: error
   check: remote-eval
   input: source
+  settle-verbs: [reported, cleared]
   instructions: |-
     The following location(s) execute code assembled at run time, such as
     fetch().then(eval).
@@ -1063,6 +1075,7 @@ deterministic-phase:
   severity: error
   check: data-exfiltration
   input: source
+  settle-verbs: [reported, cleared]
   instructions: |-
     The following code locations send data to a remote server. User data -
     message content, attachments, contacts, credentials - may be transmitted only
@@ -1088,6 +1101,7 @@ deterministic-phase:
   severity: error
   check: disguised-transmission
   input: source
+  settle-verbs: [reported, cleared]
   instructions: |-
     The following code locations build a URL to a remote host from a runtime
     value on a channel not meant for data transmission - a resource src or href,
@@ -1585,11 +1599,19 @@ llm-phases:
     - name: verify
       answer: verdict
       verbs: [reported, withdrawn]
+      # What each verb MEANS, rendered onto every entry as the description of one of its
+      # "answers". Authored per phase because a verb does not mean the same thing in both:
+      # here the question is whether a claim is true, in `settle` whether a case stands.
+      verb-prose:
+        reported:
+          says: The claim holds against the package.
+        withdrawn:
+          says: The claim is not correct.
       intro: |-
         The file's entries are what the deterministic checks proved against the package, together with what the sweep returned. Each one that stands will be reported to the developer. You are auditing those claims here, not looking for anything new.
       steps:
         - text: |-
-            Verify every entry in ONE pass. One that holds is "reported", one that is not correct is "withdrawn". Judge only whether each is right, never whether it matters, and never put any of them to the reviewer.
+            Verify every entry in ONE pass. Answer with the "label" of one of the answers that entry lists under "answers", and with nothing else - each answer's "description" says when it applies. Judge only whether each entry is right, never whether it matters, and never put any of them to the reviewer.
 
             What you are reading, and what to read it against:
 
@@ -1598,16 +1620,29 @@ llm-phases:
             Judge every API, permission and method against SCHEMA, never against what you remember: a name the schema does not have is not a name this add-on can use, whatever another version of Thunderbird offers.
 
     # Settles what a check could not. Its intro earns its text too: "your job here, not the
-    # reviewer's" is what stops the agent deferring, and it is in tension with the step
-    # offering "ask", which the intro is what resolves.
+    # reviewer's" is what stops the agent deferring, and it is in tension with the entries
+    # that offer "ask", which the intro is what resolves.
     - name: settle
       answer: verdict
       verbs: [reported, cleared, ask]
+      # Which of these an entry actually offers is its check's to say (`settle-verbs`), so
+      # `reported` needs two wordings: what it means where the case could also have been
+      # handed on, and what it means where it could not.
+      verb-prose:
+        reported:
+          says: The case could be verified and should be reported.
+          # Used where the entry offers "cleared" and no "ask": clearing was the way out,
+          # and it was not taken.
+          says-when-last-resort: The case could not be cleared, so it is reported.
+        cleared:
+          says: You are sure the case can be removed from the report.
+        ask:
+          says: None of the other answers here can be applied.
       intro: |-
         The file's entries are cases a deterministic check could not settle, so it marked them unsure and left them for inspection. They are settled by reading the add-on, which is your job here, not the reviewer's.
       steps:
         - text: |-
-            Settle each entry yourself, following that entry's "instructions". A case that holds against the add-on is "reported", one that does not is "cleared", one you cannot settle from the package at all is "ask".
+            Settle each entry yourself, following that entry's "instructions". Answer with the "label" of one of the answers that entry lists under "answers", and with nothing else - each answer's "description" says when it applies, and entries do not all offer the same ones.
 
             What you are reading, and what to read it against:
 

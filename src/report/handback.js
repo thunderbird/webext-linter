@@ -12,7 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { checkedResult } from "./sweep.js";
-import { verbOf } from "./verbs.js";
+import { VERB, verbOf } from "./verbs.js";
 import { displayLine } from "../util/text.js";
 
 /** Every entry in every phase carries this, and `null` always means unanswered. One slot,
@@ -185,14 +185,19 @@ export function answersOf(handed, asked, phase, keyOf) {
     // The one crossing from text to verb. What comes back from here is a Verb, so every
     // question after it is asked by identity - a phase answering with `words` never
     // reaches this line, and the sentence it carries can never be one.
-    const verb = verbOf(phase, value);
+    //
+    // Checked against what THIS entry offered, read off the copy that was handed out
+    // rather than off the returned file: an answer is accepted because the linter asked
+    // for it, never because the hand-back says it was asked for.
+    const offered = (wanted.get(key)?.answers ?? []).map((a) => a.label);
+    const verb = verbOf(offered, value);
     if (!verb) {
       // Stripped of control characters before display: this is the one place `value`
       // stops being data and becomes text a person may read in a terminal, and nothing
       // upstream constrains what an unrecognised answer contains.
       throw new HandbackRefused(
-        `${key} answers "${displayLine(String(value))}", which this pass does not ` +
-          `accept (expected one of: ${phase.verbs.join(", ")})`
+        `${key} answers "${displayLine(String(value))}", which this entry does not ` +
+          `accept (expected one of: ${offered.join(", ")})`
       );
     }
     got.set(key, verb);
@@ -246,7 +251,43 @@ export function entriesFor(items, phase) {
       ...(item.item ? { item: item.item } : {}),
       ...(item.hint ? { hint: item.hint } : {}),
       ...(item.instructions ? { instructions: item.instructions } : {}),
+      answers: offeredBy(item, phase),
       [SLOT]: null,
+    };
+  });
+}
+
+/**
+ * What one verdict entry may be answered with, each verb beside what it means here.
+ *
+ * Same shape as the answers a person is offered, so the agent reads one thing in either
+ * phase: pick a `label`, and the `description` says when it applies.
+ *
+ * The SET is the item's where its check narrows it and the phase's otherwise - so a
+ * finding, which no check narrows, offers exactly what its phase accepts. The WORDING is
+ * the phase's either way, because what `reported` means is a property of the question
+ * being asked, not of the check that raised the case.
+ *
+ * `says-when-last-resort` is the one wording that depends on the set rather than the
+ * phase. A verb authors it for the case where the entry offers `cleared` and no `ask`:
+ * clearing was the way out and it was not taken, which is a different sentence from the
+ * same verb chosen with a hand-off still available. Keyed on `cleared` and not on `ask`
+ * alone, because the wording claims clearing was tried - it may only be shown where
+ * clearing was on offer.
+ * @param {{settleVerbs: ?string[]}} item
+ * @param {{verbs: string[], verbProse: Object<string, {says: string}>}} phase
+ * @returns {{label: string, description: string}[]}
+ */
+function offeredBy(item, phase) {
+  const labels = item.settleVerbs ?? phase.verbs;
+  const lastResort =
+    labels.includes(String(VERB.cleared)) && !labels.includes(String(VERB.ask));
+  return labels.map((label) => {
+    const prose = phase.verbProse?.[label] ?? {};
+    return {
+      label,
+      description:
+        (lastResort ? prose["says-when-last-resort"] : null) ?? prose.says,
     };
   });
 }

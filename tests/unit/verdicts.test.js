@@ -516,7 +516,7 @@ test("each phase hands over what settling it needs, and no more", () => {
         phase("settle")
       )
     ),
-    "answer,file,index,instructions,item,line,ruleId"
+    "answer,answers,file,index,instructions,item,line,ruleId"
   );
   assert.equal(
     keys(
@@ -525,7 +525,7 @@ test("each phase hands over what settling it needs, and no more", () => {
         phase("verify")
       )
     ),
-    "answer,file,index,line,ruleId"
+    "answer,answers,file,index,line,ruleId"
   );
   // The verdict each answer settles the item with is the linter's business: the file
   // carries only what the reviewer reads, so a reader cannot write a verdict of its own.

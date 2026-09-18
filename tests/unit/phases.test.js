@@ -71,15 +71,15 @@ test("a missing linter-owned text is refused by name", () => {
 });
 
 // The rule that stops a phase from being half-authored in two directions at once. A verb
-// the phase accepts but no step names is one the agent is never told it may use; a verb a
-// step names but the phase does not accept is one the agent is refused for using after
-// being told to. Reading either half alone shows nothing wrong.
-test("a phase's verbs are checked against its own steps, both ways", () => {
-  const unnamed = fresh();
-  phaseNamed(unnamed, "verify").verbs.push("cleared");
+// the phase accepts but words nowhere is one an entry offers with nothing to choose on; a
+// verb worded but not accepted is one the agent is refused for using after being told
+// what it means. Reading either half alone shows nothing wrong.
+test("a phase's verbs are checked against its own wordings, both ways", () => {
+  const unworded = fresh();
+  phaseNamed(unworded, "verify").verbs.push("cleared");
   assert.throws(
-    () => assertPhases(unnamed, "t.yaml"),
-    /accepts `cleared` but no step names it/
+    () => assertPhases(unworded, "t.yaml"),
+    /accepts `cleared` but its `verb-prose` says nothing about it/
   );
 
   const unaccepted = fresh();
@@ -87,7 +87,16 @@ test("a phase's verbs are checked against its own steps, both ways", () => {
   settle.verbs = settle.verbs.filter((v) => v !== "ask");
   assert.throws(
     () => assertPhases(unaccepted, "t.yaml"),
-    /names `ask` in a step but does not accept it/
+    /words `ask` in its `verb-prose` but does not accept it/
+  );
+
+  // The variant wording is optional, but an authored one must be prose like the rest.
+  const blank = fresh();
+  phaseNamed(blank, "settle")["verb-prose"].reported["says-when-last-resort"] =
+    "  ";
+  assert.throws(
+    () => assertPhases(blank, "t.yaml"),
+    /invalid `says-when-last-resort`/
   );
 });
 

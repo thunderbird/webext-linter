@@ -65,7 +65,17 @@ function review(
         mode: "xpi",
       },
       manual: [
-        ...(code ? [todo("unknown-api", { instructions: "settle me" })] : []),
+        ...(code
+          ? [
+              todo("unknown-api", {
+                instructions: "settle me",
+                // What the ENTRY offers, which is what answersOf checks against. All
+                // three here so the routing `ask` performs is testable; the narrowing
+                // itself is pinned separately below.
+                settleVerbs: ["reported", "cleared", "ask"],
+              }),
+            ]
+          : []),
         ...(questions
           ? [
               todo("q1", { extended: false, instructions: "ask me" }),
@@ -138,6 +148,95 @@ test("a review runs spawn -> verify -> settle -> ask and then settles", () => {
     "privacy-policy": [],
     "data-exfiltration": [],
   });
+});
+
+// An entry says what it may be answered with, and that is what an answer is checked
+// against - not what the phase accepts. Two entries of one phase can offer different
+// answers, so a set read off the phase would accept, for one case, a verdict the check
+// that raised it withheld.
+test("an entry is answered from its own answers, not its phase's verbs", () => {
+  const dir = tmp();
+  const { state, stateFile } = review(dir, { sweep: false, findings: false });
+  // --llm-skip-summary with no sweep leaves spawn with nothing to do, so settle is first.
+  state.run = { skip: ["summary"], sca: false, sweep: false };
+  // What the 14 screened checks declare: settle it, or clear it. No handing it on.
+  state.manual[0].settleVerbs = ["reported", "cleared"];
+
+  const out = issue(state, stateFile, PHASES, REGISTRY);
+  assert.equal(out.phase.name, "settle");
+  const entry = JSON.parse(fs.readFileSync(state.review, "utf8")).entries[0];
+  assert.deepEqual(
+    entry.answers.map((a) => a.label),
+    ["reported", "cleared"],
+    "the entry offers what its check allows"
+  );
+  // `ask` is one of the phase's own verbs, and still refused here.
+  assert.ok(PHASES.find((p) => p.name === "settle").verbs.includes("ask"));
+  assert.throws(
+    () =>
+      accept(
+        state,
+        handBack(state, () => "ask"),
+        PHASES,
+        REGISTRY
+      ),
+    /this entry does not accept \(expected one of: reported, cleared\)/
+  );
+  assert.deepEqual(state.answers, {}, "a refusal settles nothing");
+
+  accept(
+    state,
+    handBack(state, () => "reported"),
+    PHASES,
+    REGISTRY
+  );
+  assert.deepEqual(state.answers, { 1: "reported" });
+});
+
+// What a verb MEANS is the phase's to word, but `reported` reads differently where the
+// case could still have been handed on. An entry offering `cleared` and no `ask` has had
+// its way out declined, which is a different sentence from the same verb chosen freely.
+test("reporting reads as the last resort only where clearing was the way out", () => {
+  const dir = tmp();
+  const skipSpawn = (r) => {
+    r.state.run = { skip: ["summary"], sca: false, sweep: false };
+    return r;
+  };
+  const offered = (verbs) => {
+    const fresh = skipSpawn(review(dir, { sweep: false, findings: false }));
+    fresh.state.manual[0].settleVerbs = verbs;
+    issue(fresh.state, fresh.stateFile, PHASES, REGISTRY);
+    const e = JSON.parse(fs.readFileSync(fresh.state.review, "utf8"))
+      .entries[0];
+    return Object.fromEntries(e.answers.map((a) => [a.label, a.description]));
+  };
+  assert.match(
+    offered(["reported", "cleared"]).reported,
+    /could not be cleared/,
+    "clearing was on offer and was not taken"
+  );
+  assert.match(
+    offered(["reported", "cleared", "ask"]).reported,
+    /should be reported/,
+    "a case that could still have been handed on"
+  );
+  assert.match(
+    offered(["reported", "ask"]).reported,
+    /should be reported/,
+    "keyed on `cleared`, not on the absence of `ask`"
+  );
+  // A finding narrows nothing, so it is worded by its own phase and never picks this up.
+  const findings = skipSpawn(
+    review(dir, { code: false, questions: false, sweep: false })
+  );
+  issue(findings.state, findings.stateFile, PHASES, REGISTRY);
+  const audit = JSON.parse(fs.readFileSync(findings.state.review, "utf8"))
+    .entries[0];
+  assert.deepEqual(
+    audit.answers.map((a) => a.label),
+    ["reported", "withdrawn"]
+  );
+  assert.match(audit.answers[0].description, /claim holds/);
 });
 
 // A phase is issued when it has WORK - steps, or items. Neither, and it is skipped, which
@@ -229,7 +328,7 @@ test("a wrong hand-back is refused, and changes nothing", () => {
   );
   assert.throws(
     () => accept(state, wrongVerb, PHASES, REGISTRY),
-    /this pass does not accept \(expected one of: reported, withdrawn\)/
+    /this entry does not accept \(expected one of: reported, withdrawn\)/
   );
 
   // `base` is the linter's own value, so nothing checks it against anything else - only
