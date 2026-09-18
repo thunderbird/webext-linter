@@ -698,6 +698,7 @@ test("every escalating check lands in the section its reader implies", async () 
       "experiment-unknown-api",
       "minimize-web-accessible-resources",
       "missing-english-localization",
+      "privacy-policy",
       "remote-eval",
       "remote-resources",
       "strict-min-version-api",
@@ -709,7 +710,6 @@ test("every escalating check lands in the section its reader implies", async () 
     "manual-review": [
       "experiment-manual-review",
       "native-messaging",
-      "privacy-policy",
       "trademark-thunderbird-name",
       "undeclared-build-source",
       "vendored-remote-resources",

@@ -795,8 +795,11 @@ deterministic-phase:
   response: |-
     Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
 
-# Preflight -> manual review: data sent to a hardcoded remote host means the
-# listing must carry a privacy policy, which is not part of the package.
+# Preflight -> screened, then manual review: data sent to a hardcoded remote host
+# means the listing must carry a privacy policy, which is not part of the package. The
+# two readers are asked two DIFFERENT questions - whether the transmission is really
+# the developer's choice, which the package answers, and whether the listing discloses
+# it, which only a person can reach - so an agent screens and a reviewer decides.
 - title: Remote data transmission needs a privacy policy
   severity: hold-or-error
   check: privacy-policy
@@ -813,6 +816,17 @@ deterministic-phase:
 
     [1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
     [2]: https://www.mozilla.org/en-US/privacy/
+  # The agent screens the premise; it cannot reach the listing, so it cannot settle the
+  # case - which is why it is offered no way to report one.
+  settle-verbs: [cleared, ask]
+  instructions-for-llm: |-
+    The location below sends data to a remote host this add-on names itself. Confirm
+    both halves of that against the package: that the destination is fixed in the
+    shipped code or manifest rather than read from something the user entered, and
+    that anything about the user or their use of the add-on travels to it. A request
+    the user addressed themselves, and one that carries nothing of theirs, are neither
+    of them this case. Whether the listing discloses any of it is not visible from the
+    package and is not what you are being asked.
   instructions-for-human: |-
     This add-on transmits data to one or more remote servers the developer chose -
     fixed in the add-on, not entered by the user. Confirm the ATN listing carries

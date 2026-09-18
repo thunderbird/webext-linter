@@ -80,20 +80,24 @@ test("a result goes where its check's own cases go", () => {
     result("cleartext-transmission", "sync.js", 12, "posts over http://"),
   ]);
   assert.deepEqual(applied, [
-    "privacy-policy (providers/Gravatar.js:23) -> manual-review",
+    "privacy-policy (providers/Gravatar.js:23) -> code-review",
     "data-exfiltration (bg.js:40) -> code-review",
     "cleartext-transmission (sync.js:12) -> finding",
   ]);
 
-  // Only a reviewer can settle this check's cases, so a swept one is a question too.
-  const question = manual.find((m) => m.ruleId === "privacy-policy");
-  assert.equal(question.section, "manual-review");
-  assert.equal(question.extended, true);
+  // This check asks its two readers two different questions, so a swept case is screened
+  // first, exactly as a detected one is. Both wordings ride on the item: the agent reads
+  // one, and the reviewer whatever survives reads the other.
+  const screened = manual.find((m) => m.ruleId === "privacy-policy");
+  assert.equal(screened.section, "code-review");
+  assert.equal(screened.extended, true);
   assert.deepEqual(
-    [question.file, question.loc.line],
+    [screened.file, screened.loc.line],
     ["providers/Gravatar.js", 23]
   );
-  assert.match(question.instructions, /privacy policy/i);
+  assert.match(screened.instructions, /privacy policy/i);
+  assert.match(screened.llmInstructions, /fixed in the\s+shipped code/);
+  assert.deepEqual(screened.settleVerbs, ["cleared", "ask"]);
 
   // This one escalates to code review, so a swept case asks the SAME question a detected
   // one asks - the check's own `instructions`, never the text the sweep agent was sent.

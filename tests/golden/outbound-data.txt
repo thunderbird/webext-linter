@@ -19,7 +19,21 @@ Suggested verdict: warning
 Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
  - manifest.json:5 - nativeMessaging
 
-2) Missing English localization: This add-on ships no English localization, so
+2) Remote data transmission needs a privacy policy: This add-on transmits data
+   to one or more remote servers the developer chose - fixed in the add-on, not
+   entered by the user. Confirm the ATN listing carries a privacy policy that
+   discloses what data is collected and why. The privacy policy must be pasted
+   into the ATN field directly (links to remotely hosted policies are not
+   allowed).
+Suggested verdict: hold
+Suggested response: Please add a privacy policy to this add-on that details which user data is being sent and to what services. The critical things to describe in the policy are how your extension collects, uses, stores, shares or discloses information about people. If your add-on makes it apparent to websites that it is installed, this must also be mentioned. The policy should be about the extension only, not a copy of the website’s privacy policy. It should also be the actual text, as opposed to a link to a privacy policy on a website. The privacy policy can be added in the add-on settings under "Manage Authors & License" on addons.thunderbird.net. For more information, please check our Review Policies [1], and Mozilla’s own privacy policy [2] as an example.
+
+[1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
+[2]: https://www.mozilla.org/en-US/privacy/
+ - background.js:4 - api.example.com
+ - background.js:7 - metrics.example.com
+
+3) Missing English localization: This add-on ships no English localization, so
    user-facing text may be hardcoded in another language. Review its strings by
    hand and confirm if an English localization is provided.
 Suggested verdict: warning
@@ -27,7 +41,7 @@ Suggested response: Please include an English localization. English serves as th
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - manifest.json
 
-3) User-data exfiltration: The following code locations send data to a remote
+4) User-data exfiltration: The following code locations send data to a remote
    server. User data - message content, attachments, contacts, credentials - may
    be transmitted only if the user actively enabled it: by entering the
    destination URL or credentials on an options page that states what is sent,
@@ -45,21 +59,7 @@ Suggested response: The following code location(s) send user data to a remote se
 
 Continue manual review for the following checks:
 
-1) Remote data transmission needs a privacy policy: This add-on transmits data
-   to one or more remote servers the developer chose - fixed in the add-on, not
-   entered by the user. Confirm the ATN listing carries a privacy policy that
-   discloses what data is collected and why. The privacy policy must be pasted
-   into the ATN field directly (links to remotely hosted policies are not
-   allowed).
-Suggested verdict: hold
-Suggested response: Please add a privacy policy to this add-on that details which user data is being sent and to what services. The critical things to describe in the policy are how your extension collects, uses, stores, shares or discloses information about people. If your add-on makes it apparent to websites that it is installed, this must also be mentioned. The policy should be about the extension only, not a copy of the website’s privacy policy. It should also be the actual text, as opposed to a link to a privacy policy on a website. The privacy policy can be added in the add-on settings under "Manage Authors & License" on addons.thunderbird.net. For more information, please check our Review Policies [1], and Mozilla’s own privacy policy [2] as an example.
-
-[1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
-[2]: https://www.mozilla.org/en-US/privacy/
- - background.js:4 - api.example.com
- - background.js:7 - metrics.example.com
-
-2) Native messaging needs disclosure: This add-on requests the "nativeMessaging"
+1) Native messaging needs disclosure: This add-on requests the "nativeMessaging"
    permission. Confirm the add-on listing page on ATN discloses what information
    is exchanged with the local app and that it complies with the No Surprises
    policy.
@@ -205,5 +205,5 @@ Because the original project is still active, your submission does not meet thes
 ── Summary ──
 
 1 error(s), 0 hold, 0 warning(s), 0 info,
-4 extended code review item(s), 3 extended manual review item(s),
+6 extended code review item(s), 1 extended manual review item(s),
 8 standard code review item(s), 10 standard manual review item(s)

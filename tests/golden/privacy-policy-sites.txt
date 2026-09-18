@@ -5,34 +5,6 @@ The automated review did not find any issues.
 
 Continue manual review for the following checks:
 
-1) Missing English localization: This add-on ships no English localization, so
-   user-facing text may be hardcoded in another language. Review its strings by
-   hand and confirm if an English localization is provided.
-Suggested verdict: warning
-Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
-An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
- - manifest.json
-
-2) User-data exfiltration: The following code locations send data to a remote
-   server. User data - message content, attachments, contacts, credentials - may
-   be transmitted only if the user actively enabled it: by entering the
-   destination URL or credentials on an options page that states what is sent,
-   or through an explicit off-by-default opt-in for a hard-coded URL.
-   Thunderbird has no built-in data-collection consent prompt, so there is no
-   implicit consent to rely on. The add-on's own options page, if it has one, is
-   where such an opt-in would live. Confirm for each location that consent of
-   that kind exists.
-Suggested verdict: error
-Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
- - background.js:5 - fetch() "https://api.example.com/one"
- - background.js:6 - fetch() "https://api.example.com/two"
- - background.js:9 - fetch() "https://logs.example.net/x"
- - background.js:15 - fetch() `https://${server}/api`
-
-── Extended Manual Review ──
-
-Continue manual review for the following checks:
-
 1) Remote data transmission needs a privacy policy: This add-on transmits data
    to one or more remote servers the developer chose - fixed in the add-on, not
    entered by the user. Confirm the ATN listing carries a privacy policy that
@@ -47,6 +19,30 @@ Suggested response: Please add a privacy policy to this add-on that details whic
  - background.js:5 - api.example.com (+1 elsewhere)
  - background.js:9 - logs.example.net
  - background.js:15 - a remote server - host assembled at run time
+
+2) Missing English localization: This add-on ships no English localization, so
+   user-facing text may be hardcoded in another language. Review its strings by
+   hand and confirm if an English localization is provided.
+Suggested verdict: warning
+Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
+An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
+ - manifest.json
+
+3) User-data exfiltration: The following code locations send data to a remote
+   server. User data - message content, attachments, contacts, credentials - may
+   be transmitted only if the user actively enabled it: by entering the
+   destination URL or credentials on an options page that states what is sent,
+   or through an explicit off-by-default opt-in for a hard-coded URL.
+   Thunderbird has no built-in data-collection consent prompt, so there is no
+   implicit consent to rely on. The add-on's own options page, if it has one, is
+   where such an opt-in would live. Confirm for each location that consent of
+   that kind exists.
+Suggested verdict: error
+Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
+ - background.js:5 - fetch() "https://api.example.com/one"
+ - background.js:6 - fetch() "https://api.example.com/two"
+ - background.js:9 - fetch() "https://logs.example.net/x"
+ - background.js:15 - fetch() `https://${server}/api`
 
 ── Standard Code Review ──
 
@@ -187,5 +183,5 @@ Because the original project is still active, your submission does not meet thes
 ── Summary ──
 
 0 error(s), 0 hold, 0 warning(s), 0 info,
-5 extended code review item(s), 4 extended manual review item(s),
+9 extended code review item(s), 0 extended manual review item(s),
 8 standard code review item(s), 10 standard manual review item(s)
