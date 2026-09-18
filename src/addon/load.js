@@ -3,6 +3,12 @@
 // manifest. Keeping the whole add-on in memory (paths -> Buffer) lets every
 // check read files without caring how the add-on was packaged.
 //
+// A packed archive is read exactly once, by being extracted to disk (extractZip)
+// and then walked back like any already-unpacked submission (readDir) - never held
+// as a second, in-memory-only copy alongside the one on disk. That destination is
+// the caller's to choose (loadAddon's `extractTo`): the review names it once, in
+// meta.xpiRoot, and hands the SAME folder to the reviewer and to this loader.
+//
 // It also PARTITIONS a submitted SCA archive into the two artifacts a source-code
 // review reads. loadScaAddon takes the review-source subtree (--sca-source);
 // selectScaBuildFiles takes its COMPLEMENT - the archive minus that subtree, minus
@@ -13,16 +19,17 @@
 // "load" in loadScaAddon, neither half reads the disk again.
 //
 // Belongs here: unpacking the submission into the Addon model (files map +
-// manifest parse + manifestError), the SCA archive partition above, the Manifest
-// typedef, and the load-time path safety guards. Loading/parsing the package only
-// (the tool never writes back).
+// manifest parse + manifestError), extracting a packed one to disk first, the SCA
+// archive partition above, the Manifest typedef, and the load-time path safety
+// guards.
 //
 // Does NOT belong here: reviewing the add-on - all verdicts live in the checks
 // (src/checks/*). Which of the build candidates the build actually RUNS is a
 // collection policy, seeded from package.json (-> src/build/corpus.js
 // selectBuildCorpus). Enumerating which JS sources to scan is src/addon/sources.js.
 // Parsing CSS/HTML/CSP content is src/scan/*. Schema files load via
-// src/schema/load.js.
+// src/schema/load.js. Choosing a non-colliding destination is
+// src/util/dest.js, shared with the SCA source archive.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -33,6 +40,7 @@ import { buildManifestLoc } from "./manifest-loc.js";
 import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
 import { displayLine } from "../util/text.js";
 import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
+import { extractionDestination } from "../util/dest.js";
 
 /**
  * @typedef {object} GeckoSettings
@@ -126,11 +134,12 @@ import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
  * @property {string[]} [skipped]  Ready-to-narrate notices for entries skipped at
  *   load (a non-node_modules symlink); empty when none. A DIRECTORY submission is the
  *   only source: it describes how the reviewer's tree is laid out rather than what the
- *   developer packaged, which is why it is narrated and not reported. An archive names
- *   nothing here - a name readZip will not take refuses the whole archive instead.
- *   The loader collects them; the pipeline narrates them under "Reading add-on",
- *   so a pre-banner sizing load prints nothing before the Setup banner. Set by
- *   loadAddon only.
+ *   developer packaged, which is why it is narrated and not reported. A packed archive
+ *   names nothing here either - it is extracted with no symlink of its own (extractZip
+ *   writes bytes, never a link), and a name extractZip will not take refuses the whole
+ *   archive instead. The loader collects them; the pipeline narrates them under
+ *   "Reading add-on", so a pre-banner sizing load prints nothing before the Setup
+ *   banner. Set by loadAddon only.
  * @property {?Manifest} manifest  Parsed; null if missing/invalid.
  * @property {string} manifestText  Raw manifest.json text ("" if none), lifted off
  *   the corpus so checks read it here, not via files.get("manifest.json").
@@ -142,17 +151,30 @@ import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
 /**
  * @param {string} source  Path to an .xpi/.zip file or an unpacked add-on
  *   directory.
+ * @param {string} [extractTo]  Where to extract `source` if it is a packed file;
+ *   ignored if it is already a directory. Defaults to a fresh `<source>.extracted`
+ *   (src/util/dest.js) when omitted - callers that care where it landed (the
+ *   review, so it can hand the same folder to a reviewer) pass their own.
  * @returns {Addon}
  */
-export function loadAddon(source) {
+export function loadAddon(source, extractTo) {
   const resolved = path.resolve(source);
   if (!fs.existsSync(resolved)) {
     throw new Error(`Add-on not found: ${resolved}`);
   }
   const stat = fs.statSync(resolved);
-  const { files, nodeModules, archives, skipped } = stat.isDirectory()
-    ? readDir(resolved)
-    : readZip(resolved);
+  let files, nodeModules, archives, skipped;
+  if (stat.isDirectory()) {
+    ({ files, nodeModules, archives, skipped } = readDir(resolved));
+  } else {
+    const dest = extractTo ?? extractionDestination(`${resolved}.extracted`);
+    // node_modules is the one thing extractZip will not put on disk, so it is the
+    // one thing the read-back below cannot rediscover there - everything else
+    // (files, archives, symlink notices) is real on disk after extraction and is
+    // read the same way an already-unpacked submission's is.
+    ({ nodeModules } = extractZip(resolved, dest));
+    ({ files, archives, skipped } = readDir(dest));
+  }
   const addon = assembleAddon(files);
   addon.nodeModules = nodeModules;
   addon.archives = archives;
@@ -400,14 +422,14 @@ export function selectScaBuildFiles(archive, scaSource, scaRoot, scaExpSource) {
   };
 }
 
-/** @returns {Error} The add-on-too-large error, shared by readZip and readDir. */
+/** @returns {Error} The add-on-too-large error, shared by extractZip and readDir. */
 function addonTooLargeError() {
   const mb = ADDON_MAX_UNPACKED_BYTES / (1024 * 1024);
   return new Error(`Add-on unpacked size exceeds the ${mb} MB limit`);
 }
 
 /**
- * One sentence for an archive we cannot read, shared by readZip's three refusals: the
+ * One sentence for an archive we cannot read, shared by extractZip's three refusals: the
  * container will not open, an entry name is not one we take, an entry will not inflate.
  * They are one answer because they have one consequence - no review of this submission can
  * be complete - and because the alternative is AdmZip's own wording, which either names its
@@ -424,11 +446,28 @@ function unreadableArchiveError(zipPath) {
 }
 
 /**
+ * Extract a packed archive to `destDir`, entry by entry, applying the same refusals
+ * a review of it has always applied - only now the validated bytes land on disk
+ * instead of in a Map.
+ *
+ * Never AdmZip's own extractAllTo/extractEntryTo: those replay the archive's OWN
+ * claims about each entry (its stored path, its stored Unix mode), which is exactly
+ * what isSafeAddonPath exists to refuse rather than trust - and a mode claiming
+ * "symlink" would have AdmZip create a real one on disk from bytes we did not
+ * write. Every entry here is read with getData() and written with writeFileSync, so
+ * what lands on disk is never anything other than the file it claims to be.
+ *
+ * destDir is always this call's own fresh destination (the caller computed it, or
+ * defaulted it, right before calling this), so a refusal removes it rather than
+ * leaving a partial extraction beside the submission for a reviewer to mistake for
+ * the whole thing.
  * @param {string} zipPath  Path to the .xpi/.zip archive.
- * @returns {{files: Map<string, Buffer>, nodeModules: string[], archives: string[],
- *   skipped: string[]}}
+ * @param {string} destDir  Where to write it. Created if missing.
+ * @returns {{nodeModules: string[]}}  Node_modules directories skipped, never
+ *   written - the one fact a later read of destDir cannot recover, because nothing
+ *   is there to find.
  */
-function readZip(zipPath) {
+function extractZip(zipPath, destDir) {
   let zip;
   try {
     zip = new AdmZip(zipPath);
@@ -436,65 +475,64 @@ function readZip(zipPath) {
     // The container itself: truncated, or not a zip at all.
     throw unreadableArchiveError(zipPath);
   }
-  const files = new Map();
   const nodeModules = new Set();
-  const archives = new Set();
-  const skipped = [];
   let unpacked = 0;
-  for (const entry of zip.getEntries()) {
-    if (entry.isDirectory) {
-      continue;
+  // Created up front, not only by the first entry's own mkdirSync: an archive with no
+  // file entries at all (only directories, or only a node_modules subtree) would
+  // otherwise leave nothing here for readDir to walk.
+  fs.mkdirSync(destDir, { recursive: true });
+  try {
+    for (const entry of zip.getEntries()) {
+      if (entry.isDirectory) {
+        continue;
+      }
+      const name = entryKey(entry.entryName);
+      // An entry name we will not take is an archive we cannot review: every file in the
+      // package has to be accounted for, so passing over the ENTRY would leave a review
+      // silently covering less than the submission. Refused rather than repaired -
+      // rewriting a name can invent a directory the archive does not have, and two
+      // spellings of one path would collide on disk, letting entry order decide which
+      // bytes survive.
+      if (!isSafeAddonPath(name)) {
+        throw unreadableArchiveError(zipPath);
+      }
+      // Never decompress an installed-dependency tree: record the outer node_modules
+      // directory and skip BEFORE getData(), so its contents never enter memory or
+      // reach disk.
+      const segs = name.split("/");
+      const nm = segs.indexOf("node_modules");
+      if (nm !== -1 && nm < segs.length - 1) {
+        nodeModules.add(segs.slice(0, nm + 1).join("/"));
+        continue;
+      }
+      // Bound decompression against a zip bomb: check the declared size before
+      // getData() so a lying-huge header aborts before inflating, then the actual
+      // inflated length in case a crafted header under-reports it.
+      if (unpacked + entry.header.size > ADDON_MAX_UNPACKED_BYTES) {
+        throw addonTooLargeError();
+      }
+      let data;
+      try {
+        data = entry.getData();
+      } catch {
+        // The container opened and the name was fine, but this entry does not inflate: a
+        // failed CRC, a damaged stream. The bytes are part of the submission, so a review
+        // without them is not a review of it.
+        throw unreadableArchiveError(zipPath);
+      }
+      unpacked += data.length;
+      if (unpacked > ADDON_MAX_UNPACKED_BYTES) {
+        throw addonTooLargeError();
+      }
+      const dest = path.join(destDir, ...name.split("/"));
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, data);
     }
-    const name = entryKey(entry.entryName);
-    // An entry name we will not take is an archive we cannot review: every file in the
-    // package has to be accounted for, so passing over the ENTRY would leave a review
-    // silently covering less than the submission. Refused rather than repaired - rewriting
-    // a name can invent a directory the archive does not have, and two spellings of one
-    // path would collide in `files`, letting entry order decide which bytes are reviewed.
-    if (!isSafeAddonPath(name)) {
-      throw unreadableArchiveError(zipPath);
-    }
-    // Never decompress an installed-dependency tree: record the outer node_modules
-    // directory and skip BEFORE getData(), so its contents never enter memory.
-    const segs = name.split("/");
-    const nm = segs.indexOf("node_modules");
-    if (nm !== -1 && nm < segs.length - 1) {
-      nodeModules.add(segs.slice(0, nm + 1).join("/"));
-      continue;
-    }
-    // A committed binary archive is recorded (the committed-build-artifact check reads
-    // the list) but its bytes are still kept - unlike node_modules we do not skip, since
-    // a shipped .xpi/.zip resource must remain readable for the normal XPI review.
-    if (ARCHIVE_EXTENSIONS.has(extname(name))) {
-      archives.add(name);
-    }
-    // Bound decompression against a zip bomb: check the declared size before
-    // getData() so a lying-huge header aborts before inflating, then the actual
-    // inflated length in case a crafted header under-reports it.
-    if (unpacked + entry.header.size > ADDON_MAX_UNPACKED_BYTES) {
-      throw addonTooLargeError();
-    }
-    let data;
-    try {
-      data = entry.getData();
-    } catch {
-      // The container opened and the name was fine, but this entry does not inflate: a
-      // failed CRC, a damaged stream. The bytes are part of the submission, so a review
-      // without them is not a review of it.
-      throw unreadableArchiveError(zipPath);
-    }
-    unpacked += data.length;
-    if (unpacked > ADDON_MAX_UNPACKED_BYTES) {
-      throw addonTooLargeError();
-    }
-    files.set(name, data);
+  } catch (err) {
+    fs.rmSync(destDir, { recursive: true, force: true });
+    throw err;
   }
-  return {
-    files,
-    nodeModules: [...nodeModules],
-    archives: [...archives],
-    skipped,
-  };
+  return { nodeModules: [...nodeModules] };
 }
 
 /**

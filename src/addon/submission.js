@@ -6,17 +6,23 @@
 // - which file is the add-on, which is the source - and the prompt hands the rest to
 // whoever can open the archive.
 //
-// Belongs here: locating those two files, and refusing a folder that is not that pair.
+// Belongs here: locating those two files, refusing a folder that is not that pair, and
+// naming where the source archive's own extraction goes - path math on the same terms as
+// the other two, not the extracting itself, which stays the reader's (this tool cannot
+// open every format the source arrives in; see src/addon/load.js for the built .xpi,
+// which it can, and does, unpack itself).
 //
-// Does NOT belong here: reading either file (src/addon/load.js), the prompt's wording
-// (assets/registry.yaml), how it is printed (src/report/format.js), or the NAME of the
-// flag that asked - src/cli.js owns the options table, so it says which flag was wrong and
-// this says what was found. A caller with no command line gets an answer about the folder.
+// Does NOT belong here: reading either file (src/addon/load.js), extracting the source
+// archive, the prompt's wording (assets/registry.yaml), how it is printed
+// (src/report/format.js), or the NAME of the flag that asked - src/cli.js owns the
+// options table, so it says which flag was wrong and this says what was found. A caller
+// with no command line gets an answer about the folder.
 
 import fs from "node:fs";
 import path from "node:path";
 
 import { extname } from "../util/files.js";
+import { extractionDestination } from "../util/dest.js";
 
 /** The built add-on's extension - the one archive in the folder that is not the source. */
 const ADDON_EXTENSION = ".xpi";
@@ -59,7 +65,7 @@ const SOURCE_ARCHIVE_EXTENSIONS = new Set([
  * them, and a prompt built on a guess would send its reader to review a file nobody
  * submitted.
  * @param {string} folder
- * @returns {{folder: string, xpi: string, source: string}}
+ * @returns {{folder: string, xpi: string, source: string, extracted: string}}
  */
 export function scaSubmission(folder) {
   const root = path.resolve(folder);
@@ -89,9 +95,14 @@ export function scaSubmission(folder) {
         `source archive(s) (${found(sources)}).`
     );
   }
+  const source = path.join(root, sources[0]);
   return {
     folder: root,
     xpi: path.join(root, addons[0]),
-    source: path.join(root, sources[0]),
+    source,
+    // Where the reader is asked to extract `source` - named on the same terms as the XPI
+    // side (src/util/dest.js), so a submission reviewed twice gets a fresh folder rather
+    // than a second extraction silently landing in the first one's.
+    extracted: `${extractionDestination(`${source}.extracted`)}${path.sep}`,
   };
 }

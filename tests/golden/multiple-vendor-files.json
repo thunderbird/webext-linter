@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/multiple-vendor-files",
+    "xpiRoot": "<root>/tests/addons/multiple-vendor-files/",
+    "addonId": "Multiple vendor files",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

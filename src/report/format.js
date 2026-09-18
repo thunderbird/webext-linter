@@ -29,7 +29,6 @@ import {
 import { orderReview, hasLocus, manualBody, collapseBody } from "./order.js";
 import { artifactLabel } from "./artifact.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
-import path from "node:path";
 import { displayLine, displayPath, wrapText } from "../util/text.js";
 
 /** @param {string} s @returns {string} */
@@ -65,7 +64,16 @@ const SEV_COLOR = {
  * @property {string} action
  * @property {string} xpi  The shipped add-on - the artifact users install - in EVERY
  *   review, resolved. Named for the ARTIFACT, never for its role: a field meaning "the
- *   review target" names a different one in each mode, and no reader can tell which.
+ *   review target" names a different one in each mode, and no reader can tell which. Kept
+ *   for the JSON report; neither text renderer prints it as its own row any more (see
+ *   xpiRoot).
+ * @property {string} xpiRoot  Where that artifact IS, readable, on disk - the folder this
+ *   run extracted it into (src/addon/load.js), or the submission itself when it already
+ *   was a folder. Always set, for every review: unlike summaryFile/buildFile below, this
+ *   is not conditional on how the review is run.
+ * @property {string} addonId  The add-on's own id (browser_specific_settings.gecko.id,
+ *   or its name, or "addon" - src/report/items.js addonIdOf), for a reader who wants to
+ *   know WHICH add-on without opening the package. Always set, alongside xpiRoot.
  * @property {string} [scaRoot]  SCA review: the source root the run was given
  *   (--sca-root), resolved.
  * @property {string} [scaSource]  SCA review: the add-on's own code root within that
@@ -86,8 +94,6 @@ const SEV_COLOR = {
  *   file's name. Named by this tool, written and read by neither.
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
  *   in a source code review, where the reviewer reproduces the build.
- * @property {string} [extractedDir]  The same, for where the shipped package is unpacked
- *   so the reviewer can read it while they answer.
  * @property {boolean} [prompting]  This run handed out a PHASE of the review loop, so
  *   its whole output is that prompt: the report is not printed beside it, and neither is
  *   the header or the Summary.
@@ -356,6 +362,7 @@ const SUBMISSION_VALUES = [
   ["XPI", "xpi"],
   ["SOURCE_ARCHIVE", "source"],
   ["FOLDER", "folder"],
+  ["SCA_ROOT", "extracted"],
 ];
 
 /**
@@ -386,11 +393,12 @@ function valueLines(entries) {
  * into an SCA review, the values it works from, and the flags to run it with.
  *
  * Three parts on purpose. The VALUES are `NAME` with its value beneath it, never wrapped,
- * so a reader takes a path by looking up a name rather than by parsing a sentence. The
- * STEPS are prose, and they name those values - and the ones the reader works out,
- * <SCA_ROOT>, <SCA_SOURCE>, <SCA_EXP_SOURCE> - instead of carrying paths themselves. The
- * FLAGS are the finished command, one flag per line, filled into the step that says to
- * run it.
+ * so a reader takes a path by looking up a name rather than by parsing a sentence -
+ * SCA_ROOT among them: this tool cannot open a source archive itself, but it can still
+ * name where one should land, the same way it names FOLDER or SOURCE_ARCHIVE. The STEPS
+ * are prose, and they name those given values - and the ones the reader still has to work
+ * out, <SCA_SOURCE>, <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS
+ * are the finished command, one flag per line, filled into the step that says to run it.
  *
  * What this run was given decides what is printed: a step marked `run: experiments` is
  * dropped unless Experiments are allowed, and the surviving steps are numbered 1..N here,
@@ -401,7 +409,8 @@ function valueLines(entries) {
  * every other section here, this one describes work still to do rather than work done.
  * @param {{intro: string, outcome: {run: ?string, text: string}[]}} prompt  From
  *   registry.llmScaReviewPrompt().
- * @param {{folder: string, xpi: string, source: string}} submission  From scaSubmission().
+ * @param {{folder: string, xpi: string, source: string, extracted: string}} submission
+ *   From scaSubmission().
  * @param {{flags: string[], experiments: boolean}} review  What the review is to be run
  *   as, composed by the front-end (src/cli.js), which owns the flag names and holds the
  *   parser's answers: the finished flag lines, and whether Experiments are allowed.
@@ -507,13 +516,15 @@ export function packageLines(meta, schemaCache) {
 export function headerLines(meta) {
   // The pipeline prints this section AFTER runChecks, so every value here names
   // something the review has already read.
-  const values = [["XPI", meta.xpi]];
-  // Where the package is unpacked for the reviewer to read while they answer. Named on
-  // the same terms as the two files below: this tool writes nothing there, the prompt's
-  // reader does, and naming it here is what puts it in front of the reviewer.
-  if (meta.extractedDir) {
-    values.push(["XPI (extracted)", meta.extractedDir]);
-  }
+  //
+  // ADDON_ID and XPI_ROOT, not XPI: which add-on, and where it can be read on disk, are
+  // more useful to a reader than the submitted file's own path - and XPI_ROOT is where
+  // this run actually put it (extracted, or the submission's own folder), so a bare XPI
+  // row would name a file nothing here still treats as the readable copy.
+  const values = [
+    ["ADDON_ID", meta.addonId],
+    ["XPI_ROOT", meta.xpiRoot],
+  ];
   if (meta.scaRoot) {
     values.push(["SCA_ROOT", meta.scaRoot], ["SCA_SOURCE", meta.scaSource]);
   }
@@ -569,16 +580,19 @@ function schemaLine(meta) {
  * Each row carries its own link text rather than deriving one. A path the reviewer supplied
  * reads well as its own file name; one this tool named is a timestamped string nobody wants
  * to read, and what matters about it is what it IS.
+ *
+ * ADDON_ID is the one row with no link: it names which add-on, not a location, so there is
+ * nothing here for a client to open.
  * @param {ReviewMeta} meta
  * @returns {string[]}
  */
 export function detailLinkLines(meta) {
   const rows = [];
-  if (meta.xpi) {
-    rows.push(["XPI", path.basename(meta.xpi), meta.xpi]);
+  if (meta.addonId) {
+    rows.push(["ADDON_ID", null, meta.addonId]);
   }
-  if (meta.extractedDir) {
-    rows.push(["XPI data", "extracted folder", meta.extractedDir]);
+  if (meta.xpiRoot) {
+    rows.push(["XPI_ROOT", "extracted addon", meta.xpiRoot]);
   }
   if (meta.scaRoot) {
     rows.push(
@@ -596,8 +610,10 @@ export function detailLinkLines(meta) {
     rows.push(["BUILD_PROCESS", "build.md", meta.buildFile]);
   }
   return [
-    ...rows.map(
-      ([name, text, target]) => `* ${name}: [${text}](${displayPath(target)})`
+    ...rows.map(([name, text, target]) =>
+      text === null
+        ? `* ${name}: ${displayLine(target)}`
+        : `* ${name}: [${text}](${displayPath(target)})`
     ),
     "",
     schemaLine(meta),

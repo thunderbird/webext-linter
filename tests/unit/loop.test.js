@@ -63,7 +63,11 @@ function review(
         findings: findings ? [finding(1, "a"), finding(2, "b")] : [],
         // What the Review Details block is built from - the artifacts this review is of,
         // which is the whole reason a phase hands that block over.
-        meta: { xpi: `${dir}/a.xpi`, extractedDir: `${dir}/a.extracted` },
+        meta: {
+          xpi: `${dir}/a.xpi`,
+          xpiRoot: `${dir}/a.xpi.extracted/`,
+          addonId: "a@example.com",
+        },
         mode: "xpi",
       },
       manual: [
@@ -249,24 +253,28 @@ test("reporting reads as the last resort only where clearing was the way out", (
 // A phase is issued when it has WORK - steps, or items. Neither, and it is skipped, which
 // is also what ends the loop: "no item is still open" would block forever on an item
 // routed to a phase this run never issues.
-test("setup is issued even when it starts nothing", () => {
+//
+// `setup`'s every step is now optional (summary/build/sweep, each gated by its own
+// marker) - the package itself is extracted by the linter before the review is ever
+// printed (src/addon/load.js), so `setup` carries no unconditional step any more. A run
+// that opts out of all three ends up with zero surviving steps, and is skipped like any
+// other phase with nothing to do.
+test("setup with nothing to spawn is skipped, not issued empty", () => {
   const dir = tmp();
   const { state, stateFile } = review(dir, { sweep: false });
-  // --llm-skip-summary on an XPI review with no sweep starts no agent at all. The phase
-  // is still issued: it also unpacks the package, which every review needs and no flag
-  // withholds.
+  // --llm-skip-summary on an XPI review with no sweep starts no agent at all, so setup
+  // has nothing left to do.
   state.run = { skip: ["summary"], sca: false, sweep: false };
   const out = issue(state, stateFile, PHASES, REGISTRY);
-  assert.equal(out.phase.name, "setup");
-  assert.equal(out.steps.length, 1, "the one step no marker withholds");
+  assert.equal(out.phase.name, "verify");
 });
 
 test("nothing to ask: the review settles after the last settle", () => {
   const dir = tmp();
   const { state, stateFile } = review(dir, { sweep: false });
   state.manual = state.manual.filter((m) => m.extended);
-  // skip:manual drops only the questions. Spawn is issued regardless - it unpacks the
-  // package - so what this pins is that `ask` is not, once it has nothing to put to
+  // skip:manual drops only the questions. setup is skipped too (nothing to spawn) - so
+  // what this pins is that `ask` is not issued either, once it has nothing to put to
   // anyone.
   state.run = { skip: ["manual", "summary"], sca: false, sweep: false };
   const seen = [];
@@ -287,7 +295,7 @@ test("nothing to ask: the review settles after the last settle", () => {
       REGISTRY
     );
   }
-  assert.deepEqual(seen, ["setup", "verify", "settle"]);
+  assert.deepEqual(seen, ["verify", "settle"]);
   assert.equal(issue(state, stateFile, PHASES, REGISTRY), null, "settled");
 });
 
@@ -644,9 +652,11 @@ test("every combination of the skips issues exactly the phases it should", () =>
     if (skip.includes("summary")) {
       state.paths.description = null;
     }
-    // `setup` always runs: it unpacks the package even when it starts no agent.
+    // `setup` runs only where it starts an agent: the package itself is no longer
+    // unpacked by a step here (the linter extracts it before the review is printed), so
+    // a run that skips the summary agent and does not sweep has nothing left to spawn.
     const expected = [
-      "setup",
+      ...(!skip.includes("summary") || sweeps ? ["setup"] : []),
       "verify",
       "settle",
       // The questions are the only thing `ask` is for.
@@ -666,8 +676,13 @@ test("every combination of the skips issues exactly the phases it should", () =>
       // against. The heading above it is the agent's to write, so it is not in here.
       assert.match(
         details,
-        /^\* XPI: \[/m,
+        /^\* ADDON_ID: /m,
         `${where}: the report hands it over`
+      );
+      assert.match(
+        details,
+        /^\* XPI_ROOT: \[/m,
+        `${where}: and where to read it`
       );
       assert.match(details, /^schema /m, `${where}: and says what against`);
     }
@@ -687,8 +702,8 @@ test("a case sent on with `ask` arrives as a question, worded and answerable", (
   const { state, stateFile } = review(dir, { sweep: false, findings: false });
   // Nothing for setup to start either, so `settle` is the phase in flight.
   state.run = { skip: ["summary"], sca: false, sweep: false };
-  // Spawn unpacks the package whatever else it does, so it is issued in every review;
-  // marked done here so this test starts where it means to.
+  // setup has nothing to spawn in this config and is never issued - marked done here
+  // anyway, so this test starts where it means to regardless.
   state.issued = ["setup"];
   assert.equal(issue(state, stateFile, PHASES, REGISTRY).phase.name, "settle");
   accept(

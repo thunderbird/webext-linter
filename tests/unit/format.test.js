@@ -9,6 +9,7 @@ import {
   loopPromptLines,
   formatJson,
   headerLines,
+  detailLinkLines,
   locusLabeler,
   locationLine,
 } from "../../src/report/format.js";
@@ -1435,6 +1436,24 @@ test("a step's paragraphs sit under its number, line breaks and all", () => {
   ]);
 });
 
+// The preamble is keyed on WHICH PASS this is, never on which phase it hands out. `setup`
+// used to be that pass's phase in every configuration (it always carried the unconditional
+// package-extraction step), so nothing pinned this independence directly - now a run that
+// starts no agent and does not sweep skips `setup` entirely, and the first phase an agent
+// ever sees can be `verify` instead. The preamble still has to print then: it is what tells
+// the agent it is reading pass one of the loop at all.
+test("the preamble prints on the first pass, whichever phase that pass hands out", () => {
+  const texts = { preamble: "P", frame: "F", handover: "H" };
+  const lines = loopPromptLines(
+    texts,
+    { name: "verify", intro: "" },
+    [],
+    {},
+    true
+  );
+  assert.ok(lines.includes("P"), "the preamble is missing");
+});
+
 // A registry text is authored as wrapped YAML, so its source line breaks must not survive
 // into the prompt - the bullet is re-wrapped to the report width, hanging-indented under
 // its marker like every other wrapped list in the report.
@@ -1466,6 +1485,9 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
     schemaBranch: "release-mv3",
     applicationVersion: "155.0",
     manifestVersion: 3,
+    xpi: "/x/a.xpi",
+    xpiRoot: "/x/a.xpi.extracted/",
+    addonId: "a@example.com",
   };
   const head = ["", "── Review Details ──", ""];
   const schema = [
@@ -1475,15 +1497,16 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
   assert.deepEqual(
     headerLines({
       ...base,
-      xpi: "/x/a.xpi",
       scaRoot: "/x/src",
       scaSource: "/x/src/addon",
       scaExpSource: "/x/src/addon/experiment-api",
     }),
     [
       ...head,
-      "  XPI",
-      "    /x/a.xpi",
+      "  ADDON_ID",
+      "    a@example.com",
+      "  XPI_ROOT",
+      "    /x/a.xpi.extracted/",
       "  SCA_ROOT",
       "    /x/src",
       "  SCA_SOURCE",
@@ -1495,24 +1518,62 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
       ...schema,
     ]
   );
-  assert.deepEqual(headerLines({ ...base, xpi: "/x/a.xpi" }), [
+  assert.deepEqual(headerLines(base), [
     ...head,
-    "  XPI",
-    "    /x/a.xpi",
+    "  ADDON_ID",
+    "    a@example.com",
+    "  XPI_ROOT",
+    "    /x/a.xpi.extracted/",
     ...schema,
   ]);
   // This section names what was REVIEWED, and nothing about how it is being settled. A
   // run that hands out a phase prints no header at all - the phase that reads the add-on
   // prints the values it needs itself - so nothing here varies with a review flag.
   assert.deepEqual(
-    headerLines({ ...base, xpi: "/x/a.xpi", prompting: true }),
-    headerLines({ ...base, xpi: "/x/a.xpi" })
+    headerLines({ ...base, prompting: true }),
+    headerLines(base)
   );
   // The counts are the Summary's, which closes the report.
-  assert.ok(
-    !headerLines({ ...base, xpi: "/x/a.xpi" }).some((l) =>
-      l.includes("error(s)")
-    )
+  assert.ok(!headerLines(base).some((l) => l.includes("error(s)")));
+});
+
+// The LLM-facing twin of the block above: links a client can open, not a terminal's
+// aligned paths. ADDON_ID names WHICH add-on rather than a location, so it is the one row
+// with no link at all - text on its own line, like every other value here.
+test("detailLinkLines links every location but ADDON_ID", () => {
+  const base = {
+    schemaBranch: "release-mv3",
+    applicationVersion: "155.0",
+    manifestVersion: 3,
+    addonId: "a@example.com",
+    xpiRoot: "/x/a.xpi.extracted/",
+  };
+  const lines = detailLinkLines({
+    ...base,
+    scaRoot: "/x/src",
+    scaSource: "/x/src/addon",
+    summaryFile: "/x/a.summary.md",
+    buildFile: "/x/a.build.md",
+  });
+  assert.deepEqual(lines, [
+    "* ADDON_ID: a@example.com",
+    "* XPI_ROOT: [extracted addon](/x/a.xpi.extracted/)",
+    "* SCA_ROOT: [source archive](/x/src)",
+    "* SCA_SOURCE: [add-on source](/x/src/addon)",
+    "* ADDON_DESCRIPTION: [summary.md](/x/a.summary.md)",
+    "* BUILD_PROCESS: [build.md](/x/a.build.md)",
+    "",
+    "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
+  ]);
+  // No ADDON_ID, no XPI_ROOT: an artifact-only meta with neither prints neither row - both
+  // are conditional like every other row here, not a fixed preamble.
+  assert.deepEqual(detailLinkLines(base).slice(0, 2), [
+    "* ADDON_ID: a@example.com",
+    "* XPI_ROOT: [extracted addon](/x/a.xpi.extracted/)",
+  ]);
+  assert.deepEqual(
+    detailLinkLines({ ...base, addonId: undefined }).slice(0, 1),
+    ["* XPI_ROOT: [extracted addon](/x/a.xpi.extracted/)"]
   );
 });
 

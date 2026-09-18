@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-overrides",
+    "xpiRoot": "<root>/tests/addons/experiment-overrides/",
+    "addonId": "Messages Grafter",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

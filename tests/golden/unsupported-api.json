@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/unsupported-api",
+    "xpiRoot": "<root>/tests/addons/unsupported-api/",
+    "addonId": "Restart Watcher",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

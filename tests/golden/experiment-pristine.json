@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-pristine",
+    "xpiRoot": "<root>/tests/addons/experiment-pristine/",
+    "addonId": "Demo User",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

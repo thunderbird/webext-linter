@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/message-display-scripts",
+    "xpiRoot": "<root>/tests/addons/message-display-scripts/",
+    "addonId": "Message display scripts",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

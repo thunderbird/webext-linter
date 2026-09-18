@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/background-module",
+    "xpiRoot": "<root>/tests/addons/background-module/",
+    "addonId": "Background Module Demo",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

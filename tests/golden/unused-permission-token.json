@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/unused-permission-token",
+    "xpiRoot": "<root>/tests/addons/unused-permission-token/",
+    "addonId": "Unused permission token",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

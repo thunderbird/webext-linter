@@ -222,7 +222,7 @@ function helpText(checkIds) {
   const sca = [
     [
       "--sca-root <folder>",
-      "The extracted source root (holds package.json/lock) - a folder, not a packed archive: this tool unpacks the submitted .xpi and nothing else, so extract the source yourself. Switches to SCA mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused). Always reviewed as SCA; when the XPI turns out to BE the submitted source, sca-not-required (info) says an XPI-only submission would have been enough.",
+      "The extracted source root (holds package.json/lock) - a folder, not a packed archive: unlike the submitted .xpi, which this tool extracts itself, a source archive comes in too many formats for this tool to open, so extract it yourself. Switches to SCA mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused). Always reviewed as SCA; when the XPI turns out to BE the submitted source, sca-not-required (info) says an XPI-only submission would have been enough.",
     ],
     [
       "--sca-source <path>",
@@ -360,12 +360,18 @@ function shellArg(value) {
  *
  * A flag given no value never reaches here - main() refuses one before any branch - so
  * the truth test below only skips the flags this run was not given.
+ *
+ * --sca-root prints the LITERAL destination this run already chose (submission.extracted,
+ * named on the same terms as the XPI's own extraction) - not a placeholder the reader
+ * works out, because there is nothing left to work out: the "Submission" block above names
+ * the same value under SCA_ROOT. --sca-source stays a placeholder; only its reader can
+ * open the archive and say where the add-on's own code sits inside it.
  * @param {Record<string, string|boolean>} values
- * @param {string} xpi  The built add-on's path, which the review takes as its positional.
+ * @param {{xpi: string, extracted: string}} submission  From scaSubmission().
  * @returns {{flags: string[], experiments: boolean}}
  */
-function reviewCommand(values, xpi) {
-  const flags = [`--llm-review ${shellArg(xpi)}`];
+function reviewCommand(values, submission) {
+  const flags = [`--llm-review ${shellArg(submission.xpi)}`];
   for (const [name, { type }] of Object.entries(OPTIONS)) {
     if (name === "llm-sca-review" || !values[name]) {
       continue;
@@ -374,7 +380,10 @@ function reviewCommand(values, xpi) {
       type === "string" ? `--${name} ${shellArg(values[name])}` : `--${name}`
     );
   }
-  flags.push("--sca-root <SCA_ROOT>", "--sca-source <SCA_SOURCE>");
+  flags.push(
+    `--sca-root ${shellArg(submission.extracted)}`,
+    "--sca-source <SCA_SOURCE>"
+  );
   const experiments = Boolean(values["allow-experiments"]);
   if (experiments) {
     flags.push("--sca-exp-source <SCA_EXP_SOURCE>");
@@ -727,7 +736,7 @@ export async function main(argv) {
     for (const line of scaPromptLines(
       registry.llmScaReviewPrompt(),
       submission,
-      reviewCommand(values, submission.xpi)
+      reviewCommand(values, submission)
     )) {
       report(line);
     }
@@ -800,10 +809,10 @@ export async function main(argv) {
   }
 
   // Every --sca-* flag names a FOLDER that is there. The root is the extracted source -
-  // this tool unpacks the submitted .xpi and nothing else, so extracting the source
-  // archive is the reviewer's, whatever format it came in - and the other two name
-  // directories inside it. Asked in root-first order, so the root's own validity is settled
-  // before anything is looked up inside it.
+  // extracting it is the reviewer's, whatever format it came in, unlike the submitted
+  // .xpi which this tool extracts itself - and the other two name directories inside it.
+  // Asked in root-first order, so the root's own validity is settled before anything is
+  // looked up inside it.
   //
   // Asked here rather than left to the loader because only one of the three fails loudly
   // there: a --sca-exp-source that names nothing is a WARNING, and the review then reads
@@ -828,8 +837,8 @@ export async function main(argv) {
     if (problem) {
       const what =
         flag === "sca-root" && !problem.escape
-          ? " This tool unpacks the submitted .xpi and nothing else - extract the source " +
-            "archive and point --sca-root at the folder it produced."
+          ? " This tool cannot open a source archive itself - extract it and point " +
+            "--sca-root at the folder it produced."
           : "";
       process.stderr.write(`${problem.text}${what}\n`);
       return 2;
@@ -1046,7 +1055,6 @@ async function runLoopPass(file, registry, format) {
       schemaCache: state.paths.schemaCache ?? "",
       description: state.paths.description ?? "",
       build: state.paths.build ?? "",
-      extracted: state.paths.extracted ?? "",
       details: reviewDetails(state),
       scaRoot: state.paths.scaRoot ?? "",
       package: state.paths.package,

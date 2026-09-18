@@ -40,6 +40,28 @@ test("the two files are found among whatever else the folder holds", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// SCA_ROOT is named on the same terms as the XPI's own extraction: beside the source
+// archive, after its own name, with a trailing separator since it names a directory.
+test("extracted names a fresh folder beside the source archive", () => {
+  const dir = folder(["addon.xpi", "source.tar.gz"]);
+  const s = scaSubmission(dir);
+  assert.equal(s.extracted, `${s.source}.extracted${path.sep}`);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A submission reviewed twice must not have its second extraction land in the first's -
+// the reader would find whatever the first left there, not the source they were just
+// asked to extract.
+test("extracted collides with a prior extraction, and gets a fresh name", () => {
+  const dir = folder(["addon.xpi", "source.tar.gz"]);
+  const s = scaSubmission(dir);
+  fs.mkdirSync(s.extracted);
+  const again = scaSubmission(dir);
+  assert.notEqual(again.extracted, s.extracted);
+  assert.ok(again.extracted.startsWith(s.extracted.replace(/\/$/, "")));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // An ATN download names the source archive whatever the developer uploaded, mangled: the
 // extension is read from the END of the basename, so a double-packed tar keeps its .gz.
 test("a mangled double-packed name is still the source archive", () => {

@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/missing-parent-permission",
+    "xpiRoot": "<root>/tests/addons/missing-parent-permission/",
+    "addonId": "Missing Parent Permission",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/update-url-bss",
+    "xpiRoot": "<root>/tests/addons/update-url-bss/",
+    "addonId": "Update URL (bss)",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

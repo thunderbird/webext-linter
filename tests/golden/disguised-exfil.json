@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/disguised-exfil",
+    "xpiRoot": "<root>/tests/addons/disguised-exfil/",
+    "addonId": "Disguised Exfil Demo",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

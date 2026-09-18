@@ -137,21 +137,20 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
 }
 
 /**
- * The five paths this run names, sharing one name and one moment:
+ * The four paths this run names, sharing one name and one moment:
  *
  * - `state`, the linter's own record of the review, and `review`, the file it hands the
  *   agent one phase at a time. Both in the system temp directory. They SHARE A STEM, which
  *   is what makes the pointer in the handed-back file checkable rather than trusted.
  * - `summary`, where a sub-agent writes the add-on description for the reviewer.
  * - `build`, where another writes what building the add-on takes, in a source code review.
- * - `extracted`, where the shipped package is unpacked for the reviewer to read.
  *
- * Those three sit BESIDE the submitted .xpi, in the folder the reviewer is working out of,
- * so what they are handed opens where they are looking - a path outside it is one their
- * client will not follow. This linter writes none of them and reads none of them; it only
- * says where they go, so a name cannot drift from the review it belongs to.
+ * The latter two sit BESIDE the submitted .xpi, in the folder the reviewer is working out
+ * of, so what they are handed opens where they are looking - a path outside it is one their
+ * client will not follow. This linter writes neither and reads neither; it only says where
+ * they go, so a name cannot drift from the review it belongs to.
  *
- * One base for all five: a name and a version do not identify a review - two submissions can
+ * One base for all four: a name and a version do not identify a review - two submissions can
  * share both (a fork, a resubmission, an add-on reviewed twice in a session) - so the run's
  * own moment separates them, and a later run does not open what an earlier one left
  * behind. Millisecond resolution, which separates reviews a person runs; two started in
@@ -159,19 +158,23 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
  * A review is named ONCE, by the run that builds it. Every pass after that is handed the
  * review file's path and finds the rest from it, so no later run has to recompute a moment
  * it does not have.
+ *
+ * Where the shipped package is unpacked (XPI_ROOT) is NOT one of these: unlike these four,
+ * the linter itself writes there (src/addon/load.js), before this is ever called, and its
+ * path follows the submitted file's own name rather than this shared stem - see
+ * src/pipeline.js.
  * @param {import("../addon/load.js").Addon} addon  The shipped add-on - read for the name
- *   it lends all five (its id and version).
+ *   it lends all four (its id and version).
  * @param {string} xpiPath  Where that add-on IS, absolute. An Addon carries no path of its
  *   own, so the caller passes the one the run was given (src/pipeline.js), which resolved
  *   it - nothing re-resolves it here.
- * @returns {{summary: string, build: string, state: string, review: string,
- *   extracted: string}}
+ * @returns {{summary: string, build: string, state: string, review: string}}
  */
 export function reviewFilePaths(addon, xpiPath) {
   const base = reviewFileBase(addon);
   // Beside the .xpi, which is the folder a reviewer downloaded it into. For an unpacked
   // submission that is the folder holding it, for the same reason: not inside what is being
-  // reviewed. Taken once, so the three cannot land in different folders.
+  // reviewed. Taken once, so the two cannot land in different folders.
   const beside = path.dirname(xpiPath);
   return {
     summary: path.join(beside, `${base}.summary.md`),
@@ -181,22 +184,24 @@ export function reviewFilePaths(addon, xpiPath) {
     // review path it was given and compares the two.
     state: path.join(os.tmpdir(), `${base}${STATE_SUFFIX}`),
     review: path.join(os.tmpdir(), `${base}${REVIEW_SUFFIX}`),
-    // Where the shipped package is unpacked for the reviewer to read while they answer.
-    // Named on the same terms as `summary` and `build`: this run writes nothing here, it
-    // says where it GOES, and the prompt's reader puts it there. Beside the .xpi with
-    // them, because what the reviewer is handed has to be reachable from where they are
-    // working - a path outside that folder is one their client will not open.
-    //
-    // The SUBMITTED FILE's own name rather than the shared stem, because this is the one
-    // of the five whose content is not the review's: it is the package, unpacked, and a
-    // reviewer looking at `<submission>.extracted` beside `<submission>` can see that
-    // without reading a timestamp. Two reviews of one file would share it, which is
-    // harmless - unpacking the same bytes twice writes the same tree.
-    //
-    // Trailing separator, which `path.join` would drop: it is a DIRECTORY, and a link to
-    // one without it does not resolve as a folder for the reader following it.
-    extracted: `${path.join(beside, `${path.basename(xpiPath)}.extracted`)}${path.sep}`,
   };
+}
+
+/**
+ * The add-on's own id: its declared gecko id, or its name, or "addon" when it names
+ * neither. Raw - a display value, not sanitized or truncated for a filename (see
+ * reviewFileBase, which clamps and escapes this same chain for that purpose).
+ * @param {import("../addon/load.js").Addon} addon
+ * @returns {string}
+ */
+export function addonIdOf(addon) {
+  const m = addon?.manifest;
+  return (
+    m?.browser_specific_settings?.gecko?.id ??
+    m?.applications?.gecko?.id ??
+    m?.name ??
+    "addon"
+  );
 }
 
 /**
@@ -206,11 +211,7 @@ export function reviewFilePaths(addon, xpiPath) {
  */
 function reviewFileBase(addon) {
   const m = addon?.manifest;
-  const id =
-    m?.browser_specific_settings?.gecko?.id ??
-    m?.applications?.gecko?.id ??
-    m?.name ??
-    "addon";
+  const id = addonIdOf(addon);
   const at = new Date().toISOString().replace(/[:.]/g, "-");
   // The id is the submission's, and an add-on with no gecko id lends its NAME - which has
   // no length limit of its own, while the name this composes does (255 bytes on ext4, and

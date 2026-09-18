@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-shadow",
+    "xpiRoot": "<root>/tests/addons/experiment-shadow/",
+    "addonId": "Shadow Experiment",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

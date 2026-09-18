@@ -300,8 +300,71 @@ test("an archive the loader will not take fails the run (exit 2)", () => {
   assert.doesNotMatch(r.stderr, /SECRET/);
   // No review was produced: the run stopped at the read.
   assert.doesNotMatch(r.stdout, /Found Issues|Summary/);
+  // A refusal mid-extraction leaves nothing behind for a reviewer to mistake for the
+  // whole submission (src/addon/load.js extractZip's cleanup-on-throw).
+  assert.ok(!fs.existsSync(`${file}.extracted`));
 
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A PLAIN review - no --llm-review at all - now extracts a packed .xpi too: the linter
+// reads a submission from disk once, whether or not an agent is involved, rather than
+// keeping the zip's bytes in memory only and never writing them anywhere. This is new:
+// before this, extraction was --llm-review-only and asked of the agent, not the tool.
+test("a plain review of a packed .xpi extracts it beside the file", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-plain-extract-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  zip.addFile("bg.js", Buffer.from("browser.runtime.id;\n"));
+  const file = path.join(dir, "addon.xpi");
+  zip.writeZip(file);
+
+  const r = run([file, ...OFFLINE_FLAGS]);
+  assert.notEqual(r.code, 2, r.stderr);
+  const extracted = `${file}.extracted`;
+  assert.equal(
+    fs.readFileSync(path.join(extracted, "manifest.json"), "utf8"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  assert.equal(
+    fs.readFileSync(path.join(extracted, "bg.js"), "utf8"),
+    "browser.runtime.id;\n"
+  );
+  // The terminal header names which add-on and where to read it, in place of the raw
+  // .xpi path.
+  assert.equal(headerValue(r.stdout, "ADDON_ID"), "x");
+  assert.equal(headerValue(r.stdout, "XPI_ROOT"), `${extracted}${path.sep}`);
+
+  // Reviewed a second time: a fresh, timestamp-suffixed extraction, not a silent reuse
+  // or overwrite of the first.
+  const again = run([file, ...OFFLINE_FLAGS]);
+  assert.notEqual(again.code, 2, again.stderr);
+  const secondRoot = headerValue(again.stdout, "XPI_ROOT");
+  assert.notEqual(secondRoot, `${extracted}${path.sep}`);
+  assert.ok(
+    fs.existsSync(path.join(extracted, "manifest.json")),
+    "the first survives"
+  );
+  assert.ok(
+    fs.existsSync(path.join(secondRoot, "manifest.json")),
+    "the second is its own tree"
+  );
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An already-unpacked submission needs no extraction at all: it already IS the folder,
+// and XPI_ROOT names it directly with nothing written beside it.
+test("a directory submission writes nothing extra to disk", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const before = fs.readdirSync(path.dirname(addon));
+  const r = run([addon, ...OFFLINE_FLAGS]);
+  assert.notEqual(r.code, 2, r.stderr);
+  assert.equal(headerValue(r.stdout, "XPI_ROOT"), `${addon}${path.sep}`);
+  assert.deepEqual(fs.readdirSync(path.dirname(addon)), before);
 });
 
 // A flag given with no value names something and says nothing. Asked of EVERY option that
@@ -839,8 +902,7 @@ test("a review with nothing to settle names no description file", () => {
   // A review with nothing to SETTLE still has something to DO: the description is for the
   // reviewer, who still gets a report. So the setup phase prints, and the phases that
   // settle entries do not - which is the rule, not an exception to it.
-  assert.match(r.stdout, /^1\. Unpack the submitted package/m);
-  assert.match(r.stdout, /^2\. Spawn an independent sub-agent/m);
+  assert.match(r.stdout, /^1\. Spawn an independent sub-agent/m);
   assert.doesNotMatch(r.stdout, /Verify every entry/, "nothing to verify");
   assert.doesNotMatch(r.stdout, /Settle each entry/, "nothing to settle");
   // The step that spawns the description agent names the file it writes - printed by the
@@ -1149,6 +1211,9 @@ test("the command --llm-sca-review prints names the file its block names", () =>
 test("--llm-sca-review prints the flags the review is run with", () => {
   const dir = submissionFolder();
   const xpi = path.join(dir, "addon.xpi");
+  // Computed the same way scaSubmission() does: beside the source archive, named after
+  // it. Real, not a placeholder - --sca-root is now given, not worked out.
+  const scaRoot = `${path.join(dir, "src-4.3.12.tar_ABC.gz")}.extracted${path.sep}`;
   // The flags are the paragraph after the step that says to run the linter, indented
   // beneath its number and ending at the blank line before the next step.
   const flagsOf = (r) =>
@@ -1167,7 +1232,7 @@ test("--llm-sca-review prints the flags the review is run with", () => {
         `--llm-review ${xpi}`,
         "--eslint",
         "--allow-experiments",
-        "--sca-root <SCA_ROOT>",
+        `--sca-root ${scaRoot}`,
         "--sca-source <SCA_SOURCE>",
         "--sca-exp-source <SCA_EXP_SOURCE>",
       ],
@@ -1179,7 +1244,7 @@ test("--llm-sca-review prints the flags the review is run with", () => {
     [
       `--llm-review ${xpi}`,
       "--checks-only unused-files",
-      "--sca-root <SCA_ROOT>",
+      `--sca-root ${scaRoot}`,
       "--sca-source <SCA_SOURCE>",
     ],
     "--flag=value"
@@ -1198,7 +1263,7 @@ test("--llm-sca-review prints the flags the review is run with", () => {
       `--llm-review ${xpi}`,
       "--eslint",
       "--verbose",
-      "--sca-root <SCA_ROOT>",
+      `--sca-root ${scaRoot}`,
       "--sca-source <SCA_SOURCE>",
     ]
   );
@@ -1208,7 +1273,7 @@ test("--llm-sca-review prints the flags the review is run with", () => {
   const plain = run(["--llm-sca-review", dir]);
   assert.deepEqual(flagsOf(plain), [
     `--llm-review ${xpi}`,
-    "--sca-root <SCA_ROOT>",
+    `--sca-root ${scaRoot}`,
     "--sca-source <SCA_SOURCE>",
   ]);
   assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
@@ -1244,15 +1309,6 @@ test("the command --llm-sca-review prints is one the tool accepts", () => {
   zip.addLocalFolder(path.join(ROOT, "tests", "addons", "clean"));
   zip.writeZip(path.join(dir, "addon.xpi"));
   fs.writeFileSync(path.join(dir, "src-1.0.tar.gz"), "");
-  // What its reader works out: an extracted source, and where the add-on's code sits in it.
-  const root = path.join(dir, "extracted");
-  fs.cpSync(
-    path.join(ROOT, "tests", "addons", "build-hygiene-sca", "src"),
-    root,
-    {
-      recursive: true,
-    }
-  );
 
   const prepared = run([
     "--llm-sca-review",
@@ -1262,6 +1318,18 @@ test("the command --llm-sca-review prints is one the tool accepts", () => {
     "unused-files",
   ]);
   assert.equal(prepared.code, 0, prepared.stderr);
+
+  // SCA_ROOT is given, not worked out: extract into the exact folder the tool named,
+  // same as its reader would.
+  const root = headerValue(prepared.stdout, "SCA_ROOT");
+  fs.cpSync(
+    path.join(ROOT, "tests", "addons", "build-hygiene-sca", "src"),
+    root,
+    {
+      recursive: true,
+    }
+  );
+
   const flags = prepared.stdout
     .split("with exactly these flags, and nothing else:\n\n")[1]
     .split("\n\n")[0]
@@ -1269,16 +1337,15 @@ test("the command --llm-sca-review prints is one the tool accepts", () => {
     .map((l) => l.trim())
     .filter(Boolean);
 
-  // Substitute the three values the prompt asks its reader for, and run what is left.
+  // Substitute what its reader still has to work out - where the add-on's own code sits
+  // inside SCA_ROOT - and run what is left.
   const argv = flags
     .flatMap((line) => {
       const [flag, ...rest] = line.split(" ");
       const value = rest.join(" ").replace(/^'|'$/g, "");
       return value ? [flag, value] : [flag];
     })
-    .map((arg) =>
-      arg === "<SCA_ROOT>" ? root : arg === "<SCA_SOURCE>" ? "." : arg
-    );
+    .map((arg) => (arg === "<SCA_SOURCE>" ? "." : arg));
   const review = run(argv);
 
   // A review may pass or find something (0 or 1); what it must not be is a usage error,

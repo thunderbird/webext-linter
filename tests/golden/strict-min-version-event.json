@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/strict-min-version-event",
+    "xpiRoot": "<root>/tests/addons/strict-min-version-event/",
+    "addonId": "Send Reminder",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/mistyped-manifest-value",
+    "xpiRoot": "<root>/tests/addons/mistyped-manifest-value/",
+    "addonId": "Mistyped Manifest Values",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

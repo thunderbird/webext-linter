@@ -21,6 +21,8 @@
 // (src/checks/registry.js plus src/report/responses.js).
 
 import fs from "node:fs";
+import path from "node:path";
+import { extractionDestination } from "./util/dest.js";
 import {
   resolveSchemaZip,
   refreshAllSchemas,
@@ -56,7 +58,7 @@ import { resolveHolds } from "./report/finding.js";
 import { STATE_VERSION } from "./report/state.js";
 import { issue } from "./report/loop.js";
 import { headerLines, loopPromptLines, packageLines } from "./report/format.js";
-import { reviewFilePaths } from "./report/items.js";
+import { reviewFilePaths, addonIdOf } from "./report/items.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import {
   verifyVendor,
@@ -325,15 +327,28 @@ export async function runPipeline(opts) {
   // such as the test harness invokes the pipeline directly).
   const registry = opts.registry ?? loadRegistry();
 
-  // Load the .xpi archive (a fast in-memory unzip). Read before the "Setup" banner
-  // because it sizes the feed - it gives the mode and whether the add-on is an
-  // Experiment. Every slow NETWORK step below (the experiment fetch, schema fetch, vendor
-  // verification, CDN lookups) plus the AST parse is narrated as a Setup step. The add-on
-  // reads are fast local unzips (this .xpi, and in a kept SCA the source archive loaded in
-  // Phase 2) marked by the "Reading add-on" step. Loading here is the ONLY way an add-on
-  // enters a review: its content and its identity then come from one value, and no caller
-  // can hand in files that disagree with the path the report goes on to name.
-  const xpiAddon = loadAddon(addonPath);
+  // Load the .xpi. Read before the "Setup" banner because it sizes the feed - it gives
+  // the mode and whether the add-on is an Experiment. Every slow NETWORK step below (the
+  // experiment fetch, schema fetch, vendor verification, CDN lookups) plus the AST parse
+  // is narrated as a Setup step. The add-on reads are fast local ones (this .xpi, and in
+  // a kept SCA the source archive loaded in Phase 2) marked by the "Reading add-on" step.
+  // Loading here is the ONLY way an add-on enters a review: its content and its identity
+  // then come from one value, and no caller can hand in files that disagree with the path
+  // the report goes on to name.
+  //
+  // A packed .xpi is extracted here, not read in memory and left there: XPI_ROOT is a
+  // single folder this run writes once and every reader - the checks below, a reviewer,
+  // an LLM agent - reads back from, never two representations of one submission. An
+  // already-unpacked submission needs none of that; it already IS the folder.
+  const addonIsDir = fs.statSync(path.resolve(addonPath)).isDirectory();
+  const extractTo = addonIsDir
+    ? null
+    : extractionDestination(`${addonPath}.extracted`);
+  const xpiAddon = loadAddon(addonPath, extractTo ?? undefined);
+  const xpiRootBase = addonIsDir ? addonPath : extractTo;
+  const xpiRoot = xpiRootBase.endsWith(path.sep)
+    ? xpiRootBase
+    : `${xpiRootBase}${path.sep}`;
   const isExp = isExperiment(xpiAddon.manifest);
 
   // The facts each step's `when` is asked of, from what the fast .xpi read already gives
@@ -649,6 +664,14 @@ export async function runPipeline(opts) {
         // RESOLVED, both of them: a reader resolves these, and an agent handed a relative one
         // would resolve it against its own directory.
         xpi: addonPath,
+        // Where the shipped package IS on disk, readable, whether that took extracting it
+        // or the submission already was a folder - set once, above, alongside loading it.
+        // Always present: unlike the LLM-only files below, nothing here is conditional on
+        // how this review is being run.
+        xpiRoot,
+        // The add-on's own id (or name, or "addon" - see addonIdOf), for a reader who wants
+        // to know WHICH add-on without opening the package.
+        addonId: addonIdOf(xpiAddon),
         // Named iff the readable source is what was reviewed: `scaSource` is set by
         // `target-source`, which runs only then. meta names the artifacts this review
         // READ, so the step that loaded one is what decides whether it appears here.
@@ -916,7 +939,6 @@ export async function runPipeline(opts) {
   // by --llm-skip-summary, the build report by a review that is not a source code one.
   let summaryPath = null;
   let buildPath = null;
-  let extractedPath = null;
   // The REVIEW LOOP's state, built once the review is final and handed to `issue` below.
   // A LOCAL, never hung off meta: it carries the report, and the report carries meta.
   let loopState = null;
@@ -939,13 +961,12 @@ export async function runPipeline(opts) {
     const files = reviewFilePaths(xpiAddon, addonPath);
     summaryPath = skip.includes("summary") ? null : files.summary;
     buildPath = mode?.sca ? files.build : null;
-    extractedPath = files.extracted;
     // Named on meta BEFORE the state is built: `issue` writes the state, and a field set
     // after that never reaches the passes that read it back. A path printed for a file
     // nobody is asked to write would be an instruction with no step behind it - which is
     // why each is null above unless the step that writes it prints: the description is
     // withheld by --llm-skip-summary, the build report by a review that is not a source
-    // code one, and the setup phase that carries both steps is issued by every review.
+    // code one.
     meta.summaryFile = summaryPath ?? undefined;
     meta.buildFile = buildPath ?? undefined;
     // Claimed empty, so a directory this run cannot write to fails before the review is
@@ -955,10 +976,6 @@ export async function runPipeline(opts) {
     // a directory this run cannot write to has to fail before the review is built.
     meta.stateFile = files.state;
     meta.reviewFile = files.review;
-    // Where the package is unpacked for the reviewer. Unconditional, unlike the two
-    // below: the step that writes it carries no marker, so every review that hands out a
-    // phase asks for it.
-    meta.extractedDir = files.extracted;
   }
 
   // Fill each finding's display message from its registry response (with the
@@ -1000,7 +1017,6 @@ export async function runPipeline(opts) {
         review: meta.reviewFile,
         description: summaryPath,
         build: buildPath,
-        extracted: extractedPath,
         schemaCache: opts.schemaCache,
         scaRoot: opts.scaRoot ?? null,
         // The block a phase that READS the add-on prints: which artifact, and the schema
@@ -1043,7 +1059,6 @@ export async function runPipeline(opts) {
           schemaCache: state.paths.schemaCache ?? "",
           description: summaryPath ?? "",
           build: buildPath ?? "",
-          extracted: extractedPath ?? "",
           scaRoot: state.paths.scaRoot ?? "",
           package: state.paths.package,
         },

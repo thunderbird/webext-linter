@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/bundled-css",
+    "xpiRoot": "<root>/tests/addons/bundled-css/",
+    "addonId": "Bundled CSS",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

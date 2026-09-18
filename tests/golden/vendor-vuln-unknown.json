@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/vendor-vuln-unknown",
+    "xpiRoot": "<root>/tests/addons/vendor-vuln-unknown/",
+    "addonId": "GitHub-sourced vendored library",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

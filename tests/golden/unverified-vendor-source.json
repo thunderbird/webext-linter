@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/unverified-vendor-source",
+    "xpiRoot": "<root>/tests/addons/unverified-vendor-source/",
+    "addonId": "Unverified vendor source",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

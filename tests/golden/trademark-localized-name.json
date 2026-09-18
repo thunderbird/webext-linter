@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/trademark-localized-name",
+    "xpiRoot": "<root>/tests/addons/trademark-localized-name/",
+    "addonId": "__MSG_extName__",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

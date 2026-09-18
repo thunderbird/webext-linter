@@ -379,3 +379,142 @@ test("an unreadable archive is refused in our own words", () => {
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// A packed .xpi is extracted to disk and read back from there - the one way its files
+// ever reach addon.files - so the round trip has to be exact: manifest.json included
+// (assembleAddon lifts it off the corpus AFTER this, same as a directory submission),
+// and every other file byte-identical to what was packed.
+test("loadAddon(file) extracts to disk and reads the same content back", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-extract-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  zip.addFile("bg.js", Buffer.from("browser.runtime.id;\n"));
+  zip.addFile("a/b/c.js", Buffer.from("nested();\n"));
+  const file = path.join(dir, "addon.xpi");
+  zip.writeZip(file);
+
+  const dest = path.join(dir, "addon.xpi.extracted");
+  const addon = loadAddon(file, dest);
+
+  // On disk: manifest.json included, unlike addon.files (assembleAddon drops it there).
+  assert.equal(
+    fs.readFileSync(path.join(dest, "manifest.json"), "utf8"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  assert.equal(
+    fs.readFileSync(path.join(dest, "bg.js"), "utf8"),
+    "browser.runtime.id;\n"
+  );
+  assert.equal(
+    fs.readFileSync(path.join(dest, "a", "b", "c.js"), "utf8"),
+    "nested();\n"
+  );
+
+  // Read back the same way a directory submission is: manifest lifted off the corpus,
+  // everything else in addon.files keyed the same as the packed entries were.
+  assert.equal(addon.manifest.name, "x");
+  assert.ok(!addon.files.has("manifest.json"));
+  assert.equal(
+    addon.files.get("bg.js").toString("utf8"),
+    "browser.runtime.id;\n"
+  );
+  assert.equal(addon.files.get("a/b/c.js").toString("utf8"), "nested();\n");
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// extractTo omitted: loadAddon defaults it itself (src/util/dest.js), beside the file.
+test("loadAddon(file) with no extractTo defaults beside the archive", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-extract-default-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  const file = path.join(dir, "addon.xpi");
+  zip.writeZip(file);
+
+  loadAddon(file);
+  assert.ok(
+    fs.existsSync(path.join(dir, "addon.xpi.extracted", "manifest.json"))
+  );
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// node_modules is never decompressed - not into memory, and now not to disk either - so
+// a later read of the extracted folder cannot rediscover it there. addon.nodeModules has
+// to come from the extraction step itself, or committed-node-modules would silently stop
+// firing on every zip-origin submission.
+test("loadAddon(file) records node_modules without writing it to disk", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-extract-nm-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  zip.addFile(
+    "node_modules/dep/index.js",
+    Buffer.from("module.exports = 1;\n")
+  );
+  const file = path.join(dir, "addon.xpi");
+  zip.writeZip(file);
+
+  const dest = path.join(dir, "addon.xpi.extracted");
+  const addon = loadAddon(file, dest);
+
+  assert.deepEqual(addon.nodeModules, ["node_modules"]);
+  assert.ok(
+    !fs.existsSync(path.join(dest, "node_modules")),
+    "node_modules was written to disk"
+  );
+  assert.ok(!addon.files.has("node_modules/dep/index.js"));
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A refusal midway through extraction must not leave a partial tree behind for a
+// reviewer to mistake for the whole submission.
+test("a refused archive leaves no partial extraction on disk", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-extract-partial-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  zip.addFile("MARKER.js", Buffer.from("browser.runtime.id;\n"));
+  zip.getEntries().find((e) => e.entryName === "MARKER.js").entryName =
+    "../MARKER.js";
+  const file = path.join(dir, "bad.xpi");
+  zip.writeZip(file);
+
+  const dest = path.join(dir, "bad.xpi.extracted");
+  assert.throws(() => loadAddon(file, dest));
+  assert.ok(!fs.existsSync(dest), "a partial extraction was left behind");
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An archive with no real files at all (only a node_modules subtree) still leaves a
+// directory a later readDir can walk - otherwise loadAddon crashes on a submission that
+// is merely useless, not unreadable.
+test("an archive with nothing but node_modules still leaves an empty extracted folder", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-extract-empty-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "node_modules/dep/index.js",
+    Buffer.from("module.exports = 1;\n")
+  );
+  const file = path.join(dir, "addon.xpi");
+  zip.writeZip(file);
+
+  const dest = path.join(dir, "addon.xpi.extracted");
+  const addon = loadAddon(file, dest);
+  assert.ok(fs.existsSync(dest) && fs.statSync(dest).isDirectory());
+  assert.equal(addon.files.size, 0);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});

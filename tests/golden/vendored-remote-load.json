@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/vendored-remote-load",
+    "xpiRoot": "<root>/tests/addons/vendored-remote-load/",
+    "addonId": "Remote load in an upstream release",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

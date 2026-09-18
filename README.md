@@ -128,7 +128,7 @@ they have (`MAX_NOTE`).
 
 | Option | Description |
 | --- | --- |
-| `--llm-sca-review <folder>` | Print the prompt for preparing a source code review of a submission folder — one built `.xpi` and one archive of the source it was built from — and exit without reviewing anything. The prompt says how to reach the source, and hands back this command with `--llm-review` in place of this flag for the reader to run with the `--sca-*` arguments they worked out. Refused beside any `--sca-*` flag, which is what it exists to produce. |
+| `--llm-sca-review <folder>` | Print the prompt for preparing a source code review of a submission folder — one built `.xpi` and one archive of the source it was built from — and exit without reviewing anything. The prompt names where to extract the source archive (`--sca-root`, already computed) and asks its reader to work out `--sca-source`/`--sca-exp-source` by opening it, then hands back this command with `--llm-review` in place of this flag and every `--sca-*` argument filled in. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Refused with `--report-format json`. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
 | `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer — they stay in the report, for the reviewer to work through later. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
@@ -177,9 +177,10 @@ been reviewed faster. That is advice for next time; it does not change the revie
 appears in.
 
 - `--sca-root` is the **extracted** source archive that holds `package.json` /
-  the lock file; setting it switches on SCA mode. It must be a folder: this tool
-  unpacks the submitted `.xpi` and nothing else, so extract the source archive
-  first - every format then works, because `tar` handles what this tool does not.
+  the lock file; setting it switches on SCA mode. It must be a folder: unlike the
+  submitted `.xpi`, which this tool extracts itself, a source archive comes in too
+  many formats for this tool to open - extract it first, and every format then
+  works, because `tar` handles what this tool does not.
   `--sca-source` is the add-on code
   root within it - written relative to `--sca-root` (e.g. `src`) or as an absolute path
   inside it, which is the form the report prints, so a path can be handed straight back.

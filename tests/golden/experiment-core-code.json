@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-core-code",
+    "xpiRoot": "<root>/tests/addons/experiment-core-code/",
+    "addonId": "Experiment Core Code",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

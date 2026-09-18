@@ -2,6 +2,8 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/strict-min-version-api",
+    "xpiRoot": "<root>/tests/addons/strict-min-version-api/",
+    "addonId": "Tag Lister",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
