@@ -154,7 +154,8 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   ctx.addon when the check runs (VALID_CHECK_INPUTS above), and what its output is
  *   labelled as ([XPI]/[SCA]). Required for every check; runChecks routes it (see
  *   buildXpiCtxs / buildScaCtxs).
- * @property {string} [instructions]  The to-do wording for a case this check escalates.
+ * @property {string} [instructions]  The to-do wording a PERSON reads for a case this
+ *   check escalates.
  * @property {string} [escalation]  Which to-do section its escalations are listed under
  *   ("code-review" / "manual-review"); absent when the check never escalates.
  * @property {object[]} [permissionTokens]  The permission-prompts token entries
@@ -779,8 +780,13 @@ function assertEntry(entry, at) {
       );
     }
   }
+  // Whether the entry authors wording a PERSON could be asked - `instructions-for-human`,
+  // or an `instructions` that serves either reader. Both branches below are about that
+  // reader: a manual check is only ever put to one, and an escalation must be answerable
+  // in a review with no agent in it.
+  const authored = (key) => typeof entry[key] === "string" && entry[key] !== "";
   const wording =
-    typeof entry.instructions === "string" && entry.instructions !== "";
+    authored("instructions-for-human") || authored("instructions");
   // A manual check IS a to-do item rather than a check that raises one, so it declares no
   // `escalation` and no `input`: it reads no artifact and lists its case unconditionally.
   if (entry.manualCheck) {
@@ -1439,7 +1445,7 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
       severity: entry.severity,
       input: entry.input,
       sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
-      instructions: entry.instructions,
+      instructions: entry["instructions-for-human"] ?? entry.instructions,
       escalation: entry.escalation,
       // The permission-prompts token entries, like `instructions` above: registry
       // data every check carries, read by the one that scans for them. It version-filters at run time (versionInBounds) with the reviewed

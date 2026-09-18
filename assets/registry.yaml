@@ -79,7 +79,7 @@ deterministic-phase:
   check: trademark-thunderbird-name
   escalation: manual-review
   input: xpi
-  instructions: |-
+  instructions-for-human: |-
     The add-on name below carries “Thunderbird” in a form this scan cannot verify,
     and the name is not localized, so nothing in the package states what language
     it is in. Only “ADD-ON NAME for Thunderbird” is allowed. Decide what language
@@ -432,7 +432,7 @@ deterministic-phase:
   check: experiment-manual-review
   escalation: manual-review
   input: manifest
-  instructions: |-
+  instructions-for-human: |-
     This submission ships an Experiment, which runs with full access to
     Thunderbird's internals. Verify that its Experiment surface is no larger than
     the add-on needs, and that it does not affect Thunderbird's usability,
@@ -636,7 +636,7 @@ deterministic-phase:
   check: undeclared-build-source
   escalation: manual-review
   input: build
-  instructions: |-
+  instructions-for-human: |-
     Confirm by hand that the shipped XPI is produced by this source: reproduce the
     build and compare the result against the submitted XPI. Confirm the build pulls
     ONLY from the dependencies declared in package.json/lock - no remote code or
@@ -817,7 +817,7 @@ deterministic-phase:
 
     [1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
     [2]: https://www.mozilla.org/en-US/privacy/
-  instructions: |-
+  instructions-for-human: |-
     This add-on transmits data to one or more remote servers the developer chose -
     fixed in the add-on, not entered by the user. Confirm the ATN listing carries
     a privacy policy that discloses what data is collected and why. The privacy
@@ -834,7 +834,7 @@ deterministic-phase:
   input: manifest
   response: |-
     This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged.
-  instructions: |-
+  instructions-for-human: |-
     This add-on requests the "nativeMessaging" permission. Confirm the add-on
     listing page on ATN discloses what information is exchanged with the local
     app and that it complies with the No Surprises policy.
@@ -1049,7 +1049,7 @@ deterministic-phase:
   check: vendored-remote-resources
   escalation: manual-review
   input: source
-  instructions: |-
+  instructions-for-human: |-
     Each of these remote loads is inside a file whose content matches a published
     file of the upstream release listed after it - so the line is that release's,
     not something the developer wrote. That does not by itself mean the add-on
