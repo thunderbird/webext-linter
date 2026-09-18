@@ -293,7 +293,6 @@ test("an escalation prints the verdict a reported case carries", () => {
 
 // One sweep: the shared method, then the bare items it asks about.
 const SWEEP = {
-  intro: "Judge by EFFECT, never by the API used.",
   items: [
     {
       check: "data-exfiltration",
@@ -337,11 +336,11 @@ test("the Standard Code Review section is one sweep, listing checks not cases", 
   r.meta.preSweep = SWEEP;
   const out = formatText(r);
   assert.match(out, /── Standard Code Review ──/);
-  // The shared method comes first: the items say only what each check looks for, so
-  // without it the section is a list of subjects with no way to judge them.
+  // The same lead every by-hand list carries: what is listed differs, what the reader
+  // does with it does not.
   assert.match(
     out.replace(/\s+/g, " "),
-    /Judge by EFFECT, never by the API used/
+    /Continue manual review for the following checks:/
   );
   // "N) title: body", like a manual-review entry. The check id and its band are fields
   // of the item file, not prose - a reader of the page has the title instead.
@@ -1340,16 +1339,9 @@ test("the report's authored prose is required, by the names that index it", () =
     "t.yaml"
   );
   bad((doc) => (doc.messages["some-other-notice"] = "  "), /is not prose/);
-  // A missing map at all, and the two sweep introductions, which are plain strings.
+  // A missing map at all.
   bad((doc) => delete doc["verdict-intros"], /authors no `verdict-intros` map/);
   bad((doc) => (doc.messages = []), /authors no `messages` map/);
-  for (const reader of ["human", "llm"]) {
-    bad(
-      (doc) => delete doc[`sweep-intro-${reader}`],
-      new RegExp(`authors no \`sweep-intro-${reader}\``),
-      reader
-    );
-  }
   // The shipped registry authors all of it.
   assertProse(loadRegistry(), "assets/registry.yaml");
 });

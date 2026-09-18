@@ -11,8 +11,7 @@ https://github.com/thunderbird/webext-linter
 
 ── Standard Code Review ──
 
-Review the add-on for each of the things listed below. Judge by EFFECT, never by
-the METHOD used - an unfamiliar form counts as much as a familiar one.
+Continue manual review for the following checks:
 
 1) Data smuggled through a resource URL: A resource loaded to be rendered or
    embedded, carrying data outward in its URL. Consent is no defence.

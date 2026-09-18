@@ -1281,22 +1281,16 @@ export async function resolveReviewSchema({
  * repeated on every item - and eight near-identical paragraphs teach a reader to skim the
  * part that matters.
  *
- * Both intros travel: the report prints the human one, the sweep's rows carry the agent
- * one. They differ only in that the agent is also told what to hand back.
+ * Only the report's framing travels here. What the sweeping agent is told is authored in
+ * the spawn phase's own step, beside the other sub-agent requests it relays.
  * @param {import("./checks/registry.js").Registry} registry
  * @param {Set<string>} ranIds  Ids of the checks that actually ran.
- * @returns {?{intro: string, agentIntro: string, items: object[]}}
+ * @returns {?{items: object[]}}
  */
 
 function preSweepOf(registry, ranIds) {
   const items = registry.sweepInstructions().filter((s) => ranIds.has(s.check));
-  return items.length
-    ? {
-        intro: registry.sweepIntro("human"),
-        agentIntro: registry.sweepIntro("llm"),
-        items,
-      }
-    : null;
+  return items.length ? { items } : null;
 }
 
 /**

@@ -459,22 +459,6 @@ export class Registry {
   }
 
   /**
-   * The sweep framing for one reader: "human" (printed in the report) or "llm" (sent to
-   * the agent that does the reading under --llm-review).
-   *
-   * Two texts rather than one, because the readers part on what happens next: the agent
-   * hands its results back in a fixed shape for the verdict file, a reviewer just writes
-   * the review. Both are required whenever any check authors an instruction - a sweep
-   * read without its framing is a list of subjects with no method, which is the
-   * enumeration the sweeps exist to escape.
-   * @param {"human"|"llm"} reader
-   * @returns {string}
-   */
-  sweepIntro(reader) {
-    return this.doc[`sweep-intro-${reader}`];
-  }
-
-  /**
    * Every check that authors a sweep instruction, in registry order - which is the order
    * the report and every phase list them in, so the two agree.
    * @returns {{check: string, title: string, severity: string, instruction: string,
@@ -1489,15 +1473,6 @@ export function assertProse(registry, at) {
           `\`${key}.${name}\` is not prose ${JSON.stringify(text)} (${at})`
         );
       }
-    }
-  }
-  for (const reader of ["human", "llm"]) {
-    const key = `sweep-intro-${reader}`;
-    if (
-      typeof registry.doc[key] !== "string" ||
-      registry.doc[key].trim() === ""
-    ) {
-      throw new Error(`registry authors no \`${key}\` (${at})`);
     }
   }
 }

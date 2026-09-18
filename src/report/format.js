@@ -93,7 +93,7 @@ const SEV_COLOR = {
  *   `section` (which of the two extended lists it belongs to). The report splits it
  *   into three sections on those two tags - see src/report/order.js. Text-only;
  *   dropped from JSON.
- * @property {?{intro: string, agentIntro: string, items: object[]}} [preSweep]  The blind-spot sweep to run
+ * @property {?{items: object[]}} [preSweep]  The blind-spot sweep to run
  *   before settling the review: the shared method, then one bare item per check that
  *   authors an instruction for what it cannot detect. ONE request, not one per check.
  *   Carries no finding and no locus - it is the job, not its result. Text-only; dropped
@@ -111,6 +111,12 @@ const SEV_COLOR = {
 // It is titled STANDARD because, like the standard manual checks, it is carried by every
 // submission rather than raised by one - the pairing is deliberate: the two standard
 // sections are the review done on everything, by reading and by hand.
+// The one line above every list of things a person works through by hand - the two
+// extended sections, the standard manual list, and the swept blind spots. One sentence
+// rather than one per section: they differ in WHAT is listed, never in what the reader
+// does with it, and four wordings for one instruction is four chances to drift.
+const TODO_LEAD = "Continue manual review for the following checks:";
+
 export const SECTION_TITLES = Object.freeze({
   issues: "Found Issues",
   code: "Extended Code Review",
@@ -739,7 +745,7 @@ function manualSection(items, title, accent = blue, labelOf) {
   // color (a no-op unless color is enabled) - Extended uses a vivid cyan, distinct
   // from Standard's blue, so the two are easy to tell apart. Each line is tinted on
   // its own for stripColor.
-  out.push(accent("Continue manual review for the following checks:"));
+  out.push(accent(TODO_LEAD));
   let n = 0;
   for (const entry of entriesOf(items)) {
     const group = entry.members;
@@ -795,12 +801,8 @@ function preSweepSection(sweep) {
     return [];
   }
   const out = section(SECTION_TITLES.preSweep);
-  // The method first, its authored paragraphs kept: it is prose to be read, not a list
-  // item, and the breaks are how it reads.
-  for (const para of sweep.intro.split("\n\n")) {
-    out.push("");
-    out.push(...wrapText(para.replace(/\s+/g, " ").trim()).map(blue));
-  }
+  out.push("");
+  out.push(blue(TODO_LEAD));
   let n = 0;
   for (const entry of sweep.items) {
     out.push("");

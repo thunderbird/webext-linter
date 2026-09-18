@@ -1545,20 +1545,6 @@ verdict-intros:
 # Authored twice rather than shared-plus-addendum, so each reads as one text to its own
 # reader. The cost is that the shared rule lives in two places: change it in one and
 # change it in the other, or the reviewer and the agent are told different things.
-sweep-intro-human: |-
-  Review the add-on for each of the things listed below. Judge by EFFECT, never by the
-  METHOD used - an unfamiliar form counts as much as a familiar one.
-
-sweep-intro-llm: |-
-  Read the add-on for each of the things listed below. Judge by EFFECT, never by the
-  METHOD used - an unfamiliar form counts as much as a familiar one. Resolve values
-  assembled or supplied at runtime, and follow them through helpers and bundled
-  libraries.
-
-  Hand back one line per thing you find: the check it answers, the file, the line, and a
-  short phrase naming what is there. Nothing else - no verdict, and no wording for the
-  developer; that is the linter's.
-
 # The prompt --llm-sca-review prints, above the Submission section naming the two files it
 # found. It is the WHOLE output of such a run: no review is possible until someone has
 # opened the source archive, so this text and those paths are all its reader gets.
@@ -1717,7 +1703,7 @@ llm-phases:
 
             Give it this request, and nothing else - this text, then every check's "instruction" from the file:
 
-            Read the add-on for each of the things listed below. Judge by EFFECT, never by the METHOD used - an unfamiliar form counts as much as a familiar one. Resolve values assembled or supplied at runtime, and follow them through helpers and bundled libraries.
+            The scans cannot settle the things listed below, so they are handed to you. Read the add-on for each of them. Judge by EFFECT, never by the METHOD used - an unfamiliar form counts as much as a familiar one. Where the thing below is about code, resolve values assembled or supplied at runtime and follow them through helpers and bundled libraries.
 
             Hand back one line per thing you find: the check it answers, the file, the line, and a short phrase naming what is there. Nothing else - no verdict, and no wording for the developer; that is the linter's.
         - run: sweep
