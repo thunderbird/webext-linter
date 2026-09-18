@@ -44,10 +44,12 @@ that no longer exist.
    own and badges as `hold-or-error`, never shortened to `hold` - and `none`, a
    check that can never emit a finding, only escalations),
    `check` (the kebab-case id), `response` (developer-facing message),
-   `instructions` (the to-do text a reviewer is shown for a case the check could not
-   settle), and often a leading comment block describing intent. EVERY entry declares a
+   the instruction keys naming who its question is for - `instructions` (one text for
+   whoever is asked), `instructions-for-llm` beside `instructions-for-human` (a question
+   each), or `instructions-for-human` alone - and often a leading comment block describing
+   intent. EVERY entry declares a
    `severity`, the `manual-checks` ones included - the loader refuses one that does not.
-   Entries may also carry `input`, `sca`, `eslint`, `escalation`, `sweep-instruction`
+   Entries may also carry `input`, `sca`, `eslint`, `sweep-instruction`
    (the class of code the check cannot see, listed in the report's Standard Code Review
    section) or `default-note` (the marker a reported case carries when the reviewer wrote
    nothing). The check-bearing sections ARE
@@ -118,9 +120,11 @@ that no longer exist.
      hands to the reviewer. **The tool calls no model: there is no verdict step, so a
      diagram must never draw a pass/fail/unsure fan-out.** A check pushes its
      escalation unconditionally, so the escalation is a TERMINAL, not a decision.
-     Name the section it lands in: the entry's `escalation` field says which -
-     `manual-review` or `code-review` - and it is a property of the CHECK, so all of its
-     cases land together. A check needing both sections is two checks. Several checks emit NO finding at all -
+     Name the section it lands in: it follows from the instruction keys - a check
+     authoring wording an agent can be handed lands under `code-review`, one authoring
+     only `instructions-for-human` under `manual-review` - and it is a property of the
+     CHECK, so all of its cases land together. A check needing both sections is two
+     checks. Several checks emit NO finding at all -
      check the rule module for a hardcoded `findings: []` before drawing any
      ERROR/WARNING/INFO terminal.
    - `manual-checks` entries have no rule module and no branches at all: the entry is

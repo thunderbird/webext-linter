@@ -679,7 +679,7 @@ flowchart TB
   RUN -. throws .-> CF["one check-failed finding"]
   RUN -.-> LZ["the lazy caches are computed here, inside run():<br/>permissionAnalysis · apiResolution · outboundSinks ·<br/>evalScan · locales · reachability"]
   RUN --> QLANE{{"what did run() return?"}}
-  QLANE -- "escalations" --> ME["manualEscalations()<br/>repack the escalations as to-do items<br/>stamping the section from the check's `escalation`"]
+  QLANE -- "escalations" --> ME["manualEscalations()<br/>repack the escalations as to-do items<br/>stamping the section the check's reader implies"]
   QLANE -- "a plain Finding[]" --> STAMP
 
   ME --> STAMP["stamp the findings —<br/>ruleId + severity (auto → the check sets it)"]
@@ -705,8 +705,9 @@ flowchart TB
       <h2>Escalating what the code cannot settle</h2>
       <p>
         A check that cannot settle a case does not guess: it escalates, and the
-        reviewer is handed the concrete <code>file:line</code> to look at. The
-        escalation says which of the two review buckets it belongs to.
+        reviewer is handed the concrete <code>file:line</code> to look at. Which of
+        the two review buckets it belongs to follows from who the check wrote its
+        question for.
       </p>
       <p>
         Most are questions about the add-on&rsquo;s own code, and land under
@@ -724,10 +725,12 @@ flowchart TB
         release&rsquo;s, not something the developer wrote, so what is left is
         whether shipping it as published is acceptable here - a judgement a person
         owns. That is a different question from &ldquo;is this even remote?&rdquo;, so it
-        is a different check - <code>vendored-remote-resources</code>, which declares
-        <code>escalation: manual-review</code> and shares one scan with
-        <code>remote-resources</code>. Which section a check&rsquo;s cases land in is
-        declared on the check, never per case.
+        is a different check - <code>vendored-remote-resources</code>, which authors
+        only an <code>instructions-for-human</code> and shares one scan with
+        <code>remote-resources</code>. A check that authors wording an agent can be
+        handed is screened and lands under Extended Code Review; one that authors only
+        the human half lands under Extended Manual Review. Which section a check&rsquo;s
+        cases land in follows from the check, never from the case.
       </p>
       <p>
         Either way the entry carries its <strong>suggested response</strong>: once

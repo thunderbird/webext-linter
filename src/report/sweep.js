@@ -7,12 +7,12 @@
 // own detectors missed. From that point the case is one of that check's, handled exactly
 // as a case that check found for itself - which is the whole rule:
 //
-//   the check escalates  -> an escalation of that check, in the section its `escalation`
-//                           names, worded by the check's own `instructions`. A swept case
-//                           and a detected one ask the reader the same question.
-//   it does not          -> a FINDING of that check. A check with no escalation settles
-//                           its cases as findings, so a swept one is a finding too, and
-//                           the verify phase audits it like every other claim.
+//   the check escalates  -> an escalation of that check, in the section that check's own
+//                           wording puts it in, worded by those same instructions. A swept
+//                           case and a detected one ask the reader the same question.
+//   it does not          -> a FINDING of that check. A check that authors no wording
+//                           settles its cases as findings, so a swept one is a finding
+//                           too, and the verify phase audits it like every other claim.
 //
 // So a `sweep-instruction` is read in two places, neither of them here: the request handed
 // to the sweep agent, and the report's Standard Code Review list, which names the blind
@@ -159,22 +159,22 @@ export function mergeSweepResults({
     }
     seen.add(key);
     const where = `${r.check} (${r.file}${r.line == null ? "" : `:${r.line}`})`;
-    const escalation = registry.checkEntry(r.check)?.escalation;
-    if (escalation) {
-      // An escalation of that check, in the section that check declares. renderManualItems
-      // words it from the check's own `instructions`, so a swept case and a detected one
-      // put the same question to the same reader.
+    const section = registry.sectionFor(r.check);
+    if (section) {
+      // An escalation of that check, in the section that check's own wording puts it in.
+      // renderManualItems words it from that check's instructions, so a swept case and a
+      // detected one put the same question to the same reader.
       refs.push({
         ruleId: r.check,
         item: null,
         hint: r.hint,
         file: r.file,
         loc: r.line == null ? null : { line: r.line },
-        section: escalation,
+        section,
         data: null,
         occurrences: null,
       });
-      applied.push(`${where} -> ${escalation}`);
+      applied.push(`${where} -> ${section}`);
     } else {
       // No escalation: this check settles its cases as findings, so a swept one is a
       // finding. Built the way applyVerdicts builds one from a reported case

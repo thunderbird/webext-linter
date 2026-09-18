@@ -1,7 +1,8 @@
 // The orchestrator's escalation policy: how a case a check could not settle on its own
 // becomes a to-do note. A check returns `escalations` of cases a person must inspect and
 // manualEscalations repacks them as manual items. WHICH section they are listed under is
-// the check's `escalation` field, not a property of the case: every case a check raises
+// the check's `escalation` field - the section the registry derived from the reader that
+// check authored wording for - and not a property of the case: every case a check raises
 // asks the same question, so a check needing two questions is two checks.
 //
 // Belongs here: manualEscalations, the ManualRef shape, and narrating each check's
@@ -36,7 +37,7 @@
  * @property {?string} file  Locus path, listed under the manual entry, or null.
  * @property {{line?: number, column?: number}|null} loc  Locus line, or null.
  * @property {?string} section  The to-do section this is listed under, from the owning
- *   check's `escalation` field.
+ *   check's `escalation` field (src/checks/registry.js sectionFor derives it).
  * @property {Record<string, string|number>|null} data  Extra `{{slot}}` values
  *   for the instructions template (null when the case carries none).
  * @property {?{id: string, file: string, line: ?number, token: string}[]}
@@ -67,8 +68,9 @@ function manualRef(check, c) {
 
 /**
  * Repack a check's escalations as manual refs. Nothing is adjudicated here: the check
- * already decided it cannot settle these, and its `escalation` field says which of the
- * two to-do sections they are listed under.
+ * already decided it cannot settle these, and its `escalation` field - derived from who
+ * that check wrote its question for - says which of the two to-do sections they are
+ * listed under.
  * @param {LoadedCheck} check
  * @param {Escalation[]} escalations
  * @returns {{findings: object[], manualItems: ManualRef[]}}

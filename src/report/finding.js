@@ -17,6 +17,16 @@
 // verdict/escalation decisions, live in the registry and
 // src/checks/escalation.js - not here.
 
+/** The two sections an escalated case is listed under, and the ONE spelling of each.
+ *  A check does not declare which: it declares who its question is for, and the section
+ *  follows (src/checks/registry.js sectionFor). Both ends are here because one produces
+ *  these strings and another compares them (src/report/order.js bucketOf), and a section
+ *  spelled twice is a case that quietly stops being listed anywhere. */
+export const SECTION = Object.freeze({
+  CODE_REVIEW: "code-review",
+  MANUAL_REVIEW: "manual-review",
+});
+
 /** @typedef {"error" | "warning" | "info"} Severity */
 
 export const SEVERITY = Object.freeze({

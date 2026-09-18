@@ -180,8 +180,8 @@ export function renderManualItems(refs, registry) {
       // ([XPI]/[SCA]) via ruleInputs - the corpus the owning check acts on. Without
       // it a non-manifest manual item has no ruleId and defaults to [SCA].
       ruleId: ref.ruleId,
-      // Which of the two extended sections this is listed under, from the owning
-      // check's `escalation` field. The report groups on this.
+      // Which of the two extended sections this is listed under, from the reader the
+      // owning check authored wording for. The report groups on this.
       section: ref.section ?? null,
       file: ref.file ?? null,
       loc: ref.loc ?? null,

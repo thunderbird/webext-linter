@@ -23,7 +23,7 @@
 // Does NOT belong here: how an entry is drawn (src/report/format.js), what it says
 // (assets/registry.yaml), or which items a verdict changes (src/report/verdicts.js).
 
-import { SEVERITY_ORDER, sortFindings } from "./finding.js";
+import { SECTION, SEVERITY_ORDER, sortFindings } from "./finding.js";
 import { MAX_ENTRIES_PER_CATEGORY } from "../config.js";
 
 /**
@@ -81,7 +81,7 @@ function bucketOf(m) {
   if (!m.extended) {
     return "standard";
   }
-  return m.section === "manual-review" ? "extendedManual" : "code";
+  return m.section === SECTION.MANUAL_REVIEW ? "extendedManual" : "code";
 }
 
 /** The to-do sections, in the order the report prints them. */

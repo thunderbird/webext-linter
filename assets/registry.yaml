@@ -56,7 +56,6 @@ deterministic-phase:
 - title: Thunderbird in a localized add-on name
   severity: error
   check: trademark-thunderbird-locale
-  escalation: code-review
   input: xpi
   instructions: |-
     The add-on name below carries “Thunderbird” in a form this scan cannot verify.
@@ -77,7 +76,6 @@ deterministic-phase:
 - title: Thunderbird in an unlocalized add-on name
   severity: error
   check: trademark-thunderbird-name
-  escalation: manual-review
   input: xpi
   instructions-for-human: |-
     The add-on name below carries “Thunderbird” in a form this scan cannot verify,
@@ -93,7 +91,6 @@ deterministic-phase:
 - title: Unknown or unsupported WebExtension API
   severity: error
   check: unknown-api
-  escalation: code-review
   input: source
   response: |-
     The following WebExtension APIs are not supported in the targeted Thunderbird version.
@@ -253,7 +250,6 @@ deterministic-phase:
 - title: Debugger statement
   severity: error
   check: debugger-statement
-  escalation: code-review
   input: source
   instructions: |-
     A debugger statement is acceptable only when it is guarded by a build or
@@ -304,7 +300,6 @@ deterministic-phase:
 - title: Possibly unused permissions
   severity: warning
   check: unused-permission
-  escalation: code-review
   input: xpi
   response: |-
     One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
@@ -430,7 +425,6 @@ deterministic-phase:
 - title: Experiment manual review
   severity: error
   check: experiment-manual-review
-  escalation: manual-review
   input: manifest
   instructions-for-human: |-
     This submission ships an Experiment, which runs with full access to
@@ -457,7 +451,6 @@ deterministic-phase:
 - title: Experiment with unrecognized API usage
   severity: error
   check: experiment-unknown-api
-  escalation: code-review
   input: source
   instructions: |-
     This Experiment calls WebExtension APIs the schema does not recognize (see the
@@ -611,7 +604,6 @@ deterministic-phase:
   severity: error
   sca: true
   check: build-lifecycle-hook
-  escalation: code-review
   input: build
   instructions: |-
     The package.json declares the install lifecycle hook(s) below, which run when the
@@ -634,7 +626,6 @@ deterministic-phase:
   severity: error
   sca: true
   check: undeclared-build-source
-  escalation: manual-review
   input: build
   instructions-for-human: |-
     Confirm by hand that the shipped XPI is produced by this source: reproduce the
@@ -803,7 +794,6 @@ deterministic-phase:
 - title: Remote data transmission needs a privacy policy
   severity: hold-or-error
   check: privacy-policy
-  escalation: manual-review
   input: source
   # One case per transmission SITE, so an unresolved destination is still put to a
   # reviewer - but the question is about the host, and asking it once per file would
@@ -830,7 +820,6 @@ deterministic-phase:
 - title: Native messaging needs disclosure
   severity: hold-or-error
   check: native-messaging
-  escalation: manual-review
   input: manifest
   response: |-
     This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged.
@@ -937,7 +926,6 @@ deterministic-phase:
 - title: Missing English localization
   severity: warning
   check: missing-english-localization
-  escalation: code-review
   input: xpi
   instructions: |-
     This add-on ships no English localization, so user-facing text may be
@@ -973,7 +961,6 @@ deterministic-phase:
 - title: API newer than strict_min_version
   severity: error
   check: strict-min-version-api
-  escalation: code-review
   input: source
   instructions: |-
     Each call below is to an API that was introduced after the add-on's
@@ -990,7 +977,6 @@ deterministic-phase:
 - title: Unused, hidden or duplicate files or folders
   severity: warning
   check: unused-files
-  escalation: code-review
   input: xpi
   instructions: |-
     The following files are reachable from no manifest entry point, so decide
@@ -1006,7 +992,6 @@ deterministic-phase:
 - title: Minimize web_accessible_resources
   severity: warning
   check: minimize-web-accessible-resources
-  escalation: code-review
   input: xpi
   instructions: |-
     The following resources are exposed through web_accessible_resources and
@@ -1027,7 +1012,6 @@ deterministic-phase:
 - title: Remote resources
   severity: error
   check: remote-resources
-  escalation: code-review
   input: source
   instructions: |-
     This site loads or injects a resource - script, style, frame or media - from
@@ -1047,7 +1031,6 @@ deterministic-phase:
 - title: Remote load inside an upstream release
   severity: error
   check: vendored-remote-resources
-  escalation: manual-review
   input: source
   instructions-for-human: |-
     Each of these remote loads is inside a file whose content matches a published
@@ -1065,7 +1048,6 @@ deterministic-phase:
 - title: Remote eval
   severity: error
   check: remote-eval
-  escalation: code-review
   input: source
   instructions: |-
     The following location(s) execute code assembled at run time, such as
@@ -1080,7 +1062,6 @@ deterministic-phase:
 - title: User-data exfiltration
   severity: error
   check: data-exfiltration
-  escalation: code-review
   input: source
   instructions: |-
     The following code locations send data to a remote server. User data -
@@ -1106,7 +1087,6 @@ deterministic-phase:
 - title: Data smuggled through a channel not meant for it
   severity: error
   check: disguised-transmission
-  escalation: code-review
   input: source
   instructions: |-
     The following code locations build a URL to a remote host from a runtime

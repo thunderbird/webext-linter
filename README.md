@@ -254,10 +254,13 @@ Each `deterministic-phase` entry links to a module in
 findings. A check decides each case in code - as a finding, or as an **escalation**
 of a case it cannot settle, which reaches the reviewer as a to-do.
 
-An escalation is sorted by who can settle it. Most are questions about the add-on's
-own code and land under **Extended Code Review**. A check whose cases the code cannot
-answer declares `escalation: manual-review` instead, and its cases land under
-**Extended Manual Review**: `privacy-policy` (the policy is a field in the ATN listing,
+An escalation is sorted by who can settle it, and a check says that by naming its
+READER: the wording it authors is either `instructions` (one text, for whoever is
+asked), an `instructions-for-llm` beside an `instructions-for-human` (a different
+question for each), or an `instructions-for-human` alone. A check with wording an
+agent can be handed is screened, and its cases land under **Extended Code Review**.
+A check whose cases the code cannot answer authors only the human half, and its cases
+land under **Extended Manual Review**: `privacy-policy` (the policy is a field in the ATN listing,
 not in the package), `native-messaging` (likewise, what the listing discloses about the
 native app), `undeclared-build-source` (reproducing the build is the reviewer's own
 attestation that the source produces the shipped XPI), `trademark-thunderbird-name` (an
@@ -404,7 +407,7 @@ check's, handled exactly as a case it found for itself:
 
 | The owning check | Where a swept result lands |
 | --- | --- |
-| escalates | An escalation of that check, in the section its `escalation:` names, asking the question that check asks - its own `instructions`, never the text the sweep agent was sent. |
+| escalates | An escalation of that check, in the section that check's own wording puts it in, asking the question that check asks - its own instructions, never the text the sweep agent was sent. |
 | does not escalate | A **finding** of that check. Such a check settles its cases as findings, so a swept one is a finding too, and the `verify` phase audits it like every other claim. |
 
 So a `sweep-instruction` says what to LOOK FOR, and is read in exactly two

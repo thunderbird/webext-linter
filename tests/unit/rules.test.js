@@ -895,13 +895,11 @@ test("an entry that authors no check id is refused", () => {
   assertEntries(loadRegistry(), "assets/registry.yaml");
 });
 
-// A `default-note` stands in for what a REVIEWER wrote when they reported a case without
-// words, so it must be prose (never empty), and it must sit on an entry whose cases a
-// reviewer answers. Asked over allEntries() - the set checkEntry() indexes and
-// defaultNote() reads - because the two lists that set spans are exactly what a per-list
-// walk misses: a manual-checks entry has no rule module, so a walk over the linked checks
-// never sees one.
-test("a default-note must be prose on an entry a reviewer answers", () => {
+// A `default-note` stands in for the list a reporter did not write, so it must be prose,
+// never empty. Asked over allEntries() - the set checkEntry() indexes and defaultNote()
+// reads - because the two lists that set spans are exactly what a per-list walk misses: a
+// manual-checks entry has no rule module, so a walk over the linked checks never sees one.
+test("a default-note must be prose, in either list", () => {
   const rule = (extra) => ({
     title: "X",
     check: "sync-xhr",
@@ -928,11 +926,7 @@ test("a default-note must be prose on an entry a reviewer answers", () => {
     bad(
       {
         "deterministic-phase": [
-          rule({
-            escalation: "manual-review",
-            instructions: "i",
-            "default-note": note,
-          }),
+          rule({ "instructions-for-human": "i", "default-note": note }),
         ],
       },
       /invalid `default-note`/
@@ -943,34 +937,20 @@ test("a default-note must be prose on an entry a reviewer answers", () => {
     );
   }
 
-  // A case a reviewer answers: a manual-review escalation, or a manual check. A
-  // code-review case a model settled, or a check that lists no case at all, carries none.
-  bad(
-    {
-      "deterministic-phase": [
-        rule({
-          escalation: "code-review",
-          instructions: "i",
-          "default-note": "- ...",
-        }),
-      ],
-    },
-    /not `escalation: manual-review`/
-  );
-  bad(
-    { "deterministic-phase": [rule({ "default-note": "- ..." })] },
-    /not `escalation: manual-review`/
-  );
-
-  // Both supported homes load, and a manual check needs no escalation to be one.
+  // WHO the case was put to is not asked. The marker is consulted only for a case that
+  // was REPORTED, which an agent can do as well as a reviewer, so every shape that can
+  // report one may carry it - including a check screened by an agent, and one that lists
+  // no case of its own at all.
   assertEntries(
     new Registry({
       "deterministic-phase": [
+        rule({ "instructions-for-human": "i", "default-note": "- ..." }),
         rule({
-          escalation: "manual-review",
+          check: "eval-call",
           instructions: "i",
           "default-note": "- ...",
         }),
+        rule({ check: "unsafe-html", "default-note": "- ..." }),
       ],
       "manual-checks": [manual({ "default-note": "- ..." })],
     }),
@@ -3811,31 +3791,56 @@ test("a check that returns a bare array is refused, not read as findings", async
 // upload filter, so an invented `error` auto-rejects. runOneCheck refuses it instead: the
 // breach surfaces as a check-failed error naming the check, not as a silent rejection. The
 // empty shapes a check may legitimately return all pass.
-// The other half of the pairing, at load time: an entry declaring one without the other
-// fails there rather than at the first case that reaches it - which may be never.
-test("escalation without instructions, and the reverse, are refused", () => {
+// The other half of the pairing, at load time. A check names its READER by which wording
+// it authors, so the shapes that are not a reader fail at load rather than at the first
+// case that reaches them - which may be never.
+test("a wording shape that names no reader is refused", () => {
   const doc = loadRegistry();
   const entry = (id) =>
     doc.doc["deterministic-phase"].find((e) => e.check === id);
-  const orphanSection = entry("remote-eval");
-  const keepWording = orphanSection.instructions;
-  delete orphanSection.instructions;
-  assert.throws(
-    () => assertEntries(doc, "t.yaml"),
-    /authors no `instructions`/,
-    "a section with no wording"
-  );
-  orphanSection.instructions = keepWording;
+  const restore = (e, saved) => {
+    for (const k of ["instructions", "instructions-for-llm", "escalation"]) {
+      delete e[k];
+    }
+    Object.assign(e, saved);
+  };
 
-  const orphanWording = entry("data-exfiltration");
-  const keepSection = orphanWording.escalation;
-  delete orphanWording.escalation;
+  // A section nothing reads. The report's own section follows from the wording, so an
+  // entry still declaring one means something other than it says.
+  const stale = entry("remote-eval");
+  const staleSaved = { instructions: stale.instructions };
+  stale.escalation = "code-review";
   assert.throws(
     () => assertEntries(doc, "t.yaml"),
-    /declares no `escalation` section/,
-    "wording with no section"
+    /declares `escalation`, which nothing reads/,
+    "a declared section"
   );
-  orphanWording.escalation = keepSection;
+  restore(stale, staleSaved);
+
+  // `instructions` IS the text for either reader, so a second one is two answers to one
+  // question rather than an override.
+  const doubled = entry("data-exfiltration");
+  const doubledSaved = { instructions: doubled.instructions };
+  doubled["instructions-for-llm"] = "screen it";
+  assert.throws(
+    () => assertEntries(doc, "t.yaml"),
+    /authors `instructions` beside `instructions-for-llm`/,
+    "both a shared text and a per-reader one"
+  );
+  restore(doubled, doubledSaved);
+
+  // An agent's text with none for a person: unaskable in a review with no agent in it.
+  const llmOnly = entry("unknown-api");
+  const llmOnlySaved = { instructions: llmOnly.instructions };
+  delete llmOnly.instructions;
+  llmOnly["instructions-for-llm"] = "screen it";
+  assert.throws(
+    () => assertEntries(doc, "t.yaml"),
+    /authors `instructions-for-llm` with no text a person can be asked/,
+    "an agent-only question"
+  );
+  restore(llmOnly, llmOnlySaved);
+
   // Restored: the real registry still passes.
   assertEntries(doc, "t.yaml");
 });

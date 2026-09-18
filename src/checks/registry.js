@@ -17,8 +17,8 @@
 // A check returns `Finding[]`, or an object carrying `escalations` beside its
 // findings: the cases it could not settle. The orchestrator (runChecks) repacks
 // those as to-do items via escalation.js and is the sole authority on the to-do
-// sections: which one a check's cases are listed under is the check's own
-// `escalation` field, not a property of the case.
+// sections: which one a check's cases are listed under follows from the reader the
+// check authored wording for, not from a property of the case.
 //
 // The shared `ctx` passed to run() is the RunContext typedef below, which is the
 // one description of it: what a check may read, and from where.
@@ -38,7 +38,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import YAML from "yaml";
 import { displayLine } from "../util/text.js";
 
-import { finding, SEVERITY, VERDICT_KEYS } from "../report/finding.js";
+import { finding, SECTION, SEVERITY, VERDICT_KEYS } from "../report/finding.js";
 import { MAX_NOTE, PROMPT_SKIPS } from "../config.js";
 import { artifactLabel } from "../report/artifact.js";
 import { VERB, VERB_NAMES, verbNamed } from "../report/verbs.js";
@@ -80,14 +80,6 @@ const VALID_CHECK_SEVERITIES = new Set([
   HOLD_OR_ERROR,
   NO_SEVERITY,
 ]);
-
-// Where a check's escalations are listed, declared per entry and INDEPENDENT of severity:
-// the two answer different questions ("what are its findings" vs "who settles what it could
-// not"). "code-review" is settleable by reading the add-on's code; "manual-review" needs
-// information from outside the package, or an act only a person can take. A check's cases
-// all land in the same section - a check that needs both asks two questions and is two
-// checks (see remote-resources / vendored-remote-resources).
-const ESCALATION_SECTIONS = new Set(["code-review", "manual-review"]);
 
 // How an entry's repeated cases are LISTED, when listing every one of them says the same
 // thing several times. Omitted is the default every entry has today: one line per case.
@@ -156,8 +148,8 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   buildXpiCtxs / buildScaCtxs).
  * @property {string} [instructions]  The to-do wording a PERSON reads for a case this
  *   check escalates.
- * @property {string} [escalation]  Which to-do section its escalations are listed under
- *   ("code-review" / "manual-review"); absent when the check never escalates.
+ * @property {?string} [escalation]  Which to-do section its escalations are listed under
+ *   (SECTION in src/report/finding.js); null when the check never escalates.
  * @property {object[]} [permissionTokens]  The permission-prompts token entries
  *   ({permissions, tokens, version bounds}), carried by every check and read by
  *   the one that scans for them.
@@ -289,8 +281,8 @@ export class Registry {
    * asked here and no list of them can be missed by asking only one.
    *
    * A manual-checks entry is marked `manualCheck`, which is the one thing its shape does
-   * not say: it declares no `escalation`, because it IS a case put to a reviewer rather
-   * than a case escalated into one.
+   * not say: it is listed by being declared rather than by raising a case, so it belongs
+   * to no escalation section at all.
    * @returns {object[]}
    */
   allEntries() {
@@ -455,8 +447,8 @@ export class Registry {
    * key on - an enumerated set of transmission APIs says nothing about the sender it does
    * not list. Where the boundary cannot be closed by naming more, the check authors an
    * instruction for a reader instead, and what the reader finds belongs to THIS check -
-   * routed by its `escalation` to a finding in its band and its words, or to the question
-   * only a reviewer can answer. Presence is the whole declaration: a check with no blind
+   * routed the way that check routes its own cases: to a finding in its band and its
+   * words, or to the question its instructions ask. Presence is the whole declaration: a check with no blind
    * spot authors none.
    * @param {string} ruleId
    * @returns {?string}
@@ -648,6 +640,31 @@ export class Registry {
   }
 
   /**
+   * Which to-do section a case this check escalates is listed under, derived from WHO its
+   * question is for rather than declared: a check that authors wording an agent can be
+   * handed is screened, so its cases are a code review step; one that authors only a
+   * question for a person is a manual one.
+   *
+   * Null when the check authors no wording at all - it never escalates - and null for a
+   * manual-checks entry, which is a to-do rather than a check that raises one and so is
+   * listed by being declared, not by a section.
+   * @param {string} ruleId
+   * @returns {?string}
+   */
+  sectionFor(ruleId) {
+    const entry = this.checkEntry(ruleId);
+    if (!entry || entry.manualCheck) {
+      return null;
+    }
+    const authored = (key) =>
+      typeof entry[key] === "string" && entry[key] !== "";
+    if (authored("instructions") || authored("instructions-for-llm")) {
+      return SECTION.CODE_REVIEW;
+    }
+    return authored("instructions-for-human") ? SECTION.MANUAL_REVIEW : null;
+  }
+
+  /**
    * The wording an AGENT is handed for a ref of this rule: the check's
    * `instructions-for-llm`, or its `instructions` where one text serves either reader.
    *
@@ -785,8 +802,9 @@ function assertEntry(entry, at) {
   // reader: a manual check is only ever put to one, and an escalation must be answerable
   // in a review with no agent in it.
   const authored = (key) => typeof entry[key] === "string" && entry[key] !== "";
-  const wording =
-    authored("instructions-for-human") || authored("instructions");
+  const forLlm = authored("instructions-for-llm");
+  const forHuman = authored("instructions-for-human");
+  const wording = forHuman || authored("instructions");
   // A manual check IS a to-do item rather than a check that raises one, so it declares no
   // `escalation` and no `input`: it reads no artifact and lists its case unconditionally.
   if (entry.manualCheck) {
@@ -804,28 +822,36 @@ function assertEntry(entry, at) {
       }
     }
   } else {
-    // `escalation` and `instructions` are one declaration in two halves: the section a
-    // case is listed under, and the wording it is listed with. Either alone is a mistake -
-    // wording with no section is an escalation someone forgot to declare, a section with
-    // no wording asks a reviewer to decide with nothing to go on - and both would surface
-    // only when a case first reached them, which may be never. So both fail here.
-    const escalation = entry.escalation;
-    if (escalation !== undefined && !ESCALATION_SECTIONS.has(escalation)) {
+    // A check does not declare where its cases are listed. It declares WHO its question
+    // is for, by which wording it authors, and the section follows from that (sectionFor).
+    // So an `escalation` here is a declaration nothing reads, and is refused rather than
+    // ignored: an entry that means something other than what it says is worse than one
+    // that fails to load.
+    if (entry.escalation !== undefined) {
       throw new Error(
-        `${where} has an invalid escalation ${JSON.stringify(escalation)} ` +
-          `(expected one of: ${[...ESCALATION_SECTIONS].join(", ")})`
+        `${where} declares \`escalation\`, which nothing reads - a check names its ` +
+          "READER instead, by authoring `instructions` (one text, either reader), " +
+          "`instructions-for-llm` beside `instructions-for-human` (one question each), " +
+          "or `instructions-for-human` alone"
       );
     }
-    if (escalation !== undefined && !wording) {
+    // The three shapes, and the fourth that is refused. Both failures below would
+    // otherwise surface only when a case first reached them, which may be never.
+    if (authored("instructions") && (forLlm || forHuman)) {
       throw new Error(
-        `${where} declares escalation: ${escalation} but authors no ` +
-          "`instructions` (assets/registry.yaml)"
+        `${where} authors \`instructions\` beside ` +
+          `\`instructions-for-${forLlm ? "llm" : "human"}\` - \`instructions\` IS the ` +
+          "text for either reader, so a second one is not an override but two answers to " +
+          "one question"
       );
     }
-    if (wording && escalation === undefined) {
+    if (forLlm && !forHuman) {
       throw new Error(
-        `${where} authors \`instructions\` but declares no \`escalation\` section ` +
-          `(expected one of: ${[...ESCALATION_SECTIONS].join(", ")})`
+        `${where} authors \`instructions-for-llm\` with no text a person can be asked. ` +
+          "A review with no agent in it puts every escalation to a reviewer, so this " +
+          "check's cases would be unaskable there, and a case the agent declines to " +
+          "settle would have nowhere to land. Author `instructions-for-human` beside it, " +
+          "or `instructions` for one text serving either reader"
       );
     }
     // Optional, and a typo would otherwise read as "the default" - silently listing every
@@ -872,10 +898,10 @@ function assertEntry(entry, at) {
  * all three are config, so they fail here rather than when a result first arrives - which
  * may be never.
  *
- * Note what is NOT required: an `escalation`. Not because a swept case always becomes a
- * finding - `escalation: manual-review` routes it to the reviewer instead
- * (src/report/sweep.js) - but because a check with no escalation section has a route all
- * the same, and it is the ordinary one.
+ * Note what is NOT required: that the check escalate at all. Not because a swept case
+ * always becomes a finding - a check that authors wording routes it to whoever that
+ * wording is for instead (src/report/sweep.js) - but because a check that authors none
+ * has a route all the same, and it is the ordinary one.
  * @param {object} entry
  * @param {string} where  How the entry is named in a message.
  * @param {string} severity  The entry's (already validated) severity.
@@ -915,11 +941,13 @@ function assertSweepInstruction(entry, where, severity) {
  * its response ends on a list, and the marker stands in that list when they reported the
  * case without writing one.
  *
- * So it must be prose - an empty one leaves the response ending on a list introduction with
- * nothing beneath it, the defect the fallback exists to prevent - and it must sit on an
- * entry whose cases a REVIEWER answers: a `manual-review` escalation, or a manual check,
- * which is one by construction. Anywhere else the marker would be stamped onto a case
- * nobody was ever asked to write about.
+ * So it must be prose: an empty one leaves the response ending on a list introduction with
+ * nothing beneath it, which is the defect the fallback exists to prevent.
+ *
+ * WHO the case was put to is not asked here. The marker is only ever consulted for a case
+ * that was reported (src/report/verdicts.js), and a check that authors one is saying what
+ * its response needs when nobody wrote the list - which is true of a case an agent settled
+ * as much as of one a reviewer did.
  * @param {object} entry
  * @param {string} where  How the entry is named in a message.
  */
@@ -932,13 +960,6 @@ function assertDefaultNote(entry, where) {
     throw new Error(
       `${where} has an invalid \`default-note\` ${JSON.stringify(note)} ` +
         "(expected a non-empty string)"
-    );
-  }
-  if (!entry.manualCheck && entry.escalation !== "manual-review") {
-    throw new Error(
-      `${where} authors a \`default-note\` but is not \`escalation: manual-review\` ` +
-        `(it is ${JSON.stringify(entry.escalation ?? null)}). The note stands in for ` +
-        "what a REVIEWER wrote, so only a case put to one can carry it."
     );
   }
 }
@@ -1446,7 +1467,7 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
       input: entry.input,
       sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
       instructions: entry["instructions-for-human"] ?? entry.instructions,
-      escalation: entry.escalation,
+      escalation: registry.sectionFor(id),
       // The permission-prompts token entries, like `instructions` above: registry
       // data every check carries, read by the one that scans for them. It version-filters at run time (versionInBounds) with the reviewed
       // manifest, so every entry is handed over here.
