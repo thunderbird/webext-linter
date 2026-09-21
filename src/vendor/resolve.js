@@ -145,6 +145,24 @@ export function declaredFiles(addon, entry) {
 }
 
 /**
+ * Whether a source can be fetched as one archive holding a directory's files - the
+ * only thing a directory declaration can be verified against.
+ *
+ * Two shapes can: a github `/tree/` URL, which classifies with a subpath because it
+ * resolves to the repo ZIP, and a pinned npm package, which resolves to its registry
+ * tarball. Everything else that reaches here is a single file's URL - a raw.github
+ * file, a jsDelivr `gh` file, a CDN directory listing - and names no archive at all.
+ * @param {import("./sources.js").VendorSource} src
+ * @returns {boolean}
+ */
+function directoryArchive(src) {
+  return (
+    (src.kind === "github" && src.subpath !== null) ||
+    (src.kind === "npm" && Boolean(src.version))
+  );
+}
+
+/**
  * The upstream release a packaged file's content was matched against, or null.
  * Two paths reach a `verified` result and both are legitimate grounds:
  *   - a VENDOR declaration whose source was fetched and whose content matched
@@ -245,6 +263,9 @@ export function resolveVendor({ addon }) {
     }
   }
 
+  // Folder declarations whose source cannot be fetched as an archive: reported, and
+  // taken out of the manifest so nothing tries to fetch them (see below).
+  const unverifiableFolders = new Set();
   for (const entry of manifest) {
     const src = classifySource(entry.sourceUrl);
     entry.trusted = src.trusted;
@@ -276,8 +297,31 @@ export function resolveVendor({ addon }) {
         source: entry.sourceUrl,
         outcome: "unpinned-source",
       });
+    } else if (entry.kind === "folder" && !directoryArchive(src)) {
+      // A directory is checked against an ARCHIVE of the upstream release - a github
+      // /tree/ repo ZIP, or a pinned npm package's tarball. A source that is neither
+      // cannot answer for a directory, and the way it fails is the reason this is
+      // decided here rather than left to the fetch: a CDN directory URL answers 200
+      // with an HTML listing page, so the fetch SUCCEEDS and the unzip is what
+      // fails - recording every file under the directory as unfetchable, each then
+      // reviewed as the developer's own code and each minified one REJECTED, for one
+      // wrong URL on one line. Pulled out here like an ambiguous pairing, and
+      // reported by the same check: the files stay vendored, nothing is fetched, and
+      // the developer is told the one true thing - this source cannot verify these
+      // files. The paths ride along as the finding's detail.
+      ambiguousSources.push({
+        source: entry.sourceUrl,
+        paths: declaredFiles(addon, entry),
+      });
+      unverifiableFolders.add(entry.path);
     }
     // Trusted + pinned entries are left for verifyVendor to fetch.
+  }
+  // Removed after the walk, so the loop above reads as one pass over the manifest.
+  for (let i = manifest.length - 1; i >= 0; i--) {
+    if (unverifiableFolders.has(manifest[i].path)) {
+      manifest.splice(i, 1);
+    }
   }
 
   const { packages, unpinned, githubDeps, unsupported, devPackages } =

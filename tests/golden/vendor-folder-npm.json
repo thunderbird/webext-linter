@@ -1,9 +1,9 @@
 {
   "meta": {
     "action": "review",
-    "xpi": "<root>/tests/addons/vendor-unparseable",
-    "xpiRoot": "<root>/tests/addons/vendor-unparseable/",
-    "xpiFile": "vendor-unparseable",
+    "xpi": "<root>/tests/addons/vendor-folder-npm",
+    "xpiRoot": "<root>/tests/addons/vendor-folder-npm/",
+    "xpiFile": "vendor-folder-npm",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
@@ -90,23 +90,11 @@
     ]
   },
   "summary": {
-    "error": 1,
+    "error": 0,
     "hold": 0,
     "warning": 0,
     "info": 0,
-    "byRule": {
-      "vendor-unparseable": 1
-    }
+    "byRule": {}
   },
-  "findings": [
-    {
-      "ruleId": "vendor-unparseable",
-      "severity": "error",
-      "file": "VENDOR.md",
-      "loc": null,
-      "item": null,
-      "hint": null,
-      "message": "A VENDOR file is present but no third-party library could be parsed from it. Declare each bundled library in its own block, separated from the next by a blank line. A block names the packaged file path and a source URL pointing at the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so the file can be verified automatically. A bare repository link is not a source, and a path mentioned in a sentence is not a declaration. For example:\n\nlib/purify.min.js:\n  source: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js\n  licence: Apache-2.0\n\nvendor/jszip.min.js:\n  source: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js\n  licence: MIT\n\nA library may also be declared on a single line, and those need no blank line between them:\n\nlib/purify.min.js: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js\nvendor/jszip.min.js: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js\n\nA library that ships as many files is better declared once, as the directory holding them, against a source naming the whole release - a pinned npm package, or a GitHub tree URL. Every file under the directory is then verified against that release, including the ones no line names:\n\ndirectory: lib/pdfjs\nsource: https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/\n\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
-    }
-  ]
+  "findings": []
 }

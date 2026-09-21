@@ -1,36 +1,5 @@
 ── Found Issues ──
-
-Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
-
-1) A VENDOR file is present but no third-party library could be parsed from it. Declare each bundled library in its own block, separated from the next by a blank line. A block names the packaged file path and a source URL pointing at the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so the file can be verified automatically. A bare repository link is not a source, and a path mentioned in a sentence is not a declaration. For example:
-
-lib/purify.min.js:
-  source: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js
-  licence: Apache-2.0
-
-vendor/jszip.min.js:
-  source: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
-  licence: MIT
-
-A library may also be declared on a single line, and those need no blank line between them:
-
-lib/purify.min.js: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js
-vendor/jszip.min.js: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
-
-A library that ships as many files is better declared once, as the directory holding them, against a source naming the whole release - a pinned npm package, or a GitHub tree URL. Every file under the directory is then verified against that release, including the ones no line names:
-
-directory: lib/pdfjs
-source: https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/
-
-Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
- - VENDORS.md
-
-2) Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous; and a directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/<name>@<version>/, or its registry tarball), or a GitHub tree URL (https://github.com/<owner>/<repo>/tree/<ref>/<path>).
- - VENDORS.md - https://unpkg.com/pkg@1.0.0/dist/bundle.min.js - lib/a.min.js, lib/b.min.js
- - VENDORS.md - https://unpkg.com/other@2.0.0/dist/other.min.js - lib/c.min.js, lib/d.min.js
-
-You can run this automated review yourself before submitting:
-https://github.com/thunderbird/webext-linter
+The automated review did not find any issues.
 
 ── Extended Code Review ──
 
@@ -181,6 +150,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-3 error(s), 0 hold, 0 warning(s), 0 info,
+0 error(s), 0 hold, 0 warning(s), 0 info,
 1 extended code review item(s), 0 extended manual review item(s),
 9 standard code review item(s), 9 standard manual review item(s)

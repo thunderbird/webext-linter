@@ -1,9 +1,11 @@
-// Flags a source URL that the VENDOR file pairs with MORE THAN ONE bundled file.
-// A file source can only verify a single file, so such a pairing is ambiguous - the
-// developer must give each file its own source, or declare the containing directory
-// with one directory source. resolveVendor pulls these entries out of the manifest
-// (they are not verified) and records them on `vendor.ambiguousSources`; this rule
-// just turns each into a finding.
+// Flags a declaration whose source cannot verify what it is paired with. Two reach
+// here, and resolveVendor settles both offline: a file source paired with MORE THAN
+// ONE bundled file (a file source verifies a single file, so the pairing is
+// ambiguous), and a DIRECTORY declared against something that is not an archive of
+// the release - a single file's URL, or a CDN's directory listing page, which is
+// fetchable enough that the request succeeds and only the unpacking fails. Either
+// way the entry is pulled out of the manifest (never verified, never fetched) and
+// recorded on `vendor.ambiguousSources`; this rule just turns each into a finding.
 //
 // Belongs here: turning the resolveVendor `ambiguousSources` list into findings.
 // Does NOT belong here: the parse / pairing (src/normalize/vendor.js), the offline

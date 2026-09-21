@@ -17,6 +17,11 @@ A library may also be declared on a single line, and those need no blank line be
 lib/purify.min.js: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js
 vendor/jszip.min.js: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
 
+A library that ships as many files is better declared once, as the directory holding them, against a source naming the whole release - a pinned npm package, or a GitHub tree URL. Every file under the directory is then verified against that release, including the ones no line names:
+
+directory: lib/pdfjs
+source: https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/
+
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
  - VENDOR.md
 

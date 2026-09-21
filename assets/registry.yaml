@@ -839,21 +839,29 @@ deterministic-phase:
     lib/purify.min.js: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js
     vendor/jszip.min.js: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
 
+    A library that ships as many files is better declared once, as the directory holding them, against a source naming the whole release - a pinned npm package, or a GitHub tree URL. Every file under the directory is then verified against that release, including the ones no line names:
+
+    directory: lib/pdfjs
+    source: https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/
+
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
   response-for-sca: |-
     A VENDOR file is present but no third-party library could be parsed from it. Declare each library in package.json instead and let the build script copy it from node_modules, rather than committing the file. Keep a single VENDOR.md file only for what that route cannot cover.
     Read more #1: https://extensionworkshop.com/documentation/publish/source-code-submission/
     Read more #2: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 
-# Flags a single source URL declared as the source of more than one bundled file -
-# a file source can verify only one file, so the pairing is ambiguous. A multi-file
-# library must be declared as a directory with a single directory source.
+# Flags a declaration whose source cannot verify the files paired with it: one file
+# URL declared as the source of several bundled files (a file source verifies one
+# file, so the pairing is ambiguous), or a directory declared against a source that
+# is not an archive of the upstream release. The second is settled offline, before
+# any fetch, because such a URL is usually FETCHABLE - a CDN directory answers with
+# an HTML listing page - so the request succeeds and only the unpacking fails.
 - title: Ambiguous vendored source
   severity: error
   check: vendor-ambiguous-source
   input: source
   response: |-
-    Each of the following source URLs is declared as the source of more than one bundled file. A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL.
+    Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous; and a directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/<name>@<version>/, or its registry tarball), or a GitHub tree URL (https://github.com/<owner>/<repo>/tree/<ref>/<path>).
 
 # Flags data smuggled out through a channel not meant for it - always an error,
 # regardless of consent. One check per channel (resource/stylesheet/window/

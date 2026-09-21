@@ -18,41 +18,61 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        A single source URL in the VENDOR file that is declared as the origin of
-        more than one bundled file. A file source can only verify one file
-        against the bytes at that URL, so pairing it with several files is
-        ambiguous — there is no way to know which file the source is meant to
-        attest.
+        A declaration whose source cannot verify the files paired with it. Two
+        shapes reach this check: a single source URL declared as the origin of
+        more than one bundled file — a file source verifies one file against the
+        bytes at that URL, so pairing it with several is ambiguous — and a
+        directory declared against a source that is not an archive of the
+        upstream release.
+      </p>
+      <p>
+        A directory is verified by fetching the release as one archive and
+        matching every file under the directory against its contents, so the
+        source has to name that archive. Two do: a pinned npm package, resolved
+        to its registry tarball, and a GitHub <code>/tree/</code> URL, resolved
+        to the repository ZIP. The URL of a single file does not — and neither
+        does a CDN's directory listing, which is a web page. That case is settled
+        before anything is fetched, precisely because such a URL usually
+        <em>is</em> fetchable: it answers 200 with an HTML page, so the request
+        succeeds and only the unpacking fails, which would otherwise leave every
+        file under the directory unverified.
       </p>
       <p>
         The fix is to give each bundled file its own distinct source URL, or — if
-        the files genuinely come from one place — to declare the containing
-        directory once as a single directory source. The vendor resolver pulls
-        these ambiguous pairings out of the VENDOR file (it does not attempt to
-        verify them) and this check turns each into an error.
+        the files come from one release — to declare the containing directory
+        against a source naming that release. The vendor resolver pulls these
+        declarations out of the VENDOR file (it does not attempt to verify them,
+        and does not request them) and this check turns each into an error.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The VENDOR file's declarations"] --> B{"Any one source URL<br/>paired with more than<br/>one bundled file?"}
-  B -- no --> OK([no finding])
+  A["The VENDOR file's declarations"] --> B{"A file source paired with<br/>more than one bundled file?"}
   B -- yes --> ERR([ERROR: ambiguous vendored source<br/>— one URL, many files])
+  B -- no --> C{"A directory declaration?"}
+  C -- no --> OK([no finding])
+  C -- yes --> D{"Source names the whole release?<br/>pinned npm package, or a<br/>github /tree/ URL"}
+  D -- yes --> OK
+  D -- no --> ERR2([ERROR: ambiguous vendored source<br/>— no archive to verify against])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   class ERR err;
+  class ERR2 err;
   class OK ok;
         </pre>
       </div>
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told that one source URL is declared for several bundled
-        files, that a file source can verify only one file, and that it must
-        either give each file its own source URL or declare the containing
-        directory with a single directory source.
+        The add-on is told that the listed source URLs cannot verify the files
+        declared against them — a file source verifies exactly one file, and a
+        directory needs a source that can be fetched as an archive of the whole
+        release. It is asked to give each file its own source URL, or to declare
+        the containing directory against a pinned npm package or a GitHub tree
+        URL.
       </div>
 
       <p class="source-note">

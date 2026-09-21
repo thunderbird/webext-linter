@@ -126,6 +126,58 @@ test("resolveVendor trusts a declared file + source URL", async () => {
   assert.equal(unparsedVendor, false);
 });
 
+// A directory declaration is checked against an ARCHIVE of the upstream release -
+// a github /tree/ repo ZIP or a pinned npm package's tarball. A source that is
+// neither is settled here, offline, and for a reason worth keeping: a raw file URL
+// (or a CDN listing page) is FETCHABLE, so the request succeeds and only the unzip
+// fails - which used to record every file under the directory as unfetchable, each
+// reviewed as the developer's own code and each minified one rejected, over one
+// wrong URL. Reported as an unusable pairing instead, with nothing fetched.
+test("resolveVendor refuses a directory source that is not an archive", async () => {
+  const RAW = "https://raw.githubusercontent.com/o/r/v1.0.0/dist/index.js";
+  const addon = fakeAddon({
+    "VENDOR.md": `- directory: vendor/lib\n- source: ${RAW}\n`,
+    "vendor/lib/a.js": "x",
+    "vendor/lib/b.js": "y",
+  });
+  const { manifest, ambiguousSources, folders } = await resolveVendor({
+    addon,
+    token: undefined,
+  });
+  assert.deepEqual(manifest, []); // never handed to the fetch
+  assert.equal(ambiguousSources.length, 1);
+  assert.equal(ambiguousSources[0].source, RAW);
+  assert.deepEqual([...ambiguousSources[0].paths].sort(), [
+    "vendor/lib/a.js",
+    "vendor/lib/b.js",
+  ]);
+  assert.ok(folders.has("vendor/lib"), "the files stay vendored");
+});
+
+// The two shapes that CAN answer for a directory are left alone, so the guard does
+// not quietly take the feature away while fixing how it fails.
+test("resolveVendor keeps a directory source that is an archive", async () => {
+  for (const source of [
+    "https://github.com/o/r/tree/v1.0.0/dist",
+    "https://cdn.jsdelivr.net/npm/widget@1.2.3/dist/",
+  ]) {
+    const addon = fakeAddon({
+      "VENDOR.md": `- directory: vendor/lib\n- source: ${source}\n`,
+      "vendor/lib/a.js": "x",
+    });
+    const { manifest, ambiguousSources } = await resolveVendor({
+      addon,
+      token: undefined,
+    });
+    assert.deepEqual(ambiguousSources, [], source);
+    assert.deepEqual(
+      manifest.map((e) => e.sourceUrl),
+      [source],
+      source
+    );
+  }
+});
+
 // A single source URL paired with more than one bundled FILE is ambiguous:
 // resolveVendor pulls those entries out of the manifest (not verified) and records
 // them on ambiguousSources, while keeping their paths vendored (skip-set).

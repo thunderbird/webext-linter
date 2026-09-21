@@ -147,10 +147,18 @@ function pointsToFile(url) {
 }
 
 /**
- * Whether a URL points to a DIRECTORY we can resolve to a fetchable archive (so a
- * folder declaration can be verified): a github `…/tree/<ref>/<path>` URL. The
- * source classifier (src/vendor/sources.js) maps it to the repo ZIP + the subpath.
- * A bare repo root is not a directory source.
+ * Whether a URL points to a DIRECTORY we can resolve to a fetchable archive, so a
+ * folder declaration can be verified against it. Two shapes can:
+ *
+ *   - a github `…/tree/<ref>/<path>` URL, which the source classifier
+ *     (src/vendor/sources.js) maps to the repo ZIP plus the subpath, and
+ *   - a pinned npm package on one of the package hosts - `…/<pkg>@<version>/…` -
+ *     which resolves to that package's registry tarball. The path after the version
+ *     is not read: the tarball is the whole package, so there is no subpath to scope
+ *     to, and `dist/` selects nothing the way a whole-repo `/tree/<ref>` does not.
+ *
+ * A bare repo root is not a directory source, and neither is an unpinned package:
+ * both name something that can change under a declaration that claims it did not.
  * @param {string} url
  * @returns {boolean}
  */
@@ -161,13 +169,29 @@ function isDirSource(url) {
   } catch {
     return false;
   }
+  const host = u.hostname.toLowerCase();
   const segs = u.pathname.split("/").filter(Boolean);
-  return (
-    u.hostname.toLowerCase() === "github.com" &&
-    segs[2] === "tree" &&
-    segs.length >= 4
-  );
+  if (host === "github.com") {
+    return segs[2] === "tree" && segs.length >= 4;
+  }
+  if (!PACKAGE_HOSTS.has(host)) {
+    return false;
+  }
+  // The package segment is the one carrying `@<version>`: the first for a plain
+  // name, the second for a scoped one (`@scope/name@1.2.3`). jsDelivr puts npm
+  // packages under `/npm/`, which is not part of the name either way.
+  const named = segs[0] === "npm" ? segs.slice(1) : segs;
+  const pkg = named[0]?.startsWith("@") ? named[1] : named[0];
+  return PINNED_PACKAGE.test(pkg ?? "");
 }
+
+// The hosts that serve an npm package's published files, and therefore name a
+// package a folder declaration can be resolved to. Kept beside the shape it is
+// matched with; the fetch-time allowlist is config.js VENDOR_TRUSTED_HOSTS.
+const PACKAGE_HOSTS = new Set(["unpkg.com", "cdn.jsdelivr.net"]);
+
+// `<name>@<version>`, with a concrete version rather than a dist-tag like "latest".
+const PINNED_PACKAGE = /@v?\d+(\.\d+)*([.-][0-9a-z.-]+)?$/i;
 
 // The keys that name the packaged file of a declaration, and the ones that name its
 // upstream source. Matched case-insensitively with runs of whitespace folded, so

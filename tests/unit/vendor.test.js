@@ -498,6 +498,55 @@ test("pinned failure: a lone path below the first line is prose", () => {
 // A `bundled directory` token (a directory prefix of packaged files) paired with a
 // github tree URL is a FOLDER entry (kind:"folder"); the directory itself is the
 // path. Verification (verifyFolder) later checks every file under it.
+// The other shape a directory can be verified against: a pinned npm package, whose
+// registry tarball holds the whole release. Without this the intuitive spelling -
+// the one a developer reaches for after being told to declare the containing
+// directory - does not parse at all, and takes the whole VENDOR file with it.
+test("a bundled directory + a pinned npm URL is a folder entry", () => {
+  const CDN = "https://cdn.jsdelivr.net/npm/widget@1.2.3/dist/";
+  const m = parseVendorManifest(
+    fakeAddon({
+      "VENDOR.md": `- directory : vendor/lib\n- source : ${CDN}\n`,
+      "vendor/lib/a.js": LIB,
+      "vendor/lib/b.js": LIB,
+    })
+  );
+  assert.deepEqual(
+    m.map((e) => [e.path, e.kind, e.sourceUrl]),
+    [["vendor/lib", "folder", CDN]]
+  );
+});
+
+// A scoped package carries its version on the second segment, which is the one place
+// the shape differs - and the packages that ship dozens of files tend to be scoped.
+test("a scoped pinned package is a directory source too", () => {
+  const CDN = "https://cdn.jsdelivr.net/npm/@scope/widget@1.2.3/dist/";
+  const m = parseVendorManifest(
+    fakeAddon({
+      "VENDOR.md": `- directory : vendor/lib\n- source : ${CDN}\n`,
+      "vendor/lib/a.js": LIB,
+    })
+  );
+  assert.deepEqual(
+    m.map((e) => [e.kind, e.sourceUrl]),
+    [["folder", CDN]]
+  );
+});
+
+// An unpinned package names something that can change under a declaration claiming
+// it did not, so it is no more a directory source than a bare repo root is.
+test("an unpinned package URL is not a directory source", () => {
+  const m = parseVendorManifest(
+    fakeAddon({
+      "VENDOR.md":
+        "- directory : vendor/lib\n" +
+        "- source : https://cdn.jsdelivr.net/npm/widget/dist/\n",
+      "vendor/lib/a.js": LIB,
+    })
+  );
+  assert.deepEqual(m, []);
+});
+
 test("a bundled directory + a github tree URL is a folder entry", () => {
   const TREE =
     "https://github.com/o/r/tree/0123456789012345678901234567890123456789/dist/lib";

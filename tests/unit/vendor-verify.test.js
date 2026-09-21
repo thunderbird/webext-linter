@@ -1711,6 +1711,125 @@ test("vendor grouping: folder, github and unpinned entries are left alone", asyn
   ]);
 });
 
+// ---- a directory declaration against an npm package ----
+// One line covering a whole vendored release, which is what a developer shipping
+// dozens of files from one package actually wants - and what vendor-ambiguous-source
+// already tells them to write. Until now only a github /tree/ URL could answer for a
+// directory; a CDN one answers 200 with an HTML listing, so the FETCH succeeded and
+// the unzip failed, recording every file under the directory as unfetchable.
+
+const FOLDER_CDN = "https://cdn.jsdelivr.net/npm/widget@1.2.3/dist/";
+const FOLDER_TGZ = "https://registry.npmjs.org/widget/-/widget-1.2.3.tgz";
+
+const folderEntry = (sourceUrl) => ({
+  path: "lib",
+  kind: "folder",
+  sourceUrl,
+  trusted: true,
+  pinned: true,
+});
+
+// The package is taken from the URL and its own tarball answers for the directory.
+// Only the tarball is served here, so nothing can pass by way of a file URL.
+test("verifyFolder: a CDN directory URL resolves to that package's tarball", async () => {
+  const tgz = makeTgz({
+    "package/dist/a.js": "A\n",
+    "package/dist/b.js": "B\n",
+  });
+  const addon = addonWith(
+    { "lib/a.js": "A\n", "lib/b.js": "B\n" },
+    store({ folders: new Set(["lib"]), manifest: [folderEntry(FOLDER_CDN)] })
+  );
+  const asked = [];
+  await verifyVendorDeclarations(addon, {
+    fetchBytes: async (url) => {
+      asked.push(url);
+      if (url !== FOLDER_TGZ) {
+        throw new Error("HTTP 404");
+      }
+      return tgz;
+    },
+    fetchJson: async () => ({ downloads: 250000 }),
+    postJson: async () => ({ vulns: [] }),
+  });
+  assert.deepEqual(asked, [FOLDER_TGZ]);
+  assert.deepEqual(addon.vendor.results, [
+    { path: "lib/a.js", source: FOLDER_CDN, outcome: "verified" },
+    { path: "lib/b.js", source: FOLDER_CDN, outcome: "verified" },
+  ]);
+});
+
+// The form that says outright which package answers. It is fetched as given, with no
+// URL to reconstruct.
+test("verifyFolder: a registry tarball directory source is fetched as given", async () => {
+  const tgz = makeTgz({ "package/dist/a.js": "A\n" });
+  const addon = addonWith(
+    { "lib/a.js": "A\n" },
+    store({ folders: new Set(["lib"]), manifest: [folderEntry(FOLDER_TGZ)] })
+  );
+  await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
+  assert.deepEqual(addon.vendor.results, [
+    { path: "lib/a.js", source: FOLDER_TGZ, outcome: "verified" },
+  ]);
+});
+
+// A directory covers what sits under it, so a file nobody named is verified with the
+// rest - which is the whole reason to prefer one line over one line per file.
+test("verifyFolder: a file the declaration never names is covered too", async () => {
+  const tgz = makeTgz({
+    "package/dist/a.js": "A\n",
+    "package/LICENSE": "MIT\n",
+  });
+  const addon = addonWith(
+    { "lib/a.js": "A\n", "lib/LICENSE.txt": "MIT\n" },
+    store({ folders: new Set(["lib"]), manifest: [folderEntry(FOLDER_CDN)] })
+  );
+  await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
+  assert.deepEqual(
+    addon.vendor.results.map((r) => [r.path, r.outcome]),
+    [
+      ["lib/a.js", "verified"],
+      ["lib/LICENSE.txt", "verified"],
+    ]
+  );
+});
+
+// Covering a directory is not the same as trusting whatever is in it: a file the
+// package does not publish is still reported.
+test("verifyFolder: a file the package does not publish is modified", async () => {
+  const tgz = makeTgz({ "package/dist/a.js": "A\n" });
+  const addon = addonWith(
+    { "lib/a.js": "A\n", "lib/mine.js": "MINE\n" },
+    store({ folders: new Set(["lib"]), manifest: [folderEntry(FOLDER_CDN)] })
+  );
+  await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
+  assert.deepEqual(
+    addon.vendor.results.map((r) => [r.path, r.outcome]),
+    [
+      ["lib/a.js", "verified"],
+      ["lib/mine.js", "modified"],
+    ]
+  );
+});
+
+// One directory is one package, so it is one reading however many files it holds.
+test("verifyFolder: the package of a directory is asked about once", async () => {
+  const calls = { popularity: [] };
+  const tgz = makeTgz({
+    "package/dist/a.js": "A\n",
+    "package/dist/b.js": "B\n",
+  });
+  const addon = addonWith(
+    { "lib/a.js": "A\n", "lib/b.js": "B\n" },
+    store({ folders: new Set(["lib"]), manifest: [folderEntry(FOLDER_CDN)] })
+  );
+  await verifyVendorDeclarations(
+    addon,
+    net({ bytes: tgz, downloads: 250000, calls })
+  );
+  assert.equal(calls.popularity.length, 1);
+});
+
 // ---- the popularity lookup's request budget ----
 // The bug these pin: api.npmjs.org answers a burst with 429, isPopular swallowed
 // every failure into `false`, and `false` means "not widely used" - so an add-on

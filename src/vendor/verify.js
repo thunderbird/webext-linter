@@ -5,6 +5,14 @@
 // only read it (nothing is fetched twice).
 //
 // Three sources are verified:
+//   - a VENDOR entry declaring a DIRECTORY: fetch the upstream release as one
+//     archive - a github /tree/ repo ZIP, or a pinned npm package's registry
+//     tarball - and match every packaged file under the directory against its
+//     contents. One line can then cover a library that ships as many files,
+//     including the ones it does not name. A source that is neither of those two
+//     cannot answer for a directory and never reaches here: resolveVendor settles
+//     it offline, because such a URL is usually fetchable (a CDN directory answers
+//     with an HTML listing page) and only the unpacking would fail.
 //   - VENDOR entries that are trusted-host + pinned: fetch the declared URL and
 //     EOL-tolerant compare against the packaged bytes (verified / modified),
 //     then gate on popularity (verified / not-popular), one reading per package
@@ -188,7 +196,8 @@ export async function verifyVendorDeclarations(
       continue;
     }
     // A folder declaration: every packaged file under the directory is matched
-    // against the repo archive (scoped to the declared subpath), one result each.
+    // against the upstream release fetched as one archive - a repo ZIP scoped to
+    // the declared subpath, or a pinned npm package's tarball - one result each.
     if (entry.kind === "folder") {
       await verifyFolder(entry, addon, vendor, net);
       continue;
@@ -1298,13 +1307,48 @@ async function verifyTarball(entry, addon, vendor, net) {
 }
 
 /**
- * Verify a vendored FOLDER: resolve its github tree source to the repo ZIP archive,
- * hash every upstream file under the declared subpath, then match EACH packaged file
- * under the directory by content hash (the same membership test as verifyTarball,
- * one result per file). A file not in the upstream set is `modified`; a fetch/parse
- * failure records every file the folder covers as `unfetchable`, which
- * applyUnverifiedVendor reconciles into the untrusted family - so each is reviewed as
- * authored code or rejected as unreadable, per file, never silently exempt.
+ * The upstream files a DIRECTORY declaration is checked against, as content hashes.
+ *
+ * Two kinds of source can answer for a directory, because two kinds can be fetched
+ * as one archive of many files: a github /tree/ URL, resolved to the repo ZIP and
+ * scoped to the declared subpath, and a pinned npm package, resolved to its registry
+ * tarball. A CDN directory URL is neither - it answers 200 with an HTML listing
+ * page, so the fetch SUCCEEDS and only the unzip fails - which is why the
+ * declaration is settled offline (resolveVendor) rather than found out here.
+ *
+ * The npm route takes the package whole and matches by membership, with no subpath
+ * to scope to: `dist/` in the declared URL selects nothing, exactly as a whole-repo
+ * /tree/<ref> selects nothing. That is also why tar's unreadable long-name entries
+ * cost nothing here - the paths are not what is being asked about.
+ * @param {VendorSource} src  The classified folder source.
+ * @param {VendorNet} net
+ * @returns {Promise<Set<string>>}  Normalized content hashes of the upstream files.
+ */
+async function folderHashes(src, net) {
+  if (src.kind === "npm") {
+    const url = src.tarball
+      ? src.rawUrl
+      : registryTarballUrl(src.pkg, src.version);
+    if (!url) {
+      throw new Error(`no registry tarball for ${src.pkg}@${src.version}`);
+    }
+    return tarballHashes(await net.fetchBytes(url));
+  }
+  return zipHashesUnder(await net.fetchBytes(src.rawUrl), src.subpath ?? "");
+}
+
+/**
+ * Verify a vendored FOLDER: fetch the upstream release as one archive (folderHashes),
+ * then match EACH packaged file under the directory by content hash (the same
+ * membership test as verifyTarball, one result per file). A file not in the upstream
+ * set is `modified`; a fetch/parse failure records every file the folder covers as
+ * `unfetchable`, which applyUnverifiedVendor reconciles into the untrusted family -
+ * so each is reviewed as authored code or rejected as unreadable, per file, never
+ * silently exempt.
+ *
+ * Matching is by membership rather than by path, unlike a file declaration: a
+ * directory names ONE source for many files, so there is no declared path to hold
+ * any one of them to.
  * @param {{path: string, sourceUrl: string}} entry  Folder entry (path = directory).
  * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
  * @returns {Promise<void>}
@@ -1313,10 +1357,7 @@ async function verifyFolder(entry, addon, vendor, net) {
   const src = classifySource(entry.sourceUrl);
   let hashes;
   try {
-    hashes = zipHashesUnder(
-      await net.fetchBytes(src.rawUrl),
-      src.subpath ?? ""
-    );
+    hashes = await folderHashes(src, net);
   } catch (err) {
     rethrowIfNetworkGone(err);
     // One row per covered file, like the success path below - a row naming the

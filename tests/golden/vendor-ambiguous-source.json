@@ -107,7 +107,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "A VENDOR file is present but no third-party library could be parsed from it. Declare each bundled library in its own block, separated from the next by a blank line. A block names the packaged file path and a source URL pointing at the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so the file can be verified automatically. A bare repository link is not a source, and a path mentioned in a sentence is not a declaration. For example:\n\nlib/purify.min.js:\n  source: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js\n  licence: Apache-2.0\n\nvendor/jszip.min.js:\n  source: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js\n  licence: MIT\n\nA library may also be declared on a single line, and those need no blank line between them:\n\nlib/purify.min.js: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js\nvendor/jszip.min.js: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js\n\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
+      "message": "A VENDOR file is present but no third-party library could be parsed from it. Declare each bundled library in its own block, separated from the next by a blank line. A block names the packaged file path and a source URL pointing at the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so the file can be verified automatically. A bare repository link is not a source, and a path mentioned in a sentence is not a declaration. For example:\n\nlib/purify.min.js:\n  source: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js\n  licence: Apache-2.0\n\nvendor/jszip.min.js:\n  source: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js\n  licence: MIT\n\nA library may also be declared on a single line, and those need no blank line between them:\n\nlib/purify.min.js: https://unpkg.com/dompurify@3.2.7/dist/purify.min.js\nvendor/jszip.min.js: https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js\n\nA library that ships as many files is better declared once, as the directory holding them, against a source naming the whole release - a pinned npm package, or a GitHub tree URL. Every file under the directory is then verified against that release, including the ones no line names:\n\ndirectory: lib/pdfjs\nsource: https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/\n\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
     },
     {
       "ruleId": "vendor-ambiguous-source",
@@ -116,7 +116,7 @@
       "loc": null,
       "item": "https://unpkg.com/pkg@1.0.0/dist/bundle.min.js",
       "hint": "lib/a.min.js, lib/b.min.js",
-      "message": "Each of the following source URLs is declared as the source of more than one bundled file. A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL."
+      "message": "Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous; and a directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/<name>@<version>/, or its registry tarball), or a GitHub tree URL (https://github.com/<owner>/<repo>/tree/<ref>/<path>)."
     },
     {
       "ruleId": "vendor-ambiguous-source",
@@ -125,7 +125,7 @@
       "loc": null,
       "item": "https://unpkg.com/other@2.0.0/dist/other.min.js",
       "hint": "lib/c.min.js, lib/d.min.js",
-      "message": "Each of the following source URLs is declared as the source of more than one bundled file. A file source can only verify one file, so the pairing is ambiguous. Give each file its own source URL, or - if they come from one place - declare the containing directory together with a single directory source URL."
+      "message": "Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous; and a directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/<name>@<version>/, or its registry tarball), or a GitHub tree URL (https://github.com/<owner>/<repo>/tree/<ref>/<path>)."
     }
   ]
 }

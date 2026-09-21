@@ -1,0 +1,16 @@
+{
+  "_comment": "One line covering a whole vendored package - the thing a developer shipping dozens of files from one release actually wants, and the thing our own vendor-ambiguous-source response tells them to write. Before this, a directory source could only be a github /tree/ URL: pointed at a CDN the fetch SUCCEEDED (those URLs answer 200 with an HTML listing page), the unzip failed, and every file under lib/ was recorded unfetchable - reviewed as the developer's own code, and REJECTED where minified. Now the pkg@version is taken off the URL and the package's own registry tarball answers for the directory. The network map serves only that tarball, so nothing here could pass by accident: no file URL is listed. LICENSE.txt is the point of the directory form - it is covered without being named, which a file declaration cannot do. Its bytes are published in the package, so it verifies with the rest; membership, not path, is what a directory declaration can ask, since it names one source for many files.",
+  "network": {
+    "https://registry.npmjs.org/widget/-/widget-1.2.3.tgz": {
+      "tgz": {
+        "dist/core.min.js": "lib/core.min.js",
+        "dist/extra.min.js": "lib/extra.min.js",
+        "LICENSE": "lib/LICENSE.txt"
+      }
+    },
+    "https://api.npmjs.org/downloads/point/last-month/widget": {
+      "json": { "downloads": 250000 }
+    }
+  },
+  "expect": {}
+}
