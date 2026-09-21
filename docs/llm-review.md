@@ -146,7 +146,7 @@ what this review is and where to read it:
 
 | Name | What it names |
 | --- | --- |
-| `XPI_FILE` | What was submitted, by name — the .xpi as ATN named it |
+| `XPI_FILE` | What was submitted, by name — the .xpi as ATN named it, or the folder's own name where the submission arrived unpacked |
 | `XPI_ROOT` | The shipped package, unpacked, ready to read |
 | `SCA_ROOT` / `SCA_SOURCE` | A source code review's source root, and the add-on's own code inside it |
 | `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
