@@ -7,7 +7,8 @@
 // Three sources are verified:
 //   - VENDOR entries that are trusted-host + pinned: fetch the declared URL and
 //     EOL-tolerant compare against the packaged bytes (verified / modified),
-//     then gate on popularity (verified / not-popular) - except a github source
+//     then gate on popularity (verified / not-popular), one reading per package
+//     however many entries name it - except a github source
 //     from a first-party trusted org (e.g. github.com/thunderbird/...) is
 //     accepted by provenance, skipping the popularity bar. An unfetchable URL
 //     records the covered files as unfetchable, which applyUnverifiedVendor
@@ -29,9 +30,15 @@
 //     a submission's exposure sits, since a real tree is mostly packages nobody
 //     wrote down.
 //
+// The popularity lookups are METERED as well as made. They go to one host per kind,
+// which answers a burst by refusing - and a refusal reaching a caller as an exception
+// is indistinguishable from "no such package", which demotes the library. So the
+// reading is memoized per package for the run, the requests are spaced, and a refusal
+// is retried; only an answer, or an exhausted retry, reaches the bar itself.
+//
 // Belongs here: verifyVendor and verifyScaDependencies (the two batches), the
-// per-source compare, the popularity lookup, the OSV audits, and the default
-// network transport. Does NOT belong here: URL classification (-> sources.js),
+// per-source compare, the popularity lookup and the pacing it needs, the OSV audits,
+// and the default network transport. Does NOT belong here: URL classification (-> sources.js),
 // the offline parse and the lock enumeration (-> resolve.js, locks.js), the host
 // allowlist + thresholds (-> config.js), and the finding/manual routing (-> the
 // vendor checks + registry).
@@ -47,10 +54,16 @@ import { npmNameForLibrary } from "../lib/library-hashes.js";
 import { matchLibraryBlock } from "../lib/library-blocks.js";
 import { normalizedSha256, eolNormalize } from "../normalize/hash.js";
 import { fetchWithTimeout } from "../util/net.js";
+import { debug } from "../util/log.js";
 import {
   VENDOR_NPM_MIN_DOWNLOADS,
   VENDOR_GITHUB_MIN_STARS,
   VENDOR_TRUSTED_GITHUB_ORGS,
+  VENDOR_NPM_DOWNLOADS_API,
+  VENDOR_GITHUB_REPOS_API,
+  VENDOR_POPULARITY_MIN_INTERVAL_MS,
+  VENDOR_POPULARITY_RETRIES,
+  VENDOR_POPULARITY_BACKOFF_MS,
   VENDOR_FETCH_TIMEOUT_MS,
   VENDOR_FETCH_MAX_BYTES,
   VENDOR_OSV_API,
@@ -177,8 +190,8 @@ export async function verifyVendorDeclarations(
     // matched; a single-file source is byte-compared.
     const src = classifySource(entry.sourceUrl);
     const outcome = src.tarball
-      ? await verifyTarball(entry, addon, net)
-      : await verifyUrl(entry, addon, net);
+      ? await verifyTarball(entry, addon, vendor, net)
+      : await verifyUrl(entry, addon, vendor, net);
     vendor.results.push({
       path: entry.path,
       source: entry.sourceUrl,
@@ -478,6 +491,118 @@ async function hydrateAdvisory(id, cache, net) {
   return record;
 }
 
+// THE POPULARITY LOOKUPS ARE PACED BY US, NOT BY THEM. api.npmjs.org enforces a
+// per-IP budget that a burst trips within about a dozen requests, and it answers a
+// refusal with 429 - which arrives here as an exception indistinguishable from "no
+// such package". Read as an answer, that refusal means "not widely used", which
+// demotes the library and can REJECT a minified one. So an add-on vendoring many
+// files was rate-limiting itself into false findings, differently on every run.
+//
+// Three things keep that from happening, in the order they help: the caller memoizes
+// (one reading per package, not one per file - see isPopular), this gate spaces what
+// is left, and a refusal is retried rather than believed. Only when all three have
+// been exhausted does the unanswered lookup fall back to its old meaning.
+//
+// The gate is module-level because it is about OUR total rate against a host, which
+// no single caller can see: the vendor step and the CDN identifier both ask, about
+// different files, and neither knows what the other has spent.
+const lastAsked = new Map();
+
+let popularityIntervalMs = VENDOR_POPULARITY_MIN_INTERVAL_MS;
+let popularityBackoffMs = VENDOR_POPULARITY_BACKOFF_MS;
+
+/**
+ * Shorten (or remove) the waiting, for suites that answer these requests from a
+ * fixture and must not pay real time for a gate against a host they never reach.
+ * Production never calls this: the shipped values are the ones in config.js.
+ * @param {{intervalMs?: number, backoffMs?: number}} pacing
+ */
+export function setPopularityPacing({ intervalMs, backoffMs } = {}) {
+  if (Number.isFinite(intervalMs)) {
+    popularityIntervalMs = Math.max(0, intervalMs);
+  }
+  if (Number.isFinite(backoffMs)) {
+    popularityBackoffMs = Math.max(0, backoffMs);
+  }
+}
+
+/** @param {number} ms @returns {Promise<void>} */
+function delay(ms) {
+  return ms > 0
+    ? new Promise((done) => setTimeout(done, ms))
+    : Promise.resolve();
+}
+
+/** @param {string} url @returns {string} The host to meter, or the whole URL. */
+function meteredHost(url) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return String(url);
+  }
+}
+
+/**
+ * Whether a failed request was the host REFUSING to answer rather than answering.
+ *
+ * The distinction is the whole point: 429 (budget spent), 403 (api.github.com says
+ * the same thing that way), 408 and any 5xx say nothing about the package, and nor
+ * does a timeout - so the reading is still out there to be had. A 404 is NOT one of
+ * these: npm really does answer 404 for a package it has no download data for, and
+ * retrying it would multiply our load to re-learn the same thing.
+ *
+ * Read off `status` when the transport attached one, and off the message otherwise,
+ * so an injected net that throws a bare `new Error("HTTP 429")` is understood too.
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+function refusedToAnswer(err) {
+  const status = Number(err?.status);
+  if (Number.isFinite(status) && status > 0) {
+    return status === 429 || status === 403 || status === 408 || status >= 500;
+  }
+  const msg = String(err?.message ?? "");
+  return (
+    /\bHTTP (403|408|429|5\d\d)\b/.test(msg) ||
+    /timed out after \d+ms$/.test(msg)
+  );
+}
+
+/**
+ * One popularity request: held back to the gate, and retried while the host is
+ * refusing to answer.
+ *
+ * `rethrowIfNetworkGone` still runs first on every failure, so a dead route stops
+ * the review here exactly as it did before - we retry a refusal, not an absence of
+ * network. Anything that is not a refusal is re-thrown untouched on the first try,
+ * leaving the caller's existing fallback to mean what it always meant.
+ * @param {string} url @param {VendorNet} net
+ * @returns {Promise<object>}
+ */
+async function askPopularity(url, net) {
+  const host = meteredHost(url);
+  for (let attempt = 0; ; attempt++) {
+    const earliest = (lastAsked.get(host) ?? 0) + popularityIntervalMs;
+    await delay(earliest - Date.now());
+    lastAsked.set(host, Date.now());
+    try {
+      return await net.fetchJson(url);
+    } catch (err) {
+      rethrowIfNetworkGone(err);
+      if (attempt >= VENDOR_POPULARITY_RETRIES || !refusedToAnswer(err)) {
+        throw err;
+      }
+      // Retry-After wins when it names a delay; the npm endpoint currently sends
+      // "retry-after: 0", which is not one, so the doubling backoff carries it.
+      const wait = err?.retryAfterMs ?? popularityBackoffMs * 2 ** attempt;
+      debug(
+        `popularity lookup refused (${err.message}) for ${url} - retrying in ${wait}ms`
+      );
+      await delay(wait);
+    }
+  }
+}
+
 /**
  * Whether a GitHub repo clears the popularity bar (stargazers >=
  * VENDOR_GITHUB_MIN_STARS), with a trusted-org (VENDOR_TRUSTED_GITHUB_ORGS) free
@@ -496,7 +621,7 @@ async function githubPopular(repo, net) {
     return true; // first-party org (e.g. Thunderbird) - trusted by provenance
   }
   try {
-    const j = await net.fetchJson(`https://api.github.com/repos/${repo}`);
+    const j = await askPopularity(`${VENDOR_GITHUB_REPOS_API}${repo}`, net);
     const n = Number(j?.stargazers_count);
     return Number.isFinite(n) ? n >= VENDOR_GITHUB_MIN_STARS : null;
   } catch (err) {
@@ -507,19 +632,18 @@ async function githubPopular(repo, net) {
 
 /**
  * Last-month npm download count for a package, or null when the lookup fails.
- * Unlike isPopular (which collapses any error to "not popular"), this keeps a
- * failed lookup distinguishable so the unpopular-source-dependency REJECT only
- * ever fires on a positive below-threshold reading, never on a flaky network call
- * (or an offline run). The npm download API serves scoped packages too.
+ * A failed lookup is kept distinguishable from a real below-threshold reading, so
+ * the unpopular-source-dependency REJECT only ever fires on a reading. isPopular
+ * collapses the same null to "not popular", because there the file has a fallback
+ * to fall to; askPopularity is what makes that collapse rare. The npm download API
+ * serves scoped packages too.
  * @param {string} name  npm package name.
  * @param {VendorNet} net
  * @returns {Promise<number | null>}
  */
 async function npmDownloads(name, net) {
   try {
-    const j = await net.fetchJson(
-      `https://api.npmjs.org/downloads/point/last-month/${name}`
-    );
+    const j = await askPopularity(`${VENDOR_NPM_DOWNLOADS_API}${name}`, net);
     const n = Number(j?.downloads);
     return Number.isFinite(n) ? n : null;
   } catch (err) {
@@ -911,10 +1035,10 @@ function worseSeverity(a, b) {
 /**
  * Compare a packaged file against its declared trusted+pinned URL.
  * @param {{path: string, sourceUrl: string}} entry
- * @param {Addon} addon @param {VendorNet} net
+ * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
  * @returns {Promise<"verified"|"modified"|"not-popular"|"unfetchable">}
  */
-async function verifyUrl(entry, addon, net) {
+async function verifyUrl(entry, addon, vendor, net) {
   const src = classifySource(entry.sourceUrl);
   const mine = addon.files.get(entry.path) ?? Buffer.alloc(0);
   let fetched;
@@ -927,7 +1051,9 @@ async function verifyUrl(entry, addon, net) {
   if (!eolEqual(mine, fetched)) {
     return "modified";
   }
-  return (await isPopular(src, net)) ? "verified" : "not-popular";
+  return (await isPopular(src, net, vendor?.popularity))
+    ? "verified"
+    : "not-popular";
 }
 
 /**
@@ -938,10 +1064,10 @@ async function verifyUrl(entry, addon, net) {
  * gunzip, or parse failure is reported as unfetchable (the bytes to compare against
  * could not be obtained).
  * @param {{path: string, sourceUrl: string}} entry
- * @param {Addon} addon @param {VendorNet} net
+ * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
  * @returns {Promise<"verified"|"modified"|"not-popular"|"unfetchable">}
  */
-async function verifyTarball(entry, addon, net) {
+async function verifyTarball(entry, addon, vendor, net) {
   const src = classifySource(entry.sourceUrl);
   const mine = addon.files.get(entry.path) ?? Buffer.alloc(0);
   let hashes;
@@ -954,7 +1080,9 @@ async function verifyTarball(entry, addon, net) {
   if (!hashes.has(normalizedSha256(mine))) {
     return "modified";
   }
-  return (await isPopular(src, net)) ? "verified" : "not-popular";
+  return (await isPopular(src, net, vendor?.popularity))
+    ? "verified"
+    : "not-popular";
 }
 
 /**
@@ -1003,7 +1131,7 @@ async function verifyFolder(entry, addon, vendor, net) {
       continue;
     }
     if (popular === null) {
-      popular = await isPopular(src, net);
+      popular = await isPopular(src, net, vendor?.popularity);
     }
     vendor.results.push({
       path: addonPath,
@@ -1060,7 +1188,11 @@ async function verifyPackage(pkg, addon, vendor, net) {
       continue;
     }
     if (popular === null) {
-      popular = await isPopular({ kind: "npm", pkg: pkg.name }, net);
+      popular = await isPopular(
+        { kind: "npm", pkg: pkg.name },
+        net,
+        vendor?.popularity
+      );
     }
     vendor.set.add(addonPath);
     vendor.results.push({
@@ -1110,36 +1242,46 @@ function metaFiles(node, out = []) {
  * downloads or GitHub stars over the configured bar) OR a github source from a
  * first-party trusted org (VENDOR_TRUSTED_GITHUB_ORGS, e.g. Thunderbird), which
  * is accepted by provenance regardless of stars and without a popularity lookup.
- * A lookup error counts as "not popular" (the case then goes to manual review).
  * Shared by verifyVendor's per-source checks (VENDOR / package.json) and the CDN
  * identifier (src/lib/cdn-lookup.js), so all identification paths gate on
  * the same bar. `src` need only carry {kind, pkg} (npm) or {kind, repo} (github).
+ *
+ * A lookup that is never answered still counts as "not popular": the file keeps
+ * its declaration and is reviewed as the developer's own code, which is the safe
+ * reading. The dangerous one would be the opposite - an add-on's own entries are
+ * what spend the request budget, so trusting an unanswered lookup would let a
+ * submission pad its VENDOR file until the package it cares about goes unasked.
+ * askPopularity is what keeps that fallback rare enough to be honest.
+ *
+ * `memo` holds one answer per package for the length of ONE review (never across
+ * runs - popularity is time-varying, the same reason cdn-lookup does not cache it
+ * to disk). Without it a package declared 34 times was asked about 34 times.
  * @param {VendorSource} src @param {VendorNet} net
+ * @param {Map<string, boolean>} [memo]  Per-run, in-process; see above.
  * @returns {Promise<boolean>}
  */
-export async function isPopular(src, net) {
-  try {
-    if (src.kind === "npm") {
-      const j = await net.fetchJson(
-        `https://api.npmjs.org/downloads/point/last-month/${src.pkg}`
-      );
-      return Number(j?.downloads) >= VENDOR_NPM_MIN_DOWNLOADS;
-    }
-    if (src.kind === "github") {
-      const owner = String(src.repo ?? "")
-        .split("/")[0]
-        .toLowerCase();
-      if (VENDOR_TRUSTED_GITHUB_ORGS.includes(owner)) {
-        return true; // first-party org (e.g. Thunderbird) - trusted by provenance
-      }
-      const j = await net.fetchJson(`https://api.github.com/repos/${src.repo}`);
-      return Number(j?.stargazers_count) >= VENDOR_GITHUB_MIN_STARS;
-    }
-  } catch (err) {
-    rethrowIfNetworkGone(err);
+export async function isPopular(src, net, memo) {
+  const key =
+    src.kind === "npm"
+      ? `npm:${src.pkg}`
+      : src.kind === "github"
+        ? `gh:${String(src.repo ?? "").toLowerCase()}`
+        : null;
+  if (key === null) {
     return false;
   }
-  return false;
+  if (memo?.has(key)) {
+    return memo.get(key);
+  }
+  let popular = false;
+  if (src.kind === "npm") {
+    const downloads = await npmDownloads(src.pkg, net);
+    popular = downloads !== null && downloads >= VENDOR_NPM_MIN_DOWNLOADS;
+  } else {
+    popular = (await githubPopular(src.repo, net)) === true;
+  }
+  memo?.set(key, popular);
+  return popular;
 }
 
 /**
@@ -1164,6 +1306,28 @@ export const defaultNet = {
 };
 
 /**
+ * The error a non-ok response becomes, carrying what the caller may need to tell a
+ * REFUSAL from an answer (askPopularity) without re-reading the response.
+ *
+ * The message keeps its old shape, because that is what callers already read: the
+ * CDN identifier tells a genuine 404 from a transient failure with a regex over it
+ * (src/lib/cdn-lookup.js), and an injected test net throws the same shape by hand.
+ * @param {Response} res
+ * @returns {Error}
+ */
+function httpError(res) {
+  const err = new Error(`HTTP ${res.status}`);
+  err.status = res.status;
+  // Seconds, per RFC 9110; the HTTP-date form and a "0" (which npm sends with
+  // every 429) both leave this unset, so the caller falls back to its own backoff.
+  const after = Number(res.headers?.get("retry-after"));
+  if (Number.isFinite(after) && after > 0) {
+    err.retryAfterMs = after * 1000;
+  }
+  return err;
+}
+
+/**
  * Read a fetch Response as bytes, enforcing the size cap (fetchBytes' consumer). A
  * consume callback for fetchWithTimeout, so the read runs under the abort timeout.
  * @param {Response} res
@@ -1171,7 +1335,7 @@ export const defaultNet = {
  */
 async function readBytes(res) {
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
+    throw httpError(res);
   }
   const declared = Number(res.headers.get("content-length"));
   if (declared && declared > VENDOR_FETCH_MAX_BYTES) {
@@ -1192,7 +1356,7 @@ async function readBytes(res) {
  */
 async function readJson(res) {
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
+    throw httpError(res);
   }
   const declared = Number(res.headers.get("content-length"));
   if (declared && declared > VENDOR_FETCH_MAX_BYTES) {

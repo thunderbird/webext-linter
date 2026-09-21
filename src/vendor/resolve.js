@@ -50,6 +50,9 @@ import { SCHEME_RE } from "../lib/util.js";
  * @property {boolean} unparsedVendor  A VENDOR file exists but yielded nothing.
  * @property {?string} vendorFile  The VENDOR filename (e.g. "VENDOR.md"), or
  *   null; the anchor file for VENDOR-sourced vulnerability/unaudited findings.
+ * @property {Map<string, boolean>} popularity  One popularity reading per package
+ *   for this run, shared by every gate that asks (isPopular). Per-run and
+ *   in-process only; never written to disk.
  * @property {import("./verify.js").VendorVuln[]} vulnerabilities  Pinned npm
  *   packages (package.json deps + npm VENDOR entries) with known OSV advisories
  *   (filled by verifyVendor's audit; empty offline).
@@ -298,6 +301,12 @@ export function resolveVendor({ addon }) {
     missing,
     ambiguousSources,
     vendorFile: vendorFile?.name ?? null,
+    // One popularity reading per package, for the length of THIS review. It is a
+    // request budget, not a result cache: a package declared once per file was
+    // asked about once per file, and the host answers a burst by refusing. Never
+    // persisted - popularity is time-varying, the same reason the CDN identifier
+    // keeps it out of its on-disk cache (src/lib/cdn-lookup.js).
+    popularity: new Map(),
     // Filled by verifyVendor's OSV audit (network). Empty for offline runs.
     vulnerabilities: [],
     // Bundled library versions Mozilla add-on policy disallows (banned) or

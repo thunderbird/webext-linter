@@ -9,13 +9,17 @@ import { createHash } from "node:crypto";
 import AdmZip from "adm-zip";
 
 import { classifySource } from "../../src/vendor/sources.js";
-import { VENDOR_TRUSTED_HOSTS } from "../../src/config.js";
+import {
+  VENDOR_TRUSTED_HOSTS,
+  VENDOR_POPULARITY_RETRIES,
+} from "../../src/config.js";
 import {
   verifyVendor,
   verifyVendorDeclarations,
   verifyScaDependencies,
   auditIdentifiedLibraries,
   isPopular,
+  setPopularityPacing,
 } from "../../src/vendor/verify.js";
 import { NetworkGoneError } from "../../src/util/net.js";
 import { parseLibraryBlocks } from "../../src/lib/library-blocks.js";
@@ -29,6 +33,11 @@ import vendorUnparseable from "../../src/checks/rules/vendor-unparseable.js";
 import { applyUnverifiedVendor } from "../../src/lib/bundled.js";
 import { normalizedSha256 } from "../../src/normalize/hash.js";
 import { makeTgz } from "./tarball-fixture.js";
+
+// Every request here is answered by an injected transport, so the gate that spaces
+// real popularity requests has nothing to protect and would only spend real seconds.
+// The gate's own behaviour is asserted by driving the knobs deliberately below.
+setPopularityPacing({ intervalMs: 0, backoffMs: 0 });
 
 // ---- classifySource (no network) ----
 test("classifySource recognizes the trusted hosts and pinned refs", () => {
@@ -187,8 +196,14 @@ function net({
   advisories,
   throwOnBatch,
   throwOnHydrate,
+  // `popularityStatus` refuses the next popularity request(s) with those HTTP
+  // statuses, one per entry, before the normal answer - the way a host that is
+  // rate-limiting us behaves. `retryAfter` rides along on each refusal (seconds).
+  popularityStatus,
+  retryAfter,
   calls,
 } = {}) {
+  const refusals = [...(popularityStatus ?? [])];
   return {
     fetchBytes: async (url) => {
       if (throwOnFetch) {
@@ -216,6 +231,20 @@ function net({
       }
       if (url.includes("?meta")) {
         return listing ?? { type: "directory", files: [] };
+      }
+      const popularityUrl =
+        url.includes("api.github.com/repos/") ||
+        url.includes("api.npmjs.org/downloads/");
+      if (popularityUrl) {
+        calls?.popularity?.push(url);
+        if (refusals.length) {
+          const err = new Error(`HTTP ${refusals[0]}`);
+          err.status = refusals.shift();
+          if (retryAfter) {
+            err.retryAfterMs = retryAfter * 1000;
+          }
+          throw err;
+        }
       }
       if (url.includes("api.github.com/repos/")) {
         return { stargazers_count: stars };
@@ -261,6 +290,7 @@ const store = (over = {}) => ({
   lockPackages: [],
   treeVulnerabilities: [],
   treeDevVulnerabilities: [],
+  popularity: new Map(),
   ...over,
 });
 
@@ -1461,6 +1491,181 @@ test("a NetworkGoneError propagates out of every vendor entry point", async () =
     NetworkGoneError,
     "isPopular - the reclassification this protects"
   );
+});
+
+// ---- the popularity lookup's request budget ----
+// The bug these pin: api.npmjs.org answers a burst with 429, isPopular swallowed
+// every failure into `false`, and `false` means "not widely used" - so an add-on
+// declaring one package across 34 files demoted its own library, differently on
+// every run. A refusal is not a reading, and must be waited out rather than
+// believed.
+
+// A 429 says nothing about the package, so the answer is still out there. If this
+// stops holding, a popular library is reported as unknown-origin the moment the
+// host is busy - and a minified one is REJECTED for it.
+test("isPopular: a 429 is retried and the retried answer is used", async () => {
+  const calls = { popularity: [] };
+  const n = net({ popularityStatus: [429], downloads: 250000, calls });
+  assert.equal(await isPopular({ kind: "npm", pkg: "widget" }, n), true);
+  assert.equal(calls.popularity.length, 2, "asked again after the refusal");
+});
+
+// The same reasoning for the other two shapes a refusal takes. A timeout carries no
+// status at all, so it has to be recognised from the message fetchWithTimeout throws.
+test("isPopular: a 503 and a timeout are refusals too, not readings", async () => {
+  assert.equal(
+    await isPopular(
+      { kind: "npm", pkg: "widget" },
+      net({ popularityStatus: [503], downloads: 250000 })
+    ),
+    true,
+    "503"
+  );
+  let asked = 0;
+  const timingOut = {
+    fetchJson: async (url) => {
+      if (++asked === 1) {
+        throw new Error(`request to ${url} timed out after 10000ms`);
+      }
+      return { downloads: 250000 };
+    },
+  };
+  assert.equal(
+    await isPopular({ kind: "npm", pkg: "widget" }, timingOut),
+    true,
+    "timeout"
+  );
+});
+
+// The line that keeps this from becoming "retry everything": npm really does answer
+// 404 for a package it has no download data for. Retrying it would multiply our load
+// to re-learn the same thing, and it is the shape the offline fixture harness serves
+// for every URL it was not told about.
+test("isPopular: a 404 is an answer, not a refusal, and is never retried", async () => {
+  const calls = { popularity: [] };
+  const n = net({ popularityStatus: [404], calls });
+  assert.equal(await isPopular({ kind: "npm", pkg: "widget" }, n), false);
+  assert.equal(calls.popularity.length, 1, "asked once");
+});
+
+// Retrying cannot become waiting forever, and when the host never answers the file
+// keeps its old meaning. Trusting it instead would be the dangerous direction: an
+// add-on's own entries are what spend the budget, so a submission could pad its
+// VENDOR file until the package it cares about goes unasked.
+test("isPopular: retries are bounded, and a package still refused is not popular", async () => {
+  const calls = { popularity: [] };
+  const n = net({
+    popularityStatus: [429, 429, 429, 429, 429, 429],
+    downloads: 250000,
+    calls,
+  });
+  assert.equal(await isPopular({ kind: "npm", pkg: "widget" }, n), false);
+  assert.equal(
+    calls.popularity.length,
+    VENDOR_POPULARITY_RETRIES + 1,
+    "the first ask plus its retries, and no more"
+  );
+});
+
+// A Retry-After the host actually names is worth more than our guess. npm sends
+// "retry-after: 0" with every 429, which names nothing - hence the fallback.
+test("isPopular: a Retry-After that names a delay is waited out", async () => {
+  const n = net({
+    popularityStatus: [429],
+    retryAfter: 0.01,
+    downloads: 250000,
+  });
+  setPopularityPacing({ backoffMs: 60000 }); // would hang the suite if preferred
+  try {
+    assert.equal(await isPopular({ kind: "npm", pkg: "widget" }, n), true);
+  } finally {
+    setPopularityPacing({ backoffMs: 0 });
+  }
+});
+
+// The memo is the fix that matters most, because it removes the requests rather than
+// spacing them: the add-on that exposed this declared ONE package across 34 files.
+test("isPopular: the memo answers once for a package two entries share", async () => {
+  const calls = { popularity: [] };
+  const n = net({ downloads: 250000, calls });
+  const memo = new Map();
+  assert.equal(await isPopular({ kind: "npm", pkg: "widget" }, n, memo), true);
+  assert.equal(await isPopular({ kind: "npm", pkg: "widget" }, n, memo), true);
+  assert.equal(calls.popularity.length, 1, "asked once for the two entries");
+});
+
+// Without a memo nothing is remembered, which is what keeps every caller that does
+// not pass one behaving exactly as it did.
+test("isPopular: with no memo every ask reaches the host", async () => {
+  const calls = { popularity: [] };
+  const n = net({ downloads: 250000, calls });
+  await isPopular({ kind: "npm", pkg: "widget" }, n);
+  await isPopular({ kind: "npm", pkg: "widget" }, n);
+  assert.equal(calls.popularity.length, 2);
+});
+
+// Provenance still short-circuits the whole thing, so a first-party source costs no
+// request at all - and therefore none of the budget the rest of the run needs.
+test("isPopular: a trusted github org is never asked about", async () => {
+  const askless = {
+    fetchJson: async () => {
+      throw new Error("no popularity lookup expected for a trusted org");
+    },
+  };
+  assert.equal(
+    await isPopular(
+      { kind: "github", repo: "thunderbird/webext-support" },
+      askless
+    ),
+    true
+  );
+});
+
+// The declarations a review verifies go through the store's memo, so one package
+// declared across several files is one request no matter how many files there are.
+test("verifyVendorDeclarations: a package two entries share is looked up once", async () => {
+  const calls = { popularity: [] };
+  const base = "https://unpkg.com/widget@1.2.3/dist";
+  const addon = addonWith(
+    { "lib/a.js": "A\n", "lib/b.js": "B\n" },
+    store({
+      set: new Set(["lib/a.js", "lib/b.js"]),
+      manifest: [
+        pinnedEntry("lib/a.js", `${base}/a.js`),
+        pinnedEntry("lib/b.js", `${base}/b.js`),
+      ],
+    })
+  );
+  await verifyVendorDeclarations(
+    addon,
+    net({
+      files: { [`${base}/a.js`]: "A\n", [`${base}/b.js`]: "B\n" },
+      downloads: 250000,
+      calls,
+    })
+  );
+  assert.deepEqual(addon.vendor.results, [
+    { path: "lib/a.js", source: `${base}/a.js`, outcome: "verified" },
+    { path: "lib/b.js", source: `${base}/b.js`, outcome: "verified" },
+  ]);
+  assert.equal(calls.popularity.length, 1, "one reading for the one package");
+});
+
+// The regression the whole change must not cause: a package that really is below the
+// bar is still not popular, and the file is still demoted.
+test("verifyVendorDeclarations: a below-bar reading still records not-popular", async () => {
+  const url = "https://unpkg.com/widget@1.2.3/a.js";
+  const addon = addonWith(
+    { "a.js": "BODY\n" },
+    store({ set: new Set(["a.js"]), manifest: [pinnedEntry("a.js", url)] })
+  );
+  await verifyVendorDeclarations(
+    addon,
+    net({ bytes: "BODY\n", downloads: 12 })
+  );
+  assert.deepEqual(addon.vendor.results, [
+    { path: "a.js", source: url, outcome: "not-popular" },
+  ]);
 });
 
 // The other half, and the one every golden rests on: an ORDINARY failure is still

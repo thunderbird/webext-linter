@@ -152,6 +152,39 @@ export const VENDOR_NPM_MIN_DOWNLOADS = 1000;
 export const VENDOR_GITHUB_MIN_STARS = 100;
 
 /**
+ * Where the two popularity readings come from. Named here like every other
+ * endpoint the tool talks to, so the hosts a review contacts can be read off
+ * config rather than found inline in the code that asks.
+ */
+export const VENDOR_NPM_DOWNLOADS_API =
+  "https://api.npmjs.org/downloads/point/last-month/";
+export const VENDOR_GITHUB_REPOS_API = "https://api.github.com/repos/";
+
+/**
+ * The smallest gap between two popularity requests to the same host.
+ *
+ * This is OUR restraint, not theirs: api.npmjs.org enforces a per-IP budget that
+ * a burst trips within about a dozen requests, and a refusal is indistinguishable
+ * from a reading - it comes back as "not widely used" and demotes the library. An
+ * add-on vendoring many packages was therefore rate-limiting itself into false
+ * findings. Measured against the live endpoint: 40 consecutive requests 250ms
+ * apart were never refused, so this doubles that margin. Requests are already
+ * sequential, so the gate only has to delay the next one.
+ */
+export const VENDOR_POPULARITY_MIN_INTERVAL_MS = 500;
+
+/**
+ * How many times a REFUSED popularity request is retried before its answer is
+ * given up on. A refusal says nothing about the package, so the reading is worth
+ * waiting for; an answer (including a 404, which is npm's real "no download data"
+ * response) is never retried. Backoff doubles from
+ * VENDOR_POPULARITY_BACKOFF_MS, and a Retry-After header wins when it names a
+ * delay - the endpoint currently sends "retry-after: 0", which does not.
+ */
+export const VENDOR_POPULARITY_RETRIES = 3;
+export const VENDOR_POPULARITY_BACKOFF_MS = 1000;
+
+/**
  * GitHub orgs whose repos are trusted by provenance (first-party sources), so a
  * vendored file pinned to one is accepted WITHOUT meeting the stars bar above.
  * The bundled bytes are still compared to upstream, so a modified copy is still

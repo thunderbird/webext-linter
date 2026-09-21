@@ -14,6 +14,7 @@ import { classifyBundled } from "../../src/lib/bundled.js";
 import { VERDICT } from "../../src/lib/enum.js";
 import { resolveCdnLibraries, cdnUrl } from "../../src/lib/cdn-lookup.js";
 import { NetworkGoneError } from "../../src/util/net.js";
+import { setPopularityPacing } from "../../src/vendor/verify.js";
 import findLibOnCdn from "../../src/checks/rules/find-lib-on-cdn.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
@@ -70,6 +71,44 @@ function classify(addon) {
   addon.bundled = classifyBundled(addon);
   return addon;
 }
+
+// The popularity gate spaces real requests against a host's budget; every request
+// here is answered by `netFor`, so waiting would only cost the suite real seconds.
+setPopularityPacing({ intervalMs: 0, backoffMs: 0 });
+
+// The identifier asks about popularity per FILE, and the vendor step asks per
+// DECLARATION - against the same host, which answers a burst by refusing. Sharing
+// the run's memo is what makes a package cost one request per REVIEW rather than one
+// per asker; two files from one package here would otherwise be two lookups.
+test("the popularity memo is shared, so one package costs one lookup", async () => {
+  const addon = classify(
+    addonWith({ "app/a.min.js": MINIFIED, "app/b.min.js": `${MINIFIED}a=2;` })
+  );
+  addon.vendor = { popularity: new Map() };
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hit = (file) => ({
+    type: "npm",
+    name: "fuse.js",
+    version: "7.0.0",
+    file,
+  });
+  const net = netFor(
+    new Map([
+      [rawSha256(addon.files.get("app/a.min.js")), hit("/dist/a.min.js")],
+      [rawSha256(addon.files.get("app/b.min.js")), hit("/dist/b.min.js")],
+    ])
+  );
+
+  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+
+  const asked = net.calls.filter((u) => u.includes("api.npmjs.org"));
+  assert.equal(asked.length, 1, "one reading for the one package");
+  assert.equal(
+    addon.bundled.classified.filter((c) => c.libraryId).length,
+    2,
+    "both files still identified"
+  );
+});
 
 test("a hit promotes the bundle into the vendored family (library + libraryId + cdn)", async () => {
   const addon = classify(addonWith({ "app/fuse.min.js": MINIFIED }));

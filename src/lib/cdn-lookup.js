@@ -166,13 +166,18 @@ export async function resolveCdnLibraries(
     // gets: jsDelivr is uncurated (unlike the Mozilla hash DB, whose membership IS
     // the popularity signal), so an obscure or author-published package found here
     // must not be silently accepted. Looked up fresh each run (popularity is
-    // time-varying, so it is not cached with the hash hit) and offline-safe (a
-    // lookup error returns false).
+    // time-varying, so it is not cached with the hash hit) and offline-safe (an
+    // unanswered lookup reads as not-popular, after isPopular has spaced and
+    // retried it).
+    //
+    // The run's memo is shared with the vendor step rather than kept here: both ask
+    // about packages, per FILE, against a host that refuses a burst - so what
+    // matters is that a package is asked about once per REVIEW, not once per asker.
     const src =
       hit.type === "gh"
         ? { kind: "github", repo: hit.name }
         : { kind: "npm", pkg: hit.name };
-    const popular = await isPopular(src, net);
+    const popular = await isPopular(src, net, addon.vendor?.popularity);
     if (!popular && !packageMatchesFile(hit.name, tag.file)) {
       // A not-popular package whose name does not match the file is not "the
       // upstream" of that file - it merely republishes the same bytes (a vendored
