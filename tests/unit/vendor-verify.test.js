@@ -180,6 +180,14 @@ function net({
   throwOnFetch,
   osv,
   throwOnPost,
+  // The tree audit's two endpoints, kept separate from the single-package ones:
+  // `batch` answers /v1/querybatch (positionally, one result per query) and
+  // `advisories` maps an advisory id to the record /v1/vulns/<id> serves.
+  batch,
+  advisories,
+  throwOnBatch,
+  throwOnHydrate,
+  calls,
 } = {}) {
   return {
     fetchBytes: async (url) => {
@@ -195,6 +203,17 @@ function net({
       return Buffer.from(bytes ?? "");
     },
     fetchJson: async (url) => {
+      if (url.includes("/v1/vulns/")) {
+        calls?.hydrate?.push(url);
+        if (throwOnHydrate) {
+          throw new Error("offline");
+        }
+        const id = url.slice(url.lastIndexOf("/") + 1);
+        if (!(id in (advisories ?? {}))) {
+          throw new Error("404");
+        }
+        return advisories[id];
+      }
       if (url.includes("?meta")) {
         return listing ?? { type: "directory", files: [] };
       }
@@ -203,7 +222,17 @@ function net({
       }
       return { downloads };
     },
-    postJson: async (_url, body) => {
+    postJson: async (url, body) => {
+      if (url.includes("querybatch")) {
+        calls?.batch?.push(body);
+        if (throwOnBatch) {
+          throw new Error("offline");
+        }
+        return typeof batch === "function"
+          ? batch(body)
+          : (batch ?? { results: [] });
+      }
+      calls?.query?.push(body);
       if (throwOnPost) {
         throw new Error("offline");
       }
@@ -229,6 +258,9 @@ const store = (over = {}) => ({
   unaudited: [],
   unpopularDeps: [],
   blocked: [],
+  lockPackages: [],
+  treeVulnerabilities: [],
+  treeDevVulnerabilities: [],
   ...over,
 });
 
@@ -1479,4 +1511,418 @@ test("an ordinary fetch failure is still swallowed, not fatal", async () => {
     addon.vendor.results.map((r) => r.outcome),
     ["unfetchable"]
   );
+});
+
+// ---- auditLockedPackages (the lock-file tree audit) ----
+
+/** An OSV advisory record as /v1/vulns/<id> serves it. */
+const advisory = (id, severity, fixed, name) => ({
+  id,
+  database_specific: { severity },
+  affected: [
+    {
+      package: { ecosystem: "npm", name },
+      ranges: [{ events: [{ fixed }] }],
+    },
+  ],
+});
+
+/** A lock entry as lockedPackages produces one. */
+const locked = (name, version, dev = false, direct = false) => ({
+  name,
+  version,
+  dev,
+  direct,
+  file: "package-lock.json",
+  token: `node_modules/${name}`,
+});
+
+// The whole reason the tree audit exists: the advisory is on a package the
+// submission never declared, so nothing in package.json could have found it. It
+// anchors at the lock file, where the reviewer can actually see the entry.
+test("auditLockedPackages: an undeclared HIGH is recorded with its lock anchor", async () => {
+  const addon = addonWith(
+    { "package.json": "{}", "package-lock.json": "{}" },
+    store({ lockPackages: [locked("nth-check", "2.0.0")] })
+  );
+  await verifyScaDependencies(
+    addon,
+    net({
+      batch: { results: [{ vulns: [{ id: "GHSA-tree" }] }] },
+      advisories: {
+        "GHSA-tree": advisory("GHSA-tree", "HIGH", "2.0.1", "nth-check"),
+      },
+    })
+  );
+  assert.deepEqual(addon.vendor.treeVulnerabilities, [
+    {
+      name: "nth-check",
+      version: "2.0.0",
+      ids: ["GHSA-tree"],
+      severity: "high",
+      fixed: ["2.0.1"],
+      file: "package-lock.json",
+      token: "node_modules/nth-check",
+    },
+  ]);
+  assert.deepEqual(addon.vendor.treeDevVulnerabilities, []);
+});
+
+// A package nobody chose is worth the developer's attention when it fails the
+// review, not when it merely appears in one - so anything under high produces
+// nothing at all, rather than an info finding buried in a list of hundreds.
+test("auditLockedPackages: a moderate or low advisory is not recorded", async () => {
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({
+      lockPackages: [locked("mid", "1.0.0"), locked("small", "1.0.0")],
+    })
+  );
+  await verifyScaDependencies(
+    addon,
+    net({
+      batch: {
+        results: [
+          { vulns: [{ id: "GHSA-mid" }] },
+          { vulns: [{ id: "GHSA-low" }] },
+        ],
+      },
+      advisories: {
+        "GHSA-mid": advisory("GHSA-mid", "MODERATE", "1.0.1", "mid"),
+        "GHSA-low": advisory("GHSA-low", "LOW", "1.0.1", "small"),
+      },
+    })
+  );
+  assert.deepEqual(addon.vendor.treeVulnerabilities, []);
+  assert.deepEqual(addon.vendor.treeDevVulnerabilities, []);
+});
+
+// The two halves ask the developer different things - one about shipped code,
+// one about what runs on the reviewer's machine - so the lock's dev flag decides
+// which check reports it.
+test("auditLockedPackages: a build-time package routes to the dev set", async () => {
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({ lockPackages: [locked("serialize-javascript", "6.0.2", true)] })
+  );
+  await verifyScaDependencies(
+    addon,
+    net({
+      batch: { results: [{ vulns: [{ id: "GHSA-dev" }] }] },
+      advisories: {
+        "GHSA-dev": advisory(
+          "GHSA-dev",
+          "HIGH",
+          "6.0.3",
+          "serialize-javascript"
+        ),
+      },
+    })
+  );
+  assert.deepEqual(addon.vendor.treeVulnerabilities, []);
+  assert.equal(addon.vendor.treeDevVulnerabilities.length, 1);
+  assert.equal(
+    addon.vendor.treeDevVulnerabilities[0].name,
+    "serialize-javascript"
+  );
+});
+
+// A declared dependency is already audited by name, at every severity, anchored
+// at its package.json line. Sending it again would report it twice - the second
+// time as something nobody declared - so it never reaches the batch at all.
+test("auditLockedPackages: a declared package is not re-queried", async () => {
+  const calls = { batch: [], query: [] };
+  const addon = addonWith(
+    { "package.json": '{"dependencies":{"marked":"4.0.0"}}' },
+    store({
+      packages: [{ name: "marked", version: "4.0.0" }],
+      devPackages: [{ name: "webpack", version: "5.0.0" }],
+      lockPackages: [
+        locked("marked", "4.0.0"),
+        locked("webpack", "5.0.0", true),
+        locked("deep", "1.0.0"),
+      ],
+    })
+  );
+  await verifyScaDependencies(
+    addon,
+    net({
+      calls,
+      osv: { vulns: [] },
+      batch: { results: [{ vulns: [] }] },
+    })
+  );
+  assert.deepEqual(
+    calls.batch[0].queries.map((q) => q.package.name),
+    ["deep"]
+  );
+  // The declared half still went through the single-package endpoint, once each.
+  assert.deepEqual(
+    calls.query.map((q) => q.package.name),
+    ["marked", "webpack"]
+  );
+});
+
+// One request carrying a whole large tree is refused by the endpoint, so the
+// queue is chunked - and the chunks must together cover every package exactly
+// once, in order, because the answers come back positionally.
+test("auditLockedPackages: the queue is chunked, covering every package once", async () => {
+  const calls = { batch: [] };
+  const lockPackages = Array.from({ length: 250 }, (_, i) =>
+    locked(`pkg-${String(i).padStart(3, "0")}`, "1.0.0")
+  );
+  const addon = addonWith({ "package.json": "{}" }, store({ lockPackages }));
+  await verifyScaDependencies(addon, net({ calls, batch: { results: [] } }));
+  assert.deepEqual(
+    calls.batch.map((b) => b.queries.length),
+    [200, 50]
+  );
+  assert.deepEqual(
+    calls.batch.flatMap((b) => b.queries.map((q) => q.package.name)),
+    lockPackages.map((p) => p.name)
+  );
+});
+
+// The endpoint says nothing about which package each answer is for - only its
+// position - so a short or empty results array must leave the rest unreported
+// rather than shifting every answer onto the wrong package.
+test("auditLockedPackages: a short results array reports only what it covers", async () => {
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({
+      lockPackages: [locked("first", "1.0.0"), locked("second", "1.0.0")],
+    })
+  );
+  await verifyScaDependencies(
+    addon,
+    net({
+      batch: { results: [{ vulns: [{ id: "GHSA-one" }] }] },
+      advisories: {
+        "GHSA-one": advisory("GHSA-one", "CRITICAL", "1.0.1", "first"),
+      },
+    })
+  );
+  assert.deepEqual(
+    addon.vendor.treeVulnerabilities.map((v) => v.name),
+    ["first"]
+  );
+});
+
+// One advisory routinely affects several packages in the same tree. Fetching it
+// once per package would multiply the requests for no new information.
+test("auditLockedPackages: an advisory affecting two packages is fetched once", async () => {
+  const calls = { hydrate: [] };
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({ lockPackages: [locked("a", "1.0.0"), locked("b", "1.0.0")] })
+  );
+  await verifyScaDependencies(
+    addon,
+    net({
+      calls,
+      batch: {
+        results: [
+          { vulns: [{ id: "GHSA-shared" }] },
+          { vulns: [{ id: "GHSA-shared" }] },
+        ],
+      },
+      advisories: {
+        "GHSA-shared": advisory("GHSA-shared", "HIGH", "1.0.1", "a"),
+      },
+    })
+  );
+  assert.equal(calls.hydrate.length, 1);
+  assert.deepEqual(
+    addon.vendor.treeVulnerabilities.map((v) => v.name),
+    ["a", "b"]
+  );
+});
+
+// A partial scan would make the report depend on how far the network got, so a
+// failure anywhere abandons the whole thing and records nothing - the same
+// silence an offline run gets everywhere else.
+test("auditLockedPackages: a failing batch or hydration records nothing", async () => {
+  const batchDown = addonWith(
+    { "package.json": "{}" },
+    store({ lockPackages: [locked("x", "1.0.0")] })
+  );
+  await verifyScaDependencies(batchDown, net({ throwOnBatch: true }));
+  assert.deepEqual(batchDown.vendor.treeVulnerabilities, []);
+
+  const hydrationDown = addonWith(
+    { "package.json": "{}" },
+    store({ lockPackages: [locked("x", "1.0.0")] })
+  );
+  await verifyScaDependencies(
+    hydrationDown,
+    net({
+      throwOnHydrate: true,
+      batch: { results: [{ vulns: [{ id: "GHSA-x" }] }] },
+    })
+  );
+  assert.deepEqual(hydrationDown.vendor.treeVulnerabilities, []);
+});
+
+// The case the test above cannot reach: enough packages to need a SECOND chunk,
+// with the failure after the first has already answered. A scan that kept those
+// answers would publish a partial tree that reads exactly like a clean one.
+test("auditLockedPackages: an answered chunk is discarded when a later one fails", async () => {
+  const lockPackages = Array.from({ length: 250 }, (_, i) =>
+    locked(`pkg-${String(i).padStart(3, "0")}`, "1.0.0")
+  );
+  const addon = addonWith({ "package.json": "{}" }, store({ lockPackages }));
+  let chunks = 0;
+  const flaky = net({
+    advisories: {
+      "GHSA-everywhere": advisory("GHSA-everywhere", "HIGH", "2.0.0", "pkg"),
+    },
+  });
+  const answer = flaky.postJson;
+  flaky.postJson = async (url, body) => {
+    if (url.includes("querybatch") && ++chunks === 2) {
+      throw new Error("the network went away mid-scan");
+    }
+    return url.includes("querybatch")
+      ? {
+          results: body.queries.map(() => ({
+            vulns: [{ id: "GHSA-everywhere" }],
+          })),
+        }
+      : answer(url, body);
+  };
+  await verifyScaDependencies(addon, flaky);
+  assert.equal(chunks, 2, "the first chunk must really have answered");
+  assert.deepEqual(addon.vendor.treeVulnerabilities, []);
+  assert.deepEqual(addon.vendor.treeDevVulnerabilities, []);
+});
+
+// OSV's malicious-package records state no severity at all, so a band rule alone
+// discards them - and "this package is malicious" is the strongest thing the
+// advisory database can say about a package nobody chose to install.
+test("auditLockedPackages: a malicious-package advisory is kept at any band", async () => {
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({ lockPackages: [locked("evil-pkg", "1.0.0")] })
+  );
+  await verifyScaDependencies(
+    addon,
+    net({
+      batch: { results: [{ vulns: [{ id: "MAL-2023-462" }] }] },
+      // As OSV really serves one: no database_specific.severity, no severity[].
+      advisories: {
+        "MAL-2023-462": {
+          id: "MAL-2023-462",
+          summary: "Malicious code in evil-pkg",
+        },
+      },
+    })
+  );
+  assert.deepEqual(
+    addon.vendor.treeVulnerabilities.map((v) => [v.name, v.severity, v.ids]),
+    [["evil-pkg", "unknown", ["MAL-2023-462"]]]
+  );
+});
+
+// `results` is checked for being an array; each entry's `vulns` must be too, or
+// a malformed answer throws out of the audit and takes the whole review with it.
+test("auditLockedPackages: a non-array vulns field does not abort the review", async () => {
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({ lockPackages: [locked("x", "1.0.0")] })
+  );
+  await verifyScaDependencies(
+    addon,
+    net({ batch: { results: [{ vulns: 5 }] } })
+  );
+  assert.deepEqual(addon.vendor.treeVulnerabilities, []);
+});
+
+// Telling a developer their add-on "does not declare" a package they wrote down
+// is a false statement in a rejection. The lock records the declaration forms the
+// root package.json parse misses, so the enumeration's own `direct` flag settles
+// it - including when package.json and the lock disagree about the version, which
+// is what keeps the name@version comparison from being enough.
+test("auditLockedPackages: a package the lock says was declared is left alone", async () => {
+  const calls = { batch: [] };
+  const addon = addonWith(
+    { "package.json": '{"devDependencies":{"adm-zip":"0.5.17"}}' },
+    store({
+      // package.json pins 0.5.17; the lock installed 0.5.18.
+      devPackages: [{ name: "adm-zip", version: "0.5.17" }],
+      lockPackages: [
+        locked("adm-zip", "0.5.18", true, true),
+        locked("workspace-dep", "1.0.0", false, true),
+        locked("genuinely-pulled-in", "1.0.0"),
+      ],
+    })
+  );
+  await verifyScaDependencies(
+    addon,
+    net({ calls, osv: { vulns: [] }, batch: { results: [{ vulns: [] }] } })
+  );
+  assert.deepEqual(
+    calls.batch[0].queries.map((q) => q.package.name),
+    ["genuinely-pulled-in"]
+  );
+});
+
+// NetworkGoneError is not a flaky endpoint, it is the run having no network at
+// all - which stops the review rather than quietly reporting a clean tree.
+test("auditLockedPackages: NetworkGoneError propagates from both endpoints", async () => {
+  const gone = new NetworkGoneError("https://api.osv.dev/", false);
+  const fromBatch = addonWith(
+    { "package.json": "{}" },
+    store({ lockPackages: [locked("x", "1.0.0")] })
+  );
+  const batchNet = net({ batch: { results: [] } });
+  batchNet.postJson = async () => {
+    throw gone;
+  };
+  await assert.rejects(
+    () => verifyScaDependencies(fromBatch, batchNet),
+    NetworkGoneError
+  );
+
+  const fromHydrate = addonWith(
+    { "package.json": "{}" },
+    store({ lockPackages: [locked("x", "1.0.0")] })
+  );
+  const hydrateNet = net({
+    batch: { results: [{ vulns: [{ id: "GHSA-x" }] }] },
+  });
+  hydrateNet.fetchJson = async () => {
+    throw gone;
+  };
+  await assert.rejects(
+    () => verifyScaDependencies(fromHydrate, hydrateNet),
+    NetworkGoneError
+  );
+});
+
+// The blocklist's wording is about the library versions an add-on SHIPS, chosen
+// by its developer. A package pulled in three levels down was chosen by nobody,
+// so it is audited for advisories but never policy-blocked.
+test("auditLockedPackages: the policy blocklist is not applied to the tree", async () => {
+  const addon = addonWith(
+    { "package.json": "{}" },
+    store({ lockPackages: [locked("jquery", "1.7.1")] })
+  );
+  const blocks = parseLibraryBlocks(
+    "jquery:\n  - versions: '<3.0.0'\n    status: banned\n    reason: Too old.\n"
+  );
+  await verifyScaDependencies(
+    addon,
+    net({ batch: { results: [{ vulns: [] }] } }),
+    blocks
+  );
+  assert.deepEqual(addon.vendor.blocked, []);
+});
+
+// Nothing to audit must cost nothing: an XPI review, and every submission with
+// no committed lock, must not reach the endpoint at all.
+test("auditLockedPackages: an empty tree sends no request", async () => {
+  const calls = { batch: [] };
+  const addon = addonWith({ "package.json": "{}" }, store());
+  await verifyScaDependencies(addon, net({ calls }));
+  assert.deepEqual(calls.batch, []);
 });

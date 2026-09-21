@@ -171,6 +171,14 @@ appears in.
   must be a pinned npm package or a GitHub URL, and is gated on popularity
   (npm downloads / GitHub stars) and known vulnerabilities. Anything unpinned or
   from another source is rejected.
+- The **rest of the installed tree** is audited too: the committed lock file
+  records every package the install actually pulls in, at any depth, and almost
+  all of a real submission's vulnerable packages are ones nobody declared. Those
+  are queried against the same advisory database in one batch, but reported only
+  at **high and critical** - a package the developer did not choose is worth
+  reporting when it fails the review, not when it merely appears in one. Declared
+  and pulled-in cases are separate checks, because the developer fixes them
+  differently: update this package, or update the one that pulls it in.
 - The **build tooling** (everything in `--sca-root` outside `--sca-source` - build
   scripts, configs, `.npmrc`) is reviewed. Deterministic policy: the build must use
   **npm or pnpm** (a `yarn.lock` / `bun` build is rejected), must not commit a

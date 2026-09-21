@@ -17,7 +17,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding, SEVERITY } from "../../report/finding.js";
-import { manifestTokenLine, lineContaining } from "../../lib/util.js";
+import { declarationLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -47,9 +47,7 @@ export default {
       // A quoted JSON token (a package.json dep name) or a plain substring (a VENDOR
       // source URL) locates the declaration line. An empty token (a hash-identified
       // library) has no declaration line, so the finding anchors at the file.
-      const line = token
-        ? (manifestTokenLine(text, token) ?? lineContaining(text, token))
-        : null;
+      const line = token ? declarationLine(text, token) : null;
       const loc = line ? { line } : undefined;
       const statusText = status === "banned" ? "disallowed" : "discouraged";
       ctx.note?.(

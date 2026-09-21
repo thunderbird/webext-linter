@@ -8,10 +8,10 @@ Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html
 
 We kindly ask you to resolve the following issues with your next release:
 
-2) A bundled dependency has known security vulnerabilities: tiny-obscure-helper (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). Update tiny-obscure-helper to a patched release or later, re-bundle, and resubmit.
+2) A dependency this add-on bundles directly has known security vulnerabilities: tiny-obscure-helper (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). Update tiny-obscure-helper to a patched release or later, re-bundle, and resubmit.
  - [SCA] package.json:5
 
-3) A build dependency (devDependency) has known security vulnerabilities: vitest (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update vitest to a patched release or later and resubmit.
+3) A build dependency this add-on declares has known security vulnerabilities: vitest (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update vitest to a patched release or later and resubmit.
  - [SCA] package.json:8
 
 [XPI] = source file in the submitted XPI

@@ -19,7 +19,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { manifestTokenLine, lineContaining } from "../../lib/util.js";
+import { declarationLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -36,9 +36,7 @@ export default {
       const text = addon.files?.get(file)?.toString("utf8") ?? "";
       // Anchor at the dependency's declaration line (a quoted JSON key in
       // package.json); fall back to a plain substring, then to no line.
-      const line = token
-        ? (manifestTokenLine(text, token) ?? lineContaining(text, token))
-        : null;
+      const line = token ? declarationLine(text, token) : null;
       const loc = line ? { line } : undefined;
       // The response is collapsible (no {{item}}), so `item` renders on the
       // location line as "package.json:<line> - <name> (<version>)".

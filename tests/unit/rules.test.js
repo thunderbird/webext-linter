@@ -651,6 +651,10 @@ test("checks carry the sca mode tag (true=SCA-only, undefined=both; none is XPI-
   // build ships), like bundled-files / minimize-WAR - all registered `input: xpi`.
   assert.equal(sca("unused-files"), undefined);
   assert.equal(sca("unpopular-source-dependency"), true); // SCA-only dep audit
+  // The lock-tree audit is SCA-only for the same reason: a shipped XPI carries no
+  // lock file, so there is no tree to enumerate.
+  assert.equal(sca("vendor-vulnerable-indirect"), true);
+  assert.equal(sca("vendor-vulnerable-indirect-dev"), true);
   assert.equal(sca("undeclared-build-source"), true); // SCA-only build review
   assert.equal(sca("unsupported-build-tool"), true); // SCA-only build policy
   assert.equal(sca("build-registry-redirect"), true); // SCA-only build policy
@@ -803,6 +807,8 @@ test("every check's severity is pinned to its band", async () => {
       "vendor-ambiguous-source",
       "vendor-modified",
       "vendor-unparseable",
+      "vendor-vulnerable-indirect",
+      "vendor-vulnerable-indirect-dev",
       "vendored-remote-resources",
     ],
     warning: [

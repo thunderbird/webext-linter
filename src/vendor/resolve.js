@@ -1,20 +1,24 @@
 // Resolves the add-on's vendored declarations ONCE, at the top of the pipeline,
 // before anything reformats or reviews files. This is the OFFLINE half: it
 // parses the VENDOR file and the package.json dependency
-// manifest (pinning each via an exact spec or a lock file), classifies each
-// declared source, and builds the shared `addon.vendor` store. The network half
+// manifest (pinning each via an exact spec or a lock file), enumerates what the
+// lock file installs, classifies each declared source, and builds the shared
+// `addon.vendor` store. The network half
 // (fetch + compare + popularity) is verifyVendor (src/vendor/verify.js), which
 // fills in the per-file results. The review-phase checks only read the store.
 //
-// Belongs here: combining the VENDOR + package.json declarations into the
-// offline `addon.vendor` (set, manifest, packages, unpinned, offline results).
+// Belongs here: combining the VENDOR + package.json declarations, and the
+// committed lock file's whole package list, into the offline `addon.vendor` (set,
+// manifest, packages, unpinned, lockPackages, offline results). lockPackages is
+// the one field here that no check reads: it is the offline half of the tree
+// audit, handed to verify.js, which owns the network half.
 // Does NOT belong here: the network verification (-> verify.js), the
 // deterministic VENDOR parse (-> src/normalize/vendor.js), lock parsing (->
 // src/vendor/locks.js), and URL classification (-> src/vendor/sources.js).
 
 import { readVendorDeclarations, readVendorFile } from "../normalize/vendor.js";
 import { classifySource } from "./sources.js";
-import { lockedVersion } from "./locks.js";
+import { lockedVersion, lockedPackages } from "./locks.js";
 import { SCHEME_RE } from "../lib/util.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
@@ -53,6 +57,16 @@ import { SCHEME_RE } from "../lib/util.js";
  *   only: pinned npm devDependencies with known OSV advisories (filled by
  *   verifyScaDependencies; empty in XPI mode / offline). Read by the
  *   vendor-vulnerable-dev check.
+ * @property {import("./locks.js").LockedPackage[]} lockPackages  Every package
+ *   the committed lock file records as installed - the declared dependencies and
+ *   everything they pull in. Empty in XPI mode (a shipped add-on has no lock).
+ * @property {import("./verify.js").VendorVuln[]} treeVulnerabilities  SCA mode
+ *   only: packages from lockPackages that NOTHING declares, carrying a high or
+ *   critical advisory, installed for production (filled by verifyScaDependencies;
+ *   empty in XPI mode / offline). Read by the vendor-vulnerable-indirect check.
+ * @property {import("./verify.js").VendorVuln[]} treeDevVulnerabilities  The same
+ *   for undeclared packages installed for the BUILD only. Read by the
+ *   vendor-vulnerable-indirect-dev check.
  * @property {{path: string, source: ?string, repo: ?string}[]} unaudited
  *   GitHub-sourced VENDOR entries that could not be resolved to a verified npm
  *   identity for an OSV audit (filled by verifyVendor; empty offline). Read by
@@ -295,6 +309,16 @@ export function resolveVendor({ addon }) {
     // by verifyScaDependencies; empty in XPI mode / offline). Read by the
     // vendor-vulnerable-dev check.
     devVulnerabilities: [],
+    // Every package the committed lock file records as installed, declared or
+    // pulled in by another package. The offline half of the tree audit: what to
+    // query is settled here, whether it has an advisory is verify.js's half.
+    lockPackages: lockedPackages(addon),
+    // SCA mode only: undeclared packages from lockPackages carrying a high or
+    // critical advisory (filled by verifyScaDependencies; empty in XPI mode /
+    // offline), split by whether the build installs them for production or only
+    // to build with. Read by the two vendor-vulnerable-indirect checks.
+    treeVulnerabilities: [],
+    treeDevVulnerabilities: [],
     // Filled by verifyVendor when a github source cannot be resolved to a
     // verified npm identity (network). Empty for offline runs.
     unaudited: [],

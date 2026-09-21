@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vulnerable indirect dependency</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Vulnerable indirect dependency <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">vendor-vulnerable-indirect</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A package the add-on never declares, but that one of its declared
+        dependencies pulls in, whose installed version has published security
+        advisories — and which the build installs for production, so it ends up
+        in the shipped code. Almost all of a real submission's vulnerable
+        packages are of this kind rather than named in package.json.
+      </p>
+      <p>
+        Before the review, the committed lock file is read in full: every
+        package it records as installed, at any depth, declared or not. The
+        packages that are declared were already audited on their own, so they
+        are left out, and the rest are queried against the OSV vulnerability
+        database in one batch. Only <strong>high and critical</strong>
+        advisories are kept — a package nobody chose is worth the developer's
+        attention when it fails the review, not when it merely appears in one —
+        so every finding here is an error, and the advisory's own band is still
+        named in the text. One kind of record is kept whatever its band: an
+        advisory saying the package itself is <em>malicious</em> rather than
+        vulnerable states no severity at all, and dropping it on that basis would
+        discard exactly what this check exists to catch. Each finding anchors at the package's entry in the
+        lock file. The check runs only for a source-code submission, since a
+        shipped add-on carries no lock file.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A package the lock file installs"] --> G{"Source-code submission<br/>with an npm or pnpm lock?"}
+  G -- no --> S([skip])
+  G -- yes --> D{"Declared by one of the<br/>submission's own manifests?"}
+  D -- yes --> S2([skip: audited as a declared dependency])
+  D -- no --> P{"Installed for production?"}
+  P -- "no, build only" --> S3([skip: the build-time check reports it])
+  P -- yes --> B{"OSV audit found<br/>known advisories?"}
+  B -- no --> OK([no finding])
+  B -- yes --> C{"Highest advisory band?"}
+  C -- "moderate / low / unknown" --> M{"Advisory says the package<br/>itself is malicious?"}
+  M -- no --> OK2([no finding])
+  M -- yes --> ERR
+  C -- "high / critical" --> ERR([ERROR: vulnerable indirect dependency])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class OK2 ok;
+  class S skip;
+  class S2 skip;
+  class S3 skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that a package it does not declare, pulled in by one
+        of its dependencies, has known security vulnerabilities, with the
+        affected version, the advisory ids and the severity, and that this
+        package ends up in the code it ships. It is asked to update the declared
+        dependency that pulls it in — which usually resolves it, because a newer
+        release often already depends on a fixed version — and to re-bundle and
+        resubmit. Where no update resolves it, moving to a different or simpler
+        build chain is named as the alternative.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/vendor-vulnerable-indirect.js</code> and its entry
+        in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

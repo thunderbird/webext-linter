@@ -190,3 +190,46 @@ export const ADDON_MAX_UNPACKED_BYTES = 128 * 1024 * 1024;
  * data and more. Best-effort: a failed lookup just skips (no finding).
  */
 export const VENDOR_OSV_API = "https://api.osv.dev/v1/query";
+
+/**
+ * OSV batch query endpoint, used for the LOCK-FILE tree audit (hundreds of
+ * packages per submission, which one-at-a-time queries would not carry). Its
+ * response is deliberately thin - each hit is only `{id, modified}`, with no
+ * severity, aliases or fixed versions - so every hit must be hydrated through
+ * VENDOR_OSV_VULN_API before it can be reported. Declared dependencies keep the
+ * single-query endpoint above, which answers all of that in one request.
+ */
+export const VENDOR_OSV_BATCH_API = "https://api.osv.dev/v1/querybatch";
+
+/** OSV single-advisory endpoint; an id is appended to hydrate a batch hit. */
+export const VENDOR_OSV_VULN_API = "https://api.osv.dev/v1/vulns/";
+
+/**
+ * Packages per batch request. A few hundred answer in well under a second, while
+ * a request carrying a whole large tree at once is refused by the endpoint.
+ */
+export const VENDOR_OSV_BATCH_SIZE = 200;
+
+/**
+ * Distinct advisories hydrated per tree audit. A runaway bound, not a policy: a
+ * dropped advisory is invisible in the report, so this has to sit far above what
+ * an honest submission reaches. The worst real submission measured carried about
+ * a hundred distinct advisories across its whole tree, and the batch step is
+ * already bounded by VENDOR_LOCK_MAX_PACKAGES, so this only ever stops a tree
+ * that is pathological rather than merely neglected.
+ */
+export const VENDOR_OSV_HYDRATE_MAX = 2000;
+
+/**
+ * Packages enumerated from one lock file. Real trees run to a few thousand; past
+ * this the submission is not something a reviewer builds by hand anyway.
+ */
+export const VENDOR_LOCK_MAX_PACKAGES = 10000;
+
+/**
+ * The OSV bands a lock-tree advisory is reported at. A package nobody declared is
+ * only worth the developer's attention when it would fail the review, so a
+ * moderate or low one deep in the tree produces nothing at all. Declared
+ * dependencies are reported at every band (src/lib/vuln-findings.js).
+ */
+export const VENDOR_TREE_BANDS = ["high", "critical"];

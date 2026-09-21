@@ -7,7 +7,7 @@
 // Belongs here: generic, dependency-light check helpers - dedupe, the
 // asArray/asObject manifest guards, isMatchPattern/isBroadHost, trunc, SCHEME_RE,
 // escapeRegExp/wholeWordRe, the line locators (manifestTokenLine, manifestPathLine,
-// lineContaining), the doc/dependency-file tests (isDocMetadataFile, isDocFile,
+// lineContaining, declarationLine), the doc/dependency-file tests (isDocMetadataFile, isDocFile,
 // DEPENDENCY_FILE_RE), isExperiment/strictMaxVersion, the version family
 // (strictMinVersion, parseVersion, cmpVersion, versionInBounds), the suspected-loader
 // helper referrerSupported, and the feed-note builder loaderTrace.
@@ -382,6 +382,51 @@ export function manifestPathLine(ctx, ...path) {
  * @param {string} needle
  * @returns {number|null}
  */
+/**
+ * The line in `text` where `token` is DECLARED, across the dependency-file
+ * formats a finding can anchor in. One question with three answers, because the
+ * file is JSON in one submission and YAML in the next, and the caller records a
+ * token without knowing which: a quoted JSON key (a package.json dependency, an
+ * npm lock's "node_modules/..." path), a YAML mapping key (a pnpm lock's
+ * "name@version"), and - failing both - the first line the token appears on at
+ * all, which is what locates a source URL inside a VENDOR file's prose.
+ *
+ * The order is what makes it correct, not just tidy. A pnpm lock repeats
+ * "name@version" inside OTHER packages' peer-dependency suffixes, usually near
+ * the top of the file, so falling straight through to a substring search points
+ * the reviewer at an unrelated package thousands of lines from the real entry.
+ * @param {string} text  The file's text. @param {string} token
+ * @returns {?number}  1-based line, or null.
+ */
+export function declarationLine(text, token) {
+  if (!text || !token) {
+    return null;
+  }
+  return (
+    manifestTokenLine(text, token) ??
+    yamlKeyLine(text, token) ??
+    lineContaining(text, token)
+  );
+}
+
+/**
+ * The line where `key` is a YAML mapping key - the whole key, optionally quoted,
+ * followed by its colon. Deliberately not a substring test: that is what
+ * declarationLine falls back to, and only after this has ruled out a real entry.
+ * @param {string} text @param {string} key
+ * @returns {?number}
+ */
+function yamlKeyLine(text, key) {
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(['"]?)(.*?)\1\s*:(?:\s|$)/.exec(lines[i].trim());
+    if (m && m[2] === key) {
+      return i + 1;
+    }
+  }
+  return null;
+}
+
 export function lineContaining(text, needle) {
   if (!text || !needle) {
     return null;

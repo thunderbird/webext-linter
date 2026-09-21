@@ -1,15 +1,19 @@
-// Shared vulnerability->finding mapping for the two dependency-vulnerability
-// checks: vendor-vulnerable (prod deps + vendored libs, addon.vendor.vulnerabilities)
-// and vendor-vulnerable-dev (SCA dev deps, addon.vendor.devVulnerabilities). The
-// OSV audit ran once in the network pre-step (src/vendor/verify.js auditNpm), which
-// recorded each vulnerable package with the file + token to anchor it; this maps
-// each recorded vulnerability to a finding, anchored at its declaration line.
-// Deterministic, no network.
+// Shared vulnerability->finding mapping for the four dependency-vulnerability
+// checks, one per (declared vs pulled in) x (shipped vs build-time only):
+// vendor-vulnerable (prod deps + vendored libs, addon.vendor.vulnerabilities),
+// vendor-vulnerable-dev (SCA dev deps, addon.vendor.devVulnerabilities), and the
+// two indirect ones reading the lock-file tree (addon.vendor.treeVulnerabilities /
+// treeDevVulnerabilities). The OSV audit ran once in the network pre-step
+// (src/vendor/verify.js), which recorded each vulnerable package with the file +
+// token to anchor it; this maps each recorded vulnerability to a finding, anchored
+// at its declaration line. Deterministic, no network.
 //
-// Both registry entries are severity:auto, so the finding's severity is set here
+// The two DECLARED entries are severity:auto, so the finding's severity is set here
 // from the advisory's OSV band: high / critical -> error, moderate / medium ->
-// warning, everything else (low / unknown) -> info. Every recorded vulnerability
-// is reported; none are dropped.
+// warning, everything else (low / unknown) -> info. Every vulnerability reaching
+// this mapper is reported; none are dropped. The two INDIRECT entries declare a
+// flat error instead, which the registry stamps over what is set here - their audit
+// only ever records high and critical, so there is no band left to map.
 //
 // Belongs here: turning each recorded vulnerability into a finding (+ a feed note)
 // and mapping its band to a finding severity. Does NOT belong here: the OSV
@@ -19,7 +23,7 @@
 
 import { VERDICT } from "./enum.js";
 import { finding, SEVERITY } from "../report/finding.js";
-import { manifestTokenLine, lineContaining } from "./util.js";
+import { declarationLine } from "./util.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../report/finding.js").Severity} Severity */
@@ -74,9 +78,7 @@ export function vulnFindings(ctx, vulns) {
     // VENDOR-file source URL) - whichever locates the declaration line. An empty
     // token means there is no declaration line (a hash-identified library), so
     // the finding anchors at the file with no line.
-    const line = token
-      ? (manifestTokenLine(text, token) ?? lineContaining(text, token))
-      : null;
+    const line = token ? declarationLine(text, token) : null;
     const loc = line ? { line } : undefined;
     ctx.note?.(
       file,
@@ -89,9 +91,10 @@ export function vulnFindings(ctx, vulns) {
         file,
         loc,
         item: name,
-        // severity:auto - this maps the finding's severity from the advisory band;
-        // the raw band string still fills the {{severity}} response slot via
-        // data.severity.
+        // The advisory's band, mapped to a finding severity for the two
+        // severity:auto entries. The two indirect ones declare a flat error,
+        // which the registry stamps over this. Either way the raw band string
+        // fills the {{severity}} response slot via data.severity.
         severity: severityForBand(severity),
         data: {
           version,

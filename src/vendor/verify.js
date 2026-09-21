@@ -4,7 +4,7 @@
 // writes its results into the same shared store, so the review-phase checks
 // only read it (nothing is fetched twice).
 //
-// Two sources are verified:
+// Three sources are verified:
 //   - VENDOR entries that are trusted-host + pinned: fetch the declared URL and
 //     EOL-tolerant compare against the packaged bytes (verified / modified),
 //     then gate on popularity (verified / not-popular) - except a github source
@@ -23,12 +23,18 @@
 //     the author's own code or a modified copy. The same pinned name@version is
 //     also audited against OSV (auditNpm); known advisories are recorded for
 //     the vendor-vulnerable check.
+//   - the whole installed tree, in a source-code review only: every package the
+//     committed lock file records, declared or pulled in by another package, is
+//     OSV-audited in one batch (auditLockedPackages). This is where almost all of
+//     a submission's exposure sits, since a real tree is mostly packages nobody
+//     wrote down.
 //
-// Belongs here: verifyVendor (the batch), the per-source compare, the popularity
-// lookup, and the default network transport. Does NOT belong here: URL
-// classification (-> sources.js), the offline parse (-> resolve.js), the host
+// Belongs here: verifyVendor and verifyScaDependencies (the two batches), the
+// per-source compare, the popularity lookup, the OSV audits, and the default
+// network transport. Does NOT belong here: URL classification (-> sources.js),
+// the offline parse and the lock enumeration (-> resolve.js, locks.js), the host
 // allowlist + thresholds (-> config.js), and the finding/manual routing (-> the
-// four vendor checks + registry).
+// vendor checks + registry).
 
 import { createHash } from "node:crypto";
 
@@ -48,6 +54,11 @@ import {
   VENDOR_FETCH_TIMEOUT_MS,
   VENDOR_FETCH_MAX_BYTES,
   VENDOR_OSV_API,
+  VENDOR_OSV_BATCH_API,
+  VENDOR_OSV_VULN_API,
+  VENDOR_OSV_BATCH_SIZE,
+  VENDOR_OSV_HYDRATE_MAX,
+  VENDOR_TREE_BANDS,
 } from "../config.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
@@ -208,7 +219,10 @@ export async function verifyVendorDeclarations(
  * pinned devDependency additionally gets (c) an OSV audit (-> vendor.devVulnerabilities,
  * read by vendor-vulnerable-dev) but no popularity gate: the reviewer builds from
  * source, so a vulnerable build tool is a real risk, while a niche-but-legit one
- * must not be rejected as unpopular.
+ * must not be rejected as unpopular. Finally (d) the whole installed tree from the
+ * committed lock file is audited in one batch (auditLockedPackages ->
+ * vendor.treeVulnerabilities / treeDevVulnerabilities), which is where almost all
+ * of a submission's exposure actually sits.
  *
  * Popularity uses a direct npm-downloads lookup (npmDownloads), not isPopular, so
  * a FAILED lookup skips rather than false-rejecting a popular dependency; offline
@@ -278,6 +292,190 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
       vendor.devVulnerabilities
     );
   }
+  // Last, so every declared package is already recorded and the tree audit can
+  // leave those out.
+  await auditLockedPackages(vendor, net);
+}
+
+/**
+ * Audit the packages the lock file installs that NOTHING declares - the ~90% of
+ * a real dependency tree that arrives because a declared package asked for it.
+ * A reviewer running the install sees these advisories; without this the linter
+ * would only ever see the handful of names in package.json.
+ *
+ * Two things are deliberately NOT applied here, both of which the declared
+ * dependencies do get:
+ *   - the Mozilla policy blocklist, whose wording is about the library versions
+ *     an add-on SHIPS, and whose banned verdict short-circuits the OSV query -
+ *     control flow a batched request cannot express;
+ *   - the popularity gate, which asks whether the developer chose a reputable
+ *     library. Nobody chose these, so the question does not arise, and asking it
+ *     would cost one request per package.
+ * The single-package endpoint is likewise kept for declared dependencies: they
+ * are reported at every severity, and it answers severity and fixed versions in
+ * one request, while the batch endpoint returns bare ids that must be hydrated.
+ *
+ * Only high and critical are recorded (VENDOR_TREE_BANDS): a package nobody
+ * declared is worth the developer's attention when it fails the review, not
+ * when it merely appears in a report. A MALICIOUS-package advisory is the one
+ * exception (isMaliciousAdvisory) - those state no severity at all, so a band
+ * rule alone would discard exactly the records that matter most here.
+ *
+ * All-or-nothing: results are held until every chunk has answered, so a scan the
+ * network cuts short records NOTHING rather than a partial tree that reads like
+ * a clean one.
+ * @param {VendorStore} vendor  Must carry lockPackages (resolveVendor).
+ * @param {VendorNet} net
+ * @returns {Promise<void>}
+ */
+async function auditLockedPackages(vendor, net) {
+  const queue = (vendor.lockPackages ?? []).filter(
+    (p) => !alreadyAudited(vendor, p)
+  );
+  if (!queue.length) {
+    return;
+  }
+  /** @type {Map<string, ?OsvVuln>} */
+  const advisories = new Map();
+  /** @type {VendorVuln[]} */
+  const shipped = [];
+  /** @type {VendorVuln[]} */
+  const buildTime = [];
+  for (let at = 0; at < queue.length; at += VENDOR_OSV_BATCH_SIZE) {
+    const chunk = queue.slice(at, at + VENDOR_OSV_BATCH_SIZE);
+    let results;
+    try {
+      const res = await net.postJson(VENDOR_OSV_BATCH_API, {
+        queries: chunk.map((p) => ({
+          version: p.version,
+          package: { name: p.name, ecosystem: "npm" },
+        })),
+      });
+      results = Array.isArray(res?.results) ? res.results : [];
+    } catch (err) {
+      rethrowIfNetworkGone(err);
+      return; // offline / no postJson / OSV unreachable - abandon the scan
+    }
+    // The endpoint answers positionally, one result per query, and says nothing
+    // about which package each answer is for - hence the index, and hence the
+    // tolerance for a short array rather than a trusted pairing.
+    for (let i = 0; i < chunk.length; i++) {
+      const pkg = chunk[i];
+      const hits = results[i]?.vulns;
+      const vulns = [];
+      for (const hit of Array.isArray(hits) ? hits : []) {
+        const full = hit?.id
+          ? await hydrateAdvisory(hit.id, advisories, net)
+          : null;
+        if (full) {
+          vulns.push(full);
+        }
+      }
+      const record = vulnRecord(
+        pkg.name,
+        pkg.version,
+        vulns,
+        pkg.file,
+        pkg.token
+      );
+      if (!record || !reportableInTree(record, vulns)) {
+        continue;
+      }
+      (pkg.dev ? buildTime : shipped).push(record);
+    }
+  }
+  vendor.treeVulnerabilities.push(...shipped);
+  vendor.treeDevVulnerabilities.push(...buildTime);
+}
+
+/**
+ * Whether this tree package has already been audited under another heading, so
+ * the tree scan must leave it alone.
+ *
+ * Two different reasons, and both are needed. A package the submission DECLARES
+ * belongs to vendor-vulnerable / -dev, which audit it at every severity and
+ * anchor it at the line the developer wrote - and telling them it is "a package
+ * this add-on does not declare" would be false. Directness is read from the lock
+ * itself (LockedPackage.direct), because the root package.json parse misses the
+ * forms a lock still records: an optionalDependency, a workspace member's own
+ * manifest, an npm: alias, and a version the two files disagree about. Separately,
+ * an exact name@version any earlier audit already recorded - an npm-sourced VENDOR
+ * entry, a policy-blocked library - would simply be reported twice.
+ * @param {VendorStore} vendor
+ * @param {import("./locks.js").LockedPackage} pkg
+ * @returns {boolean}
+ */
+function alreadyAudited(vendor, pkg) {
+  if (pkg.direct) {
+    return true;
+  }
+  if (
+    [...vendor.packages, ...(vendor.devPackages ?? [])].some(
+      (p) => p.name === pkg.name
+    )
+  ) {
+    return true;
+  }
+  return [
+    ...vendor.vulnerabilities,
+    ...(vendor.devVulnerabilities ?? []),
+    ...(vendor.blocked ?? []),
+  ].some((v) => v.name === pkg.name && v.version === pkg.version);
+}
+
+/**
+ * Whether a tree advisory is worth reporting. The band decides
+ * (VENDOR_TREE_BANDS), with one exception: OSV's malicious-package records carry
+ * no severity field at all, so they aggregate to "unknown" and a band rule would
+ * discard them - while "this package is malicious" outranks every band there is.
+ * @param {VendorVuln} record  The aggregated record.
+ * @param {OsvVuln[]} vulns  The advisories it was built from.
+ * @returns {boolean}
+ */
+function reportableInTree(record, vulns) {
+  return (
+    VENDOR_TREE_BANDS.includes(record.severity) ||
+    vulns.some(isMaliciousAdvisory)
+  );
+}
+
+/**
+ * Whether an OSV record says the package itself is malicious rather than merely
+ * vulnerable - the MAL- id scheme OSV gives its malicious-packages feed. Such a
+ * record states no severity, so it is recognized by what it IS, not by a band.
+ * @param {OsvVuln} v
+ * @returns {boolean}
+ */
+function isMaliciousAdvisory(v) {
+  return /^MAL-/i.test(String(v?.id ?? ""));
+}
+
+/**
+ * Fetch the full OSV record for one advisory id, memoized across the scan: the
+ * batch endpoint answers with bare ids, and one advisory routinely affects
+ * several packages in the same tree. A failed fetch is cached as null, so a
+ * missing advisory is not retried per package. `cache` also caps the scan
+ * (VENDOR_OSV_HYDRATE_MAX) - past it, hits are dropped rather than fetched.
+ * @param {string} id  An OSV/GHSA advisory id.
+ * @param {Map<string, ?OsvVuln>} cache  Per-scan memo.
+ * @param {VendorNet} net
+ * @returns {Promise<?OsvVuln>}
+ */
+async function hydrateAdvisory(id, cache, net) {
+  if (cache.has(id)) {
+    return cache.get(id);
+  }
+  if (cache.size >= VENDOR_OSV_HYDRATE_MAX) {
+    return null;
+  }
+  let record = null;
+  try {
+    record = await net.fetchJson(`${VENDOR_OSV_VULN_API}${id}`);
+  } catch (err) {
+    rethrowIfNetworkGone(err);
+  }
+  cache.set(id, record);
+  return record;
 }
 
 /**
@@ -389,8 +587,32 @@ async function auditNpm(name, version, file, token, vendor, net, into, blocks) {
     rethrowIfNetworkGone(err);
     return; // offline / no postJson / OSV unreachable - skip silently
   }
+  const record = vulnRecord(name, version, vulns, file, token);
+  if (record) {
+    into.push(record);
+  }
+}
+
+/**
+ * Aggregate the advisories OSV returned for one package into the single record
+ * a finding is built from: every advisory's preferred id, every fixed version it
+ * names for this package, and the worst severity among them. Null when there are
+ * no advisories.
+ *
+ * Shared by the two audits, which differ only in how they ASK: auditNpm queries
+ * one package and is answered with whole advisory records, while
+ * auditLockedPackages queries hundreds and hydrates the bare ids it gets back.
+ * What an advisory MEANS is the same either way, so it is read in one place.
+ * @param {string} name  npm package name.
+ * @param {string} version  The version audited.
+ * @param {OsvVuln[]} vulns  The advisories OSV reported for it.
+ * @param {string} file  Where the finding anchors.
+ * @param {string} token  The string locating the declaration line in `file`.
+ * @returns {?VendorVuln}
+ */
+function vulnRecord(name, version, vulns, file, token) {
   if (!vulns.length) {
-    return;
+    return null;
   }
   const ids = new Set();
   const fixed = new Set();
@@ -402,7 +624,7 @@ async function auditNpm(name, version, file, token, vendor, net, into, blocks) {
     }
     severity = worseSeverity(severity, vulnSeverity(v));
   }
-  into.push({
+  return {
     name,
     version,
     ids: [...ids],
@@ -410,7 +632,7 @@ async function auditNpm(name, version, file, token, vendor, net, into, blocks) {
     fixed: [...fixed],
     file,
     token,
-  });
+  };
 }
 
 /**
