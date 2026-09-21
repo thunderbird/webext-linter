@@ -210,8 +210,8 @@ function helpText(checkIds) {
       "With --llm-review or --llm-sca-review: leave out the sweep. The prompt neither spawns it nor stops for it, so the review is one prompt rather than two - and the Standard Code Review section stays in the report, for the reviewer to sweep by hand.",
     ],
     [
-      "--llm-sca-review <folder>",
-      "Print the prompt for preparing a source code review of a submission folder - one built .xpi and one archive of the source it was built from - and exit without reviewing anything. The prompt says how to reach the source and hands back this command with --llm-review in place of this flag, for the reader to run with the --sca-* arguments they worked out. Refused beside any --sca-* flag, which is what it exists to produce.",
+      "--llm-sca-review",
+      "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it, then exit without reviewing anything. The prompt says how to reach the source and hands back this command with --llm-review in place of this flag, for the reader to run with the --sca-* arguments they worked out. Refused beside any --sca-* flag, which is what it exists to produce.",
     ],
     [
       "--llm-verdict <file>",
@@ -304,7 +304,7 @@ const OPTIONS = {
   "sca-exp-source": { type: "string" },
   "report-format": { type: "string" },
   "report-out": { type: "string" },
-  "llm-sca-review": { type: "string" },
+  "llm-sca-review": { type: "boolean" },
   "llm-review": { type: "boolean" },
   "llm-skip-summary": { type: "boolean" },
   "llm-skip-manual": { type: "boolean" },
@@ -673,7 +673,7 @@ export async function main(argv) {
 
   // --llm-sca-review prepares a review rather than running one, so it shares nothing with
   // the flags below and is settled here, in full, before any of them are read.
-  if (values["llm-sca-review"] !== undefined) {
+  if (values["llm-sca-review"]) {
     const given = SCA_FLAGS.filter((f) => values[f]);
     if (given.length) {
       process.stderr.write(
@@ -697,37 +697,43 @@ export async function main(argv) {
       );
       return 2;
     }
-    if (positionals.length) {
+    // This flag does not take the folder - it changes what the ADD-ON ARGUMENT means, from
+    // the add-on to review to the submission holding one. So the argument is required here
+    // exactly as it is for a review, and refused in the plural for the same reason.
+    if (positionals.length === 0) {
       process.stderr.write(
-        `--llm-sca-review names the submission folder, so "${positionals[0]}" is one ` +
-          "add-on too many. The review it prepares takes the add-on from that folder.\n"
+        "--llm-sca-review reads the add-on argument as a submission folder, and none was " +
+          "given. Name the folder holding the built .xpi and the archive of its source.\n"
       );
       return 2;
     }
-    // The same two questions every folder flag is asked - a ".." segment names a folder by
-    // the way out of another, and the folder has to be there. That a value was given at all
-    // is settled far above, for every flag that takes one.
-    const problem = folderProblem(
-      "llm-sca-review",
-      values["llm-sca-review"],
-      values["llm-sca-review"]
-    );
-    if (problem) {
-      const what = problem.escape
-        ? ""
-        : " It is the submission folder - the one holding the built .xpi and the archive " +
-          "of its source.";
-      process.stderr.write(`${problem.text}${what}\n`);
+    if (positionals.length > 1) {
+      process.stderr.write(
+        `Only one submission can be prepared at a time, and ${positionals.length} were ` +
+          `given: ${positionals.map((p) => `"${p}"`).join(", ")}. If the path contains ` +
+          "spaces, quote it.\n"
+      );
+      return 2;
+    }
+    const folder = positionals[0];
+    // Asked before scaSubmission reads it, so a path that is not a folder at all is
+    // answered in this tool's words rather than through a readdir errno. No ".." rule
+    // here, unlike the --sca-* flags: this is the add-on argument, and no positional is
+    // refused for the way it was spelled.
+    if (!pointsAtFolder(path.resolve(folder))) {
+      process.stderr.write(
+        `--llm-sca-review reads the add-on argument as a folder, and "${folder}" is not ` +
+          "one. It is the submission folder - the one holding the built .xpi and the " +
+          "archive of its source.\n"
+      );
       return 2;
     }
     let submission;
     try {
-      submission = scaSubmission(values["llm-sca-review"]);
+      submission = scaSubmission(folder);
     } catch (err) {
       // The flag's name is this layer's: submission.js says what it found in the folder.
-      process.stderr.write(
-        `--llm-sca-review "${values["llm-sca-review"]}": ${err.message}\n`
-      );
+      process.stderr.write(`--llm-sca-review "${folder}": ${err.message}\n`);
       return 2;
     }
     // The prompt IS the output: no review has run, and none can until its reader answers

@@ -198,7 +198,7 @@ test("an unknown --report-format is refused on every path (exit 2)", () => {
   fs.writeFileSync(path.join(dir, "source.tar.gz"), "");
   for (const args of [
     ["some.xpi", "--report-format", "xml"],
-    ["--llm-sca-review", dir, "--report-format", "xml"],
+    [dir, "--llm-sca-review", "--report-format", "xml"],
   ]) {
     const r = run(args);
     assert.equal(r.code, 2, args.join(" "));
@@ -382,7 +382,6 @@ test("a flag given no value is refused (exit 2)", () => {
     [["some.xpi", "--llm-verdict="], "--llm-verdict"],
     [["some.xpi", "--sca-root="], "--sca-root"],
     [["some.xpi", "--sca-root", " "], "--sca-root"],
-    [["--llm-sca-review="], "--llm-sca-review"],
   ]) {
     const r = run(argv);
     assert.equal(r.code, 2, argv.join(" "));
@@ -479,7 +478,6 @@ test("a folder flag takes an absolute path inside the root, and refuses one outs
       "--sca-exp-source",
       `../${path.basename(dir)}/src`,
     ],
-    ["--llm-sca-review", `${dir}/..`],
   ]) {
     const r = run(argv);
     assert.equal(r.code, 2, argv.join(" "));
@@ -1162,7 +1160,7 @@ function submissionFolder() {
 
 test("--llm-sca-review prints the prompt, names both files, and reviews nothing", () => {
   const dir = submissionFolder();
-  const r = run(["--llm-sca-review", dir, ...OFFLINE_FLAGS]);
+  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /── SCA Review Prompt ──/);
   // A name on its own line and its value beneath it, whole: the steps name the values
@@ -1189,7 +1187,7 @@ test("the command --llm-sca-review prints names the file its block names", () =>
   fs.mkdirSync(sub);
   fs.writeFileSync(path.join(sub, "addon  v2.xpi"), "");
   fs.writeFileSync(path.join(sub, "src.tar.gz"), "");
-  const r = run(["--llm-sca-review", sub, ...OFFLINE_FLAGS]);
+  const r = run([sub, "--llm-sca-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   const xpi = headerValue(r.stdout, "XPI");
   assert.equal(xpi, path.join(sub, "addon  v2.xpi"));
@@ -1225,7 +1223,7 @@ test("--llm-sca-review prints the flags the review is run with", () => {
 
   // Every spelling of every flag collapses to one command: the parser reads them, so
   // "--flag=value" and "--flag value" reach the reader as the same line.
-  for (const flag of [["--llm-sca-review", dir], [`--llm-sca-review=${dir}`]]) {
+  for (const flag of [[dir, "--llm-sca-review"]]) {
     assert.deepEqual(
       flagsOf(run([...flag, "--allow-experiments", "--eslint"])),
       [
@@ -1240,7 +1238,7 @@ test("--llm-sca-review prints the flags the review is run with", () => {
     );
   }
   assert.deepEqual(
-    flagsOf(run(["--llm-sca-review", dir, "--checks-only=unused-files"])),
+    flagsOf(run([dir, "--llm-sca-review", "--checks-only=unused-files"])),
     [
       `--llm-review ${xpi}`,
       "--checks-only unused-files",
@@ -1254,11 +1252,11 @@ test("--llm-sca-review prints the flags the review is run with", () => {
   // table says which flags take a value, so nothing is guessed from the token shapes -
   // a trailing one printed with the argument after it would print "undefined".
   assert.doesNotMatch(
-    run(["--llm-sca-review", dir, "--eslint"]).stdout,
+    run([dir, "--llm-sca-review", "--eslint"]).stdout,
     /undefined/
   );
   assert.deepEqual(
-    flagsOf(run(["--llm-sca-review", dir, "--eslint", "--verbose"])),
+    flagsOf(run([dir, "--llm-sca-review", "--eslint", "--verbose"])),
     [
       `--llm-review ${xpi}`,
       "--eslint",
@@ -1270,7 +1268,7 @@ test("--llm-sca-review prints the flags the review is run with", () => {
 
   // Without --allow-experiments nothing reads --sca-exp-source, so the prompt neither
   // asks for it nor prints it - and the steps renumber over what survives.
-  const plain = run(["--llm-sca-review", dir]);
+  const plain = run([dir, "--llm-sca-review"]);
   assert.deepEqual(flagsOf(plain), [
     `--llm-review ${xpi}`,
     `--sca-root ${scaRoot}`,
@@ -1285,7 +1283,7 @@ test("--llm-sca-review prints the flags the review is run with", () => {
 // command handed back rather than to this run - which prints no such prompt of its own.
 test("--llm-sca-review hands a skip to the review it prepares", () => {
   const dir = submissionFolder();
-  const r = run(["--llm-sca-review", dir, "--llm-skip-manual"]);
+  const r = run([dir, "--llm-sca-review", "--llm-skip-manual"]);
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /\n {3}--llm-skip-manual\n/);
   // The prompt itself is unchanged: the skip belongs to the run the command starts, not to
@@ -1293,7 +1291,7 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
   const prompt = (out) => out.split("── SCA Review Prompt ──")[1];
   assert.equal(
     prompt(r.stdout).replace(/ {3}--llm-skip-manual\n/, ""),
-    prompt(run(["--llm-sca-review", dir]).stdout)
+    prompt(run([dir, "--llm-sca-review"]).stdout)
   );
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -1311,8 +1309,8 @@ test("the command --llm-sca-review prints is one the tool accepts", () => {
   fs.writeFileSync(path.join(dir, "src-1.0.tar.gz"), "");
 
   const prepared = run([
-    "--llm-sca-review",
     dir,
+    "--llm-sca-review",
     ...OFFLINE_FLAGS,
     "--checks-only",
     "unused-files",
@@ -1369,7 +1367,7 @@ test("--llm-sca-review quotes an argument that carries whitespace", () => {
   fs.writeFileSync(path.join(dir, "src.tar.gz"), "");
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "wl cache-"));
 
-  const r = run(["--llm-sca-review", dir, "--cache-schema-dir", out]);
+  const r = run([dir, "--llm-sca-review", "--cache-schema-dir", out]);
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, new RegExp(`--llm-review '${dir}/addon\\.xpi'`));
   assert.match(r.stdout, new RegExp(`--cache-schema-dir '${out}'`));
@@ -1403,7 +1401,7 @@ test("--report-out is refused with any --llm-* flag", () => {
     assert.match(r.stderr, new RegExp(flags[0]), flags.join(" "));
   }
 
-  const sca = run(["--llm-sca-review", dir, "--report-out", out]);
+  const sca = run([dir, "--llm-sca-review", "--report-out", out]);
   assert.equal(sca.code, 2);
   assert.match(
     sca.stderr,
@@ -1419,7 +1417,7 @@ test("--report-out is refused with any --llm-* flag", () => {
 // exits 2 on that very line. Answered before any branch, so no prompt is printed at all.
 test("an unknown check id is refused before a prompt is printed", () => {
   const dir = submissionFolder();
-  const sca = run(["--llm-sca-review", dir, "--checks-only", "no-such-check"]);
+  const sca = run([dir, "--llm-sca-review", "--checks-only", "no-such-check"]);
   assert.equal(sca.code, 2);
   assert.match(sca.stderr, /Unknown check "no-such-check"/);
   assert.doesNotMatch(sca.stdout, /SCA Review Prompt/);
@@ -1447,17 +1445,24 @@ test("--llm-sca-review refuses what it cannot be combined with", () => {
     [["--llm-review"], /comes BEFORE a review/],
     [["--llm-verdict", "answers.json"], /comes BEFORE a review/],
     [["--report-format", "json"], /--llm-sca-review is text only/],
+    // A SECOND add-on argument: the flag reads the first one as the submission.
     [
       ["x.xpi"],
-      /names the submission folder, so "x\.xpi" is one add-on too many/,
+      /Only one submission can be prepared at a time, and 2 were given/,
     ],
   ];
   for (const [extra, message] of cases) {
-    const r = run(["--llm-sca-review", dir, ...extra]);
+    const r = run([dir, "--llm-sca-review", ...extra]);
     assert.equal(r.code, 2, extra.join(" "));
     assert.match(r.stderr, message, extra.join(" "));
     assert.doesNotMatch(r.stdout, /SCA Review Prompt/, extra.join(" "));
   }
+  // And the add-on argument it reads is REQUIRED: this flag changes what that argument
+  // means, it does not carry the folder itself.
+  const none = run(["--llm-sca-review"]);
+  assert.equal(none.code, 2);
+  assert.match(none.stderr, /as a submission folder, and none was given/);
+  assert.doesNotMatch(none.stdout, /SCA Review Prompt/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -1465,7 +1470,7 @@ test("--llm-sca-review refuses what it cannot be combined with", () => {
 // handing back a command aimed at a file nobody submitted.
 test("--llm-sca-review refuses a folder that is not a submission", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-empty-"));
-  const r = run(["--llm-sca-review", dir]);
+  const r = run([dir, "--llm-sca-review"]);
   assert.equal(r.code, 2);
   // The flag's name and the value that was given are the front-end's half of the message;
   // what was found in the folder is the loader's.

@@ -107,7 +107,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | --- | --- |
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. Refused with `--report-format json`. |
 | `--llm-verdict <file>` | Take a phase back and hand out the next — or, when nothing is left to issue, print the settled report. Takes no add-on path. Normally run by the agent, not by a person. |
-| `--llm-sca-review <folder>` | Print the prompt for preparing a source code review of a submission folder — one built `.xpi` and one archive of its source — and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
+| `--llm-sca-review` | Read the add-on argument as a submission folder — one built `.xpi` and one archive of its source — print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
 | `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later. |
 | `--llm-skip-sweep` | Leave out the sweep: the prompt neither spawns it nor asks for it, and the Standard Code Review section stays in the report to be swept by hand. |

@@ -170,11 +170,12 @@ and **Review report** (the text the reviewer sends to the developer, unchanged).
 
 A source code submission arrives as two files — the built `.xpi` and an archive of the
 source it was built from — and reviewing it needs three `--sca-*` arguments, two of which
-nobody can write without opening that archive. `--llm-sca-review <folder>` does the half a
-program can do and hands those two to a reader who can open it:
+nobody can write without opening that archive. `--llm-sca-review` reads the add-on
+argument as that submission folder instead of as an add-on: it does the half a program
+can do, and hands those two to a reader who can open the archive.
 
 ```sh
-node verify.js --llm-sca-review ./submission-folder
+node verify.js ./submission-folder --llm-sca-review
 ```
 
 It reviews nothing. It names which file is the add-on and which is the source, computes
@@ -199,7 +200,7 @@ too many formats for it to open, which is why that one extraction is the reader'
 | --- | --- |
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Refused with `--report-format json`. |
 | `--llm-verdict <file>` | Take a phase back and hand out the next, from the review file the prompt named — or, when nothing is left to issue, print the settled report. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file beside this one. Normally run by the agent working through the review rather than by a person. |
-| `--llm-sca-review <folder>` | Print the prompt for preparing a source code review of a submission folder — one built `.xpi` and one archive of the source it was built from — and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
+| `--llm-sca-review` | Read the add-on argument as a submission FOLDER — one built `.xpi` and one archive of the source it was built from — print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
 | `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer — they stay in the report, for the reviewer to work through later. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. The prompt neither spawns it nor asks for it, and the Standard Code Review section stays in the report for the reviewer to sweep by hand. |
