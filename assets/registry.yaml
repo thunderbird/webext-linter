@@ -1404,8 +1404,13 @@ manual-checks:
     any unexpected features or behavior that is not documented on the ATN
     listing page and could be a surprise to the user. A diff against the last
     accepted version may be helpful.
+  # A reported case of this check IS what the reviewer found - which feature surprised
+  # them is not something a scan could name - so the response ends on a list and that list
+  # is their words. This stands in when they reported it without any.
+  default-note: |-
+    - ...
   response: |-
-    Your add-on includes a feature that is not related to its primary function and is not mentioned in the description of your add-on listing page on ATN (addons.thunderbird.net). This feature must be strictly opt-in: <name of feature>.
+    Your add-on includes a feature that is not related to its primary function and is not mentioned in the description of your add-on listing page on ATN (addons.thunderbird.net). Such a feature must be strictly opt-in. The following need to be addressed:
 
 # Manual: payment is required but the ATN "needs payment" flag is off.
 - title: Check for a missing payment disclosure

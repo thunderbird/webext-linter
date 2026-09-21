@@ -109,7 +109,9 @@ Suggested response: Please provide us with detailed information on how to test t
    surprise to the user. A diff against the last accepted version may be
    helpful.
 Suggested verdict: error
-Suggested response: Your add-on includes a feature that is not related to its primary function and is not mentioned in the description of your add-on listing page on ATN (addons.thunderbird.net). This feature must be strictly opt-in: <name of feature>.
+Suggested response: Your add-on includes a feature that is not related to its primary function and is not mentioned in the description of your add-on listing page on ATN (addons.thunderbird.net). Such a feature must be strictly opt-in. The following need to be addressed:
+
+- ...
 
 3) Check for a missing payment disclosure: Test the add-on’s functionality in a
    test profile. Verify whether the add-on requires a subscription or other form
