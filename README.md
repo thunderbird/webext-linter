@@ -93,49 +93,24 @@ is monitored and upstream changes are ported manually.
 | `--report-format <text\|json>` | Report output format (default `text`). |
 | `--report-out <file>` | Write a plain copy of the run to a file in addition to stdout - the activity feed and the report (a `--report-format json` run writes the report alone). Refused with any `--llm-*` flag: no run of that round trip saves its output. |
 
-**LLM review:** what an LLM agent runs. `--llm-sca-review` prepares a source code review
-and is over before one starts. Then `--llm-review` runs the review ONCE and hands out the
-first of its phases; every `--llm-verdict` run after that takes a phase back and hands out
-the next, until nothing is left to issue and the last one carries the report.
+**LLM review:** what an LLM agent runs, instead of a person reading the report. `--llm-review`
+runs the review ONCE and hands out the first of its phases; every `--llm-verdict` run after
+that takes a phase back and hands out the next, until the last one carries the report.
+`--llm-sca-review` prepares a source code review and is over before one starts.
 
-The agent opens ONE file, ever: the review file the prompt names. It fills in each entry's
-empty `"answer"` and hands the same path back — the command is in the prompt. Everything
-the linter needs between passes is in a state file beside it that the agent is never
-pointed at, which is why `--llm-verdict` takes no add-on path: the deterministic review ran
-once, and nothing re-derives it.
-
-The phases are `setup` (start the sub-agents, hand back what the sweep found, one row per
-check), `verify` (the findings), `settle` (what a check could not settle) and `ask` (what
-only a reviewer can answer). A phase with nothing to do is not issued, so a review with no
-sweep never mentions one — and every step of `setup` belongs to a sub-agent, starting one
-or writing down what it returned, so a review that runs none of them skips that phase too
-and opens at `verify`.
-
-What an entry's `"answer"` may say depends on WHO THE PHASE ASKS. A phase the agent settles
-by reading the add-on takes one of the linter's verbs: `verify` takes `reported` or
-`withdrawn`, `settle` takes `reported`, `cleared` or `ask` - the last of which does not
-settle the case but sends it on to the reviewer, keeping its number. The `ask` phase takes
-what the reviewer answered: the label of one of the answers that question offered (`Clear`,
-`Report`, listed under the entry's `answers`), or the words they typed instead, which report
-the case and carry those words with it.
-
-Those words are the one thing in the file a person writes, and they are printed on that
-case's location line - in parentheses after the location, or as the line itself when the case
-has none, where the reviewer's own line breaks are kept and each becomes an item of its own.
-
-Crossing the two is refused, naming the entry so the question can be asked again rather than
-an answer made to fit: a verb where a reviewer was asked, a reviewer's answer where the agent
-settles, an answer with nothing in it, and one past the length the question tells the reviewer
-they have (`MAX_NOTE`).
+The agent audits each finding, settles what the scans could not, and puts the rest to a
+reviewer — the linter decides what is asked and what an answer may say. The whole round
+trip, the phases, the answer vocabulary and what the reviewer is handed are described in
+**[docs/llm-review.md](docs/llm-review.md)**.
 
 | Option | Description |
 | --- | --- |
-| `--llm-sca-review <folder>` | Print the prompt for preparing a source code review of a submission folder — one built `.xpi` and one archive of the source it was built from — and exit without reviewing anything. The prompt names where to extract the source archive (`--sca-root`, already computed) and asks its reader to work out `--sca-source`/`--sca-exp-source` by opening it, then hands back this command with `--llm-review` in place of this flag and every `--sca-*` argument filled in. Refused beside any `--sca-*` flag, which is what it exists to produce. |
-| `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Refused with `--report-format json`. |
-| `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
-| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer — they stay in the report, for the reviewer to work through later. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
-| `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. The prompt neither spawns it nor asks for it, and the Standard Code Review section stays in the report for the reviewer to sweep by hand. |
-| `--llm-verdict <file>` | Take a phase back and hand out the next, from the review file the prompt named — or, when nothing is left to issue, print the settled report. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file beside this one. Normally run by the agent working through the review rather than by a person. |
+| `--llm-review` | Run the review and print the first phase's prompt, instead of the report. Refused with `--report-format json`. |
+| `--llm-verdict <file>` | Take a phase back and hand out the next — or, when nothing is left to issue, print the settled report. Takes no add-on path. Normally run by the agent, not by a person. |
+| `--llm-sca-review <folder>` | Print the prompt for preparing a source code review of a submission folder — one built `.xpi` and one archive of its source — and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
+| `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
+| `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later. |
+| `--llm-skip-sweep` | Leave out the sweep: the prompt neither spawns it nor asks for it, and the Standard Code Review section stays in the report to be swept by hand. |
 
 **Source code archive (SCA):**
 
@@ -387,41 +362,15 @@ check that declares one is listed in the report's **Standard Code Review** secti
 or not it found anything: a check that found nothing is exactly the one whose
 blind spot is worth reading.
 
-What a reader finds is not a verdict on the sweep, and not a classification
-either: the agent that sweeps reads the add-on, not the linter, so it cannot know
-whether what it found is something that check would have filed, escalated, or
-deliberately excluded. It hands back the location and what is there; the routing
-is the linter's.
+A `sweep-instruction` says what to LOOK FOR, and never what confirming something
+means - that is the owning check's to say, in its own wording, so a swept case
+and a scanned one put the same question to the same reader.
 
-The `setup` phase carries one row per swept check, and the sweep's own words fill
-it in - an empty list where that check is clean, which is what separates "found
-nothing" from "never looked":
-
-```json
-{ "check": "data-exfiltration",
-  "instruction": "Message content and headers, attachments, contacts, ...",
-  "answer": [ { "file": "background.js", "line": 40,
-                "hint": "<a ping> attribute carries the message digest" } ] }
-```
-
-A sweep is a DETECTOR and nothing more. What comes back is a hint - a location
-that check's own detectors missed - and from there the case is one of that
-check's, handled exactly as a case it found for itself:
-
-| The owning check | Where a swept result lands |
-| --- | --- |
-| escalates | An escalation of that check, in the section that check's own wording puts it in, asking the question that check asks - its own instructions, never the text the sweep agent was sent. |
-| does not escalate | A **finding** of that check. Such a check settles its cases as findings, so a swept one is a finding too, and the `verify` phase audits it like every other claim. |
-
-So a `sweep-instruction` says what to LOOK FOR, and is read in exactly two
-places: the request handed to the sweep agent, and the Standard Code Review list
-above. It never says what confirming something means - that is the owning
-check's to say.
-
-Either way the case is deduplicated against what the deterministic pass already
-covered, as a to-do item or as a finding, so nothing downstream can tell a swept
-case from one a check found. The `hint` is a locus annotation naming what sits at
-that line; the paragraph the developer reads stays the registry's.
+Who does the looking is the one thing that varies. In a review with no agent in
+it, the reviewer works that list by hand. Under `--llm-review` a sub-agent reads
+for the same things and hands back what it found, and the linter routes each
+result into the owning check - described in
+[docs/llm-review.md](docs/llm-review.md#the-sweep).
 
 | Check id (`check:`) | The blind spot its sweep covers |
 | --- | --- |
