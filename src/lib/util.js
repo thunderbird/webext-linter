@@ -374,15 +374,6 @@ export function manifestPathLine(ctx, ...path) {
 }
 
 /**
- * 1-based line of the first line containing `needle` as a plain substring, or
- * null. Unlike manifestTokenLine (which matches a quoted JSON token), this suits
- * free-form text such as a VENDOR file, where a finding anchors on the verbatim
- * source URL rather than a quoted key.
- * @param {string} text
- * @param {string} needle
- * @returns {number|null}
- */
-/**
  * The line in `text` where `token` is DECLARED, across the dependency-file
  * formats a finding can anchor in. One question with three answers, because the
  * file is JSON in one submission and YAML in the next, and the caller records a
@@ -427,6 +418,15 @@ function yamlKeyLine(text, key) {
   return null;
 }
 
+/**
+ * 1-based line of the first line containing `needle` as a plain substring, or
+ * null. Unlike manifestTokenLine (which matches a quoted JSON token), this suits
+ * free-form text such as a VENDOR file, where a finding anchors on the verbatim
+ * source URL rather than a quoted key.
+ * @param {string} text
+ * @param {string} needle
+ * @returns {number|null}
+ */
 export function lineContaining(text, needle) {
   if (!text || !needle) {
     return null;

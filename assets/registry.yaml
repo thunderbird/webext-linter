@@ -1591,7 +1591,7 @@ verdict-intros:
 # written below, so two runs over one submission cannot disagree.
 #
 # What is withheld is not listed here and is not a property of these entries: it is every
-# to-do item a REVIEWER would have been asked (src/report/order.js asksAPerson - the same
+# to-do item a REVIEWER would have been asked (src/report/phases.js phaseNow - the same
 # predicate that decides the `ask` phase). The code-review sections stay, because reading
 # code is safe and is the evidence for the halt.
 review-early-exit:

@@ -65,6 +65,11 @@ flowchart TD
         from the declared dependencies. Where they find it does not, the add-on is told that every
         part of the build must come only from the dependencies declared in the manifest and lock
         file.
+
+        One thing withholds it: a review that stopped early never puts this to anyone. This is
+        the escalation that halt exists for - asking a reviewer to reproduce a build from a
+        dependency tree the same review has already rejected is the thing it prevents - so the
+        check still escalates and the report simply does not carry it.
       </div>
 
       <p class="source-note">

@@ -231,5 +231,10 @@ export const VENDOR_LOCK_MAX_PACKAGES = 10000;
  * only worth the developer's attention when it would fail the review, so a
  * moderate or low one deep in the tree produces nothing at all. Declared
  * dependencies are reported at every band (src/lib/vuln-findings.js).
+ *
+ * NOT the whole threshold: an advisory saying the package itself is malicious is
+ * reported whatever its band, because those state none at all. Widening or
+ * narrowing this list moves the band rule and nothing else (src/vendor/verify.js
+ * reportableInTree).
  */
 export const VENDOR_TREE_BANDS = ["high", "critical"];

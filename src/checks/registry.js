@@ -790,7 +790,8 @@ export class Registry {
  */
 export function assertRequiredPhaseSections(doc, registryPath) {
   // `manual-checks` is asked for beside the phases because it is the same failure: it is
-  // the ONLY source of the Standard Manual Review questions, it is listed in every review,
+  // the ONLY source of the Standard Manual Review questions, it is listed in every review
+  // that ran to the end (an early exit withholds them - src/report/early-exit.js),
   // and an absent one reads as "this review has no questions" rather than as a typo.
   for (const section of [...Object.values(PHASE_SECTIONS), "manual-checks"]) {
     const list = doc[section];

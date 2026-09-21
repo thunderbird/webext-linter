@@ -51,8 +51,12 @@ that no longer exist.
    `severity`, the `manual-checks` ones included - the loader refuses one that does not.
    Entries may also carry `input`, `sca`, `eslint`, `sweep-instruction`
    (the class of code the check cannot see, listed in the report's Standard Code Review
-   section) or `default-note` (the marker a reported case carries when the reviewer wrote
-   nothing). The check-bearing sections ARE
+   section), `default-note` (the marker a reported case carries when the reviewer wrote
+   nothing) or `review-early-exit` (the id of a reason in the top-level
+   `review-early-exit:` section: a check naming one STOPS the review when it
+   reports at error severity, so the report puts nothing further to a reviewer -
+   such a check's page must say so, and so must the page of any check whose
+   escalation is thereby withheld). The check-bearing sections ARE
    the phases — a check's phase IS the section it lives in, never a field on the
    entry: `invalid-experiment-phase` (the only phase that runs for an invalid
    Experiment) and `deterministic-phase` (every other check). `manual-checks` is NOT
@@ -114,7 +118,7 @@ that no longer exist.
      inferred from the rule. `none` is a severity like the others: it marks a check
      that can never emit a finding (the loader refuses one from it), so the page must not
      promise a rejection. `manual-checks` entries are badged `manual` whatever severity
-     they declare - four say `hold-or-error`, five `error`, one `info` - because the badge
+     they declare - four say `hold-or-error`, four `error`, one `info` - because the badge
      names the list they belong to rather than the band they resolve at;
    - escalating checks — make clear what the scan settles on its own and what it
      hands to the reviewer. **The tool calls no model: there is no verdict step, so a

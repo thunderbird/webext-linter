@@ -176,7 +176,9 @@ appears in.
   all of a real submission's vulnerable packages are ones nobody declared. Those
   are queried against the same advisory database in one batch, but reported only
   at **high and critical** - a package the developer did not choose is worth
-  reporting when it fails the review, not when it merely appears in one. Declared
+  reporting when it fails the review, not when it merely appears in one. An
+  advisory saying the package itself is malicious is reported whatever its band,
+  since those state none at all. Declared
   and pulled-in cases are separate checks, because the developer fixes them
   differently: update this package, or update the one that pulls it in.
 - The **build tooling** (everything in `--sca-root` outside `--sca-source` - build
@@ -410,7 +412,7 @@ result into the owning check - described in
 Some review steps can't be automated - they need hands-on testing or a human's
 judgment over content the tool can't see (the store listing, screenshots, the
 icon). These live under `manual-checks` in the yaml and are surfaced in the
-report's **Standard Manual Review** to-do list. They carry a severity like every other entry, so a reviewer settles one exactly as they settle an escalation: the item names the band a confirmed case lands in, and `--llm-verdict` can confirm it into a finding or clear it away.
+report's **Standard Manual Review** to-do list, unless the review stopped early. They carry a severity like every other entry, so a reviewer settles one exactly as they settle an escalation: the item names the band a confirmed case lands in, and `--llm-verdict` can confirm it into a finding or clear it away.
 
 | Check id (`check:`) | What the reviewer verifies |
 | --- | --- |

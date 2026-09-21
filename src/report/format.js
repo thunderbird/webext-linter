@@ -207,9 +207,10 @@ function reviewBodyLines(review) {
       labelOf
     ),
     // Beside the standard manual checks, and before them: the two STANDARD sections are
-    // the review carried by every submission - this one done by reading, that one by
-    // hand - so they read as a pair after the extended sections, which are raised by
-    // this submission in particular.
+    // the review every submission gets - this one done by reading, that one by hand - so
+    // they read as a pair after the extended sections, which are raised by this
+    // submission in particular. A review that STOPPED keeps only the reading half: the
+    // questions were never put to anyone (src/report/early-exit.js).
     ...preSweepSection(meta.preSweep ?? null),
     ...manualSection(todo("standard"), SECTION_TITLES.standard, blue, labelOf),
   ];
@@ -585,9 +586,11 @@ function schemaLine(meta) {
  * can click. The two agree on WHICH facts are named and on nothing else, and a single
  * renderer trying to be both would be a chain of conditionals around every line.
  *
- * Each row carries its own link text rather than deriving one from its path: every path
- * named here is one this tool chose, and a timestamped string is not what a reader wants
- * to click - what matters about it is what it IS.
+ * Each row carries its own link text rather than deriving one from its path. Some of
+ * these the reviewer supplied (the --sca-* roots, and XPI_ROOT where the submission
+ * arrived already unpacked) and some this tool named - and a name this tool chose ends in
+ * a timestamp, which is not what a reader wants to click. Naming each row for what it IS
+ * reads the same either way, so the block does not depend on which kind a path is.
  *
  * XPI_FILE is the one row with no link: it names what was submitted, not a location, so
  * there is nothing here for a client to open.
@@ -955,8 +958,8 @@ function manualSection(items, title, accent = blue, labelOf) {
  * the agent doing the reading are told the same thing in the same words.
  *
  * Blue, like Standard Manual Review and unlike the vivid cyan of the extended sections:
- * the colour says which pair a section belongs to - carried by every submission, or
- * raised by this one.
+ * the colour says which pair a section belongs to - the standing review, or the part
+ * raised by this submission.
  * @param {?{intro: string, items: object[]}} sweep
  * @returns {string[]}
  */
@@ -997,8 +1000,8 @@ function preSweepSection(sweep) {
 
 /**
  * Summary: issue counts by severity plus one count per to-do section, in the body's
- * section order (the two extended sections, then the two standard ones every submission
- * carries).
+ * section order (the two extended sections, then the two standard ones - which every
+ * submission gets unless the review stopped early, src/report/early-exit.js).
  *
  * Also printed on its own by a --llm-review run, which has no report body for it to close:
  * without it that run's output would not say whether the add-on is ready to sign off or

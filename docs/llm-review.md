@@ -58,8 +58,8 @@ entry never offered are all refusals.
 
 A phase is issued only when it has **work** — steps that survive their markers, or
 entries to settle — and that is also what ends the loop. So a review with no sweep never
-mentions one, and a review that starts no sub-agent at all skips `spawn` and opens at
-`verify`. The package itself is not unpacked by any of this: the linter extracts a packed
+mentions one, and a review that starts no sub-agent at all skips `spawn` and opens at the
+first phase that has any. The package itself is not unpacked by any of this: the linter extracts a packed
 submission before the first prompt is printed, and every phase reads that one folder.
 
 `ask` has one further condition: a review that **stopped early** never reaches it.
