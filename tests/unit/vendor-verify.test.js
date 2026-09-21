@@ -1493,6 +1493,224 @@ test("a NetworkGoneError propagates out of every vendor entry point", async () =
   );
 });
 
+// ---- grouping the entries that share one npm package ----
+// A bundled library is many files from one release, declared one line each. Verified
+// a file at a time, the release was fetched, asked about and audited once PER FILE:
+// the add-on that prompted this shipped 34 files of one package and made 102 requests
+// for what three answer. The group is the unit of network work and nothing else -
+// every entry still reports on its own, and still answers for its own declared path.
+
+const GROUP_BASE = "https://cdn.jsdelivr.net/npm/@scope/widget@1.2.3/dist";
+const GROUP_TGZ = "https://registry.npmjs.org/@scope/widget/-/widget-1.2.3.tgz";
+
+// Two entries on one package, the shape every grouped test starts from.
+const groupAddon = (files = { "lib/a.js": "A\n", "lib/b.js": "B\n" }) =>
+  addonWith(
+    files,
+    store({
+      set: new Set(Object.keys(files)),
+      manifest: [
+        pinnedEntry("lib/a.js", `${GROUP_BASE}/a.js`),
+        pinnedEntry("lib/b.js", `${GROUP_BASE}/b.js`),
+      ],
+    })
+  );
+
+// The whole point: one request for the package, and none for the files. If the file
+// URLs were still fetched the grouping would be pure overhead, so they are absent
+// from `files` here and would 404 if asked for.
+test("vendor grouping: two entries on one package fetch the tarball once, and no file URLs", async () => {
+  const addon = groupAddon();
+  const tgz = makeTgz({
+    "package/dist/a.js": "A\n",
+    "package/dist/b.js": "B\n",
+  });
+  let fetched = [];
+  const n = {
+    fetchBytes: async (url) => {
+      fetched.push(url);
+      if (url !== GROUP_TGZ) {
+        throw new Error("HTTP 404");
+      }
+      return tgz;
+    },
+    fetchJson: async () => ({ downloads: 250000 }),
+    postJson: async () => ({ vulns: [] }),
+  };
+  await verifyVendorDeclarations(addon, n);
+  assert.deepEqual(fetched, [GROUP_TGZ], "the package, and nothing else");
+  assert.deepEqual(addon.vendor.results, [
+    { path: "lib/a.js", source: `${GROUP_BASE}/a.js`, outcome: "verified" },
+    { path: "lib/b.js", source: `${GROUP_BASE}/b.js`, outcome: "verified" },
+  ]);
+});
+
+// Grouping must not be visible in the report. Each row keeps its own path and its own
+// declared URL, because vendor-modified narrates "verified against <url>" per row and
+// markUntrusted needs a path that is a packaged file - a row naming the package would
+// be neither.
+test("vendor grouping: each grouped entry keeps its own row and source URL", async () => {
+  const addon = groupAddon({ "lib/a.js": "A\n", "lib/b.js": "DIFFERENT\n" });
+  const tgz = makeTgz({
+    "package/dist/a.js": "A\n",
+    "package/dist/b.js": "B\n",
+  });
+  await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
+  assert.deepEqual(addon.vendor.results, [
+    { path: "lib/a.js", source: `${GROUP_BASE}/a.js`, outcome: "verified" },
+    { path: "lib/b.js", source: `${GROUP_BASE}/b.js`, outcome: "modified" },
+  ]);
+});
+
+// auditNpm appends a record per call, so a package declared 34 times was recorded 34
+// times - the same advisory, 34 findings. The audit belongs to the package now.
+test("vendor grouping: a package two entries share is OSV-audited once", async () => {
+  const calls = { query: [] };
+  const addon = groupAddon();
+  const tgz = makeTgz({
+    "package/dist/a.js": "A\n",
+    "package/dist/b.js": "B\n",
+  });
+  await verifyVendorDeclarations(
+    addon,
+    net({ bytes: tgz, downloads: 250000, calls })
+  );
+  assert.equal(calls.query.length, 1, "one audit for the one package");
+  assert.deepEqual(calls.query[0].package, {
+    name: "@scope/widget",
+    ecosystem: "npm",
+  });
+});
+
+// The invariant that makes grouping free: the claim is still "these are the bytes
+// published at THIS path", not the weaker "these bytes are somewhere in the package".
+// Without it a declaration could name any file of the package and pass.
+test("vendor grouping: bytes published elsewhere in the package are still modified", async () => {
+  const addon = groupAddon({ "lib/a.js": "A\n", "lib/b.js": "A\n" });
+  const tgz = makeTgz({
+    "package/dist/a.js": "A\n",
+    "package/dist/b.js": "B\n",
+  });
+  await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
+  assert.equal(
+    addon.vendor.results.find((r) => r.path === "lib/b.js").outcome,
+    "modified",
+    "b.js holds a.js's bytes, which is not what it declared"
+  );
+});
+
+// A path the package does not publish is not evidence the file was modified - a CDN
+// may spell a path differently. Ask that entry's own URL rather than reject it over
+// the shape of a URL.
+test("vendor grouping: a path the package does not publish falls back to its own URL", async () => {
+  const addon = groupAddon();
+  const tgz = makeTgz({ "package/dist/a.js": "A\n" }); // no b.js
+  const n = {
+    fetchBytes: async (url) => {
+      if (url === GROUP_TGZ) {
+        return tgz;
+      }
+      if (url === `${GROUP_BASE}/b.js`) {
+        return Buffer.from("B\n");
+      }
+      throw new Error("HTTP 404");
+    },
+    fetchJson: async () => ({ downloads: 250000 }),
+    postJson: async () => ({ vulns: [] }),
+  };
+  await verifyVendorDeclarations(addon, n);
+  assert.deepEqual(
+    addon.vendor.results.map((r) => r.outcome),
+    ["verified", "verified"],
+    "b.js verified against the URL it declared"
+  );
+});
+
+// A failed grouping must cost the OLD number of requests and the OLD verdict, never a
+// worse one: the files are simply verified the way they were before.
+test("vendor grouping: an unfetchable package falls back to per-file verification", async () => {
+  const addon = groupAddon();
+  await verifyVendorDeclarations(
+    addon,
+    net({
+      files: { [`${GROUP_BASE}/a.js`]: "A\n", [`${GROUP_BASE}/b.js`]: "B\n" },
+      downloads: 250000,
+    })
+  );
+  assert.deepEqual(
+    addon.vendor.results.map((r) => r.outcome),
+    ["verified", "verified"]
+  );
+});
+
+// One file is not worth a whole package, so a lone entry behaves exactly as it always
+// did. If this stops holding, every single-file declaration starts downloading a
+// package to check one file.
+test("vendor grouping: a lone entry is fetched from its own URL, never via the package", async () => {
+  const url = `${GROUP_BASE}/a.js`;
+  const addon = addonWith(
+    { "lib/a.js": "A\n" },
+    store({
+      set: new Set(["lib/a.js"]),
+      manifest: [pinnedEntry("lib/a.js", url)],
+    })
+  );
+  const n = {
+    fetchBytes: async (got) => {
+      if (got !== url) {
+        throw new Error(`no package fetch expected, got ${got}`);
+      }
+      return Buffer.from("A\n");
+    },
+    fetchJson: async () => ({ downloads: 250000 }),
+    postJson: async () => ({ vulns: [] }),
+  };
+  await verifyVendorDeclarations(addon, n);
+  assert.deepEqual(addon.vendor.results, [
+    { path: "lib/a.js", source: url, outcome: "verified" },
+  ]);
+});
+
+// The tarball URL is constructed rather than looked up, so the construction has to be
+// held to the same parser every declared source goes through - an unparseable one
+// would be fetched from a host nobody vetted.
+test("vendor grouping: the constructed package URL classifies as a pinned tarball", () => {
+  const src = classifySource(GROUP_TGZ);
+  assert.equal(src.trusted, true);
+  assert.equal(src.tarball, true);
+  assert.equal(src.pkg, "@scope/widget");
+  assert.equal(src.version, "1.2.3");
+});
+
+// Only file entries on a pinned npm source are grouped. A folder is verified as a
+// folder, a declared .tgz already fetches the package, and a github source has no
+// package to group by - each keeps its own path, and its own audit.
+test("vendor grouping: folder, github and unpinned entries are left alone", async () => {
+  const ghUrl = "https://raw.githubusercontent.com/o/r/v1.0.0/x.js";
+  const addon = addonWith(
+    { "lib/x.js": "X\n", "lib/y.js": "Y\n" },
+    store({
+      set: new Set(["lib/x.js", "lib/y.js"]),
+      manifest: [
+        pinnedEntry("lib/x.js", ghUrl),
+        {
+          path: "lib/y.js",
+          sourceUrl: "https://unpkg.com/widget/dist/y.js", // no version: unpinned
+          trusted: true,
+          pinned: false,
+        },
+      ],
+    })
+  );
+  await verifyVendorDeclarations(
+    addon,
+    net({ files: { [ghUrl]: "X\n" }, stars: 5000 })
+  );
+  assert.deepEqual(addon.vendor.results, [
+    { path: "lib/x.js", source: ghUrl, outcome: "verified" },
+  ]);
+});
+
 // ---- the popularity lookup's request budget ----
 // The bug these pin: api.npmjs.org answers a burst with 429, isPopular swallowed
 // every failure into `false`, and `false` means "not widely used" - so an add-on

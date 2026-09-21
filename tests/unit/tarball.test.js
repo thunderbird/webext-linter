@@ -1,11 +1,12 @@
-// Unit tests for src/vendor/tarball.js: reading an npm-registry .tgz into the set
-// of EOL-normalized content hashes of its regular files.
+// Unit tests for src/vendor/tarball.js: reading an npm-registry .tgz into the
+// EOL-normalized content hashes of its regular files - keyed by in-package path for
+// a caller checking a declaration, or as a bare set for one asking about membership.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import zlib from "node:zlib";
 
-import { tarballHashes } from "../../src/vendor/tarball.js";
+import { tarballHashes, tarballFileHashes } from "../../src/vendor/tarball.js";
 import { normalizedSha256 } from "../../src/normalize/hash.js";
 import { makeTgz } from "./tarball-fixture.js";
 
@@ -56,4 +57,47 @@ test("tarballHashes enforces the unpacked-size cap", () => {
   assert.throws(() => tarballHashes(big));
   // Sanity: the same content unzips fine without the cap.
   assert.ok(zlib.gunzipSync(big).length > 64 * 1024 * 1024);
+});
+
+// A caller that knows which file a declaration points AT needs the path back, so it
+// can ask whether these are the bytes published THERE rather than the weaker
+// "published somewhere in this package". npm's single `package/` wrapper is an
+// artifact of the tarball, not part of any path a source URL names, so it goes.
+test("tarballFileHashes keys each regular file by its in-package path", () => {
+  const tgz = makeTgz({
+    "package/dist/a.js": "AAA\n",
+    "package/dist/nested/b.js": "BBB\n",
+    "package/package.json": "{}\n",
+  });
+  const byPath = tarballFileHashes(tgz);
+  assert.deepEqual([...byPath.keys()].sort(), [
+    "dist/a.js",
+    "dist/nested/b.js",
+    "package.json",
+  ]);
+  assert.equal(byPath.get("dist/a.js"), normalizedSha256(Buffer.from("AAA\n")));
+});
+
+// The set form is the same walk with the paths dropped, so the two can never
+// disagree about what a package publishes.
+test("tarballHashes is the set of those same hashes", () => {
+  const tgz = makeTgz({
+    "package/dist/a.js": "AAA\n",
+    "package/dist/b.js": "BBB\n",
+  });
+  assert.deepEqual(
+    tarballHashes(tgz),
+    new Set(tarballFileHashes(tgz).values())
+  );
+});
+
+// Two files with the same bytes are two paths but one hash, so a Map keyed by path
+// must not lose either - the set form legitimately collapses them.
+test("tarballFileHashes keeps both paths when two files share bytes", () => {
+  const tgz = makeTgz({
+    "package/dist/a.js": "SAME\n",
+    "package/dist/b.js": "SAME\n",
+  });
+  assert.equal(tarballFileHashes(tgz).size, 2);
+  assert.equal(tarballHashes(tgz).size, 1);
 });

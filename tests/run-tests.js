@@ -19,6 +19,7 @@ import { pipelineOptsFromArgv } from "../src/cli.js";
 import { formatReview } from "../src/report/format.js";
 import { setPopularityPacing } from "../src/vendor/verify.js";
 import { fixtureCacheOpts } from "./seed-caches.js";
+import { makeTgz } from "./unit/tarball-fixture.js";
 
 // The popularity lookups pace themselves against a live host's request budget
 // (src/config.js VENDOR_POPULARITY_MIN_INTERVAL_MS). Every request here is answered
@@ -67,6 +68,15 @@ const REAL_FETCH = globalThis.fetch;
  *   { "body": "<text>" }    literal bytes - the way to express "modified".
  *   { "json": <value> }     a JSON endpoint (npm downloads, GitHub stars, unpkg ?meta,
  *                           the OSV audit).
+ *   { "tgz": {"<in-package path>": "<fixture path>"} }
+ *                           an npm registry tarball PUBLISHING those fixture files,
+ *                           built here from their own bytes. Same reasoning as
+ *                           `sameAs`, for the same reason: a package a fixture
+ *                           verifies against has to hold what the fixture ships, and
+ *                           a committed binary would rot the day a file is edited
+ *                           (and could not be read in a diff). Each path is published
+ *                           at the in-package path the declaration names, which is
+ *                           what the verification actually checks.
  *   { "status": <code> }    an HTTP negative, with an empty body.
  * @param {string} dir  The fixture directory; `sameAs` resolves against it.
  * @param {object} spec
@@ -78,6 +88,15 @@ function fetchResponse(dir, spec) {
     return new Response(fs.readFileSync(path.join(dir, spec.sameAs)), {
       status,
     });
+  }
+  if (spec.tgz !== undefined) {
+    const entries = Object.fromEntries(
+      Object.entries(spec.tgz).map(([inPackage, file]) => [
+        `package/${inPackage}`,
+        fs.readFileSync(path.join(dir, file), "latin1"),
+      ])
+    );
+    return new Response(makeTgz(entries), { status });
   }
   if (spec.json !== undefined) {
     return new Response(JSON.stringify(spec.json), {

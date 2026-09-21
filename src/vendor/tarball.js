@@ -36,6 +36,21 @@ function headerSize(header) {
   return raw ? parseInt(raw, 8) : 0;
 }
 
+/**
+ * A tar header's file name: the 100-byte `name` field, NUL-terminated, with npm's
+ * single top-level `package/` directory stripped. The ustar `prefix` field is not
+ * read - npm's own paths are far short of 100 bytes, and a name that did overflow
+ * would come back without its prefix rather than wrong, so it simply fails to match.
+ * @param {Buffer} header
+ * @returns {string}
+ */
+function headerName(header) {
+  const raw = header.toString("latin1", 0, 100);
+  const end = raw.indexOf("\0");
+  const name = (end === -1 ? raw : raw.slice(0, end)).trim();
+  return name.startsWith("package/") ? name.slice("package/".length) : name;
+}
+
 /** @param {Buffer} block @returns {boolean} all-zero (the archive terminator). */
 function isZeroBlock(block) {
   for (let i = 0; i < block.length; i++) {
@@ -47,16 +62,28 @@ function isZeroBlock(block) {
 }
 
 /**
- * The EOL-normalized SHA-256 of every regular file in a gzipped npm tarball.
+ * The EOL-normalized SHA-256 of every regular file in a gzipped npm tarball, KEYED
+ * BY ITS PATH INSIDE THE PACKAGE.
+ *
+ * The walk always read the name; only the membership caller had no use for it. A
+ * caller that knows which file a declaration points AT wants the path back, so it
+ * can ask "are these the bytes published at THAT path" rather than the weaker "are
+ * these bytes published anywhere in this package" - the difference between a
+ * declaration that checks out and one that merely names the right package.
+ *
+ * npm publishes every entry under a single `package/` directory, which is an
+ * artifact of the tarball rather than part of any path a source URL names, so it is
+ * stripped here. A duplicate path keeps the FIRST entry, the same way a tar is
+ * unpacked.
  * @param {Buffer} tgz  The downloaded .tgz bytes.
- * @returns {Set<string>}  Normalized content hashes (see src/normalize/hash.js).
+ * @returns {Map<string, string>}  In-package path -> normalized content hash.
  * @throws if the stream is not gzip, exceeds the unpacked cap, or is malformed.
  */
-export function tarballHashes(tgz) {
+export function tarballFileHashes(tgz) {
   const tar = zlib.gunzipSync(tgz, {
     maxOutputLength: VENDOR_TARBALL_MAX_UNPACKED_BYTES,
   });
-  const hashes = new Set();
+  const byPath = new Map();
   let off = 0;
   while (off + BLOCK <= tar.length) {
     const header = tar.subarray(off, off + BLOCK);
@@ -74,10 +101,26 @@ export function tarballHashes(tgz) {
       break; // truncated
     }
     if (type === 0x30 || type === 0x00) {
-      hashes.add(normalizedSha256(tar.subarray(dataStart, dataEnd)));
+      const path = headerName(header);
+      if (path && !byPath.has(path)) {
+        byPath.set(path, normalizedSha256(tar.subarray(dataStart, dataEnd)));
+      }
     }
     // Advance past the header + the data (padded up to the next 512 boundary).
     off = dataStart + Math.ceil(size / BLOCK) * BLOCK;
   }
-  return hashes;
+  return byPath;
+}
+
+/**
+ * The EOL-normalized SHA-256 of every regular file in a gzipped npm tarball, as a
+ * set - for the callers that ask whether bytes are published in this package at all,
+ * without caring where (verifyTarball, and a folder declaration, which names no
+ * per-file source to check a path against).
+ * @param {Buffer} tgz  The downloaded .tgz bytes.
+ * @returns {Set<string>}  Normalized content hashes (see src/normalize/hash.js).
+ * @throws if the stream is not gzip, exceeds the unpacked cap, or is malformed.
+ */
+export function tarballHashes(tgz) {
+  return new Set(tarballFileHashes(tgz).values());
 }

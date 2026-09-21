@@ -201,6 +201,18 @@ export const VENDOR_FETCH_TIMEOUT_MS = 10000;
 export const VENDOR_FETCH_MAX_BYTES = 12 * 1024 * 1024;
 
 /**
+ * How many VENDOR entries must name one npm package@version before the package is
+ * fetched whole (its registry tarball) instead of a file at a time.
+ *
+ * Both routes answer the same question - are these the bytes published at that
+ * path - so this is only ever a question of which costs less. One tarball is a
+ * single request but the whole package; N files are N requests but only what the
+ * add-on ships. At two entries the tarball already removes a request, and a lone
+ * entry never pays a whole package for one file.
+ */
+export const VENDOR_GROUP_MIN_ENTRIES = 2;
+
+/**
  * Decompressed-size cap when extracting an npm-registry tarball source, to bound a
  * decompression bomb (the compressed download is already capped by
  * VENDOR_FETCH_MAX_BYTES). gunzip aborts past this.

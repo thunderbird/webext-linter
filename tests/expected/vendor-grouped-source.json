@@ -1,0 +1,15 @@
+{
+  "_comment": "Two files of ONE npm package, declared a line each - the shape every vendored library really has, and the one that used to cost a request per file. The network map serves only the registry tarball: neither file URL is listed, so if the grouping stopped working they would 404 and both files would land in the untrusted family. Verifying against a package instead of against two URLs must change nothing a reviewer sees, so this expects no findings at all - the same empty report verified-vendor-source produces for its single file. The tarball publishes each file at the in-package path its declaration names (dist/...), because that path IS what the verification checks: bytes published elsewhere in the package are still a modified file.",
+  "network": {
+    "https://registry.npmjs.org/widget/-/widget-1.2.3.tgz": {
+      "tgz": {
+        "dist/core.min.js": "lib/core.min.js",
+        "dist/extra.min.js": "lib/extra.min.js"
+      }
+    },
+    "https://api.npmjs.org/downloads/point/last-month/widget": {
+      "json": { "downloads": 250000 }
+    }
+  },
+  "expect": {}
+}

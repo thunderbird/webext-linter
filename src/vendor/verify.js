@@ -47,7 +47,7 @@ import { createHash } from "node:crypto";
 
 import { classifySource } from "./sources.js";
 import { rethrowIfNetworkGone } from "../util/net.js";
-import { tarballHashes } from "./tarball.js";
+import { tarballHashes, tarballFileHashes } from "./tarball.js";
 import { zipHashesUnder } from "./archive.js";
 import { isVendored, declaredFiles } from "./resolve.js";
 import { npmNameForLibrary } from "../lib/library-hashes.js";
@@ -64,6 +64,7 @@ import {
   VENDOR_POPULARITY_MIN_INTERVAL_MS,
   VENDOR_POPULARITY_RETRIES,
   VENDOR_POPULARITY_BACKOFF_MS,
+  VENDOR_GROUP_MIN_ENTRIES,
   VENDOR_FETCH_TIMEOUT_MS,
   VENDOR_FETCH_MAX_BYTES,
   VENDOR_OSV_API,
@@ -175,6 +176,12 @@ export async function verifyVendorDeclarations(
   if (!vendor) {
     return;
   }
+  // Which entries name one npm package@version, so it is fetched and audited once
+  // however many files it covers. Computed up front, but each group is RESOLVED
+  // lazily, at the first entry that needs it - so the walk stays in manifest order
+  // and vendor.results, vendor.vulnerabilities and the feed all keep the order they
+  // had when every entry stood alone.
+  const groups = groupNpmSources(vendor.manifest);
   // VENDOR entries known trusted + pinned (the rest were settled offline).
   for (const entry of vendor.manifest) {
     if (!entry.trusted || !entry.pinned) {
@@ -187,21 +194,32 @@ export async function verifyVendorDeclarations(
       continue;
     }
     // A whole-package tarball source (npm registry) is extracted + per-file hash
-    // matched; a single-file source is byte-compared.
+    // matched; a single-file source is byte-compared, against the package its group
+    // already fetched when there is one.
     const src = classifySource(entry.sourceUrl);
-    const outcome = src.tarball
-      ? await verifyTarball(entry, addon, vendor, net)
-      : await verifyUrl(entry, addon, vendor, net);
+    const group = groups.get(groupKey(entry));
+    if (group) {
+      await resolveGroup(group, vendor, net, blocks);
+    }
+    const outcome = group?.state
+      ? await verifyGrouped(entry, group, addon, vendor, net)
+      : src.tarball
+        ? await verifyTarball(entry, addon, vendor, net)
+        : await verifyUrl(entry, addon, vendor, net);
     vendor.results.push({
       path: entry.path,
       source: entry.sourceUrl,
       outcome,
     });
     // An npm-sourced VENDOR lib is also audited for known vulnerabilities (the
-    // same OSV query as a package.json dep), anchored at its VENDOR-file line.
+    // same OSV query as a package.json dep), anchored at its VENDOR-file line -
+    // once per package, which is resolveGroup's job for everything it groups.
     // A github source carries no npm identity directly, so auditGithub tries to
     // PROVE one (content-hash match against a candidate npm package) and audit
     // it too; an unprovable one is recorded as unaudited.
+    if (group) {
+      continue; // already audited, with the rest of its package
+    }
     if (src.kind === "npm") {
       await auditNpm(
         src.pkg,
@@ -1030,6 +1048,200 @@ function vulnSeverity(v) {
 /** The higher of two severity labels. @param {string} a @param {string} b */
 function worseSeverity(a, b) {
   return SEVERITY_RANK.indexOf(b) > SEVERITY_RANK.indexOf(a) ? b : a;
+}
+
+// WHY ENTRIES ARE GROUPED BEFORE THEY ARE VERIFIED: a bundled library is many files
+// from ONE release, and each is declared separately because each is a separate file.
+// Verified a file at a time, that release is fetched once per file, asked about once
+// per file, and audited once per file - which is how an add-on shipping 34 files of
+// one package made 102 requests for what three would answer, and would have recorded
+// the same advisory 34 times.
+//
+// The group is the unit of NETWORK work, never of reporting: one tarball, one
+// popularity reading, one OSV audit, while every entry still gets its own result row
+// naming its own declared source. The comparison each entry then makes is the one it
+// always made - its bytes against the bytes published at ITS path - because the
+// tarball is keyed by path (tarballFileHashes) rather than flattened to a set. So
+// grouping changes what is fetched, and nothing about what is decided.
+
+/**
+ * @typedef {object} NpmGroup  The trusted+pinned VENDOR file entries whose declared
+ *   sources all resolve to one npm package@version.
+ * @property {string} pkg @property {string} version
+ * @property {object[]} entries  In manifest order.
+ * @property {?{byPath: Map<string, string>}} state  The package's per-path hashes,
+ *   or null for "verify these one file at a time".
+ * @property {boolean} resolved  resolveGroup runs exactly once per group.
+ */
+
+/**
+ * Group the entries that name one npm package@version, so the package can be fetched
+ * once. Only FILE entries on a trusted, pinned, non-tarball npm source: a folder
+ * declaration is verified as a folder, a declared .tgz already fetches the package
+ * whole, and a github source has no package to group by.
+ * @param {object[]} manifest  vendor.manifest.
+ * @returns {Map<string, NpmGroup>}  Keyed `<pkg>@<version>`.
+ */
+function groupNpmSources(manifest) {
+  const groups = new Map();
+  for (const entry of manifest) {
+    const key = groupKey(entry);
+    if (!key) {
+      continue;
+    }
+    const src = classifySource(entry.sourceUrl);
+    const group = groups.get(key) ?? {
+      pkg: src.pkg,
+      version: src.version,
+      entries: [],
+      state: null,
+      resolved: false,
+    };
+    group.entries.push(entry);
+    groups.set(key, group);
+  }
+  return groups;
+}
+
+/**
+ * The group an entry belongs to, or null when it is verified on its own terms.
+ * @param {object} entry  A vendor.manifest entry.
+ * @returns {?string}
+ */
+function groupKey(entry) {
+  if (entry.kind === "folder" || !entry.trusted || !entry.pinned) {
+    return null;
+  }
+  const src = classifySource(entry.sourceUrl);
+  return src.kind === "npm" && src.version && !src.tarball
+    ? `${src.pkg}@${src.version}`
+    : null;
+}
+
+/**
+ * The npm registry tarball for a pinned package - CONSTRUCTED, not looked up.
+ *
+ * Asking the registry where its tarball is would put back one request per group,
+ * which is the cost this path exists to remove. Constructing it cannot produce a
+ * wrong verdict: the URL goes through the same classifier every declared source
+ * does, and anything it does not recognise - or that the registry does not serve -
+ * drops the group back to verifying its entries one at a time.
+ * @param {string} pkg  Package name, possibly scoped.
+ * @param {string} version
+ * @returns {?string}  The tarball URL, or null when it does not classify as one.
+ */
+function registryTarballUrl(pkg, version) {
+  const plain = String(version).replace(/^v/i, "");
+  const name = pkg.split("/").pop();
+  const url = `https://registry.npmjs.org/${pkg}/-/${name}-${plain}.tgz`;
+  const src = classifySource(url);
+  return src.trusted && src.tarball && src.pkg === pkg && src.version === plain
+    ? url
+    : null;
+}
+
+/**
+ * Where inside its package a declared source URL points.
+ *
+ * The CDN hosts serve a package's published files at their own paths, so the
+ * segments after `<pkg>@<version>` ARE the in-package path - which is what lets a
+ * grouped entry be held to the same claim as an ungrouped one. A URL whose shape
+ * this does not recognise returns null, and its entry is verified on its own rather
+ * than guessed at.
+ * @param {VendorSource} src  The classified source.
+ * @param {string} sourceUrl
+ * @returns {?string}
+ */
+function inPackagePath(src, sourceUrl) {
+  let segs;
+  try {
+    segs = new URL(sourceUrl).pathname.split("/").filter(Boolean);
+  } catch {
+    return null;
+  }
+  if (segs[0] === "npm") {
+    segs = segs.slice(1); // jsDelivr namespaces npm packages under /npm/
+  }
+  // The package name is one segment, or two when it is scoped (@scope/name@ver).
+  const rest = segs.slice(String(src.pkg).startsWith("@") ? 2 : 1);
+  return rest.length ? rest.join("/") : null;
+}
+
+/**
+ * Resolve a group once: audit the package, and fetch it whole when that is cheaper
+ * than fetching its files one at a time.
+ *
+ * The audit happens HERE, for every group including a group of one, which is what
+ * makes "once per package@version" true by construction rather than by remembering -
+ * auditNpm appends a record per call, so a package declared 34 times was recorded 34
+ * times.
+ * @param {NpmGroup} group
+ * @param {VendorStore} vendor @param {VendorNet} net
+ * @param {?Map<string, object>} blocks
+ * @returns {Promise<void>}
+ */
+async function resolveGroup(group, vendor, net, blocks) {
+  if (group.resolved) {
+    return;
+  }
+  group.resolved = true;
+  await auditNpm(
+    group.pkg,
+    group.version,
+    vendor.vendorFile,
+    group.entries[0].sourceUrl,
+    vendor,
+    net,
+    vendor.vulnerabilities,
+    blocks
+  );
+  if (group.entries.length < VENDOR_GROUP_MIN_ENTRIES) {
+    return; // one file is not worth a whole package
+  }
+  const url = registryTarballUrl(group.pkg, group.version);
+  if (!url) {
+    return;
+  }
+  try {
+    group.state = { byPath: tarballFileHashes(await net.fetchBytes(url)) };
+  } catch (err) {
+    rethrowIfNetworkGone(err);
+    // The package could not be had - absent, too large, or not a tarball. Each entry
+    // then verifies against its own URL, which is what it would have done anyway, so
+    // a failed grouping costs the old number of requests and nothing else.
+    debug(`vendor group ${group.pkg}@${group.version}: ${err.message}`);
+  }
+}
+
+/**
+ * Verify one entry of a grouped package against the copy fetched for the group.
+ *
+ * The same claim verifyUrl makes - these bytes are the ones published at this path -
+ * asked of the tarball instead of the CDN. normalizedSha256 hashes eolNormalize, and
+ * verifyUrl compares with eolEqual, which IS eolNormalize on both sides, so the two
+ * agree on every input, including the EOL differences both forgive.
+ * @param {object} entry @param {NpmGroup} group
+ * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
+ * @returns {Promise<"verified"|"modified"|"not-popular"|"unfetchable">}
+ */
+async function verifyGrouped(entry, group, addon, vendor, net) {
+  const src = classifySource(entry.sourceUrl);
+  const path = inPackagePath(src, entry.sourceUrl);
+  const published = path ? group.state.byPath.get(path) : undefined;
+  if (published === undefined) {
+    // The package publishes nothing at that path, so it cannot answer this
+    // declaration. Ask the declared URL rather than call the file modified: a CDN
+    // may serve a path the tarball spells differently, and being wrong here would
+    // reject a file over the shape of its URL.
+    return verifyUrl(entry, addon, vendor, net);
+  }
+  const mine = addon.files?.get(entry.path) ?? Buffer.alloc(0);
+  if (published !== normalizedSha256(mine)) {
+    return "modified";
+  }
+  return (await isPopular(src, net, vendor?.popularity))
+    ? "verified"
+    : "not-popular";
 }
 
 /**
