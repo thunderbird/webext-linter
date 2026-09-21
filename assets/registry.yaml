@@ -1716,6 +1716,10 @@ llm-phases:
 
             Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
 
+            The install step is the one command you do NOT restate as the documentation writes it. Report `npm ci`, even where the docs say `npm install`: the reviewer installs what the submitted lock file pins, not whatever the registry resolves to today. Where the submission ships a pnpm-lock.yaml, that same step is `pnpm install --frozen-lockfile`. npm and pnpm are the only package managers a submission may use, so those are the only two spellings.
+
+            Report that step with NO flag that leaves dependencies out - never `--omit=dev`, `--production` or `--prod` - even where the documentation uses one. The reviewer has to run the build AND audit everything it pulls in, and a dependency that was never installed is one nobody can audit.
+
             Report anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, code run from an install hook, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
 
             That is a report, never a verdict. Whether the build is accepted is settled by the reviewer reproducing it, and nothing you write settles it.
