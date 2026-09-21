@@ -222,7 +222,7 @@ function helpText(checkIds) {
   const sca = [
     [
       "--sca-root <folder>",
-      "The extracted source root (holds package.json/lock) - a folder, not a packed archive: unlike the submitted .xpi, which this tool extracts itself, a source archive comes in too many formats for this tool to open, so extract it yourself. Switches to SCA mode - the readable source is reviewed for code defects, its declared dependencies are audited for popularity + vulnerabilities, and the built XPI (the positional path) is the shipped artifact: authoritative for the manifest, experiments, file-completeness (bundled/web-accessible/unused). Always reviewed as SCA; when the XPI turns out to BE the submitted source, sca-not-required (info) says an XPI-only submission would have been enough.",
+      "The extracted source root, holding package.json and the lock file. A folder, not a packed archive: a source archive comes in too many formats for this tool to open, so extract it yourself - unlike the submitted .xpi, which this tool extracts. Setting it switches the review to SCA mode.",
     ],
     [
       "--sca-source <path>",
