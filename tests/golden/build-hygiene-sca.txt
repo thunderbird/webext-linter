@@ -6,11 +6,11 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
  - [SCA] .npmrc:1 - https://npm.internal.example/
  - [SCA] tools/.npmrc:1 - https://mirror.example/npm/
 
-2) The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them and resubmit.
+2) The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them.
  - [SCA] dist/addon.zip
  - [SCA] dist/legacy.xpi
 
-3) The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them and resubmit.
+3) The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them.
  - [SCA] node_modules
  - [SCA] tools/node_modules
 

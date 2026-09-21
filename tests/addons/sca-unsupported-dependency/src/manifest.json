@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "SCA unsupported dependency source",
+  "version": "1.0",
+  "description": "Declares a package.json dependency from a file: path.",
+  "permissions": [
+    "messagesRead",
+    "accountsRead"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "compose_action": {
+    "default_title": "Compose"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png"
+  }
+}

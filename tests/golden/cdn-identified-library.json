@@ -106,7 +106,7 @@
       "loc": null,
       "item": "tinybundle 3.2.1",
       "hint": "https://cdn.jsdelivr.net/npm/tinybundle@3.2.1/dist/tinybundle.min.js",
-      "message": "The following bundled files were recognized as third-party libraries (via jsDelivr CDN hash lookup), but are not declared as such. Please declare each and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
+      "message": "The following bundled files were recognized as third-party libraries (via a jsDelivr CDN hash lookup) but are not declared as such. Declare each so the (unmodified) copy can be verified against the release it came from - a VENDOR.md file at the add-on root is common practice.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
     }
   ]
 }

@@ -1,0 +1,29 @@
+{
+  "_comment": "missing-library and find-lib-on-cdn word their responses per review mode, and this is the mode no other fixture shows: the libraries sit in the ARCHIVE, where the ask is not 'declare what you shipped' but 'do not commit it - declare it in package.json and let the build copy it from node_modules'. One fixture carries both identification routes, since the two checks are twins and differ only in how the file was recognized: bootstrap.min.css by the Mozilla hash DB (offline), lib/undeclared.min.js by the canned jsDelivr lookup below. The XPI half of each is pinned by bundled-css and cdn-identified-library.",
+  "options": {
+    "--cdn-lib-lookup": "true"
+  },
+  "expect": {
+    "missing-library": [
+      "vendor/bootstrap/bootstrap.min.css"
+    ],
+    "find-lib-on-cdn": [
+      "lib/undeclared.min.js"
+    ]
+  },
+  "network": {
+    "https://data.jsdelivr.com/v1/lookup/hash/39a5201912ac4d780838ca4e37180327bbaf2ad103bb10f24d321f4b831048af": {
+      "json": {
+        "type": "npm",
+        "name": "tinybundle",
+        "version": "3.2.1",
+        "file": "/dist/tinybundle.min.js"
+      }
+    },
+    "https://api.npmjs.org/downloads/point/last-month/tinybundle": {
+      "json": {
+        "downloads": 900000
+      }
+    }
+  }
+}

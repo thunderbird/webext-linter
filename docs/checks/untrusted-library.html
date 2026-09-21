@@ -18,7 +18,7 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        A bundled file the tool could not confirm as a reviewed dependency.
+        A bundled file the tool could not confirm as a known dependency.
         Either its bytes match a pinned upstream release — recognised via the
         jsDelivr CDN or a declared VENDOR source — whose package is not a
         widely-used library, or its declared source was never checked at all:
@@ -61,10 +61,10 @@ flowchart TD
         The add-on is told each named file is a third-party library whose origin
         could not be confirmed — either it matches an upstream release whose
         package is not a widely-used library, or its declared source could not
-        be checked at all — so it is not trusted as a reviewed dependency and is
-        reviewed as authored code — the standard checks apply, so a finding may
-        be reported against library code — and is asked to confirm each is a
-        legitimate, appropriate dependency.
+        be checked at all — so it is not trusted as a known dependency and is
+        reviewed as authored code, which is why a finding may be reported
+        against library code. Nothing is asked of the developer: the notice
+        exists so a finding naming a library file is not baffling.
       </div>
 
       <p class="source-note">

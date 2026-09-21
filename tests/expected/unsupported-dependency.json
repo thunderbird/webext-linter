@@ -1,0 +1,6 @@
+{
+  "_comment": "A package.json dependency declared as a file: path - not npm, not GitHub - so nothing can identify or fetch it and unsupported-dependency rejects the declaration. The XPI half of the check, which had no fixture at all: what it asks for is a pinned npm package or a GitHub source, and it must not offer the lock-file route, which only a source code submission has.",
+  "expect": {
+    "unsupported-dependency": ["package.json:5"]
+  }
+}

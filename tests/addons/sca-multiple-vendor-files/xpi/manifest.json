@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "SCA two VENDOR manifests",
+  "version": "1.0",
+  "description": "Ships two VENDOR manifests in the source archive.",
+  "permissions": [
+    "messagesRead",
+    "accountsRead"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "compose_action": {
+    "default_title": "Compose"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png"
+  }
+}

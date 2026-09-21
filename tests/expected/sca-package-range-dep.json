@@ -1,0 +1,8 @@
+{
+  "_comment": "unpinned-dependency offers the lock-file route only to a source code submission: the archive is what the reviewer installs from, and a lock file is a build artifact that has no place inside a shipped XPI. Same finding as its XPI twin (package-range-dep), one sentence longer. The shipped background.js is packed so the archive is not redundant.",
+  "expect": {
+    "unpinned-dependency": [
+      "package.json:5"
+    ]
+  }
+}

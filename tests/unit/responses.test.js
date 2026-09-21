@@ -135,7 +135,8 @@ test("renderFindings uses the generic find-lib-on-cdn template (real library lis
     hint: "https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js",
     message: null,
   };
-  renderFindings([f], registry);
+  // find-lib-on-cdn words its response per review mode, so the render takes one.
+  renderFindings([f], registry, REVIEW_MODE.XPI);
   assert.match(f.message, /recognized as third-party libraries/);
   assert.ok(!f.message.includes("{{item}}"));
   assert.ok(!f.message.includes("app/fuse.min.js")); // no hardcoded example path

@@ -2,10 +2,10 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) A bundled library version is disallowed by Mozilla's add-on policy: jquery (2.2.4) - jQuery before 3.0 is unsupported and carries known security issues. Update to the latest 3.x. Update to a permitted version and re-bundle.
+1) A bundled library version is disallowed by Mozilla's add-on policy: jquery (2.2.4) - jQuery before 3.0 is unsupported and carries known security issues. Update to the latest 3.x. Update to a permitted version.
  - package.json:5
 
-2) A bundled library version is disallowed by Mozilla's add-on policy: angular (1.5.0) - AngularJS before 1.5.9 is affected by a Content-Security-Policy bypass. Update to the latest 1.x. Update to a permitted version and re-bundle.
+2) A bundled library version is disallowed by Mozilla's add-on policy: angular (1.5.0) - AngularJS before 1.5.9 is affected by a Content-Security-Policy bypass. Update to the latest 1.x. Update to a permitted version.
  - package.json:6
 
 You can run this automated review yourself before submitting:

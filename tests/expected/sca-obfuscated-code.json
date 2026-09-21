@@ -1,0 +1,4 @@
+{
+  "_comment": "An obfuscated file committed into the source archive. Obfuscation is banned outright, so the diagnosis is the same as the XPI's - but the XPI response ends by pointing at the source-code-submission instructions, which is the one thing this developer has already done. The SCA branch says what is actually left: the archive has to carry the file readable.",
+  "expect": { "obfuscated-code": ["obf.js"] }
+}

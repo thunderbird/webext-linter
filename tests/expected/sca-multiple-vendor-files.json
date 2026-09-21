@@ -1,0 +1,9 @@
+{
+  "_comment": "Two VENDOR manifests inside a source archive, each naming the same file with a different source. An XPI can only be told to keep one of them. An archive is told not to carry the library at all - declare it in package.json and let the build copy it - which makes the ambiguity moot, so this pins a remedy that differs in substance from its XPI twin.",
+  "expect": {
+    "multiple-vendor-files": [
+      "VENDOR.md",
+      "VENDORS.md"
+    ]
+  }
+}

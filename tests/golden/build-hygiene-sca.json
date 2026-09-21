@@ -133,7 +133,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them and resubmit."
+      "message": "The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them."
     },
     {
       "ruleId": "committed-build-artifact",
@@ -142,7 +142,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them and resubmit."
+      "message": "The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them."
     },
     {
       "ruleId": "committed-node-modules",
@@ -151,7 +151,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them and resubmit."
+      "message": "The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them."
     },
     {
       "ruleId": "build-registry-redirect",
@@ -171,7 +171,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them and resubmit."
+      "message": "The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them."
     },
     {
       "ruleId": "unsupported-build-tool",

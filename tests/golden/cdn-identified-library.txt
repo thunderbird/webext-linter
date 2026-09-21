@@ -2,7 +2,7 @@
 
 Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
-1) The following bundled files were recognized as third-party libraries (via jsDelivr CDN hash lookup), but are not declared as such. Please declare each and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice.
+1) The following bundled files were recognized as third-party libraries (via a jsDelivr CDN hash lookup) but are not declared as such. Declare each so the (unmodified) copy can be verified against the release it came from - a VENDOR.md file at the add-on root is common practice.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
  - lib/undeclared.min.js - tinybundle 3.2.1 - https://cdn.jsdelivr.net/npm/tinybundle@3.2.1/dist/tinybundle.min.js
 

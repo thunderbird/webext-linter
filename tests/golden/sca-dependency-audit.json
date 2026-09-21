@@ -123,7 +123,7 @@
       },
       "item": "tiny-obscure-helper (1.0.0)",
       "hint": null,
-      "message": "The following dependencies could not be confirmed to be widely-used. They need to be packaged non-minified with the add-on in order to be reviewed.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
+      "message": "The following dependencies could not be confirmed to be widely-used. They need to be packaged non-minified with the add-on in order to be reviewed.\nRead more: https://extensionworkshop.com/documentation/publish/source-code-submission/"
     },
     {
       "ruleId": "vendor-vulnerable",
@@ -134,7 +134,7 @@
       },
       "item": "tiny-obscure-helper",
       "hint": null,
-      "message": "A dependency this add-on bundles directly has known security vulnerabilities: tiny-obscure-helper (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). Update tiny-obscure-helper to a patched release or later, re-bundle, and resubmit."
+      "message": "A dependency this add-on bundles directly has known security vulnerabilities: tiny-obscure-helper (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). Update tiny-obscure-helper to a patched release or later."
     },
     {
       "ruleId": "vendor-vulnerable-dev",
@@ -145,7 +145,7 @@
       },
       "item": "vitest",
       "hint": null,
-      "message": "A build dependency this add-on declares has known security vulnerabilities: vitest (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update vitest to a patched release or later and resubmit."
+      "message": "A build dependency this add-on declares has known security vulnerabilities: vitest (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update vitest to a patched release or later."
     }
   ]
 }

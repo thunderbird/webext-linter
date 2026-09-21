@@ -2,15 +2,13 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) The following bundled file(s) are third-party libraries whose origin we could not confirm - either the file matches an upstream release whose package is not a widely-used library, or the declared source could not be checked at all (none was given, it is on a host we do not fetch from, or it has no such release). Either way the file is not trusted as a reviewed dependency - and it is minified or otherwise machine-generated, so it cannot be reviewed in this form. Ship the original, human-readable code directly (it need not be minified), or upload the original sources as a source-code submission (with the build instructions and process needed to reproduce the shipped XPI) using the source code upload field during submission or on the version page in the developer hub. Note that the source-archive route slows review down, as it requires manually verifying the build.
-Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
-Read more #2: https://extensionworkshop.com/documentation/publish/source-code-submission/
+1) The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies, and they are minified or otherwise machine-generated, so they cannot be reviewed in this form. Vendor the library's readable build instead. It is then reviewed as authored code, so a finding may be reported against library code.
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
  - lib/bundle.min.js - https://not-a-known-host.example/widget/1.2.3/dist/index.js
 
 We would like to share the following information with you:
 
-2) The following bundled file(s) are third-party libraries whose origin we could not confirm - either the file matches an upstream release whose package is not a widely-used library, or the declared source could not be checked at all (none was given, it is on a host we do not fetch from, or it has no such release). They are therefore not trusted as reviewed dependencies and are reviewed as authored code - the standard checks apply to them, so a finding may be reported against library code here. Confirm that each is a legitimate, appropriate dependency.
-Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
+2) The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies and are reviewed as authored code, so a finding may be reported against library code.
  - lib/widget.js - https://not-a-known-host.example/widget/1.2.3/dist/index.js
 
 3) Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).

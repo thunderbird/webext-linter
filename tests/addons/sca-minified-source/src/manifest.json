@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "SCA Minified Source",
+  "version": "1.0",
+  "description": "The source archive itself carries a packed file.",
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png"
+  }
+}

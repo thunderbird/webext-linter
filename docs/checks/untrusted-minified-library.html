@@ -18,7 +18,7 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        A bundled file the tool could not confirm as a reviewed dependency, and
+        A bundled file the tool could not confirm as a known dependency, and
         which is also minified or otherwise machine-generated. Either its bytes
         match a pinned upstream release — recognised via the jsDelivr CDN or a
         declared VENDOR source — whose package is not a widely-used library, or
@@ -60,12 +60,10 @@ flowchart TD
         The add-on is told each named file is a third-party library whose origin
         could not be confirmed — either it matches an upstream release whose
         package is not a widely-used library, or its declared source could not
-        be checked at all — so it is not trusted as a reviewed dependency, and
-        that because it is minified or otherwise machine-generated it cannot be
-        reviewed in this form. It is asked to ship the original, human-readable
-        code directly, or to upload the original sources as a source-code
-        submission — with the build instructions needed to reproduce the shipped
-        package — during submission.
+        be checked at all — so it is not trusted as a known dependency, and that
+        because it is minified or otherwise machine-generated it cannot be
+        reviewed in this form. It is asked to ship the library's readable build
+        instead, which need not be minified, or to drop the dependency.
       </div>
 
       <p class="source-note">

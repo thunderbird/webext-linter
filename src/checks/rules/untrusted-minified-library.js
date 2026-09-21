@@ -1,4 +1,4 @@
-// Rejects a bundled file the tool could not confirm as a reviewed dependency AND
+// Rejects a bundled file the tool could not confirm as a known dependency AND
 // which is minified/obfuscated. Two shapes reach it: the file was IDENTIFIED (its
 // bytes match a pinned upstream release on the jsDelivr CDN or a declared VENDOR
 // source) but did not clear the popularity trust bar; or its declared source was

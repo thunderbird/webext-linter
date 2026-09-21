@@ -120,7 +120,7 @@
       "loc": null,
       "item": "lib/widget.js",
       "hint": "https://unpkg.com/widget@1.0.0/dist/widget.js",
-      "message": "The following bundled file(s) are third-party libraries whose origin we could not confirm - either the file matches an upstream release whose package is not a widely-used library, or the declared source could not be checked at all (none was given, it is on a host we do not fetch from, or it has no such release). They are therefore not trusted as reviewed dependencies and are reviewed as authored code - the standard checks apply to them, so a finding may be reported against library code here. Confirm that each is a legitimate, appropriate dependency.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
+      "message": "The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies and are reviewed as authored code, so a finding may be reported against library code."
     },
     {
       "ruleId": "unsafe-html",

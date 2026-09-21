@@ -1,0 +1,8 @@
+{
+  "_comment": "minified-code words its response PER REVIEW MODE, and this is the mode the other fixtures cannot show. An XPI submission is asked for the readable original, or for a source-code submission that reproduces the shipped file. Here that submission already exists - so the ask is about THIS archive: it must hold the readable source a build consumes, not the packed file the build produces. The XPI half of the same check is pinned by inline-script-code and all-checks.",
+  "expect": {
+    "minified-code": [
+      "background.js"
+    ]
+  }
+}

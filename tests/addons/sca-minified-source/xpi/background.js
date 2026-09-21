@@ -1,0 +1,5 @@
+// Packed authored code, committed to the ARCHIVE rather than built into it: the
+// archive is what an SCA review reads, so a machine-generated file here is the one
+// minified-code reports - and what it asks for differs from an XPI submission,
+// which is why this fixture exists beside the XPI-mode ones.
+var a=0;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;a=a+1;console.log(a);

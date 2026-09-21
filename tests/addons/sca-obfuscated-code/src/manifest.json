@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "SCA obfuscated source file",
+  "version": "1.0",
+  "description": "Commits an obfuscated file into the source archive.",
+  "permissions": [
+    "messagesRead",
+    "accountsRead"
+  ],
+  "background": {
+    "scripts": [
+      "background.js",
+      "obf.js"
+    ]
+  },
+  "compose_action": {
+    "default_title": "Compose"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png"
+  }
+}

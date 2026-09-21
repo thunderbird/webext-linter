@@ -1,0 +1,18 @@
+{
+  "_comment": "vendor-vuln-unknown says one thing to either submission - the VENDOR entry is already there, and its SOURCE is what has to change - so its two responses differ only in the page they send the developer to. This fixture is what pins that: the same finding as its XPI twin, reported in a source code review, carrying the source-code-submission link instead of the vendoring guide.",
+  "expect": {
+    "vendor-vuln-unknown": [
+      "VENDORS.md:2"
+    ]
+  },
+  "network": {
+    "https://raw.githubusercontent.com/someone/thing-lib/1.4.2/dist/thing.js": {
+      "sameAs": "src/lib/thing.js"
+    },
+    "https://api.github.com/repos/someone/thing-lib": {
+      "json": {
+        "stargazers_count": 4200
+      }
+    }
+  }
+}

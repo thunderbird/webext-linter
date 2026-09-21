@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "SCA unparseable VENDOR file",
+  "version": "1.0",
+  "description": "Ships a VENDOR file that parses into no declaration.",
+  "permissions": [
+    "messagesRead",
+    "accountsRead"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "compose_action": {
+    "default_title": "Compose"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png"
+  }
+}

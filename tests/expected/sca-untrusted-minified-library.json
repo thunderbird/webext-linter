@@ -1,0 +1,6 @@
+{
+  "_comment": "The SCA twin of unverified-vendor-source: the same unfetchable VENDOR declaration over the same minified file, carried in the source archive. Nothing about the diagnosis changes - an unfetchable declaration buys no exemption, and a minified file cannot be reviewed - but the archive is where the readable build has to land, so this pins the SCA branch of untrusted-minified-library and the source-code-submission link that goes with it.",
+  "expect": {
+    "untrusted-minified-library": ["lib/widget.min.js"]
+  }
+}

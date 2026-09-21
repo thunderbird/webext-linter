@@ -1,0 +1,8 @@
+{
+  "_comment": "A prose-only VENDOR file in a source archive: no block pairs a library file with a file source URL, so nothing parses. The XPI branch teaches the block syntax, because an XPI has already shipped the file and can only declare it. The archive is told where the library belongs instead - package.json, copied out of node_modules by the build - so this pins that the two submissions are answered differently, not just linked differently.",
+  "expect": {
+    "vendor-unparseable": [
+      "VENDOR.md"
+    ]
+  }
+}

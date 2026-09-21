@@ -117,7 +117,7 @@
       },
       "item": "marked",
       "hint": null,
-      "message": "A dependency this add-on bundles directly has known security vulnerabilities: marked (4.0.0) is affected by published advisories of high severity (CVE-2022-21680). Update marked to 4.0.10 or later, re-bundle, and resubmit."
+      "message": "A dependency this add-on bundles directly has known security vulnerabilities: marked (4.0.0) is affected by published advisories of high severity (CVE-2022-21680). Update marked to 4.0.10 or later."
     }
   ]
 }

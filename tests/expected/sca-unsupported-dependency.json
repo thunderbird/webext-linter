@@ -1,0 +1,4 @@
+{
+  "_comment": "The SCA twin of unsupported-dependency: the same file: path declaration, in the archive the reviewer builds from. The diagnosis does not change - nothing identifies a local path - but this submission is the one npm actually installs from, so its response keeps the lock-file route the XPI branch must not offer, and asks for the library in the archive rather than bundled into the add-on.",
+  "expect": { "unsupported-dependency": ["package.json:5"] }
+}
