@@ -293,7 +293,7 @@ export function settle(state, registry) {
   });
   // A reported case became a finding carrying only its locus and slots, so word it from
   // the registry like any other - the same text either way.
-  renderFindings(findings, registry);
+  renderFindings(findings, registry, mode);
   resolveHolds(findings);
   // Decided HERE, on the findings that survived every verdict, rather than carried over
   // from the run that produced them: the agent may have withdrawn the very finding that
@@ -389,6 +389,10 @@ function routeSweep(state, registry) {
   if (results.length === 0) {
     return [];
   }
+  // The review mode, rebuilt from the one fact the state carries - the same reconstruction
+  // phaseEntries and settle make. It words nothing here: it only picks which text a check
+  // that authors one response per review mode is worded from.
+  const mode = { sca: state.report.sca };
   const { manual, findings, applied } = mergeSweepResults({
     results,
     manual: state.manual,
@@ -396,6 +400,7 @@ function routeSweep(state, registry) {
     preSweep: state.preSweep,
     registry,
     file: state.review,
+    mode,
   });
   state.manual = manual;
   state.report.findings = findings;
@@ -403,7 +408,7 @@ function routeSweep(state, registry) {
   // swept one arrives with none - so an unrendered finding would group one way while the
   // verify phase asks about it and another once the report is built, moving items under an
   // index that is supposed to mean the same case for the life of the review.
-  renderFindings(state.report.findings, registry);
+  renderFindings(state.report.findings, registry, mode);
   // The sweep is over: leaving it standing would ask a reviewer for work that is now in
   // the lists above it.
   state.preSweep = null;

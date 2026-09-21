@@ -912,11 +912,11 @@ export async function runPipeline(opts) {
       ? []
       : withDefaultNotes(
           [
-            ...renderManualItems(manualItems, registry).map((m) => ({
+            ...renderManualItems(manualItems, registry, mode).map((m) => ({
               ...m,
               extended: true,
             })),
-            ...registry.manualChecks().map((m) => ({ ...m, extended: false })),
+            ...registry.manualChecks(mode).map((m) => ({ ...m, extended: false })),
           ],
           registry
         ),
@@ -931,7 +931,7 @@ export async function runPipeline(opts) {
     // not happen asks a reader to cover for nothing, and this is what makes
     // --checks-only/--checks-skip carry through. An Experiment reject carries none, for
     // the same reason it carries no manual review.
-    preSweep: invalidExperiment ? null : preSweepOf(registry, ranIds),
+    preSweep: invalidExperiment ? null : preSweepOf(registry, ranIds, mode),
   });
 
   // What this run was told to leave out (--llm-skip-summary / --llm-skip-manual). Read
@@ -987,7 +987,7 @@ export async function runPipeline(opts) {
   // Fill each finding's display message from its registry response (with the
   // {{item}} placeholder), so the Found Issues section reports the ready-to-send
   // wording. The registry is the only source of this text.
-  renderFindings(findings, registry);
+  renderFindings(findings, registry, mode);
 
   // Settle every provisional hold against the rest of the review - the one moment a
   // hold-or-error check's band is decided. After any verdict has been applied and
@@ -1340,11 +1340,13 @@ export async function resolveReviewSchema({
  * the spawn phase's own step, beside the other sub-agent requests it relays.
  * @param {import("./checks/registry.js").Registry} registry
  * @param {Set<string>} ranIds  Ids of the checks that actually ran.
+ * @param {{sca?: boolean}} [mode]  The review mode: a swept case is worded from the
+ *   check's response, so an entry that words one per mode is read for this review's.
  * @returns {?{items: object[]}}
  */
 
-function preSweepOf(registry, ranIds) {
-  const items = registry.sweepInstructions().filter((s) => ranIds.has(s.check));
+function preSweepOf(registry, ranIds, mode) {
+  const items = registry.sweepInstructions(mode).filter((s) => ranIds.has(s.check));
   return items.length ? { items } : null;
 }
 

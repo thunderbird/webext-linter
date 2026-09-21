@@ -1088,6 +1088,120 @@ test("a sweep-instruction no finding could be filed for is refused", () => {
   );
 });
 
+// A check words its developer-facing response ONCE for both review modes (`response`) or
+// ONCE PER mode (`response-for-xpi` and `response-for-sca`). The forms are exclusive: a
+// mix leaves the entry unable to say which text a review prints, and the losing key rots.
+test("a response worded per review mode is all-or-nothing, and never beside a base", () => {
+  const rule = (extra) => ({
+    title: "X",
+    check: "sync-xhr",
+    severity: "error",
+    input: "source",
+    ...extra,
+  });
+  const manual = (extra) => ({
+    title: "Y",
+    check: "test-add-on",
+    severity: "error",
+    instructions: "answer it",
+    ...extra,
+  });
+  const bad = (doc, re) =>
+    assert.throws(
+      () => assertEntries(new Registry(doc), "t.yaml"),
+      re,
+      JSON.stringify(doc)
+    );
+
+  // Half a pair leaves the other mode with nothing to print - in both lists.
+  for (const make of [rule, manual]) {
+    const list = make === rule ? "deterministic-phase" : "manual-checks";
+    bad(
+      { [list]: [make({ "response-for-xpi": "x" })] },
+      /a source code review has no wording/
+    );
+    bad(
+      { [list]: [make({ "response-for-sca": "s" })] },
+      /an XPI review has no wording/
+    );
+    // A mix: whichever key loses is prose no report can reach.
+    bad(
+      { [list]: [make({ response: "r", "response-for-sca": "s" })] },
+      /never both ways/
+    );
+    bad(
+      {
+        [list]: [
+          make({ response: "r", "response-for-xpi": "x", "response-for-sca": "s" }),
+        ],
+      },
+      /never both ways/
+    );
+  }
+
+  // An entry takes any key without complaint, so a misspelling is caught by name.
+  bad(
+    { "deterministic-phase": [rule({ "response-for-sac": "s" })] },
+    /authors `response-for-sac`, which nothing reads/
+  );
+
+  // Prose, like every other authored text.
+  for (const text of ["  ", "", 5]) {
+    bad(
+      {
+        "deterministic-phase": [
+          rule({ "response-for-xpi": text, "response-for-sca": "s" }),
+        ],
+      },
+      /invalid `response-for-xpi`/
+    );
+  }
+
+  // `sca: true` keeps the check out of an XPI review entirely (scaEligible), so a
+  // per-mode pair there authors a text nothing can print.
+  bad(
+    {
+      "deterministic-phase": [
+        rule({ sca: true, "response-for-xpi": "x", "response-for-sca": "s" }),
+      ],
+    },
+    /runs only in a source code review/
+  );
+
+  // A swept case carries no item, so neither wording may take a placeholder.
+  bad(
+    {
+      "deterministic-phase": [
+        rule({
+          "sweep-instruction": "look for X",
+          "response-for-xpi": "x",
+          "response-for-sca": "Remove {{item}}.",
+        }),
+      ],
+    },
+    /its `response-for-sca` carries a {{placeholder}}/
+  );
+
+  // The three legal shapes: no response at all, one for both modes, one per mode.
+  assertEntries(
+    new Registry({
+      "deterministic-phase": [
+        rule({}),
+        rule({ check: "eval-call", response: "r" }),
+        rule({
+          check: "inline-script-code",
+          "response-for-xpi": "x",
+          "response-for-sca": "s",
+        }),
+      ],
+      "manual-checks": [
+        manual({ "response-for-xpi": "x", "response-for-sca": "s" }),
+      ],
+    }),
+    "t.yaml"
+  );
+});
+
 // The shipped-vs-review-target artifact is chosen in ONE place - runChecks routes
 // each check to its artifact's context on the registry `input` (source = the review
 // target, xpi = the built XPI). A check reads only ctx.addon and the orchestrator

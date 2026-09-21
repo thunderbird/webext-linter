@@ -12,6 +12,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadRegistry } from "../../src/checks/registry.js";
+import { REVIEW_MODE } from "../../src/lib/enum.js";
+import { renderFindings } from "../../src/report/responses.js";
 import { STATE_VERSION } from "../../src/report/state.js";
 import {
   issue,
@@ -833,13 +835,13 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
  * @param {(phase: string) => string} answer
  * @returns {{seen: string[], settled: object}}
  */
-function driveLoop(state, stateFile, answer) {
+function driveLoop(state, stateFile, answer, reg = REGISTRY) {
   const seen = [];
   // `ask` takes a REVIEWER's answer, not a verb: the phase that asks declares none, and
   // handing it one would be refused where it is applied rather than where it is taken.
   const [clear] = REGISTRY.manualReviewChoices().map((c) => c.label);
   for (let pass = 0; pass < 8; pass++) {
-    const out = issue(state, stateFile, PHASES, REGISTRY);
+    const out = issue(state, stateFile, PHASES, reg);
     if (!out) {
       break;
     }
@@ -850,10 +852,10 @@ function driveLoop(state, stateFile, answer) {
         out.phase.name === "ask" ? clear : answer(out.phase.name)
       ),
       PHASES,
-      REGISTRY
+      reg
     );
   }
-  return { seen, settled: settle(state, REGISTRY) };
+  return { seen, settled: settle(state, reg) };
 }
 
 /** The review above, with its findings reported by a check that stops the review. */
@@ -982,4 +984,48 @@ test("a skip and a halt suppress the same phase and leave different reports", ()
     false,
     "a halt takes them out, even with the skip also on"
   );
+});
+
+// A per-mode response must read the same on the pass that FOUND the case and on the pass
+// that re-renders it. The loop never sees a REVIEW_MODE: it rebuilds the one fact its
+// state file carries (`report.sca`), so this is the only place that can prove the two
+// agree - `report.sca` is otherwise unset in every test here, i.e. every loop test has
+// run as an XPI review until now. No shipped check words itself per mode today, so the
+// wording is put on one for the length of the test, the way the registry rules are.
+test("settle words a per-mode response from the state's review mode", () => {
+  const reg = loadRegistry();
+  const entry = reg.doc["deterministic-phase"].find(
+    (e) => e.check === "untrusted-library"
+  );
+  delete entry.response;
+  entry["response-for-xpi"] = "worded for an XPI review";
+  entry["response-for-sca"] = "worded for a source code review";
+  {
+    const worded = (sca) => {
+      const { state, stateFile } = review(tmp(), {
+        sweep: false,
+        code: false,
+        questions: false,
+      });
+      state.report.sca = sca;
+      state.report.findings = [
+        {
+          ruleId: "untrusted-library",
+          severity: "info",
+          file: "lib/widget.js",
+          loc: { line: 1 },
+          message: null,
+        },
+      ];
+      const { settled } = driveLoop(state, stateFile, () => "reported", reg);
+      return settled.review.findings[0].message;
+    };
+
+    assert.equal(worded(true), "worded for a source code review");
+    assert.equal(worded(false), "worded for an XPI review");
+    // And it is the text the run that FOUND it would have printed.
+    const live = { ruleId: "untrusted-library", item: null, message: null };
+    renderFindings([live], reg, REVIEW_MODE.SCA);
+    assert.equal(worded(true), live.message);
+  }
 });

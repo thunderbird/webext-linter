@@ -16,6 +16,78 @@ import { artifactLabel } from "../../src/report/artifact.js";
 
 const registry = loadRegistry();
 
+// A check words its response once for both review modes, or once per mode. Which text a
+// review prints is decided in ONE place (responseOf), from the one fact that is true of
+// both the REVIEW_MODE enum member and the plain { sca } the loop rebuilds from its state
+// file - so a report and the pass that re-renders it cannot word the same case differently.
+test("a per-mode response resolves by the review mode, from either mode shape", () => {
+  const perMode = new Registry({
+    "deterministic-phase": [
+      {
+        title: "X",
+        check: "sync-xhr",
+        severity: "error",
+        input: "source",
+        "response-for-xpi": "the xpi wording",
+        "response-for-sca": "the sca wording",
+      },
+      {
+        title: "Y",
+        check: "eval-call",
+        severity: "error",
+        input: "source",
+        response: "one wording",
+      },
+    ],
+  });
+
+  assert.equal(perMode.responseFor("sync-xhr", REVIEW_MODE.SCA), "the sca wording");
+  assert.equal(perMode.responseFor("sync-xhr", REVIEW_MODE.XPI), "the xpi wording");
+  // The loop reads `{ sca: state.report.sca }` off its state file, never the enum.
+  assert.equal(perMode.responseFor("sync-xhr", { sca: true }), "the sca wording");
+  assert.equal(perMode.responseFor("sync-xhr", { sca: false }), "the xpi wording");
+  // A SUPPLIED mode with nothing set is a mode, and means XPI - which is what a state
+  // file written before this review mode was recorded reads as.
+  assert.equal(perMode.responseFor("sync-xhr", { sca: undefined }), "the xpi wording");
+  // One wording answers the same for either mode, which is every other check.
+  for (const mode of [REVIEW_MODE.SCA, REVIEW_MODE.XPI, undefined]) {
+    assert.equal(perMode.responseFor("eval-call", mode), "one wording");
+  }
+});
+
+// A missing mode is refused rather than read as XPI: renderFindings keeps the previous
+// message when a template comes back null, so guessing here would print an XPI text into
+// a source code review and nothing downstream would say so.
+test("reading a per-mode response with no mode is refused, in every reader", () => {
+  const entry = (extra) => ({
+    title: "X",
+    severity: "error",
+    input: "source",
+    "response-for-xpi": "x",
+    "response-for-sca": "s",
+    ...extra,
+  });
+  const perMode = new Registry({
+    "deterministic-phase": [
+      entry({ check: "sync-xhr" }),
+      entry({ check: "eval-call", "sweep-instruction": "look for X" }),
+    ],
+    "manual-checks": [
+      { title: "Y", check: "test-add-on", instructions: "i", ...entry({}) },
+    ],
+  });
+  const re = /words its response per review mode, but it was read with no mode/;
+  assert.throws(() => perMode.responseFor("sync-xhr"), re);
+  assert.throws(() => perMode.entryResponse("sync-xhr"), re);
+  assert.throws(() => perMode.manualChecks(), re);
+  assert.throws(() => perMode.sweepInstructions(), re);
+  // And every reader answers once it is given one.
+  assert.equal(perMode.responseFor("sync-xhr", REVIEW_MODE.SCA), "s");
+  assert.equal(perMode.entryResponse("sync-xhr", REVIEW_MODE.XPI), "x");
+  assert.equal(perMode.manualChecks(REVIEW_MODE.SCA)[0].response, "s");
+  assert.equal(perMode.sweepInstructions(REVIEW_MODE.XPI)[0].response, "x");
+});
+
 // {{item}} is replaced with the finding's item, keyed by ruleId; horizontal
 // whitespace is collapsed and the placeholder is gone. Most responses name no
 // subject (it rides the locus instead), so this uses one that does.

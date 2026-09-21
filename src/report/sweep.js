@@ -122,6 +122,8 @@ export function checkedResult(where, raw) {
  * @param {?{items: {check: string}[]}} args.preSweep  What this run asked to be swept.
  * @param {Registry} args.registry
  * @param {string} args.file  The path, for messages.
+ * @param {{sca?: boolean}} [args.mode]  The review mode, for a check that words its
+ *   response per mode - a swept case is worded from that same text.
  * @returns {{manual: object[], findings: object[], applied: string[]}}
  */
 export function mergeSweepResults({
@@ -131,6 +133,7 @@ export function mergeSweepResults({
   preSweep,
   registry,
   file,
+  mode,
 }) {
   const asked = new Set((preSweep?.items ?? []).map((s) => s.check));
   const seen = new Set();
@@ -195,7 +198,7 @@ export function mergeSweepResults({
   return {
     manual: [
       ...manual,
-      ...renderManualItems(refs, registry).map((m) => ({
+      ...renderManualItems(refs, registry, mode).map((m) => ({
         ...m,
         extended: true,
       })),

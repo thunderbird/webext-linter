@@ -91,10 +91,12 @@ function fill(template, item, data) {
  * both renders "file:line - item - hint". See FindingOpts in report/finding.js.
  * @param {import("./finding.js").Finding[]} findings
  * @param {import("../checks/registry.js").Registry} registry
+ * @param {{sca?: boolean}} [mode]  The review mode, for a check that words its response
+ *   per mode. Required there, and the registry refuses to guess when it is missing.
  */
-export function renderFindings(findings, registry) {
+export function renderFindings(findings, registry, mode) {
   for (const f of findings) {
-    const template = registry.responseFor(f.ruleId);
+    const template = registry.responseFor(f.ruleId, mode);
     f.message = fill(template, f.item, f.data) ?? f.message;
     f.listItem =
       f.item != null && template != null && !template.includes(PLACEHOLDER);
@@ -140,9 +142,11 @@ export function withDefaultNotes(items, registry) {
  *   section?: ?string, hint?: ?string,
  *   data?: Record<string, string|number>|null}[]} refs
  * @param {import("../checks/registry.js").Registry} registry
+ * @param {{sca?: boolean}} [mode]  The review mode, for a check that words its response
+ *   per mode.
  * @returns {import("./finding.js").ManualItem[]}
  */
-export function renderManualItems(refs, registry) {
+export function renderManualItems(refs, registry, mode) {
   return refs.map((ref) => {
     const entry = registry.checkEntry(ref.ruleId);
     // One wording per READER, both resolved here. instructionsFor raises if the check
@@ -168,7 +172,7 @@ export function renderManualItems(refs, registry) {
       // the `default-note` that stands in that list is appended by withDefaultNotes -
       // which sees this list and the by-hand manual checks together, so the two cannot
       // differ in what a reviewer is handed.
-      response: fill(entry?.response, ref.item, ref.data),
+      response: fill(registry.entryResponse(ref.ruleId, mode), ref.item, ref.data),
       // The band a reported case lands in, printed above that response. Null for a
       // check whose cases produce no finding however they are settled.
       verdict: registry.suggestedVerdict(ref.ruleId),

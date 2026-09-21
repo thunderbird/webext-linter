@@ -43,7 +43,9 @@ that no longer exist.
    badge class is `auto`; `hold-or-error` blocks the review without rejecting on its
    own and badges as `hold-or-error`, never shortened to `hold` - and `none`, a
    check that can never emit a finding, only escalations),
-   `check` (the kebab-case id), `response` (developer-facing message),
+   `check` (the kebab-case id), the developer-facing message - `response`, one text
+   for either review, or `response-for-xpi` beside `response-for-sca`, one text for an
+   XPI submission and one for a source code submission -
    the instruction keys naming who its question is for - `instructions` (one text for
    whoever is asked), `instructions-for-llm` beside `instructions-for-human` (a question
    each), or `instructions-for-human` alone - and often a leading comment block describing
@@ -111,7 +113,8 @@ that no longer exist.
      manual review). Reuse the shared `classDef` styles used by the existing pages
      so colours stay consistent - `err`, `warn`, `ok`, `info`, `skip`, `manual` -
      and declare only the ones the diagram actually uses;
-   - an **Outcome** box paraphrasing the registry `response`;
+   - an **Outcome** box paraphrasing the registry `response`; where the check words one
+     per review mode, paraphrase both, and say which submission each applies to;
    - a **source-note** footer pointing at the `.js` file and registry.
 4. **Handle the special cases** the registry encodes:
    - the badge is always the entry's declared `severity`, copied verbatim - never

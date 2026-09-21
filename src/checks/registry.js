@@ -121,6 +121,21 @@ const PHASE_SECTIONS = Object.freeze({
   deterministic: "deterministic-phase",
 });
 
+// The per-review-mode response keys, keyed by the REVIEW_MODE fact that selects them
+// (`mode?.sca`). An entry words its response ONCE for both modes (`response`) or ONCE PER
+// mode (both keys, and no `response`) - never a mix; assertResponse enforces that, and
+// responseOf is the only reader. These keys change what is PRINTED and nothing else: no
+// check runs differently, no verdict or routing moves, so the mode reaches the text
+// producers (findings, manual items, sweep entries) and stops there.
+//
+// The mode is DERIVED, not the flag: a rejected Experiment takes an --sca-root run back
+// to REVIEW_MODE.XPI (src/pipeline.js), so an invalid-experiment-phase check that words
+// itself per mode prints its XPI text for a source-code submission.
+const MODE_RESPONSES = Object.freeze({
+  sca: "response-for-sca",
+  xpi: "response-for-xpi",
+});
+
 /**
  * Whether `s` is a concrete finding severity (error/warning/info) - i.e. a value
  * a finding may actually carry into the report. "auto"/null/anything else is
@@ -220,6 +235,41 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  */
 function stem(checkFile) {
   return String(checkFile).replace(/\.js$/, "");
+}
+
+/**
+ * The response text an entry words for THIS review mode - the ONE place a per-mode
+ * response is resolved, so no reader can pick a branch differently. An entry that words
+ * its response once (`response`) answers the same for either mode; one that words it per
+ * mode (MODE_RESPONSES, both keys, no `response`) answers the mode's own text.
+ *
+ * `mode` is required, and an omitted one THROWS against a per-mode entry rather than
+ * falling to the XPI branch: a missing argument would print an XPI text into a source
+ * code review, and silently - renderFindings keeps the previous message when a template
+ * comes back null (src/report/responses.js), so nothing downstream would say so. A
+ * SUPPLIED `{ sca: undefined }` is a mode, and means XPI.
+ *
+ * Reads `mode?.sca`, which is the one fact that is true of both the REVIEW_MODE enum
+ * member and the plain `{ sca }` the loop rebuilds from its state file - the same pair
+ * artifactLabel already reads (src/report/artifact.js).
+ * @param {?Record<string, any>} entry  A check or manual-checks entry.
+ * @param {{sca?: boolean}} [mode]  The review mode.
+ * @returns {?string}
+ */
+function responseOf(entry, mode) {
+  if (!entry) {
+    return null;
+  }
+  const perMode = entry[MODE_RESPONSES.sca] ?? entry[MODE_RESPONSES.xpi];
+  if (perMode !== undefined && mode === undefined) {
+    throw new Error(
+      `check "${entry.check ?? entry.title}" words its response per review mode, but it ` +
+        "was read with no mode - pass the review mode (responseFor/manualChecks/" +
+        "sweepInstructions all take one)"
+    );
+  }
+  const worded = entry[mode?.sca ? MODE_RESPONSES.sca : MODE_RESPONSES.xpi];
+  return worded ?? entry.response ?? null;
 }
 
 /**
@@ -353,16 +403,18 @@ export class Registry {
    * {title, instructions, response} shape (these carry no `{{item}}`). Emitted
    * unconditionally for every review - what a check ESCALATES is surfaced by the
    * orchestrator (escalation.js), not here.
+   * @param {{sca?: boolean}} [mode]  The review mode, for an entry that words its
+   *   response per mode (responseOf).
    * @returns {{title: string, instructions?: string, response: ?string, ruleId: string,
    *   verdict: ?string}[]}
    */
-  manualChecks() {
+  manualChecks(mode) {
     return this.allEntries()
       .filter((e) => e.manualCheck)
       .map((e) => ({
         title: e.title,
         instructions: e.instructions,
-        response: e.response ?? null,
+        response: responseOf(e, mode),
         // The same two fields a rendered escalation carries, so the three to-do
         // sections are one kind of item with three origins: settling any of them
         // shows the band it lands in, and a verdict can report or clear it.
@@ -461,10 +513,12 @@ export class Registry {
   /**
    * Every check that authors a sweep instruction, in registry order - which is the order
    * the report and every phase list them in, so the two agree.
+   * @param {{sca?: boolean}} [mode]  The review mode, for a check that words its
+   *   response per mode (responseOf).
    * @returns {{check: string, title: string, severity: string, instruction: string,
    *   response: ?string}[]}
    */
-  sweepInstructions() {
+  sweepInstructions(mode) {
     return this.checkEntries()
       .map((e) => ({ entry: e, id: stem(e.check) }))
       .filter(({ id }) => this.sweepInstruction(id))
@@ -479,7 +533,7 @@ export class Registry {
         // a reported case is worded with. For the REPORT only: the agent hands back a
         // locus and the routing is the linter's, so it has no use for the wording and is
         // told not to produce any.
-        response: entry.response ?? null,
+        response: responseOf(entry, mode),
       }));
   }
 
@@ -635,14 +689,29 @@ export class Registry {
 
   /**
    * The Found Issues response template for a finding's ruleId: the owning check's
-   * `response`, or a system `messages` entry for an orchestrator-emitted ruleId
-   * (e.g. "check-failed"). Null if neither exists.
+   * response AS WORDED FOR `mode` (responseOf), or a system `messages` entry for an
+   * orchestrator-emitted ruleId (e.g. "check-failed"). Null if neither exists.
    * @param {string} ruleId
+   * @param {{sca?: boolean}} [mode]  The review mode - required for a check that words
+   *   its response per mode, which is what responseOf refuses to guess at.
    * @returns {?string}
    */
-  responseFor(ruleId) {
-    const r = this.checkEntry(ruleId)?.response;
+  responseFor(ruleId, mode) {
+    const r = responseOf(this.checkEntry(ruleId), mode);
     return typeof r === "string" ? r : (this.message(ruleId) ?? null);
+  }
+
+  /**
+   * The response a CHECK ENTRY words for `mode` - responseFor without the system-message
+   * fallback. A manual item is always a check's case, so a ruleId with no entry authors
+   * no response and gets none; falling back to `messages` here would word a to-do from
+   * text written for an orchestrator failure.
+   * @param {string} ruleId
+   * @param {{sca?: boolean}} [mode]  The review mode.
+   * @returns {?string}
+   */
+  entryResponse(ruleId, mode) {
+    return responseOf(this.checkEntry(ruleId), mode);
   }
 
   /**
@@ -959,6 +1028,9 @@ function assertEntry(entry, at) {
     }
     assertSweepInstruction(entry, where, severity);
   }
+  // Outside the manual/rule branch: a manual-checks entry carries a response too, and
+  // both kinds are listed in either review mode.
+  assertResponse(entry, where);
   assertDefaultNote(entry, where);
 }
 
@@ -998,11 +1070,13 @@ function assertSweepInstruction(entry, where, severity) {
   }
   // A swept case carries no `item` and no `data`, so a placeholder in the response
   // would reach the developer literally, or leave the message unfilled entirely.
-  if (typeof entry.response === "string" && entry.response.includes("{{")) {
-    throw new Error(
-      `${where} authors a \`sweep-instruction\` but its \`response\` carries a ` +
-        "{{placeholder}} - a swept case brings no item to fill it with"
-    );
+  for (const key of ["response", ...Object.values(MODE_RESPONSES)]) {
+    if (typeof entry[key] === "string" && entry[key].includes("{{")) {
+      throw new Error(
+        `${where} authors a \`sweep-instruction\` but its \`${key}\` carries a ` +
+          "{{placeholder}} - a swept case brings no item to fill it with"
+      );
+    }
   }
 }
 
@@ -1054,6 +1128,75 @@ function assertSettleVerbs(entry, where, screened) {
     throw new Error(
       `${where} offers ${JSON.stringify(verbs)} and nothing else - one answer is not a ` +
         "judgement, it is a rubber stamp, so a screened check offers at least two"
+    );
+  }
+}
+
+/**
+ * Assert how an entry words its response: ONCE for both review modes (`response`), or
+ * ONCE PER mode (`response-for-xpi` AND `response-for-sca`, and no `response`). The two
+ * forms are exclusive, because a mix leaves no reader able to say from the entry which
+ * text a review prints - and the key that loses is prose nobody sees and nobody keeps
+ * current.
+ *
+ * The stray-key rule is the one that pays for itself: an entry takes any key without
+ * complaint (only prompt STEPS are screened, assertStep), so a misspelled
+ * `response-for-sac` would load, never be read, and leave every review wording the check
+ * from the other key - with the misspelled one sitting in the file looking authoritative.
+ * @param {object} entry
+ * @param {string} where  How the entry is named in a message.
+ */
+function assertResponse(entry, where) {
+  const named = Object.values(MODE_RESPONSES);
+  const stray = Object.keys(entry).find(
+    (key) => key.startsWith("response-for-") && !named.includes(key)
+  );
+  if (stray) {
+    throw new Error(
+      `${where} authors \`${stray}\`, which nothing reads (expected ` +
+        `${named.map((key) => `\`${key}\``).join(" or ")}) - every review would word ` +
+        "this check from another key, and this one would never print"
+    );
+  }
+  for (const key of named) {
+    const text = entry[key];
+    if (text !== undefined && (typeof text !== "string" || text.trim() === "")) {
+      throw new Error(
+        `${where} has an invalid \`${key}\` ${JSON.stringify(text)} ` +
+          "(expected a non-empty string)"
+      );
+    }
+  }
+  const worded = named.filter((key) => typeof entry[key] === "string");
+  if (worded.length === 0) {
+    return;
+  }
+  // The mix is asked FIRST, because it is the one an incomplete pair looks like: with a
+  // `response` standing beside one mode's text, the other mode is not unworded, it is
+  // worded twice - and which text it prints is exactly what the entry stops saying.
+  if (typeof entry.response === "string") {
+    throw new Error(
+      `${where} authors \`response\` beside ` +
+        `${worded.map((key) => `\`${key}\``).join(" and ")} - a check words its ` +
+        "response once for both review modes or once per mode, never both ways: a " +
+        "review reads one of them, so the rest is prose no report can reach"
+    );
+  }
+  if (worded.length === 1) {
+    const missing =
+      worded[0] === MODE_RESPONSES.sca ? MODE_RESPONSES.xpi : MODE_RESPONSES.sca;
+    const blind = missing === MODE_RESPONSES.xpi ? "an XPI" : "a source code";
+    throw new Error(
+      `${where} authors \`${worded[0]}\` and not \`${missing}\`, so ${blind} review ` +
+        "has no wording for this check - a case it reports would reach the developer " +
+        "with none. Word the other mode too, or word one `response` for both"
+    );
+  }
+  if (entry.sca === true) {
+    throw new Error(
+      `${where} declares \`sca: true\` but words its response per review mode - the ` +
+        `check runs only in a source code review, so \`${MODE_RESPONSES.xpi}\` is text ` +
+        "nothing can print. Word one `response` instead"
     );
   }
 }
