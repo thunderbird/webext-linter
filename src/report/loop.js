@@ -11,6 +11,7 @@
 // be exercised by talking to an agent, which is why nothing ever drove it end to end.
 import { orderReview } from "./order.js";
 import { nextPhase, openIn, phaseNow } from "./phases.js";
+import { earlyExitOf, withoutQuestions } from "./early-exit.js";
 import {
   HandbackRefused,
   answersOf,
@@ -70,9 +71,32 @@ function spawnRows(state) {
     : [];
 }
 
+/**
+ * What this run was told, plus what the review has since decided for itself.
+ *
+ * `state.run` records the flags the review was STARTED with, and never changes. Whether
+ * the review has stopped early is not one of those: it is derived from the findings that
+ * still stand, so it can change with every verdict - a pass that withdraws the finding
+ * which stopped the review puts its question block back.
+ *
+ * Derived in ONE place because both legs of the round trip need the same answer. `issue`
+ * decides what goes out by it, and `accept` re-derives what went out rather than storing
+ * it - two derivations that could differ would leave a hand-back no answer satisfies.
+ * @param {import("./state.js").LoopState} state
+ * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
+ * @param {import("../checks/registry.js").Registry} registry
+ * @returns {{skip: string[], sca: boolean, sweep: boolean, halted: boolean}}
+ */
+function runOf(state, ordered, registry) {
+  return {
+    ...state.run,
+    halted: Boolean(earlyExitOf(ordered, state.answers ?? {}, registry)),
+  };
+}
+
 export function issue(state, stateFile, phases, registry) {
-  const run = state.run;
   const ordered = orderReview(state.report.findings, state.manual);
+  const run = runOf(state, ordered, registry);
   const next = nextPhase(phases, ordered, state, run);
   if (!next) {
     return null;
@@ -122,7 +146,16 @@ export function accept(state, file, phases, registry) {
       ? // A phase can have steps and no entries - `spawn` in a run with no sweep starts
         // agents and asks nothing - and then an empty hand-back is the right one.
         spawnRows(state)
-      : phaseEntries(state, registry, phase, state.run);
+      : phaseEntries(
+          state,
+          registry,
+          phase,
+          runOf(
+            state,
+            orderReview(state.report.findings, state.manual),
+            registry
+          )
+        );
   const keyOf = (e) =>
     phase.answer === "hints" ? e.check : String(e.index ?? "undefined");
   const answers = answersOf(entries, asked, phase, keyOf);
@@ -233,7 +266,8 @@ export function reviewDetails(state) {
  * cannot change.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
- * @returns {{review: object, applied: string[]}}
+ * @returns {{review: object, applied: string[], earlyExit: boolean, details: string,
+ *   tally: string, report: string}}
  */
 export function settle(state, registry) {
   const ruleInputs = registry.checkInputs();
@@ -261,8 +295,19 @@ export function settle(state, registry) {
   // the registry like any other - the same text either way.
   renderFindings(findings, registry);
   resolveHolds(findings);
+  // Decided HERE, on the findings that survived every verdict, rather than carried over
+  // from the run that produced them: the agent may have withdrawn the very finding that
+  // stopped the review, and then nothing stopped it. What remains is what the reviewer
+  // is left with - the questions were never put to anyone, so the report drops them
+  // instead of listing work under a line saying the review did not finish.
+  const ordered = orderReview(findings, state.manual);
+  const earlyExit = earlyExitOf(ordered, {}, registry);
+  const manual = earlyExit ? withoutQuestions(ordered, state) : state.manual;
   return {
     applied,
+    // Which hand-over text the last prompt carries. Telling an agent the review is
+    // settled, when it stopped, is the one thing the second text exists to avoid.
+    earlyExit: Boolean(earlyExit),
     // The Review Details block, above the finished report. Pure from meta, which is
     // stored - so this pass prints what a settled report has always printed, without the
     // add-on being read a second time.
@@ -274,15 +319,16 @@ export function settle(state, registry) {
     // The tally, which only this pass can be right about: every earlier one runs before
     // the answers are applied, and would count items the reviewer is in the middle of
     // settling.
-    tally: summaryBodyLines(findings, state.manual, null).join("\n"),
+    tally: summaryBodyLines(findings, manual, null).join("\n"),
     // The developer's half of the report, without the section header the linter prints
     // around it - this is pasted into a response box, not into a terminal.
     report: issuesBodyLines(
-      orderReview(findings, state.manual).filter((x) => x.kind === "finding"),
+      orderReview(findings, manual).filter((x) => x.kind === "finding"),
       registry.issueHeadings(),
       registry.verdictIntros(),
       labelOf,
-      mode
+      mode,
+      earlyExit
     ).join("\n"),
     review: {
       findings,
@@ -290,7 +336,10 @@ export function settle(state, registry) {
       // would ask a reviewer for work already in the report above it.
       meta: {
         ...state.report.meta,
-        manualReview: state.manual,
+        manualReview: manual,
+        // Spread rather than set: a review that did not stop carries no such key, which
+        // is the shape the plain path produces for the same outcome.
+        ...(earlyExit ? { earlyExit } : {}),
         preSweep: null,
       },
       mode,

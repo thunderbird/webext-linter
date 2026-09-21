@@ -550,6 +550,7 @@ deterministic-phase:
 # band (high/critical -> error, moderate/medium -> warning, else info).
 - title: Vulnerable dependency
   severity: auto
+  review-early-exit: known-vulnerabilities
   check: vendor-vulnerable
   input: source
   response: |-
@@ -563,6 +564,7 @@ deterministic-phase:
 # severity:auto - banned -> error, unadvised -> warning (set by the banned-library check).
 - title: Banned library
   severity: auto
+  review-early-exit: disallowed-library-versions
   check: banned-library
   input: source
   response: |-
@@ -577,6 +579,7 @@ deterministic-phase:
 - title: Vulnerable build dependency
   severity: auto
   sca: true
+  review-early-exit: known-vulnerabilities
   check: vendor-vulnerable-dev
   input: source
   response: |-
@@ -594,6 +597,7 @@ deterministic-phase:
 - title: Vulnerable indirect dependency
   severity: error
   sca: true
+  review-early-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect
   input: source
   response: |-
@@ -609,6 +613,7 @@ deterministic-phase:
 - title: Vulnerable indirect build dependency
   severity: error
   sca: true
+  review-early-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect-dev
   input: source
   response: |-
@@ -1574,6 +1579,28 @@ verdict-intros:
   hold: "Thank you for your contribution."
   rejected: "Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form."
 
+# The EARLY EXIT: some findings settle the submission on their own, and the review stops
+# rather than asking anyone to carry on with it. The case it exists for: a dependency tree
+# with known high/critical advisories, where the very next thing the review would ask is
+# for a reviewer to reproduce the build - running that tree on their own machine, on the
+# strength of a question the linter issued knowing better.
+#
+# A check declares it blocks by naming a REASON here (`review-early-exit: <id>`), never by
+# a flag: the closing text is a LIST, so two blocking causes have to produce two bullets
+# without any wording being rewritten. Reasons render deduplicated, in the order they are
+# written below, so two runs over one submission cannot disagree.
+#
+# What is withheld is not listed here and is not a property of these entries: it is every
+# to-do item a REVIEWER would have been asked (src/report/order.js asksAPerson - the same
+# predicate that decides the `ask` phase). The code-review sections stay, because reading
+# code is safe and is the evidence for the halt.
+review-early-exit:
+  intro: |-
+    The review was not completed and the report is incomplete due to the following issues:
+  reasons:
+    known-vulnerabilities: Known security vulnerabilities
+    disallowed-library-versions: Disallowed library versions
+
 # The sweep framing, authored twice - once for each reader.
 #
 # Both carry the one rule that decides a sweep - judge by effect, not by method - because
@@ -1686,6 +1713,24 @@ llm-phases:
     The file you handed back is not what this pass expected: {{problem}}. You still have the prompt you were following. Read it again carefully and redo that pass. If it fails a second time, abort the review and say why.
   final: |-
     The review is settled. Wait for every agent you spawned to come back, then give the reviewer what follows, each part under a heading of its own and in this order. Print nothing between the parts and nothing after them.
+    {{details}}
+    Under "LLM decisions", your own account in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why. This part is yours to write and the only part that is.
+
+    Under "Summary", this, as it is written here:
+
+    {{tally}}
+
+    Under "Review report", this, in a code block and unchanged - it is the text the reviewer sends to the developer, so nothing may be added to it, left out of it, or reworded:
+
+    {{report}}
+  # The same hand-over, for a review that STOPPED. It differs in its first sentence and
+  # nowhere else: everything below that is the same three slots, and the report itself
+  # carries the closing line saying what stopped it (src/report/early-exit.js). Telling an
+  # agent "the review is settled" about a review that was cut short is the one thing this
+  # text exists to avoid - the rest is deliberately identical, so the reviewer reads the
+  # same document either way.
+  final-early-exit: |-
+    The review was stopped before it finished: what it found settles the submission, and nothing further is asked of anyone. Wait for every agent you spawned to come back, then give the reviewer what follows, each part under a heading of its own and in this order. Print nothing between the parts and nothing after them.
     {{details}}
     Under "LLM decisions", your own account in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why. This part is yours to write and the only part that is.
 

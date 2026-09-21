@@ -84,6 +84,17 @@ flowchart TD
         named as the alternative.
       </div>
 
+      <div class="outcome">
+        <strong>It stops the review</strong>
+        This check is one of the few that settle the submission on their own. When
+        it reports at error severity, nothing further is put to a reviewer: the
+        report drops every to-do item they would have been asked, keeps the
+        code-review sections, and the developer&rsquo;s text ends on the reason it
+        is incomplete (&ldquo;Known security vulnerabilities&rdquo;). The case it exists for is a
+        reviewer being asked to reproduce a build from a dependency tree the
+        review has already rejected.
+      </div>
+
       <p class="source-note">
         Source of truth:
         <code>src/checks/rules/vendor-vulnerable-indirect-dev.js</code> and its

@@ -419,17 +419,7 @@ test("a sweep answers per check, and an empty list is not the same as no answer"
 test("a refusal is its own class, so the caller can answer it differently", () => {
   const dir = tmp();
   const { state, stateFile } = review(dir, { sweep: false });
-  issue(
-    state,
-    stateFile,
-    PHASES,
-    {
-      skip: ["summary"],
-      sca: false,
-      sweep: false,
-    },
-    REGISTRY
-  );
+  issue(state, stateFile, PHASES, REGISTRY);
   try {
     accept(state, path.join(dir, "not-a-review-file.json"), PHASES);
     assert.fail("expected a refusal");
@@ -828,5 +818,168 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
   assert.ok(
     applied.every((line) => line.includes("reported + note")),
     applied.join(", ")
+  );
+});
+
+// ---- the early exit ----
+
+/**
+ * Drive the whole loop, answering each phase, and report which phases were issued
+ * alongside the settled review.
+ *
+ * `settle` is called ONCE, here: it applies every recorded verdict to the findings and the
+ * manual list in place, so a second call would apply them all again.
+ * @param {object} state @param {string} stateFile
+ * @param {(phase: string) => string} answer
+ * @returns {{seen: string[], settled: object}}
+ */
+function driveLoop(state, stateFile, answer) {
+  const seen = [];
+  // `ask` takes a REVIEWER's answer, not a verb: the phase that asks declares none, and
+  // handing it one would be refused where it is applied rather than where it is taken.
+  const [clear] = REGISTRY.manualReviewChoices().map((c) => c.label);
+  for (let pass = 0; pass < 8; pass++) {
+    const out = issue(state, stateFile, PHASES, REGISTRY);
+    if (!out) {
+      break;
+    }
+    seen.push(out.phase.name);
+    accept(
+      state,
+      handBack(state, () =>
+        out.phase.name === "ask" ? clear : answer(out.phase.name)
+      ),
+      PHASES,
+      REGISTRY
+    );
+  }
+  return { seen, settled: settle(state, REGISTRY) };
+}
+
+/** The review above, with its findings reported by a check that stops the review. */
+function blockingReview(dir) {
+  const made = review(dir, { sweep: false });
+  for (const f of made.state.report.findings) {
+    f.ruleId = "vendor-vulnerable";
+  }
+  made.state.run = { skip: [], sca: true, sweep: false };
+  return made;
+}
+
+// The case this exists for: the very next thing the loop would do is ask a reviewer to
+// reproduce a build the review has already rejected. It must not get that far - and the
+// phases BEFORE it still run, because what they settle is what the report is made of.
+test("a blocking finding stops the loop before the question block", () => {
+  const dir = tmp();
+  const { state, stateFile } = blockingReview(dir);
+  const { seen, settled } = driveLoop(state, stateFile, (phase) =>
+    phase === "verify" ? "reported" : "cleared"
+  );
+  assert.ok(!seen.includes("ask"), `ask was issued: ${seen.join(", ")}`);
+  assert.ok(seen.includes("verify"), "the findings were still audited");
+  assert.ok(seen.includes("settle"), "the cases were still settled");
+  assert.equal(settled.earlyExit, true);
+});
+
+// The mirror image, and the reason the halt is derived every pass rather than recorded
+// once: the agent audits those findings, and an agent that withdraws them has removed the
+// thing that stopped the review. The question block comes back.
+test("withdrawing the blocking findings puts the question block back", () => {
+  const dir = tmp();
+  const { state, stateFile } = blockingReview(dir);
+  const { seen, settled } = driveLoop(state, stateFile, (phase) =>
+    phase === "verify" ? "withdrawn" : "cleared"
+  );
+  assert.ok(seen.includes("ask"), `ask was not issued: ${seen.join(", ")}`);
+  assert.equal(settled.earlyExit, false);
+});
+
+// What a stopped review hands the reviewer: the closing line in the developer's text, no
+// questions left listed under it, and a tally that does not advertise work nobody was
+// asked to do. The code-review items it settled are still there.
+test("a stopped review hands over the reason and drops the questions", () => {
+  const dir = tmp();
+  const { state, stateFile } = blockingReview(dir);
+  const {
+    settled: { report, tally, review: settled },
+  } = driveLoop(state, stateFile, (phase) =>
+    phase === "verify" ? "reported" : "cleared"
+  );
+  assert.match(report, /The review was not completed/);
+  assert.match(report, /- Known security vulnerabilities/);
+  assert.match(tally, /0 extended manual review item\(s\)/);
+  assert.match(tally, /0 standard manual review item\(s\)/);
+  assert.equal(
+    settled.meta.manualReview.some((m) => !m.extended),
+    false,
+    "the standard questions are gone"
+  );
+});
+
+// The case the item's SECTION cannot answer. A code-review case the agent could not
+// settle is sent on to a reviewer keeping that section, so the halt has to ask where the
+// item is answered NOW - otherwise it stays listed as reviewer work under a closing line
+// saying nobody was asked.
+test("a case the agent routed to a reviewer is dropped by the halt too", () => {
+  const dir = tmp();
+  const { state, stateFile } = blockingReview(dir);
+  const [clear] = REGISTRY.manualReviewChoices().map((c) => c.label);
+  const seen = [];
+  for (let pass = 0; pass < 8; pass++) {
+    const out = issue(state, stateFile, PHASES, REGISTRY);
+    if (!out) {
+      break;
+    }
+    seen.push(out.phase.name);
+    accept(
+      state,
+      handBack(state, () => {
+        if (out.phase.name === "verify") {
+          return "reported";
+        }
+        // The agent gives up on the code-review case and sends it to a reviewer.
+        return out.phase.name === "settle" ? "ask" : clear;
+      }),
+      PHASES,
+      REGISTRY
+    );
+  }
+  assert.ok(!seen.includes("ask"), `ask was issued: ${seen.join(", ")}`);
+  const { tally, review: settled } = settle(state, REGISTRY);
+  assert.deepEqual(
+    settled.meta.manualReview,
+    [],
+    "the routed case is not left listed as reviewer work"
+  );
+  assert.match(tally, /0 extended code review item\(s\)/);
+});
+
+// The two suppressions of the `ask` phase are different facts and must stay so: the skip
+// leaves the items in the report for a reviewer to work through later, the halt takes
+// them out because nobody is going to.
+test("a skip and a halt suppress the same phase and leave different reports", () => {
+  const skipped = review(tmp(), { sweep: false });
+  skipped.state.run = { skip: ["manual"], sca: false, sweep: false };
+  const { settled: skippedOut } = driveLoop(
+    skipped.state,
+    skipped.stateFile,
+    (phase) => (phase === "verify" ? "reported" : "cleared")
+  );
+  assert.equal(skippedOut.earlyExit, false);
+  assert.ok(
+    skippedOut.review.meta.manualReview.some((m) => !m.extended),
+    "a skip leaves the questions in the report"
+  );
+
+  const halted = blockingReview(tmp());
+  halted.state.run = { skip: ["manual"], sca: true, sweep: false };
+  const { settled } = driveLoop(halted.state, halted.stateFile, (phase) =>
+    phase === "verify" ? "reported" : "cleared"
+  );
+  assert.equal(settled.earlyExit, true);
+  assert.equal(
+    settled.review.meta.manualReview.some((m) => !m.extended),
+    false,
+    "a halt takes them out, even with the skip also on"
   );
 });

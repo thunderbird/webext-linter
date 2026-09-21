@@ -10,6 +10,7 @@ flags in the context of every other option.
 
 - [The round trip](#the-round-trip)
 - [The phases](#the-phases)
+- [When the review stops early](#when-the-review-stops-early)
 - [What an answer may say](#what-an-answer-may-say)
 - [The sweep](#the-sweep)
 - [What the reviewer is handed](#what-the-reviewer-is-handed)
@@ -60,6 +61,41 @@ entries to settle — and that is also what ends the loop. So a review with no s
 mentions one, and a review that starts no sub-agent at all skips `spawn` and opens at
 `verify`. The package itself is not unpacked by any of this: the linter extracts a packed
 submission before the first prompt is printed, and every phase reads that one folder.
+
+`ask` has one further condition: a review that **stopped early** never reaches it.
+
+
+## When the review stops early
+
+Some findings settle the submission on their own, and carrying on would ask someone to do
+work the review has already ruled out. The case it exists for: a source submission whose
+dependency tree carries known high or critical advisories, where the very next thing the
+loop would do is ask a reviewer to **reproduce the build** — running that tree on their own
+machine, on the strength of a question the linter issued knowing better.
+
+A check declares that it stops the review by naming the reason the report gives
+(`review-early-exit:` in the registry). Today five do: the four dependency-vulnerability
+checks, which name *known security vulnerabilities*, and `banned-library`, which names
+*disallowed library versions*. The threshold is the finding's severity, so an advisory that
+lands as a warning stops nothing.
+
+What a stopped review does:
+
+| | |
+| --- | --- |
+| The `ask` phase | is not issued. Nothing is put to a reviewer. |
+| The report | drops every to-do item a reviewer would have been **asked** — the Extended Manual Review and Standard Manual Review sections, and their tally counts. |
+| | keeps both code-review sections: reading code is safe, and what it turns up is the evidence for the halt. |
+| | ends on the reason it is incomplete, one line per distinct cause. |
+| The last prompt | is a hand-over of its own, because telling an agent "the review is settled" about one that was cut short is not true. It carries the same three parts as the ordinary one. |
+
+The decision is taken again on every pass, never recorded once, because the `verify` phase
+is where those findings are audited: an agent that **withdraws** the finding which stopped
+the review has removed the thing that stopped it, and the question block comes back.
+
+None of this is particular to an agent. A review run without `--llm-review` stops on the
+same terms and prints the same report — the trap is the same one with one fewer
+participant.
 
 
 ## What an answer may say
@@ -202,7 +238,7 @@ too many formats for it to open, which is why that one extraction is the reader'
 | `--llm-verdict <file>` | Take a phase back and hand out the next, from the review file the prompt named — or, when nothing is left to issue, print the settled report. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file beside this one. Normally run by the agent working through the review rather than by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER — one built `.xpi` and one archive of the source it was built from — print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
-| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer — they stay in the report, for the reviewer to work through later. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
+| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer — they stay in the report, for the reviewer to work through later, unless the review stopped early, which takes them out. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. The prompt neither spawns it nor asks for it, and the Standard Code Review section stays in the report for the reviewer to sweep by hand. |
 
 `--report-out` is refused with any `--llm-*` flag: no run of this round trip saves its

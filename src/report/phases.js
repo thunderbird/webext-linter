@@ -83,7 +83,7 @@ export function stepsOf(phase, { skip = [], sca = false, sweep = false } = {}) {
  * @param {{name: string, steps: object[]}} phase
  * @param {import("./order.js").OrderedItem[]} ordered
  * @param {import("./state.js").LoopState} state
- * @param {{skip: string[], sca: boolean, sweep: boolean}} run
+ * @param {{skip: string[], sca: boolean, sweep: boolean, halted: boolean}} run
  * @returns {{steps: object[], items: object[]}}
  */
 export function workOf(phase, ordered, state, run) {
@@ -121,7 +121,7 @@ function aboutEntries(phase, step) {
  * @param {{name: string, steps: object[]}[]} phases  In the order they are issued.
  * @param {import("./order.js").OrderedItem[]} ordered
  * @param {import("./state.js").LoopState} state
- * @param {{skip: string[], sca: boolean, sweep: boolean}} run
+ * @param {{skip: string[], sca: boolean, sweep: boolean, halted: boolean}} run
  * @returns {?{phase: object, steps: object[], items: object[]}}
  */
 export function nextPhase(phases, ordered, state, run) {
@@ -162,17 +162,27 @@ export function nextPhase(phases, ordered, state, run) {
  * means those items are not put to anyone - they stay in the report for the reviewer to
  * work through later - so leaving them in the file would hand the agent questions it was
  * told not to ask and a handover demanding an answer for each.
+ * An EARLY EXIT withholds them for a different reason and to a different end. The skip
+ * says a reviewer will work through these later; the early exit says the review stopped,
+ * and the report drops the same items rather than leaving a to-do list under a line
+ * saying it was never finished (src/report/early-exit.js). Both land here because the
+ * question is the same one - is this item put to anyone on this run.
  * @param {string} phaseName
  * @param {import("./order.js").OrderedItem[]} ordered
  * @param {import("./state.js").LoopState} state
- * @param {{skip: string[]}} run
+ * @param {{skip: string[], halted: boolean}} run
  * @returns {import("./order.js").OrderedItem[]}
  */
-export function openIn(phaseName, ordered, state, { skip = [] } = {}) {
+export function openIn(
+  phaseName,
+  ordered,
+  state,
+  { skip = [], halted = false } = {}
+) {
   // The spawn phase asks about no ITEM: what it hands over is the sweep's own rows.
   if (
     phaseName === "spawn" ||
-    (phaseName === "ask" && skip.includes("manual"))
+    (phaseName === "ask" && (halted || skip.includes("manual")))
   ) {
     return [];
   }

@@ -57,6 +57,8 @@ import {
   withDefaultNotes,
 } from "./report/responses.js";
 import { resolveHolds } from "./report/finding.js";
+import { orderReview } from "./report/order.js";
+import { earlyExitOf, withoutQuestions } from "./report/early-exit.js";
 import { STATE_VERSION } from "./report/state.js";
 import { issue } from "./report/loop.js";
 import { headerLines, loopPromptLines, packageLines } from "./report/format.js";
@@ -1032,6 +1034,31 @@ export async function runPipeline(opts) {
       route: {},
       issued: [],
     };
+  }
+
+  // A review the findings themselves settle STOPS here: nothing further is put to a
+  // reviewer, and the report says why rather than listing work nobody should do. The case
+  // it exists for is a build the reviewer would otherwise be asked to reproduce from a
+  // dependency tree this review has already rejected.
+  //
+  // Applied only for a review that PRINTS one. Under --llm-review the same decision is
+  // taken again at the end of the loop (src/report/loop.js settle), because a pass may
+  // withdraw the very finding that stopped it - so the state above keeps the full list,
+  // and nothing here narrows what a later pass can still change its mind about.
+  //
+  // AFTER resolveHolds, and that ordering is load-bearing: the threshold reads a
+  // finding's severity, and resolveHolds is the moment a provisional hold becomes one.
+  // Decided before it, a blocking check that reported a hold would stop nothing.
+  //
+  // The key is left off a review that did not stop, rather than written as null - the
+  // same way manualReview and preSweep are dropped from the JSON rather than emptied.
+  if (!prompting) {
+    const ordered = orderReview(findings, meta.manualReview ?? []);
+    const earlyExit = earlyExitOf(ordered, {}, registry);
+    if (earlyExit) {
+      meta.earlyExit = earlyExit;
+      meta.manualReview = withoutQuestions(ordered);
+    }
   }
 
   // Narrate the document's own opening, now that the review is final. It has to come after

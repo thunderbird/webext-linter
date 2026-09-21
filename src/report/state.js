@@ -93,6 +93,9 @@ export function readState(file) {
   return state;
 }
 
-/** Bumped when the shape changes in a way an older file cannot satisfy. A review in
- *  flight does not survive the upgrade, and saying so beats reading it wrongly. */
-export const STATE_VERSION = 3;
+/** Bumped when the shape, or what the loop DOES with it, changes in a way an older file
+ *  cannot satisfy. A review in flight does not survive the upgrade, and saying so beats
+ *  reading it wrongly. Version 4 is a meaning change rather than a shape one: nothing new
+ *  is stored, but a review that stops early no longer issues the phase a v3 review would
+ *  have, so resuming one across the two would ask a reviewer what this build would not. */
+export const STATE_VERSION = 4;

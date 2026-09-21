@@ -109,7 +109,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | `--llm-verdict <file>` | Take a phase back and hand out the next — or, when nothing is left to issue, print the settled report. Takes no add-on path. Normally run by the agent, not by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission folder — one built `.xpi` and one archive of its source — print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
-| `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later. |
+| `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later, unless the review stopped early. |
 | `--llm-skip-sweep` | Leave out the sweep: the prompt neither spawns it nor asks for it, and the Standard Code Review section stays in the report to be swept by hand. |
 
 **Source code archive (SCA):**
@@ -256,6 +256,19 @@ to be settled before the trademark form can be judged at all), `vendored-remote-
 not the developer's, so accepting it is a judgement a person owns), and
 `experiment-manual-review` (an Experiment runs with Thunderbird's own internals in reach,
 so no scan of its surface settles what it does).
+
+Some findings stop the review outright. A check can declare that it does by naming the
+reason the report gives (`review-early-exit:` in the registry) - today the four
+dependency-vulnerability checks and `banned-library`. When one of them reports at error
+severity, nothing further is put to a reviewer: the report drops every to-do item they
+would have been **asked** - the two manual-review sections and their tally counts, plus
+any case an agent had routed onward to a reviewer - keeps both code-review sections, and
+the developer's text ends on the reason it is incomplete. The case it exists for is a
+dependency tree with known high or critical advisories, where the next thing the review
+would otherwise ask is for the reviewer to reproduce the build from it. It is not limited
+to that case: an XPI-only review halts on the same terms, and cancels the by-hand listing
+checks too, because a submission being refused for what it ships is a submission nobody
+needs to spend that time on.
 
 Which section a check's cases land in is the check's own property, declared in the
 registry beside its severity - never decided per case. A check that would need both

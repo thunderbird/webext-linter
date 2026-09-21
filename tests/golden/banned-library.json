@@ -87,7 +87,16 @@
       "data-exfiltration",
       "disguised-transmission",
       "unacceptable-package-content"
-    ]
+    ],
+    "earlyExit": {
+      "intro": "The review was not completed and the report is incomplete due to the following issues:",
+      "reasons": [
+        {
+          "id": "disallowed-library-versions",
+          "text": "Disallowed library versions"
+        }
+      ]
+    }
   },
   "summary": {
     "error": 2,

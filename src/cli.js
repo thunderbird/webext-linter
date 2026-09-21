@@ -1073,9 +1073,12 @@ async function runLoopPass(file, registry, format) {
   // Settled. The last prompt differs from every other only in carrying what the reviewer
   // is handed: the Review Details block (unless a phase handed it over already), the
   // tally, and the report itself.
-  let review, applied, details, tally, report;
+  let review, applied, details, tally, report, earlyExit;
   try {
-    ({ review, applied, details, tally, report } = settle(state, registry));
+    ({ review, applied, details, tally, report, earlyExit } = settle(
+      state,
+      registry
+    ));
   } catch (err) {
     // Unlike a hand-back, this cannot be redone: the answer settle() refuses is already
     // recorded, and nothing re-prints a prompt for one that was already accepted. The
@@ -1095,8 +1098,15 @@ async function runLoopPass(file, registry, format) {
   // Both blocks travel in the text's own slots rather than as writes after it, so the
   // text says which is which. Printed in sequence they would be two documents with
   // nothing between them saying where one ends.
+  // A review that STOPPED hands over the same three parts under a text that says so:
+  // "the review is settled" is not true of one cut short, and the agent relays what it
+  // is given.
   process.stdout.write(
-    `${fillSlots(texts.final, { details, tally, report })}\n`
+    `${fillSlots(earlyExit ? texts.finalEarlyExit : texts.final, {
+      details,
+      tally,
+      report,
+    })}\n`
   );
   // No --report-out: it cannot be given beside any --llm-* flag, so no pass of this loop
   // has one to honour.

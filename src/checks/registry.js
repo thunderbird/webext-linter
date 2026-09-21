@@ -507,6 +507,10 @@ export class Registry {
       handover: p.handover,
       refused: p.refused,
       final: p.final,
+      // The same hand-over, for a review that stopped early. Carried beside `final`
+      // rather than chosen here, because which one is used is settled by the findings
+      // that survive every verdict - which this loader cannot know.
+      finalEarlyExit: p["final-early-exit"],
       phases: p.phases.map((phase) => ({
         name: phase.name,
         answer: phase.answer,
@@ -564,6 +568,42 @@ export class Registry {
   defaultNote(ruleId) {
     const note = this.checkEntry(ruleId)?.["default-note"];
     return typeof note === "string" && note !== "" ? note : null;
+  }
+
+  /**
+   * The reason this check gives for stopping the review, or null when it does not stop
+   * one. A check that names a reason BLOCKS: a finding it reports at error severity
+   * settles the submission on its own, and the review stops rather than asking anyone to
+   * carry on with it (src/report/early-exit.js).
+   *
+   * A reason id rather than a flag, because the report's closing text is a list: two
+   * blocking causes produce two bullets, and neither wording is rewritten to make room
+   * for the other. assertEarlyExit is what guarantees this resolves.
+   * @param {string} ruleId
+   * @returns {?string}
+   */
+  earlyExitFor(ruleId) {
+    const reason = this.checkEntry(ruleId)?.["review-early-exit"];
+    return typeof reason === "string" && reason !== "" ? reason : null;
+  }
+
+  /**
+   * The early exit's authored prose: the line introducing the list, and the reason texts
+   * by id. Returned whole rather than resolved per id, because the renderer needs the id
+   * ORDER as authored - that is what makes two runs over one submission list the same
+   * reasons in the same order.
+   * @returns {{intro: string, reasons: Record<string, string>}}
+   */
+  earlyExitProse() {
+    const block = this.doc["review-early-exit"];
+    const ok = block && typeof block === "object";
+    return {
+      intro: ok && typeof block.intro === "string" ? block.intro.trim() : "",
+      reasons:
+        ok && block.reasons && typeof block.reasons === "object"
+          ? block.reasons
+          : {},
+    };
   }
 
   /**
@@ -806,6 +846,17 @@ function assertEntry(entry, at) {
       );
     }
   }
+  if (
+    entry["review-early-exit"] !== undefined &&
+    (typeof entry["review-early-exit"] !== "string" ||
+      entry["review-early-exit"] === "")
+  ) {
+    throw new Error(
+      `${where} has a non-string \`review-early-exit\` ` +
+        `${JSON.stringify(entry["review-early-exit"])} - it names the reason the report ` +
+        "gives for stopping, and a reason with no name cannot be looked up"
+    );
+  }
   // Whether the entry authors wording a PERSON could be asked - `instructions-for-human`,
   // or an `instructions` that serves either reader. Both branches below are about that
   // reader: a manual check is only ever put to one, and an escalation must be answerable
@@ -827,6 +878,9 @@ function assertEntry(entry, at) {
       "input",
       "sweep-instruction",
       "settle-verbs",
+      // A static entry emits no finding, and an early exit is triggered by one - so
+      // declaring a reason here would name a halt nothing can reach.
+      "review-early-exit",
     ]) {
       if (entry[key] !== undefined) {
         throw new Error(
@@ -1194,7 +1248,14 @@ const PHASE_TEXTS = {
   handover: "{{command}}",
   refused: "{{problem}}",
   final: "",
+  // The hand-over for a review that STOPPED. Required like the rest, because which of
+  // the two is printed is decided at the end of the loop and a missing one would be
+  // found only by the review that needed it.
+  "final-early-exit": "",
 };
+
+/** What the last prompt hands the reviewer, whichever of the two texts carries it. */
+const FINAL_SLOTS = ["{{details}}", "{{tally}}", "{{report}}"];
 
 /**
  * Every verdict the loop knows. A PHASE accepts a subset of these, declared beside its
@@ -1251,6 +1312,32 @@ export function assertPhases(registry, at) {
           "else names that value"
       );
     }
+  }
+  // The two finals are interchangeable by construction: the loop picks one at the end
+  // and fills the same three slots in it. One of them quietly missing a slot would drop
+  // that part of the hand-over from exactly the reviews that took that branch.
+  for (const key of ["final", "final-early-exit"]) {
+    for (const slot of FINAL_SLOTS) {
+      if (!doc[key].includes(slot)) {
+        throw new Error(
+          `${where} \`${key}\` carries no ${slot} - both finals hand over the same ` +
+            "three parts, and the one that omits it drops it silently"
+        );
+      }
+    }
+  }
+  // They describe the SAME document to the same reader, and differ only in how they open:
+  // one says the review is settled, the other that it stopped. Every line after that is
+  // the instruction for printing the hand-over, and the two copies existing side by side
+  // is exactly how one of them comes to be edited and the other not.
+  const [settledBody, stoppedBody] = ["final", "final-early-exit"].map((key) =>
+    doc[key].split("\n").slice(1).join("\n")
+  );
+  if (settledBody !== stoppedBody) {
+    throw new Error(
+      `${where} \`final\` and \`final-early-exit\` differ below their opening line - ` +
+        "they hand the same document to the same reader, so only the first line may differ"
+    );
   }
   const phases = doc.phases;
   if (!Array.isArray(phases) || phases.length === 0) {
@@ -1506,6 +1593,80 @@ function assertRegistry(registry, at, { partial = false } = {}) {
   assertScaPrompt(registry, at);
   assertChoices(registry, at);
   assertProse(registry, at);
+  assertEarlyExit(registry, at);
+}
+
+/**
+ * Assert the early exit's two halves agree: every check that names a reason has one to
+ * name, and every reason authored is named by a check.
+ *
+ * Both directions matter, and they fail differently. A reference nothing defines would
+ * stop a review and then print a bullet with nothing in it - the report would say the
+ * submission could not be reviewed without saying why. A reason nothing references is
+ * wording no report can reach, which is the same dead-prose failure assertProse refuses
+ * for the closed maps.
+ * @param {Registry} registry @param {string} at
+ * @returns {void}
+ */
+export function assertEarlyExit(registry, at) {
+  const block = registry.doc["review-early-exit"];
+  if (!block || typeof block !== "object" || Array.isArray(block)) {
+    throw new Error(
+      `registry authors no \`review-early-exit\` section (${at})`
+    );
+  }
+  const { intro, reasons } = registry.earlyExitProse();
+  if (!intro) {
+    throw new Error(
+      "`review-early-exit` authors no `intro` - the list it introduces " +
+        `would be printed with nothing saying what it is (${at})`
+    );
+  }
+  const ids = Object.keys(reasons);
+  if (!ids.length) {
+    throw new Error(`\`review-early-exit\` authors no \`reasons\` (${at})`);
+  }
+  for (const id of ids) {
+    if (typeof reasons[id] !== "string" || reasons[id] === "") {
+      throw new Error(
+        `\`review-early-exit\` reason \`${id}\` has no text (${at})`
+      );
+    }
+  }
+  const named = new Set();
+  for (const entry of registry.allEntries()) {
+    const reason = entry["review-early-exit"];
+    if (reason === undefined) {
+      continue;
+    }
+    // A halt is triggered by a finding this check reported at ERROR, decided once the
+    // review is final. A band it cannot reach on its own would make that decision
+    // depend on WHEN it is asked: `hold-or-error` resolves against the rest of the
+    // review, so the loop (which asks before holds are settled) and the finished report
+    // would answer differently - the question block put to a reviewer, answered, and
+    // then a report declaring itself incomplete.
+    if (entry.severity !== SEVERITY.ERROR && entry.severity !== AUTO_SEVERITY) {
+      throw new Error(
+        `\`${entry.check}\` stops the review but is severity \`${entry.severity}\` - ` +
+          `only \`error\` or \`auto\` can report one at the band a halt is decided on (${at})`
+      );
+    }
+    if (!ids.includes(reason)) {
+      throw new Error(
+        `\`${entry.check}\` stops the review for \`${reason}\`, which ` +
+          `\`review-early-exit\` does not define (expected one of: ${ids.join(", ")}) (${at})`
+      );
+    }
+    named.add(reason);
+  }
+  for (const id of ids) {
+    if (!named.has(id)) {
+      throw new Error(
+        `\`review-early-exit\` authors \`${id}\`, which no check names, so no ` +
+          `report can reach it (${at})`
+      );
+    }
+  }
 }
 
 /**

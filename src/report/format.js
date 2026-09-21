@@ -107,6 +107,13 @@ const SEV_COLOR = {
  *   authors an instruction for what it cannot detect. ONE request, not one per check.
  *   Carries no finding and no locus - it is the job, not its result. Text-only; dropped
  *   from JSON.
+ * @property {?{intro: string, reasons: {id: string, text: string}[]}} [earlyExit]
+ *   Why the review STOPPED, when it did: the authored line and the reasons it lists, each
+ *   with the id that named it (src/report/early-exit.js). Absent on a review that ran to
+ *   the end. Unlike the two above it is KEPT in the JSON: it is a statement about the
+ *   review rather than an instruction to a reader, and a consumer deciding whether to
+ *   auto-reject needs to know the review did not finish. Such a consumer matches the ids,
+ *   which a wording edit does not change.
  */
 
 // The titles the report prints over its sections, keyed by the section a sequence item
@@ -189,7 +196,8 @@ function reviewBodyLines(review) {
       issueHeadings,
       verdictIntros,
       labelOf,
-      mode
+      mode,
+      meta.earlyExit ?? null
     ),
     ...manualSection(todo("code"), SECTION_TITLES.code, brightCyan, labelOf),
     ...manualSection(
@@ -641,10 +649,24 @@ export function detailLinkLines(meta) {
  * @param {import("../lib/enum.js").ReviewMode} [mode]  The review mode; SCA appends the label legend footer.
  * @returns {string[]}
  */
-function issuesLines(items, issueHeadings, verdictIntros, labelOf, mode) {
+function issuesLines(
+  items,
+  issueHeadings,
+  verdictIntros,
+  labelOf,
+  mode,
+  earlyExit
+) {
   return [
     ...section(SECTION_TITLES.issues),
-    ...issuesBodyLines(items, issueHeadings, verdictIntros, labelOf, mode),
+    ...issuesBodyLines(
+      items,
+      issueHeadings,
+      verdictIntros,
+      labelOf,
+      mode,
+      earlyExit
+    ),
   ];
 }
 
@@ -661,6 +683,11 @@ function issuesLines(items, issueHeadings, verdictIntros, labelOf, mode) {
  * @param {Record<string, string>} [verdictIntros]
  * @param {(f: import("./finding.js").Finding) => string} [labelOf]
  * @param {import("../lib/enum.js").ReviewMode} [mode]
+ * @param {?{intro: string, reasons: {id: string, text: string}[]}} [earlyExit]  Why the review stopped, when
+ *   it did. Rendered LAST, so the developer's text ends on the reason it is incomplete -
+ *   and rendered here rather than by each caller, because this body is the developer's
+ *   text in both places it is produced: under Found Issues in the terminal, and in the
+ *   slot the review loop's last prompt hands over.
  * @returns {string[]}
  */
 export function issuesBodyLines(
@@ -668,14 +695,15 @@ export function issuesBodyLines(
   issueHeadings,
   verdictIntros,
   labelOf,
-  mode
+  mode,
+  earlyExit
 ) {
   const out = [];
   const intros = verdictIntros ?? {};
   const issues = items.map((x) => x.target);
   if (issues.length === 0) {
     out.push(intros.none ?? "The automated review did not find any issues.");
-    return out;
+    return [...out, ...earlyExitLines(earlyExit)];
   }
   const intro = intros[verdictKey(issues)];
   let n = 0;
@@ -714,7 +742,27 @@ export function issuesBodyLines(
     grey("You can run this automated review yourself before submitting:")
   );
   out.push(grey("https://github.com/thunderbird/webext-linter"));
-  return out;
+  return [...out, ...earlyExitLines(earlyExit)];
+}
+
+/**
+ * The closing block of a review that STOPPED: the authored line, then one bullet per
+ * reason. Empty for a review that ran to the end, which is what lets every caller render
+ * it unconditionally.
+ *
+ * The reasons arrive already deduplicated and ordered (src/report/early-exit.js); this
+ * only draws them. Uncoloured, unlike the legend and the tool pointer above it: those are
+ * the linter's chrome around the developer's text, and this is part of the text.
+ * @param {?{intro: string, reasons: {id: string, text: string}[]}} [earlyExit]
+ * @returns {string[]}
+ */
+export function earlyExitLines(earlyExit) {
+  const reasons = earlyExit?.reasons ?? [];
+  if (!reasons.length || !earlyExit.intro) {
+    return [];
+  }
+  // The ids are for the JSON report's readers. A person reads the texts.
+  return ["", earlyExit.intro, ...reasons.map((r) => `- ${r.text}`)];
 }
 
 /**

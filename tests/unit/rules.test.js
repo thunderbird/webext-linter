@@ -71,6 +71,7 @@ import {
   assertPhaseVerbSubsets,
   loadChecks,
   loadRegistry,
+  assertEarlyExit,
   runOneCheck,
   runChecks,
   assertRequiredPhaseSections,
@@ -4531,4 +4532,114 @@ test("unrecognized-file-type does NOT flag a script in a DEAD (unreachable) page
     { manifest_version: 3, background: { scripts: ["bg.js"] } }
   );
   assert.deepEqual(urtFiles(ctx), []);
+});
+
+// ---- the early exit's registry half ----
+
+// A check declares that it stops the review by naming the REASON the report gives, so the
+// two halves have to agree in both directions. A reference nothing defines would stop a
+// review and then print a bullet with nothing in it - the report would say the submission
+// could not be reviewed without saying why.
+test("a check naming a reason the registry does not define is refused", () => {
+  const registry = loadRegistry();
+  registry.doc["deterministic-phase"][0]["review-early-exit"] =
+    "no-such-reason";
+  assert.throws(
+    () => assertEarlyExit(registry, "t.yaml"),
+    /which `review-early-exit` does not define/
+  );
+});
+
+// The other direction: wording no report can reach, which is the same dead-prose failure
+// assertProse already refuses for the closed maps.
+test("a reason no check names is refused", () => {
+  const registry = loadRegistry();
+  registry.doc["review-early-exit"].reasons["nobody-names-me"] = "Orphaned";
+  assert.throws(
+    () => assertEarlyExit(registry, "t.yaml"),
+    /which no check names/
+  );
+});
+
+test("an early exit with no intro, no reasons, or an empty one is refused", () => {
+  const noIntro = loadRegistry();
+  delete noIntro.doc["review-early-exit"].intro;
+  assert.throws(() => assertEarlyExit(noIntro, "t.yaml"), /authors no `intro`/);
+
+  const noReasons = loadRegistry();
+  noReasons.doc["review-early-exit"].reasons = {};
+  assert.throws(
+    () => assertEarlyExit(noReasons, "t.yaml"),
+    /authors no `reasons`/
+  );
+
+  const blank = loadRegistry();
+  blank.doc["review-early-exit"].reasons["known-vulnerabilities"] = "";
+  assert.throws(() => assertEarlyExit(blank, "t.yaml"), /has no text/);
+
+  const gone = loadRegistry();
+  delete gone.doc["review-early-exit"];
+  assert.throws(
+    () => assertEarlyExit(gone, "t.yaml"),
+    /authors no `review-early-exit` section/
+  );
+});
+
+// A manual-checks entry emits no finding, and an early exit is triggered by one - so a
+// reason declared there would name a halt nothing can ever reach.
+test("a manual-checks entry may not declare an early exit", () => {
+  const tmp = path.join(os.tmpdir(), `early-exit-${process.pid}.yaml`);
+  fs.writeFileSync(
+    tmp,
+    "manual-checks:\n- title: By hand\n  severity: error\n  check: by-hand\n" +
+      "  instructions: Do it.\n  response: Please do it.\n" +
+      "  review-early-exit: known-vulnerabilities\n"
+  );
+  try {
+    assert.throws(
+      () => loadRegistry(tmp),
+      /`review-early-exit`, which only a check that RUNS can carry/
+    );
+  } finally {
+    fs.rmSync(tmp);
+  }
+});
+
+// It names the reason the report looks up, so a non-string is a lookup that cannot happen.
+test("a non-string early-exit reference is refused", () => {
+  const tmp = path.join(os.tmpdir(), `early-exit-bad-${process.pid}.yaml`);
+  fs.writeFileSync(
+    tmp,
+    "deterministic-phase:\n- title: Bogus\n  severity: error\n  input: source\n" +
+      "  check: sync-xhr\n  review-early-exit: true\n  response: x\n"
+  );
+  try {
+    assert.throws(() => loadRegistry(tmp), /non-string `review-early-exit`/);
+  } finally {
+    fs.rmSync(tmp);
+  }
+});
+
+// A halt is triggered by a finding reported at ERROR, and that is decided once the review
+// is final. A check whose band cannot reach error on its own would make the answer depend
+// on WHEN it is asked - the loop asks before holds are settled - so the question block
+// could be put to a reviewer, answered, and then a report declare itself incomplete.
+test("a check that cannot reach error on its own may not stop the review", () => {
+  for (const [id, band] of [
+    ["privacy-policy", "hold-or-error"],
+    ["unused-files", "warning"],
+    ["unsafe-html", "info"],
+  ]) {
+    const registry = loadRegistry();
+    for (const entry of registry.doc["deterministic-phase"]) {
+      if (entry.check === id) {
+        entry["review-early-exit"] = "known-vulnerabilities";
+      }
+    }
+    assert.throws(
+      () => assertEarlyExit(registry, "t.yaml"),
+      new RegExp(`stops the review but is severity \`${band}\``),
+      `${id} (${band}) should not be allowed to stop the review`
+    );
+  }
 });
