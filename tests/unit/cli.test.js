@@ -675,6 +675,32 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   assert.match(json.stderr, /--llm-review is text only/);
 });
 
+// Both ends of the loop print a prompt, so both have to refuse the one format that is
+// not one. --llm-verdict used to be asked nowhere: it returns from its own branch before
+// reaching the test --llm-review takes, so it accepted --report-format json and then
+// printed text anyway, ignoring what it had been asked for. The message names the flag
+// that was actually used, because a run that said --llm-verdict is not helped by being
+// told about --llm-review.
+test("both ends of the review loop refuse --report-format json", () => {
+  const started = run([
+    "--llm-verdict",
+    "/nonexistent.json",
+    "--report-format",
+    "json",
+  ]);
+  assert.equal(started.code, 2);
+  assert.match(started.stderr, /--llm-verdict is text only/);
+  assert.doesNotMatch(
+    started.stderr,
+    /--llm-review/,
+    "names the flag the run used"
+  );
+
+  // Text is still the loop's own format, so the pass runs and answers in its own words.
+  const text = run(["--llm-verdict", "/nonexistent.json"]);
+  assert.match(text.stdout, /not what this pass expected/);
+});
+
 // The review file is the linter's to name, so the flag takes no value at all - which is
 // what lets it sit anywhere on the command line, including before the add-on, where a flag
 // with an optional value would have swallowed the path and left nothing to review. The name

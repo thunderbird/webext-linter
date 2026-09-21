@@ -758,12 +758,28 @@ export async function main(argv) {
     return 2;
   }
 
+  // A review flag's whole output is a prompt. JSON is the machine contract for ATN, which
+  // wants neither, and asking for both leaves nothing coherent to print - so say so rather
+  // than silently favouring one. Asked of BOTH ends of the loop, and before either one
+  // branches away: --llm-verdict returns just below without reading another guard, so a
+  // test further down is a test it never takes - which is how it came to accept a format
+  // it then ignored. The flag that was actually used is the one named, since a run that
+  // said --llm-verdict is not helped by being told about --llm-review.
+  if ((values["llm-review"] || values["llm-verdict"]) && format === "json") {
+    const flag = values["llm-review"] ? "--llm-review" : "--llm-verdict";
+    process.stderr.write(
+      `${flag} is text only: it prints a prompt and writes the files the review names, ` +
+        "which is not what --report-format json produces.\n"
+    );
+    return 2;
+  }
+
   // THE REVIEW LOOP, every pass after the first. No add-on is named and none is read: the
   // deterministic review ran ONCE, in the --llm-review run, and its result is in the state
   // the file handed back points at. That is why there is no add-on path here, and why
   // nothing can shift under an index between passes.
   if (values["llm-verdict"]) {
-    return runLoopPass(values["llm-verdict"], registry, format);
+    return runLoopPass(values["llm-verdict"], registry);
   }
 
   // No add-on to review: the usage text answers what was missing, and the exit code says
@@ -780,17 +796,6 @@ export async function main(argv) {
       `Only one add-on can be reviewed at a time, and ${positionals.length} were given: ` +
         `${positionals.map((p) => `"${p}"`).join(", ")}. If the path contains spaces, ` +
         "quote it.\n"
-    );
-    return 2;
-  }
-
-  // A review flag's whole output is a prompt. JSON is the machine
-  // contract for ATN, which wants neither, and asking for both leaves nothing coherent to
-  // print - so say so rather than silently favouring one.
-  if (values["llm-review"] && format === "json") {
-    process.stderr.write(
-      "--llm-review is text only: it prints a prompt and writes the files the review " +
-        "which is not what --report-format json produces.\n"
     );
     return 2;
   }
@@ -1028,12 +1033,13 @@ function splitList(value) {
  * corrected hand-back resumes exactly where it was - and "abort and say why" is the loud
  * failure, because a review that cannot finish has to say so rather than quietly produce a
  * report out of half a pass.
+ * The report format is not a parameter: every pass of the loop prints a prompt, and the
+ * one format that is not a prompt is refused before the loop is entered.
  * @param {string} file  The review file the agent handed back.
  * @param {import("./checks/registry.js").Registry} registry
- * @param {string} format
  * @returns {Promise<number>}
  */
-async function runLoopPass(file, registry, format) {
+async function runLoopPass(file, registry) {
   const texts = registry.llmPhases();
   const handed = path.resolve(file);
   let state, stateFile;
