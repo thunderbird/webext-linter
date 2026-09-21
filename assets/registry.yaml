@@ -1666,20 +1666,24 @@ llm-phases:
   # Two of the four earn text, and both for that reason.
   phases:
     # Every sub-agent the review may need started, before anything else reads the add-on.
-    # NOT called `spawn`: `setup` is what a phase is called when a run can issue it with
-    # nothing to do (every step below is optional, gated by `skip:`/`run:`), and `spawn`
-    # would say every one of its steps fires. NOT called `sweep` either - the sweep is one
-    # of three products, and naming the phase after it pulled a sweep-specific intro into a
-    # place it did not fit. The package itself is no longer unpacked HERE: the linter
-    # extracts it before the review is ever printed (src/addon/load.js), so XPI_ROOT is
-    # already there by the time this phase - or any other - is issued.
+    # Named for what its steps DO, and NOT called `setup`: the pipeline has a setup of its
+    # own - SETUP_STEPS and the "Setup" banner every review prints, agent or not
+    # (src/pipeline.js) - and one word for two things that both run first is one a reader
+    # has to disambiguate every time it appears. NOT called `sweep` either: the sweep is
+    # one of three products, and naming the phase after it pulled a sweep-specific intro
+    # into a place it did not fit.
+    #
+    # Every step here is optional, so a run that starts no agent is not issued this phase
+    # at all. The package is not unpacked HERE: the linter extracts it before the review is
+    # ever printed (src/addon/load.js), so XPI_ROOT is already there by the time any phase
+    # is issued.
     #
     # EVERY SPAWN STEP STANDS ALONE. Each carries its own marker, so none may refer to
     # another having printed - not "either", not "the step below", not "the agents above".
     # Each says whether its agent is waited for, and the two that are not say it in the
     # SAME words: a second spelling of one instruction is a difference for its reader to
     # interpret.
-    - name: setup
+    - name: spawn
       # A row per swept check, answered with what the sweep found: a list, empty when it
       # found nothing. Nothing here is a judgement, so this phase accepts no verb.
       answer: hints

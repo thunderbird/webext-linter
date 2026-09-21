@@ -1304,7 +1304,7 @@ export async function resolveReviewSchema({
  * part that matters.
  *
  * Only the report's framing travels here. What the sweeping agent is told is authored in
- * the setup phase's own step, beside the other sub-agent requests it relays.
+ * the spawn phase's own step, beside the other sub-agent requests it relays.
  * @param {import("./checks/registry.js").Registry} registry
  * @param {Set<string>} ranIds  Ids of the checks that actually ran.
  * @returns {?{items: object[]}}

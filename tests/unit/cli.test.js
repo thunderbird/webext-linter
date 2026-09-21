@@ -832,7 +832,7 @@ test("the two skips withhold the description and the manual items", () => {
   // ...while the step that closes the round trip survives the renumbering.
   assert.match(on.stdout, /--llm-verdict/);
 
-  // Both skips are off the setup phase, so its only agent is the sweep - and the manual
+  // Both skips are off the spawn phase, so its only agent is the sweep - and the manual
   // items are not dropped from the REVIEW, only from what a phase puts to anyone. They
   // are still in the report the last pass prints.
   assert.ok(
@@ -900,7 +900,7 @@ test("a review with nothing to settle names no description file", () => {
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /── LLM Prompt ──/);
   // A review with nothing to SETTLE still has something to DO: the description is for the
-  // reviewer, who still gets a report. So the setup phase prints, and the phases that
+  // reviewer, who still gets a report. So the spawn phase prints, and the phases that
   // settle entries do not - which is the rule, not an exception to it.
   assert.match(r.stdout, /^1\. Spawn an independent sub-agent/m);
   assert.doesNotMatch(r.stdout, /Verify every entry/, "nothing to verify");
@@ -1037,7 +1037,7 @@ test("a swept case becomes an item of its check and settles like any other", () 
   assert.equal(first.code, 0, first.stderr);
   const file = first.stdout.match(/(\S+\.review\.json)/)[1];
 
-  // The setup phase asks one row per check that declared a sweep instruction, and every
+  // The spawn phase asks one row per check that declared a sweep instruction, and every
   // row must be answered: an empty list is "swept and clean", null is "never looked".
   const handed = JSON.parse(fs.readFileSync(file, "utf8"));
   assert.ok(

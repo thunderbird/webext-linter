@@ -1436,10 +1436,10 @@ test("a step's paragraphs sit under its number, line breaks and all", () => {
   ]);
 });
 
-// The preamble is keyed on WHICH PASS this is, never on which phase it hands out. `setup`
+// The preamble is keyed on WHICH PASS this is, never on which phase it hands out. `spawn`
 // used to be that pass's phase in every configuration (it always carried the unconditional
 // package-extraction step), so nothing pinned this independence directly - now a run that
-// starts no agent and does not sweep skips `setup` entirely, and the first phase an agent
+// starts no agent and does not sweep skips `spawn` entirely, and the first phase an agent
 // ever sees can be `verify` instead. The preamble still has to print then: it is what tells
 // the agent it is reading pass one of the loop at all.
 test("the preamble prints on the first pass, whichever phase that pass hands out", () => {

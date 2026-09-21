@@ -50,14 +50,14 @@ entry never offered are all refusals.
 
 | Phase | What it is for | What fills its answers |
 | --- | --- | --- |
-| `setup` | Start the sub-agents the review needs — the add-on description, the build report, the sweep — and record what the sweep found. | One row per swept check (see below) |
+| `spawn` | Start the sub-agents the review needs — the add-on description, the build report, the sweep — and record what the sweep found. | One row per swept check (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
 
 A phase is issued only when it has **work** — steps that survive their markers, or
 entries to settle — and that is also what ends the loop. So a review with no sweep never
-mentions one, and a review that starts no sub-agent at all skips `setup` and opens at
+mentions one, and a review that starts no sub-agent at all skips `spawn` and opens at
 `verify`. The package itself is not unpacked by any of this: the linter extracts a packed
 submission before the first prompt is printed, and every phase reads that one folder.
 
@@ -100,7 +100,7 @@ one declares a **`sweep-instruction:`** describing the class of code it cannot s
 declare one. Every review prints those instructions under **Standard Code Review**, for
 whoever is reading the add-on to cover by hand.
 
-Under `--llm-review` that reading is a sub-agent's. The `setup` phase carries one row per
+Under `--llm-review` that reading is a sub-agent's. The `spawn` phase carries one row per
 swept check for what it found — an empty list where that check is clean, which is what
 separates "found nothing" from "never looked":
 

@@ -123,7 +123,7 @@ test("a phase missing its own parts is refused by name", () => {
 
   // Empty is how a phase says it needs none; ABSENT is an author who forgot to decide.
   const noIntro = fresh();
-  delete phaseNamed(noIntro, "setup").intro;
+  delete phaseNamed(noIntro, "spawn").intro;
   assert.throws(() => assertPhases(noIntro, "t.yaml"), /authors no `intro`/);
 
   const noVerbs = fresh();
@@ -149,7 +149,7 @@ test("a step that numbers itself, or carries a marker nothing answers, is refuse
   const badRun = fresh();
   // Found by its marker, not by position: a step added to the phase should not decide
   // which one this mutates.
-  phaseNamed(badRun, "setup").steps.find((x) => x.run).run = "nonsense";
+  phaseNamed(badRun, "spawn").steps.find((x) => x.run).run = "nonsense";
   assert.throws(() => assertPhases(badRun, "t.yaml"), /cannot evaluate/);
 });
 
@@ -182,9 +182,9 @@ test("the loop's phases are refused outright when absent", () => {
 // only one printed, and a step referring to another that did not print is an instruction
 // about nothing.
 test("the steps that start an agent each say whether it is waited for", () => {
-  const setup = phaseNamed(fresh(), "setup");
+  const spawn = phaseNamed(fresh(), "spawn");
   const by = (marker) =>
-    setup.steps.find((x) => x.skip === marker || x.run === marker);
+    spawn.steps.find((x) => x.skip === marker || x.run === marker);
   const UNATTENDED =
     "Do not wait for it. What it writes is the reviewer's, and it is not needed until " +
     "they are handed the review details.";
@@ -201,11 +201,11 @@ test("the steps that start an agent each say whether it is waited for", () => {
   assert.match(by("sweep").text, /Wait for it before going on/);
 
   // Nothing leans on a sibling having printed.
-  for (const step of setup.steps) {
+  for (const step of spawn.steps) {
     assert.doesNotMatch(
       step.text,
       /\b(the (step|agents) (above|below)|spawned above)\b/,
-      `a setup step refers to another: ${step.text.slice(0, 60)}`
+      `a spawn step refers to another: ${step.text.slice(0, 60)}`
     );
   }
 });
@@ -217,7 +217,7 @@ test("a phase declares the kind of answer its entries take", () => {
       .llmPhases()
       .phases.map((p) => [p.name, p.answer, p.verbs.length]),
     [
-      ["setup", "hints", 0],
+      ["spawn", "hints", 0],
       ["verify", "verdict", 2],
       ["settle", "verdict", 3],
       ["ask", "words", 0],
@@ -247,7 +247,7 @@ test("a phase declares the kind of answer its entries take", () => {
     /answers with `verdict` but accepts `` - only a `verdict` phase names verbs/
   );
 
-  for (const name of ["ask", "setup"]) {
+  for (const name of ["ask", "spawn"]) {
     const stray = fresh();
     phaseNamed(stray, name).verbs = ["reported"];
     assert.throws(

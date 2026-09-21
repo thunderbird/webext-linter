@@ -77,7 +77,7 @@ export function stepsOf(phase, { skip = [], sca = false, sweep = false } = {}) {
 /**
  * What a phase has to do this pass: the steps that survive, and the items still open in it.
  *
- * Both halves matter, because either alone is work. `setup` in an XPI review with no sweep
+ * Both halves matter, because either alone is work. `spawn` in an XPI review with no sweep
  * has one step and no items - an agent to start, nothing to fill in - and a phase whose
  * items are all settled has neither and is skipped.
  * @param {{name: string, steps: object[]}} phase
@@ -132,12 +132,12 @@ export function nextPhase(phases, ordered, state, run) {
       continue;
     }
     // A phase exists to settle ENTRIES, so with none there is nothing to issue it for -
-    // whatever its steps would otherwise say. `setup` is the exception and is one by
+    // whatever its steps would otherwise say. `spawn` is the exception and is one by
     // nature: its work is starting the agents the review needs, it has no entries at all,
     // and it is issued ONCE, because a second pass would spawn every one of them again.
     // Its steps are all optional, so a run that starts no agent reaches it with none and
     // never gets here - the check above has already passed it over.
-    if (phase.name === "setup") {
+    if (phase.name === "spawn") {
       if (!issued.has(phase.name)) {
         return { phase, steps, items };
       }
@@ -169,9 +169,9 @@ export function nextPhase(phases, ordered, state, run) {
  * @returns {import("./order.js").OrderedItem[]}
  */
 export function openIn(phaseName, ordered, state, { skip = [] } = {}) {
-  // The setup phase asks about no ITEM: what it hands over is the sweep's own rows.
+  // The spawn phase asks about no ITEM: what it hands over is the sweep's own rows.
   if (
-    phaseName === "setup" ||
+    phaseName === "spawn" ||
     (phaseName === "ask" && skip.includes("manual"))
   ) {
     return [];

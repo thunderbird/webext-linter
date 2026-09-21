@@ -109,7 +109,7 @@ export function readHandback(file) {
  *     told it
  *   - an answer of the wrong shape for what the phase asks
  *
- * `keyOf` differs by phase because the setup phase's rows are keyed by the check they
+ * `keyOf` differs by phase because the spawn phase's rows are keyed by the check they
  * answer: a sweep takes no verdict, produces cases rather than being one, and so must not
  * consume an index from a sequence it is not in.
  * @param {object[]} handed  What came back.
@@ -293,7 +293,7 @@ function offeredBy(item, phase) {
 }
 
 /**
- * The setup phase's rows: one per check that declared a sweep instruction.
+ * The spawn phase's rows: one per check that declared a sweep instruction.
  *
  * Keyed by `check` and carrying no index, because a sweep takes no verdict and produces
  * cases rather than being one - an index would consume a number from a sequence it is not
