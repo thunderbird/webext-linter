@@ -71,9 +71,9 @@ const SEV_COLOR = {
  *   run extracted it into (src/addon/load.js), or the submission itself when it already
  *   was a folder. Always set, for every review: unlike summaryFile/buildFile below, this
  *   is not conditional on how the review is run.
- * @property {string} addonId  The add-on's own id (browser_specific_settings.gecko.id,
- *   or its name, or "addon" - src/report/items.js addonIdOf), for a reader who wants to
- *   know WHICH add-on without opening the package. Always set, alongside xpiRoot.
+ * @property {string} xpiFile  What was submitted, by name and not by path - the .xpi as
+ *   ATN named it, or the folder's name where the submission arrived unpacked. It is what
+ *   a reviewer recognises the submission by. Always set, alongside xpiRoot.
  * @property {string} [scaRoot]  SCA review: the source root the run was given
  *   (--sca-root), resolved.
  * @property {string} [scaSource]  SCA review: the add-on's own code root within that
@@ -503,8 +503,8 @@ export function packageLines(meta, schemaCache) {
  *
  * An SCA review spans TWO artifacts and the reader has to know which is which: the report
  * labels every locus [XPI]/[SCA], and the block names the artifacts behind those labels -
- * the shipped add-on as ADDON_ID (which add-on) and XPI_ROOT (where its files can be READ,
- * whether it was submitted packed or as an unpacked folder), and the [SCA] side as the
+ * the shipped add-on as XPI_FILE (what was submitted, by name) and XPI_ROOT (where its
+ * files can be READ, packed or not), and the [SCA] side as the
  * values the run was GIVEN: SCA_ROOT, SCA_SOURCE, and SCA_EXP_SOURCE when one was named.
  * Each stands on its own line rather than being composed into one path, because each is a
  * value its reader hands back - to this tool as a flag, or to an agent as a folder to read.
@@ -517,12 +517,12 @@ export function headerLines(meta) {
   // The pipeline prints this section AFTER runChecks, so every value here names
   // something the review has already read.
   //
-  // ADDON_ID and XPI_ROOT, not XPI: which add-on, and where it can be read on disk, are
-  // more useful to a reader than the submitted file's own path - and XPI_ROOT is where
-  // this run actually put it (extracted, or the submission's own folder), so a bare XPI
-  // row would name a file nothing here still treats as the readable copy.
+  // XPI_FILE and XPI_ROOT, not one XPI path: what was submitted, said the way a reviewer
+  // says it, and where this run put it so it can be READ. A single path row answered
+  // neither question well - it named a file nothing reads any more, in a spelling nobody
+  // repeats back.
   const values = [
-    ["ADDON_ID", meta.addonId],
+    ["XPI_FILE", meta.xpiFile],
     ["XPI_ROOT", meta.xpiRoot],
   ];
   if (meta.scaRoot) {
@@ -581,15 +581,15 @@ function schemaLine(meta) {
  * named here is one this tool chose, and a timestamped string is not what a reader wants
  * to click - what matters about it is what it IS.
  *
- * ADDON_ID is the one row with no link: it names which add-on, not a location, so there is
- * nothing here for a client to open.
+ * XPI_FILE is the one row with no link: it names what was submitted, not a location, so
+ * there is nothing here for a client to open.
  * @param {ReviewMeta} meta
  * @returns {string[]}
  */
 export function detailLinkLines(meta) {
   const rows = [];
-  if (meta.addonId) {
-    rows.push(["ADDON_ID", null, meta.addonId]);
+  if (meta.xpiFile) {
+    rows.push(["XPI_FILE", null, meta.xpiFile]);
   }
   if (meta.xpiRoot) {
     rows.push(["XPI_ROOT", "extracted addon", meta.xpiRoot]);

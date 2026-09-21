@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/inline-script-code",
     "xpiRoot": "<root>/tests/addons/inline-script-code/",
-    "addonId": "Inline Script Sample",
+    "xpiFile": "inline-script-code",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

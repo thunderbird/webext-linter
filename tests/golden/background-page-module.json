@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/background-page-module",
     "xpiRoot": "<root>/tests/addons/background-page-module/",
-    "addonId": "Background Page Module Demo",
+    "xpiFile": "background-page-module",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

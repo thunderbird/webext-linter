@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-injected",
     "xpiRoot": "<root>/tests/addons/experiment-injected/",
-    "addonId": "Experiment Injected",
+    "xpiFile": "experiment-injected",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

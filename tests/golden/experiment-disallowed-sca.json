@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-disallowed-sca/xpi",
     "xpiRoot": "<root>/tests/addons/experiment-disallowed-sca/xpi/",
-    "addonId": "Experiment Disallowed SCA",
+    "xpiFile": "xpi",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

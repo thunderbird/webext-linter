@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-key-ok",
     "xpiRoot": "<root>/tests/addons/manifest-key-ok/",
-    "addonId": "Manifest Key OK",
+    "xpiFile": "manifest-key-ok",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

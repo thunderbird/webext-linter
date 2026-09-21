@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-modified-allowed",
     "xpiRoot": "<root>/tests/addons/experiment-modified-allowed/",
-    "addonId": "Demo User",
+    "xpiFile": "experiment-modified-allowed",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

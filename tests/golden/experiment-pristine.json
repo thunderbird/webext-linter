@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-pristine",
     "xpiRoot": "<root>/tests/addons/experiment-pristine/",
-    "addonId": "Demo User",
+    "xpiFile": "experiment-pristine",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

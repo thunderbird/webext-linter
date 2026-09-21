@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/unknown-api",
     "xpiRoot": "<root>/tests/addons/unknown-api/",
-    "addonId": "Unknown API",
+    "xpiFile": "unknown-api",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

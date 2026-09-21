@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-version-mismatch",
     "xpiRoot": "<root>/tests/addons/manifest-version-mismatch/",
-    "addonId": "Manifest Version Mismatch",
+    "xpiFile": "manifest-version-mismatch",
     "reviewed": true,
     "schemaSource": "cache:release-mv2",
     "schemaBranch": "release-mv2",

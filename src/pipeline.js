@@ -60,7 +60,7 @@ import { resolveHolds } from "./report/finding.js";
 import { STATE_VERSION } from "./report/state.js";
 import { issue } from "./report/loop.js";
 import { headerLines, loopPromptLines, packageLines } from "./report/format.js";
-import { reviewFilePaths, addonIdOf } from "./report/items.js";
+import { reviewFilePaths } from "./report/items.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import {
   verifyVendor,
@@ -671,9 +671,11 @@ export async function runPipeline(opts) {
         // Always present: unlike the LLM-only files below, nothing here is conditional on
         // how this review is being run.
         xpiRoot,
-        // The add-on's own id (or name, or "addon" - see addonIdOf), for a reader who wants
-        // to know WHICH add-on without opening the package.
-        addonId: addonIdOf(xpiAddon),
+        // What was submitted, by NAME rather than by path: an .xpi arrives from ATN named
+        // for the add-on and its version, which is what a reviewer recognises it by and
+        // what they say back when they talk about it. The folder's name where the
+        // submission was already unpacked, which is the same thing said the same way.
+        xpiFile: path.basename(addonPath),
         // Named iff the readable source is what was reviewed: `scaSource` is set by
         // `target-source`, which runs only then. meta names the artifacts this review
         // READ, so the step that loaded one is what decides whether it appears here.

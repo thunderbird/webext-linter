@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/debugger-runtime-condition",
     "xpiRoot": "<root>/tests/addons/debugger-runtime-condition/",
-    "addonId": "debugger-runtime-condition@example.com",
+    "xpiFile": "debugger-runtime-condition",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

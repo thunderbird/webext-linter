@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/missing-manifest-key",
     "xpiRoot": "<root>/tests/addons/missing-manifest-key/",
-    "addonId": "Missing Manifest Keys",
+    "xpiFile": "missing-manifest-key",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

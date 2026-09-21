@@ -66,7 +66,7 @@ function review(
         meta: {
           xpi: `${dir}/a.xpi`,
           xpiRoot: `${dir}/a.xpi.extracted/`,
-          addonId: "a@example.com",
+          xpiFile: "a.xpi",
         },
         mode: "xpi",
       },
@@ -676,7 +676,7 @@ test("every combination of the skips issues exactly the phases it should", () =>
       // against. The heading above it is the agent's to write, so it is not in here.
       assert.match(
         details,
-        /^\* ADDON_ID: /m,
+        /^\* XPI_FILE: /m,
         `${where}: the report hands it over`
       );
       assert.match(

@@ -194,7 +194,7 @@ export function reviewFilePaths(addon, xpiPath) {
  * @param {import("../addon/load.js").Addon} addon
  * @returns {string}
  */
-export function addonIdOf(addon) {
+function addonIdOf(addon) {
   const m = addon?.manifest;
   return (
     m?.browser_specific_settings?.gecko?.id ??

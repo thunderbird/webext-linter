@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/permission-escalation-sca/xpi",
     "xpiRoot": "<root>/tests/addons/permission-escalation-sca/xpi/",
-    "addonId": "Permission escalation (SCA)",
+    "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/permission-escalation-sca/src",
     "scaSource": "<root>/tests/addons/permission-escalation-sca/src",
     "reviewed": true,

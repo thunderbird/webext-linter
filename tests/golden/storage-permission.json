@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/storage-permission",
     "xpiRoot": "<root>/tests/addons/storage-permission/",
-    "addonId": "Storage Permission",
+    "xpiFile": "storage-permission",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

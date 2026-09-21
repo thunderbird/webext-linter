@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/banned-library",
     "xpiRoot": "<root>/tests/addons/banned-library/",
-    "addonId": "Banned Library",
+    "xpiFile": "banned-library",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

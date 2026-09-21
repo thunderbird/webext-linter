@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/permission-escalation-xpi",
     "xpiRoot": "<root>/tests/addons/permission-escalation-xpi/",
-    "addonId": "Permission escalation (XPI)",
+    "xpiFile": "permission-escalation-xpi",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

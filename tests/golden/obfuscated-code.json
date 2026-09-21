@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/obfuscated-code",
     "xpiRoot": "<root>/tests/addons/obfuscated-code/",
-    "addonId": "Obfuscated Code Demo",
+    "xpiFile": "obfuscated-code",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

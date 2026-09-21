@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/vendor-folder-unverifiable",
     "xpiRoot": "<root>/tests/addons/vendor-folder-unverifiable/",
-    "addonId": "Folder Vendor Sample",
+    "xpiFile": "vendor-folder-unverifiable",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

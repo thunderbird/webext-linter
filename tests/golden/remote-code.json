@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/remote-code",
     "xpiRoot": "<root>/tests/addons/remote-code/",
-    "addonId": "Remote Code",
+    "xpiFile": "remote-code",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

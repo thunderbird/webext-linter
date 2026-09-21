@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/optional-permission",
     "xpiRoot": "<root>/tests/addons/optional-permission/",
-    "addonId": "Optional Permission",
+    "xpiFile": "optional-permission",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

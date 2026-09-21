@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/strict-max-version-api",
     "xpiRoot": "<root>/tests/addons/strict-max-version-api/",
-    "addonId": "Strict Max Too New",
+    "xpiFile": "strict-max-version-api",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

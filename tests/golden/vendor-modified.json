@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/vendor-modified",
     "xpiRoot": "<root>/tests/addons/vendor-modified/",
-    "addonId": "Modified vendored library",
+    "xpiFile": "vendor-modified",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

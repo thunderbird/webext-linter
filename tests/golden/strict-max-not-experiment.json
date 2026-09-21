@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/strict-max-not-experiment",
     "xpiRoot": "<root>/tests/addons/strict-max-not-experiment/",
-    "addonId": "Strict Max Not Experiment",
+    "xpiFile": "strict-max-not-experiment",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

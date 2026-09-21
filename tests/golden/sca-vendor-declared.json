@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/sca-vendor-declared/xpi",
     "xpiRoot": "<root>/tests/addons/sca-vendor-declared/xpi/",
-    "addonId": "SCA Vendor Declared",
+    "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-vendor-declared/src",
     "scaSource": "<root>/tests/addons/sca-vendor-declared/src",
     "reviewed": true,

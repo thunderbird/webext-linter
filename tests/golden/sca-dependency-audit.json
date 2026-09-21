@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/sca-dependency-audit/xpi",
     "xpiRoot": "<root>/tests/addons/sca-dependency-audit/xpi/",
-    "addonId": "SCA dependency audit",
+    "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-dependency-audit/src",
     "scaSource": "<root>/tests/addons/sca-dependency-audit/src",
     "reviewed": true,

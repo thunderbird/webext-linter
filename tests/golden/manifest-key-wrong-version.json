@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-key-wrong-version",
     "xpiRoot": "<root>/tests/addons/manifest-key-wrong-version/",
-    "addonId": "Manifest Key Wrong-Version",
+    "xpiFile": "manifest-key-wrong-version",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

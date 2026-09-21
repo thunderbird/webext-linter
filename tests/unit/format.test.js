@@ -1487,7 +1487,7 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
     manifestVersion: 3,
     xpi: "/x/a.xpi",
     xpiRoot: "/x/a.xpi.extracted/",
-    addonId: "a@example.com",
+    xpiFile: "a.xpi",
   };
   const head = ["", "── Review Details ──", ""];
   const schema = [
@@ -1503,8 +1503,8 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
     }),
     [
       ...head,
-      "  ADDON_ID",
-      "    a@example.com",
+      "  XPI_FILE",
+      "    a.xpi",
       "  XPI_ROOT",
       "    /x/a.xpi.extracted/",
       "  SCA_ROOT",
@@ -1520,8 +1520,8 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
   );
   assert.deepEqual(headerLines(base), [
     ...head,
-    "  ADDON_ID",
-    "    a@example.com",
+    "  XPI_FILE",
+    "    a.xpi",
     "  XPI_ROOT",
     "    /x/a.xpi.extracted/",
     ...schema,
@@ -1538,14 +1538,14 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
 });
 
 // The LLM-facing twin of the block above: links a client can open, not a terminal's
-// aligned paths. ADDON_ID names WHICH add-on rather than a location, so it is the one row
+// aligned paths. XPI_FILE names WHAT was submitted rather than a location, so it is the one row
 // with no link at all - text on its own line, like every other value here.
-test("detailLinkLines links every location but ADDON_ID", () => {
+test("detailLinkLines links every location but XPI_FILE", () => {
   const base = {
     schemaBranch: "release-mv3",
     applicationVersion: "155.0",
     manifestVersion: 3,
-    addonId: "a@example.com",
+    xpiFile: "a.xpi",
     xpiRoot: "/x/a.xpi.extracted/",
   };
   const lines = detailLinkLines({
@@ -1556,7 +1556,7 @@ test("detailLinkLines links every location but ADDON_ID", () => {
     buildFile: "/x/a.build.md",
   });
   assert.deepEqual(lines, [
-    "* ADDON_ID: a@example.com",
+    "* XPI_FILE: a.xpi",
     "* XPI_ROOT: [extracted addon](/x/a.xpi.extracted/)",
     "* SCA_ROOT: [source archive](/x/src)",
     "* SCA_SOURCE: [add-on source](/x/src/addon)",
@@ -1565,14 +1565,14 @@ test("detailLinkLines links every location but ADDON_ID", () => {
     "",
     "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
   ]);
-  // No ADDON_ID, no XPI_ROOT: an artifact-only meta with neither prints neither row - both
+  // No XPI_FILE, no XPI_ROOT: an artifact-only meta with neither prints neither row - both
   // are conditional like every other row here, not a fixed preamble.
   assert.deepEqual(detailLinkLines(base).slice(0, 2), [
-    "* ADDON_ID: a@example.com",
+    "* XPI_FILE: a.xpi",
     "* XPI_ROOT: [extracted addon](/x/a.xpi.extracted/)",
   ]);
   assert.deepEqual(
-    detailLinkLines({ ...base, addonId: undefined }).slice(0, 1),
+    detailLinkLines({ ...base, xpiFile: undefined }).slice(0, 1),
     ["* XPI_ROOT: [extracted addon](/x/a.xpi.extracted/)"]
   );
 });

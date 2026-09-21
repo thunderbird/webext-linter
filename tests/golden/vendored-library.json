@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/vendored-library",
     "xpiRoot": "<root>/tests/addons/vendored-library/",
-    "addonId": "Vendored Library Demo",
+    "xpiFile": "vendored-library",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

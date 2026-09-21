@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/vendor-vulnerable",
     "xpiRoot": "<root>/tests/addons/vendor-vulnerable/",
-    "addonId": "Vulnerable vendored library",
+    "xpiFile": "vendor-vulnerable",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

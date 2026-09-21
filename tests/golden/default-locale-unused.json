@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/default-locale-unused",
     "xpiRoot": "<root>/tests/addons/default-locale-unused/",
-    "addonId": "Default Locale Unused Demo",
+    "xpiFile": "default-locale-unused",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

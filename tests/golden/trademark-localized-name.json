@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/trademark-localized-name",
     "xpiRoot": "<root>/tests/addons/trademark-localized-name/",
-    "addonId": "__MSG_extName__",
+    "xpiFile": "trademark-localized-name",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

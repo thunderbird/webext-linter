@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-shadow",
     "xpiRoot": "<root>/tests/addons/experiment-shadow/",
-    "addonId": "Shadow Experiment",
+    "xpiFile": "experiment-shadow",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

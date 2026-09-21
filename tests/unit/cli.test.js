@@ -335,7 +335,7 @@ test("a plain review of a packed .xpi extracts it beside the file", () => {
   );
   // The terminal header names which add-on and where to read it, in place of the raw
   // .xpi path.
-  assert.equal(headerValue(r.stdout, "ADDON_ID"), "x");
+  assert.equal(headerValue(r.stdout, "XPI_FILE"), "addon.xpi");
   assert.equal(headerValue(r.stdout, "XPI_ROOT"), `${extracted}${path.sep}`);
 
   // Reviewed a second time: a fresh, timestamp-suffixed extraction, not a silent reuse

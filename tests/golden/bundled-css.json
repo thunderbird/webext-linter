@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/bundled-css",
     "xpiRoot": "<root>/tests/addons/bundled-css/",
-    "addonId": "Bundled CSS",
+    "xpiFile": "bundled-css",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

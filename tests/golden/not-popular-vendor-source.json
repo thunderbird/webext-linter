@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/not-popular-vendor-source",
     "xpiRoot": "<root>/tests/addons/not-popular-vendor-source/",
-    "addonId": "Not-popular vendor source",
+    "xpiFile": "not-popular-vendor-source",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

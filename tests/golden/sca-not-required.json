@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/sca-not-required/xpi",
     "xpiRoot": "<root>/tests/addons/sca-not-required/xpi/",
-    "addonId": "SCA Not Required",
+    "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-not-required/src",
     "scaSource": "<root>/tests/addons/sca-not-required/src",
     "reviewed": true,

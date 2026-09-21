@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/eval-non-webext",
     "xpiRoot": "<root>/tests/addons/eval-non-webext/",
-    "addonId": "Eval Outside WebExtension",
+    "xpiFile": "eval-non-webext",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

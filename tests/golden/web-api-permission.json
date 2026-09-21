@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/web-api-permission",
     "xpiRoot": "<root>/tests/addons/web-api-permission/",
-    "addonId": "Web API Permission",
+    "xpiFile": "web-api-permission",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

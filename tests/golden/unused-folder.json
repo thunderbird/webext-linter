@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/unused-folder",
     "xpiRoot": "<root>/tests/addons/unused-folder/",
-    "addonId": "Unused folder",
+    "xpiFile": "unused-folder",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

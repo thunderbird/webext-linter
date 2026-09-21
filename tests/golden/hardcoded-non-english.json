@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/hardcoded-non-english",
     "xpiRoot": "<root>/tests/addons/hardcoded-non-english/",
-    "addonId": "Wetterbericht",
+    "xpiFile": "hardcoded-non-english",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

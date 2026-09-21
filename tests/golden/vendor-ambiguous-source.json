@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/vendor-ambiguous-source",
     "xpiRoot": "<root>/tests/addons/vendor-ambiguous-source/",
-    "addonId": "Vendor Ambiguous Source Demo",
+    "xpiFile": "vendor-ambiguous-source",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

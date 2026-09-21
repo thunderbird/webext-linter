@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/optional-chaining-exfil",
     "xpiRoot": "<root>/tests/addons/optional-chaining-exfil/",
-    "addonId": "Optional Chaining Exfil",
+    "xpiFile": "optional-chaining-exfil",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/invalid-manifest",
     "xpiRoot": "<root>/tests/addons/invalid-manifest/",
-    "addonId": "Invalid Manifest",
+    "xpiFile": "invalid-manifest",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

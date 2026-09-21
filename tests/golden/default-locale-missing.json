@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/default-locale-missing",
     "xpiRoot": "<root>/tests/addons/default-locale-missing/",
-    "addonId": "Default Locale Missing Demo",
+    "xpiFile": "default-locale-missing",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

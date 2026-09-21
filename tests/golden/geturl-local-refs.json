@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/geturl-local-refs",
     "xpiRoot": "<root>/tests/addons/geturl-local-refs/",
-    "addonId": "getURL local refs",
+    "xpiFile": "geturl-local-refs",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

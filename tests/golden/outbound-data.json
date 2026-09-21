@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/outbound-data",
     "xpiRoot": "<root>/tests/addons/outbound-data/",
-    "addonId": "Outbound Data Demo",
+    "xpiFile": "outbound-data",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

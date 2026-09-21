@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/core-symbol-webext",
     "xpiRoot": "<root>/tests/addons/core-symbol-webext/",
-    "addonId": "Core Symbol Test",
+    "xpiFile": "core-symbol-webext",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/sca-transpiled-kept/xpi",
     "xpiRoot": "<root>/tests/addons/sca-transpiled-kept/xpi/",
-    "addonId": "SCA Not Required",
+    "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-transpiled-kept/src",
     "scaSource": "<root>/tests/addons/sca-transpiled-kept/src",
     "reviewed": true,

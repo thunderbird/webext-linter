@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/cleartext-runtime-host",
     "xpiRoot": "<root>/tests/addons/cleartext-runtime-host/",
-    "addonId": "Cleartext Runtime Host",
+    "xpiFile": "cleartext-runtime-host",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

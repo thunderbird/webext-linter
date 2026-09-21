@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/trademark-unlocalized-name",
     "xpiRoot": "<root>/tests/addons/trademark-unlocalized-name/",
-    "addonId": "Thunderbird Organizer",
+    "xpiFile": "trademark-unlocalized-name",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

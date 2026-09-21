@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-disallowed",
     "xpiRoot": "<root>/tests/addons/experiment-disallowed/",
-    "addonId": "Experiment Disallowed",
+    "xpiFile": "experiment-disallowed",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

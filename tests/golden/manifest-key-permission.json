@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-key-permission",
     "xpiRoot": "<root>/tests/addons/manifest-key-permission/",
-    "addonId": "Manifest key permission",
+    "xpiFile": "manifest-key-permission",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

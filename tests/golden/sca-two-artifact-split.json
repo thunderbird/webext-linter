@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/sca-two-artifact-split/xpi",
     "xpiRoot": "<root>/tests/addons/sca-two-artifact-split/xpi/",
-    "addonId": "SCA Two-Pass Demo",
+    "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-two-artifact-split/src",
     "scaSource": "<root>/tests/addons/sca-two-artifact-split/src",
     "reviewed": true,

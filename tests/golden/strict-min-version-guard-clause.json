@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/strict-min-version-guard-clause",
     "xpiRoot": "<root>/tests/addons/strict-min-version-guard-clause/",
-    "addonId": "Tag Lister",
+    "xpiFile": "strict-min-version-guard-clause",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

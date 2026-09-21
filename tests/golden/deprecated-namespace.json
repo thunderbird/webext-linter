@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/deprecated-namespace",
     "xpiRoot": "<root>/tests/addons/deprecated-namespace/",
-    "addonId": "Deprecated Namespace",
+    "xpiFile": "deprecated-namespace",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

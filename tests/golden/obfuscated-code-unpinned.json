@@ -3,7 +3,7 @@
     "action": "review",
     "xpi": "<root>/tests/addons/obfuscated-code-unpinned",
     "xpiRoot": "<root>/tests/addons/obfuscated-code-unpinned/",
-    "addonId": "Unpinned Obfuscation Signal Demo",
+    "xpiFile": "obfuscated-code-unpinned",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
