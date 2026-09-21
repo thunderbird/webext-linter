@@ -60,7 +60,7 @@ import { resolveHolds } from "./report/finding.js";
 import { orderReview } from "./report/order.js";
 import { earlyExitOf, withoutQuestions } from "./report/early-exit.js";
 import { STATE_VERSION } from "./report/state.js";
-import { issue } from "./report/loop.js";
+import { issue, reviewDetails } from "./report/loop.js";
 import { headerLines, loopPromptLines, packageLines } from "./report/format.js";
 import { reviewFilePaths } from "./report/items.js";
 import { resolveVendor } from "./vendor/resolve.js";
@@ -1092,6 +1092,10 @@ export async function runPipeline(opts) {
           build: buildPath ?? "",
           scaRoot: state.paths.scaRoot ?? "",
           package: state.paths.package,
+          // Named because `ask` can be the FIRST phase issued - a review with no findings
+          // and nothing to settle opens there - and that is the phase that hands the
+          // block over. A run whose first phase does not name it passes it unused.
+          details: reviewDetails(state),
         },
         // The preamble prints once, and this is the run that is once.
         true

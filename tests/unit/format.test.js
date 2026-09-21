@@ -1616,3 +1616,33 @@ test("collapse:subject keeps a case a reviewer wrote about", () => {
   assert.match(issues, /^ - c\.js:1 - host\.example\.com \(\+1 elsewhere\)$/m);
   assert.equal((issues.match(/^ - /gm) || []).length, 3);
 });
+
+// Both fillers substitute the values they were GIVEN, so a slot whose key nobody passed
+// is not an error to either of them: it survives into the prompt as its own literal text,
+// and the agent is told to print a block that is not there. Nothing downstream can tell
+// that from prose, which is why it is refused where the prompt is built.
+test("a prompt naming a value nothing filled is refused", () => {
+  const texts = { preamble: "P", frame: "F", handover: "H" };
+  const phase = { name: "ask", intro: "" };
+  // The two ways a value arrives fail the same way: substituted into a sentence, and
+  // handed over as a block on a paragraph of its own (BLOCK_VALUES).
+  for (const text of [
+    "the schema is {{schemaCache}}",
+    "here:\n\n{{details}}",
+  ]) {
+    assert.throws(
+      () => loopPromptLines(texts, phase, [{ text }], {}),
+      /the `ask` prompt names \{\{\w+\}\}, which nothing filled/,
+      text
+    );
+  }
+  // A value that IS passed renders, and single braces are not slots.
+  const filled = loopPromptLines(
+    texts,
+    phase,
+    [{ text: 'here:\n\n{{details}}\n\nand {"a": 1}' }],
+    { details: "the block" }
+  );
+  assert.ok(filled.some((l) => l.includes("the block")));
+  assert.ok(filled.some((l) => l.includes('{"a": 1}')));
+});

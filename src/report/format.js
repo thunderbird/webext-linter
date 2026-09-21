@@ -321,7 +321,38 @@ export function loopPromptLines(texts, phase, steps, values, first = false) {
   all.forEach((text, i) => {
     lines.push("", ...stepLines(i + 1, fill(text), blocks));
   });
+  assertFilled(lines, phase.name);
   return lines;
+}
+
+/**
+ * Refuse a prompt that still names a value nobody supplied.
+ *
+ * Both fillers substitute the values they were GIVEN, so a slot whose key is missing is
+ * not an error to either of them - it survives into the prompt as its own literal text,
+ * and the agent is told to print a block that is not there. Nothing downstream can tell
+ * that from prose.
+ *
+ * Checked on the rendered lines rather than per text, because the two ways a value
+ * arrives - substituted into a sentence, or handed over as a block - fail the same way
+ * and a caller forgetting a key does not know which kind it forgot.
+ * @param {string[]} lines  The rendered prompt.
+ * @param {string} phase  Named in the error: which prompt was being built.
+ * @returns {void}
+ */
+function assertFilled(lines, phase) {
+  const unfilled = new Set();
+  for (const line of lines) {
+    for (const slot of line.match(/\{\{[A-Za-z]+\}\}/g) ?? []) {
+      unfilled.add(slot);
+    }
+  }
+  if (unfilled.size) {
+    throw new Error(
+      `the \`${phase}\` prompt names ${[...unfilled].join(", ")}, which nothing filled - ` +
+        "every value a step names has to be passed by the run that builds it"
+    );
+  }
 }
 
 /**
