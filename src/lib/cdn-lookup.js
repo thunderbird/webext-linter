@@ -167,8 +167,8 @@ export async function resolveCdnLibraries(
     // the popularity signal), so an obscure or author-published package found here
     // must not be silently accepted. Looked up fresh each run (popularity is
     // time-varying, so it is not cached with the hash hit) and offline-safe (an
-    // unanswered lookup reads as not-popular, after isPopular has spaced and
-    // retried it).
+    // unanswered lookup reads as not-popular, after the transport has spaced and
+    // retried it - src/util/net.js).
     //
     // The run's memo is shared with the vendor step rather than kept here: both ask
     // about packages, per FILE, against a host that refuses a burst - so what

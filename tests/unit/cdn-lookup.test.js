@@ -13,8 +13,7 @@ import path from "node:path";
 import { classifyBundled } from "../../src/lib/bundled.js";
 import { VERDICT } from "../../src/lib/enum.js";
 import { resolveCdnLibraries, cdnUrl } from "../../src/lib/cdn-lookup.js";
-import { NetworkGoneError } from "../../src/util/net.js";
-import { setPopularityPacing } from "../../src/vendor/verify.js";
+import { NetworkGoneError, setNetworkPacing } from "../../src/util/net.js";
 import findLibOnCdn from "../../src/checks/rules/find-lib-on-cdn.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
@@ -72,9 +71,9 @@ function classify(addon) {
   return addon;
 }
 
-// The popularity gate spaces real requests against a host's budget; every request
+// The rate gate spaces real requests against a host's budget; every request
 // here is answered by `netFor`, so waiting would only cost the suite real seconds.
-setPopularityPacing({ intervalMs: 0, backoffMs: 0 });
+setNetworkPacing({ intervalMs: 0, backoffMs: 0 });
 
 // The identifier asks about popularity per FILE, and the vendor step asks per
 // DECLARATION - against the same host, which answers a burst by refusing. Sharing

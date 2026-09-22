@@ -5,7 +5,7 @@
 
 import { debug } from "./log.js";
 import { writeFileAtomic } from "./atomic.js";
-import { fetchWithTimeout } from "./net.js";
+import { fetchWithTimeout, withHttpStatus } from "./net.js";
 
 /**
  * The codeload zip URL for a whole GitHub branch (one request for the tree).
@@ -30,7 +30,10 @@ export function codeloadZipUrl(repo, branch) {
 export async function downloadToCache(url, dest, describeError) {
   const buf = await fetchWithTimeout(url, async (res) => {
     if (!res.ok) {
-      throw new Error(describeError(res));
+      // The caller's wording says WHICH download failed, which is the useful half;
+      // the status is stamped on so the rate gate can tell a refusal from an answer
+      // and retry it (src/util/net.js).
+      throw withHttpStatus(new Error(describeError(res)), res);
     }
     return Buffer.from(await res.arrayBuffer());
   });

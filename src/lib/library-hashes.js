@@ -14,7 +14,7 @@ import path from "node:path";
 
 import { debug } from "../util/log.js";
 import { writeFileAtomic } from "../util/atomic.js";
-import { fetchWithTimeout } from "../util/net.js";
+import { fetchWithTimeout, withHttpStatus } from "../util/net.js";
 import { LIBRARY_HASHES_URL, LIBRARY_HASHES_CACHE } from "../config.js";
 
 /**
@@ -63,8 +63,14 @@ export async function resolveLibraryHashes({
   debug(`Downloading library hashes from ${url} ...`);
   const text = await fetchWithTimeout(url, async (res) => {
     if (!res.ok) {
-      throw new Error(
-        `Failed to download library hashes: HTTP ${res.status} ${res.statusText} (${url}).`
+      // Stamped with the status so the rate gate can tell a refusal from an answer
+      // and retry it (src/util/net.js), without losing the wording that says what
+      // failed.
+      throw withHttpStatus(
+        new Error(
+          `Failed to download library hashes: HTTP ${res.status} ${res.statusText} (${url}).`
+        ),
+        res
       );
     }
     return res.text();

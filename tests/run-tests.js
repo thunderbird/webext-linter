@@ -17,15 +17,15 @@ import { fileURLToPath } from "node:url";
 import { runPipeline } from "../src/pipeline.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { formatReview } from "../src/report/format.js";
-import { setPopularityPacing } from "../src/vendor/verify.js";
+import { setNetworkPacing } from "../src/util/net.js";
 import { fixtureCacheOpts } from "./seed-caches.js";
 import { makeTgz } from "./unit/tarball-fixture.js";
 
-// The popularity lookups pace themselves against a live host's request budget
-// (src/config.js VENDOR_POPULARITY_MIN_INTERVAL_MS). Every request here is answered
+// Every request paces itself against a live host's request budget
+// (src/config.js NETWORK_MIN_INTERVAL_MS). Every request here is answered
 // from a fixture map, so there is no budget to respect and no refusal to back off
-// from - only real seconds to lose, once per fixture that reaches a lookup.
-setPopularityPacing({ intervalMs: 0, backoffMs: 0 });
+// from - only real seconds to lose, on every request every fixture makes.
+setNetworkPacing({ intervalMs: 0, backoffMs: 0 });
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..");

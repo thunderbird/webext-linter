@@ -161,28 +161,70 @@ export const VENDOR_NPM_DOWNLOADS_API =
 export const VENDOR_GITHUB_REPOS_API = "https://api.github.com/repos/";
 
 /**
- * The smallest gap between two popularity requests to the same host.
+ * The smallest gap between two requests to the same host, for every request the tool
+ * makes through its one transport (src/util/net.js). The sole exception is that
+ * transport's own control-point probe, which runs from inside a failure to decide
+ * whether the network is gone and must not be held back from saying so.
  *
  * This is OUR restraint, not theirs: api.npmjs.org enforces a per-IP budget that
  * a burst trips within about a dozen requests, and a refusal is indistinguishable
  * from a reading - it comes back as "not widely used" and demotes the library. An
  * add-on vendoring many packages was therefore rate-limiting itself into false
- * findings. Measured against the live endpoint: 40 consecutive requests 250ms
- * apart were never refused, so this doubles that margin. Requests are already
- * sequential, so the gate only has to delay the next one.
+ * findings. Measured against THAT endpoint: 40 consecutive requests 250ms apart
+ * were never refused, so this doubles that margin, and the same figure is applied
+ * to every host rather than guessing a budget per host nobody has measured.
+ *
+ * Requests are sequential, so the gate only has to delay the next one - and a gap
+ * is therefore paid rather than overlapped, which is what makes the number visible
+ * in a review's wall clock.
  */
-export const VENDOR_POPULARITY_MIN_INTERVAL_MS = 500;
+export const NETWORK_MIN_INTERVAL_MS = 500;
 
 /**
- * How many times a REFUSED popularity request is retried before its answer is
- * given up on. A refusal says nothing about the package, so the reading is worth
- * waiting for; an answer (including a 404, which is npm's real "no download data"
- * response) is never retried. Backoff doubles from
- * VENDOR_POPULARITY_BACKOFF_MS, and a Retry-After header wins when it names a
- * delay - the endpoint currently sends "retry-after: 0", which does not.
+ * How many times a refusal that NAMES NO TIME is retried, and the base its waiting
+ * doubles from.
+ *
+ * These govern the guessing half of the gate, and only it. A refusal (429, 403, 408,
+ * any 5xx) says nothing about what was asked, so the answer is worth waiting for - but
+ * a host that does not say when to come back has told us nothing about when either, so
+ * we escalate blindly and give up after a bounded number of tries. api.npmjs.org is
+ * this case: it answers every 429 with "retry-after: 0", which names nothing.
+ *
+ * A host that DOES name a time has no count to configure - it is asked once more, when
+ * it said (src/util/net.js). An answer is never retried at all, including a 404, which
+ * is npm's real "no download data" response and what the offline fixture harness serves
+ * for every URL a fixture did not declare. Neither is a TIMEOUT: a host that does not
+ * respond is not a host declining, and retrying it multiplies the slowest failure the
+ * tool has.
  */
-export const VENDOR_POPULARITY_RETRIES = 3;
-export const VENDOR_POPULARITY_BACKOFF_MS = 1000;
+export const NETWORK_RETRIES = 3;
+export const NETWORK_BACKOFF_MS = 1000;
+
+/**
+ * The longest we will wait, however long a host asks for.
+ *
+ * A named Retry-After is obeyed as given, because the host knows its own window and we
+ * do not. But "as given" has to end somewhere: a limiter naming a day is telling us to
+ * come back tomorrow, and a review is something a person is waiting on. An hour is past
+ * any transient refusal worth waiting out and short of the timer's own limit, so the
+ * wait that happens is always the wait that was asked for, up to here.
+ */
+export const NETWORK_MAX_WAIT_MS = 60 * 60 * 1000;
+
+/**
+ * How long a wait has to be before the review says out loud that it is waiting.
+ *
+ * A honoured Retry-After is however long the host asked for, which can be a minute or
+ * more. Nothing on screen for that long is indistinguishable from a hang, and the
+ * difference between the two is the whole reason the wait is acceptable - so past this
+ * the reason is printed. Below it, the review just gets on with it.
+ *
+ * It is a threshold on the WAIT, not on which path set it: the guessed backoff crosses
+ * it from its second rung on, so a host refusing without saying when is narrated too.
+ * That is deliberate - seven seconds of silence per refused package reads as a hang
+ * whether or not the host explained itself.
+ */
+export const NETWORK_ANNOUNCE_WAIT_MS = 2000;
 
 /**
  * GitHub orgs whose repos are trusted by provenance (first-party sources), so a

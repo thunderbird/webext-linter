@@ -161,8 +161,11 @@ function emit(args, show, level = FEED.SECTION, record = true) {
 
 /**
  * Narrate an informational line to the feed (stdout) - always shown (unless
- * quiet), at SECTION (column 0). Used for the run banner, which is not part of
- * the progress-gated feed.
+ * quiet), at SECTION (column 0), and not part of the progress-gated feed.
+ *
+ * The loudest channel there is, so it is kept for the few things a run must say
+ * whatever else is switched off: the banner, and the reason the gate is holding a
+ * request back when the wait is long enough to read as a hang (src/util/net.js).
  *
  * @param {...unknown} args
  */
