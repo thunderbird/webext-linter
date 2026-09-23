@@ -376,7 +376,6 @@ test("a directory submission writes nothing extra to disk", () => {
 test("a flag given no value is refused (exit 2)", () => {
   for (const [argv, flag] of [
     [["some.xpi", "--report-format="], "--report-format"],
-    [["some.xpi", "--report-out="], "--report-out"],
     [["some.xpi", "--checks-only="], "--checks-only"],
     [["some.xpi", "--cache-schema-dir="], "--cache-schema-dir"],
     [["some.xpi", "--llm-verdict="], "--llm-verdict"],
@@ -388,7 +387,7 @@ test("a flag given no value is refused (exit 2)", () => {
     assert.match(r.stderr, new RegExp(`\\${flag} needs a value`), flag);
   }
   // --help is a request for the usage text, not a run: it is answered before this.
-  assert.equal(run(["--help", "--report-out="]).code, 0);
+  assert.equal(run(["--help", "--report-format="]).code, 0);
 });
 
 // The guard asks the LOADER which folder a value names, rather than spelling the path math
@@ -512,7 +511,6 @@ test("--help is answered before every guard that judges a run", () => {
     ["--llm-skip-manual"],
     ["--sca-root="],
     ["--checks-only", "no-such-check"],
-    ["--llm-review", "--report-out", "/nope/x.txt"],
     ["some.xpi", "another.xpi"],
   ]) {
     const r = run(["--help", ...extra]);
@@ -755,41 +753,6 @@ test("JSON output is fully silent on stderr, even with --verbose", () => {
   assert.ok([0, 1].includes(r.code));
   assert.doesNotThrow(() => JSON.parse(r.stdout));
   assert.equal(r.stderr, "");
-});
-
-// --report-out is a tee, not a redirect: the report still prints to stdout, and
-// the file is a carbon copy of it.
-test("--report-out tees the report to stdout and copies it to the file", () => {
-  const addon = path.join(ROOT, "tests", "addons", "clean");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-cli-"));
-  const out = path.join(dir, "report.txt");
-  const r = run([addon, ...OFFLINE_FLAGS, "--report-out", out]);
-  assert.ok([0, 1].includes(r.code));
-  assert.match(r.stdout, /── Summary ──/); // report is on stdout, not hidden
-  assert.equal(fs.readFileSync(out, "utf8"), r.stdout); // file == screen
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-// JSON + --report-out writes a plain JSON file (no activity-feed prefix), and
-// stdout carries the same document.
-test("JSON + --report-out writes a plain JSON file", () => {
-  const addon = path.join(ROOT, "tests", "addons", "clean");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-cli-"));
-  const out = path.join(dir, "report.json");
-  const r = run([
-    addon,
-    ...OFFLINE_FLAGS,
-    "--report-format",
-    "json",
-    "--report-out",
-    out,
-  ]);
-  assert.ok([0, 1].includes(r.code));
-  const file = fs.readFileSync(out, "utf8");
-  assert.doesNotThrow(() => JSON.parse(file));
-  assert.equal(JSON.parse(file).meta.action, "review");
-  assert.deepEqual(JSON.parse(r.stdout), JSON.parse(file));
-  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // --sca-root / --sca-source flow through to the source-code submission pipeline
@@ -1325,7 +1288,7 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
 // The prompt tells its reader to run the printed command "with exactly these flags, and
 // nothing else", so the one thing worth asserting about it is that it RUNS. Every guard
 // between that command and a review - the empty-value rule, the
-// unknown check id, --report-out, the folder questions - and each of them could turn the
+// unknown check id, the folder questions - and each of them could turn the
 // handed-back command into a usage error without a single test noticing.
 test("the command --llm-sca-review prints is one the tool accepts", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-handback-"));
@@ -1401,41 +1364,6 @@ test("--llm-sca-review quotes an argument that carries whitespace", () => {
   assert.match(r.stdout, new RegExp(`\n  FOLDER\n    ${dir}\n`));
   fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(out, { recursive: true, force: true });
-});
-
-// --report-out saves the REPORT, and no run of the --llm-* round trip is one to save: two
-// print a prompt, and the third prints the settled report for the agent to hand back in
-// its own answer. ONE rule for every --llm-* flag, so there is nothing to work out per
-// flag - and no saved prompt for the command --llm-sca-review hands back to overwrite.
-test("--report-out is refused with any --llm-* flag", () => {
-  const addon = path.join(ROOT, "tests", "addons", "clean");
-  const dir = submissionFolder();
-  const out = path.join(os.tmpdir(), "wl-report-out.txt");
-
-  for (const flags of [
-    ["--llm-review"],
-    ["--llm-review", "--llm-skip-manual"],
-    ["--llm-verdict", "answers.json"],
-  ]) {
-    const r = run([addon, ...OFFLINE_FLAGS, ...flags, "--report-out", out]);
-    assert.equal(r.code, 2, flags.join(" "));
-    assert.match(
-      r.stderr,
-      /--report-out cannot be given with/,
-      flags.join(" ")
-    );
-    assert.match(r.stderr, new RegExp(flags[0]), flags.join(" "));
-  }
-
-  const sca = run([dir, "--llm-sca-review", "--report-out", out]);
-  assert.equal(sca.code, 2);
-  assert.match(
-    sca.stderr,
-    /--report-out cannot be given with --llm-sca-review/
-  );
-  assert.doesNotMatch(sca.stdout, /SCA Review Prompt/);
-  assert.ok(!fs.existsSync(out), "nothing was written");
-  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // A check id nobody can run is a bad command line whatever the run does with it - and

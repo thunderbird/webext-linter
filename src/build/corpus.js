@@ -117,7 +117,6 @@ const RUNNERS = new Set([
   "npx",
   "pnpm",
   "npm",
-  "yarn",
   "cross-env",
   "node",
   "bash",
@@ -158,7 +157,7 @@ const OPAQUE_TOOLS = new Set([
   "go",
 ]);
 
-/** npm/pnpm/yarn subcommands that are NOT a script invocation. */
+/** npm/pnpm subcommands that are NOT a script invocation. */
 const PM_SUBCOMMANDS = new Set([
   "install",
   "i",
@@ -279,7 +278,7 @@ export function selectBuildCorpus(build) {
           followShell(key, depth + 1);
         }
         return;
-      } else if (cmd === "npm" || cmd === "pnpm" || cmd === "yarn") {
+      } else if (cmd === "npm" || cmd === "pnpm") {
         const sub = args[0];
         if (sub === "run" || sub === "run-script") {
           runScript(args[1], depth + 1);

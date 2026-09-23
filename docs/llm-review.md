@@ -1,8 +1,8 @@
 # LLM review
 
 The linter can hand its review to an LLM agent instead of printing it. The agent does
-the reading a person would otherwise do — auditing each finding, settling the cases the
-scans could not, putting the rest to a reviewer — and the linter stays the one deciding
+the reading a person would otherwise do - auditing each finding, settling the cases the
+scans could not, putting the rest to a reviewer - and the linter stays the one deciding
 what is asked, in what order, and what an answer is allowed to say.
 
 This is the long-form version; the [README](../README.md) carries the summary and the
@@ -30,7 +30,7 @@ node verify.js --llm-verdict <review-file>       # ...and each pass after it
 ```
 
 The agent opens ONE file, ever: the review file the prompt names. It fills in each
-entry's empty `"answer"` and hands the same path back — the command is in the prompt.
+entry's empty `"answer"` and hands the same path back - the command is in the prompt.
 Everything the linter needs between passes is in a state file beside it that the agent is
 never pointed at, which is why `--llm-verdict` takes no add-on path: the deterministic
 review ran once, and nothing re-derives it.
@@ -51,13 +51,13 @@ entry never offered are all refusals.
 
 | Phase | What it is for | What fills its answers |
 | --- | --- | --- |
-| `spawn` | Start the sub-agents the review needs — the add-on description, the build report, the sweep — and record what the sweep found. | One row per swept check (see below) |
+| `spawn` | Start the sub-agents the review needs - the add-on description, the build report, the sweep - and record what the sweep found. | One row per swept check (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
 
-A phase is issued only when it has **work** — steps that survive their markers, or
-entries to settle — and that is also what ends the loop. So a review with no sweep never
+A phase is issued only when it has **work** - steps that survive their markers, or
+entries to settle - and that is also what ends the loop. So a review with no sweep never
 mentions one, and a review that starts no sub-agent at all skips `spawn` and opens at the
 first phase that has any. The package itself is not unpacked by any of this: the linter extracts a packed
 submission before the first prompt is printed, and every phase reads that one folder.
@@ -70,14 +70,14 @@ submission before the first prompt is printed, and every phase reads that one fo
 Some findings settle the submission on their own, and carrying on would ask someone to do
 work the review has already ruled out. The case it exists for: a source submission whose
 dependency tree carries known high or critical advisories, where the very next thing the
-loop would do is ask a reviewer to **reproduce the build** — running that tree on their own
+loop would do is ask a reviewer to **reproduce the build** - running that tree on their own
 machine, on the strength of a question the linter issued knowing better.
 
 A check declares that it stops the review by naming the reason the report gives
-(`review-early-exit:` in the registry). Today twelve do, across three reasons: the four
+(`review-early-exit:` in the registry). Today eleven do, across three reasons: the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
-names *disallowed library versions*, and the seven that decide a source submission cannot be
-built from - `unsupported-build-tool`, `sca-package-file-missing`,
+names *disallowed library versions*, and the six that decide a source submission cannot be
+built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
 `build-registry-redirect` and `build-lifecycle-hook` - name *a build that cannot be
 reproduced*. The threshold is the finding's severity, so an advisory
@@ -95,7 +95,7 @@ What a stopped review does:
 | | |
 | --- | --- |
 | The `ask` phase | is not issued. Nothing is put to a reviewer. |
-| The report | drops every to-do item a reviewer would have been **asked** — the Extended Manual Review and Standard Manual Review sections, and their tally counts. |
+| The report | drops every to-do item a reviewer would have been **asked** - the Extended Manual Review and Standard Manual Review sections, and their tally counts. |
 | | keeps both code-review sections: reading code is safe, and what it turns up is the evidence for the halt. |
 | | ends on the reason it is incomplete, one line per distinct cause. |
 | The last prompt | is a hand-over of its own, because telling an agent "the review is settled" about one that was cut short is not true. It carries the same three parts as the ordinary one. |
@@ -105,7 +105,7 @@ is where those findings are audited: an agent that **withdraws** the finding whi
 the review has removed the thing that stopped it, and the question block comes back.
 
 None of this is particular to an agent. A review run without `--llm-review` stops on the
-same terms and prints the same report — the trap is the same one with one fewer
+same terms and prints the same report - the trap is the same one with one fewer
 participant.
 
 
@@ -114,7 +114,7 @@ participant.
 What an entry's `"answer"` may say depends on WHO THE PHASE ASKS.
 
 A phase the agent settles by reading the add-on takes one of the linter's verbs:
-`verify` takes `reported` or `withdrawn`; `settle` takes `reported`, `cleared` or `ask` —
+`verify` takes `reported` or `withdrawn`; `settle` takes `reported`, `cleared` or `ask` -
 the last of which does not settle the case but sends it on to the reviewer, keeping its
 number.
 
@@ -129,7 +129,7 @@ question offered (`Clear`, `Report`, listed under the entry's `answers`), or the
 they typed instead, which report the case and carry those words with it.
 
 Those words are the one thing in the file a person writes, and they are printed on that
-case's location line — in parentheses after the location, or as the line itself when the
+case's location line - in parentheses after the location, or as the line itself when the
 case has none, where the reviewer's own line breaks are kept and each becomes an item of
 its own.
 
@@ -142,13 +142,13 @@ tells the reviewer they have (`MAX_NOTE`).
 ## The sweep
 
 Some checks scan for an enumerated set of forms, and the set cannot be finished, so each
-one declares a **`sweep-instruction:`** describing the class of code it cannot see — see
+one declares a **`sweep-instruction:`** describing the class of code it cannot see - see
 [Blind-spot sweeps](../README.md#blind-spot-sweeps) for why they exist and which checks
 declare one. Every review prints those instructions under **Standard Code Review**, for
 whoever is reading the add-on to cover by hand.
 
 Under `--llm-review` that reading is a sub-agent's. The `spawn` phase carries one row per
-swept check for what it found — an empty list where that check is clean, which is what
+swept check for what it found - an empty list where that check is clean, which is what
 separates "found nothing" from "never looked":
 
 ```json
@@ -163,8 +163,8 @@ that sweeps reads the add-on, not the linter, so it cannot know whether what it 
 something that check would have filed, escalated, or deliberately excluded. It hands back
 the location and what is there; the routing is the linter's.
 
-A sweep is a DETECTOR and nothing more. What comes back is a hint — a location that
-check's own detectors missed — and from there the case is one of that check's, handled
+A sweep is a DETECTOR and nothing more. What comes back is a hint - a location that
+check's own detectors missed - and from there the case is one of that check's, handled
 exactly as a case it found for itself:
 
 | The owning check | Where a swept result lands |
@@ -174,7 +174,7 @@ exactly as a case it found for itself:
 
 So a `sweep-instruction` says what to LOOK FOR, and is read in exactly two places: the
 request handed to the sweep agent, and the Standard Code Review list every report prints.
-It never says what confirming something means — that is the owning check's to say.
+It never says what confirming something means - that is the owning check's to say.
 
 Either way the case is deduplicated against what the deterministic pass already covered,
 as a to-do item or as a finding, so nothing downstream can tell a swept case from one a
@@ -193,7 +193,7 @@ what this review is and where to read it:
 
 | Name | What it names |
 | --- | --- |
-| `XPI_FILE` | What was submitted, by name — the .xpi as ATN named it, or the folder's own name where the submission arrived unpacked |
+| `XPI_FILE` | What was submitted, by name - the .xpi as ATN named it, or the folder's own name where the submission arrived unpacked |
 | `XPI_ROOT` | The shipped package, unpacked, ready to read |
 | `SCA_ROOT` / `SCA_SOURCE` | A source code review's source root, and the add-on's own code inside it |
 | `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
@@ -201,7 +201,7 @@ what this review is and where to read it:
 | `BUILD_PROCESS` | Where another wrote what building the add-on takes, in a source code review |
 
 The linter names those last two; it writes neither and reads neither. They are the
-reviewer's, and the agent conducting the review is told only to name them — not to open,
+reviewer's, and the agent conducting the review is told only to name them - not to open,
 read, summarise or print what the sub-agent wrote there.
 
 The block is handed over once, by whichever comes first: the `ask` phase before it asks
@@ -209,14 +209,14 @@ anything, or the finished report when nothing is ever put to a reviewer.
 
 The last pass prints the report, and the agent's own account of it, each under a heading
 of its own: **LLM decisions** (every finding it withdrew and every verdict it reached,
-with its reasons — the only part that is the agent's to write), **Summary** (the tally),
+with its reasons - the only part that is the agent's to write), **Summary** (the tally),
 and **Review report** (the text the reviewer sends to the developer, unchanged).
 
 
 ## Preparing a source code review
 
-A source code submission arrives as two files — the built `.xpi` and an archive of the
-source it was built from — and reviewing it needs three `--sca-*` arguments, two of which
+A source code submission arrives as two files - the built `.xpi` and an archive of the
+source it was built from - and reviewing it needs three `--sca-*` arguments, two of which
 nobody can write without opening that archive. `--llm-sca-review` reads the add-on
 argument as that submission folder instead of as an add-on: it does the half a program
 can do, and hands those two to a reader who can open the archive.
@@ -229,7 +229,7 @@ It reviews nothing. It names which file is the add-on and which is the source, c
 where the source archive should be extracted (`SCA_ROOT`, beside the archive and named
 after it), and asks its reader to extract it there and work out two things that only
 reading the tree can settle: which directory holds the add-on's own code
-(`<SCA_SOURCE>`), and — when Experiments are allowed — which holds the Experiment
+(`<SCA_SOURCE>`), and - when Experiments are allowed - which holds the Experiment
 implementation (`<SCA_EXP_SOURCE>`). A name in `<angle brackets>` is one of those; every
 other name is given.
 
@@ -246,11 +246,8 @@ too many formats for it to open, which is why that one extraction is the reader'
 | Option | Description |
 | --- | --- |
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Refused with `--report-format json`. |
-| `--llm-verdict <file>` | Take a phase back and hand out the next, from the review file the prompt named — or, when nothing is left to issue, print the settled report. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file beside this one. Normally run by the agent working through the review rather than by a person. |
-| `--llm-sca-review` | Read the add-on argument as a submission FOLDER — one built `.xpi` and one archive of the source it was built from — print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
+| `--llm-verdict <file>` | Take a phase back and hand out the next, from the review file the prompt named - or, when nothing is left to issue, print the settled report. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file beside this one. Normally run by the agent working through the review rather than by a person. |
+| `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
-| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer — they stay in the report, for the reviewer to work through later, unless the review stopped early, which takes them out. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
+| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review stopped early, which takes them out. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. The prompt neither spawns it nor asks for it, and the Standard Code Review section stays in the report for the reviewer to sweep by hand. |
-
-`--report-out` is refused with any `--llm-*` flag: no run of this round trip saves its
-output.

@@ -23,19 +23,32 @@
       <p>
         Four things make a lock file unusable, and all four are reported here: it
         cannot be read at all, it can be read but is not a lock file this comparison
-        recognises, it resolves nothing for a package the package.json declares, or it
-        records a different version range for one than the package.json asks for. The
+        recognises, it resolves nothing for a package the package.json declares, or the
+        version it pins for one is not a version that package.json allows. The
         first two are worded apart because a developer would check which it is: one
         will not open, the other opens perfectly well and simply is not a lock. Production, build and optional
         dependencies are all checked, because the reviewer installs all of them.
         A dependency pointing at git, a URL, a file or a workspace is left
-        alone: whether such a source is allowed is a separate question. The last
-        case usually means the package.json was edited without running the
-        install again, and it costs more than a failed build, because the
-        vulnerability audit would otherwise clear the version the lock file
-        names rather than the one the developer asked for. The oldest npm lock
-        format restates no version ranges at all, so there only presence can be
+        alone: whether such a source is allowed is a separate question.
+      </p>
+      <p>
+        The last case is asked exactly as the installer asks it, and the two installers do
+        not ask the same thing. <strong>npm</strong> resolves one version per package and
+        checks it against the declared range, so replacing a range with the exact version
+        already installed is not a fault - the lock still installs something the
+        declaration allows. Comparing the two <em>ranges</em> instead would reject that,
+        and would also miss the reverse: two ranges can overlap while the version actually
+        pinned satisfies neither. <strong>pnpm</strong> compares the specifier it recorded
+        to the declared one as text and refuses on any difference, which is what
+        <code>--frozen-lockfile</code> does, so there the recorded string is the subject.
+        The oldest npm lock format restates no ranges at all, so there only presence can be
         checked and no mismatch is ever claimed.
+      </p>
+      <p>
+        A finding is shown against the file its failing value is in: the lock, at the entry
+        holding the version it pins, when the pin is what fails; package.json, at the
+        declaration, when the lock resolves nothing for it - there being no entry in the
+        lock to point at is the fault itself.
       </p>
       <p>
         A submission built with a package manager this review does not support is
@@ -59,9 +72,9 @@ flowchart TD
   E -- yes --> S2([skip: a question of source])
   E -- no --> F{"The lock file resolves it?"}
   F -- no --> ERR
-  F -- yes --> G{"Does it record a range for it,<br/>different from the one asked for?"}
-  G -- yes --> ERR
-  G -- no --> OK([no finding])
+  F -- yes --> G{"Is the version it pins one<br/>the declaration allows?"}
+  G -- no --> ERR
+  G -- yes --> OK([no finding])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;

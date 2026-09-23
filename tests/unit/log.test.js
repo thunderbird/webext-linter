@@ -1,7 +1,7 @@
 // Unit tests for the feed logger's indentation levels + gating: the logger owns
 // the SECTION/STEP/DETAIL prefixes (callers pass a semantic level, never spaces),
 // progress and warn are gated on progressOn while info (the run banner) is always
-// shown, and quiet silences everything. Capture records regardless of what shows.
+// shown, and quiet silences everything.
 
 import { test, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
@@ -18,8 +18,6 @@ import {
   feedIndent,
   setProgress,
   setQuiet,
-  setCapture,
-  getCapture,
 } from "../../src/util/log.js";
 
 // The lines the logger writes with console.log while running fn (its stdout feed).
@@ -34,12 +32,11 @@ function emitted(fn) {
   return lines;
 }
 
-// The toggles are module globals; reset to a text-run state (feed on, not quiet,
-// no capture) before each test so cases do not leak state into one another.
+// The toggles are module globals; reset to a text-run state (feed on, not quiet)
+// before each test so cases do not leak state into one another.
 beforeEach(() => {
   setProgress(true);
   setQuiet(false);
-  setCapture(false);
 });
 
 test("feedIndent maps each level to its exact prefix width", () => {
@@ -113,35 +110,26 @@ test("quiet silences every channel", () => {
   );
 });
 
-test("capture records the indented line even when nothing is shown", () => {
-  // Progress off: nothing prints, but capture still records (for --report-out).
-  setProgress(false);
-  setCapture(true);
-  const shown = emitted(() => progress("n", FEED.DETAIL));
-  assert.deepEqual(shown, [], "not printed while progress is off");
-  assert.equal(getCapture(), "      n\n", "recorded with its DETAIL indent");
-  setCapture(false);
-});
-
 // setFeed governs the ACTIVITY FEED - the Setup and Activity sections - and is switched
-// off for --llm-review / --llm-verdict, where the output is the document itself. A line
-// nobody saw must not reach a --report-out copy either, or the file would stop being a
-// carbon copy of the screen. report() is not feed and survives.
-test("setFeed(false) silences the feed, in the file as well as on screen", () => {
+// off for --llm-review / --llm-verdict, where the output is the document itself.
+// report() is not feed and survives.
+test("setFeed(false) silences the feed", () => {
   setProgress(true);
   setFeed(false);
-  setCapture(true);
-  const feed = emitted(() => progress("step", FEED.STEP));
-  const doc = emitted(() => report("Reviewed XPI: x"));
-  assert.deepEqual(feed, [], "feed line not printed");
-  assert.deepEqual(
-    doc,
-    ["Reviewed XPI: x"],
-    "the report's own line still prints"
-  );
-  assert.equal(getCapture(), "Reviewed XPI: x\n", "and only it is recorded");
-  setCapture(false);
-  setFeed(true);
+  try {
+    const feed = emitted(() => progress("step", FEED.STEP));
+    const doc = emitted(() => report("Reviewed XPI: x"));
+    assert.deepEqual(feed, [], "feed line not printed");
+    assert.deepEqual(
+      doc,
+      ["Reviewed XPI: x"],
+      "the report's own line still prints"
+    );
+  } finally {
+    // Restored even on a failure: the toggles are module globals, so leaving the feed
+    // off here would cascade into every test after this one.
+    setFeed(true);
+  }
 });
 
 test("the level prefix sits OUTSIDE a color wrap (spaces are colorless)", () => {

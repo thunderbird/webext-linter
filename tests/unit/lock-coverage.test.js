@@ -10,13 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { lockGaps } from "../../src/vendor/locks.js";
-import { buildFileFault } from "../../src/build/reproducible.js";
-import scaPackageFileMissing from "../../src/checks/rules/sca-package-file-missing.js";
-import scaPackageFileInvalid from "../../src/checks/rules/sca-package-file-invalid.js";
-import scaLockFileMissing from "../../src/checks/rules/sca-lock-file-missing.js";
-import scaLockFileInvalid from "../../src/checks/rules/sca-lock-file-invalid.js";
-import unsupportedBuildTool from "../../src/checks/rules/unsupported-build-tool.js";
+import { lockGaps, lockedVersion } from "../../src/vendor/locks.js";
 
 function fakeAddon(files) {
   const map = new Map();
@@ -56,15 +50,72 @@ test("npm v3: a declared package the root record omits is absent", () => {
   assert.deepEqual(gapsOf(addon), ["web-ext:absent"]);
 });
 
-test("npm v3: a spec the lock records differently is stale", () => {
-  const addon = fakeAddon({
-    "package.json": { dependencies: { "web-ext": "^8.0.0" } },
-    "package-lock.json": npm3(
-      { dependencies: { "web-ext": "^7.0.0" } },
-      { "node_modules/web-ext": { version: "7.9.0" } }
-    ),
-  });
-  assert.deepEqual(gapsOf(addon), ["web-ext:stale:^7.0.0"]);
+// npm's own question: does the version the lock PINS satisfy the range the manifest
+// declares. Comparing the two SPECS instead answers a different question and gets it wrong
+// both ways - measured against real npm, an exact "6.0.0" against a recorded ">=2.0.0" is
+// "added 2 packages" while the strings differ, and a declared "^3.0.0" against a recorded
+// ">=2.0.0" is two OVERLAPPING ranges while npm refuses the 6.0.0 the lock pinned.
+test("npm v3: a pinned version outside the declared range is unsatisfied", () => {
+  const gaps = (declared, root, version) =>
+    gapsOf(
+      fakeAddon({
+        "package.json": { dependencies: { "web-ext": declared } },
+        "package-lock.json": npm3(
+          { dependencies: { "web-ext": root } },
+          { "node_modules/web-ext": { version } }
+        ),
+      })
+    );
+  // 7.9.0 cannot satisfy ^8.0.0, whatever the root record restates.
+  assert.deepEqual(gaps("^8.0.0", "^7.0.0", "7.9.0"), [
+    "web-ext:unsatisfied:^7.0.0",
+  ]);
+  // The specs differ and the pin satisfies anyway: npm installs it, so this is silent.
+  // Tightening a range to exactly what the lock pins is the case that used to reject.
+  assert.deepEqual(gaps("7.9.0", "^7.0.0", "7.9.0"), []);
+  assert.deepEqual(gaps("^7.0.0", "7.9.0", "7.9.0"), []);
+  assert.deepEqual(gaps(">=7.0.0", "^7.0.0", "7.9.0"), []);
+  assert.deepEqual(gaps("*", "^7.0.0", "7.9.0"), []);
+  // Caret on a 0.0.x release admits only that patch - the rule a hand-rolled comparison
+  // gets wrong, and a form the review corpus actually contains.
+  assert.deepEqual(gaps("^0.0.353", "^0.0.353", "0.0.353"), []);
+  assert.deepEqual(gaps("^0.0.353", "^0.0.353", "0.0.354"), [
+    "web-ext:unsatisfied:^0.0.353",
+  ]);
+  // A range this cannot read says nothing: silence, never a guess, on a halting check.
+  assert.deepEqual(gaps("latest", "^7.0.0", "7.9.0"), []);
+});
+
+// npm resolves ONE node per name and lets a second declaration win. Measured: a manifest
+// declaring `dependencies: is-odd ^3.0.1` beside `devDependencies: is-odd ^2.0.0` makes npm
+// install 2.0.0 - satisfying only the second - and `npm ci` then accepts its own lock. So
+// the pin has to answer the NAME, not each declaration in turn, or we reject a lock npm is
+// happy with. Reported once, too: the answer is about the resolved node, and there is one.
+test("npm v3: a package declared in two maps answers as one node", () => {
+  const twice = (depSpec, devSpec, version) =>
+    gapsOf(
+      fakeAddon({
+        "package.json": {
+          dependencies: { "is-odd": depSpec },
+          devDependencies: { "is-odd": devSpec },
+        },
+        "package-lock.json": npm3(
+          {
+            dependencies: { "is-odd": depSpec },
+            devDependencies: { "is-odd": devSpec },
+          },
+          { "node_modules/is-odd": { version } }
+        ),
+      })
+    );
+  // Satisfies both.
+  assert.deepEqual(twice("^3.0.1", "^3.0.0", "3.0.1"), []);
+  // Satisfies only the devDependencies range - which is npm's own resolution, accepted.
+  assert.deepEqual(twice("^3.0.1", "^2.0.0", "2.0.0"), []);
+  // Satisfies neither: one gap, not two.
+  assert.deepEqual(twice("^3.0.1", "^2.0.0", "1.0.0"), [
+    "is-odd:unsatisfied:^3.0.1",
+  ]);
 });
 
 test("npm v3: a root record entry that resolved to nothing is absent", () => {
@@ -267,21 +318,36 @@ test("npm v3: an aliased declaration is compared like any other", () => {
     ),
     ["@typescript/lib-dom:absent"]
   );
-  // Recorded, but against a range the manifest no longer asks for. The gap quotes the
-  // lock's spelling, alias and all, because that is the string a developer has to find.
+  // A root record restating an older alias range says nothing on its own: the pin still
+  // satisfies what the manifest asks for, so npm installs it and this is silent.
+  const olderRoot = {
+    devDependencies: { "@typescript/lib-dom": "npm:@types/web@^0.0.1" },
+  };
   assert.deepEqual(
     gapsOf(
       fakeAddon({
         "package.json": declared,
-        "package-lock.json": npm3(
-          {
-            devDependencies: { "@typescript/lib-dom": "npm:@types/web@^0.0.1" },
-          },
-          installed
-        ),
+        "package-lock.json": npm3(olderRoot, installed),
       })
     ),
-    ["@typescript/lib-dom:stale:npm:@types/web@^0.0.1"]
+    []
+  );
+  // The pin itself outside the declared TARGET range is the fault - and `^0.0.353` admits
+  // only that patch, so 0.0.354 fails it. The gap quotes the lock's spelling, alias and
+  // all, because that is the string a developer has to find.
+  assert.deepEqual(
+    gapsOf(
+      fakeAddon({
+        "package.json": declared,
+        "package-lock.json": npm3(olderRoot, {
+          "node_modules/@typescript/lib-dom": {
+            name: "@types/web",
+            version: "0.0.354",
+          },
+        }),
+      })
+    ),
+    ["@typescript/lib-dom:unsatisfied:npm:@types/web@^0.0.1"]
   );
   // The root record names it but nothing was installed for it.
   assert.deepEqual(
@@ -350,6 +416,45 @@ test("a present-but-unreadable lock stops there, with a valid one beside it", ()
         "package-lock.json": good,
       })
     ),
+    []
+  );
+});
+
+// A lock that cannot be PARSED and one that is merely the wrong SHAPE part company, so the
+// two file-level faults are not decided together. Measured against npm itself: `npm ci`
+// refuses an unparseable lock whatever the manifest declares, and accepts a `{}` one ("up
+// to date") until a single dependency is declared, at which point it refuses that too.
+//
+// Deciding both behind "is anything declared?" left the hole this pins: the missing-lock
+// check sees the file by NAME and falls silent, so committing a corrupt lock beat
+// committing none - a submission `npm ci` refuses, cleared by both checks.
+test("an unparseable lock is a fault whatever the manifest declares", () => {
+  const gaps = (pkg, lock) =>
+    gapsOf(fakeAddon({ "package.json": pkg, "package-lock.json": lock }));
+  const declares = { dependencies: { "is-odd": "^3.0.1" } };
+  const localOnly = { dependencies: { mylib: "file:./mylib" } };
+  const nothing = { name: "t" };
+
+  // Unparseable: npm refuses in all three, so all three report.
+  for (const [label, pkg] of [
+    ["declares a registry dep", declares],
+    ["declares only a file: spec", localOnly],
+    ["declares nothing", nothing],
+  ]) {
+    assert.deepEqual(gaps(pkg, ""), ["null:unreadable"], label);
+    assert.deepEqual(gaps(pkg, "{ not json"), ["null:unreadable"], label);
+  }
+
+  // The wrong shape is only a fault when something has to be installed from it: npm
+  // accepts `{}` for a manifest declaring nothing, and refuses it once one dep appears.
+  assert.deepEqual(gaps(declares, "{}"), ["null:unrecognised"]);
+  assert.deepEqual(gaps(nothing, "{}"), []);
+  assert.deepEqual(gaps(localOnly, "{}"), []);
+
+  // And a real lock for a project with no dependencies stays silent - npm writes exactly
+  // this and installs from it, so demanding an entry would reject its own output.
+  assert.deepEqual(
+    gaps(nothing, JSON.stringify({ lockfileVersion: 3, packages: { "": {} } })),
     []
   );
 });
@@ -456,10 +561,12 @@ test("a lock whose shape is not recognisable is reported as itself", () => {
   }
 });
 
-test("a lock that governs no declaration is not judged at all", () => {
-  // Every shape above, against a manifest that declares nothing to install. There is no
-  // comparison to make, so the lock's state cannot be a finding.
-  for (const text of ["[1,2,3]", "{}", "{not json"]) {
+test("a READABLE lock that governs no declaration is not judged", () => {
+  // A manifest that declares nothing to install. There is no comparison to make, so the
+  // lock's shape cannot be a finding - npm accepts a `{}` lock for such a manifest. An
+  // unparseable one is different and IS reported, whatever is declared: npm cannot open it
+  // either. That split is pinned above.
+  for (const text of ["[1,2,3]", "{}"]) {
     assert.deepEqual(
       lockGaps(
         fakeAddon({
@@ -529,52 +636,66 @@ function lock2() {
   });
 }
 
-// ---- buildFileFault agrees with the checks it composes -------------------------------
-// The XPI-only advice is withheld exactly when one of the five build checks rejects
-// (src/build/reproducible.js): the package manager, then the manifest, then the lock. Two
-// statements of one rule can drift - this asserts they have not: a fault is reported if
-// and ONLY if some check speaks. Without it, a condition
-// changed in a check but not in the composite silently brings back the contradiction the
-// composite exists to prevent: "your archive was unnecessary", printed beside a rejection.
-test("buildFileFault is non-null exactly when a build-file check reports", () => {
-  const lock = JSON.stringify({ lockfileVersion: 3, packages: { "": {} } });
-  const covering = JSON.stringify({
-    lockfileVersion: 3,
-    packages: {
-      "": { dependencies: { lodash: "^4.17.0" } },
-      "node_modules/lodash": { version: "4.17.21" },
-    },
-  });
-  const deps = JSON.stringify({ dependencies: { lodash: "^4.17.0" } });
+// ---- lockGaps and lockedVersion cannot disagree about one declaration ------------------
+// If this check says the lock covers a declaration, resolveVendor must be able to pin it.
+// One direction only: a `stale` gap still resolves a version, so the converse is not a rule.
+//
+// The direction that matters is the silent one. A declaration this check passes but
+// lockedVersion cannot pin lands in `vendor.unpinned`, whose only reader is
+// xpi-package-unpinned - and that check is `sca: false`, while lockedVersion is only ever
+// called in an SCA review. So such a dependency is reported by nobody, and never reaches
+// the OSV audit, the blocklist or the popularity gate either, because it never enters
+// `packages`. Nothing about the report would look wrong.
+test("a declaration this check passes is one lockedVersion can pin", () => {
+  const npmV3 = (installed) =>
+    JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "": { dependencies: { lodash: "^4.17.0" } }, ...installed },
+    });
   const shapes = [
-    { "manifest.json": "{}" },
-    { "package.json": "{}" },
-    { "package.json": "{}", "package-lock.json": lock },
-    { "package.json": "{not json" },
-    { "package.json": "{not json", "package-lock.json": lock },
-    { "package.json": "[]", "package-lock.json": lock },
-    { "package.json": deps },
-    { "package.json": deps, "package-lock.json": covering },
-    { "package.json": deps, "package-lock.json": lock },
-    { "package.json": deps, "package-lock.json": "{not json" },
-    { "package.json": "{}", "yarn.lock": "" },
-    { "package.json": JSON.stringify({ workspaces: ["packages/*"] }) },
+    [
+      "npm v3, resolved",
+      npmV3({ "node_modules/lodash": { version: "4.17.21" } }),
+    ],
+    [
+      "npm v3, entry without a version",
+      npmV3({ "node_modules/lodash": { resolved: "https://x" } }),
+    ],
+    ["npm v3, no installed entry", npmV3({})],
+    [
+      "npm v1, resolved",
+      JSON.stringify({
+        lockfileVersion: 1,
+        dependencies: { lodash: { version: "4.17.21" } },
+      }),
+    ],
+    [
+      "npm v1, entry without a version",
+      JSON.stringify({
+        lockfileVersion: 1,
+        dependencies: { lodash: { resolved: "https://x" } },
+      }),
+    ],
+    [
+      "npm v1, absent",
+      JSON.stringify({ lockfileVersion: 1, dependencies: {} }),
+    ],
+    ["unreadable", "{ not json"],
+    ["unrecognised", "{}"],
   ];
-  for (const files of shapes) {
-    const addon = fakeAddon(files);
-    const ctx = { addon, note: () => {} };
-    const reports = [
-      unsupportedBuildTool,
-      scaPackageFileMissing,
-      scaPackageFileInvalid,
-      scaLockFileMissing,
-      scaLockFileInvalid,
-    ].some((rule) => rule.run(ctx).findings.length > 0);
-    const fault = buildFileFault(addon);
-    assert.equal(
-      Boolean(fault),
-      reports,
-      `${JSON.stringify(Object.keys(files))} -> fault ${fault}, checks report ${reports}`
+  for (const [label, lock] of shapes) {
+    const addon = fakeAddon({
+      "package.json": { dependencies: { lodash: "^4.17.0" } },
+      "package-lock.json": lock,
+    });
+    const covered = !lockGaps(addon).some(
+      (g) => g.name === "lodash" || g.name === null
     );
+    if (covered) {
+      assert.ok(
+        lockedVersion(addon, "lodash"),
+        `${label}: reported no gap, so it must pin a version`
+      );
+    }
   }
 });

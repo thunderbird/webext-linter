@@ -14,17 +14,9 @@
 // Only the ROOT package.json is read - that is the build's entry point
 // (src/build/corpus.js), while a
 // nested one is a workspace member or a vendored library's own copy. Deliberately narrower
-// than unsupported-build-tool and build-registry-redirect, which scan every depth: those
-// detect a disallowed thing, where looking too widely is harmless, while this asserts a
-// requirement, where it invents rejections.
-//
-//
-// Silent on a submission that fingerprints as an unsupported package manager
-// (src/build/tools.js): "this build uses yarn" and "this build has no npm or pnpm lock" are
-// one fact, and unsupported-build-tool is the check whose subject the tool is. It carries
-// the same review-early-exit, so the halt does not depend on this check speaking. The
-// question is asked of the FILES rather than of that check's outcome, so the answer cannot
-// depend on which check ran first.
+// than build-registry-redirect, which scans every depth: that detects a disallowed thing,
+// where looking too widely is harmless, while this asserts a requirement, where it invents
+// rejections.
 //
 // Belongs here: deciding whether a lock was owed and is absent. Does NOT belong here:
 // whether a present lock works (-> sca-lock-file-invalid) or the wording (-> the registry).
@@ -33,7 +25,6 @@ import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { readManifest } from "../../vendor/manifest.js";
 import { TREE_LOCKS } from "../../vendor/locks.js";
-import { unsupportedBuildTool } from "../../build/tools.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -46,9 +37,6 @@ export default {
     const files = ctx.addon?.files;
     if (!files) {
       return { findings: [] };
-    }
-    if (unsupportedBuildTool(ctx.addon)) {
-      return { findings: [] }; // the tool is the fact, told by unsupported-build-tool
     }
     const pkg = readManifest(files);
     if (!pkg) {

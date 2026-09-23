@@ -487,11 +487,11 @@ test("an absent, empty, malformed or unsupported lock enumerates nothing", () =>
     []
   );
   assert.deepEqual(lockedPackages(fakeAddon({ "pnpm-lock.yaml": "x: [" })), []);
-  // npm and pnpm are the only supported package managers, so no other lock is read;
-  // a committed one is already a hard reject (unsupported-build-tool).
+  // The governing lock is chosen by name from TREE_LOCKS, so a committed lock in any
+  // other format is not read - it records a tree no reviewer's install produces.
   assert.deepEqual(
     lockedPackages(
-      fakeAddon({ "yarn.lock": 'lib@^1.0.0:\n  version "1.0.0"\n' })
+      fakeAddon({ "other.lock": 'lib@^1.0.0:\n  version "1.0.0"\n' })
     ),
     []
   );
@@ -500,7 +500,11 @@ test("an absent, empty, malformed or unsupported lock enumerates nothing", () =>
 
 // Two locks describe the same install. Reading both would report every package
 // twice, so only the first that yields anything is enumerated.
-test("only the first lock that yields packages is read", () => {
+// The GOVERNING lock is the one present first in TREE_LOCKS order, and it is the only one
+// read - not the first that happens to answer. All three readers here share that choice, so
+// a submission cannot be rejected over one lock while a version is pinned and a tree
+// audited out of another.
+test("only the governing lock is enumerated, even when it answers nothing", () => {
   const addon = fakeAddon({
     "package-lock.json": JSON.stringify({
       packages: { "node_modules/from-npm": { version: "1.0.0" } },
@@ -508,6 +512,29 @@ test("only the first lock that yields packages is read", () => {
     "pnpm-lock.yaml": "packages:\n  /from-pnpm@2.0.0:\n    dev: false\n",
   });
   assert.deepEqual(names(addon), ["from-npm@1.0.0"]);
+
+  // The case that tells the rules apart: the governing lock parses and records an EMPTY
+  // tree, with a populated pnpm lock beside it. npm installs that empty tree, so there is
+  // nothing to enumerate and nothing to pin - reading on to the pnpm lock would audit a
+  // tree the install never builds.
+  const empty = fakeAddon({
+    "package-lock.json": JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "": {} },
+    }),
+    "pnpm-lock.yaml": "packages:\n  /from-pnpm@2.0.0:\n    dev: false\n",
+  });
+  assert.deepEqual(names(empty), []);
+  assert.equal(lockedVersion(empty, "from-pnpm"), null);
+
+  // And an UNREADABLE governing lock answers for all three readers alike, rather than
+  // letting a valid lock beside it stand in.
+  const broken = fakeAddon({
+    "npm-shrinkwrap.json": "{ not json",
+    "pnpm-lock.yaml": "packages:\n  /from-pnpm@2.0.0:\n    dev: false\n",
+  });
+  assert.deepEqual(names(broken), []);
+  assert.equal(lockedVersion(broken, "from-pnpm"), null);
 });
 
 // Both questions read the same file, and the parse is memoized per add-on - so
@@ -746,16 +773,19 @@ test("npm-shrinkwrap.json outranks package-lock.json", () => {
   assert.deepEqual(lockGaps(addon), []);
   assert.equal(lockedVersion(addon, "ms"), "2.1.3");
 
-  // The other way round: the shrinkwrap npm uses is the stale one, so it IS a gap.
-  const stale = fakeAddon({
+  // The other way round: the shrinkwrap npm uses pins 1.0.0, which cannot satisfy the
+  // declared ^2.1.3, so it IS a gap - and the valid package-lock.json beside it does not
+  // rescue the submission, because npm never opens it.
+  const outdated = fakeAddon({
     "package.json": JSON.stringify({ dependencies: { ms: "^2.1.3" } }),
     "package-lock.json": npmLockFor("^2.1.3", "2.1.3"),
     "npm-shrinkwrap.json": npmLockFor("^1.0.0", "1.0.0"),
   });
   assert.deepEqual(
-    stale.files &&
-      lockGaps(stale).map((g) => `${g.name}:${g.reason}:${g.recorded}`),
-    ["ms:stale:^1.0.0"]
+    lockGaps(outdated).map(
+      (g) => `${g.file}:${g.name}:${g.reason}:${g.installed}`
+    ),
+    ["npm-shrinkwrap.json:ms:unsatisfied:1.0.0"]
   );
 });
 

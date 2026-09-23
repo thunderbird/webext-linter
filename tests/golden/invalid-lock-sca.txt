@@ -2,7 +2,7 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) The committed lock file fails to correctly pin the used version for one or more declared packages. Please run the install again and commit the regenerated lock file.
+1) The committed lock file cannot install what package.json declares, so the build cannot be reproduced from this source. Please run the install again and commit the regenerated lock file.
  - [SCA] package.json:9 - web-ext (^8.0.0) - not recorded in the lock file
 
 [XPI] = source file in the submitted XPI

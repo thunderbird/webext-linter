@@ -50,7 +50,6 @@ import disguisedTransmission from "../../src/checks/rules/disguised-transmission
 import unparsableFile from "../../src/checks/rules/unparsable-file.js";
 import dataExfiltration from "../../src/checks/rules/data-exfiltration.js";
 import undeclaredBuildSource from "../../src/checks/rules/undeclared-build-source.js";
-import unsupportedBuildTool from "../../src/checks/rules/unsupported-build-tool.js";
 import buildRegistryRedirect from "../../src/checks/rules/build-registry-redirect.js";
 import committedNodeModules from "../../src/checks/rules/committed-node-modules.js";
 import scaPackageFileMissing from "../../src/checks/rules/sca-package-file-missing.js";
@@ -664,7 +663,6 @@ test("checks carry the sca mode tag (true=SCA-only, false=XPI-only, undefined=bo
   assert.equal(sca("vendor-vulnerable-indirect"), true);
   assert.equal(sca("vendor-vulnerable-indirect-dev"), true);
   assert.equal(sca("undeclared-build-source"), true); // SCA-only build review
-  assert.equal(sca("unsupported-build-tool"), true); // SCA-only build policy
   assert.equal(sca("build-registry-redirect"), true); // SCA-only build policy
   assert.equal(sca("committed-node-modules"), true); // SCA-only build policy
   assert.equal(sca("sca-package-file-missing"), true); // SCA-only build policy
@@ -819,7 +817,6 @@ test("every check's severity is pinned to its band", async () => {
       "unpinned-vendor-source",
       "unpopular-source-dependency",
       "unrecognized-file-type",
-      "unsupported-build-tool",
       "unsupported-dependency",
       "untrusted-minified-library",
       "update-url",
@@ -1316,7 +1313,6 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "sca-package-file-invalid",
     "sca-package-file-missing",
     "undeclared-build-source",
-    "unsupported-build-tool",
   ]);
 });
 
@@ -1404,51 +1400,6 @@ test("undeclared-build-source escalates every SCA, build documented or not", () 
   assert.equal("file" in none.escalations[0], false);
 });
 
-// ---- unsupported-build-tool (SCA deterministic: npm/pnpm only) ----
-
-// A committed yarn/bun fingerprint - a lockfile or the package.json "packageManager"
-// field - is a hard reject: the offending tool is the finding's item, anchored at the
-// fingerprint file. npm/pnpm (or no evidence) is clean.
-test("unsupported-build-tool rejects yarn/bun by lockfile or packageManager field", () => {
-  const run = (obj) =>
-    unsupportedBuildTool.run({
-      addon: {
-        files: new Map(
-          Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)])
-        ),
-      },
-    }).findings;
-  const one = (out, tool, file) => {
-    assert.equal(out.length, 1);
-    assert.equal(out[0].item, tool);
-    assert.equal(out[0].file, file);
-  };
-  one(run({ "yarn.lock": "" }), "yarn", "yarn.lock");
-  one(run({ "bun.lockb": "" }), "bun", "bun.lockb");
-  one(run({ "bunfig.toml": "" }), "bun", "bunfig.toml");
-  one(
-    run({ "package.json": '{"packageManager":"yarn@4.1.0"}' }),
-    "yarn",
-    "package.json"
-  );
-  // npm/pnpm and no-evidence are clean.
-  assert.deepEqual(
-    run({
-      "package.json": '{"packageManager":"pnpm@9"}',
-      "pnpm-lock.yaml": "",
-    }),
-    []
-  );
-  assert.deepEqual(
-    run({ "package.json": "{}", "package-lock.json": "{}" }),
-    []
-  );
-  assert.deepEqual(
-    unsupportedBuildTool.run({ addon: { files: new Map() } }).findings,
-    []
-  );
-});
-
 // ---- build-registry-redirect (SCA deterministic: .npmrc registry) ----
 
 // ANY registry= / @scope:registry= in .npmrc is a hard reject (a legit build never sets
@@ -1487,51 +1438,6 @@ test("build-registry-redirect rejects any registry setting in .npmrc", () => {
   assert.deepEqual(run("save-exact=true"), []);
   assert.deepEqual(
     buildRegistryRedirect.run({ addon: { files: new Map() } }).findings,
-    []
-  );
-});
-
-// A disallowed fingerprint is matched at ANY depth (a build run from a subfolder), by
-// basename - not just at the root.
-// A BOM is the developer's editor, not a statement about the build, and npm reads a
-// manifest carrying one perfectly well. A parse that refuses it leaves the tool unnamed -
-// which does not fall silent: the lock checks then hold a yarn submission to an npm lock
-// and report the wrong fault, which is exactly what sharing this guard exists to prevent.
-test("unsupported-build-tool reads a manifest that carries a BOM", () => {
-  const declares = (text) =>
-    unsupportedBuildTool.run({
-      addon: { files: new Map([["package.json", Buffer.from(text, "utf8")]]) },
-    }).findings;
-  const pkg = JSON.stringify({ packageManager: "yarn@4.1.0" });
-  for (const text of [pkg, `\uFEFF${pkg}`]) {
-    const out = declares(text);
-    assert.equal(out.length, 1);
-    assert.equal(out[0].item, "yarn");
-  }
-});
-
-test("unsupported-build-tool detects nested lockfiles + packageManager", () => {
-  const run = (obj) =>
-    unsupportedBuildTool.run({
-      addon: {
-        files: new Map(
-          Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)])
-        ),
-      },
-    }).findings;
-  const nested = run({
-    "frontend/yarn.lock": "",
-    "frontend/package.json": "{}",
-  });
-  assert.equal(nested.length, 1);
-  assert.equal(nested[0].item, "yarn");
-  assert.equal(nested[0].file, "frontend/yarn.lock");
-  const pm = run({ "app/package.json": '{"packageManager":"bun@1"}' });
-  assert.equal(pm[0].item, "bun");
-  assert.equal(pm[0].file, "app/package.json");
-  // A nested npm build is clean.
-  assert.deepEqual(
-    run({ "frontend/package.json": "{}", "frontend/package-lock.json": "{}" }),
     []
   );
 });
@@ -1612,19 +1518,19 @@ test("sca-package-file-missing reports an absent manifest", () => {
 
   // The shipped add-on being the archive's own code does NOT excuse it. That the shipped
   // bytes are readable says nothing about whether this source produces them, and with no
-  // build there is nothing to reproduce - so the rejection stands and the XPI-only ADVICE
-  // is what yields instead (src/build/reproducible.js buildFileFault).
+  // build there is nothing to reproduce. Whether the XPI could have been shipped alone is a
+  // separate question, answered beside this one rather than instead of it.
   assert.equal(run({ "manifest.json": "{}" }, true).length, 1);
 
-  // The one guard: an unsupported package manager is unsupported-build-tool's fact, and it
-  // errors and halts on it already, so saying "and no build either" adds nothing.
-  for (const lock of ["yarn.lock", "bun.lockb", "bunfig.toml"]) {
-    assert.deepEqual(run({ "manifest.json": "{}", [lock]: "x" }), [], lock);
+  // A lock in a format the review does not install from is not a build: the question is
+  // whether the archive carries a package.json, and one of these beside it answers no.
+  for (const lock of ["other.lock", "other-lock.toml"]) {
+    assert.equal(run({ "manifest.json": "{}", [lock]: "x" }).length, 1, lock);
   }
-  // Declared rather than committed - but with no package.json there is no field to read,
-  // so a manifest naming yarn is caught by having a manifest at all.
+  // A package.json is present, so nothing is missing - whatever the manifest declares
+  // about the tooling, which this check never reads.
   assert.deepEqual(
-    run({ "package.json": JSON.stringify({ packageManager: "yarn@4.1.0" }) }),
+    run({ "package.json": JSON.stringify({ packageManager: "npm@10" }) }),
     []
   );
 });
@@ -1657,10 +1563,13 @@ test("sca-package-file-invalid reports a manifest that cannot be used", () => {
   // Absent is the other check's subject, so this one stays quiet.
   assert.deepEqual(run({ "manifest.json": "{}" }), []);
 
-  // The same as its sibling: the one guard is the unsupported package manager, and the
-  // shipped XPI being the archive's own code does not excuse an unreadable manifest.
+  // The same as its sibling: the shipped XPI being the archive's own code does not excuse
+  // an unreadable manifest, and neither does what sits beside it.
   assert.equal(run({ "package.json": "{not json" }, true).length, 1);
-  assert.deepEqual(run({ "package.json": "{not json", "yarn.lock": "" }), []);
+  assert.equal(
+    run({ "package.json": "{not json", "other.lock": "" }).length,
+    1
+  );
 });
 
 // ---- sca-lock-file-missing (SCA deterministic: a build that installs owes a lock) ----
@@ -1698,25 +1607,30 @@ test("sca-lock-file-missing fires whenever a source ships a manifest and no lock
   // (sca-lock-file-invalid reports it).
   assert.deepEqual(run({ ...toolchain, "package-lock.json": "{not json" }), []);
 
-  // A submission that fingerprints as an unsupported package manager is silent here:
-  // the tool IS the fact, and unsupported-build-tool tells it (with the same early exit).
+  // npm and pnpm are the only package managers the reviewer installs with, so a lock in
+  // any other format is no lock at all and the submission still owes one.
   for (const [file, body] of [
-    ["yarn.lock", "# yarn lockfile v1\n"],
-    ["bun.lockb", "\u0000bun"],
-    ["bunfig.toml", "[install]\n"],
+    ["other.lock", "# lockfile v1\n"],
+    ["other-lock.bin", "\u0000x"],
+    ["other-lock.toml", "[install]\n"],
   ]) {
-    assert.deepEqual(run({ ...toolchain, [file]: body }), [], file);
+    assert.deepEqual(
+      run({ ...toolchain, [file]: body }).map((f) => f.file),
+      ["package.json"],
+      file
+    );
   }
-  // Declared rather than committed: the `packageManager` field does it too.
+  // What the manifest declares about its tooling is not read either - the lock is owed by
+  // the manifest existing, and none of the three supported names is committed here.
   assert.deepEqual(
     run({
       "package.json": JSON.stringify({
         scripts: { build: "webpack" },
         devDependencies: { webpack: "^5.0.0" },
-        packageManager: "yarn@4.1.0",
+        packageManager: "npm@10",
       }),
-    }),
-    []
+    }).map((f) => f.file),
+    ["package.json"]
   );
 
   // No `scripts` is NOT a way out: a source archive may not use package.json to declare
@@ -1766,29 +1680,38 @@ test("sca-lock-file-invalid anchors each gap and names what is wrong", () => {
           null,
           2
         ),
-        "package-lock.json": JSON.stringify({
-          lockfileVersion: 3,
-          packages: {
-            "": { devDependencies: { drifted: "^1.0.0" } },
-            "node_modules/drifted": { version: "1.5.0" },
+        // Indented, so the anchor below proves the entry is LOCATED rather than
+        // defaulting to the first line of a single-line file.
+        "package-lock.json": JSON.stringify(
+          {
+            lockfileVersion: 3,
+            packages: {
+              "": { devDependencies: { drifted: "^1.0.0" } },
+              "node_modules/drifted": { version: "1.5.0" },
+            },
           },
-        }),
+          null,
+          2
+        ),
       }),
     },
   }).findings;
 
-  // Anchored at the package.json line that declares each one, since that is where the
-  // developer fixes it - the lock has no line for a package it never mentions.
+  // Each gap anchors in the file its failing value sits in. A package the lock never
+  // mentions has no line there, so it anchors at the declaration the developer fixes; a
+  // pin that cannot satisfy the declaration anchors at the pin, inside the lock.
   assert.deepEqual(
     out.map((f) => `${f.file}:${f.loc?.line}`),
-    ["package.json:3", "package.json:6"]
+    ["package.json:3", "package-lock.json:9"]
   );
-  // The response states the rule once, so which of the ways it failed rides the item.
+  // The response states the rule once, so which of the ways it failed rides the item. The
+  // unsatisfied case names all three strings and where each lives: the pin it anchors on,
+  // the root record that produced it, and the declaration in package.json it fails.
   assert.deepEqual(
     out.map((f) => f.item),
     [
       "absent (^1.0.0) - not recorded in the lock file",
-      "drifted (^2.0.0) - the lock records ^1.0.0",
+      "drifted 1.5.0 installed via ^1.0.0 locking does not satisfy the declared ^2.0.0",
     ]
   );
 
@@ -1826,26 +1749,28 @@ test("sca-lock-file-invalid anchors each gap and names what is wrong", () => {
   );
   assert.deepEqual(scaLockFileInvalid.run({}).findings, []);
 
-  // Silent on an unsupported package manager, for the reason its sibling is: one fact,
-  // told once by unsupported-build-tool. Here the npm lock is genuinely stale, so this
-  // proves the guard and not merely an absence of gaps.
+  // The governing lock is chosen by name from the three the review installs from, so a
+  // file in another format sitting beside them changes nothing: the stale npm lock is
+  // still judged, anchored at the lock because a PIN is the failing value.
   assert.deepEqual(
-    scaLockFileInvalid.run({
-      addon: {
-        files: fileMap({
-          "package.json": JSON.stringify({ dependencies: { x: "^2.0.0" } }),
-          "package-lock.json": JSON.stringify({
-            lockfileVersion: 3,
-            packages: {
-              "": { dependencies: { x: "^1.0.0" } },
-              "node_modules/x": { version: "1.0.0" },
-            },
+    scaLockFileInvalid
+      .run({
+        addon: {
+          files: fileMap({
+            "package.json": JSON.stringify({ dependencies: { x: "^2.0.0" } }),
+            "package-lock.json": JSON.stringify({
+              lockfileVersion: 3,
+              packages: {
+                "": { dependencies: { x: "^1.0.0" } },
+                "node_modules/x": { version: "1.0.0" },
+              },
+            }),
+            "other.lock": "# lockfile v1\n",
           }),
-          "yarn.lock": "# yarn lockfile v1\n",
-        }),
-      },
-    }).findings,
-    []
+        },
+      })
+      .findings.map((f) => f.file),
+    ["package-lock.json"]
   );
 });
 

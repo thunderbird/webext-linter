@@ -26,12 +26,7 @@ import {
   httpError,
   withHttpStatus,
 } from "../../src/util/net.js";
-import {
-  setProgress,
-  setFeed,
-  setCapture,
-  getCapture,
-} from "../../src/util/log.js";
+import { setProgress, setFeed } from "../../src/util/log.js";
 import {
   NETWORK_RETRIES,
   NETWORK_MAX_WAIT_MS,
@@ -483,17 +478,23 @@ async function narrationOf({ feed, retryAfter = "3", message }) {
   });
   setProgress(true);
   setFeed(feed);
-  setCapture(true);
   const consume = async (res) => {
     if (!res.ok) {
       throw withHttpStatus(new Error(message ?? `HTTP ${res.status}`), res);
     }
     return res.status;
   };
-  await fetchWithTimeout(PACED, consume);
-  const out = getCapture();
-  setCapture(false);
-  return out;
+  // What the logger actually wrote, read off console.log - the same way log.test.js
+  // observes the feed. A line the feed is switched off for is never written, so the
+  // `feed: false` case reads as the empty string here exactly as it should.
+  const lines = [];
+  const spy = mock.method(console, "log", (...a) => lines.push(a.join(" ")));
+  try {
+    await fetchWithTimeout(PACED, consume);
+  } finally {
+    spy.mock.restore();
+  }
+  return lines.map((line) => `${line}\n`).join("");
 }
 
 test("a long wait says what it is waiting for", async (t) => {

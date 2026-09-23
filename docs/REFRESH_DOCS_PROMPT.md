@@ -18,8 +18,8 @@ that no longer exist.
 
 ## How the site is built (do not change the architecture without being asked)
 
-- Pure static HTML/CSS — **no build step**, opens directly via `file://`.
-- `docs/index.html` — the shell. A left sidebar lists the orientation pages
+- Pure static HTML/CSS - **no build step**, opens directly via `file://`.
+- `docs/index.html` - the shell. A left sidebar lists the orientation pages
   (`GUIDE_PAGES`) then every check (grouped by category), and the right pane is
   an `<iframe>` that loads the selected page. The check list is a hand-authored
   `CHECKS` array in an inline `<script>`, combined with `GUIDE_PAGES` into `NAV`.
@@ -27,17 +27,17 @@ that no longer exist.
   default to `checks/<id>.html`. Selection uses `location.hash` for linkable
   pages, and the default landing page is the review-pipeline flow
   (`check-flow.html`).
-- `docs/assets/style.css` — shared styling for the shell and the check pages.
-- `docs/assets/mermaid.min.js` — Mermaid, **vendored locally** (offline). Do not
+- `docs/assets/style.css` - shared styling for the shell and the check pages.
+- `docs/assets/mermaid.min.js` - Mermaid, **vendored locally** (offline). Do not
   switch to a CDN.
-- `docs/checks/<id>.html` — one standalone page per check.
-- `docs/check-flow.html` — the review-pipeline page (`GUIDE_PAGES`): documents
+- `docs/checks/<id>.html` - one standalone page per check.
+- `docs/check-flow.html` - the review-pipeline page (`GUIDE_PAGES`): documents
   the whole review flow across both modes; its flowchart walks the pipeline
   stages, not one check's branches.
 
 ## Sources of truth (read these to (re)generate content)
 
-1. `assets/registry.yaml` — the canonical list of checks, in order, with each
+1. `assets/registry.yaml` - the canonical list of checks, in order, with each
    check's `title`, `severity` (`error` / `warning` / `info` / `hold-or-error` /
    `auto` - `auto` means the check itself picks the severity per finding, and the
    badge class is `auto`; `hold-or-error` blocks the review without rejecting on its
@@ -59,19 +59,19 @@ that no longer exist.
    reports at error severity, so the report puts nothing further to a reviewer -
    such a check's page must say so, and so must the page of any check whose
    escalation is thereby withheld). The check-bearing sections ARE
-   the phases — a check's phase IS the section it lives in, never a field on the
+   the phases - a check's phase IS the section it lives in, never a field on the
    entry: `invalid-experiment-phase` (the only phase that runs for an invalid
    Experiment) and `deterministic-phase` (every other check). `manual-checks` is NOT
    a phase: it is the static by-hand to-do list, never run as checks.
-2. `src/checks/rules/<id>.js` — the implementation of each check. The header
+2. `src/checks/rules/<id>.js` - the implementation of each check. The header
    comment block describes the decision logic in prose; the `run()` body is the
    ground truth for the branches. Shared logic lives in `src/lib/`
-   (e.g. `permissions.js`, `reachability.js`) — read those when a rule delegates
+   (e.g. `permissions.js`, `reachability.js`) - read those when a rule delegates
    to them.
-3. `README.md` — overall framing (findings vs escalations vs manual checks, and
+3. `README.md` - overall framing (findings vs escalations vs manual checks, and
    the three to-do sections an item is sorted into), and the **XPI** vs
    **source code archive (SCA)** review modes.
-4. `src/pipeline.js` — the review pipeline (`runPipeline`): with
+4. `src/pipeline.js` - the review pipeline (`runPipeline`): with
    `src/checks/registry.js`, the ground truth for the review-pipeline page
    (`check-flow.html`). Read the stage order OFF THE CODE rather than from this
    list - and read it off `SETUP_STEPS`, the declared list one loop walks, not off the
@@ -84,7 +84,7 @@ that no longer exist.
    Experiment) and assigned nowhere. The file also shows the `mode?.sca` forks (the
    source / dependency / build / shipped-XPI / shipped-manifest split, routed via
    `routeCtx` over the sibling ctxs built by `buildXpiCtxs` / `buildScaCtxs`).
-5. `src/checks/registry.js` — the orchestrator (`runChecks`), which runs the whole
+5. `src/checks/registry.js` - the orchestrator (`runChecks`), which runs the whole
    review inside that single Phase-5 call: the phase's checks in its main loop, then
    the unused-folder collapse. The pipeline only calls `runChecks` and assembles the
    `Review` from what it returns.
@@ -107,7 +107,7 @@ that no longer exist.
    - a **What it detects** section: 2-4 sentences of plain English, **no code**,
      derived from the `.js` header comment + the registry comment/`response`;
    - a **Decision flow** section: a `<pre class="mermaid">` `flowchart TD` that
-     walks the check's _real_ decision path — scope/skip conditions as the first
+     walks the check's _real_ decision path - scope/skip conditions as the first
      gates, decision diamonds for each branch, and terminal nodes for the
      outcomes (`no finding` vs `ERROR` / `WARNING` / `INFO`, or an escalation to
      manual review). Reuse the shared `classDef` styles used by the existing pages
@@ -123,7 +123,7 @@ that no longer exist.
      promise a rejection. `manual-checks` entries are badged `manual` whatever severity
      they declare - four say `hold-or-error`, four `error`, one `info` - because the badge
      names the list they belong to rather than the band they resolve at;
-   - escalating checks — make clear what the scan settles on its own and what it
+   - escalating checks - make clear what the scan settles on its own and what it
      hands to the reviewer. **The tool calls no model: there is no verdict step, so a
      diagram must never draw a pass/fail/unsure fan-out.** A check pushes its
      escalation unconditionally, so the escalation is a TERMINAL, not a decision.
@@ -142,7 +142,7 @@ that no longer exist.
    lists every check in registry order, grouped by category; `NAV` combines
    `GUIDE_PAGES` with `CHECKS`. If there are multiple categories, add the
    corresponding `group-title` headings and either multiple `<ul class="toc">`
-   lists or category markers — keep it consistent with the existing markup.
+   lists or category markers - keep it consistent with the existing markup.
 6. **Keep flowcharts faithful.** The diagram must match what the code does, not
    what the title suggests. When unsure about a branch, read the `run()` body and
    any helper it calls rather than guessing.
@@ -156,9 +156,9 @@ that no longer exist.
 
 ## Constraints
 
-- No external network requests at view time — Mermaid stays vendored in
+- No external network requests at view time - Mermaid stays vendored in
   `docs/assets/`.
 - Plain English in the prose and node labels; **no code snippets** in the
   flowcharts or descriptions.
-- Don't invent severities or behaviour — everything must trace to
+- Don't invent severities or behaviour - everything must trace to
   `assets/registry.yaml` and `src/checks/rules/`.

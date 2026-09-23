@@ -4,24 +4,20 @@ import { displayText } from "./text.js";
 // one of the run's phases and goes to stdout, alongside the report. Only REAL
 // tool errors go to stderr, and those are written directly by the CLI (not
 // here). In quiet mode (--report-format json) nothing is emitted, so stdout
-// carries only the JSON document. When capture is on (the CLI turns it on for a
-// text --report-out), every emitted line is also recorded so the file is a
-// carbon copy of the screen.
+// carries only the JSON document.
 //
 // Belongs here: the narration feed - info, debug (verbose), warn, progress, report,
-// the FEED levels and feedIndent, and the verbose/progress/feed/quiet/capture toggles.
+// the FEED levels and feedIndent, and the verbose/progress/feed/quiet toggles.
 //
 // Does NOT belong here: user-facing report content (findings, summaries), which
 // is built and emitted by src/report/*. Real tool errors (CLI writes those to
-// stderr directly). The capture buffer is only the activity feed - it is not the
-// report itself.
+// stderr directly).
 
 let verbose = false;
 let progressOn = false;
 let feedOn = true;
 let quiet = false;
 /** @type {string[]|null} Recorded lines while capturing, else null. */
-let captured = null;
 
 /**
  * Enable or disable verbose logging.
@@ -83,26 +79,6 @@ export function setQuiet(v) {
 }
 
 /**
- * Begin (or stop) recording emitted lines, for inclusion in a --report-out
- * file. Enabling resets the buffer.
- *
- * @param {boolean|undefined} v
- */
-export function setCapture(v) {
-  captured = v ? [] : null;
-}
-
-/**
- * The recorded lines as text, each terminated by a newline, or "" when capture
- * is off.
- *
- * @returns {string}
- */
-export function getCapture() {
-  return captured ? captured.map((line) => `${line}\n`).join("") : "";
-}
-
-/**
  * The feed's indentation levels, applied by emit() so callers narrate at a
  * semantic level and never hand-code spaces. SECTION headings sit at column 0
  * (── Setup ──, blank separators); STEP is one feed step ([i/total], the
@@ -141,10 +117,8 @@ export function feedIndent(level) {
  * @param {unknown[]} args
  * @param {boolean} show
  * @param {number} [level]  A FEED value; defaults to SECTION (column 0).
- * @param {boolean} [record]  False for a line the feed is switched off for: a
- *   --report-out copy is a carbon copy of the screen, so a line nobody saw is not in it.
  */
-function emit(args, show, level = FEED.SECTION, record = true) {
+function emit(args, show, level = FEED.SECTION) {
   if (quiet) {
     return;
   }
@@ -153,9 +127,6 @@ function emit(args, show, level = FEED.SECTION, record = true) {
     prefix && args.length ? [prefix + String(args[0]), ...args.slice(1)] : args;
   if (show) {
     console.log(...out);
-  }
-  if (captured && record) {
-    captured.push(out.map(String).join(" "));
   }
 }
 
@@ -206,20 +177,18 @@ export function warn(...args) {
 
 /**
  * Narrate a live progress line to the feed (stdout, only when progress is
- * enabled), at its indentation level. Recorded for capture regardless, so a
- * --report-out file gets the activity feed.
+ * enabled), at its indentation level.
  *
  * @param {string} text  One formatted feed line.
  * @param {number} [level]  A FEED value; defaults to SECTION (column 0).
  */
 export function progress(text, level = FEED.SECTION) {
-  emit([text], progressOn && feedOn, level, feedOn);
+  emit([text], progressOn && feedOn, level);
 }
 
 /**
  * Narrate a line that belongs to the REPORT rather than to the feed - its header, the
- * --llm-review prompt. Emitted with the report and recorded like it, so a --report-out
- * copy still matches the screen, and unaffected by setFeed.
+ * --llm-review prompt. Emitted with the report, and unaffected by setFeed.
  *
  * @param {string} text  One line.
  */

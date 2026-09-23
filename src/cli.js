@@ -53,10 +53,8 @@ import {
   setProgress,
   setFeed,
   setQuiet,
-  setCapture,
-  getCapture,
 } from "./util/log.js";
-import { setColor, stripColor, red } from "./util/color.js";
+import { setColor, red } from "./util/color.js";
 import { wrapText } from "./util/text.js";
 import { parseJson } from "./util/json.js";
 
@@ -94,8 +92,8 @@ function npmPrintedRunHeader() {
 /**
  * Emit the run banner once, at the top of a direct run, unless npm already
  * printed an equivalent header (npmPrintedRunHeader). Goes through the feed
- * (info), so it is suppressed in JSON mode (quiet) and captured into a text
- * --report-out file. The leading and trailing blank lines match npm's spacing.
+ * (info), so it is suppressed in JSON mode (quiet). The leading and trailing blank
+ * lines match npm's spacing.
  * @param {string[]} argv  The args this run was invoked with.
  */
 function emitBanner(argv) {
@@ -182,10 +180,6 @@ function helpText(checkIds) {
 
   const report = [
     ["--report-format <text|json>", "Report output format (default: text)."],
-    [
-      "--report-out <file>",
-      "Write the report to a file in addition to stdout. Refused with any --llm-* flag: no run of that round trip saves its output.",
-    ],
   ];
 
   // What an LLM agent runs, in the order it runs: --llm-sca-review prepares a source code
@@ -304,7 +298,6 @@ const OPTIONS = {
   "sca-source": { type: "string" },
   "sca-exp-source": { type: "string" },
   "report-format": { type: "string" },
-  "report-out": { type: "string" },
   "llm-sca-review": { type: "boolean" },
   "llm-review": { type: "boolean" },
   "llm-skip-summary": { type: "boolean" },
@@ -484,26 +477,6 @@ function folderProblem(flag, value, base, inRoot = false) {
 }
 
 /**
- * --report-out saves a carbon copy of stdout: the captured narration and the report, if
- * one was printed. Color codes are stripped so the saved file is plain even when the
- * screen was colored.
- *
- * Only a run that prints a REPORT reaches this: the flag is refused beside every --llm-*
- * flag, and those are the runs whose output is a prompt.
- * @param {Record<string, string|boolean>} values
- * @param {string} [rendered]  The report, when one was printed.
- * @returns {void}
- */
-function writeReportOut(values, rendered = "") {
-  const reportOut = values["report-out"];
-  if (!reportOut) {
-    return;
-  }
-  const copy = stripColor(getCapture() + (rendered ? `${rendered}\n` : ""));
-  fs.writeFileSync(path.resolve(reportOut), copy);
-}
-
-/**
  * @param {string[]} argv
  * @returns {Promise<number>} process exit code
  */
@@ -538,8 +511,7 @@ export async function main(argv) {
   // Output routing by format. Everything the tool narrates (the what-is-going-on
   // feed) is standard output, alongside the report - only real tool errors go to
   // stderr. JSON is a machine contract: quiet silences the feed so stdout
-  // carries only the document. A text --report-out records the feed so the file
-  // is a carbon copy of the screen.
+  // carries only the document.
   const format = values["report-format"] || "text";
   setQuiet(format === "json");
   setVerbose(values.verbose);
@@ -549,9 +521,8 @@ export async function main(argv) {
   // how it was produced - the Setup and Activity sections - is noise in it. The report's
   // own header and prompt are not feed and still print.
   setFeed(!values["llm-review"] && !values["llm-verdict"]);
-  setCapture(format === "text" && Boolean(values["report-out"]));
   // Color only on an interactive text screen. Piped/redirected runs and JSON
-  // stay plain, and the --report-out copy is stripped below either way.
+  // stay plain, so nothing downstream has to undo it.
   setColor(format === "text" && Boolean(process.stdout.isTTY));
 
   // Open every direct run with the npm-style banner (suppressed for npm runs,
@@ -617,21 +588,6 @@ export async function main(argv) {
   if (badCheck) {
     process.stderr.write(
       `Unknown check "${badCheck}" (--checks-only/--checks-skip). Available: ${checkIds.join(", ")}.\n`
-    );
-    return 2;
-  }
-
-  // --report-out saves a copy of the REPORT, and no run of the --llm-* round trip is one to
-  // save: the first two print a prompt, and the last prints the settled report for the
-  // agent to hand back in its own answer. One rule for all of them, so there is nothing to
-  // work out per flag - and no saved prompt for the command it hands back to overwrite.
-  const llmFlags = Object.keys(OPTIONS).filter(
-    (name) => name.startsWith("llm-") && values[name] !== undefined
-  );
-  if (values["report-out"] && llmFlags.length) {
-    process.stderr.write(
-      `--report-out cannot be given with ${listOf(llmFlags.map((f) => `--${f}`))}: ` +
-        "no run of the --llm-* round trip saves its output.\n"
     );
     return 2;
   }
@@ -738,8 +694,7 @@ export async function main(argv) {
       return 2;
     }
     // The prompt IS the output: no review has run, and none can until its reader answers
-    // it. Printed as the report is, and to the screen only - --report-out saves a report,
-    // and is refused above beside this flag.
+    // it. Printed as the report is, and to the screen only.
     for (const line of scaPromptLines(
       registry.llmScaReviewPrompt(),
       submission,
@@ -918,8 +873,6 @@ export async function main(argv) {
   if (rendered) {
     process.stdout.write(rendered + "\n");
   }
-
-  writeReportOut(values, rendered);
 
   return hasErrors(result.findings) ? 1 : 0;
 }
@@ -1115,8 +1068,6 @@ async function runLoopPass(file, registry) {
       report,
     })}\n`
   );
-  // No --report-out: it cannot be given beside any --llm-* flag, so no pass of this loop
-  // has one to honour.
   return hasErrors(review.findings) ? 1 : 0;
 }
 

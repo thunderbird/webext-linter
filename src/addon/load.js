@@ -217,16 +217,14 @@ function assembleAddon(files) {
 }
 
 // The dependency-manifest files loadScaAddon brings from the archive root into the
-// review files (the root is the authoritative manifest). Wider than the locks the review
-// installs from (src/vendor/locks.js TREE_LOCKS): yarn.lock is carried so that it keeps
-// its unused-files exemption here, not for the checks that reject it - those read the
-// build corpus (selectScaBuildFiles), which is a different projection of the archive.
+// review files (the root is the authoritative manifest): the manifest itself plus every
+// lock the review installs from (src/vendor/locks.js TREE_LOCKS), so the dependency audit
+// reads the same files the reviewer's install would.
 const SCA_MANIFEST_FILES = [
   "package.json",
   "package-lock.json",
   "npm-shrinkwrap.json",
   "pnpm-lock.yaml",
-  "yarn.lock",
 ];
 
 /**

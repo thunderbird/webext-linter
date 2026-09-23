@@ -11,16 +11,12 @@
 // is not MISSING, and sca-package-file-invalid reports it. Both read MANIFEST_FILE, so the
 // two cannot disagree about which file they mean, and exactly one of them speaks.
 //
-// Silent on a submission that fingerprints as an unsupported package manager
-// (src/build/tools.js): the tool is the fault there, reported once by the check whose
-// subject it is, which carries the same review-early-exit.
-//
 // NOT silent when the shipped XPI happens to be the archive's own code. That the shipped
 // bytes are readable says nothing about whether this source produces them, which is what a
 // reviewer reproduces the build to establish - and with no build there is nothing to
-// reproduce, so the review stops here either way. The XPI-only advice is what yields:
-// sca-not-required is withheld from a submission whose build cannot be run
-// (src/build/reproducible.js), rather than this rejection being withheld from it.
+// reproduce, so the review stops here either way. The XPI-only advice (sca-not-required) is
+// INDEPENDENT of this: it answers whether the developer could have shipped the XPI alone
+// next time, and prints beside this rejection rather than in place of it.
 //
 // Belongs here: asking whether the manifest is there. Does NOT belong here: whether it can
 // be used (-> sca-package-file-invalid), what it declares (-> src/vendor/manifest.js), and
@@ -29,7 +25,6 @@
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { MANIFEST_FILE } from "../../vendor/manifest.js";
-import { unsupportedBuildTool } from "../../build/tools.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -39,10 +34,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    if (
-      unsupportedBuildTool(ctx.addon) ||
-      ctx.addon?.files?.has(MANIFEST_FILE)
-    ) {
+    if (ctx.addon?.files?.has(MANIFEST_FILE)) {
       return { findings: [] };
     }
     // The FINDING names no file: its subject is something the archive does not contain, so

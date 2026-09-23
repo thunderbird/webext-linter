@@ -5,6 +5,10 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json for npm, pnpm-lock.yaml for pnpm).
  - [SCA] package.json
 
+We would like to share the following information with you:
+
+2) The shipped add-on (the built XPI) is the same code as your source archive: nothing in it is minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A source archive is only needed once the shipped code is built, so please submit the XPI on its own next time. Source-code submissions also take considerably longer to review.
+
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
 
@@ -74,6 +78,6 @@ Suggested response: Content shipped inside this add-on does not meet our content
 
 ── Summary ──
 
-1 error(s), 0 hold, 0 warning(s), 0 info,
+1 error(s), 0 hold, 0 warning(s), 1 info,
 0 extended code review item(s), 0 extended manual review item(s),
 9 standard code review item(s), 0 standard manual review item(s)

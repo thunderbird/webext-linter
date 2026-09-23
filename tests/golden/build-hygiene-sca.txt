@@ -14,8 +14,8 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
  - [SCA] node_modules
  - [SCA] tools/node_modules
 
-4) This add-on is built with yarn, and only npm and pnpm are supported. Please provide an npm or pnpm build (commit a package-lock.json or pnpm-lock.yaml) so the dependency install can be reviewed against the declared dependencies.
- - [SCA] yarn.lock
+4) The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json for npm, pnpm-lock.yaml for pnpm).
+ - [SCA] package.json
 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive

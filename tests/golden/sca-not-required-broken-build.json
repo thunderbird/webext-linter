@@ -57,7 +57,6 @@
       "vendor-vulnerable-dev",
       "vendor-vulnerable-indirect",
       "vendor-vulnerable-indirect-dev",
-      "unsupported-build-tool",
       "sca-package-file-missing",
       "sca-package-file-invalid",
       "sca-lock-file-missing",
@@ -118,12 +117,22 @@
     "error": 1,
     "hold": 0,
     "warning": 0,
-    "info": 0,
+    "info": 1,
     "byRule": {
-      "sca-lock-file-missing": 1
+      "sca-lock-file-missing": 1,
+      "sca-not-required": 1
     }
   },
   "findings": [
+    {
+      "ruleId": "sca-not-required",
+      "severity": "info",
+      "file": null,
+      "loc": null,
+      "item": null,
+      "hint": null,
+      "message": "The shipped add-on (the built XPI) is the same code as your source archive: nothing in it is minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A source archive is only needed once the shipped code is built, so please submit the XPI on its own next time. Source-code submissions also take considerably longer to review."
+    },
     {
       "ruleId": "sca-lock-file-missing",
       "severity": "error",

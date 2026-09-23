@@ -44,14 +44,13 @@
         line.
       </p>
       <p>
-        A fourth condition is not about the shipped code at all: the build has to be one
-        that could actually be <em>run</em>. The advice is withheld from a submission whose
-        package manager is unsupported, whose <code>package.json</code> is missing or
-        unreadable, or which ships no usable lock file — each of which rejects the
-        submission and stops the review. Telling such a developer their archive was
-        unnecessary would contradict the rejection printed beside it, and it would be
-        untrue besides: nobody can confirm this source produces that XPI when the install
-        refuses to run. The hint is what yields, never the rejection.
+        Nothing about the build enters into it. A submission can be rejected for a build
+        that cannot be reproduced — a missing <code>package.json</code>, an unusable lock,
+        an unsupported package manager — and still be told it never needed the archive:
+        the two answer different questions, and this one is only ever about the
+        <em>next</em> submission. Because a review is no longer downgraded, the advice
+        cannot be read as narrowing the current one, so a rejection printed beside it takes
+        nothing back.
       </p>
 
       <h2>Decision flow</h2>

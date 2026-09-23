@@ -45,22 +45,22 @@ webext-linter <xpi|folder> [options]
 copy: edit the source and the next run picks it up.
 
 The schema review picks the matching schema **automatically** from the add-on's
-own manifest — no channel flag. Two dimensions:
+own manifest - no channel flag. Two dimensions:
 
 - **Manifest version**: `manifest_version` selects `mv2` vs `mv3`. An add-on that
   omits it (or has a missing/invalid manifest) is treated as MV2.
 - **Channel** (`release`, `esr`, `beta`): chosen from the add-on's supported
   version range. The **upper bound** (`strict_max_version`) decides: an add-on
   capped at a channel's own Thunderbird major targets that train, so its schema is
-  used — e.g. `strict_max_version: "140.*"` with ESR at 140 → the **ESR** schema
+  used - e.g. `strict_max_version: "140.*"` with ESR at 140 → the **ESR** schema
   (whose `version_added` entries reflect APIs backported into the ESR train). With
-  no cap, or a cap that matches no cached train, it falls back to **release**; the
+  no cap, or a cap that matches no cached train, it falls back to **release**. The
   `version_added` checks still flag genuinely unsupported APIs.
 
 The options, grouped as in `--help`:
 
 **Cache:** the schema, the library-hash DB and the allowed-experiments list are each
-downloaded once and reused; the CDN lookup cache fills incrementally as a best-effort
+downloaded once and reused. The CDN lookup cache fills incrementally as a best-effort
 side-channel.
 
 A channel branch is a moving target, so a cached schema is a snapshot. When an add-on's
@@ -70,13 +70,13 @@ snapshot would be reported as unknown rather than as needing a newer `strict_min
 
 | Option | Description |
 | --- | --- |
-| `--cache-clear` | Delete every cache directory below before the review, so all fetched sources (schema, library-hash DB, CDN lookups, allowed-experiments) are re-downloaded from scratch — as on a first run. |
+| `--cache-clear` | Delete every cache directory below before the review, so all fetched sources (schema, library-hash DB, CDN lookups, allowed-experiments) are re-downloaded from scratch - as on a first run. |
 | `--cache-schema-dir <dir>` | Where the downloaded schema zips are cached (default `.schema-cache`). |
 | `--cache-hash-db-dir <dir>` | Where the fetched library-hash database (the addons-linter "dispensary" `hashes.txt`, used by `missing-library` to identify a bundled library by its exact content hash) is cached (default `.lib-mozilla-hash-db-cache`). |
-| `--cache-cdn-lookup-dir <dir>` | Where the jsDelivr CDN hash-lookup results are cached — best-effort, backing the optional `--cdn-lib-lookup` (default `.lib-cdn-lookup-cache`). |
+| `--cache-cdn-lookup-dir <dir>` | Where the jsDelivr CDN hash-lookup results are cached - best-effort, backing the optional `--cdn-lib-lookup` (default `.lib-cdn-lookup-cache`). |
 | `--cache-experiments-dir <dir>` | Where the fetched allowed-experiments zip (the Thunderbird Draft-API list feeding the Experiment checks, e.g. `experiment-modified`) is cached (default `.experiments-cache`). |
 
-The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `banned-library`) is curated by hand from Mozilla's [addons-linter third-party library docs](https://github.com/mozilla/addons-linter/blob/master/docs/third-party-libraries.md), since Mozilla ships no machine-readable list; that page
+The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `banned-library`) is curated by hand from Mozilla's [addons-linter third-party library docs](https://github.com/mozilla/addons-linter/blob/master/docs/third-party-libraries.md), since Mozilla ships no machine-readable list, and that page
 is monitored and upstream changes are ported manually.
 
 **Check selection:**
@@ -91,23 +91,22 @@ is monitored and upstream changes are ported manually.
 | Option | Description |
 | --- | --- |
 | `--report-format <text\|json>` | Report output format (default `text`). |
-| `--report-out <file>` | Write a plain copy of the run to a file in addition to stdout - the activity feed and the report (a `--report-format json` run writes the report alone). Refused with any `--llm-*` flag: no run of that round trip saves its output. |
 
 **LLM review:** what an LLM agent runs, instead of a person reading the report. `--llm-review`
-runs the review ONCE and hands out the first of its phases; every `--llm-verdict` run after
+runs the review ONCE and hands out the first of its phases. Every `--llm-verdict` run after
 that takes a phase back and hands out the next, until the last one carries the report.
 `--llm-sca-review` prepares a source code review and is over before one starts.
 
 The agent audits each finding, settles what the scans could not, and puts the rest to a
-reviewer — the linter decides what is asked and what an answer may say. The whole round
+reviewer - the linter decides what is asked and what an answer may say. The whole round
 trip, the phases, the answer vocabulary and what the reviewer is handed are described in
 **[docs/llm-review.md](docs/llm-review.md)**.
 
 | Option | Description |
 | --- | --- |
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. Refused with `--report-format json`. |
-| `--llm-verdict <file>` | Take a phase back and hand out the next — or, when nothing is left to issue, print the settled report. Takes no add-on path. Normally run by the agent, not by a person. |
-| `--llm-sca-review` | Read the add-on argument as a submission folder — one built `.xpi` and one archive of its source — print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
+| `--llm-verdict <file>` | Take a phase back and hand out the next - or, when nothing is left to issue, print the settled report. Takes no add-on path. Normally run by the agent, not by a person. |
+| `--llm-sca-review` | Read the add-on argument as a submission folder - one built `.xpi` and one archive of its source - print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
 | `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later, unless the review stopped early. |
 | `--llm-skip-sweep` | Leave out the sweep: the prompt neither spawns it nor asks for it, and the Standard Code Review section stays in the report to be swept by hand. |
@@ -117,15 +116,15 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | Option | Description |
 | --- | --- |
 | `--sca-root <folder>` | The **extracted** source root (holds `package.json`/lock) - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
-| `--sca-source <path>` | The add-on code root, **inside** `--sca-root`: relative to it (e.g. `src`) or absolute within it. Optional; defaults to the whole `--sca-root` reviewed as the source. Needs `--sca-root`. |
-| `--sca-exp-source <path>` | The Experiment implementation folder, **inside** `--sca-root`, anywhere under it. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--sca-root`; required when `--allow-experiments` is used in SCA mode. |
+| `--sca-source <path>` | The add-on code root, **inside** `--sca-root`: relative to it (e.g. `src`) or absolute within it. Optional, and defaults to the whole `--sca-root` reviewed as the source. Needs `--sca-root`. |
+| `--sca-exp-source <path>` | The Experiment implementation folder, **inside** `--sca-root`, anywhere under it. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--sca-root`, and is required when `--allow-experiments` is used in SCA mode. |
 
 **Other:**
 
 | Option | Description |
 | --- | --- |
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
-| `--cdn-lib-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached; an offline run simply finds no match. |
+| `--cdn-lib-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached, and an offline run simply finds no match. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--verbose` | Verbose logging. |
 
@@ -143,18 +142,18 @@ authoritative shipped artifact:
 node verify.js built.xpi --sca-root ./source-archive --sca-source src
 ```
 
-A source archive is always reviewed as one — the review is never re-routed to the XPI on
+A source archive is always reviewed as one - the review is never re-routed to the XPI on
 the strength of what the XPI looks like. SCA is what you need when the shipped XPI is not
 the code you wrote: minified, obfuscated, transpiled, or bundled.
 
-When the shipped XPI turns out to BE the submitted source — readable, no transpiled source
-kind, and every script it ships byte-identical to one in the archive — the review reports
+When the shipped XPI turns out to BE the submitted source - readable, no transpiled source
+kind, and every script it ships byte-identical to one in the archive - the review reports
 `sca-not-required` (info) to say an XPI-only submission would have done, and would have
-been reviewed faster. That is advice for next time; it does not change the review it
+been reviewed faster. That is advice for next time. It does not change the review it
 appears in.
 
 - `--sca-root` is the **extracted** source archive that holds `package.json` /
-  the lock file; setting it switches on SCA mode. It must be a folder: unlike the
+  the lock file. Setting it switches on SCA mode. It must be a folder: unlike the
   submitted `.xpi`, which this tool extracts itself, a source archive comes in too
   many formats for this tool to open - extract it first, and every format then
   works, because `tar` handles what this tool does not.
@@ -189,15 +188,14 @@ appears in.
   and pulled-in cases are separate checks, because the developer fixes them
   differently: update this package, or update the one that pulls it in.
 - The **build tooling** (everything in `--sca-root` outside `--sca-source` - build
-  scripts, configs, `.npmrc`) is reviewed. Three requirements decide whether the build
+  scripts, configs, `.npmrc`) is reviewed. Two requirements decide whether the build
   can be reproduced at all: the archive must **carry a build** (no `package.json` at
-  `--sca-root` means there is nothing to reproduce), it must use **npm or pnpm** (a
-  `yarn.lock` / `bun` build is rejected), and it must commit a **lock file** that
-  installs exactly what `package.json` declares. Each stops the review, since every
-  remaining question depends on installing and building. The other two defer to the tool
-  one, so a submission built with an unsupported package manager is told that once rather
-  than also being told it has no build and no lock. A fourth requirement stops the review
-  from the other side: an `.npmrc` that points the package **registry** elsewhere is
+  `--sca-root` means there is nothing to reproduce), and it must commit a **lock file**
+  that installs exactly what `package.json` declares. npm and pnpm are the only package
+  managers the review installs from, so those are the only locks that count and a build
+  using anything else is rejected for having none. Each stops the review, since every
+  remaining question depends on installing and building. A third requirement stops the
+  review from the other side: an `.npmrc` that points the package **registry** elsewhere is
   rejected, because the install would run but fetch something other than what is declared,
   so reproducing it attests nothing and it pulls code from a developer-chosen host onto the
   reviewer's machine. Beyond those, the build must not commit a `node_modules` folder or a
@@ -222,7 +220,7 @@ appears in.
   (required when `--allow-experiments` is used in SCA mode).
 - Because a review spans two artifacts, each finding's `file:line` is prefixed with the
   artifact it lives in - `[XPI]` (the built XPI) or `[SCA]` (the readable source code
-  archive) - so a reviewer knows which one to open; the Found Issues section closes with a
+  archive) - so a reviewer knows which one to open. The Found Issues section closes with a
   legend, and the same prefix appears on the live activity feed. A plain XPI review
   (one artifact) adds no prefix.
 
@@ -276,12 +274,12 @@ not the developer's, so accepting it is a judgement a person owns), and
 so no scan of its surface settles what it does).
 
 Some findings stop the review outright. A check can declare that it does by naming the
-reason the report gives (`review-early-exit:` in the registry) - today twelve do, across
+reason the report gives (`review-early-exit:` in the registry) - today eleven do, across
 three reasons: the four dependency-vulnerability checks name *known security
-vulnerabilities*, `banned-library` names *disallowed library versions*, and the seven that
-decide a source submission cannot be built from - `unsupported-build-tool`,
-`sca-package-file-missing`, `sca-package-file-invalid`, `sca-lock-file-missing`,
-`sca-lock-file-invalid`, `build-registry-redirect` and `build-lifecycle-hook` - name *a
+vulnerabilities*, `banned-library` names *disallowed library versions*, and the six that
+decide a source submission cannot be built from - `sca-package-file-missing`,
+`sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
+`build-registry-redirect` and `build-lifecycle-hook` - name *a
 build that cannot be reproduced*. When one of them reports at error
 severity, nothing further is put to a reviewer: the report drops every to-do item they
 would have been **asked** - the two manual-review sections and their tally counts, plus
@@ -336,7 +334,7 @@ machine.
 | `disguised-stylesheet` | Data smuggled out through a stylesheet or CSS `url()` built with appended runtime data (error, regardless of consent). |
 | `disguised-window` | Data smuggled out through a `window.open()` to a remote URL built with appended runtime data (error, regardless of consent). |
 | `eval-call` | An `eval()` call in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt: it cannot run eval without a permissive CSP, which `csp-unsafe-eval` flags. |
-| `experiment-manual-review` | Every reviewed Experiment (declares `experiment_apis`) - routed to manual review with a reminder that Experiments have full access to Thunderbird's internals and need a careful human code review. Fires for pristine, modified, and `--allow-experiments` submissions; silent for non-Experiments and outright-rejected ones. |
+| `experiment-manual-review` | Every reviewed Experiment (declares `experiment_apis`) - routed to manual review with a reminder that Experiments have full access to Thunderbird's internals and need a careful human code review. Fires for pristine, modified, and `--allow-experiments` submissions. Silent for non-Experiments and outright-rejected ones. |
 | `experiment-missing-strict-max-version` | An accepted Experiment (`--allow-experiments`) that sets no `strict_max_version` (error). Silent when experiments are disallowed, since `experiment-not-allowed` already rejects it. |
 | `experiment-modified` | A bundled Experiment that is a recognised published Thunderbird API draft but a modified or outdated copy (error) - the submission stays on the normal review path but is rejected until the unmodified latest upstream copy is bundled. |
 | `experiment-overrides-api` | An Experiment whose declared API path overrides or grafts onto a built-in Thunderbird API instead of adding a new namespace (error). |
@@ -347,8 +345,8 @@ machine.
 | `manifest-unknown-permission` | A declared permission value that is neither a known permission, a data-collection permission, nor a match pattern (error). |
 | `manifest-version-mismatch` | `manifest_version` disagrees with the schema set being reviewed (error). |
 | `minimize-host-permissions` | Broad (`<all_urls>` / `*` host) permissions requested as required (info). |
-| `missing-english-localization` | User-facing text hardcoded in a non-English language while the add-on ships no English `_locales` (warning). Pre-flight: an English `_locales` directory (`en`, `en-US`, …) → pass; a `_locales` directory without one → a finding; no `_locales` at all → language-detect the visible HTML text plus the manifest name/description with `franc`, where a confident non-English verdict is the finding. Too little text, or a near-tie with English, escalates. |
-| `missing-library` | A bundled JS or CSS file (not in the VENDOR file) whose content hash matches a known third-party library release, named as `name version` (info). Identified by a fetched known-library hash database (Mozilla dispensary's `hashes.txt`), so the match is byte-exact; a file the database doesn't recognize is left to `minified-code`/`obfuscated-code` or scanned as the developer's own code. An identified library is also audited for known vulnerabilities (`vendor-vulnerable`), so an undeclared vulnerable bundle is still caught. |
+| `missing-english-localization` | User-facing text hardcoded in a non-English language while the add-on ships no English `_locales` (warning). Pre-flight: an English `_locales` directory (`en`, `en-US`, …) → pass, a `_locales` directory without one → a finding, and no `_locales` at all → language-detect the visible HTML text plus the manifest name/description with `franc`, where a confident non-English verdict is the finding. Too little text, or a near-tie with English, escalates. |
+| `missing-library` | A bundled JS or CSS file (not in the VENDOR file) whose content hash matches a known third-party library release, named as `name version` (info). Identified by a fetched known-library hash database (Mozilla dispensary's `hashes.txt`), so the match is byte-exact. A file the database doesn't recognize is left to `minified-code`/`obfuscated-code` or scanned as the developer's own code. An identified library is also audited for known vulnerabilities (`vendor-vulnerable`), so an undeclared vulnerable bundle is still caught. |
 | `missing-manifest-key` | A called API needs a manifest key (e.g. `action`) that is not declared (error). The manifest-key counterpart of `missing-permission`. |
 | `missing-permission` | A permission required but not declared (error) - required by a called API, or implied by a declared script-injection manifest key (`compose_scripts` → `compose`, `message_display_scripts` → `messagesModify`). An API needing a manifest key is `missing-manifest-key`. |
 | `missing-vendor-file` | A VENDOR entry (file + source URL) naming a file not present in the submission (warning). |
@@ -358,10 +356,10 @@ machine.
 | `minified-code` | A JS file (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error). |
 | `obfuscated-code` | A JS file (not a recognized library) shipped obfuscated - recognized by the AST structure of a known obfuscator family via the `obfuscation-detector` library. The families a match is drawn from are pinned, so a family the library gains later decides nothing and a match needs no second opinion. High precision, partial recall - some obfuscators evade it. |
 | `privacy-policy` | Data transmitted by an overt API to a remote host the developer chose (fixed in the add-on, not entered by the user) - one case per transmission site, naming its host. A host the add-on assembles while it runs is reported too, marked rather than named, since dropping it would hide the site the tool can say least about. Routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
-| `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, stops the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce, so the XPI-only advice is withheld instead (`sca-not-required`). |
+| `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, stops the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce. Whether the developer could have shipped the XPI alone is a separate question, so `sca-not-required` prints beside this rejection rather than in place of it. |
 | `sca-package-file-invalid` | A `package.json` that is present but unusable - it does not parse, or it parses to something other than a JSON object - so the build it defines cannot be run (error, stops the review). Presence is decided by name and usability by reading, so exactly one of this and the check above ever speaks. |
-| `sca-lock-file-invalid` | A committed lock file that cannot install what `package.json` declares: it cannot be read, it resolves nothing for a declared package, or it records a different version range for one (error). `npm ci` / `pnpm install --frozen-lockfile` refuse over all three, so the build cannot be reproduced and the review stops. |
-| `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, stops the review). The lock is owed by the manifest, not by what it declares: both installers refuse without one whatever it holds. Silent when the build uses an unsupported package manager, which `unsupported-build-tool` reports instead. |
+| `sca-lock-file-invalid` | A committed lock file that cannot install what `package.json` declares: it cannot be read, it is not a recognisable npm or pnpm lock, it resolves nothing for a declared package, or the version it pins for one is not a version that `package.json` allows (error). `npm ci` / `pnpm install --frozen-lockfile` refuse over all four, so the build cannot be reproduced and the review stops. |
+| `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, stops the review). The lock is owed by the manifest, not by what it declares: both installers refuse without one whatever it holds. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |
 | `string-timer` | A code string passed to `setTimeout`/`setInterval` (it is eval'd) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
 | `sync-xhr` | Synchronous `XMLHttpRequest` (`open(..., false)`). |
 | `trademark-violation` | Add-on name (resolved from `_locales` for a `__MSG__` name) using a Mozilla brand term - `Firefox`/`Mozilla`/`MZLA` anywhere, in any locale (error, case-insensitive). Needs no knowledge of the language, so it is always a finding, and each offending name is reported once naming every locale that states it. `Thunderbird` is the two checks below, and a name carrying a brand term is left to this one alone, since it is refused either way. The icon is a separate manual check. |
@@ -371,7 +369,7 @@ machine.
 | `unparsable-file` | A JavaScript, TypeScript, or Vue `<script>` source that failed to parse, so its API checks were skipped (info). |
 | `unpinned-vendor-source` | A VENDOR-declared file whose (trusted-host) source is not pinned to an immutable version/tag/commit, so its bytes can't be verified (error). |
 | `unrecognized-manifest-key` | A top-level manifest key the schema does not define - Thunderbird ignores it (info). |
-| `unsafe-html` | Any write to `innerHTML`/`outerHTML`/`srcdoc`/`insertAdjacentHTML`; only `Element.setHTML()` is sanctioned (an empty/null clear is exempt) (info). |
+| `unsafe-html` | Any write to `innerHTML`/`outerHTML`/`srcdoc`/`insertAdjacentHTML`. Only `Element.setHTML()` is sanctioned (an empty/null clear is exempt) (info). |
 | `unused-permission` | A declared named permission (required or optional) that no reachable call provably requires (warning) - host patterns are `minimize-host-permissions`' concern. A permission is dropped as justified when an API call, a `navigator.*` Web/DOM call, or a script-injection manifest key proves it in use. It is a finding when the registry's permission prompt names its justifying usages as `tokens` and not one of them occurs anywhere in the live code (comments excluded) or the manifest - decided only while the scan can see every usage. Everything else escalates, carrying the sites where its tokens occur. |
 | `update-url` | A manifest that declares an `update_url` (at `browser_specific_settings.gecko` or the deprecated `applications.gecko` alias, any manifest version). It self-hosts updates outside ATN, so the next version installs from a developer-controlled URL and bypasses review (error). |
 | `vendor-modified` | A declared third-party file whose bytes don't match its pinned source (EOL-tolerant compare) - it appears modified from upstream (error). |
@@ -382,19 +380,19 @@ machine.
 ### Checks that escalate
 
 These checks **always run their scan**. Cases the scan can settle become findings
-directly; the genuinely-ambiguous residue escalates per case, so the reviewer is
+directly. The genuinely-ambiguous residue escalates per case, so the reviewer is
 handed a concrete `file:line` to look at rather than a verdict the tool guessed.
 
 | Check id (`check:`) | What the scan settles, and what it escalates |
 | --- | --- |
-| `strict-min-version-api` | Pre-flight: a call to a real, schema-resolved API added in a Thunderbird newer than the declared `strict_min_version`. An unguarded call is a finding straight away; a call carrying a guard signal (optional chaining, a `typeof`/existence test, a `getBrowserInfo` version gate, an earlier guard clause that returned or threw when the API was missing) escalates, for the reviewer to judge from the call's file whether the guard really keeps it off the older versions. A non-existent API is `unknown-api`'s concern. |
+| `strict-min-version-api` | Pre-flight: a call to a real, schema-resolved API added in a Thunderbird newer than the declared `strict_min_version`. An unguarded call is a finding straight away. A call carrying a guard signal (optional chaining, a `typeof`/existence test, a `getBrowserInfo` version gate, an earlier guard clause that returned or threw when the API was missing) escalates, for the reviewer to judge from the call's file whether the guard really keeps it off the older versions. A non-existent API is `unknown-api`'s concern. |
 | `remote-eval` | Pre-flight: the statically-undecidable `fetch()->eval` pattern (scanned only outside the WebExtension tree, like the other dynamic-execution checks - WebExtension code is CSP-gated) escalates, for the reviewer to judge from the offending file whether the executed code is fetched remotely. The definite dynamic-execution cases are the deterministic `eval-call`/`function-constructor`/`string-timer`/`csp-unsafe-eval`/`csp-unsafe-inline` checks. |
 | `remote-resources` | Pre-flight: remote `<script>`/`<link>`/`@import`/`url()`/media/imports/`importScripts`/runtime injection/WASM, and a CSP permitting a remote script source → a finding. Statically-undecidable cases (non-literal URLs, inline `data:`/`blob:` script sources) escalate for the reviewer to resolve. |
-| `vendored-remote-resources` | The same scan's other question: a remote load inside an HTML/CSS file whose content matches a published upstream release. The line is that release's, not the developer's, so it emits no finding and every site goes to a person - accepting it as published is a judgement they own. Turns on the content match, never on a declaration (XPI reviews only; an SCA review has no verified result to read). |
+| `vendored-remote-resources` | The same scan's other question: a remote load inside an HTML/CSS file whose content matches a published upstream release. The line is that release's, not the developer's, so it emits no finding and every site goes to a person - accepting it as published is a judgement they own. Turns on the content match, never on a declaration (XPI reviews only, since an SCA review has no verified result to read). |
 | `data-exfiltration` | Pre-flight: a normal transmission (`fetch`/XHR/WebSocket/EventSource/`sendBeacon`) to a remote/dynamic host escalates, for the reviewer to judge from the file and the options page whether user data is sent without an explicit opt-in. Covert channels are the separate `disguised-*` errors. |
 | `disguised-transmission` | Pre-flight: the weak residue of the covert channels - a resource URL, a stylesheet `url()`, a `window.open()`, or a page navigation to a remote host built from a runtime value, with no user-data API call in it escalates, for the reviewer to judge whether it really smuggles user data out through that channel or is just legitimate dynamic URL building. The strong cases (a user-data call in the URL) are the deterministic `disguised-*` errors. |
 | `minimize-web-accessible-resources` | Pre-flight: over-broad exposure (a resource pattern like `*`, or MV3 `matches` of `<all_urls>`/`*://*/*`) and concrete resources no content script/page loads → a finding. An ambiguous exposed resource (dynamic loaders, or name mentioned) escalates, for the reviewer to judge whether it is needlessly exposed. |
-| `unused-files` | Pre-flight: hidden/junk by name, and files reachable from no manifest entry point (a reference graph over imports/`getURL`/HTML/CSS plus schema-derived file-loading APIs) - a clearly-unreferenced file is a finding. An ambiguous file (string-mentioned, or the add-on uses dynamic loaders) escalates, for the reviewer to follow the suspected loaders and judge whether it is unused. Documentation (any `.md`/`.rst`/`.license`; a `.txt` or extensionless file named like a doc), dependency manifests and `_locales` are exempt; junk by name is reported ahead of any exemption. |
+| `unused-files` | Pre-flight: hidden/junk by name, and files reachable from no manifest entry point (a reference graph over imports/`getURL`/HTML/CSS plus schema-derived file-loading APIs) - a clearly-unreferenced file is a finding. An ambiguous file (string-mentioned, or the add-on uses dynamic loaders) escalates, for the reviewer to follow the suspected loaders and judge whether it is unused. Documentation (any `.md`/`.rst`/`.license`, or a `.txt` or extensionless file named like a doc), dependency manifests and `_locales` are exempt. Junk by name is reported ahead of any exemption. |
 
 ### Blind-spot sweeps
 

@@ -81,7 +81,7 @@ const hasItem = (meta, ruleId, pred = () => true) =>
 // with no nested subfolder to name. --sca-source is then "." (or an absolute path equal
 // to --sca-root). The whole submission is accepted and fully reviewed: the code checks
 // review the root source, and the build review still traces the build off the root
-// package.json (so a root yarn.lock is caught) - no source/build subfolder needed.
+// package.json (so a root build fault is caught) - no source/build subfolder needed.
 const FLAT_SRC = {
   "manifest.json": JSON.stringify({
     manifest_version: 3,
@@ -95,7 +95,6 @@ const FLAT_SRC = {
     version: "1.0.0",
     scripts: { build: "web-ext build" },
   }),
-  "yarn.lock": "# yarn lockfile v1\n",
 };
 
 test("SCA e2e: a flat layout (--sca-source == --sca-root) is accepted and fully reviewed", async () => {
@@ -125,10 +124,10 @@ test("SCA e2e: a flat layout (--sca-source == --sca-root) is accepted and fully 
         "the root source file is reviewed by the code checks"
       );
       // The build review works flat: selectScaBuildFiles fed the corpus off the root
-      // package.json, so the root yarn.lock is an Unsupported build tool reject.
+      // package.json, which ships no lock, so the lock requirement rejects.
       assert.ok(
-        has(findings, "unsupported-build-tool", (f) => /yarn/.test(f.message)),
-        "the root yarn.lock is flagged (the build review runs in a flat layout)"
+        has(findings, "sca-lock-file-missing"),
+        "the missing lock is flagged (the build review runs in a flat layout)"
       );
     }
   } finally {
@@ -240,9 +239,9 @@ test("SCA e2e: --sca-root without --sca-source defaults the source to '.'", asyn
       ),
       "the root source file is reviewed"
     );
-    // The build review ran (SCA-only), so the root yarn.lock is rejected.
+    // The build review ran (SCA-only), so the root package.json's missing lock is rejected.
     assert.ok(
-      has(findings, "unsupported-build-tool", (f) => /yarn/.test(f.message)),
+      has(findings, "sca-lock-file-missing"),
       "the SCA build review ran with --sca-root alone"
     );
   } finally {
@@ -952,13 +951,11 @@ test("SCA e2e: a build script outside the source is reviewed by undeclared-build
 });
 
 // The deterministic build-policy checks run offline over the build files (outside the
-// review source): a yarn.lock is an Unsupported build tool reject, and an .npmrc
-// registry redirect is a Build registry override reject.
-test("SCA e2e: build-policy checks flag yarn + a redirected registry offline", async () => {
+// review source): an .npmrc registry redirect is a Build registry override reject.
+test("SCA e2e: a redirected registry is flagged offline", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
     ...SRC_FILES,
-    "yarn.lock": "# yarn lockfile v1\n",
     ".npmrc": "registry=https://evil.example/\n",
   });
   try {
@@ -968,10 +965,6 @@ test("SCA e2e: build-policy checks flag yarn + a redirected registry offline", a
       scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
-    assert.ok(
-      has(findings, "unsupported-build-tool", (f) => /yarn/.test(f.message)),
-      "yarn.lock is rejected as an unsupported build tool"
-    );
     // The registry as written rides on the item (the locus line), not the message,
     // so every redirected .npmrc collapses into one entry.
     assert.ok(
@@ -985,8 +978,8 @@ test("SCA e2e: build-policy checks flag yarn + a redirected registry offline", a
   }
 });
 
-// A clean npm build (package-lock.json + the public registry) fires neither.
-test("SCA e2e: a clean npm build fires neither build-policy check", async () => {
+// A clean npm build (package-lock.json + the public registry) fires none of them.
+test("SCA e2e: a clean npm build fires no build-policy check", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
     ...SRC_FILES,
@@ -1000,7 +993,6 @@ test("SCA e2e: a clean npm build fires neither build-policy check", async () => 
       scaSource: path.join(src, "src"),
       ...OFFLINE,
     });
-    assert.ok(!has(findings, "unsupported-build-tool"));
     assert.ok(!has(findings, "build-registry-redirect"));
     assert.ok(!has(findings, "committed-node-modules"));
   } finally {

@@ -1,12 +1,11 @@
 // Terminal color for the live feed and the report - applied only when writing
 // to an interactive screen, never to a file or a pipe. The CLI enables it once
 // (setColor) when stdout is a TTY and the format is text. Everything else - the
-// golden harness, unit tests, JSON, or a piped run - stays plain. A
-// --report-out copy is run through stripColor, so the saved file is plain even
-// when the screen was colored.
+// golden harness, unit tests, JSON, or a piped run - stays plain, so nothing
+// downstream ever has to undo it.
 //
-// Belongs here: setColor, the red/green/yellow/blue/brightCyan/grey wrappers, and
-// stripColor. Does NOT belong here: WHICH text is colored (the feed note in
+// Belongs here: setColor and the red/green/yellow/blue/brightCyan/grey wrappers.
+// Does NOT belong here: WHICH text is colored (the feed note in
 // src/checks/registry.js, the issues in src/report/format.js) or WHEN color is
 // enabled (src/cli.js reads process.stdout.isTTY).
 
@@ -54,16 +53,3 @@ export const brightCyan = (s) => paint("1;96", s);
  * @param {string} s @returns {string}
  */
 export const grey = (s) => paint(90, s);
-
-// Every ANSI SGR escape sequence (the only kind this module emits). Built from
-// the ESC char so the source carries no control character.
-const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
-
-/**
- * Strip ANSI color codes, so a saved report or captured feed is plain text.
- * @param {string} s
- * @returns {string}
- */
-export function stripColor(s) {
-  return String(s).replace(ANSI, "");
-}

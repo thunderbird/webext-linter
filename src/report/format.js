@@ -899,7 +899,7 @@ function renderGroup(n, entry, labelOf) {
   lines.push(...renderLocusList(entry, labelOf));
   // Tint the whole entry by severity (error red, warning yellow) - a no-op
   // unless the CLI enabled color. Each line is tinted on its own, so the color
-  // resets per line and stripColor cleans the --report-out copy.
+  // resets per line rather than running on into the next.
   const tint = SEV_COLOR[entry.members[0].severity] ?? identity;
   return lines.map(tint);
 }
@@ -942,7 +942,7 @@ function manualSection(items, title, accent = blue, labelOf) {
   // A manual-review section is all manual work, so it is all the section's accent
   // color (a no-op unless color is enabled) - Extended uses a vivid cyan, distinct
   // from Standard's blue, so the two are easy to tell apart. Each line is tinted on
-  // its own for stripColor.
+  // its own, so the color resets per line.
   out.push(accent(TODO_LEAD));
   let n = 0;
   for (const entry of entriesOf(items)) {

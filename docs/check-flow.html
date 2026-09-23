@@ -227,10 +227,7 @@ flowchart TB
   RFIND --> FMT
 
   FMT["src/cli.js: formatReview(review, format)<br/>calls src/report/format.js - renders text or json"] --> WRITE["write the report to stdout"]
-  WRITE --> ROUT{{"--report-out given?"}}
-  ROUT -- yes --> SAVE["save a plain copy:<br/>feed + report"]
-  ROUT -- no --> EXITQ
-  SAVE --> EXITQ
+  WRITE --> EXITQ
   EXITQ{{"any errors?"}}
   EXITQ -- yes --> EXIT1((("FAIL<br/>exit 1")))
   EXITQ -- no --> EXIT0((("PASS<br/>exit 0")))

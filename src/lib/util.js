@@ -97,8 +97,10 @@ export function isDocMetadataFile(file) {
 // Matched as EXACT filenames - the extension is part of the identity, so unlike
 // the name-based docs above there is no name-without-extension ambiguity and no
 // risk of exempting a same-named code file.
+// The npm and pnpm files only: those are the package managers a build may use, so a lock
+// in any other format is not a declaration this review recognizes and carries no exemption.
 export const DEPENDENCY_FILE_RE =
-  /(^|\/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$/i;
+  /(^|\/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml)$/i;
 
 /**
  * Broader doc test for reachability's mention net: a named doc, a dependency

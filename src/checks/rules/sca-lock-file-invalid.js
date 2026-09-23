@@ -2,20 +2,15 @@
 // package.json declares. `npm ci` and `pnpm install --frozen-lockfile` both compare the
 // lock against the manifest before installing anything, and refuse over all four cases
 // reported here: a lock that does not parse, one that parses but is not a lock this
-// comparison can read, a declared package it resolves nothing for, and one it records
-// under a different spec.
+// comparison can read, a declared package it resolves nothing for, and one whose pin the
+// declaration does not admit.
 //
-// The stale case costs more than reproducibility: lockedVersion resolves a declared name
-// against the lock's installed entry, so a lock recording an older range has the OSV audit
-// clear a version the developer never declared.
-//
-//
-// Silent on a submission that fingerprints as an unsupported package manager
-// (src/build/tools.js): "this build uses yarn" and "this build has no npm or pnpm lock" are
-// one fact, and unsupported-build-tool is the check whose subject the tool is. It carries
-// the same review-early-exit, so the halt does not depend on this check speaking. The
-// question is asked of the FILES rather than of that check's outcome, so the answer cannot
-// depend on which check ran first.
+// The last case is asked the way each installer asks it, which is not the same question.
+// npm resolves ONE node per name and checks the version it pinned against the declared
+// range, so `unsatisfied` names a pin, and tightening a range to exactly what the lock
+// already installs is no fault at all. pnpm compares the recorded SPECIFIER to the declared
+// one as text and refuses on any difference, so `stale` names a string. Reading npm's the
+// way pnpm's reads would reject locks npm installs from (-> src/vendor/locks.js npmGap).
 //
 // Belongs here: mapping a gap to a finding and wording its subject. Does NOT belong here:
 // reading the lock formats (-> src/vendor/locks.js lockGaps), whether a lock was owed at
@@ -24,8 +19,7 @@
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { lockGaps } from "../../vendor/locks.js";
-import { unsupportedBuildTool } from "../../build/tools.js";
-import { manifestTokenLine } from "../../lib/util.js";
+import { declarationLine, manifestTokenLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -36,15 +30,21 @@ export default {
    */
   run(ctx) {
     const files = ctx.addon?.files;
-    if (!files || unsupportedBuildTool(ctx.addon)) {
+    if (!files) {
       return { findings: [] };
     }
-    const text = files.get("package.json")?.toString("utf8") ?? "";
     const findings = [];
     for (const gap of lockGaps(ctx.addon)) {
-      // An unreadable lock is the subject itself, so it anchors at the lock and has no
-      // declaration line; every other gap is about one declaration in package.json.
-      const line = gap.name ? manifestTokenLine(text, gap.name) : null;
+      // Each gap anchors in the file its failing value sits in (LockGap.file), so the line
+      // is located in THAT file: the pinned entry inside the lock for `unsatisfied`, the
+      // declaration in package.json otherwise. An unreadable lock is the subject itself and
+      // has no line at all.
+      const text = files.get(gap.file)?.toString("utf8") ?? "";
+      const line = gap.token
+        ? declarationLine(text, gap.token)
+        : gap.name
+          ? manifestTokenLine(text, gap.name)
+          : null;
       const loc = line ? { line } : undefined;
       const item = subject(gap);
       ctx.note?.(gap.file, loc, item, VERDICT.FAIL);
@@ -68,6 +68,12 @@ function subject(gap) {
   }
   if (gap.reason === "unrecognised") {
     return "is not a recognisable npm or pnpm lock file";
+  }
+  if (gap.reason === "unsatisfied") {
+    // Read at the lock entry this anchors on: the pinned version is ON that line, and the
+    // other two are attributed to where they live - the root record that produced the pin,
+    // and the declaration in package.json that it fails.
+    return `${gap.name} ${gap.installed} installed via ${gap.recorded} locking does not satisfy the declared ${gap.spec}`;
   }
   const declared = `${gap.name} (${gap.spec})`;
   return gap.reason === "stale"

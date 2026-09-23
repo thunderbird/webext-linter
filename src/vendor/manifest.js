@@ -1,9 +1,8 @@
 // Reads the submission's package.json through ONE implementation, into a shape every
 // dependency reader can use. Each of them asks a question of the same file - resolveVendor
 // (classifying each declaration), lockGaps (what the lock fails to cover),
-// sca-lock-file-missing (whether a lock was owed), sca-package-file-invalid (whether the
-// manifest can be used at all) and unsupportedBuildTool (which package manager the file
-// names) - and one parse answers for all of them. A parse per reader is a copy of these tolerances per
+// sca-lock-file-missing (whether a lock was owed) and sca-package-file-invalid (whether the
+// manifest can be used at all) - and one parse answers for all of them. A parse per reader is a copy of these tolerances per
 // reader, and a submission shaped in a way one copy mishandles is mishandled by that one
 // alone, silently: a manifest that fails to parse reads as an absent manifest, and
 // "declares nothing" is every caller's empty case. One implementation, not one call: each
@@ -96,13 +95,13 @@ export function manifestFault(buf) {
  * Parsed through src/util/json.js, the one parser in src/ - which is what makes a BOM'd
  * manifest readable here, since npm reads one perfectly well and `JSON.parse` does not.
  *
- * Takes the BYTES rather than the artifact, for the reader that does not want the root
- * file: unsupportedBuildTool matches a manifest at any depth, because a build may run from
- * a subfolder.
+ * Module-private: every reader wants the submission's root manifest, which readManifest
+ * below names. This is the half of it that holds the tolerances, kept apart so they are
+ * stated once rather than once per caller.
  * @param {?Buffer} buf  One package.json's bytes.
  * @returns {?object}
  */
-export function parseManifest(buf) {
+function parseManifest(buf) {
   return readBytes(buf).value;
 }
 

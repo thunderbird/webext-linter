@@ -12,9 +12,9 @@
 // nothing in. A second parse here would be a second set of tolerances, and the two could
 // disagree about the same bytes.
 //
-// Silent on a submission that fingerprints as an unsupported package manager
-// (src/build/tools.js), and not silenced by the shipped XPI being the archive's own code -
-// the same grounds as its sibling, for the same reasons.
+// Not silenced by the shipped XPI being the archive's own code - the same grounds as its
+// sibling, for the same reasons. The XPI-only advice is a separate question and prints
+// beside this rejection.
 //
 // Belongs here: turning the fault into a finding and wording its subject. Does NOT belong
 // here: the parse and its tolerances (-> src/vendor/manifest.js), whether the manifest is
@@ -23,7 +23,6 @@
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { MANIFEST_FILE, manifestFault } from "../../vendor/manifest.js";
-import { unsupportedBuildTool } from "../../build/tools.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -34,7 +33,7 @@ export default {
    */
   run(ctx) {
     const files = ctx.addon?.files;
-    if (unsupportedBuildTool(ctx.addon) || !files?.has(MANIFEST_FILE)) {
+    if (!files?.has(MANIFEST_FILE)) {
       return { findings: [] };
     }
     const fault = manifestFault(files.get(MANIFEST_FILE));

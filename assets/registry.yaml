@@ -660,22 +660,6 @@ deterministic-phase:
   response: |-
     A package this add-on does not declare, but that one of its build dependencies pulls in, has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update the declared build dependency that pulls it in, which usually resolves this because a newer release often already depends on a fixed version ({{fixed}} or later for {{item}}). If no update resolves it, consider moving to a different or simpler build chain.
 
-# Deterministic (SCA only): the build must use npm or pnpm - the two package managers
-# that share the .npmrc config format, keeping the reviewable surface small. A committed
-# yarn/bun fingerprint anywhere in the build corpus (a lockfile, or the package.json
-# "packageManager" field) is a hard reject; the offending tool is surfaced as {{item}}
-# and the finding anchors at the fingerprint file. Pinning is a separate axis
-# (xpi-package-unpinned for a shipped manifest, sca-lock-file-missing /
-# sca-lock-file-invalid here); the open-ended build review is undeclared-build-source.
-- title: Unsupported build tool
-  severity: error
-  sca: true
-  review-early-exit: unreproducible-build
-  check: unsupported-build-tool
-  input: build
-  response: |-
-    This add-on is built with {{item}}, and only npm and pnpm are supported. Please provide an npm or pnpm build (commit a package-lock.json or pnpm-lock.yaml) so the dependency install can be reviewed against the declared dependencies.
-
 # Deterministic (SCA only): the source archive has no package.json, so there is no build to
 # reproduce the shipped XPI from. The build's entry point is the root package.json
 # (src/build/corpus.js seeds from it), so its absence is the absence of a build. Reported as
@@ -683,13 +667,12 @@ deterministic-phase:
 # Presence is tested by NAME, not by parse - one that exists but cannot be used is not
 # MISSING, and sca-package-file-invalid reports it. The pair mirrors sca-lock-file-missing /
 # sca-lock-file-invalid, the other file this build cannot run without.
-# Silent on an unsupported package manager, which unsupported-build-tool errors and halts
-# on already. NOT silent when the shipped XPI IS the archive's own code: that the shipped
+# NOT silent when the shipped XPI IS the archive's own code: that the shipped
 # bytes are readable says nothing about whether this source produces them, which is what
 # reproducing the build establishes, and with no build there is nothing to reproduce. The
-# XPI-only ADVICE is what yields there - sca-not-required is withheld from a submission whose
-# build cannot be run (src/build/reproducible.js) - rather than this rejection being withheld
-# from it. No check reads ctx.scaNotRequired: it stays an advice flag that nothing routes on.
+# XPI-only advice (sca-not-required) is a separate question - could this developer have
+# shipped the XPI alone next time - and prints beside this rejection rather than in place of
+# it. No check reads ctx.scaNotRequired: it stays an advice flag that nothing routes on.
 - title: Missing package.json
   severity: error
   sca: true
@@ -707,8 +690,8 @@ deterministic-phase:
 # Decided from the one parse every reader of this file shares (src/vendor/manifest.js), so
 # an unusable manifest here is exactly the one the dependency readers found nothing in.
 # Which case failed rides the location line as {{item}}, so the response states the rule
-# once. Silent on the same ground as its sibling above - an unsupported package manager -
-# and, like it, NOT silenced by the shipped XPI being the archive's own code.
+# once. Like its sibling above, NOT silenced by the shipped XPI being the archive's own
+# code.
 - title: Invalid package.json
   severity: error
   sca: true
@@ -729,8 +712,8 @@ deterministic-phase:
 # whatever it holds, and a root declaring nothing itself is a workspace root or a manifest
 # whose declarations moved, not a submission that installs nothing.
 # Only the ROOT package.json is read - the build's entry point (src/build/corpus.js) -
-# unlike unsupported-build-tool / build-registry-redirect, which scan every depth because
-# they detect a disallowed thing rather than assert a requirement. Nothing here goes looking
+# unlike build-registry-redirect, which scans every depth because it detects a disallowed
+# thing rather than asserting a requirement. Nothing here goes looking
 # for a manifest or a lock deeper in the archive: they sit at the root, which is what the
 # root IS.
 - title: Missing lock file
@@ -746,14 +729,16 @@ deterministic-phase:
 # declares. `npm ci` and `pnpm install --frozen-lockfile` compare the two before installing
 # anything and refuse over the cases reported here: a lock that does not parse, one that
 # parses but is not a lock this comparison can read, a declared package it resolves nothing
-# for, and one recorded under a different spec. The two file-level cases are kept apart in
-# the wording because a developer would check: one will not open, the other opens fine.
-# Decided offline from the two committed files (src/vendor/locks.js lockGaps), over
+# for, and one whose pin the declaration does not admit. The two file-level cases are kept
+# apart in the wording because a developer would check: one will not open, the other opens
+# fine. Decided offline from the two committed files (src/vendor/locks.js lockGaps), over
 # dependencies, devDependencies and optionalDependencies alike - the reviewer installs all
-# of them. The stale case also costs correctness: lockedVersion resolves a declared name
-# against the lock's installed entry, so an older range there has the OSV audit clear a
-# version the developer never declared. Which case failed rides the location line as
-# {{item}}, so the response states the rule once.
+# of them. The last case is asked as each installer asks it: npm against the VERSION its
+# lock pins (so tightening a range to exactly what is installed is no fault), pnpm against
+# the recorded specifier as text, which is what --frozen-lockfile compares. Which case
+# failed rides the location line as {{item}}, so the response states the rule once - and
+# that line sits in the file the failing value is in, the lock for a pin and package.json
+# for a declaration.
 - title: Invalid lock file
   severity: error
   sca: true
@@ -761,7 +746,7 @@ deterministic-phase:
   check: sca-lock-file-invalid
   input: build
   response: |-
-    The committed lock file fails to correctly pin the used version for one or more declared packages. Please run the install again and commit the regenerated lock file.
+    The committed lock file cannot install what package.json declares, so the build cannot be reproduced from this source. Please run the install again and commit the regenerated lock file.
 
 # Deterministic (SCA only): a committed .npmrc that SETS a package registry (registry=
 # or @scope:registry=, case-insensitive) is rejected outright - a legitimate build never

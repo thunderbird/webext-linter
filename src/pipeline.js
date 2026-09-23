@@ -47,7 +47,6 @@ import {
   scaRootRelative,
   relativeInside,
 } from "./addon/load.js";
-import { buildFileFault } from "./build/reproducible.js";
 import { isTranspiledSource } from "./util/files.js";
 import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
@@ -596,8 +595,13 @@ export async function runPipeline(opts) {
 
       // An SCA submission is ALWAYS reviewed as SCA - this only decides whether to TELL the
       // developer an XPI-only submission would have done, so their next one skips the longer
-      // review. See resolveXpiOnlyAdvice for why nothing routes on it. Narrowed once more
-      // by the `build` step below, which can see files this cannot.
+      // review. See resolveXpiOnlyAdvice for why nothing routes on it.
+      //
+      // Independent of whether the build is REPRODUCIBLE. A submission can be rejected for
+      // a build that cannot be run and still be told it never needed the archive: the two
+      // answer different questions, and the advice is only ever about the NEXT submission.
+      // Since a review is no longer downgraded, the advice cannot be read as narrowing this
+      // one, so a rejection beside it takes nothing back.
       scaNotRequired = resolveXpiOnlyAdvice(
         opts,
         xpiAddon.bundled,
@@ -776,15 +780,6 @@ export async function runPipeline(opts) {
         opts.scaExpSource
       );
       addon.buildFiles.buildReview = analyzeBuild({ build: addon.buildFiles });
-      // The XPI-only advice holds only for a build that RUNS. resolveXpiOnlyAdvice asks
-      // whether the shipped bytes are the archive's; it cannot see the build files, which
-      // are selected here. A submission whose build is missing or broken is rejected and
-      // the review stops, so telling it the archive was unnecessary would contradict the
-      // rejection printed beside it - and the advice would be wrong anyway, since nobody
-      // can confirm this source produces that XPI.
-      if (scaNotRequired && buildFileFault(addon.buildFiles)) {
-        scaNotRequired = false;
-      }
     },
   };
 
@@ -1082,9 +1077,9 @@ export async function runPipeline(opts) {
   // until then. Under --llm-review the prompt goes first, so a model handed the review
   // reads what to do with it before anything else.
   //
-  // report(), not feed: these belong to the document, so they reach a --report-out copy and
-  // survive --llm-review switching the Setup and Activity sections off. Absent from JSON (a
-  // machine contract) and from the golden harness for free, like the rest of the narration.
+  // report(), not feed: these belong to the document, so they survive --llm-review
+  // switching the Setup and Activity sections off. Absent from JSON (a machine contract)
+  // and from the golden harness for free, like the rest of the narration.
   if (prompting) {
     // THE REVIEW LOOP's first pass. The deterministic review just ran, and it runs ONCE:
     // its result goes into the state, and every pass after this reads that instead of
