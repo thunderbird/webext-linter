@@ -179,10 +179,6 @@ function helpText(checkIds) {
     ["--checks-skip <ids>", "Skip these checks (comma-separated)."],
   ];
 
-  const report = [
-    ["--report-format <text|json>", "Report output format (default: text)."],
-  ];
-
   // What an LLM agent runs, in the order it runs: --llm-sca-review prepares a source code
   // review (and is over before one starts), then --llm-review asks - leaving out whatever
   // its two --llm-skip-* flags name, given to either - and --llm-verdict applies the
@@ -244,7 +240,12 @@ function helpText(checkIds) {
       "Run the ESLint code-sanity checks on authored JS (off by default).",
     ],
     ["--help", "Show this help."],
+    ["--report-format <text|json>", "Report output format (default: text)."],
     ["--verbose", "Verbose logging."],
+    [
+      "--warnings-as-errors",
+      "Read every warning as an error for this review (off by default): each one is reported in the rejection list rather than as something to resolve with the next release, and the run exits 1. Set once, by the run that starts a review - a --llm-verdict pass reads it back from the review.",
+    ],
   ];
 
   const commands = [
@@ -266,9 +267,6 @@ function helpText(checkIds) {
     "Check selection:",
     ...checks.map(([flag, desc]) => optionLine(flag, desc)),
     "",
-    "Report output:",
-    ...report.map(([flag, desc]) => optionLine(flag, desc)),
-    "",
     "LLM review:",
     ...llm.map(([flag, desc]) => optionLine(flag, desc)),
     "",
@@ -278,8 +276,8 @@ function helpText(checkIds) {
     "Other:",
     ...other.map(([flag, desc]) => optionLine(flag, desc)),
     "",
-    "Exit codes: 0 = no errors, 1 = one or more error-severity findings,",
-    "            2 = tool failure.",
+    "Exit codes: 0 = no errors, 1 = one or more error-severity findings",
+    "            (--warnings-as-errors makes every warning one), 2 = tool failure.",
     "",
   ].join("\n");
 }
@@ -305,6 +303,7 @@ const OPTIONS = {
   "llm-skip-manual": { type: "boolean" },
   "llm-skip-sweep": { type: "boolean" },
   "llm-verdict": { type: "string" },
+  "warnings-as-errors": { type: "boolean" },
   verbose: { type: "boolean" },
   help: { type: "boolean" },
 };
@@ -629,6 +628,19 @@ export async function main(argv) {
     return 2;
   }
 
+  // The band a review publishes a warning at belongs to the REVIEW, recorded by the run that
+  // started it (state.run) and read back by every pass after. Accepting it here too would put
+  // the same fact in two places, and a pass given it where the review was not would settle a
+  // case in a band the rest of that review does not use.
+  if (values["warnings-as-errors"] && values["llm-verdict"]) {
+    process.stderr.write(
+      "--warnings-as-errors belongs to the review, which recorded it when it started, so " +
+        "a --llm-verdict pass reads it back rather than being told it again. Drop it, or " +
+        "start the review again with it.\n"
+    );
+    return 2;
+  }
+
   // --llm-sca-review prepares a review rather than running one, so it shares nothing with
   // the flags below and is settled here, in full, before any of them are read.
   if (values["llm-sca-review"]) {
@@ -922,6 +934,7 @@ function pipelineOptsFromValues(values) {
     checksSkip: splitList(values["checks-skip"]),
     eslint: values.eslint,
     allowExperiments: values["allow-experiments"],
+    warningsAsErrors: values["warnings-as-errors"],
     scaRoot,
     scaSource: inRoot(values["sca-source"]),
     scaExpSource: inRoot(values["sca-exp-source"]),
@@ -991,18 +1004,26 @@ function splitList(value) {
  * The report format is not a parameter: every pass of the loop prints a prompt, and the
  * one format that is not a prompt is refused before the loop is entered.
  * @param {string} file  The review file the agent handed back.
- * @param {import("./checks/registry.js").Registry} registry
+ * @param {import("./checks/registry.js").Registry} base  The authored registry. Read under
+ *   the REVIEW's own band policy below, which only the state can say.
  * @returns {Promise<number>}
  */
-async function runLoopPass(file, registry) {
-  const texts = registry.llmPhases();
+async function runLoopPass(file, base) {
+  const texts = base.llmPhases();
   const handed = path.resolve(file);
-  let state, stateFile;
+  let state, stateFile, registry;
   try {
     // `readHandback` names the state before accept() re-reads the same file for its
     // entries - two reads of what the agent handed back, not two ways of finding it.
     ({ state: stateFile } = readHandback(handed));
     state = readState(stateFile);
+    // The band policy is the REVIEW's, recorded by the run that started it: this pass was
+    // never given the flag, and a case reported HERE becomes a finding here
+    // (src/report/verdicts.js asFinding), which has to land in the band the rest of the
+    // review was published at.
+    registry = base.withPolicy({
+      warningsAsErrors: state.run.warningsAsErrors,
+    });
     accept(state, handed, texts.phases, registry);
   } catch (err) {
     if (err instanceof HandbackRefused) {

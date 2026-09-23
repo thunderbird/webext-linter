@@ -36,10 +36,11 @@ export const REVIEW_SUFFIX = ".review.json";
  *   orderReview numbers the two together and either alone renumbers the rest.
  * @property {?object} preSweep  The blind-spot sweep as the registry authored it, or null
  *   when this review does not sweep.
- * @property {{skip: string[], sca: boolean, sweep: boolean}} run  What this run was told
- *   to leave out (PROMPT_SKIPS), whether it is a source code review, and whether it
- *   sweeps. One record, read by everything that asks: a step prints by it, the routing
- *   drops entries by it, and both legs of a hand-over ask it the same question.
+ * @property {{skip: string[], sca: boolean, sweep: boolean, warningsAsErrors: boolean}} run
+ *   What this run was told to leave out (PROMPT_SKIPS), whether it is a source code review,
+ *   whether it sweeps, and the band it publishes a warning at (--warnings-as-errors). One
+ *   record, read by everything that asks: a step prints by it, the routing drops entries by
+ *   it, the registry is read under it, and both legs of a hand-over ask it the same question.
  * @property {object} paths  The values a step names: description, build, report,
  *   schemaCache, scaRoot. Held here because a later pass prints them and cannot re-derive
  *   a moment - and `report` is also where a later pass WRITES, so losing it would leave the
@@ -96,7 +97,7 @@ export function readState(file) {
 
 /** Bumped when the shape, or what the loop DOES with it, changes in a way an older file
  *  cannot satisfy. A review in flight does not survive the upgrade, and saying so beats
- *  reading it wrongly. Version 4 is a meaning change rather than a shape one: nothing new
- *  is stored, but a review that stops early no longer issues the phase a v3 review would
- *  have, so resuming one across the two would ask a reviewer what this build would not. */
-export const STATE_VERSION = 4;
+ *  reading it wrongly. Version 5 adds the band policy to `run`: a v4 file states no policy,
+ *  and a pass reading it as "off" would settle a case in a band the review it belongs to
+ *  does not publish. */
+export const STATE_VERSION = 5;

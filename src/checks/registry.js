@@ -81,6 +81,30 @@ const VALID_CHECK_SEVERITIES = new Set([
   NO_SEVERITY,
 ]);
 
+/**
+ * The band a `warning` is published at under a run's policy: an error when the run was
+ * given --warnings-as-errors, and the value itself otherwise.
+ *
+ * THE rule, in one place, asked at the two moments a band is handed out - when a finding is
+ * stamped (runOneCheck) and when a reported case is suggested one (Registry suggestedVerdict
+ * via bandOf). Everything downstream reads a band that is already settled, so the report's
+ * headings, the tally, the JSON, resolveHolds, the early exit and the exit code all follow
+ * without any of them knowing the flag exists.
+ *
+ * Only `warning` moves. A `hold` already blocks the review and is settled against the errors
+ * this creates (src/report/finding.js resolveHolds); `info` was never something the
+ * developer was asked to resolve. A declaration token (auto/none/hold-or-error) passes
+ * through untouched - it is not a band.
+ * @param {?string} severity
+ * @param {boolean} [warningsAsErrors]
+ * @returns {?string}
+ */
+function bandUnder(severity, warningsAsErrors) {
+  return warningsAsErrors && severity === SEVERITY.WARNING
+    ? SEVERITY.ERROR
+    : severity;
+}
+
 // How an entry's repeated cases are LISTED, when listing every one of them says the same
 // thing several times. Omitted is the default every entry has today: one line per case.
 //
@@ -156,6 +180,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {string} title
  * @property {Severity|"auto"|"none"|"hold-or-error"} severity  The entry's declared
  *   severity, stamped onto the check's findings unless it delegates (see runOneCheck).
+ * @property {boolean} [warningsAsErrors]  The run's band policy (--warnings-as-errors),
+ *   applied to each finding's FINAL severity in runOneCheck - which is the only value a
+ *   check that delegates has. Carried here because runOneCheck takes no registry.
  * @property {boolean} [sca]  The review-mode gate (scaEligible); undefined when unset.
  * @property {"source"|"xpi"|"build"|"manifest"|undefined} input  Which artifact is
  *   ctx.addon when the check runs (VALID_CHECK_INPUTS above), and what its output is
@@ -271,9 +298,40 @@ function responseOf(entry, mode) {
  * parsed once per run rather than re-read per concern.
  */
 export class Registry {
-  /** @param {Record<string, any>} doc  Parsed registry document. */
-  constructor(doc) {
+  /**
+   * @param {Record<string, any>} doc  Parsed registry document.
+   * @param {{warningsAsErrors?: boolean}} [policy]  What THIS RUN was told about the bands
+   *   the registry hands out, as opposed to what the yaml says: --warnings-as-errors reads
+   *   every warning as an error. Held beside the document rather than folded into it, so
+   *   the authored severity stays readable (assertRegistry decides what an entry may
+   *   declare, and a policy cannot make a warning entry eligible to stop a review).
+   */
+  constructor(doc, policy = {}) {
     this.doc = doc && typeof doc === "object" ? doc : {};
+    this.warningsAsErrors = Boolean(policy?.warningsAsErrors);
+  }
+
+  /**
+   * The same authored registry, read under a different run's policy.
+   *
+   * Shares `doc`: the yaml is what someone wrote, the policy is what this run was told, so
+   * deriving one costs no re-parse and no second assert. For the pass that learns its
+   * policy after the registry was built - a --llm-verdict pass, which reads it off the
+   * review's own state rather than off a command line it was never given (src/cli.js).
+   * @param {{warningsAsErrors?: boolean}} policy
+   * @returns {Registry}
+   */
+  withPolicy(policy) {
+    return new Registry(this.doc, policy);
+  }
+
+  /**
+   * The band this run publishes `severity` at, under its own policy (bandUnder).
+   * @param {?string} severity
+   * @returns {?string}
+   */
+  bandOf(severity) {
+    return bandUnder(severity, this.warningsAsErrors);
   }
 
   /**
@@ -481,7 +539,11 @@ export class Registry {
     if (s === HOLD_OR_ERROR) {
       return SEVERITY.HOLD;
     }
-    return isConcreteSeverity(s) ? s : null;
+    // One of the two moments a band is handed out (bandOf). The same value words the
+    // question, the "Suggested verdict" printed beside it, the entry the agent is handed
+    // and the finding a reported case becomes - so the case cannot be asked about in one
+    // band and settled in another.
+    return isConcreteSeverity(s) ? this.bandOf(s) : null;
   }
 
   /**
@@ -1886,6 +1948,11 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
       id,
       title: entry.title,
       severity: entry.severity,
+      // What this run was told about the bands it publishes (Registry bandOf). Carried on
+      // the check because runOneCheck stamps the band and takes no registry - it is
+      // exported to run a check on its own - and because a `severity: auto` check's band is
+      // its own, so the declared value above cannot answer for it.
+      warningsAsErrors: registry.warningsAsErrors,
       input: entry.input,
       sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
       section: registry.sectionFor(id),
@@ -2222,6 +2289,12 @@ export async function runOneCheck(ctx, check, label) {
         );
         f.severity = SEVERITY.ERROR;
       }
+      // The other of the two moments a band is handed out (bandUnder). HERE rather than on
+      // the stamp above, because that is the only point both branches have reached their
+      // final value: a `severity: auto` check owns each finding's band - a moderate advisory
+      // is a warning of the check's own making (src/lib/vuln-findings.js) - and the entry
+      // says nothing about it.
+      f.severity = bandUnder(f.severity, check.warningsAsErrors);
       findings.push(f);
     }
   } catch {

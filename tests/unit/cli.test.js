@@ -84,6 +84,11 @@ test("--help prints usage to stdout and exits 0", () => {
   // The run header opens the output, echoing the args (here --help).
   assert.match(r.stdout, /> (?:@[\w-]+\/)?webext-linter@\d+\.\d+\.\d+ review/);
   assert.match(r.stdout, /node verify\.js --help/);
+  // Every flag is listed under a group that holds more than it. --report-format has no
+  // group of its own: one option under a heading is a heading that says nothing.
+  assert.match(r.stdout, /--warnings-as-errors/);
+  assert.match(r.stdout, /--report-format/);
+  assert.doesNotMatch(r.stdout, /Report output:/);
 });
 
 // An unknown top-level option exits 2 with a clean message - no node:util
@@ -756,6 +761,49 @@ test("--eslint gates the code-sanity check", () => {
   assert.ok(!off.meta.checksRun.includes("code-sanity")); // default: not run
   const on = JSON.parse(run([...base, "--eslint"]).stdout);
   assert.ok(on.meta.checksRun.includes("code-sanity")); // --eslint: runs
+});
+
+// The whole of --warnings-as-errors, from the outside: the band a finding is published at,
+// the tally that counts it, the verdict preamble that opens the section, and the exit code.
+// One flag is read in one place (src/checks/registry.js bandUnder) and all four follow.
+test("--warnings-as-errors settles a warning as an error, exit code included", () => {
+  const addon = path.join(ROOT, "tests", "addons", "mistyped-manifest-value");
+  const base = [addon, ...OFFLINE_FLAGS, "--cdn-lib-lookup", "false"];
+  const off = run([...base, "--report-format", "json"]);
+  const offDoc = JSON.parse(off.stdout);
+  assert.equal(off.code, 0); // a warning alone does not fail the run
+  assert.ok(offDoc.summary.warning > 0 && offDoc.summary.error === 0);
+
+  const on = run([...base, "--warnings-as-errors", "--report-format", "json"]);
+  const onDoc = JSON.parse(on.stdout);
+  assert.equal(on.code, 1);
+  assert.equal(onDoc.summary.warning, 0);
+  assert.equal(onDoc.summary.error, offDoc.summary.warning);
+  // The same findings, not more of them: the flag moves a band, it finds nothing new.
+  assert.deepEqual(onDoc.summary.byRule, offDoc.summary.byRule);
+
+  // The text report opens with the rejection preamble rather than the one that thanks the
+  // developer and asks for a fix in the next release.
+  const text = run([...base, "--warnings-as-errors"]).stdout;
+  assert.match(text, /caused the submission to be rejected/);
+  assert.doesNotMatch(
+    text,
+    /resolve the following issues with your next release/
+  );
+});
+
+// The band belongs to the REVIEW, recorded when it started, so a later pass reads it back
+// instead of being told it again - two sources for one fact is one of them going stale.
+test("--warnings-as-errors is refused on a --llm-verdict pass", () => {
+  const r = run([
+    "--llm-verdict",
+    "/nonexistent.review.json",
+    "--warnings-as-errors",
+  ]);
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /belongs to the review/);
+  // Refused before the file is read: the message is about the flag, not about the path.
+  assert.doesNotMatch(r.stderr, /nonexistent/);
 });
 
 // JSON is a machine contract: stdout is the document, stderr is silent - even

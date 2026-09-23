@@ -86,12 +86,6 @@ is monitored and upstream changes are ported manually.
 | `--checks-only <ids>` | Only run these checks (comma-separated). See the check list below. |
 | `--checks-skip <ids>` | Skip these checks (comma-separated). See the check list below. |
 
-**Report output:**
-
-| Option | Description |
-| --- | --- |
-| `--report-format <text\|json>` | Report output format (default `text`). |
-
 **LLM review:** what an LLM agent runs, instead of a person reading the report. `--llm-review`
 runs the review ONCE and hands out the first of its phases. Every `--llm-verdict` run after
 that takes a phase back and hands out the next, until the last one carries the report.
@@ -126,10 +120,12 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
 | `--cdn-lib-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached, and an offline run simply finds no match. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
+| `--report-format <text\|json>` | Report output format (default `text`). |
 | `--verbose` | Verbose logging. |
+| `--warnings-as-errors` | Read every warning as an error for this review. Each one is listed among the issues that rejected the submission rather than as something to resolve with the next release, and the run exits `1`. Off by default. Set once, by the run that starts a review: a `--llm-verdict` pass reads it back from the review and is refused if given it again. |
 
-**Exit codes:** `0` no errors · `1` one or more error-severity findings · `2`
-tool failure.
+**Exit codes:** `0` no errors · `1` one or more error-severity findings (with
+`--warnings-as-errors`, every warning is one) · `2` tool failure.
 
 ### Source code archive (SCA) mode
 

@@ -80,11 +80,16 @@ function standsAsError(item, verdict, registry) {
  *
  * An entry counts when two things are true of it: its check names a reason, and it stands
  * as an ERROR (standsAsError). Severity is the whole of the threshold, which is what makes
- * this
- * "high and above" without restating any band - the two auto-severity checks map their
- * advisory band to a severity already (src/lib/vuln-findings.js), so a moderate advisory is
- * a warning and stops nothing, while a malicious-package advisory, which states no band at
- * all, is an error and stops the review like any other.
+ * this "high and above" without restating any band - an advisory check maps its band to a
+ * severity already (src/lib/vuln-findings.js), so a moderate advisory arrives here as a
+ * warning and stops nothing, while a malicious-package advisory, which states no band at
+ * all, arrives as an error and stops the review like any other.
+ *
+ * Reading the severity rather than the band is also what keeps --warnings-as-errors out of
+ * this file. That policy is applied to each finding's own severity before this is asked
+ * (bandUnder, src/checks/registry.js), so under it the same moderate advisory arrives as an
+ * error and does stop the review - the consequence of settling every warning as an error,
+ * reached without anything here knowing the flag exists.
  *
  * Registry order, not encounter order: which finding happened to come first is an
  * accident of the add-on, and the closing block is a sentence the developer reads.

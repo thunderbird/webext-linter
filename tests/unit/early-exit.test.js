@@ -52,6 +52,28 @@ test("a warning or info from a blocking check stops nothing", () => {
   );
 });
 
+// The threshold reads a SETTLED band, which is why the run's own policy reaches it without
+// this file knowing about the flag: under --warnings-as-errors the same moderate advisory
+// is published as an error (src/checks/registry.js bandUnder), and an error from a blocking
+// check is what stops a review. Under that policy the submission is rejected, so not asking
+// a reviewer to reproduce its build is the whole point of stopping.
+//
+// Three checks can reach here this way, and only three: no check declared `warning` may
+// declare `review-early-exit` at all (assertEarlyExit refuses it), so the ones that do are
+// the severity:auto pair plus banned-library, whose band is their own.
+test("--warnings-as-errors makes a moderate advisory stop the review", () => {
+  const strict = registry.withPolicy({ warningsAsErrors: true });
+  const moderate = finding("vendor-vulnerable", SEVERITY.WARNING);
+  // The band the check publishes it at under this policy - the value runOneCheck stamps.
+  moderate.severity = strict.bandOf(moderate.severity);
+  assert.deepEqual(
+    (earlyExitOf(orderReview([moderate], []), {}, strict)?.reasons ?? []).map(
+      (r) => r.text
+    ),
+    ["Known security vulnerabilities"]
+  );
+});
+
 // Blocking is a property of the CHECK, not of the severity. Plenty of checks reject a
 // submission without making it dangerous to build or install.
 test("an error from a check that does not block stops nothing", () => {

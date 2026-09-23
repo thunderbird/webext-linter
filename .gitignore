@@ -9,6 +9,12 @@ plans/
 .lib-mozilla-hash-db-cache/
 .lib-cdn-lookup-cache/
 .llm-model-cache/
+# The three documents a review writes beside the submission it reviewed. A submission
+# reviewed in place puts them wherever it sits, and the add-on fixtures are reviewed in
+# place by the tests, so they land in the tree.
+*.report.md
+*.summary.md
+*.build.md
 *.tmp
 *.key
 run-nextpass.sh

@@ -223,6 +223,10 @@ export const SETUP_STEPS = Object.freeze([
  * @property {boolean} [eslint]  Run the opt-in ESLint code-sanity check (off by
  *   default); when unset, the code-sanity check is skipped entirely.
  * @property {boolean} [allowExperiments]
+ * @property {boolean} [warningsAsErrors]  Read every warning as an error for this review
+ *   (--warnings-as-errors): the band the registry hands out IS an error, so the report,
+ *   the tally, the early exit and the exit code all follow (src/checks/registry.js
+ *   bandUnder). Off by default.
  * @property {string} [scaRoot]  SCA mode: the source archive root, absolute - an extracted
  *   folder holding package.json/lock. Setting it switches the
  *   review to SCA mode - the readable source (scaSource) is reviewed and its declared
@@ -322,8 +326,12 @@ export async function runPipeline(opts) {
   // alone, so the readable source is never read). Setup itself never reads it - each step
   // says which facts it needs - and everything after setup reads the one derivation.
   // The parsed registry, threaded from main() (or loaded once here when a caller
-  // such as the test harness invokes the pipeline directly).
-  const registry = opts.registry ?? loadRegistry();
+  // such as the test harness invokes the pipeline directly), read under THIS run's band
+  // policy. Applied here rather than at either construction site, so a caller that hands one
+  // in and a caller that leaves it to be loaded get the same reading of the same flag.
+  const registry = (opts.registry ?? loadRegistry()).withPolicy({
+    warningsAsErrors: Boolean(opts.warningsAsErrors),
+  });
 
   // Load the .xpi. Read before the "Setup" banner because it sizes the feed - it gives
   // the mode and whether the add-on is an Experiment. Every slow NETWORK step below (the
@@ -1006,6 +1014,11 @@ export async function runPipeline(opts) {
         // Not derived from preSweep: --llm-skip-sweep leaves the instructions standing
         // and withholds the asking, so the two are different facts.
         sweep: sweeping,
+        // The band policy, so a later pass reads the review under the one it was started
+        // with. The findings below are already published at it, but a case REPORTED on a
+        // later pass becomes a finding there and then (src/report/verdicts.js asFinding),
+        // and that pass is never handed the flag again.
+        warningsAsErrors: registry.warningsAsErrors,
       },
       sweep: null,
       paths: {

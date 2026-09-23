@@ -4210,6 +4210,81 @@ test("severity:auto lets the check set each finding's severity", async () => {
   );
 });
 
+// --warnings-as-errors is read where a band is HANDED OUT, not where one is printed, so
+// every reader downstream sees a band that is already settled. Both kinds of check are
+// covered by the one read in runOneCheck: a fixed-severity entry, whose band the stamp
+// supplies, and a `severity: auto` one, whose band is the check's own and which the entry
+// says nothing about - a moderate advisory is a warning nobody declared.
+test("--warnings-as-errors publishes every warning as an error", async () => {
+  const fixed = {
+    id: "fixed",
+    severity: "warning",
+    warningsAsErrors: true,
+    run: () => ({ findings: [finding({ item: "x" })] }),
+  };
+  const auto = {
+    id: "auto",
+    severity: "auto",
+    warningsAsErrors: true,
+    run: () => ({
+      findings: [
+        finding({ item: "a", severity: "warning" }),
+        finding({ item: "b", severity: "info" }),
+        finding({ item: "c", severity: "error" }),
+      ],
+    }),
+  };
+  assert.equal(
+    (await runOneCheck({}, fixed, "[1/1]")).findings[0].severity,
+    "error"
+  );
+  // Only `warning` moves: info was never something the developer was asked to resolve,
+  // and an error is already one.
+  assert.deepEqual(
+    (await runOneCheck({}, auto, "[1/1]")).findings.map((f) => f.severity),
+    ["error", "info", "error"]
+  );
+});
+
+// The other place a band is handed out: what a REPORTED case will carry. The same value
+// words the question, the "Suggested verdict" printed beside it and the finding the case
+// becomes (src/report/verdicts.js asFinding), so a case cannot be asked about in one band
+// and settled in another.
+//
+// A policy reads the authored registry; it never rewrites it. That is what keeps
+// assertEntries deciding what an entry MAY declare - a warning entry stays ineligible to
+// stop a review under any policy (assertEarlyExit) - and what lets one document be read
+// under two policies at once.
+test("--warnings-as-errors moves the suggested verdict with it", () => {
+  const doc = {
+    "deterministic-phase": [
+      {
+        title: "X",
+        check: "sync-xhr",
+        input: "source",
+        severity: "warning",
+        instructions: "i",
+        response: "r",
+      },
+      {
+        title: "Y",
+        check: "debugger-statement",
+        input: "source",
+        severity: "info",
+      },
+    ],
+  };
+  const plain = new Registry(doc);
+  const strict = plain.withPolicy({ warningsAsErrors: true });
+  assert.equal(plain.suggestedVerdict("sync-xhr"), "warning");
+  assert.equal(strict.suggestedVerdict("sync-xhr"), "error");
+  assert.equal(strict.suggestedVerdict("debugger-statement"), "info");
+  // The authored document is untouched, and the one it was derived from still reads it
+  // the way it was written.
+  assert.equal(doc["deterministic-phase"][0].severity, "warning");
+  assert.equal(plain.suggestedVerdict("sync-xhr"), "warning");
+});
+
 // A check returns ONE shape: { findings, escalations }. The bare array shorthand is
 // refused rather than read as findings - it made the two lanes look optional, so a rule
 // that grew an escalation path and kept returning its findings array dropped every
