@@ -114,13 +114,13 @@
     }
   },
   "summary": {
-    "error": 7,
+    "error": 6,
     "hold": 0,
     "warning": 0,
     "info": 0,
     "byRule": {
       "sca-lock-file-missing": 1,
-      "build-registry-redirect": 2,
+      "build-registry-redirect": 1,
       "committed-node-modules": 2,
       "committed-build-artifact": 2
     }
@@ -172,17 +172,6 @@
       "item": null,
       "hint": null,
       "message": "The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm."
-    },
-    {
-      "ruleId": "build-registry-redirect",
-      "severity": "error",
-      "file": "tools/.npmrc",
-      "loc": {
-        "line": 1
-      },
-      "item": "https://mirror.example/npm/",
-      "hint": null,
-      "message": "The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy."
     },
     {
       "ruleId": "committed-node-modules",

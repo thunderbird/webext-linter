@@ -398,6 +398,40 @@ test("unused-files: junk + orphan are findings; mentioned -> escalation", () => 
   assert.ok(!found.includes("bg.js")); // reachable
 });
 
+// The build-manager files, in a BUILT XPI. Exactly one of them has a reader there: the
+// ROOT package.json, which the XPI carries as its vendoring manifest (xpi-package-unpinned
+// and the dependency audit read it). Everything else in that family is read by nothing and
+// is therefore what this check exists to report - a lock most of all, since the review has
+// decided a file named package-lock.json inside an XPI is not a lock at all.
+test("unused-files exempts the root package.json only, not a nested one and not a lock", () => {
+  const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
+  const files = {
+    "manifest.json": JSON.stringify(manifest),
+    "bg.js": `console.log(1);`,
+    "package.json": '{"dependencies":{"lodash":"4.17.21"}}',
+    "package-lock.json": "{}",
+    "pnpm-lock.yaml": "x: 1",
+    "lib/vendored/package.json": '{"name":"vendored"}',
+  };
+  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const reported = [
+    ...result.findings.map((f) => f.file),
+    ...manualItems(result).map((m) => m.file),
+  ];
+
+  assert.ok(
+    !reported.includes("package.json"),
+    "the root package.json is the XPI's vendoring manifest"
+  );
+  for (const read_by_nothing of [
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "lib/vendored/package.json",
+  ]) {
+    assert.ok(reported.includes(read_by_nothing), read_by_nothing);
+  }
+});
+
 // The mention net is path-aware: a reference whose path resolves to a DIFFERENT
 // packaged file must not make an unrelated same-basename file look mentioned. A
 // bare basename (no resolvable path) is still caught, so recall is preserved.

@@ -25,17 +25,25 @@ import {
   loaderTrace,
   isDocMetadataFile,
   isExperiment,
-  DEPENDENCY_FILE_RE,
 } from "../../lib/util.js";
+import { MANIFEST_FILE } from "../../vendor/manifest.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
-// Never flag: dependency manifests / lock files and locale message catalogs.
+// Never flag: locale message catalogs, and the ROOT package.json - the one build-manager
+// file a built XPI actually reads, as the vendoring manifest behind xpi-package-unpinned /
+// unsupported-dependency / vendor-vulnerable. Nothing else in that family earns an
+// exemption here, at any depth: a lock shipped in an XPI is read by NOTHING (src/vendor/
+// resolve.js - "a file named package-lock.json shipped there is not a lock"), and a
+// package.json below the root declares nothing this review resolves, so both are exactly
+// what this check exists to report. An .npmrc needs no entry either way - the JUNK rule
+// below is tested first and reports every dotfile.
+//
 // Documentation / project metadata is exempted separately by isDocMetadataFile
 // (a documentation extension settles it; a .txt or an extensionless file needs a
-// known doc name too). The manifest needs no entry: it is not in the corpus (the
+// known doc name too). The add-on manifest needs no entry: it is not in the corpus (the
 // loader lifts it onto ctx), so it is never enumerated here.
-const ALLOW = [DEPENDENCY_FILE_RE, /^_locales\//];
+const ALLOW = [/^_locales\//];
 
 // Definite "should not ship" by name: OS/editor junk, source maps. Archives are handled
 // separately via ARCHIVE_EXTENSIONS (shared with the loader / committed-build-artifact).
@@ -90,6 +98,7 @@ export default {
         continue;
       }
       if (
+        file === MANIFEST_FILE ||
         skip.has(file) ||
         isDocMetadataFile(file) ||
         ALLOW.some((re) => re.test(file))

@@ -255,7 +255,8 @@ test("scaViews puts every file in the right part, and the Experiment in only one
 // source (scaSource), the Experiment source (scaExpSource), node_modules, and
 // dotfiles/dotfolders - the build scripts / config the review otherwise drops. Keys
 // keep their real archive paths (unstripped); the root package.json/lock stay, and a
-// plain .npmrc is kept (the one dotfile exception the build-tooling checks read).
+// ROOT .npmrc is kept (the one dotfile exception the build-tooling checks read - npm takes
+// its config from the directory the install runs in, which is the archive root).
 test("the build view holds the files outside scaSource + scaExpSource", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scab-"));
   fs.mkdirSync(path.join(root, "src", "experiment"), { recursive: true });
@@ -266,14 +267,16 @@ test("the build view holds the files outside scaSource + scaExpSource", () => {
     recursive: true,
   });
   fs.mkdirSync(path.join(root, "src", "node_modules"), { recursive: true });
-  // Dotfolders (.github CI) are excluded; a plain .npmrc is KEPT; a .npmrc buried in a
-  // dotfolder is still excluded.
+  // Dotfolders (.github CI) are excluded; the ROOT .npmrc is KEPT; one in a subfolder and
+  // one buried in a dotfolder are both excluded - neither is a directory this review
+  // installs from.
   fs.mkdirSync(path.join(root, ".github", "workflows"), { recursive: true });
   fs.writeFileSync(path.join(root, "package.json"), "{}");
   fs.writeFileSync(path.join(root, "package-lock.json"), "{}");
   fs.writeFileSync(path.join(root, "webpack.config.js"), "module.exports={}");
   fs.writeFileSync(path.join(root, "scripts", "build.sh"), "echo build");
   fs.writeFileSync(path.join(root, ".npmrc"), "registry=https://evil");
+  fs.writeFileSync(path.join(root, "scripts", ".npmrc"), "registry=https://y");
   fs.writeFileSync(path.join(root, ".github", ".npmrc"), "registry=https://x");
   fs.writeFileSync(
     path.join(root, ".github", "workflows", "ci.yml"),
@@ -305,6 +308,7 @@ test("the build view holds the files outside scaSource + scaExpSource", () => {
   assert.ok(!files.has("background.js") && !files.has("src/background.js"));
   assert.ok(!files.has("src/experiment/exp.js"));
   assert.ok(!files.has("sub/node_modules/dep/webpack.config.js"));
+  assert.ok(!files.has("scripts/.npmrc")); // a .npmrc in a subfolder is dropped
   assert.ok(!files.has(".github/.npmrc")); // a .npmrc buried in a dotfolder is dropped
   assert.ok(!files.has(".github/workflows/ci.yml"));
   // node_modules is never read (no node_modules file in the corpus) but IS reported for

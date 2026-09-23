@@ -12,11 +12,9 @@
 // carries (-> xpi-package-unpinned).
 //
 // Only the ROOT package.json is read - that is the build's entry point
-// (src/build/corpus.js), while a
-// nested one is a workspace member or a vendored library's own copy. Deliberately narrower
-// than build-registry-redirect, which scans every depth: that detects a disallowed thing,
-// where looking too widely is harmless, while this asserts a requirement, where it invents
-// rejections.
+// (src/build/corpus.js), while a nested one is a workspace member or a vendored library's
+// own copy. Every build file this review reads is read at that root, for the same reason:
+// it is the directory the install runs in.
 //
 // Belongs here: deciding whether a lock was owed and is absent. Does NOT belong here:
 // whether a present lock works (-> sca-lock-file-invalid) or the wording (-> the registry).

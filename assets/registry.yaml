@@ -753,8 +753,9 @@ deterministic-phase:
 # needs to set the registry (npm defaults to the public one), and any setting can only
 # point the install at another source, pulling the SAME declared package names from an
 # UNDECLARED source and leaving package.json/lock a clean decoy. The value is not parsed;
-# the raw value is surfaced as {{item}}. Every .npmrc in the build corpus is scanned (a
-# build can run from a subfolder), and .npmrc is the one dotfile kept there.
+# the raw value is surfaced as {{item}}. The ARCHIVE'S OWN .npmrc is the one read - npm takes
+# its config from the directory the install runs in, and the review runs it at --sca-root -
+# and it is the one dotfile the build corpus keeps.
 # review-early-exit for the same reason as the other build rejects, reached from the other
 # direction: the install would RUN, but what it fetches is not what the submission declares,
 # so reproducing it attests nothing - and it would pull code from a developer-chosen host

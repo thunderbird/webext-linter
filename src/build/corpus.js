@@ -17,11 +17,11 @@
 // (eslint/rimraf/jest/a bundler) are NOT flagged - they run from the declared dependencies.
 //
 // Belongs here: the collection policy and the script scan. Does NOT belong here: loading
-// the build files (-> src/addon/load.js selectScaBuildFiles), running the analysis
+// the build files (-> src/addon/load.js scaViews), running the analysis
 // (-> ./analyze.js), the finding/manual mapping or wording
 // (-> src/checks/rules/undeclared-build-source.js + assets/registry.yaml).
 
-import { ARCHIVE_EXTENSIONS, basename, extname } from "../util/files.js";
+import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
 import { resolveRef } from "../lib/manifest-refs.js";
 import { parseJson } from "../util/json.js";
 
@@ -217,15 +217,13 @@ export function selectBuildCorpus(build) {
     }
   };
 
-  // Seeds: package.json (the declared deps + scripts) and every .npmrc (registry config).
-  // NOT the lock file - it is large, mostly integrity hashes, and adds no build-safety
+  // Seeds: the root package.json (the declared deps + scripts) and the root .npmrc (the
+  // registry config), which are the two files the install reads from the directory it runs
+  // in. NOT the lock file - it is large, mostly integrity hashes, and adds no build-safety
   // signal of its own; the dep/registry checks read it directly.
-  if (files.has("package.json")) {
-    keep.add("package.json");
-  }
-  for (const p of files.keys()) {
-    if (basename(p) === ".npmrc") {
-      keep.add(p);
+  for (const seed of ["package.json", ".npmrc"]) {
+    if (files.has(seed)) {
+      keep.add(seed);
     }
   }
 

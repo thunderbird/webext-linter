@@ -7,14 +7,14 @@
 // (no host/quote/case handling to slip past); the mere presence of the key is the
 // reject. Deterministic, no network.
 //
-// input: build - reads the SCA build corpus off ctx.addon. selectScaBuildFiles keeps a
-// plain .npmrc at any depth (the one dotfile exception), so EVERY .npmrc is scanned, not
-// just the root: a build that runs from a subfolder (cd frontend && npm ci) reads
-// frontend/.npmrc. The redirect uses the same `registry`/`@scope:registry` key in that
-// file - there is no separate subfolder key.
+// input: build - reads the SCA build corpus off ctx.addon. The ARCHIVE'S OWN .npmrc is the
+// one read: npm takes its config from the directory the install runs in, and the review
+// runs it at --sca-root, so that is the file whose settings reach the install. A config
+// deeper in the tree belongs to a directory this review never installs from, and is not
+// read at all (src/addon/load.js scaViews keeps it out of the build corpus).
 //
 // Belongs here: flagging .npmrc registry settings. Does NOT belong here: which files are
-// in the build corpus (-> src/addon/load.js) or the wording (-> the registry).
+// in the build corpus (-> src/addon/load.js scaViews) or the wording (-> the registry).
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
@@ -31,19 +31,18 @@ export default {
     if (!files) {
       return { findings: [] };
     }
+    const buf = files.get(".npmrc");
+    if (!buf) {
+      return { findings: [] };
+    }
     const findings = [];
-    for (const [path, buf] of files) {
-      if (path !== ".npmrc" && !path.endsWith("/.npmrc")) {
-        continue;
-      }
-      const lines = buf.toString("utf8").split(/\r?\n/);
-      for (let i = 0; i < lines.length; i++) {
-        const value = registrySetting(lines[i]);
-        if (value !== null) {
-          const loc = { line: i + 1 };
-          ctx.note?.(path, loc, "sets a package registry", VERDICT.FAIL);
-          findings.push(finding({ file: path, loc, item: value }));
-        }
+    const lines = buf.toString("utf8").split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const value = registrySetting(lines[i]);
+      if (value !== null) {
+        const loc = { line: i + 1 };
+        ctx.note?.(".npmrc", loc, "sets a package registry", VERDICT.FAIL);
+        findings.push(finding({ file: ".npmrc", loc, item: value }));
       }
     }
     return { findings };

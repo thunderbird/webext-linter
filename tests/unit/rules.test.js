@@ -1442,17 +1442,20 @@ test("build-registry-redirect rejects any registry setting in .npmrc", () => {
   );
 });
 
-// Nested .npmrc (a build that runs from a subfolder) is scanned too; the reject is on
-// the mere presence of the registry key, not its value.
-test("build-registry-redirect scans nested .npmrc and rejects any registry key", () => {
+// Only the ARCHIVE'S OWN .npmrc is read: npm takes its config from the directory the
+// install runs in, and the review runs it at --sca-root. A config deeper in the tree
+// belongs to a directory this review never installs from, so it is not read - and the
+// build corpus does not carry it either (src/addon/load.js scaViews).
+test("build-registry-redirect reads the root .npmrc and ignores a nested one", () => {
   const at = (path, npmrc) =>
     buildRegistryRedirect.run({
       addon: { files: new Map([[path, Buffer.from(npmrc)]]) },
     }).findings;
-  const nested = at("frontend/.npmrc", "registry=https://evil.example/");
-  assert.equal(nested.length, 1);
-  assert.equal(nested[0].file, "frontend/.npmrc");
-  assert.equal(nested[0].item, "https://evil.example/");
+  assert.deepEqual(at("frontend/.npmrc", "registry=https://evil.example/"), []);
+  const root = at(".npmrc", "registry=https://evil.example/");
+  assert.equal(root.length, 1);
+  assert.equal(root[0].file, ".npmrc");
+  assert.equal(root[0].item, "https://evil.example/");
   // The public registry, a scoped registry, and an uppercase key are all rejected.
   assert.equal(at(".npmrc", "registry=https://registry.npmjs.org/").length, 1);
   assert.equal(at(".npmrc", "@a:registry=https://x/").length, 1);

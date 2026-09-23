@@ -44,13 +44,15 @@ test("a package.json carrying a BOM still seeds the build", () => {
   }
 });
 
-test("seeds package.json + every .npmrc", () => {
+// The two files the install reads from the directory it runs in, and only those: a config
+// deeper in the tree belongs to a directory the review never installs from.
+test("seeds the root package.json + the root .npmrc", () => {
   const c = corpusOf({
     "package.json": "{}",
     ".npmrc": "save-exact=true",
     "sub/.npmrc": "x",
   });
-  assert.deepEqual(c, [".npmrc", "package.json", "sub/.npmrc"]);
+  assert.deepEqual(c, [".npmrc", "package.json"]);
 });
 
 test("recognizes a tool invoked INSIDE a followed shell script", () => {

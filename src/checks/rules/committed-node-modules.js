@@ -5,7 +5,7 @@
 // dependencies, smuggling in code from an undeclared source). It is a hard fail.
 //
 // node_modules is NEVER read: loadAddon skips it at load and records only the directory
-// paths (addon.nodeModules), which selectScaBuildFiles passes onto the input: build addon.
+// paths (addon.nodeModules), which scaViews passes onto the input: build addon.
 // This check turns each recorded directory into an error finding. The directory is the
 // finding's locus, so the response names no folder and every one of them collapses into
 // a single entry with a locus per directory.

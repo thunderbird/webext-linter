@@ -312,10 +312,10 @@ export function hasParentSegment(value) {
  *               here ONCE so nothing downstream has to re-derive where it went.
  *   build       everything else: build scripts, bundler configs, package.json/lock,
  *               READMEs - keyed relative to the ARCHIVE, which is the frame the build runs
- *               in. Dotfiles/dotfolders are dropped at any depth, except a plain `.npmrc`
- *               (the registry config build-registry-redirect reads) that is not itself
- *               buried in a dotfolder. node_modules never reaches here: loadAddon skips it
- *               at load, and passes the directory paths through for committed-node-modules.
+ *               in. Dotfiles/dotfolders are dropped at any depth, except the archive's own
+ *               `.npmrc` (the registry config build-registry-redirect reads). node_modules
+ *               never reaches here: loadAddon skips it at load, and passes the directory
+ *               paths through for committed-node-modules.
  *
  * The Experiment is disjoint from both others, and in a NESTED layout so are source and
  * build. One pass, one set of prefixes, so no two of them can disagree about where a file
@@ -366,17 +366,13 @@ export function scaViews(archive, { scaSource, scaRoot, scaExpSource }) {
     }
     // The build half is the archive minus the add-on's own code: the source subtree when
     // there is one to remove, and the Experiment wherever it sits. Dot-prefixed paths at
-    // any depth are VCS/editor/CI noise, except a plain .npmrc - unless it is itself
-    // buried in a dotfolder.
+    // any depth are VCS/editor/CI noise, except the archive's OWN .npmrc - the registry
+    // config the install reads, which npm takes from the directory it runs in and this
+    // review runs it at the root.
     if (isExp || (src && under(key, src))) {
       continue;
     }
-    const segments = key.split("/");
-    const dots = segments.filter((seg) => seg.startsWith("."));
-    if (
-      dots.length > 0 &&
-      !(dots.length === 1 && segments[segments.length - 1] === ".npmrc")
-    ) {
+    if (key !== ".npmrc" && key.split("/").some((seg) => seg.startsWith("."))) {
       continue;
     }
     buildKeys.push(key);

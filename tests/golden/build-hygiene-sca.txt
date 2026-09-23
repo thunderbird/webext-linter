@@ -4,7 +4,6 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 
 1) The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
  - [SCA] .npmrc:1 - https://npm.internal.example/
- - [SCA] tools/.npmrc:1 - https://mirror.example/npm/
 
 2) The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them.
  - [SCA] dist/addon.zip
@@ -110,6 +109,6 @@ Suggested response: Content shipped inside this add-on does not meet our content
 
 ── Summary ──
 
-7 error(s), 0 hold, 0 warning(s), 0 info,
+6 error(s), 0 hold, 0 warning(s), 0 info,
 3 extended code review item(s), 0 extended manual review item(s),
 9 standard code review item(s), 0 standard manual review item(s)

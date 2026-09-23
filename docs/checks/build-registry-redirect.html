@@ -22,9 +22,9 @@
       </p>
       <p>
         This check applies only to source-code submissions, where the reviewer
-        builds the add-on from the readable source. It scans every .npmrc in the
-        build corpus, at the root or in a subfolder, because a build may run from
-        a nested directory. A custom registry can pull the
+        builds the add-on from the readable source. It reads the .npmrc at the
+        root of the submitted archive — npm takes its config from the directory
+        the install runs in, and the review runs it there. A custom registry can pull the
         same declared package names from an undeclared source, leaving the
         declared dependencies and the lock file a clean decoy. The value is not
         inspected — the mere presence of a registry setting is the rejection.
@@ -34,8 +34,8 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A file in the build corpus"] --> B{"Is it an .npmrc<br/>(root or nested)?"}
-  B -- no --> S([skip — not an .npmrc])
+  A["The build corpus"] --> B{"Is there an .npmrc<br/>at the archive root?"}
+  B -- no --> S([skip — no root .npmrc])
   B -- yes --> C{"A line sets a package<br/>registry (default or per-scope)?"}
   C -- no --> OK([no finding — comments,<br/>auth, or other keys])
   C -- yes --> ERR([ERROR: build registry override])

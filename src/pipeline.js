@@ -303,7 +303,7 @@ export async function runPipeline(opts) {
   //   addon    - the deterministic review target (becomes ctx.addon): the readable
   //     code the source-level checks scan. In XPI mode it simply IS xpiAddon; in
   //     SCA mode it is the readable source at scaSource - a synthetic addon whose
-  //     files are the source but whose manifest is the XPI's (loadScaAddon), so the
+  //     files are the source but whose manifest is the XPI's (scaViews), so the
   //     checks stay mode-agnostic.
   //
   // So downstream: read `addon` for the code under review, `xpiAddon` for the
@@ -312,9 +312,9 @@ export async function runPipeline(opts) {
   // check gate (ctx.mode -> scaEligible). Minified code is non-authored (and rejected)
   // in both modes: a source-code submission's promise is readable source, so a minified
   // file in --sca-source is rejected like one in an XPI, not scanned as authored.
-  // The root case (scaRootRelative keys it as "") is handled throughout: loadScaAddon
-  // reviews every file, and selectScaBuildFiles traces the build off the root
-  // package.json (there is no source subtree to exclude).
+  // The root case (scaRootRelative keys it as "") is handled throughout: the source view
+  // holds every file, and selectBuildCorpus traces the build off the root package.json
+  // (there is no source subtree to exclude).
   //
   // The review mode is DERIVED from the two facts below and assigned nowhere, so it cannot
   // drift from the steps that ran: --sca-root makes it a source code review, and a REJECTED

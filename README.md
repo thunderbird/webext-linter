@@ -195,8 +195,9 @@ appears in.
   managers the review installs from, so those are the only locks that count and a build
   using anything else is rejected for having none. Each stops the review, since every
   remaining question depends on installing and building. A third requirement stops the
-  review from the other side: an `.npmrc` that points the package **registry** elsewhere is
-  rejected, because the install would run but fetch something other than what is declared,
+  review from the other side: an `.npmrc` **at `--sca-root`** that points the package
+  **registry** elsewhere is rejected (npm reads its config from the directory the install
+  runs in), because the install would run but fetch something other than what is declared,
   so reproducing it attests nothing and it pulls code from a developer-chosen host onto the
   reviewer's machine. Beyond those, the build must not commit a `node_modules` folder or a
   built archive (`.xpi` / `.zip` - both are build output, never shipped in a source
