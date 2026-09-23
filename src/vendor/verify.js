@@ -68,6 +68,8 @@ import {
   httpError,
 } from "../util/net.js";
 import { debug } from "../util/log.js";
+import { parseJson } from "../util/json.js";
+
 import {
   VENDOR_NPM_MIN_DOWNLOADS,
   VENDOR_GITHUB_MIN_STARS,
@@ -1502,5 +1504,5 @@ async function readJson(res) {
   if (buf.length > VENDOR_FETCH_MAX_BYTES) {
     throw new Error("response exceeds size cap");
   }
-  return JSON.parse(buf.toString("utf8"));
+  return parseJson(buf);
 }

@@ -44,6 +44,28 @@ export default [
           caughtErrorsIgnorePattern: "^_",
         },
       ],
+      // ONE PARSER. Every file this tool reads is somebody else's bytes - a submission's
+      // manifest, a lock, an Experiment schema, an agent's hand-back - and a reader that
+      // calls JSON.parse itself carries its own tolerances. The one every hand-written
+      // reader forgot was the BOM: JSON.parse throws on it, the tools that write these
+      // files do not, so a good file reads as absent and every caller's empty case
+      // swallows it silently. That shipped four times in four readers before this rule
+      // existed. parseJson (src/util/json.js) is the only permitted call site; it strips
+      // the BOM and answers null for every failure alike.
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "MemberExpression[object.name='JSON'][property.name='parse']",
+          message:
+            "Use parseJson from src/util/json.js - it strips the BOM and returns null. Direct JSON.parse is allowed only inside that module.",
+        },
+      ],
     },
+  },
+  {
+    // The one parser. Nothing else in the project may call JSON.parse.
+    files: ["src/util/json.js"],
+    rules: { "no-restricted-syntax": "off" },
   },
 ];

@@ -58,11 +58,12 @@ import {
 } from "./util/log.js";
 import { setColor, stripColor, red } from "./util/color.js";
 import { wrapText } from "./util/text.js";
+import { parseJson } from "./util/json.js";
 
 /** @typedef {import("./pipeline.js").PipelineOpts} PipelineOpts */
 
 // Package identity for the run banner (read once at load).
-const { name: PKG_NAME, version: PKG_VERSION } = JSON.parse(
+const { name: PKG_NAME, version: PKG_VERSION } = parseJson(
   fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")
 );
 

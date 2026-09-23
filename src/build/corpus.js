@@ -23,6 +23,7 @@
 
 import { ARCHIVE_EXTENSIONS, basename, extname } from "../util/files.js";
 import { resolveRef } from "../lib/manifest-refs.js";
+import { parseJson } from "../util/json.js";
 
 /** Recognized build tools -> their convention config filenames (auto-discovered by name,
  *  so a reference walk never sees them). Recognition also marks the tool KNOWN, so it is
@@ -372,18 +373,6 @@ export function selectBuildCorpus(build) {
     resolved: [...resolved],
     unresolved,
   };
-}
-
-/** JSON.parse a buffer, or null. */
-function parseJson(buf) {
-  if (!buf) {
-    return null;
-  }
-  try {
-    return JSON.parse(buf.toString("utf8"));
-  } catch {
-    return null;
-  }
 }
 
 /** Split a script command on shell control operators (a shallow tokenizer, not a

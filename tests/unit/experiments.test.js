@@ -107,6 +107,25 @@ test("experimentApiNamespaces reads the schema.json namespace, not the key/path"
   assert.deepEqual([...experimentApiNamespaces(cal, calFiles)], ["calendar"]);
 });
 
+// An Experiment schema carrying a BOM declares the same namespaces. Read through the one
+// parser (src/util/json.js): a raw JSON.parse throws on the BOM, and the catch here answers
+// "declares nothing" - so the add-on's own API surface would go unrecognised with no sign
+// that a file had failed to read.
+test("an Experiment schema carrying a BOM is still read", () => {
+  const manifest = {
+    experiment_apis: { qapp: { schema: "api/qapp/schema.json", parent: {} } },
+  };
+  const schema = '[{"namespace":"manifest"},{"namespace":"qnote"}]';
+  for (const text of [schema, `\uFEFF${schema}`]) {
+    const files = new Map([["api/qapp/schema.json", Buffer.from(text)]]);
+    assert.deepEqual(
+      [...experimentApiNamespaces(manifest, files)],
+      ["qnote"],
+      text.startsWith("\uFEFF") ? "with BOM" : "without BOM"
+    );
+  }
+});
+
 test("experimentApiNamespaces falls back to paths/key without a readable schema", () => {
   const manifest = {
     experiment_apis: {

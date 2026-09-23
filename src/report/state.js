@@ -14,6 +14,7 @@
 // a step, so that one is handed over and this one is not.
 import fs from "node:fs";
 import path from "node:path";
+import { parseJson } from "../util/json.js";
 
 /** The two files share a stem, so a person sees them as a pair on disk. Nothing in the
  *  loop derives one from the other: the review file names its own state directly, in its
@@ -79,10 +80,8 @@ export function readState(file) {
   } catch {
     throw new Error(`Could not read the review's state: ${file}`);
   }
-  let state;
-  try {
-    state = JSON.parse(raw);
-  } catch {
+  const state = parseJson(raw);
+  if (state === null) {
     throw new Error(`The review's state is not JSON: ${file}`);
   }
   if (state?.version !== STATE_VERSION) {

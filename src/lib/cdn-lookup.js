@@ -49,6 +49,8 @@ import { rawSha256 } from "../normalize/hash.js";
 import { defaultNet, isPopular } from "../vendor/verify.js";
 import { rethrowIfNetworkGone } from "../util/net.js";
 import { markUntrusted, MIN_CLASSIFY_BYTES } from "./bundled.js";
+import { parseJson } from "../util/json.js";
+
 import {
   CDN_LOOKUP_URL,
   CDN_LOOKUP_CACHE,
@@ -319,7 +321,7 @@ function cacheFile(cacheDir) {
  */
 function loadCache(cacheDir) {
   try {
-    return JSON.parse(fs.readFileSync(cacheFile(cacheDir), "utf8"));
+    return parseJson(fs.readFileSync(cacheFile(cacheDir), "utf8"));
   } catch {
     return {};
   }

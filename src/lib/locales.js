@@ -16,7 +16,7 @@
 // could later adopt this helper), and the authored wording (->
 // assets/registry.yaml).
 
-import { stripBom } from "../util/json.js";
+import { parseJson } from "../util/json.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {{locale: string|null, name: string}} LocalizedName */
@@ -126,7 +126,7 @@ function scanNames(ctx) {
       // Thunderbird reads these through a BOM-stripping JSON reader, so a
       // BOM-prefixed file states a name it DISPLAYS. Parsing it strictly would
       // turn a common packaging accident into a name no check ever sees.
-      json = JSON.parse(stripBom(buf.toString("utf8")));
+      json = parseJson(buf);
     } catch {
       unreadable.push(locale);
       continue;

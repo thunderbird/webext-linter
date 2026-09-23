@@ -14,6 +14,7 @@ import path from "node:path";
 import { checkedResult } from "./sweep.js";
 import { VERB, verbOf } from "./verbs.js";
 import { displayLine } from "../util/text.js";
+import { parseJson } from "../util/json.js";
 
 /** Every entry in every phase carries this, and `null` always means unanswered. One slot,
  *  one name, one sentinel - so the handover text is one text and the agent never relearns
@@ -79,10 +80,8 @@ export function readHandback(file) {
   } catch {
     throw new HandbackRefused(`"${file}" could not be read`);
   }
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
+  const parsed = parseJson(raw);
+  if (parsed === null) {
     throw new HandbackRefused(`"${file}" is not readable JSON`);
   }
   if (typeof parsed?.base !== "string" || parsed.base === "") {

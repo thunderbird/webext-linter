@@ -16,6 +16,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { manifestTokenLine } from "../../lib/util.js";
+import { parseJson } from "../../util/json.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -45,7 +46,7 @@ export default {
     }
     let scripts;
     try {
-      scripts = JSON.parse(text).scripts;
+      scripts = parseJson(text)?.scripts;
     } catch {
       return none;
     }

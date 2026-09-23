@@ -20,7 +20,7 @@
 // the lock - which is resolve.js, locks.js and the checks respectively; and the policy of
 // when a lock is owed, which is the check that asks.
 
-import { stripBom } from "../util/json.js";
+import { parseJson } from "../util/json.js";
 
 /**
  * @typedef {object} DeclaredDependency  One dependency a manifest declares.
@@ -66,18 +66,15 @@ export const MANIFEST_FILE = "package.json";
  * @returns {{value: ?object, fault: ?string}}
  */
 function readBytes(buf) {
-  const text = buf?.toString("utf8");
-  if (!text) {
+  // Absent, empty and malformed all arrive as null from the one parser, and all three are
+  // the same fault to a reader: there is no manifest to work from.
+  const data = parseJson(buf);
+  if (data === null) {
     return { value: null, fault: "unreadable" };
   }
-  try {
-    const data = JSON.parse(stripBom(text));
-    return plainObject(data)
-      ? { value: data, fault: null }
-      : { value: null, fault: "unrecognised" };
-  } catch {
-    return { value: null, fault: "unreadable" };
-  }
+  return plainObject(data)
+    ? { value: data, fault: null }
+    : { value: null, fault: "unrecognised" };
 }
 
 /**
@@ -96,9 +93,8 @@ export function manifestFault(buf) {
  * A package.json's bytes as an object, or null when they are absent, unreadable, or not a
  * JSON object.
  *
- * The BOM is stripped before parsing because `JSON.parse` throws on one while npm does
- * not: a manifest npm reads perfectly would otherwise be treated as absent, and absent is
- * every caller's silent case.
+ * Parsed through src/util/json.js, the one parser in src/ - which is what makes a BOM'd
+ * manifest readable here, since npm reads one perfectly well and `JSON.parse` does not.
  *
  * Takes the BYTES rather than the artifact, for the reader that does not want the root
  * file: unsupportedBuildTool matches a manifest at any depth, because a build may run from

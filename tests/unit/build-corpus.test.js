@@ -27,6 +27,23 @@ test("collects by following package.json; ignores output/docs/lock/unreferenced"
   assert.deepEqual(c, ["package.json", "webpack.config.cjs"]);
 });
 
+// A BOM is what an editor writes and what npm reads through, so a manifest carrying one
+// still names the build. Parsed via src/util/json.js, the one parser: a reader that called
+// JSON.parse itself saw the BOM throw and traced an empty build, silently, because "no
+// build files" is this function's ordinary answer for a project without any.
+test("a package.json carrying a BOM still seeds the build", () => {
+  const scripts = JSON.stringify({ scripts: { build: "webpack" } });
+  for (const text of [scripts, `\uFEFF${scripts}`]) {
+    assert.deepEqual(
+      corpusOf({
+        "package.json": text,
+        "webpack.config.cjs": "module.exports={}",
+      }),
+      ["package.json", "webpack.config.cjs"]
+    );
+  }
+});
+
 test("seeds package.json + every .npmrc", () => {
   const c = corpusOf({
     "package.json": "{}",

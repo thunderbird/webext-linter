@@ -10,6 +10,7 @@
 // the files (-> src/experiments/verify.js), or any verdict.
 
 import { asArray, asObject } from "./util.js";
+import { parseJson } from "../util/json.js";
 
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
 
@@ -95,10 +96,8 @@ function schemaNamespaces(schemaPath, files) {
   if (!buf) {
     return [];
   }
-  let parsed;
-  try {
-    parsed = JSON.parse(buf.toString("utf8"));
-  } catch {
+  const parsed = parseJson(buf);
+  if (parsed === null) {
     return [];
   }
   const out = [];
@@ -152,10 +151,8 @@ function schemaManifestKeys(schemaPath, files) {
   if (!buf) {
     return [];
   }
-  let parsed;
-  try {
-    parsed = JSON.parse(buf.toString("utf8"));
-  } catch {
+  const parsed = parseJson(buf);
+  if (parsed === null) {
     return [];
   }
   const out = [];

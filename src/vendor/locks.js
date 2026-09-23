@@ -21,6 +21,8 @@ import YAML from "yaml";
 
 import { VENDOR_LOCK_MAX_PACKAGES } from "../config.js";
 import { stripBom } from "../util/json.js";
+import { parseJson } from "../util/json.js";
+
 import {
   DECLARATION_MAPS,
   aliasTarget,
@@ -111,7 +113,7 @@ function parsedLock(addon, file) {
   try {
     if (text) {
       const clean = stripBom(text);
-      data = file.endsWith(".json") ? JSON.parse(clean) : YAML.parse(clean);
+      data = file.endsWith(".json") ? parseJson(clean) : YAML.parse(clean);
     }
   } catch {
     data = null;

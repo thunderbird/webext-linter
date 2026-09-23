@@ -684,10 +684,12 @@ deterministic-phase:
 # MISSING, and sca-package-file-invalid reports it. The pair mirrors sca-lock-file-missing /
 # sca-lock-file-invalid, the other file this build cannot run without.
 # Silent on an unsupported package manager, which unsupported-build-tool errors and halts
-# on already, and silent when the shipped XPI IS the source (ctx.scaNotRequired): there the add-on is simply
-# not built, the archive was unnecessary rather than incomplete, and sca-not-required says so
-# as advice. What is left is a build that is absent while the shipped code is NOT the
-# archive's, so something that must exist is missing.
+# on already. NOT silent when the shipped XPI IS the archive's own code: that the shipped
+# bytes are readable says nothing about whether this source produces them, which is what
+# reproducing the build establishes, and with no build there is nothing to reproduce. The
+# XPI-only ADVICE is what yields there - sca-not-required is withheld from a submission whose
+# build cannot be run (src/build/reproducible.js) - rather than this rejection being withheld
+# from it. No check reads ctx.scaNotRequired: it stays an advice flag that nothing routes on.
 - title: Missing package.json
   severity: error
   sca: true
@@ -705,7 +707,8 @@ deterministic-phase:
 # Decided from the one parse every reader of this file shares (src/vendor/manifest.js), so
 # an unusable manifest here is exactly the one the dependency readers found nothing in.
 # Which case failed rides the location line as {{item}}, so the response states the rule
-# once. Silent on the same two grounds as its sibling above.
+# once. Silent on the same ground as its sibling above - an unsupported package manager -
+# and, like it, NOT silenced by the shipped XPI being the archive's own code.
 - title: Invalid package.json
   severity: error
   sca: true
