@@ -1,21 +1,33 @@
-// Reads the project's lock file, for two questions. (1) Which exact version did
+// Reads the project's lock file, for three questions. (1) Which exact version did
 // a package.json range (e.g. "^3.10.0") actually install - lockedVersion, so a
 // declared dependency can still be pinned and audited. (2) What does the whole
 // installed tree contain - lockedPackages, which enumerates every package the
 // lock records, declared or pulled in by another package, so the OSV audit can
-// reach the ~90% of the tree nobody declares. Reads whichever lock the
-// submission ships: npm (package-lock.json / npm-shrinkwrap.json, JSON), pnpm
-// (pnpm-lock.yaml, YAML), or - for lockedVersion only - yarn (yarn.lock, v1's
-// custom format or berry's YAML).
+// reach the ~90% of the tree nobody declares. (3) Can the lock install what the
+// manifest declares at all - lockGaps, which is what `npm ci` and
+// `pnpm install --frozen-lockfile` refuse over. Reads whichever lock the
+// submission ships - npm (package-lock.json / npm-shrinkwrap.json, JSON) or pnpm
+// (pnpm-lock.yaml, YAML), the two supported package managers.
 //
-// Belongs here: lockedVersion(addon, name), lockedPackages(addon), and the
-// per-format readers. Does NOT belong here: reading package.json itself or
-// deciding pinned/unpinned (-> src/vendor/resolve.js), and the verification that
-// follows (-> verify.js).
+// Belongs here: lockedVersion(addon, name), lockedPackages(addon), lockGaps(addon), and
+// the per-format readers. lockGaps is a comparison, so it needs both sides, but only this
+// one is its own: what the manifest DECLARES comes from ./manifest.js, and every lock-side
+// detail the comparison turns on (the npm root record, the pnpm importers, the v1/v3
+// split) is here and private. Does NOT belong here: reading or shaping package.json
+// (-> ./manifest.js), deciding pinned/unpinned (-> ./resolve.js), and the verification
+// that follows (-> ./verify.js).
 
 import YAML from "yaml";
 
 import { VENDOR_LOCK_MAX_PACKAGES } from "../config.js";
+import { stripBom } from "../util/json.js";
+import {
+  DECLARATION_MAPS,
+  aliasTarget,
+  declaredDependencies,
+  readManifest,
+  ownValue,
+} from "./manifest.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /**
@@ -33,13 +45,30 @@ import { VENDOR_LOCK_MAX_PACKAGES } from "../config.js";
  * @property {string} file  The lock file it was read from (the finding's anchor).
  * @property {string} token  The string locating its entry in `file`.
  */
+/**
+ * @typedef {object} LockGap  One way the committed lock cannot install what the root
+ * package.json declares.
+ * @property {string} file  The finding's anchor: package.json for a declaration the lock
+ *   fails, the lock itself when the lock cannot be read at all.
+ * @property {?string} name  The declared package, or null for an unreadable lock.
+ * @property {?string} spec  What package.json asks for it, or null (same).
+ * @property {?string} recorded  What the lock records instead, for `stale`; else null.
+ * @property {string} reason  About one declaration: `absent` (the lock resolves nothing
+ *   for it) or `stale` (it records a different spec). About the FILE: `unreadable` (it does
+ *   not parse) or `unrecognised` (it parses but is not a lock this comparison can read).
+ */
 
 // The lock files that record a whole tree, in the order they are consulted. Only
-// the first one that yields anything is enumerated - merging two would report the
-// same tree twice.
-const TREE_LOCKS = [
-  "package-lock.json",
+// the first one that yields anything is read - merging two would report the same
+// tree twice, and judging the wrong one reports a tree that is never installed.
+//
+// npm-shrinkwrap.json comes first because npm PREFERS it: with both committed, npm
+// installs from the shrinkwrap and ignores package-lock.json entirely. Reading them
+// the other way round judges the file npm does not use, which both invents failures
+// (a stale package-lock beside a good shrinkwrap) and misses real ones.
+export const TREE_LOCKS = [
   "npm-shrinkwrap.json",
+  "package-lock.json",
   "pnpm-lock.yaml",
 ];
 
@@ -50,15 +79,6 @@ const NUMERIC_VERSION = /^\d+\.\d+/;
 
 // A `resolved` pointing somewhere other than the registry - same reasoning.
 const NON_REGISTRY_RESOLVED = /^(?:git\+|file:|link:)/i;
-
-// The dependency maps a manifest declares. optionalDependencies is included
-// deliberately: npm installs it, so it is in the tree, and calling something the
-// developer wrote down "a package this add-on does not declare" would be false.
-const DECLARATION_MAPS = [
-  "dependencies",
-  "devDependencies",
-  "optionalDependencies",
-];
 
 // A pnpm `packages:` key, across every format pnpm has used: v5 "/name/version",
 // v6-v8 "/name@version(peers)" and v9 "name@version".
@@ -73,8 +93,6 @@ const parseCache = new WeakMap();
 
 /**
  * One lock file's parsed contents, or null when it is absent or unparseable.
- * Covers the JSON and YAML locks; yarn v1 is a line-based format of its own and
- * is read as text by yarnLock.
  * @param {Addon} addon
  * @param {string} file  A lock filename.
  * @returns {?object}
@@ -92,7 +110,8 @@ function parsedLock(addon, file) {
   let data = null;
   try {
     if (text) {
-      data = file.endsWith(".json") ? JSON.parse(text) : YAML.parse(text);
+      const clean = stripBom(text);
+      data = file.endsWith(".json") ? JSON.parse(clean) : YAML.parse(clean);
     }
   } catch {
     data = null;
@@ -103,7 +122,7 @@ function parsedLock(addon, file) {
 
 /**
  * The exact version a lock file pins `name` to, or null if no lock present
- * resolves it. Tries npm, then pnpm, then yarn.
+ * resolves it. Tries npm, then pnpm.
  *
  * Deliberately NOT rebuilt on lockedPackages: this consults the HOISTED
  * top-level entry only, so a nested copy of a package cannot pin a declared
@@ -116,14 +135,14 @@ export function lockedVersion(addon, name) {
   if (!addon?.files) {
     return null;
   }
+  // Shrinkwrap first, for the reason TREE_LOCKS gives: npm installs from it and
+  // ignores package-lock.json when both are committed.
   return (
     npmLock(
-      parsedLock(addon, "package-lock.json") ??
-        parsedLock(addon, "npm-shrinkwrap.json"),
+      parsedLock(addon, "npm-shrinkwrap.json") ??
+        parsedLock(addon, "package-lock.json"),
       name
-    ) ??
-    pnpmLock(parsedLock(addon, "pnpm-lock.yaml"), name) ??
-    yarnLock(addon.files.get("yarn.lock")?.toString("utf8"), name)
+    ) ?? pnpmLock(parsedLock(addon, "pnpm-lock.yaml"), name)
   );
 }
 
@@ -139,7 +158,7 @@ function npmLock(data, name) {
     return pkg.version;
   }
   // lockfileVersion 1: dependencies tree.
-  return data?.dependencies?.[name]?.version ?? null;
+  return ownValue(data?.dependencies, name)?.version ?? null;
 }
 
 /**
@@ -149,7 +168,8 @@ function npmLock(data, name) {
  */
 function pnpmLock(data, name) {
   const root = data?.importers?.["."] ?? data;
-  const entry = root?.dependencies?.[name] ?? root?.devDependencies?.[name];
+  const entry =
+    ownValue(root?.dependencies, name) ?? ownValue(root?.devDependencies, name);
   const version = typeof entry === "string" ? entry : entry?.version;
   if (version) {
     return cleanVersion(version);
@@ -165,59 +185,6 @@ function pnpmLock(data, name) {
 }
 
 /**
- * @param {?string} text  yarn.lock contents (v1 custom format or berry YAML).
- * @param {string} name
- * @returns {?string}
- */
-function yarnLock(text, name) {
-  if (!text) {
-    return null;
-  }
-  // Berry (v2+) is YAML with a __metadata key.
-  if (/^__metadata:/m.test(text)) {
-    try {
-      const data = YAML.parse(text);
-      for (const [key, value] of Object.entries(data ?? {})) {
-        if (
-          key !== "__metadata" &&
-          keyNamesPackage(key, name) &&
-          value?.version
-        ) {
-          return cleanVersion(String(value.version));
-        }
-      }
-    } catch {
-      return null;
-    }
-    return null;
-  }
-  // Yarn v1: top-level "<keys>:" header lines, then an indented `version "x"`.
-  const lines = text.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (
-      !line ||
-      line.startsWith("#") ||
-      /^\s/.test(line) ||
-      !line.endsWith(":")
-    ) {
-      continue;
-    }
-    const matches = line
-      .slice(0, -1)
-      .split(",")
-      .some((k) => keyNamesPackage(k.trim().replace(/^"|"$/g, ""), name));
-    for (let j = i + 1; j < lines.length && /^\s/.test(lines[j]); j++) {
-      const v = lines[j].match(/^\s+version:?\s+"?([^"\s]+)"?/);
-      if (matches && v) {
-        return cleanVersion(v[1]);
-      }
-    }
-  }
-  return null;
-}
-
-/**
  * Every package the submission's lock file records as installed - the declared
  * dependencies AND everything they pull in, at whatever depth. The set the OSV
  * tree audit queries (src/vendor/verify.js auditLockedPackages).
@@ -225,11 +192,6 @@ function yarnLock(text, name) {
  * Only the first lock that yields entries is read, in npm-then-pnpm order: two
  * locks describe the same install, so enumerating both would report every
  * package twice.
- *
- * Yarn is deliberately absent. A committed yarn.lock is already a hard error
- * from unsupported-build-tool, so nothing is built from one, and neither yarn
- * format records whether a package is dev-only - every hit would land in the
- * shipped bucket claiming to be shipped.
  * @param {Addon} addon
  * @returns {LockedPackage[]}  Sorted by name, then version, and truncated at
  *   VENDOR_LOCK_MAX_PACKAGES - which sits well above any real tree, because a
@@ -519,8 +481,224 @@ function dedupe(found) {
  */
 function declaredName(name, spec) {
   const written = typeof spec === "string" ? spec : (spec?.specifier ?? "");
-  const alias = /^npm:(@?[^@/]+(?:\/[^@/]+)?)(?:@|$)/.exec(written);
-  return alias ? alias[1] : name;
+  return aliasTarget(written)?.name ?? name;
+}
+
+/**
+ * Every way the committed lock cannot install what the root package.json declares - what
+ * `npm ci` and `pnpm install --frozen-lockfile` refuse over, decided offline from the two
+ * files alone. Read by the sca-lock-file-invalid check.
+ *
+ * Returns nothing when the manifest declares nothing this lock could pin, or when there is
+ * no lock at all - the latter being sca-lock-file-missing's question, which also decides
+ * whether one was owed. Both come first: a lock that governs no declaration is not judged,
+ * whatever shape it is in, because every verdict here is about a declaration it fails.
+ * Only the first lock PRESENT governs, in TREE_LOCKS order - two locks describe one
+ * install, and the installer reads the one it prefers rather than the one that happens to
+ * work. When that lock does not parse it is reported alone: a lock that cannot be read
+ * refuses the install as flatly as one missing an entry, and nothing falls through to
+ * another sitting beside it.
+ * @param {Addon} addon  The SCA build corpus (the root package.json and its locks).
+ * @returns {LockGap[]}
+ */
+export function lockGaps(addon) {
+  const files = addon?.files;
+  if (!files) {
+    return [];
+  }
+  const pkg = readManifest(files);
+  if (!pkg) {
+    return []; // no readable manifest: nothing states what the lock should cover
+  }
+  // Not a registry spec (file:/link:/workspace:/git/GitHub). The lock records these in
+  // shapes a spec comparison cannot read, and whether such a source is allowed at all is
+  // unsupported-dependency's question, not this one.
+  //
+  // An `npm:` alias is KEPT. It installs a registry package, and both formats record it the
+  // way they record any other: keyed by the name it is WRITTEN under, with the spec stored
+  // verbatim. So the comparison reads it without having to know it is an alias, and `npm
+  // ci` and `pnpm install --frozen-lockfile` refuse over a missing or stale one exactly as
+  // they do for the rest - which is the question this check answers.
+  const declared = declaredDependencies(pkg).filter(
+    ({ spec }) => !/[:/]/.test(spec) || Boolean(aliasTarget(spec))
+  );
+  if (!declared.length) {
+    return []; // nothing is declared, so the lock governs nothing - whatever shape it is
+  }
+  const present = TREE_LOCKS.filter((file) => files.has(file));
+  if (!present.length) {
+    return [];
+  }
+  // The GOVERNING lock is the first one PRESENT, in TREE_LOCKS order, and a lock that is
+  // present but does not parse is where the install stops: npm reads the one it prefers and
+  // fails on it, rather than falling back to another sitting beside it. Measured - the same
+  // tree installs cleanly from a valid package-lock.json alone, and is refused (EUSAGE) once
+  // an unparseable npm-shrinkwrap.json is added next to it. Stepping over the broken one to
+  // compare against the other would clear a submission `npm ci` refuses.
+  const file = present[0];
+  if (!parsedLock(addon, file)) {
+    return [lockItself(file, "unreadable")];
+  }
+  const data = parsedLock(addon, file);
+  const reader = READERS.get(file);
+  // A lock we cannot interpret says nothing about the declarations, so it is reported as
+  // ITSELF rather than judged through. Guessing the other way is the loudest possible
+  // wrong answer: every declared package would come back "not recorded", rejecting a
+  // submission on the strength of a file nothing here understood.
+  if (!reader?.recognises(data)) {
+    return [lockItself(file, "unrecognised")];
+  }
+  const gaps = [];
+  for (const { map, name, spec } of declared) {
+    const gap = reader.gap(data, map, name, spec);
+    if (gap) {
+      gaps.push({ file: "package.json", name, spec, ...gap });
+    }
+  }
+  return gaps;
+}
+
+/**
+ * One declaration against an npm lock. lockfileVersion 2/3 restates the root manifest under
+ * `packages[""]`, which is what `npm ci` compares package.json against; the installed entry
+ * is checked too, since a root record naming a package that resolved to nothing installs
+ * nothing. lockfileVersion 1 carries no such restatement (its top level is the hoisted
+ * tree), so only presence is checkable there - no `stale` verdict rather than a guessed one.
+ * @param {object} data  Parsed lock. @param {string} map  The declaring dependency map.
+ * @param {string} name @param {string} spec  What package.json asks for.
+ * @returns {?{recorded: ?string, reason: string}}
+ */
+function npmGap(data, map, name, spec) {
+  if (!plainObject(data.packages)) {
+    return ownValue(data.dependencies, name) === undefined
+      ? { recorded: null, reason: "absent" }
+      : null;
+  }
+  // Across ALL the root record's maps, not the declaring one: `npm ci` compares the two
+  // manifests by NAME, so moving a package between dependencies and devDependencies
+  // without regenerating is an install it accepts. pnpm is stricter, which is why its
+  // reader keys by map.
+  const root = data.packages[""];
+  let recorded;
+  for (const m of DECLARATION_MAPS) {
+    recorded = ownValue(root?.[m], name);
+    if (recorded !== undefined) {
+      break;
+    }
+  }
+  if (recorded === undefined) {
+    return { recorded: null, reason: "absent" };
+  }
+  // Both sides trimmed: npm records a spec verbatim, so " ^2.1.3 " against "^2.1.3" is the
+  // same install, and reporting it prints two strings the report then renders identically.
+  if (String(recorded).trim() !== spec) {
+    return { recorded: String(recorded).trim(), reason: "stale" };
+  }
+  return ownValue(data.packages, `node_modules/${name}`) === undefined
+    ? { recorded: null, reason: "absent" }
+    : null;
+}
+
+/**
+ * One declaration against a pnpm lock. The importers ARE the manifests restated, and the
+ * recorded specifier is what `--frozen-lockfile` compares against. v6+ carries it on the
+ * entry; v5 keeps a separate `specifiers` map, per importer when the lock has importers and
+ * at the top level when it does not - so a string entry looks in both, nearest first.
+ * @param {object} data  Parsed lock. @param {string} map  The declaring dependency map.
+ * @param {string} name @param {string} spec  What package.json asks for.
+ * @returns {?{recorded: ?string, reason: string}}
+ */
+function pnpmGap(data, map, name, spec) {
+  const importer = plainObject(data.importers) ? data.importers["."] : data;
+  const entry = ownValue(importer?.[map], name);
+  if (entry === undefined) {
+    return { recorded: null, reason: "absent" };
+  }
+  const recorded =
+    typeof entry === "string"
+      ? (ownValue(importer?.specifiers, name) ??
+        ownValue(data?.specifiers, name))
+      : entry?.specifier;
+  if (recorded !== undefined && String(recorded).trim() !== spec) {
+    return { recorded: String(recorded).trim(), reason: "stale" };
+  }
+  return null;
+}
+
+/**
+ * Whether a value is a plain JSON/YAML object - the only shape a lock's maps may take.
+ * An array is excluded: reading one by key answers undefined for every name.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function plainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * The reader for each lock, keyed by NAME rather than chosen by extension. Dispatching on
+ * ".json or else pnpm" reads as "npm or pnpm" but says "JSON, or else ASSUME pnpm", which
+ * is true only while pnpm's is the one non-JSON entry: a fourth format added to TREE_LOCKS
+ * would inherit pnpm's reader silently and report every declaration missing. Keyed here, a
+ * new lock has to be given a reader or it is not recognised at all.
+ *
+ * `recognises` is what keeps a guess from becoming a verdict. It asks whether the file is
+ * this format AND carries the restated manifest the comparison needs - npm's `packages[""]`
+ * or a v1 `dependencies` tree, pnpm's `importers["."]` or its flat top level. Anything else
+ * (a YAML file that is not a pnpm lock, a lock whose root record is missing) is declined
+ * rather than judged through.
+ */
+const READERS = new Map([
+  ["npm-shrinkwrap.json", { recognises: recognisesNpm, gap: npmGap }],
+  ["package-lock.json", { recognises: recognisesNpm, gap: npmGap }],
+  ["pnpm-lock.yaml", { recognises: recognisesPnpm, gap: pnpmGap }],
+]);
+
+/**
+ * @param {unknown} data  Parsed lock.
+ * @returns {boolean}  Whether it is an npm lock this comparison can read.
+ */
+function recognisesNpm(data) {
+  if (!plainObject(data)) {
+    return false;
+  }
+  // lockfileVersion 2/3 restates the root manifest under "". npm always writes it, so a
+  // `packages` map without one is not a lock we can compare against.
+  if (plainObject(data.packages)) {
+    return plainObject(data.packages[""]);
+  }
+  // lockfileVersion 1: the hoisted tree, and nothing else to go on.
+  return plainObject(data.dependencies);
+}
+
+/**
+ * @param {unknown} data  Parsed lock.
+ * @returns {boolean}  Whether it is a pnpm lock this comparison can read.
+ */
+function recognisesPnpm(data) {
+  if (!plainObject(data)) {
+    return false;
+  }
+  // v6+ and every v9: the importers ARE the manifests restated, and pnpm always writes the
+  // root one. With importers present but no ".", the root manifest is not in the file.
+  if (plainObject(data.importers)) {
+    return plainObject(data.importers["."]);
+  }
+  // v5 and the flat v6 shape: the declaration maps sit at the top level, beside specifiers.
+  return (
+    DECLARATION_MAPS.some((m) => plainObject(data[m])) ||
+    plainObject(data.specifiers)
+  );
+}
+
+/**
+ * A gap about the lock FILE rather than about a declaration: it names no package, because
+ * the subject is the file we could not use.
+ * @param {string} file @param {string} reason
+ * @returns {LockGap}
+ */
+function lockItself(file, reason) {
+  return { file, name: null, spec: null, recorded: null, reason };
 }
 
 /**
@@ -532,16 +710,6 @@ function declaredName(name, spec) {
  */
 function cmp(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
-}
-
-/**
- * Whether a yarn lock key (e.g. `name@^1.0.0` or `name@npm:^1.0.0`) is for
- * package `name`.
- * @param {string} key @param {string} name
- * @returns {boolean}
- */
-function keyNamesPackage(key, name) {
-  return key.startsWith(`${name}@`);
 }
 
 /**

@@ -72,8 +72,3 @@ export function verbNamed(text) {
     ? VERB[text]
     : null;
 }
-
-/** Whether a value IS a verb, as opposed to text that spells one. */
-export function isVerb(value) {
-  return value instanceof Verb;
-}

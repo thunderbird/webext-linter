@@ -1,6 +1,6 @@
 {
-  "_comment": "package.json declares lodash as a range (^4.17.21) with no lock file, so it cannot be pinned to one release: unpinned-dependency rejects it. package.json is exempt from unused-files. Decided offline, no fetch.",
+  "_comment": "package.json declares lodash as a range (^4.17.21), so the vendoring declaration names no single release to fetch and compare the shipped bytes against: xpi-package-unpinned rejects it. package.json is exempt from unused-files. Decided offline, no fetch.",
   "expect": {
-    "unpinned-dependency": ["package.json:5"]
+    "xpi-package-unpinned": ["package.json:5"]
   }
 }

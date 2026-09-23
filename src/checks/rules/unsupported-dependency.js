@@ -1,10 +1,14 @@
 // Rejects a package.json dependency declared from a source the review does not
-// support. Only two sources are auditable: a pinned npm package (an exact version,
-// or a range a committed lock file pins) and a GitHub URL (rated by popularity).
-// Anything else - a local file: path, a link:/workspace: ref, an npm: alias, a
-// tarball URL, or a non-GitHub git source - cannot be identified or vetted, so the
+// support. Only two sources are auditable: an npm package and a GitHub URL (rated by
+// popularity). This is the SOURCE axis - whether the release a spec names can be
+// pinned at all is a separate question, answered per submission type
+// (xpi-package-unpinned, sca-lock-file-missing / sca-lock-file-invalid).
+// Anything else - a local file: path, a link:/workspace: ref, a tarball URL, or a
+// non-GitHub git source - cannot be identified or vetted, so the
 // developer must re-declare it as a pinned npm/GitHub dependency or bundle the
 // library with the add-on as authored code so it can be reviewed directly.
+// An `npm:<name>@<range>` alias is NOT one of them: it installs a registry package under
+// another name, so it is classified by what it installs and the spelling decides nothing.
 // resolveVendor already classified these (src/vendor/resolve.js ->
 // addon.vendor.unsupportedDeps); this check only reads that and emits a finding
 // per entry. Deterministic, no network.

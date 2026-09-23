@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Invalid lock file</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Invalid lock file <span class="badge error">error</span></h1>
+        <div class="check-id">sca-lock-file-invalid</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A committed lock file that cannot install what the package.json
+        declares. Reviewers reproduce the build with the package manager's
+        strict install, which compares the two files before installing anything
+        and refuses outright when they disagree.
+      </p>
+      <p>
+        Four things make a lock file unusable, and all four are reported here: it
+        cannot be read at all, it can be read but is not a lock file this comparison
+        recognises, it resolves nothing for a package the package.json declares, or it
+        records a different version range for one than the package.json asks for. The
+        first two are worded apart because a developer would check which it is: one
+        will not open, the other opens perfectly well and simply is not a lock. Production, build and optional
+        dependencies are all checked, because the reviewer installs all of them.
+        A dependency pointing at git, a URL, a file or a workspace is left
+        alone: whether such a source is allowed is a separate question. The last
+        case usually means the package.json was edited without running the
+        install again, and it costs more than a failed build, because the
+        vulnerability audit would otherwise clear the version the lock file
+        names rather than the one the developer asked for. The oldest npm lock
+        format restates no version ranges at all, so there only presence can be
+        checked and no mismatch is ever claimed.
+      </p>
+      <p>
+        A submission built with a package manager this review does not support is
+        left alone here. A disallowed tool and a missing or unusable lock are one
+        fact, so it is reported once, by the check whose subject the tool is - and
+        that check stops the review just as this one would.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The submitted source archive"] --> T{"Built with an unsupported<br/>package manager?"}
+  T -- yes --> S3([skip: the tool is the fault,<br/>and it stops the review too])
+  T -- no --> B{"An npm or pnpm lock file?"}
+  B -- no --> S([skip: nothing committed to judge])
+  B -- yes --> C{"Can it be read, and is it a<br/>lock file we recognise?"}
+  C -- no --> ERR([ERROR: invalid lock file])
+  C -- yes --> D["Each dependency the<br/>package.json declares"]
+  D --> E{"Source is git, a URL,<br/>a file or a workspace?"}
+  E -- yes --> S2([skip: a question of source])
+  E -- no --> F{"The lock file resolves it?"}
+  F -- no --> ERR
+  F -- yes --> G{"Does it record a range for it,<br/>different from the one asked for?"}
+  G -- yes --> ERR
+  G -- no --> OK([no finding])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S,S2,S3 skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told its lock file fails to pin the version used for one or
+        more declared packages, which of them is unresolved or recorded
+        differently, and that it should run the install again and commit the
+        regenerated lock file.
+        The report then closes, saying it is incomplete because the build cannot
+        be reproduced.
+      </div>
+
+      <div class="outcome">
+        <strong>It stops the review</strong>
+        This check is one of the few that settle the submission on their own. When it
+        reports, nothing further is put to a reviewer: the report drops every to-do item
+        they would have been asked, keeps the code-review sections, and the
+        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;A build that
+        cannot be reproduced&rdquo;). Every question that remains would depend on
+        installing and building the add-on, which cannot succeed, so the work it would
+        otherwise put to a reviewer cannot change the outcome.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/sca-lock-file-invalid.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

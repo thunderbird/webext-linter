@@ -1,0 +1,8 @@
+{
+  "_comment": "A source archive whose package.json is truncated mid-object, so it does not parse. The file is THERE, so sca-package-file-missing stays silent and sca-package-file-invalid reports it instead - the split this pair exists for, pinned end to end. It anchors at package.json and the location line says which of the two faults it is, where the missing check carries no locus at all. The shipped background.js is packed and so is not the archive's code, which keeps the scaNotRequired guard from skipping both checks.",
+  "expect": {
+    "sca-package-file-invalid": [
+      "package.json"
+    ]
+  }
+}

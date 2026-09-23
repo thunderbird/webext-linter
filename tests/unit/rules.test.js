@@ -53,6 +53,10 @@ import undeclaredBuildSource from "../../src/checks/rules/undeclared-build-sourc
 import unsupportedBuildTool from "../../src/checks/rules/unsupported-build-tool.js";
 import buildRegistryRedirect from "../../src/checks/rules/build-registry-redirect.js";
 import committedNodeModules from "../../src/checks/rules/committed-node-modules.js";
+import scaPackageFileMissing from "../../src/checks/rules/sca-package-file-missing.js";
+import scaPackageFileInvalid from "../../src/checks/rules/sca-package-file-invalid.js";
+import scaLockFileMissing from "../../src/checks/rules/sca-lock-file-missing.js";
+import scaLockFileInvalid from "../../src/checks/rules/sca-lock-file-invalid.js";
 import cleartextTransmission from "../../src/checks/rules/cleartext-transmission.js";
 import privacyPolicy from "../../src/checks/rules/privacy-policy.js";
 import nativeMessaging from "../../src/checks/rules/native-messaging.js";
@@ -627,16 +631,19 @@ test("code-sanity is gated by the --eslint flag", async () => {
 
 // The SCA mode gate (scaEligible, mirrors the diff gate): the build and dependency
 // checks are sca:true (they review an archive, absent from an XPI-only submission), and
-// everything else is untagged - it runs in both modes and the orchestrator switches the
-// review SOURCE under it. NO entry declares sca:false today, and the gate is there for a
-// check that genuinely cannot run on a source archive - never to exempt a source archive's
+// most others are untagged - they run in both modes and the orchestrator switches the
+// review SOURCE under them. Exactly one is sca:false, and the gate is there for a check
+// that genuinely cannot run on a source archive - never to exempt a source archive's
 // declared files from review, which a declaration nothing verified cannot buy.
-test("checks carry the sca mode tag (true=SCA-only, undefined=both; none is XPI-only)", async () => {
+test("checks carry the sca mode tag (true=SCA-only, false=XPI-only, undefined=both)", async () => {
   const checks = allChecks(await loadChecks(loadRegistry()));
   const sca = (id) => checks.find((x) => x.id === id)?.sca;
+  // The pinnability requirement is worded per submission type, so its XPI half is the
+  // one check that must NOT run on a source archive: a range is legitimate there, pinned
+  // by the lock the two sca:true checks below require.
   assert.deepEqual(
     checks.filter((c) => c.sca === false).map((c) => c.id),
-    []
+    ["xpi-package-unpinned"]
   );
   // minified-code runs in BOTH modes: a minified file is non-authored and rejected
   // whether it ships in a built XPI or sits in a source-code submission's source.
@@ -660,6 +667,14 @@ test("checks carry the sca mode tag (true=SCA-only, undefined=both; none is XPI-
   assert.equal(sca("unsupported-build-tool"), true); // SCA-only build policy
   assert.equal(sca("build-registry-redirect"), true); // SCA-only build policy
   assert.equal(sca("committed-node-modules"), true); // SCA-only build policy
+  assert.equal(sca("sca-package-file-missing"), true); // SCA-only build policy
+  assert.equal(sca("sca-package-file-invalid"), true); // its sibling, same axis
+  assert.equal(sca("sca-lock-file-missing"), true); // SCA-only lock policy
+  assert.equal(sca("sca-lock-file-invalid"), true); // SCA-only lock policy
+  // Its SCA counterparts are the two above; the source-trust axis beside it is untagged,
+  // because where a package comes from matters in either submission type.
+  assert.equal(sca("xpi-package-unpinned"), false);
+  assert.equal(sca("unsupported-dependency"), undefined);
   assert.equal(sca("eval-call"), undefined); // a code check: both modes
   assert.equal(sca("unknown-api"), undefined);
 });
@@ -787,6 +802,10 @@ test("every check's severity is pinned to its band", async () => {
       "obfuscated-code",
       "remote-eval",
       "remote-resources",
+      "sca-lock-file-invalid",
+      "sca-lock-file-missing",
+      "sca-package-file-invalid",
+      "sca-package-file-missing",
       "strict-max-version-api",
       "strict-min-version-api",
       "string-timer",
@@ -797,7 +816,6 @@ test("every check's severity is pinned to its band", async () => {
       "unacceptable-package-content",
       "undeclared-build-source",
       "unknown-api",
-      "unpinned-dependency",
       "unpinned-vendor-source",
       "unpopular-source-dependency",
       "unrecognized-file-type",
@@ -811,6 +829,7 @@ test("every check's severity is pinned to its band", async () => {
       "vendor-vulnerable-indirect",
       "vendor-vulnerable-indirect-dev",
       "vendored-remote-resources",
+      "xpi-package-unpinned",
     ],
     warning: [
       "async-onmessage",
@@ -1132,7 +1151,11 @@ test("a response worded per review mode is all-or-nothing, and never beside a ba
     bad(
       {
         [list]: [
-          make({ response: "r", "response-for-xpi": "x", "response-for-sca": "s" }),
+          make({
+            response: "r",
+            "response-for-xpi": "x",
+            "response-for-sca": "s",
+          }),
         ],
       },
       /never both ways/
@@ -1288,6 +1311,10 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "build-registry-redirect",
     "committed-build-artifact",
     "committed-node-modules",
+    "sca-lock-file-invalid",
+    "sca-lock-file-missing",
+    "sca-package-file-invalid",
+    "sca-package-file-missing",
     "undeclared-build-source",
     "unsupported-build-tool",
   ]);
@@ -1466,6 +1493,23 @@ test("build-registry-redirect rejects any registry setting in .npmrc", () => {
 
 // A disallowed fingerprint is matched at ANY depth (a build run from a subfolder), by
 // basename - not just at the root.
+// A BOM is the developer's editor, not a statement about the build, and npm reads a
+// manifest carrying one perfectly well. A parse that refuses it leaves the tool unnamed -
+// which does not fall silent: the lock checks then hold a yarn submission to an npm lock
+// and report the wrong fault, which is exactly what sharing this guard exists to prevent.
+test("unsupported-build-tool reads a manifest that carries a BOM", () => {
+  const declares = (text) =>
+    unsupportedBuildTool.run({
+      addon: { files: new Map([["package.json", Buffer.from(text, "utf8")]]) },
+    }).findings;
+  const pkg = JSON.stringify({ packageManager: "yarn@4.1.0" });
+  for (const text of [pkg, `\uFEFF${pkg}`]) {
+    const out = declares(text);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].item, "yarn");
+  }
+});
+
 test("unsupported-build-tool detects nested lockfiles + packageManager", () => {
   const run = (obj) =>
     unsupportedBuildTool.run({
@@ -1531,6 +1575,278 @@ test("committed-node-modules flags each recorded node_modules directory", () => 
   // None recorded, or no addon -> no finding.
   assert.deepEqual(run([]), []);
   assert.deepEqual(committedNodeModules.run({}).findings, []);
+});
+
+// The two lock checks read only ctx.addon.files, so a plain map of the submission's
+// dependency files is the whole context they need.
+const fileMap = (files) =>
+  new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)]));
+
+// ---- sca-package-file-missing / -invalid (SCA: the archive must carry a usable
+// package.json, the pair shaped like sca-lock-file-missing / -invalid) ----
+
+// The archive exists so the reviewer can reproduce the build. Its entry point is the root
+// package.json, so no package.json is no build.
+test("sca-package-file-missing reports an absent manifest", () => {
+  const run = (files, scaNotRequired = false) =>
+    scaPackageFileMissing.run({
+      addon: { files: fileMap(files) },
+      scaNotRequired,
+    }).findings;
+
+  const noBuild = run({ "manifest.json": "{}" });
+  assert.equal(noBuild.length, 1);
+  // It is about a file the archive does NOT contain, so it names none.
+  assert.equal(noBuild[0].file, null);
+  assert.equal(noBuild[0].item, null);
+
+  // A manifest is a build whatever it carries - an empty one still counts.
+  assert.deepEqual(run({ "package.json": "{}" }), []);
+  assert.deepEqual(
+    run({ "package.json": JSON.stringify({ scripts: { build: "x" } }) }),
+    []
+  );
+  // Presence is tested by NAME: one that cannot be read is present, so this check is
+  // silent and sca-package-file-invalid is the one that speaks.
+  assert.deepEqual(run({ "package.json": "{not json" }), []);
+
+  // The shipped add-on being the archive's own code does NOT excuse it. That the shipped
+  // bytes are readable says nothing about whether this source produces them, and with no
+  // build there is nothing to reproduce - so the rejection stands and the XPI-only ADVICE
+  // is what yields instead (src/build/reproducible.js buildFileFault).
+  assert.equal(run({ "manifest.json": "{}" }, true).length, 1);
+
+  // The one guard: an unsupported package manager is unsupported-build-tool's fact, and it
+  // errors and halts on it already, so saying "and no build either" adds nothing.
+  for (const lock of ["yarn.lock", "bun.lockb", "bunfig.toml"]) {
+    assert.deepEqual(run({ "manifest.json": "{}", [lock]: "x" }), [], lock);
+  }
+  // Declared rather than committed - but with no package.json there is no field to read,
+  // so a manifest naming yarn is caught by having a manifest at all.
+  assert.deepEqual(
+    run({ "package.json": JSON.stringify({ packageManager: "yarn@4.1.0" }) }),
+    []
+  );
+});
+
+// A manifest that exists but cannot be used is the sibling's subject. npm reads neither a
+// file that fails to parse nor one that parses to something other than an object, so the
+// build it defines cannot be run either way - and the two are worded apart because a
+// developer would check which it is.
+test("sca-package-file-invalid reports a manifest that cannot be used", () => {
+  const run = (files, scaNotRequired = false) =>
+    scaPackageFileInvalid.run({
+      addon: { files: fileMap(files) },
+      scaNotRequired,
+    }).findings;
+  const one = (out, item) => {
+    assert.equal(out.length, 1);
+    assert.equal(out[0].file, "package.json");
+    assert.equal(out[0].item, item);
+  };
+  one(run({ "package.json": "{not json" }), "could not be read");
+  one(run({ "package.json": "" }), "could not be read");
+  // Valid JSON, but not a manifest: it opens fine and is simply the wrong shape.
+  one(run({ "package.json": "[]" }), "is not a JSON object");
+  one(run({ "package.json": '"a string"' }), "is not a JSON object");
+
+  // A usable manifest says nothing, empty or not, and a BOM is the developer's editor
+  // rather than a fault: npm reads one, so this must too.
+  assert.deepEqual(run({ "package.json": "{}" }), []);
+  assert.deepEqual(run({ "package.json": '\uFEFF{"name":"x"}' }), []);
+  // Absent is the other check's subject, so this one stays quiet.
+  assert.deepEqual(run({ "manifest.json": "{}" }), []);
+
+  // The same as its sibling: the one guard is the unsupported package manager, and the
+  // shipped XPI being the archive's own code does not excuse an unreadable manifest.
+  assert.equal(run({ "package.json": "{not json" }, true).length, 1);
+  assert.deepEqual(run({ "package.json": "{not json", "yarn.lock": "" }), []);
+});
+
+// ---- sca-lock-file-missing (SCA deterministic: a build that installs owes a lock) ----
+
+// In a SOURCE submission a package.json is always a build manifest, so a lock is owed - a
+// `scripts` block changes nothing, and neither does what the manifest declares. Both
+// installers refuse without a lock whatever it holds.
+test("sca-lock-file-missing fires whenever a source ships a manifest and no lock", () => {
+  const run = (files) =>
+    scaLockFileMissing.run({ addon: { files: fileMap(files) } }).findings;
+  const toolchain = {
+    "package.json": JSON.stringify({
+      scripts: { build: "webpack" },
+      devDependencies: { webpack: "^5.0.0" },
+    }),
+  };
+
+  // The whole point: scripts + a declared dependency + no lock.
+  assert.deepEqual(
+    run(toolchain).map((f) => f.file),
+    ["package.json"]
+  );
+  // The response names the file, so the finding carries no item and they collapse.
+  assert.equal(run(toolchain)[0].item, null);
+
+  // Any lock this review installs from settles it, whichever of the three it is.
+  for (const lock of [
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "pnpm-lock.yaml",
+  ]) {
+    assert.deepEqual(run({ ...toolchain, [lock]: "{}" }), [], lock);
+  }
+  // By NAME, not by parse: a lock that exists but is corrupt is not a MISSING lock
+  // (sca-lock-file-invalid reports it).
+  assert.deepEqual(run({ ...toolchain, "package-lock.json": "{not json" }), []);
+
+  // A submission that fingerprints as an unsupported package manager is silent here:
+  // the tool IS the fact, and unsupported-build-tool tells it (with the same early exit).
+  for (const [file, body] of [
+    ["yarn.lock", "# yarn lockfile v1\n"],
+    ["bun.lockb", "\u0000bun"],
+    ["bunfig.toml", "[install]\n"],
+  ]) {
+    assert.deepEqual(run({ ...toolchain, [file]: body }), [], file);
+  }
+  // Declared rather than committed: the `packageManager` field does it too.
+  assert.deepEqual(
+    run({
+      "package.json": JSON.stringify({
+        scripts: { build: "webpack" },
+        devDependencies: { webpack: "^5.0.0" },
+        packageManager: "yarn@4.1.0",
+      }),
+    }),
+    []
+  );
+
+  // No `scripts` is NOT a way out: a source archive may not use package.json to declare
+  // vendored libraries, so exact pins and no build still owe a lock.
+  assert.deepEqual(
+    run({
+      "package.json": JSON.stringify({ dependencies: { lodash: "4.17.21" } }),
+    }).map((f) => f.file),
+    ["package.json"]
+  );
+  // A manifest declaring nothing of its own still owes one. `npm ci` refuses without a
+  // lock whatever the manifest holds, and a root that declares nothing is a workspace root
+  // or a manifest whose declarations moved - not a submission that installs nothing.
+  assert.deepEqual(
+    run({ "package.json": JSON.stringify({ scripts: { build: "x" } }) }).map(
+      (f) => f.file
+    ),
+    ["package.json"]
+  );
+  assert.deepEqual(
+    run({
+      "package.json": JSON.stringify({ workspaces: ["packages/*"] }),
+      "packages/app/package.json": JSON.stringify({
+        dependencies: { lodash: "^4.17.0" },
+      }),
+    }).map((f) => f.file),
+    ["package.json"]
+  );
+  // No manifest, and no addon.
+  assert.deepEqual(run({}), []);
+  assert.deepEqual(scaLockFileMissing.run({}).findings, []);
+});
+
+// ---- sca-lock-file-invalid (SCA deterministic: the lock must install what is declared) ----
+
+// The comparison itself is lockGaps (tests/unit/lock-coverage.test.js); this rule turns
+// each gap into a finding, anchors it, and words its subject.
+test("sca-lock-file-invalid anchors each gap and names what is wrong", () => {
+  const out = scaLockFileInvalid.run({
+    addon: {
+      files: fileMap({
+        "package.json": JSON.stringify(
+          {
+            dependencies: { absent: "^1.0.0" },
+            devDependencies: { drifted: "^2.0.0" },
+          },
+          null,
+          2
+        ),
+        "package-lock.json": JSON.stringify({
+          lockfileVersion: 3,
+          packages: {
+            "": { devDependencies: { drifted: "^1.0.0" } },
+            "node_modules/drifted": { version: "1.5.0" },
+          },
+        }),
+      }),
+    },
+  }).findings;
+
+  // Anchored at the package.json line that declares each one, since that is where the
+  // developer fixes it - the lock has no line for a package it never mentions.
+  assert.deepEqual(
+    out.map((f) => `${f.file}:${f.loc?.line}`),
+    ["package.json:3", "package.json:6"]
+  );
+  // The response states the rule once, so which of the ways it failed rides the item.
+  assert.deepEqual(
+    out.map((f) => f.item),
+    [
+      "absent (^1.0.0) - not recorded in the lock file",
+      "drifted (^2.0.0) - the lock records ^1.0.0",
+    ]
+  );
+
+  // An unreadable lock is the subject itself: anchored at the lock, with no line.
+  const unreadable = scaLockFileInvalid.run({
+    addon: {
+      files: fileMap({
+        "package.json": JSON.stringify({ dependencies: { x: "^1.0.0" } }),
+        "package-lock.json": "{not json",
+      }),
+    },
+  }).findings;
+  assert.deepEqual(
+    unreadable.map((f) => [f.file, f.loc, f.item]),
+    [["package-lock.json", null, "could not be read"]]
+  );
+
+  // A lock that covers the manifest, and no addon at all.
+  assert.deepEqual(
+    scaLockFileInvalid.run({
+      addon: {
+        files: fileMap({
+          "package.json": JSON.stringify({ dependencies: { x: "1.0.0" } }),
+          "package-lock.json": JSON.stringify({
+            lockfileVersion: 3,
+            packages: {
+              "": { dependencies: { x: "1.0.0" } },
+              "node_modules/x": { version: "1.0.0" },
+            },
+          }),
+        }),
+      },
+    }).findings,
+    []
+  );
+  assert.deepEqual(scaLockFileInvalid.run({}).findings, []);
+
+  // Silent on an unsupported package manager, for the reason its sibling is: one fact,
+  // told once by unsupported-build-tool. Here the npm lock is genuinely stale, so this
+  // proves the guard and not merely an absence of gaps.
+  assert.deepEqual(
+    scaLockFileInvalid.run({
+      addon: {
+        files: fileMap({
+          "package.json": JSON.stringify({ dependencies: { x: "^2.0.0" } }),
+          "package-lock.json": JSON.stringify({
+            lockfileVersion: 3,
+            packages: {
+              "": { dependencies: { x: "^1.0.0" } },
+              "node_modules/x": { version: "1.0.0" },
+            },
+          }),
+          "yarn.lock": "# yarn lockfile v1\n",
+        }),
+      },
+    }).findings,
+    []
+  );
 });
 
 // ---- manual-checks ----

@@ -1,0 +1,6 @@
+{
+  "_comment": "The sca-not-required submission with one thing changed: its package.json declares a dependency and no lock file is committed. The shipped XPI is still byte-identical to the source, so resolveXpiOnlyAdvice still says an XPI-only submission would have done - but the build cannot be run, so the advice is WITHHELD and sca-lock-file-missing rejects instead, halting the review. That is the inversion this fixture exists to pin: the hint is what yields to a broken build, never the other way round, because nobody can confirm this source produces that XPI when the install refuses to run. Its twin (sca-not-required) is the same submission with a runnable build, where the advice does print.",
+  "expect": {
+    "sca-lock-file-missing": ["package.json"]
+  }
+}

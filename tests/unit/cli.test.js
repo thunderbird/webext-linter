@@ -1104,10 +1104,10 @@ test("a swept case becomes an item of its check and settles like any other", () 
     out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
   }
   assert.equal(out.code, 1, out.stderr);
-  assert.match(
-    out.stdout,
-    /send user data to a remote server without an explicit opt-in/
-  );
+  // The invariant clause, not the subject: what the response calls the data (user data,
+  // telemetry, ...) is wording the registry owns and may reword, and this test is about
+  // the response reaching the output at all.
+  assert.match(out.stdout, /to a remote server without an explicit opt-in/);
   assert.match(
     out.stdout,
     /background\.js:12 - <a ping> attribute carries the message digest/

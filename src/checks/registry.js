@@ -1160,7 +1160,10 @@ function assertResponse(entry, where) {
   }
   for (const key of named) {
     const text = entry[key];
-    if (text !== undefined && (typeof text !== "string" || text.trim() === "")) {
+    if (
+      text !== undefined &&
+      (typeof text !== "string" || text.trim() === "")
+    ) {
       throw new Error(
         `${where} has an invalid \`${key}\` ${JSON.stringify(text)} ` +
           "(expected a non-empty string)"
@@ -1184,7 +1187,9 @@ function assertResponse(entry, where) {
   }
   if (worded.length === 1) {
     const missing =
-      worded[0] === MODE_RESPONSES.sca ? MODE_RESPONSES.xpi : MODE_RESPONSES.sca;
+      worded[0] === MODE_RESPONSES.sca
+        ? MODE_RESPONSES.xpi
+        : MODE_RESPONSES.sca;
     const blind = missing === MODE_RESPONSES.xpi ? "an XPI" : "a source code";
     throw new Error(
       `${where} authors \`${worded[0]}\` and not \`${missing}\`, so ${blind} review ` +
@@ -1941,9 +1946,12 @@ export function formatNote(file, loc, item, verdict, label = "") {
  * `sca: true` only in SCA mode (a source code archive,
  * triggered by `--sca-root`), `sca: false` only in XPI mode (reviewing a built
  * add-on), an omitted `sca` in both. The `--sca-root` build and dependency checks are
- * `sca: true`; nothing declares `sca: false` today, and the gate is there for a check
- * that genuinely cannot run on a source archive. It is not a way to exempt a source
- * archive's declared files from review - a declaration nothing verified exempts nothing.
+ * `sca: true`. Exactly one check is `sca: false`: xpi-package-unpinned, whose
+ * requirement - a vendoring declaration must name one exact release - a source archive
+ * answers with its lock file instead. The gate is for a check that genuinely cannot run
+ * on a source archive, never a way to exempt a source archive's declared files from
+ * review: a declaration nothing verified exempts nothing, and here the question does not
+ * disappear, it moves to the two sca:true lock checks.
  * @param {{sca?: boolean}} entry @param {boolean} inScaMode
  * @returns {boolean}
  */

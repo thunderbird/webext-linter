@@ -1,0 +1,7 @@
+{
+  "name": "sca-multiple-vendor-files",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "web-ext build"
+  }
+}

@@ -41,14 +41,29 @@ test("a per-mode response resolves by the review mode, from either mode shape", 
     ],
   });
 
-  assert.equal(perMode.responseFor("sync-xhr", REVIEW_MODE.SCA), "the sca wording");
-  assert.equal(perMode.responseFor("sync-xhr", REVIEW_MODE.XPI), "the xpi wording");
+  assert.equal(
+    perMode.responseFor("sync-xhr", REVIEW_MODE.SCA),
+    "the sca wording"
+  );
+  assert.equal(
+    perMode.responseFor("sync-xhr", REVIEW_MODE.XPI),
+    "the xpi wording"
+  );
   // The loop reads `{ sca: state.report.sca }` off its state file, never the enum.
-  assert.equal(perMode.responseFor("sync-xhr", { sca: true }), "the sca wording");
-  assert.equal(perMode.responseFor("sync-xhr", { sca: false }), "the xpi wording");
+  assert.equal(
+    perMode.responseFor("sync-xhr", { sca: true }),
+    "the sca wording"
+  );
+  assert.equal(
+    perMode.responseFor("sync-xhr", { sca: false }),
+    "the xpi wording"
+  );
   // A SUPPLIED mode with nothing set is a mode, and means XPI - which is what a state
   // file written before this review mode was recorded reads as.
-  assert.equal(perMode.responseFor("sync-xhr", { sca: undefined }), "the xpi wording");
+  assert.equal(
+    perMode.responseFor("sync-xhr", { sca: undefined }),
+    "the xpi wording"
+  );
   // One wording answers the same for either mode, which is every other check.
   for (const mode of [REVIEW_MODE.SCA, REVIEW_MODE.XPI, undefined]) {
     assert.equal(perMode.responseFor("eval-call", mode), "one wording");

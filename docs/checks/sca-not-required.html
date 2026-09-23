@@ -43,6 +43,16 @@
         file, since its subject is the submission as a whole, so the entry carries no location
         line.
       </p>
+      <p>
+        A fourth condition is not about the shipped code at all: the build has to be one
+        that could actually be <em>run</em>. The advice is withheld from a submission whose
+        package manager is unsupported, whose <code>package.json</code> is missing or
+        unreadable, or which ships no usable lock file — each of which rejects the
+        submission and stops the review. Telling such a developer their archive was
+        unnecessary would contradict the rejection printed beside it, and it would be
+        untrue besides: nobody can confirm this source produces that XPI when the install
+        refuses to run. The hint is what yields, never the rejection.
+      </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
@@ -68,14 +78,12 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on's built XPI is the same code that was submitted as a source archive: readable,
-        not transpiled, and shipping no script that differs from the archive's copy. A separate
-        source-code archive is therefore not required for this add-on. A source submission is
-        needed only when the shipped code is minified, transpiled, bundled or otherwise not what
-        the developer wrote, and it moves the add-on into a separate, considerably slower review
-        process; a plain XPI submission is usually reviewed much faster. The developer is asked to
-        stop sending the archive. This review itself is unaffected — it is a full source review
-        either way.
+        The add-on's built XPI is the same code that was submitted as a source archive:
+        readable, not transpiled, and shipping no script that differs from the archive's
+        copy. The developer is told that a source archive is only needed once the shipped
+        code is built, asked to send the XPI on its own next time, and reminded that source
+        submissions take considerably longer to review. This review itself is unaffected: it
+        is a full source review either way.
       </div>
 
       <p class="source-note">

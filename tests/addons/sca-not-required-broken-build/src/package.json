@@ -1,0 +1,8 @@
+{
+  "name": "sca-not-required-broken-build",
+  "version": "1.0.0",
+  "private": true,
+  "devDependencies": {
+    "web-ext": "^8.0.0"
+  }
+}

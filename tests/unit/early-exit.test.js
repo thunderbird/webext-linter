@@ -101,6 +101,54 @@ test("a withdrawn finding stops nothing", () => {
   );
 });
 
+// An ESCALATING check stops a review too, but only from the far side of a verdict: it
+// reports nothing itself, so its case weighs nothing until someone has judged it. This is
+// build-lifecycle-hook, which raises an install hook for a reviewer to read - a hook that
+// only runs local build steps settles nothing, and one that fetches code stops the review
+// before anyone is asked to install it.
+test("an escalated case stops the review once it is reported, and not before", () => {
+  const todo = [
+    {
+      ruleId: "build-lifecycle-hook",
+      title: "Build install hook",
+      instructions: "read the command",
+      section: SECTION.CODE_REVIEW,
+      file: "package.json",
+    },
+  ];
+  const ordered = orderReview([], todo);
+  const index = String(ordered[0].index);
+  // Nobody has judged it: a plain review with no agent in it stops nothing.
+  assert.equal(earlyExitOf(ordered, {}, registry), null);
+  assert.equal(earlyExitOf(ordered, { [index]: "cleared" }, registry), null);
+  assert.deepEqual(
+    earlyExitOf(ordered, { [index]: "reported" }, registry).reasons.map(
+      (r) => r.text
+    ),
+    ["A build that cannot be reproduced"]
+  );
+});
+
+// The verb alone is not the trigger. Every to-do item in a review is answered, and all but
+// a handful of checks name no reason at all - reporting one of those is ordinary review
+// work, not a submission that settles itself.
+test("a reported to-do stops nothing when its check names no reason", () => {
+  const ordered = orderReview(
+    [],
+    [
+      {
+        ruleId: "experiment-manual-review",
+        title: "Experiment",
+        instructions: "read it",
+        section: SECTION.CODE_REVIEW,
+        file: "manifest.json",
+      },
+    ]
+  );
+  const index = String(ordered[0].index);
+  assert.equal(earlyExitOf(ordered, { [index]: "reported" }, registry), null);
+});
+
 /** A to-do item as the report's manual list carries one. */
 const item = (title, { extended, section }) => ({
   title,

@@ -417,18 +417,25 @@ deterministic-phase:
   response: |-
     The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies and are reviewed as authored code, so a finding may be reported against library code.
 
-# SCA mode (source code archive, sca: true): a declared dependency that is not
-# a confirmed widely-used library cannot be reviewed - its code is pulled in at
-# build, absent from the readable source and mangled in the built XPI - so the
-# developer must ship it readable inside --sca-source. verifyScaDependencies
-# records the non-popular package.json dependencies (vendor.unpopularDeps).
+# SCA mode (source code archive, sca: true): a declared dependency that is not a confirmed
+# widely-used library cannot be reviewed - its code is pulled in at build, absent from the
+# readable source and mangled in the built XPI - so a SHIPPED one must be included readable
+# inside --sca-source. BUILD dependencies are held to the same bar, for the reason they are
+# OSV-audited: the reviewer installs and runs them, so an obscure build tool is code we ask
+# them to execute on nobody's word, and refusing only the vulnerabilities we can name would
+# protect them from the named risk alone. They cannot be shipped readable, so the remedy is
+# a widely-used equivalent - or none, where the package is not needed to reproduce the XPI
+# at all: an archive is submitted so the build can be REPRODUCED, and a dependency no step
+# of that needs is one the reviewer is asked to install for nothing. That is the only route
+# open to a package with no popular counterpart, such as a types-only package.
+# verifyScaDependencies records both (vendor.unpopularDeps).
 - title: Unreviewable build dependency
   severity: error
   sca: true
   check: unpopular-source-dependency
   input: source
   response: |-
-    The following dependencies could not be confirmed to be widely-used. They need to be packaged non-minified with the add-on in order to be reviewed.
+    The following dependencies could not be confirmed to be widely-used. Such dependencies must instead be included non-minified in the source so they can be reviewed directly. A build dependency cannot be included that way. Please replace it with a widely-used equivalent, or remove it from the submitted source archive if it is not strictly needed to reproduce the shipped add-on. Reviewers should only be asked to install tools the wider community has vetted.
     Read more: https://extensionworkshop.com/documentation/publish/source-code-submission/
 
 - title: Unparsable file
@@ -539,21 +546,32 @@ deterministic-phase:
 # present to compare. Verification is what earns a declaration its exemption
 # from content review - an entry that does not verify is reconciled into the
 # untrusted family and the file is reviewed as the developer's own code - so
-# none of these checks is gated on the review mode. The checks below read that
-# precomputed result: three reject a submission (an unpinnable dependency, a
-# non-pinned source, or a modified file), one escalates the unverifiable cases
-# to manual review, and one warns when a declared file is missing.
-- title: Unpinned dependency
-  severity: error
-  check: unpinned-dependency
-  input: source
-  response-for-xpi: |-
-    The following dependencies are not pinned to an exact version. The linter supports only bare version values like "4.17.21". Update each dependency in package.json included in the XPI to that form.
-  response-for-sca: |-
-    The following dependencies are not pinned to an exact version. A version range can resolve to different releases over time, so the bundled copy cannot be verified against a known upstream. Commit the lock file (package-lock.json, npm-shrinkwrap.json, or pnpm-lock.yaml) that records the exact versions installed. Pinning a dependency in package.json, written as a bare version like "4.17.21", settles that one release but not the tree installed beneath it.
+# these checks read one precomputed result whichever artifact carries the declaration:
+# three reject a submission (an unpinned vendored library, an unsupported source, or a
+# modified file), one escalates the unverifiable cases to manual review, and one warns when
+# a declared file is missing. Only the first is gated on the submission type, because only
+# it states a requirement the two types answer differently (see its own comment).
 
-# A package.json dependency from a source the review cannot identify or verify -
-# only npm (pinned) and GitHub URLs are supported. Rejects everything else.
+# A shipped package.json `dependencies` entry is a VENDORING declaration: a file bundled in
+# this XPI was copied from that npm release. verifyPackage takes it literally, fetching that
+# release's listing and matching the shipped bytes, so a spec naming no single release (a
+# range, a dist-tag, a partial version, a wildcard) leaves nothing to compare.
+# sca: false - the XPI type's half of the pinnability question. A source archive answers it
+# with its lock, where a range is legitimate (sca-lock-file-missing / sca-lock-file-invalid).
+# Whether the SOURCE a declaration names is supported is a separate axis
+# (unsupported-dependency), which applies to both types.
+- title: Unpinned vendored library
+  severity: error
+  sca: false
+  check: xpi-package-unpinned
+  input: source
+  response: |-
+    The following dependencies are not pinned to an exact version. The linter supports only bare version values like "4.17.21". Update each dependency in package.json included in the XPI to that form.
+
+# A package.json dependency from a source the review cannot identify or verify - only npm
+# and GitHub URLs are supported. Rejects everything else. This is the SOURCE axis alone:
+# whether the release a spec names can be pinned is a separate question, answered per
+# submission type (xpi-package-unpinned, sca-lock-file-missing / sca-lock-file-invalid).
 - title: Unsupported dependency source
   severity: error
   check: unsupported-dependency
@@ -562,7 +580,7 @@ deterministic-phase:
     The following dependencies are declared from a source the review cannot identify or verify. Only npm packages pinned to an exact version and GitHub URLs are supported. Re-declare each as a pinned npm package or a GitHub source, or bundle the non-minified library with the add-on so it can be reviewed directly.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
   response-for-sca: |-
-    The following dependencies are declared from a source the review cannot identify or verify. Only npm packages (pinned to an exact version or recorded in a committed lock file) and GitHub URLs are supported. Re-declare each as an npm package or a GitHub source, or include the non-minified library in the archive so it can be reviewed directly.
+    The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.
     Read more: https://extensionworkshop.com/documentation/publish/source-code-submission/
 
 # Each pinned npm name@version - a package.json dependency or an npm-sourced
@@ -646,15 +664,101 @@ deterministic-phase:
 # that share the .npmrc config format, keeping the reviewable surface small. A committed
 # yarn/bun fingerprint anywhere in the build corpus (a lockfile, or the package.json
 # "packageManager" field) is a hard reject; the offending tool is surfaced as {{item}}
-# and the finding anchors at the fingerprint file. Pinning is a separate check
-# (unpinned-dependency); the open-ended build review is undeclared-build-source.
+# and the finding anchors at the fingerprint file. Pinning is a separate axis
+# (xpi-package-unpinned for a shipped manifest, sca-lock-file-missing /
+# sca-lock-file-invalid here); the open-ended build review is undeclared-build-source.
 - title: Unsupported build tool
   severity: error
   sca: true
+  review-early-exit: unreproducible-build
   check: unsupported-build-tool
   input: build
   response: |-
     This add-on is built with {{item}}, and only npm and pnpm are supported. Please provide an npm or pnpm build (commit a package-lock.json or pnpm-lock.yaml) so the dependency install can be reviewed against the declared dependencies.
+
+# Deterministic (SCA only): the source archive has no package.json, so there is no build to
+# reproduce the shipped XPI from. The build's entry point is the root package.json
+# (src/build/corpus.js seeds from it), so its absence is the absence of a build. Reported as
+# the bare fact: nothing here says WHY it is missing, and nothing in the archive could.
+# Presence is tested by NAME, not by parse - one that exists but cannot be used is not
+# MISSING, and sca-package-file-invalid reports it. The pair mirrors sca-lock-file-missing /
+# sca-lock-file-invalid, the other file this build cannot run without.
+# Silent on an unsupported package manager, which unsupported-build-tool errors and halts
+# on already, and silent when the shipped XPI IS the source (ctx.scaNotRequired): there the add-on is simply
+# not built, the archive was unnecessary rather than incomplete, and sca-not-required says so
+# as advice. What is left is a build that is absent while the shipped code is NOT the
+# archive's, so something that must exist is missing.
+- title: Missing package.json
+  severity: error
+  sca: true
+  review-early-exit: unreproducible-build
+  check: sca-package-file-missing
+  input: build
+  response: |-
+    The submitted source archive contains no package.json, so there is no build process the shipped add-on can be reproduced from.
+
+# Deterministic (SCA only): a package.json was submitted but cannot be used - it does not
+# parse, or it parses to something that is not a JSON object. npm reads neither, so the
+# build it defines cannot be run. The two cases are kept apart in the wording because a
+# developer would check: one will not open, the other opens fine and simply is not a
+# manifest. They are the two the lock file's file-level faults carry, for the same reason.
+# Decided from the one parse every reader of this file shares (src/vendor/manifest.js), so
+# an unusable manifest here is exactly the one the dependency readers found nothing in.
+# Which case failed rides the location line as {{item}}, so the response states the rule
+# once. Silent on the same two grounds as its sibling above.
+- title: Invalid package.json
+  severity: error
+  sca: true
+  review-early-exit: unreproducible-build
+  check: sca-package-file-invalid
+  input: build
+  response: |-
+    The committed package.json cannot be read, so the build it defines cannot be run. Please commit a valid package.json.
+
+# Deterministic (SCA only): the source ships a package.json and no npm or pnpm lock.
+# `npm ci` and `pnpm install --frozen-lockfile` both refuse without one, so the
+# source cannot be shown to produce the shipped XPI. The reading is fixed by the SUBMISSION
+# TYPE, never by the file's contents: here a package.json is a build manifest whatever it
+# carries, so whatever it declares is installed. An absent `scripts` block is not a second
+# reading and not grounds for anything. The mirror holds in a built XPI, where the same
+# file is a vendoring manifest whatever it carries (xpi-package-unpinned). The lock is owed
+# by the manifest, never by what it happens to declare: both installers refuse without one
+# whatever it holds, and a root declaring nothing itself is a workspace root or a manifest
+# whose declarations moved, not a submission that installs nothing.
+# Only the ROOT package.json is read - the build's entry point (src/build/corpus.js) -
+# unlike unsupported-build-tool / build-registry-redirect, which scan every depth because
+# they detect a disallowed thing rather than assert a requirement. Nothing here goes looking
+# for a manifest or a lock deeper in the archive: they sit at the root, which is what the
+# root IS.
+- title: Missing lock file
+  severity: error
+  sca: true
+  review-early-exit: unreproducible-build
+  check: sca-lock-file-missing
+  input: build
+  response: |-
+    The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json for npm, pnpm-lock.yaml for pnpm).
+
+# Deterministic (SCA only): a lock was submitted but cannot install what package.json
+# declares. `npm ci` and `pnpm install --frozen-lockfile` compare the two before installing
+# anything and refuse over the cases reported here: a lock that does not parse, one that
+# parses but is not a lock this comparison can read, a declared package it resolves nothing
+# for, and one recorded under a different spec. The two file-level cases are kept apart in
+# the wording because a developer would check: one will not open, the other opens fine.
+# Decided offline from the two committed files (src/vendor/locks.js lockGaps), over
+# dependencies, devDependencies and optionalDependencies alike - the reviewer installs all
+# of them. The stale case also costs correctness: lockedVersion resolves a declared name
+# against the lock's installed entry, so an older range there has the OSV audit clear a
+# version the developer never declared. Which case failed rides the location line as
+# {{item}}, so the response states the rule once.
+- title: Invalid lock file
+  severity: error
+  sca: true
+  review-early-exit: unreproducible-build
+  check: sca-lock-file-invalid
+  input: build
+  response: |-
+    The committed lock file fails to correctly pin the used version for one or more declared packages. Please run the install again and commit the regenerated lock file.
 
 # Deterministic (SCA only): a committed .npmrc that SETS a package registry (registry=
 # or @scope:registry=, case-insensitive) is rejected outright - a legitimate build never
@@ -663,9 +767,14 @@ deterministic-phase:
 # UNDECLARED source and leaving package.json/lock a clean decoy. The value is not parsed;
 # the raw value is surfaced as {{item}}. Every .npmrc in the build corpus is scanned (a
 # build can run from a subfolder), and .npmrc is the one dotfile kept there.
+# review-early-exit for the same reason as the other build rejects, reached from the other
+# direction: the install would RUN, but what it fetches is not what the submission declares,
+# so reproducing it attests nothing - and it would pull code from a developer-chosen host
+# onto the reviewer's own machine. Asking them to build is uninformative and unsafe at once.
 - title: Build registry override
   severity: error
   sca: true
+  review-early-exit: unreproducible-build
   check: build-registry-redirect
   input: build
   response: |-
@@ -703,9 +812,17 @@ deterministic-phase:
 # says which this is, so every hook escalates for a reviewer to read rather than being
 # asserted as a finding. The setup build analysis also covers hooks, but only with a
 # token; this is the offline backstop. The hook and its command ride the locus.
+# review-early-exit, and the first ESCALATING check to carry one - which works because only
+# a FINDING halts a review, and an escalated case becomes one only when it is reported at
+# this check's severity (src/report/verdicts.js). So a benign `husky prepare` that is
+# cleared stops nothing, and a plain review with nobody to judge the hook stops nothing
+# either. Once someone HAS judged it remote-fetching, the next thing the review would ask
+# is that a reviewer install these dependencies - which is the moment the hook runs on
+# their machine. It is settled in the `settle` phase, before `ask` is ever issued.
 - title: Build install hook
   severity: error
   sca: true
+  review-early-exit: unreproducible-build
   check: build-lifecycle-hook
   input: build
   settle-verbs: [reported, cleared]
@@ -764,7 +881,7 @@ deterministic-phase:
   input: source
   sca: true
   response: |-
-    The shipped add-on (the built XPI) is the same code you submitted as a source archive: it is not minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A separate source-code archive is therefore not required for this add-on, and we recommend you stop submitting one. Source-code submissions go into a separate review process which takes considerably longer to complete, while a plain XPI submission is usually reviewed much faster - often the difference between a short wait and a long one. A source archive is needed only when the shipped code is minified, transpiled, bundled or otherwise not the code you wrote. Please submit only the XPI next time.
+    The shipped add-on (the built XPI) is the same code as your source archive: nothing in it is minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A source archive is only needed once the shipped code is built, so please submit the XPI on its own next time. Source-code submissions also take considerably longer to review.
 
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the repo-name candidate and proves it by content hash);
@@ -1280,7 +1397,7 @@ deterministic-phase:
     Message content and headers, attachments, contacts, credentials, or anything
     derived from them, reaching a remote host without the user asking.
   response: |-
-    The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
+    The following code location(s) send user data or telemetry to a remote server without an explicit opt-in. User data or telemetry may be transmitted only when the user actively enables it on an options page that discloses what is sent.
 
 # the WEAK disguised-transmission residue - a covert channel (resource
 # URL, stylesheet url(), window.open, or page navigation) built with a runtime
@@ -1643,6 +1760,7 @@ review-early-exit:
   reasons:
     known-vulnerabilities: Known security vulnerabilities
     disallowed-library-versions: Disallowed library versions
+    unreproducible-build: A build that cannot be reproduced
 
 # The sweep framing, authored twice - once for each reader.
 #

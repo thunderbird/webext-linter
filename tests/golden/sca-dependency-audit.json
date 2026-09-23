@@ -51,7 +51,6 @@
       "experiment-manual-review",
       "experiment-unknown-api",
       "non-experiment-strict-max-version",
-      "unpinned-dependency",
       "unsupported-dependency",
       "vendor-vulnerable",
       "banned-library",
@@ -59,6 +58,10 @@
       "vendor-vulnerable-indirect",
       "vendor-vulnerable-indirect-dev",
       "unsupported-build-tool",
+      "sca-package-file-missing",
+      "sca-package-file-invalid",
+      "sca-lock-file-missing",
+      "sca-lock-file-invalid",
       "build-registry-redirect",
       "committed-node-modules",
       "committed-build-artifact",
@@ -123,7 +126,7 @@
       },
       "item": "tiny-obscure-helper (1.0.0)",
       "hint": null,
-      "message": "The following dependencies could not be confirmed to be widely-used. They need to be packaged non-minified with the add-on in order to be reviewed.\nRead more: https://extensionworkshop.com/documentation/publish/source-code-submission/"
+      "message": "The following dependencies could not be confirmed to be widely-used. Such dependencies must instead be included non-minified in the source so they can be reviewed directly. A build dependency cannot be included that way. Please replace it with a widely-used equivalent, or remove it from the submitted source archive if it is not strictly needed to reproduce the shipped add-on. Reviewers should only be asked to install tools the wider community has vetted.\nRead more: https://extensionworkshop.com/documentation/publish/source-code-submission/"
     },
     {
       "ruleId": "vendor-vulnerable",

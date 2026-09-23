@@ -2,7 +2,7 @@
 
 Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
-1) The shipped add-on (the built XPI) is the same code you submitted as a source archive: it is not minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A separate source-code archive is therefore not required for this add-on, and we recommend you stop submitting one. Source-code submissions go into a separate review process which takes considerably longer to complete, while a plain XPI submission is usually reviewed much faster - often the difference between a short wait and a long one. A source archive is needed only when the shipped code is minified, transpiled, bundled or otherwise not the code you wrote. Please submit only the XPI next time.
+1) The shipped add-on (the built XPI) is the same code as your source archive: nothing in it is minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A source archive is only needed once the shipped code is built, so please submit the XPI on its own next time. Source-code submissions also take considerably longer to review.
 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
@@ -66,7 +66,7 @@ Suggested response: Please add a privacy policy to this add-on that details whic
    credentials, or anything derived from them, reaching a remote host without
    the user asking.
 Suggested verdict: error
-Suggested response: The following code location(s) send user data to a remote server without an explicit opt-in. User data may be transmitted only when the user actively enables it on an options page that discloses what is sent.
+Suggested response: The following code location(s) send user data or telemetry to a remote server without an explicit opt-in. User data or telemetry may be transmitted only when the user actively enables it on an options page that discloses what is sent.
 
 8) Data smuggled through a channel not meant for it: Any other mechanism that
    presents as loading, rendering, opening or navigating while carrying data

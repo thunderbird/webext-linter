@@ -31,6 +31,21 @@
         below the bar. A dependency that clears the bar is trusted by ubiquity
         and never reaches here.
       </p>
+      <p>
+        Build dependencies are held to the same bar, for the reason they are also
+        checked for known vulnerabilities: the reviewer installs them and runs
+        them on their own machine to reproduce the build. Refusing only the
+        vulnerabilities that have been written down, while accepting a package
+        nobody has vetted, would guard against the risk we can name and not the
+        one we cannot. The remedy differs, though. A dependency you ship can be
+        included readable in the source instead, and a build tool cannot, so
+        there the answer is a widely-used equivalent - or removing it, where
+        reproducing the shipped add-on never needed it. The archive is submitted
+        so the build can be reproduced, and a package no step of that build
+        requires is one the reviewer is asked to install for nothing. For a
+        package with no popular counterpart, such as a types-only package used
+        while editing, that is the only route open.
+      </p>
 
       <h2>Decision flow</h2>
       <div class="flow">

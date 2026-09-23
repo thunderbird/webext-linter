@@ -51,7 +51,6 @@
       "experiment-manual-review",
       "experiment-unknown-api",
       "non-experiment-strict-max-version",
-      "unpinned-dependency",
       "unsupported-dependency",
       "vendor-vulnerable",
       "banned-library",
@@ -59,6 +58,10 @@
       "vendor-vulnerable-indirect",
       "vendor-vulnerable-indirect-dev",
       "unsupported-build-tool",
+      "sca-package-file-missing",
+      "sca-package-file-invalid",
+      "sca-lock-file-missing",
+      "sca-lock-file-invalid",
       "build-registry-redirect",
       "committed-node-modules",
       "committed-build-artifact",
@@ -119,7 +122,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The shipped add-on (the built XPI) is the same code you submitted as a source archive: it is not minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A separate source-code archive is therefore not required for this add-on, and we recommend you stop submitting one. Source-code submissions go into a separate review process which takes considerably longer to complete, while a plain XPI submission is usually reviewed much faster - often the difference between a short wait and a long one. A source archive is needed only when the shipped code is minified, transpiled, bundled or otherwise not the code you wrote. Please submit only the XPI next time."
+      "message": "The shipped add-on (the built XPI) is the same code as your source archive: nothing in it is minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A source archive is only needed once the shipped code is built, so please submit the XPI on its own next time. Source-code submissions also take considerably longer to review."
     }
   ]
 }

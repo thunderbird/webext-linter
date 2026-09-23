@@ -25,8 +25,8 @@
         This check applies only to source-code submissions and works purely from
         the committed evidence, with no network. A disallowed manager is
         identified by its fingerprint at any depth in the build corpus — a lock
-        file left behind by that tool, or the package.json field that names the
-        manager explicitly. Because the tool policy is a single verdict, at most
+        file or a config file left behind by that tool, or the package.json field
+        that names the manager explicitly. Because the tool policy is a single verdict, at most
         one finding is emitted. Pinning and the open-ended undeclared-source
         review are handled by separate checks.
       </p>
@@ -35,7 +35,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The build corpus of a<br/>source-code submission"] --> B{"A yarn or bun lock file<br/>at any depth?"}
+  A["The build corpus of a<br/>source-code submission"] --> B{"A yarn or bun lock or<br/>config file at any depth?"}
   B -- yes --> ERR([ERROR: unsupported build tool])
   B -- no --> C{"A package.json names a<br/>manager other than npm/pnpm?"}
   C -- yes --> ERR
@@ -54,6 +54,19 @@ flowchart TD
         that only npm and pnpm are supported. It is asked to provide an npm or
         pnpm build — committing the matching lock file — so the dependency
         install can be reviewed against the declared dependencies.
+      </div>
+
+      <div class="outcome">
+        <strong>It stops the review</strong>
+        This check is one of the few that settle the submission on their own. When it
+        reports, nothing further is put to a reviewer: the report drops every to-do item
+        they would have been asked, keeps the code-review sections, and the
+        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;A build that
+        cannot be reproduced&rdquo;). Reproducing the build is how a reviewer attests that
+        this source produces the shipped add-on, and they cannot do that with a package
+        manager the review does not support, so the work it would otherwise put to them
+        cannot change the outcome. The two lock-file checks stay silent on such a
+        submission for the same reason: a disallowed tool and a missing lock are one fact.
       </div>
 
       <p class="source-note">

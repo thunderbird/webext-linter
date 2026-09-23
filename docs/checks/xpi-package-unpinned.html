@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unpinned vendored library</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Unpinned vendored library <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">xpi-package-unpinned</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A dependency declared in a shipped package.json that does not name one
+        exact release. Such a declaration says a bundled file was copied from a
+        published package, and the review checks that literally by fetching that
+        release and comparing it against the shipped bytes. A range names no
+        single release, so there is nothing to compare it with.
+      </p>
+      <p>
+        This is the requirement for an add-on submitted as a built XPI, where
+        package.json serves to declare bundled third-party code. A source-code
+        submission answers the same question with its lock file instead, so this
+        check does not run there. No lock file is consulted here either: a lock
+        is a build artifact that has no place inside a built add-on, and reading
+        one found there would let a range stand in for an exact version on the
+        word of a file nothing verifies. Whether the source a dependency names
+        is supported at all is a separate question, answered by Unsupported
+        dependency source.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A dependency in the shipped package.json"] --> Z{"Reviewing a source<br/>code archive?"}
+  Z -- yes --> S([skip: the lock file answers this])
+  Z -- no --> B{"Spec is one exact version?"}
+  B -- yes --> OK([no finding])
+  B -- no --> C{"Spec points at git, a URL,<br/>a file, or a workspace?"}
+  C -- yes --> S2([skip: a question of source, not pinning])
+  C -- no --> ERR([ERROR: unpinned vendored library])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S,S2 skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told the dependency is not pinned to an exact version,
+        that only bare version values such as "4.17.21" are supported, and that
+        each dependency in the package.json included in the XPI should be
+        updated to that form.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/xpi-package-unpinned.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

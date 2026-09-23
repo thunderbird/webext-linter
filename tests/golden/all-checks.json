@@ -49,7 +49,7 @@
       "experiment-manual-review",
       "experiment-unknown-api",
       "non-experiment-strict-max-version",
-      "unpinned-dependency",
+      "xpi-package-unpinned",
       "unsupported-dependency",
       "vendor-vulnerable",
       "banned-library",

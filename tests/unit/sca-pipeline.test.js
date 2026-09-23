@@ -14,6 +14,7 @@ import path from "node:path";
 
 import { runPipeline } from "../../src/pipeline.js";
 import { formatText } from "../../src/report/format.js";
+import { loadRegistry } from "../../src/checks/registry.js";
 import { fixtureCacheOpts } from "../seed-caches.js";
 
 // A cache pre-seeded from the fixtures so the schema / experiments / library-hash
@@ -56,6 +57,13 @@ const XPI_FILES = {
 // the manifest's background.js), carrying a real WebExtension API defect.
 const SRC_FILES = {
   "package.json": JSON.stringify({ name: "sca-e2e", version: "1.0.0" }),
+  // A source submission owes a lock whatever its manifest declares, and without one the
+  // review stops early - which would withhold the very manual-review items these tests
+  // assert on. Empty is enough: nothing here declares a dependency to cover.
+  "package-lock.json": JSON.stringify({
+    lockfileVersion: 3,
+    packages: { "": {} },
+  }),
   "src/main.js": `browser.totallyFakeNamespace.doThing();\n`,
   "src/content.js": `browser.runtime.getURL("injected.js");\n`,
   "src/injected.js": `console.log("source injected");\n`,
@@ -1199,6 +1207,13 @@ test("SCA e2e: a transpiled source withholds the XPI-only advice; a typed file o
   const xpi = tmpDir(READABLE_XPI);
   const base = {
     "package.json": JSON.stringify({ name: "tr", version: "1.0.0" }),
+    // The advice is withheld from a build that cannot be run, and a source archive owes a
+    // lock whatever its manifest declares - so without one this would test the lock rule
+    // rather than the transpiled-source question it is about.
+    "package-lock.json": JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "": {} },
+    }),
     "vite.config.ts": `export default {};\n`, // build tooling, OUTSIDE --sca-source
     "src/manifest.json": JSON.stringify(
       READABLE_XPI["manifest.json"]
@@ -1256,6 +1271,12 @@ test("SCA e2e: a readable XPI that IS the source is advised to submit XPI-only, 
       version: "1.0.0",
       scripts: { build: "cp -r node_modules/lib dist" },
     }),
+    // The advice only holds for a build that can be RUN, and a source archive owes a lock
+    // whatever its manifest declares - so the advice this test is about needs one here.
+    "package-lock.json": JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "": {} },
+    }),
     "background.js": READABLE_XPI["background.js"],
     "manifest.json": READABLE_XPI["manifest.json"],
     "only-in-source.js": `browser.totallyFakeNamespace.doThing();\n`,
@@ -1287,17 +1308,22 @@ test("SCA e2e: a readable XPI that IS the source is advised to submit XPI-only, 
     // and it must carry NO locus line - the subject is the submission as a whole, so
     // naming a file there would be noise.
     const body = formatText(result);
+    // Located by the REGISTRY's own text, not by a phrase copied here: the wording is the
+    // registry's to change, and a copy of it only ever breaks. What this pins is that the
+    // entry renders at all, and that it still presses the case - not how it is worded.
+    const advice = loadRegistry()
+      .checkEntry("sca-not-required")
+      .response.trim();
     assert.match(
-      body,
-      /usually reviewed much faster/,
-      "the report presses the case: an XPI-only submission is reviewed faster"
+      advice,
+      /longer/i,
+      "the advice presses the case: the source-archive route costs time"
     );
-    const entry = body
-      .split("\n")
-      .findIndex((l) => l.includes("the same code you submitted"));
+    const lines = body.split("\n");
+    const entry = lines.findIndex((l) => l.includes(advice));
     assert.ok(entry >= 0, "the sca-not-required entry is rendered");
     assert.equal(
-      body.split("\n")[entry + 1].trim(),
+      lines[entry + 1].trim(),
       "",
       "the entry is followed by a blank line, not a locus"
     );

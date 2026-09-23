@@ -250,18 +250,20 @@ export async function verifyVendorDeclarations(
 
 /**
  * SCA (source code archive) dependency audit: the network half for SCA mode,
- * the analogue of verifyVendor for XPI mode. The source archive's package.json
- * is the only dependency manifest (no VENDOR.md, no hash/CDN matching - the built
- * libraries are not present in the readable source and are mangled in the XPI).
+ * the analogue of verifyVendor for XPI mode. It reads the archive's package.json alone -
+ * a VENDOR file it may also carry is verified separately (verifyVendorDeclarations) - and
+ * does no hash or CDN matching, because the built libraries are absent from the readable
+ * source and mangled in the XPI.
  * For each pinned dependency it records (a) OSV advisories (auditNpm ->
  * vendor.vulnerabilities, read by vendor-vulnerable) and (b) a non-popular verdict
  * (-> vendor.unpopularDeps, read by unpopular-source-dependency): a dependency
  * that is not a confirmed widely-used library is pulled in at build and cannot be
  * reviewed, so the developer must ship its readable source in --sca-source. Each
  * pinned devDependency additionally gets (c) an OSV audit (-> vendor.devVulnerabilities,
- * read by vendor-vulnerable-dev) but no popularity gate: the reviewer builds from
- * source, so a vulnerable build tool is a real risk, while a niche-but-legit one
- * must not be rejected as unpopular. Finally (d) the whole installed tree from the
+ * read by vendor-vulnerable-dev), and is popularity-gated like the rest: the reviewer
+ * installs and RUNS a build tool on their own machine, so refusing the vulnerabilities we
+ * can name while waving through a package nobody has vetted would guard them against the
+ * named risk alone. Finally (d) the whole installed tree from the
  * committed lock file is audited in one batch (auditLockedPackages ->
  * vendor.treeVulnerabilities / treeDevVulnerabilities), which is where almost all
  * of a submission's exposure actually sits.
@@ -302,9 +304,8 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
     }
   }
   // GitHub-sourced deps clear the bar by stars (or a trusted-org free pass) - the
-  // same popularity check a VENDOR.md github source gets. No content/OSV audit
-  // here: the build pulls the code from GitHub at build time, so it is not present
-  // to hash. A failed lookup records nothing (like npmDownloads above).
+  // same popularity check a VENDOR.md github source gets. A failed lookup records
+  // nothing (like npmDownloads above).
   for (const dep of vendor.githubDeps ?? []) {
     const popular = await githubPopular(dep.repo, net);
     if (popular === false) {
@@ -316,14 +317,18 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
       });
     }
   }
-  // Dev dependencies never ship, but the reviewer builds the add-on from source,
-  // so a vulnerable build tool runs on the reviewer's machine. Audit each pinned
-  // npm dev dep for OSV only - no popularity gate (a niche-but-legit build tool is
-  // fine) - recording hits on devVulnerabilities for the vendor-vulnerable-dev check.
+  // Dev dependencies never ship, but the reviewer builds the add-on from source, so a
+  // build tool runs on THEIR machine. That is why each pinned npm dev dep is OSV-audited
+  // (recording hits on devVulnerabilities for the vendor-vulnerable-dev check) - and it is
+  // the same reason they are popularity-gated: a package too obscure for anyone to have
+  // vetted is code we ask a reviewer to execute on the strength of nobody's word. Refusing
+  // a known-vulnerable build tool while waving through an unknown one would protect them
+  // from the risk we can name and not from the one we cannot.
   for (const pkg of vendor.devPackages ?? []) {
     // No blocklist here: a devDependency is never shipped, so the shipped-library
     // policy does not apply. It is OSV-audited (into devVulnerabilities) but never
     // recorded as a banned-library - auditNpm is passed no `blocks`.
+    // Popularity IS applied, below, for the reason in the comment above.
     await auditNpm(
       pkg.name,
       pkg.version,
@@ -333,6 +338,15 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
       net,
       vendor.devVulnerabilities
     );
+    const downloads = await npmDownloads(pkg.name, net);
+    if (downloads !== null && downloads < VENDOR_NPM_MIN_DOWNLOADS) {
+      vendor.unpopularDeps.push({
+        name: pkg.name,
+        version: pkg.version,
+        file: "package.json",
+        token: pkg.name,
+      });
+    }
   }
   // Last, so every declared package is already recorded and the tree audit can
   // leave those out.
@@ -440,7 +454,7 @@ async function auditLockedPackages(vendor, net) {
  * this add-on does not declare" would be false. Directness is read from the lock
  * itself (LockedPackage.direct), because the root package.json parse misses the
  * forms a lock still records: an optionalDependency, a workspace member's own
- * manifest, an npm: alias, and a version the two files disagree about. Separately,
+ * manifest, and a version the two files disagree about. Separately,
  * an exact name@version any earlier audit already recorded - an npm-sourced VENDOR
  * entry, a policy-blocked library - would simply be reported twice.
  * @param {VendorStore} vendor

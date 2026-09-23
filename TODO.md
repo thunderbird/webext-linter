@@ -84,3 +84,56 @@ that the report says so.
 
 The same swallow exists at `auditNpm`, where an unreachable OSV records no advisories and
 reads as a clean bill of health.
+
+## Decide whether a local path inside the submission is an unsupported source
+
+`unsupported-dependency` rejects any dependency spec that is neither an exact npm version
+nor a GitHub URL, in both review modes. `classifyDeps` (`src/vendor/resolve.js`)
+routes anything containing `:` or `/` that `parseGithubSpec` does not recognise into the
+`unsupported` bucket, which is a hard error.
+
+That catches `file:`, `link:` and `workspace:` specs, which point INSIDE the submission.
+The code they name is present and reviewable, not fetched from a source we cannot verify -
+the opposite of what the check is for. In an SCA review they are ordinary build specs: the
+lock records them and the reviewer installs from it.
+
+Measured: markdown-here-revival (4.0.14 and 4.0.16) declares
+`"@jfx2006/mailext-options-sync": "file:./mailext-options-sync"` in production
+`dependencies` and is rejected for it. It is the only add-on in the review corpus that
+uses the form, so this is a real rejection rather than a hypothetical one.
+
+The same file declares `"eslint-plugin-mailextensions-env":
+"file:tools/eslint-plugin-mailextensions-env"` in `devDependencies`, which used to vanish.
+It no longer does: a build dependency's SOURCE is now held to the same bar wherever the
+reviewer installs from the artifact, so both are rejected alike and the question below is
+one question rather than two.
+
+To settle:
+
+- whether a path inside the submission is a supported source at all, and if so whether it
+  must additionally resolve to a directory the archive contains;
+- whether the answer differs by review mode - the XPI case is a vendoring declaration
+  whose bytes must match a published release, the SCA case is a build input the reviewer
+  installs.
+
+The response no longer offers the lock file as a source (that clause belonged to the
+pinnability axis and is gone), but it still has to say what it accepts once the question
+above is settled.
+
+## Stop reading the XPI for anything but the downgrade check in an SCA review
+
+In a source-code review, third-party code is either installed by the toolchain
+(package.json + lock) or declared in a `VENDOR.md`. The shipped XPI is looked at for one
+thing only: deciding whether an XPI-only submission would have done (`sca-not-required`,
+via `hasUnreviewableCode` over `xpiAddon.bundled`). Two things break that.
+
+`unused-files` is `input: xpi` with no `sca:` flag, so in an SCA review it runs against the
+shipped artifact and takes its non-authored set from `xpiAddon.bundled` - which
+`verifyPackage` fills from the XPI's own package.json by hash-matching shipped bytes
+against the pinned release. That is a second reader of the XPI's vendoring manifest. In an
+SCA review the non-authored set should come from the archive's `VENDOR.md` and toolchain
+instead.
+
+`verifyVendor(xpiAddon)` also calls `auditNpm`, filling `xpiAddon.vendor.vulnerabilities`
+and `.blocked`, but `vendor-vulnerable` and `banned-library` are `input: source` and read
+the archive's store. In an SCA review those requests are spent on a result nothing reads.

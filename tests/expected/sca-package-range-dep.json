@@ -1,8 +1,6 @@
 {
-  "_comment": "unpinned-dependency offers the lock-file route only to a source code submission: the archive is what the reviewer installs from, and a lock file is a build artifact that has no place inside a shipped XPI. Same finding as its XPI twin (package-range-dep), one sentence longer. The shipped background.js is packed so the archive is not redundant.",
+  "_comment": "A source archive whose package.json declares a ranged dependency and no `scripts`, and commits no lock. In a SOURCE submission a package.json is always a build manifest - only an XPI-only submission may use one to declare vendored libraries - so the absent `scripts` block buys nothing and sca-lock-file-missing rejects it. xpi-package-unpinned stays silent: it is sca:false, because a range is legitimate here and the lock is what must pin it. sca-lock-file-invalid has no lock to read. The shipped background.js is packed so the archive is not redundant.",
   "expect": {
-    "unpinned-dependency": [
-      "package.json:5"
-    ]
+    "sca-lock-file-missing": ["package.json"]
   }
 }

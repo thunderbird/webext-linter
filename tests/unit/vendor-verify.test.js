@@ -19,7 +19,7 @@ import {
 } from "../../src/vendor/verify.js";
 import { NetworkGoneError, setNetworkPacing } from "../../src/util/net.js";
 import { parseLibraryBlocks } from "../../src/lib/library-blocks.js";
-import unpinnedDependency from "../../src/checks/rules/unpinned-dependency.js";
+import xpiPackageUnpinned from "../../src/checks/rules/xpi-package-unpinned.js";
 import unpinnedVendorSource from "../../src/checks/rules/unpinned-vendor-source.js";
 import vendorModified from "../../src/checks/rules/vendor-modified.js";
 import missingVendorFile from "../../src/checks/rules/missing-vendor-file.js";
@@ -442,7 +442,7 @@ test("verifyScaDependencies: a GitHub stars lookup failure records nothing", asy
 // pinned npm dev dep is OSV-audited too - recorded on devVulnerabilities (a set
 // distinct from the prod/vendored `vulnerabilities`), and NOT popularity-gated (a
 // low-download build tool is fine, so nothing is recorded on unpopularDeps).
-test("verifyScaDependencies: a vulnerable dev dependency lands on devVulnerabilities, no popularity gate", async () => {
+test("verifyScaDependencies: a dev dependency is OSV-audited AND popularity-gated", async () => {
   const addon = addonWith(
     { "package.json": '{"devDependencies":{"build-tool":"1.0.0"}}' },
     store({ devPackages: [{ name: "build-tool", version: "1.0.0" }] })
@@ -450,7 +450,7 @@ test("verifyScaDependencies: a vulnerable dev dependency lands on devVulnerabili
   await verifyScaDependencies(
     addon,
     net({
-      downloads: 5, // low - but dev deps are not popularity-gated
+      downloads: 5, // low: a build tool is held to the same bar as a shipped one
       osv: {
         vulns: [
           {
@@ -484,9 +484,19 @@ test("verifyScaDependencies: a vulnerable dev dependency lands on devVulnerabili
       token: "build-tool",
     },
   ]);
-  // The prod/vendored set is untouched, and a low-download dev dep is not flagged.
+  // The prod/vendored set is untouched.
   assert.deepEqual(addon.vendor.vulnerabilities, []);
-  assert.deepEqual(addon.vendor.unpopularDeps, []);
+  // And the obscure build tool is flagged, for the reason it is audited at all: the
+  // reviewer installs and RUNS it. Refusing only the vulnerabilities we can name would
+  // protect them from the named risk and leave the unnamed one.
+  assert.deepEqual(addon.vendor.unpopularDeps, [
+    {
+      name: "build-tool",
+      version: "1.0.0",
+      file: "package.json",
+      token: "build-tool",
+    },
+  ]);
 });
 
 test("verifyVendor: VENDOR entry that matches a popular pinned source -> verified", async () => {
@@ -1285,7 +1295,7 @@ test("vendor-vuln-unknown: no unaudited entries -> no findings", () => {
   assert.deepEqual(vendorVulnUnknown.run(ctx).findings, []);
 });
 
-test("unpinned-dependency: one finding per unpinned dep, anchored in package.json", () => {
+test("xpi-package-unpinned: one finding per unpinned dep, anchored in package.json", () => {
   const pkg = '{\n  "dependencies": {\n    "lodash": "^4.17.21"\n  }\n}';
   const ctx = {
     addon: {
@@ -1293,7 +1303,7 @@ test("unpinned-dependency: one finding per unpinned dep, anchored in package.jso
       vendor: store({ unpinned: [{ name: "lodash", spec: "^4.17.21" }] }),
     },
   };
-  const out = unpinnedDependency.run(ctx).findings;
+  const out = xpiPackageUnpinned.run(ctx).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "package.json");
   assert.equal(out[0].loc.line, 3);

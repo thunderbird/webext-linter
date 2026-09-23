@@ -172,7 +172,11 @@ export function renderManualItems(refs, registry, mode) {
       // the `default-note` that stands in that list is appended by withDefaultNotes -
       // which sees this list and the by-hand manual checks together, so the two cannot
       // differ in what a reviewer is handed.
-      response: fill(registry.entryResponse(ref.ruleId, mode), ref.item, ref.data),
+      response: fill(
+        registry.entryResponse(ref.ruleId, mode),
+        ref.item,
+        ref.data
+      ),
       // The band a reported case lands in, printed above that response. Null for a
       // check whose cases produce no finding however they are settled.
       verdict: registry.suggestedVerdict(ref.ruleId),

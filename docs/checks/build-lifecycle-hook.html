@@ -63,6 +63,18 @@ flowchart TD
         which case the entry's suggested response asks for it to be removed.
       </div>
 
+      <div class="outcome">
+        <strong>It stops the review, but only once a hook is reported</strong>
+        This check settles the submission on its own - and unlike the others that do, it
+        reports nothing by itself: a reviewer has to conclude first that a hook reaches the
+        network. A hook cleared as a local build step stops nothing. Once one is reported,
+        nothing further is put to a reviewer: the report drops every to-do item they would
+        have been asked, keeps the code-review sections, and the developer&rsquo;s text ends
+        on the reason it is incomplete (&ldquo;A build that cannot be reproduced&rdquo;).
+        The next thing the review would otherwise ask is that a reviewer install these
+        dependencies, which is the moment the hook runs on their machine.
+      </div>
+
       <p class="source-note">
         Source of truth:
         <code>src/checks/rules/build-lifecycle-hook.js</code> and its entry in

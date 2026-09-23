@@ -237,7 +237,9 @@ test("resolveVendor records a folder declaration", async () => {
 
 // package.json dependencies are classified by spec into the only two supported
 // sources - a pinned npm package and a GitHub URL - plus the two rejected cases:
-// an unpinned range, and an unsupported source (file:/alias/non-github git).
+// an unpinned range, and an unsupported source (file:/non-github git). An `npm:` alias
+// is npm like any other: it is classified by the package it INSTALLS, so the name it is
+// written under never decides whether its source can be verified.
 test("resolveVendor classifies package.json deps by source", async () => {
   const addon = fakeAddon({
     "package.json": JSON.stringify({
@@ -249,13 +251,17 @@ test("resolveVendor classifies package.json deps by source", async () => {
         ghurl: "git+https://github.com/a/b.git", // github url
         ghscp: "git@github.com:scp/repo.git#v3", // github SCP-style git URL
         local: "file:../x", // unsupported
-        aliased: "npm:other@1.0.0", // unsupported (npm alias)
+        aliased: "npm:other@1.0.0", // npm, exact, installed under another name
         gitlab: "git+https://gitlab.com/o/r.git", // unsupported (non-github git)
       },
     }),
   });
   const v = await resolveVendor({ addon, enabled: false });
-  assert.deepEqual(v.packages, [{ name: "pinned", version: "1.2.3" }]);
+  assert.deepEqual(v.packages, [
+    { name: "pinned", version: "1.2.3" },
+    // The alias enters as the package it installs, which is what OSV and npm know.
+    { name: "other", version: "1.0.0" },
+  ]);
   assert.deepEqual(
     v.unpinned.map((u) => u.name),
     ["ranged"]
@@ -271,15 +277,15 @@ test("resolveVendor classifies package.json deps by source", async () => {
   assert.equal(v.githubDeps.find((g) => g.name === "ghscp").ref, "v3");
   assert.deepEqual(
     v.unsupportedDeps.map((u) => u.name),
-    ["local", "aliased", "gitlab"]
+    ["local", "gitlab"]
   );
 });
 
 // devDependencies never ship, but the SCA reviewer builds from source, so their
 // pinned npm packages are OSV-audited too. Only the pinned-npm bucket lands in
-// devPackages: an exact spec, or a range a lock file pins. A range with no lock, a
-// github source, and an unsupported source are dropped - and never leak into the
-// prod buckets.
+// devPackages: an exact spec, or - for a source archive, whose lock is what the reviewer
+// installs from - a range that lock pins. A range with no lock, a github source, and an
+// unsupported source are dropped, and never leak into the prod buckets.
 test("resolveVendor collects pinned npm devDependencies in devPackages", async () => {
   const addon = fakeAddon({
     "package.json": JSON.stringify({
@@ -287,28 +293,47 @@ test("resolveVendor collects pinned npm devDependencies in devPackages", async (
       devDependencies: {
         esbuild: "0.19.0", // npm, exact -> devPackages
         webpack: "^5.0.0", // range, pinned by the lock -> devPackages
-        ranged: "^2.0.0", // range, no lock -> dropped
-        ghdev: "github:o/r#v1.0.0", // github -> dropped
-        localdev: "file:../x", // unsupported -> dropped
+        ranged: "^2.0.0", // range, no lock -> dropped (nothing vendors from a dev dep)
+        ghdev: "github:o/r#v1.0.0", // github -> kept: popularity-gated like a prod one
+        localdev: "file:../x", // unsupported SOURCE -> kept: npm ci clones and runs it
       },
     }),
     "package-lock.json": JSON.stringify({
       packages: { "node_modules/webpack": { version: "5.88.0" } },
     }),
   });
-  const v = await resolveVendor({ addon, enabled: false });
+  const v = await resolveVendor({
+    addon,
+    reviewerInstalls: true,
+    enabled: false,
+  });
   assert.deepEqual(v.devPackages, [
     { name: "esbuild", version: "0.19.0" },
     { name: "webpack", version: "5.88.0" },
   ]);
   // Prod deps are unaffected, and no dev dep leaks into the prod buckets.
   assert.deepEqual(v.packages, [{ name: "prod", version: "1.0.0" }]);
+  // WHO a dev dependency comes from is judged exactly as for a production one, because
+  // the reviewer's install clones and RUNS it. Pinning is not: nothing vendors from a dev
+  // dep, so no release is ever fetched to compare against.
+  assert.deepEqual(
+    v.unsupportedDeps.map((u) => u.name),
+    ["localdev"]
+  );
   assert.deepEqual(
     v.githubDeps.map((g) => g.name),
+    ["ghdev"]
+  );
+
+  // In a built XPI nothing is installed and a dev entry vendors nothing, so the same
+  // declarations are inert there and must not reject the submission.
+  const shipped = await resolveVendor({ addon, enabled: false });
+  assert.deepEqual(
+    shipped.unsupportedDeps.map((u) => u.name),
     []
   );
   assert.deepEqual(
-    v.unsupportedDeps.map((u) => u.name),
+    shipped.githubDeps.map((g) => g.name),
     []
   );
 });

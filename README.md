@@ -167,10 +167,17 @@ appears in.
   outside names a folder on the reviewing machine, which is not part of the submission.
 - The **readable source** is reviewed for code defects (the API/permission/eval/
   exfiltration checks run over every source file).
-- The **declared dependencies** (`--sca-root`'s `package.json`) are audited: each
-  must be a pinned npm package or a GitHub URL, and is gated on popularity
-  (npm downloads / GitHub stars) and known vulnerabilities. Anything unpinned or
-  from another source is rejected.
+- The **declared dependencies** (`--sca-root`'s `package.json`) are audited, build
+  dependencies included: each must come from npm or GitHub, and each is gated on
+  popularity (npm downloads / GitHub stars) and known vulnerabilities. A source the
+  review cannot verify is rejected. Build dependencies are held to that same bar because
+  the reviewer installs and RUNS them to reproduce the build, so refusing only the risks
+  we can name would leave the ones we cannot - but they need no pin, since nothing is
+  vendored from one and no release is ever fetched to compare against. Which release a
+  version range resolves to is the lock file's answer rather than the declaration's, so a
+  range is fine here and the lock is what must pin it. A shipped XPI carries no lock, so
+  there the declaration itself must name a bare version - the two submission types ask the
+  same question of different files.
 - The **rest of the installed tree** is audited too: the committed lock file
   records every package the install actually pulls in, at any depth, and almost
   all of a real submission's vulnerable packages are ones nobody declared. Those
@@ -182,13 +189,22 @@ appears in.
   and pulled-in cases are separate checks, because the developer fixes them
   differently: update this package, or update the one that pulls it in.
 - The **build tooling** (everything in `--sca-root` outside `--sca-source` - build
-  scripts, configs, `.npmrc`) is reviewed. Deterministic policy: the build must use
-  **npm or pnpm** (a `yarn.lock` / `bun` build is rejected), must not commit a
-  `node_modules` folder or a built archive (`.xpi` / `.zip` - both are build output,
-  never shipped in a source submission), must not point the package registry elsewhere
-  (an `.npmrc` `registry=` is rejected), and any `package.json` install hook
-  (`postinstall`, …) is flagged. The build corpus is collected once in setup (over
-  the files reached from `package.json`), and `undeclared-build-source` reads it.
+  scripts, configs, `.npmrc`) is reviewed. Three requirements decide whether the build
+  can be reproduced at all: the archive must **carry a build** (no `package.json` at
+  `--sca-root` means there is nothing to reproduce), it must use **npm or pnpm** (a
+  `yarn.lock` / `bun` build is rejected), and it must commit a **lock file** that
+  installs exactly what `package.json` declares. Each stops the review, since every
+  remaining question depends on installing and building. The other two defer to the tool
+  one, so a submission built with an unsupported package manager is told that once rather
+  than also being told it has no build and no lock. A fourth requirement stops the review
+  from the other side: an `.npmrc` that points the package **registry** elsewhere is
+  rejected, because the install would run but fetch something other than what is declared,
+  so reproducing it attests nothing and it pulls code from a developer-chosen host onto the
+  reviewer's machine. Beyond those, the build must not commit a `node_modules` folder or a
+  built archive (`.xpi` / `.zip` - both are build output, never shipped in a source
+  submission), and any `package.json` install hook (`postinstall`, …) is flagged. The build corpus is
+  collected once in setup (over the files reached from `package.json`), and
+  `undeclared-build-source` reads it.
   Nothing in those files says what the build **does**, so every source submission is
   escalated to Extended Manual Review: the reviewer reproduces the build and confirms
   it produces the shipped XPI from the declared dependencies alone - no raw URL,
@@ -260,8 +276,13 @@ not the developer's, so accepting it is a judgement a person owns), and
 so no scan of its surface settles what it does).
 
 Some findings stop the review outright. A check can declare that it does by naming the
-reason the report gives (`review-early-exit:` in the registry) - today the four
-dependency-vulnerability checks and `banned-library`. When one of them reports at error
+reason the report gives (`review-early-exit:` in the registry) - today twelve do, across
+three reasons: the four dependency-vulnerability checks name *known security
+vulnerabilities*, `banned-library` names *disallowed library versions*, and the seven that
+decide a source submission cannot be built from - `unsupported-build-tool`,
+`sca-package-file-missing`, `sca-package-file-invalid`, `sca-lock-file-missing`,
+`sca-lock-file-invalid`, `build-registry-redirect` and `build-lifecycle-hook` - name *a
+build that cannot be reproduced*. When one of them reports at error
 severity, nothing further is put to a reviewer: the report drops every to-do item they
 would have been **asked** - the two manual-review sections and their tally counts, plus
 any case an agent had routed onward to a reviewer - keeps both code-review sections, and
@@ -337,6 +358,10 @@ machine.
 | `minified-code` | A JS file (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error). |
 | `obfuscated-code` | A JS file (not a recognized library) shipped obfuscated - recognized by the AST structure of a known obfuscator family via the `obfuscation-detector` library. The families a match is drawn from are pinned, so a family the library gains later decides nothing and a match needs no second opinion. High precision, partial recall - some obfuscators evade it. |
 | `privacy-policy` | Data transmitted by an overt API to a remote host the developer chose (fixed in the add-on, not entered by the user) - one case per transmission site, naming its host. A host the add-on assembles while it runs is reported too, marked rather than named, since dropping it would hide the site the tool can say least about. Routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
+| `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, stops the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce, so the XPI-only advice is withheld instead (`sca-not-required`). |
+| `sca-package-file-invalid` | A `package.json` that is present but unusable - it does not parse, or it parses to something other than a JSON object - so the build it defines cannot be run (error, stops the review). Presence is decided by name and usability by reading, so exactly one of this and the check above ever speaks. |
+| `sca-lock-file-invalid` | A committed lock file that cannot install what `package.json` declares: it cannot be read, it resolves nothing for a declared package, or it records a different version range for one (error). `npm ci` / `pnpm install --frozen-lockfile` refuse over all three, so the build cannot be reproduced and the review stops. |
+| `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, stops the review). The lock is owed by the manifest, not by what it declares: both installers refuse without one whatever it holds. Silent when the build uses an unsupported package manager, which `unsupported-build-tool` reports instead. |
 | `string-timer` | A code string passed to `setTimeout`/`setInterval` (it is eval'd) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
 | `sync-xhr` | Synchronous `XMLHttpRequest` (`open(..., false)`). |
 | `trademark-violation` | Add-on name (resolved from `_locales` for a `__MSG__` name) using a Mozilla brand term - `Firefox`/`Mozilla`/`MZLA` anywhere, in any locale (error, case-insensitive). Needs no knowledge of the language, so it is always a finding, and each offending name is reported once naming every locale that states it. `Thunderbird` is the two checks below, and a name carrying a brand term is left to this one alone, since it is refused either way. The icon is a separate manual check. |
@@ -344,7 +369,6 @@ machine.
 | `trademark-thunderbird-name` | The same question for a name the manifest states literally. It carries no locale tag, so nothing in the package says what language it is in and the language must be settled first - not answerable from the submission, so it escalates to manual review and never rejects on its own. |
 | `unknown-api` | Unknown namespaces, unknown members (incl. methods on property types like `storage.local.x`), and APIs marked `unsupported`. |
 | `unparsable-file` | A JavaScript, TypeScript, or Vue `<script>` source that failed to parse, so its API checks were skipped (info). |
-| `unpinned-dependency` | A `package.json` dependency declared as a version range with no lock file, so it can't be pinned to one release and verified (error). |
 | `unpinned-vendor-source` | A VENDOR-declared file whose (trusted-host) source is not pinned to an immutable version/tag/commit, so its bytes can't be verified (error). |
 | `unrecognized-manifest-key` | A top-level manifest key the schema does not define - Thunderbird ignores it (info). |
 | `unsafe-html` | Any write to `innerHTML`/`outerHTML`/`srcdoc`/`insertAdjacentHTML`; only `Element.setHTML()` is sanctioned (an empty/null clear is exempt) (info). |
@@ -353,6 +377,7 @@ machine.
 | `vendor-modified` | A declared third-party file whose bytes don't match its pinned source (EOL-tolerant compare) - it appears modified from upstream (error). |
 | `multiple-vendor-files` | More than one file in the package root names itself the VENDOR manifest (`VENDOR`, `VENDOR.md`, `VENDORS`, `VENDORS.md`), so which one the review reads would depend on the archive's order (error). None of them is read while it is ambiguous. |
 | `vendor-unparseable` | A VENDOR file is present but yielded no declaration, so nothing can be verified (error). The parse is all-or-nothing: it reads only what is marked as a declaration - a path and a source URL paired by a colon, a key, or Markdown link syntax - and a fault anywhere discards the whole file. |
+| `xpi-package-unpinned` | A dependency in a SHIPPED `package.json` that names no single npm release - a range, a dist-tag, a partial version, a wildcard (error). The declaration states that a bundled file was copied from that release, and the review fetches that release to compare the shipped bytes against it, so a spec naming no one release leaves nothing to compare. XPI submissions only: a source archive answers pinning with its lock file instead. |
 
 ### Checks that escalate
 

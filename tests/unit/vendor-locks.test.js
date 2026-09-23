@@ -1,5 +1,5 @@
 // Unit tests for the lock-file readers (src/vendor/locks.js): version resolution
-// for one declared name across npm, pnpm, and yarn (lockedVersion), enumeration
+// for one declared name across npm and pnpm (lockedVersion), enumeration
 // of the whole installed tree across npm v1/v2/v3 and pnpm v5-v9
 // (lockedPackages), and resolveVendor's package.json dependency resolution
 // (exact pin / range+lock -> pinned, range without a lock -> unpinned, a
@@ -8,7 +8,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { lockedVersion, lockedPackages } from "../../src/vendor/locks.js";
+import {
+  lockedVersion,
+  lockedPackages,
+  lockGaps,
+} from "../../src/vendor/locks.js";
 import { resolveVendor } from "../../src/vendor/resolve.js";
 
 function fakeAddon(files) {
@@ -59,20 +63,6 @@ test("pnpm lockfile: importers entry and packages-key fallback, peer suffix stri
   assert.equal(lockedVersion(pkgKey, "jszip"), "3.7.1");
 });
 
-test("yarn.lock: v1 custom format and berry YAML", () => {
-  const v1 = fakeAddon({
-    "yarn.lock":
-      '# yarn lockfile v1\n\n"jszip@^3.10.0":\n  version "3.10.1"\n  resolved "x"\n',
-  });
-  assert.equal(lockedVersion(v1, "jszip"), "3.10.1");
-
-  const berry = fakeAddon({
-    "yarn.lock":
-      '__metadata:\n  version: 8\n\n"jszip@npm:^3.10.0":\n  version: 3.10.1\n  resolution: "jszip@npm:3.10.1"\n',
-  });
-  assert.equal(lockedVersion(berry, "jszip"), "3.10.1");
-});
-
 test("lockedVersion returns null when no lock resolves the name", () => {
   assert.equal(lockedVersion(fakeAddon({}), "jszip"), null);
   const other = fakeAddon({
@@ -85,9 +75,10 @@ test("lockedVersion returns null when no lock resolves the name", () => {
 
 // ---- resolveVendor: package.json dependency resolution ----
 
-async function resolvePackages(files) {
+async function resolvePackages(files, reviewerInstalls = false) {
   const { packages, unpinned } = await resolveVendor({
     addon: fakeAddon(files),
+    reviewerInstalls,
     token: undefined,
   });
   return { packages, unpinned };
@@ -101,15 +92,27 @@ test("an exact-pinned dependency is a verify source", async () => {
   assert.deepEqual(unpinned, []);
 });
 
-test("a range with a lock is pinned to the locked version", async () => {
-  const { packages, unpinned } = await resolvePackages({
-    "package.json": JSON.stringify({ dependencies: { jszip: "^3.10.0" } }),
-    "package-lock.json": JSON.stringify({
-      packages: { "node_modules/jszip": { version: "3.10.1" } },
-    }),
-  });
+// A source archive's lock IS what the reviewer installs from, so it resolves a range to
+// the version audited. The same files in a built XPI must NOT: a lock is a build artifact
+// with no place inside one, and reading it would let a range launder itself into a pin
+// taken from a file nothing verifies.
+const RANGE_WITH_LOCK = {
+  "package.json": JSON.stringify({ dependencies: { jszip: "^3.10.0" } }),
+  "package-lock.json": JSON.stringify({
+    packages: { "node_modules/jszip": { version: "3.10.1" } },
+  }),
+};
+
+test("a range with an authoritative lock is pinned to the locked version", async () => {
+  const { packages, unpinned } = await resolvePackages(RANGE_WITH_LOCK, true);
   assert.deepEqual(packages, [{ name: "jszip", version: "3.10.1" }]);
   assert.deepEqual(unpinned, []);
+});
+
+test("a lock shipped inside an XPI cannot pin a range", async () => {
+  const { packages, unpinned } = await resolvePackages(RANGE_WITH_LOCK);
+  assert.deepEqual(packages, []);
+  assert.deepEqual(unpinned, [{ name: "jszip", spec: "^3.10.0" }]);
 });
 
 test("a range with no lock is unpinned (rejected, not a verify source)", async () => {
@@ -128,6 +131,74 @@ test("a non-registry spec (git/file) is ignored, not flagged", async () => {
   });
   assert.deepEqual(packages, []);
   assert.deepEqual(unpinned, []);
+});
+
+// An `npm:<name>@<range>` alias declares one package under another name. The name it is
+// WRITTEN under says nothing about what npm fetches, so classifying by the spelling reads
+// a public registry package as an unknown source and rejects a submission over its own
+// name. What is classified is the target, and what a finding quotes is the spelling.
+test("an npm: alias is the package it installs, not the name it is written under", async () => {
+  const alias = (spec, dev = false) => ({
+    "package.json": JSON.stringify(
+      dev
+        ? { devDependencies: { "@typescript/lib-dom": spec } }
+        : { dependencies: { "@typescript/lib-dom": spec } }
+    ),
+  });
+
+  // Exact: a verify source under the TARGET's name, which is what npm and OSV know it by.
+  for (const reviewerInstalls of [false, true]) {
+    const { packages, unpinned } = await resolvePackages(
+      alias("npm:@types/web@0.0.353"),
+      reviewerInstalls
+    );
+    assert.deepEqual(packages, [{ name: "@types/web", version: "0.0.353" }]);
+    assert.deepEqual(unpinned, []);
+  }
+
+  // The same declaration in devDependencies, where the reviewer installs from the
+  // artifact: still the target, never a rejected source.
+  const dev = await resolveVendor({
+    addon: fakeAddon(alias("npm:@types/web@0.0.353", true)),
+    reviewerInstalls: true,
+  });
+  assert.deepEqual(dev.devPackages, [
+    { name: "@types/web", version: "0.0.353" },
+  ]);
+  assert.deepEqual(dev.unsupportedDeps, []);
+
+  // A ranged alias pins nothing, so it is unpinned rather than unsupported - and the
+  // spec it carries is the one in the file, not the target it resolves to.
+  const ranged = await resolvePackages(alias("npm:@types/web@^0.0.353"));
+  assert.deepEqual(ranged.packages, []);
+  assert.deepEqual(ranged.unpinned, [
+    { name: "@typescript/lib-dom", spec: "npm:@types/web@^0.0.353" },
+  ]);
+
+  // An alias naming no release at all installs the latest, which pins nothing either.
+  const bare = await resolvePackages(alias("npm:@types/web"));
+  assert.deepEqual(bare.packages, []);
+  assert.equal(bare.unpinned.length, 1);
+
+  // The lock keys its entry by the WRITTEN name, so that is what resolves the range.
+  const locked = await resolvePackages(
+    {
+      ...alias("npm:@types/web@^0.0.353"),
+      "package-lock.json": JSON.stringify({
+        packages: {
+          "node_modules/@typescript/lib-dom": {
+            name: "@types/web",
+            version: "0.0.353",
+          },
+        },
+      }),
+    },
+    true
+  );
+  assert.deepEqual(locked.packages, [
+    { name: "@types/web", version: "0.0.353" },
+  ]);
+  assert.deepEqual(locked.unpinned, []);
 });
 
 // ---- lockedPackages ----
@@ -405,7 +476,7 @@ test("the enumeration is sorted by name, then version", () => {
 
 // Nothing to enumerate must read as nothing, never as a throw: an unparseable or
 // unsupported lock leaves the audit silent rather than failing the review.
-test("an absent, empty, malformed or yarn-only lock enumerates nothing", () => {
+test("an absent, empty, malformed or unsupported lock enumerates nothing", () => {
   assert.deepEqual(lockedPackages(fakeAddon({ "package.json": "{}" })), []);
   assert.deepEqual(
     lockedPackages(fakeAddon({ "package-lock.json": "{}" })),
@@ -416,8 +487,8 @@ test("an absent, empty, malformed or yarn-only lock enumerates nothing", () => {
     []
   );
   assert.deepEqual(lockedPackages(fakeAddon({ "pnpm-lock.yaml": "x: [" })), []);
-  // Yarn is deliberately not enumerated: a committed yarn.lock is already a hard
-  // reject, and the format records nothing about what is build-time only.
+  // npm and pnpm are the only supported package managers, so no other lock is read;
+  // a committed one is already a hard reject (unsupported-build-tool).
   assert.deepEqual(
     lockedPackages(
       fakeAddon({ "yarn.lock": 'lib@^1.0.0:\n  version "1.0.0"\n' })
@@ -603,4 +674,142 @@ test("declared wins over reached when a package is installed twice", () => {
     }),
   });
   assert.deepEqual(declared(addon), ["dup"]);
+});
+
+// A BOM is not a parse error to the tools that write and read these files: npm parses
+// through one, and editors add them. `JSON.parse` throws on it, and every reader here
+// falls back to "nothing declared" - so without stripBom three bytes at the head of
+// package.json silence the whole dependency review, findings and lock checks alike.
+test("a UTF-8 BOM does not hide a manifest or a lock", () => {
+  const BOM = "﻿";
+  const pkg = JSON.stringify({
+    scripts: { build: "x" },
+    devDependencies: { "web-ext": "^8.0.0" },
+  });
+  const lock = JSON.stringify({
+    lockfileVersion: 3,
+    packages: { "": { devDependencies: {} } },
+  });
+
+  const clean = fakeAddon({ "package.json": pkg, "package-lock.json": lock });
+  const bommed = fakeAddon({
+    "package.json": BOM + pkg,
+    "package-lock.json": BOM + lock,
+  });
+  // The gap is real in both: the lock records nothing for the declared web-ext.
+  assert.deepEqual(
+    lockGaps(bommed).map((g) => `${g.name}:${g.reason}`),
+    lockGaps(clean).map((g) => `${g.name}:${g.reason}`)
+  );
+  assert.deepEqual(
+    lockGaps(bommed).map((g) => g.name),
+    ["web-ext"]
+  );
+
+  // And the same for the version a lock pins, which feeds the dependency audit.
+  const pinned = {
+    "package.json": pkg,
+    "package-lock.json": JSON.stringify({
+      packages: { "node_modules/web-ext": { version: "8.10.0" } },
+    }),
+  };
+  assert.equal(lockedVersion(fakeAddon(pinned), "web-ext"), "8.10.0");
+  assert.equal(
+    lockedVersion(
+      fakeAddon({
+        ...pinned,
+        "package-lock.json": BOM + pinned["package-lock.json"],
+      }),
+      "web-ext"
+    ),
+    "8.10.0"
+  );
+});
+
+// npm reads npm-shrinkwrap.json and IGNORES package-lock.json when both are committed,
+// so judging the package-lock invents failures the install never has - and misses the
+// ones it does.
+test("npm-shrinkwrap.json outranks package-lock.json", () => {
+  const npmLockFor = (spec, version) =>
+    JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "": { dependencies: { ms: spec } },
+        "node_modules/ms": { version },
+      },
+    });
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({ dependencies: { ms: "^2.1.3" } }),
+    "package-lock.json": npmLockFor("^1.0.0", "1.0.0"), // stale, and ignored by npm
+    "npm-shrinkwrap.json": npmLockFor("^2.1.3", "2.1.3"), // what npm installs from
+  });
+  assert.deepEqual(lockGaps(addon), []);
+  assert.equal(lockedVersion(addon, "ms"), "2.1.3");
+
+  // The other way round: the shrinkwrap npm uses is the stale one, so it IS a gap.
+  const stale = fakeAddon({
+    "package.json": JSON.stringify({ dependencies: { ms: "^2.1.3" } }),
+    "package-lock.json": npmLockFor("^2.1.3", "2.1.3"),
+    "npm-shrinkwrap.json": npmLockFor("^1.0.0", "1.0.0"),
+  });
+  assert.deepEqual(
+    stale.files &&
+      lockGaps(stale).map((g) => `${g.name}:${g.reason}:${g.recorded}`),
+    ["ms:stale:^1.0.0"]
+  );
+});
+
+// A lock is a build artifact, so a built XPI has no standing to carry one: a file named
+// package-lock.json shipped there is not a lock. Every reader honours that, and this pins
+// it as one property rather than one assertion per reader - the cheap mistake is to add a
+// reader later and gate only the ones that existed when the rule was written.
+test("a built XPI never reads a lock, whatever it ships", async () => {
+  const files = {
+    "package.json": JSON.stringify({
+      dependencies: { jszip: "^3.10.0" },
+      devDependencies: { webpack: "^5.0.0" },
+    }),
+    // A lock that WOULD change every answer if it were read: it pins both ranges and
+    // records a whole tree beneath them.
+    "package-lock.json": JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "": {
+          dependencies: { jszip: "^3.10.0" },
+          devDependencies: { webpack: "^5.0.0" },
+        },
+        "node_modules/jszip": { version: "3.10.1" },
+        "node_modules/webpack": { version: "5.88.0", dev: true },
+        "node_modules/deep-transitive": { version: "1.0.0" },
+      },
+    }),
+  };
+
+  const shipped = await resolveVendor({
+    addon: fakeAddon(files),
+    enabled: false,
+  });
+  // Not pinned by it: both ranges stay unpinned, which is what xpi-package-unpinned reports.
+  assert.deepEqual(shipped.packages, []);
+  assert.deepEqual(shipped.devPackages, []);
+  assert.deepEqual(shipped.unpinned, [{ name: "jszip", spec: "^3.10.0" }]);
+  // Not enumerated by it either: the tree audit gets nothing to query.
+  assert.deepEqual(shipped.lockPackages, []);
+
+  // The same bytes in a source archive, where the lock IS what the reviewer installs from.
+  const source = await resolveVendor({
+    addon: fakeAddon(files),
+    reviewerInstalls: true,
+    enabled: false,
+  });
+  assert.deepEqual(source.packages, [{ name: "jszip", version: "3.10.1" }]);
+  assert.deepEqual(source.devPackages, [
+    { name: "webpack", version: "5.88.0" },
+  ]);
+  assert.deepEqual(source.unpinned, []);
+  assert.deepEqual(source.lockPackages.map((p) => p.name).sort(), [
+    "deep-transitive",
+    "jszip",
+    "webpack",
+  ]);
 });

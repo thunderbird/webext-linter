@@ -51,7 +51,6 @@
       "experiment-manual-review",
       "experiment-unknown-api",
       "non-experiment-strict-max-version",
-      "unpinned-dependency",
       "unsupported-dependency",
       "vendor-vulnerable",
       "banned-library",
@@ -59,6 +58,10 @@
       "vendor-vulnerable-indirect",
       "vendor-vulnerable-indirect-dev",
       "unsupported-build-tool",
+      "sca-package-file-missing",
+      "sca-package-file-invalid",
+      "sca-lock-file-missing",
+      "sca-lock-file-invalid",
       "build-registry-redirect",
       "committed-node-modules",
       "committed-build-artifact",
@@ -100,7 +103,16 @@
       "data-exfiltration",
       "disguised-transmission",
       "unacceptable-package-content"
-    ]
+    ],
+    "earlyExit": {
+      "intro": "The review was not completed and the report is incomplete due to the following issues:",
+      "reasons": [
+        {
+          "id": "unreproducible-build",
+          "text": "A build that cannot be reproduced"
+        }
+      ]
+    }
   },
   "summary": {
     "error": 1,
@@ -108,20 +120,18 @@
     "warning": 0,
     "info": 0,
     "byRule": {
-      "unpinned-dependency": 1
+      "sca-lock-file-missing": 1
     }
   },
   "findings": [
     {
-      "ruleId": "unpinned-dependency",
+      "ruleId": "sca-lock-file-missing",
       "severity": "error",
       "file": "package.json",
-      "loc": {
-        "line": 5
-      },
-      "item": "lodash (^4.17.21)",
+      "loc": null,
+      "item": null,
       "hint": null,
-      "message": "The following dependencies are not pinned to an exact version. A version range can resolve to different releases over time, so the bundled copy cannot be verified against a known upstream. Commit the lock file (package-lock.json, npm-shrinkwrap.json, or pnpm-lock.yaml) that records the exact versions installed. Pinning a dependency in package.json, written as a bare version like \"4.17.21\", settles that one release but not the tree installed beneath it."
+      "message": "The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json for npm, pnpm-lock.yaml for pnpm)."
     }
   ]
 }

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing package.json</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Missing package.json <span class="badge error">error</span></h1>
+        <div class="check-id">sca-package-file-missing</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission that carries no package.json. The archive
+        exists so a reviewer can reproduce the build that produced the shipped
+        add-on, and without a manifest there is nothing to reproduce.
+      </p>
+      <p>
+        The build's entry point is the package.json at the root of the
+        submission, the way manifest.json is the review's: the build corpus is
+        collected by following it. Its absence is therefore the absence of a
+        build, and that is all this check reports. Presence is decided by name,
+        not by reading the file: one that exists but cannot be used is not
+        missing, and Invalid package.json reports it instead. The pair is shaped
+        like Missing lock file and Invalid lock file, the other file this build
+        cannot run without.
+      </p>
+      <p>
+        Deliberately nothing more. The build files could have been left out by
+        accident or never have existed, and nothing in the archive says which.
+      </p>
+      <p>
+        It stays silent when the build uses a package manager this review does not
+        support: that is a fault of its own, reported once by the check whose subject the
+        tool is, which stops the review just as this one would.
+      </p>
+      <p>
+        It reports even where the shipped add-on <em>is</em> the archive's code -
+        not minified, not transpiled, every script byte-identical. That the
+        shipped bytes are readable says nothing about whether this source
+        produces them, which is what reproducing the build establishes, and with
+        no build there is nothing to reproduce. What yields instead is the
+        advice: Source archive not required is withheld from a submission whose
+        build cannot be run, rather than this rejection being withheld from it.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The submitted source archive"] --> Y{"Built with an unsupported<br/>package manager?"}
+  Y -- yes --> S2([skip: the tool is the fault,<br/>and it stops the review too])
+  Y -- no --> Z{"Is the shipped add-on<br/>the archive's own code?"}
+  Z -- yes --> S([skip: not built, so the archive<br/>was simply unnecessary])
+  Z -- no --> B{"A package.json at its root?"}
+  B -- yes --> OK([no finding])
+  B -- no --> ERR([ERROR: missing package.json<br/>the review stops here])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S,S2 skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that its source archive contains no package.json, so
+        there is no build process the shipped add-on can be reproduced from. The
+        finding names no file, because it is about something the archive does
+        not contain.
+      </div>
+
+      <div class="outcome">
+        <strong>It stops the review</strong>
+        This check is one of the few that settle the submission on their own. When it
+        reports, nothing further is put to a reviewer: the report drops every to-do item
+        they would have been asked, keeps the code-review sections, and the
+        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;A build that
+        cannot be reproduced&rdquo;). Every remaining question depends on reproducing a
+        build that is not there, so the work it would otherwise put to a reviewer cannot
+        change the outcome.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/sca-package-file-missing.js</code> and
+        its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

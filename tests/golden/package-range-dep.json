@@ -48,7 +48,7 @@
       "experiment-manual-review",
       "experiment-unknown-api",
       "non-experiment-strict-max-version",
-      "unpinned-dependency",
+      "xpi-package-unpinned",
       "unsupported-dependency",
       "vendor-vulnerable",
       "banned-library",
@@ -95,12 +95,12 @@
     "warning": 0,
     "info": 0,
     "byRule": {
-      "unpinned-dependency": 1
+      "xpi-package-unpinned": 1
     }
   },
   "findings": [
     {
-      "ruleId": "unpinned-dependency",
+      "ruleId": "xpi-package-unpinned",
       "severity": "error",
       "file": "package.json",
       "loc": {

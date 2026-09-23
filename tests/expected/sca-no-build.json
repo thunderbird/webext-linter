@@ -1,0 +1,8 @@
+{
+  "_comment": "A source archive with no build process, whose shipped background.js is packed and so is NOT the archive's code. No package.json seeds a build, and the XPI is not the source either, so something that must exist is missing: sca-build-missing rejects it and names review-early-exit, withholding the ask sections. The finding carries no locus - it is about a file the archive does NOT contain. The guard is what this fixture pins: had the shipped bytes BEEN the archive's, the add-on would simply not be built, and sca-not-required would advise instead of this rejecting (the sca-not-required fixture ships a package.json, so sca-build-missing is silent there for the manifest reason rather than the guard - the guard itself is unit-covered).",
+  "expect": {
+    "sca-package-file-missing": [
+      "(add-on)"
+    ]
+  }
+}

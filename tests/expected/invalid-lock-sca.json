@@ -1,0 +1,6 @@
+{
+  "_comment": "A lock IS committed, so sca-lock-file-missing is silent, but its root record declares only typescript while package.json also declares web-ext - the shape `npm ci` refuses with \"Missing: web-ext from lock file\". sca-lock-file-invalid reports the one gap, anchored at the package.json line declaring it. typescript is covered and never reported. Halts the review like its sibling. Decided offline, no fetch.",
+  "expect": {
+    "sca-lock-file-invalid": ["package.json:9"]
+  }
+}

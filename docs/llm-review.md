@@ -74,10 +74,21 @@ loop would do is ask a reviewer to **reproduce the build** — running that tree
 machine, on the strength of a question the linter issued knowing better.
 
 A check declares that it stops the review by naming the reason the report gives
-(`review-early-exit:` in the registry). Today five do: the four dependency-vulnerability
-checks, which name *known security vulnerabilities*, and `banned-library`, which names
-*disallowed library versions*. The threshold is the finding's severity, so an advisory that
-lands as a warning stops nothing.
+(`review-early-exit:` in the registry). Today twelve do, across three reasons: the four
+dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
+names *disallowed library versions*, and the seven that decide a source submission cannot be
+built from - `unsupported-build-tool`, `sca-package-file-missing`,
+`sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
+`build-registry-redirect` and `build-lifecycle-hook` - name *a build that cannot be
+reproduced*. The threshold is the finding's severity, so an advisory
+that lands as a warning stops nothing.
+
+That threshold is also what lets `build-lifecycle-hook` carry the flag while it reports
+nothing itself. It escalates its install hook to the agent, and an escalated case becomes a
+finding of its own check only when the agent **reports** it, at that check's severity. So a
+hook the agent clears stops nothing, and neither does a review with no agent to judge it -
+the review stops once someone has determined the hook fetches code, which is code that
+would run on the reviewer's machine the moment they install.
 
 What a stopped review does:
 

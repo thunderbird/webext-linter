@@ -47,6 +47,7 @@ import {
   scaRootRelative,
   relativeInside,
 } from "./addon/load.js";
+import { buildFileFault } from "./build/reproducible.js";
 import { isTranspiledSource } from "./util/files.js";
 import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
@@ -595,7 +596,8 @@ export async function runPipeline(opts) {
 
       // An SCA submission is ALWAYS reviewed as SCA - this only decides whether to TELL the
       // developer an XPI-only submission would have done, so their next one skips the longer
-      // review. See resolveXpiOnlyAdvice for why nothing routes on it.
+      // review. See resolveXpiOnlyAdvice for why nothing routes on it. Narrowed once more
+      // by the `build` step below, which can see files this cannot.
       scaNotRequired = resolveXpiOnlyAdvice(
         opts,
         xpiAddon.bundled,
@@ -720,7 +722,10 @@ export async function runPipeline(opts) {
     // unverified and unreported. Only the declarations: the package.json half of verifyVendor compares
     // SHIPPED copies of declared dependencies, which a source archive does not carry.
     "vendor-source": async () => {
-      addon.vendor = resolveVendor({ addon });
+      // The archive's lock IS what the reviewer installs from, so it resolves a ranged
+      // spec to the exact version audited. The XPI above gets no such reading: a lock has
+      // no place inside a built add-on, so one found there would only launder a range.
+      addon.vendor = resolveVendor({ addon, reviewerInstalls: true });
       await verifyVendorDeclarations(addon, opts.vendorNet, libraryBlocks);
     },
 
@@ -771,6 +776,15 @@ export async function runPipeline(opts) {
         opts.scaExpSource
       );
       addon.buildFiles.buildReview = analyzeBuild({ build: addon.buildFiles });
+      // The XPI-only advice holds only for a build that RUNS. resolveXpiOnlyAdvice asks
+      // whether the shipped bytes are the archive's; it cannot see the build files, which
+      // are selected here. A submission whose build is missing or broken is rejected and
+      // the review stops, so telling it the archive was unnecessary would contradict the
+      // rejection printed beside it - and the advice would be wrong anyway, since nobody
+      // can confirm this source produces that XPI.
+      if (scaNotRequired && buildFileFault(addon.buildFiles)) {
+        scaNotRequired = false;
+      }
     },
   };
 
@@ -916,7 +930,9 @@ export async function runPipeline(opts) {
               ...m,
               extended: true,
             })),
-            ...registry.manualChecks(mode).map((m) => ({ ...m, extended: false })),
+            ...registry
+              .manualChecks(mode)
+              .map((m) => ({ ...m, extended: false })),
           ],
           registry
         ),
@@ -1346,7 +1362,9 @@ export async function resolveReviewSchema({
  */
 
 function preSweepOf(registry, ranIds, mode) {
-  const items = registry.sweepInstructions(mode).filter((s) => ranIds.has(s.check));
+  const items = registry
+    .sweepInstructions(mode)
+    .filter((s) => ranIds.has(s.check));
   return items.length ? { items } : null;
 }
 

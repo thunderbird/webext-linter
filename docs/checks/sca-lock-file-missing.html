@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing lock file</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Missing lock file <span class="badge error">error</span></h1>
+        <div class="check-id">sca-lock-file-missing</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission whose build installs dependencies but ships no
+        lock file. Reviewers reproduce the build with the package manager's
+        strict install, and that refuses to run without a lock file, so the
+        submitted source cannot be shown to produce the submitted add-on.
+      </p>
+      <p>
+        Only the package.json at the root of the submission is read, because
+        that is where the build starts, and one that cannot be read as a JSON
+        object declares nothing this check can hold a lock file to. Whether it declares build scripts makes
+        no difference: in a source submission a package.json is always a build
+        manifest, and whatever it declares gets installed. Only an add-on
+        submitted as a built XPI may use one to declare the published packages
+        its bundled files came from, and a source archive declares those in its
+        VENDOR file instead. The lock is owed by the manifest itself, not by what
+        it happens to declare: both installers refuse to run without one whatever
+        it holds, and a root that declares nothing of its own is a manifest whose
+        declarations live elsewhere rather than a submission that installs
+        nothing. npm and pnpm are
+        the only supported package managers, so theirs are the only lock files
+        that count, and a lock file's presence is decided by its name rather
+        than by reading it - one that exists but cannot be read is reported as
+        an invalid lock file instead.
+      </p>
+      <p>
+        A submission built with a package manager this review does not support is
+        left alone here. A disallowed tool and a missing or unusable lock are one
+        fact, so it is reported once, by the check whose subject the tool is - and
+        that check stops the review just as this one would.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The submitted source archive"] --> T{"Built with an unsupported<br/>package manager?"}
+  T -- yes --> S4([skip: the tool is the fault,<br/>and it stops the review too])
+  T -- no --> B{"A package.json at its root,<br/>readable as a JSON object?"}
+  B -- no --> S([skip: no package manager])
+  B -- yes --> E{"An npm or pnpm lock<br/>file beside it?"}
+  E -- yes --> OK([no finding])
+  E -- no --> ERR([ERROR: missing lock file<br/>the review stops here])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S,S4 skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that its source includes no npm or pnpm
+        lock file, that one is needed for a reproducible install, and that it
+        should commit the lock file its package manager writes. The report then closes, saying it is incomplete because
+        the build cannot be reproduced.
+      </div>
+
+      <div class="outcome">
+        <strong>It stops the review</strong>
+        This check is one of the few that settle the submission on their own. When it
+        reports, nothing further is put to a reviewer: the report drops every to-do item
+        they would have been asked, keeps the code-review sections, and the
+        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;A build that
+        cannot be reproduced&rdquo;). Every question that remains would depend on
+        installing and building the add-on, which cannot succeed, so the work it would
+        otherwise put to a reviewer cannot change the outcome.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/sca-lock-file-missing.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>
