@@ -439,7 +439,8 @@ report's **Standard Manual Review** to-do list, unless the review stopped early.
 
 | Check id (`check:`) | What the reviewer verifies |
 | --- | --- |
-| `test-add-on` | Functionality in a test profile, fail if credentials or other info are needed to continue. |
+| `add-on-functionality` | The add-on running in a test profile: whether it acts as its ATN listing describes, generally works, reaches the described functionality with the developer's credentials, and makes clear what it sends to any remote server. |
+| `testing-information` | Whether the review needs anything the submission does not carry - credentials for a service the add-on signs in to, a test account, or instructions for reaching a feature. Asked after the test above, because that is where the need shows itself. |
 | `no-surprises-policy` | The code diff for behavior not documented on the ATN listing that could surprise the user. |
 | `missing-payment-disclosure` | Whether the add-on requires payment but the "needs payment" flag is not set on ATN. |
 | `suitability-for-listing` | Whether the add-on targets a limited or non-public audience (better self-hosted than listed). |

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Test the add-on</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Test the add-on
+          <span class="badge manual">manual</span>
+        </h1>
+        <div class="check-id">add-on-functionality</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This is a human-review item with no automated logic behind it. A
+        reviewer installs the add-on in a separate test profile - one that can
+        be thrown away and recreated - and inspects it, to see whether it does
+        what its ATN listing says it does.
+      </p>
+      <p>
+        Not every feature. The questions are: does the
+        add-on act as described in its summary and description; does it
+        generally work, in the sense that its action button and options page
+        open; where it signs in, do the developer&rsquo;s credentials reach the
+        functionality described; where it sends data to a remote server, is it
+        clear which data; and is there anything the code review raised that the
+        reviewer wants to see for themselves. The browser console and network
+        monitor help with the last two.
+      </p>
+      <p>
+        It is an <strong>info</strong> item rather than a rejection: what it
+        reports is what the reviewer observed. Behaviour that is a rejection has
+        its own checks - undocumented or surprising features are
+        <a href="no-surprises-policy.html">Check for &ldquo;No Surprises&rdquo;
+        policy violations</a>, and anything the code itself does wrong is caught
+        by the deterministic families.
+      </p>
+      <p>
+        It comes first of the manual items, and
+        <a href="testing-information.html">Request testing information if
+        needed</a> follows it: what the reviewer cannot reach while testing is
+        what they then ask the developer for.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Every review"] --> X{"A rejected Experiment?<br/>(bundles an unsupported draft,<br/>no --allow-experiments)"}
+  X -- yes --> S([skip — the reject phase<br/>runs alone, the whole<br/>to-do list is dropped])
+  X -- no --> M(["listed as a to-do for the reviewer<br/>to settle by hand"])
+
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class S skip;
+  class M manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told what was observed while the add-on was tested,
+        followed by the reviewer&rsquo;s own list. That list is the finding: which
+        feature behaved how is not something a scan could name, so a marker
+        stands in when the reviewer reports the item without writing one.
+      </div>
+
+      <p class="source-note">
+        Source of truth: the manual-checks entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

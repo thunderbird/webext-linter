@@ -121,7 +121,7 @@ that no longer exist.
      inferred from the rule. `none` is a severity like the others: it marks a check
      that can never emit a finding (the loader refuses one from it), so the page must not
      promise a rejection. `manual-checks` entries are badged `manual` whatever severity
-     they declare - four say `hold-or-error`, four `error`, one `info` - because the badge
+     they declare - four say `hold-or-error`, four `error`, two `info` - because the badge
      names the list they belong to rather than the band they resolve at;
    - escalating checks - make clear what the scan settles on its own and what it
      hands to the reviewer. **The tool calls no model: there is no verdict step, so a

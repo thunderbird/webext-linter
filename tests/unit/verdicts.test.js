@@ -188,7 +188,7 @@ test("a by-hand reminder settles like an escalation", () => {
   const manual = registry
     .manualChecks()
     .map((m) => ({ ...m, extended: false }));
-  const held = manual.findIndex((m) => m.ruleId === "test-add-on");
+  const held = manual.findIndex((m) => m.ruleId === "testing-information");
   assert.ok(held > -1);
   assert.equal(manual[held].verdict, "hold");
 
@@ -205,7 +205,7 @@ test("a by-hand reminder settles like an escalation", () => {
   assert.equal(list.length, manual.length - 2);
   assert.deepEqual(
     findings.map((f) => [f.ruleId, f.severity]),
-    [["test-add-on", "hold"]]
+    [["testing-information", "hold"]]
   );
   // Worded by its own registry entry, like any other finding.
   renderFindings(findings, registry);
@@ -349,7 +349,7 @@ test("every to-do carries both wordings, and the phase picks between them", () =
   const manual = [
     code,
     mkManual("privacy-policy", "Policy", "api.example.com"),
-    mkStandard("test-add-on", "Test it"),
+    mkStandard("testing-information", "Test it"),
   ];
   const items = reviewItems({ findings, manual, choices });
 
@@ -435,7 +435,7 @@ test("a question's locus carries the artifact label the report gives it", () => 
 test("a question flattens the instructions the registry wrapped", () => {
   const manual = [
     {
-      ...mkStandard("test-add-on", "Test it"),
+      ...mkStandard("testing-information", "Test it"),
       instructions: "Open the add-on\nin a test profile,\n  then exercise it.",
     },
   ];
@@ -648,7 +648,7 @@ test("a typed answer closes the case's location line in parentheses", () => {
 // A case that names no location still carries what the reviewer said about it, and that
 // line is the only place it can appear - so a note is a locus of its own.
 test("a case with no location renders as the answer alone", () => {
-  const manual = [mkStandard("test-add-on", "Test it")];
+  const manual = [mkStandard("testing-information", "Test it")];
   const { body } = settled(manual, { 1: "the trial expires after two weeks" });
   assert.match(body, /\n - the trial expires after two weeks\n/);
 });
@@ -657,7 +657,7 @@ test("a case with no location renders as the answer alone", () => {
 // their lines are kept and each becomes an item of its own. The report opens every one with
 // "- ", so the bullet they typed is dropped rather than printed twice.
 test("a typed answer keeps the reviewer's lines, one item each", () => {
-  const manual = [mkStandard("test-add-on", "Test it")];
+  const manual = [mkStandard("testing-information", "Test it")];
   const { findings, body } = settled(manual, {
     1: "  - the BrowserShim is bad\n\n* today is monday  ",
   });
@@ -665,7 +665,7 @@ test("a typed answer keeps the reviewer's lines, one item each", () => {
   assert.match(body, /\n - the BrowserShim is bad\n - today is monday\n/);
 
   // Inside a line it is still one line: a wrapped sentence does not become two items.
-  const one = settled([mkStandard("test-add-on", "Test it")], {
+  const one = settled([mkStandard("testing-information", "Test it")], {
     1: "the listing text\tis   outdated",
   });
   assert.equal(one.findings[0].note, "the listing text is outdated");
@@ -757,7 +757,7 @@ test("the limit the answers state is the limit the linter enforces", () => {
     "and states it as a number, not as the slot it was filled from"
   );
 
-  const manual = [mkStandard("test-add-on", "Test it")];
+  const manual = [mkStandard("testing-information", "Test it")];
   const { findings } = settled(manual, { 1: "x".repeat(limit) });
   assert.equal(findings[0].note.length, limit, "the stated limit is accepted");
   assert.throws(
@@ -767,7 +767,7 @@ test("the limit the answers state is the limit the linter enforces", () => {
   );
   // Counted as the reviewer counts: an emoji is one character, not the two UTF-16 units it
   // is stored as, so the refusal states a number they can act on.
-  const emoji = settled([mkStandard("test-add-on", "Test it")], {
+  const emoji = settled([mkStandard("testing-information", "Test it")], {
     1: "\u{1F600}".repeat(limit),
   });
   assert.equal(
@@ -788,7 +788,7 @@ test("an answer that is only a bullet is no answer", () => {
     );
   }
   // A dash that is part of what they wrote stays.
-  const { findings } = settled([mkStandard("test-add-on", "Test it")], {
+  const { findings } = settled([mkStandard("testing-information", "Test it")], {
     1: "-5 icons are missing",
   });
   assert.equal(findings[0].note, "-5 icons are missing");
@@ -849,7 +849,9 @@ test("a check that authors a default note falls back to it", () => {
   assert.equal(written.findings[0].note, "the BrowserShim reaches too far");
 
   // A check that authors none gets none.
-  const other = settled([mkStandard("test-add-on", "Test it")], { 1: REPORT });
+  const other = settled([mkStandard("testing-information", "Test it")], {
+    1: REPORT,
+  });
   assert.equal(other.findings[0].note, null);
 });
 
@@ -878,10 +880,11 @@ test("the default note completes the response a deterministic run prints", () =>
 // resolved by ruleId and the two lists reach that lookup from different sides.
 test("a reviewer's words replace the default note, for both kinds of item", () => {
   const reg = loadRegistry();
-  // The shipped Experiment escalation authors one; a manual check is given one here,
-  // because the shipped registry authors none and inventing one is a product decision.
+  // The shipped Experiment escalation authors one. `testing-information` authors none, so
+  // it is given one here: the marker must be resolved by ruleId, not by which list the
+  // item arrived on.
   const manualEntry = reg.doc["manual-checks"].find(
-    (e) => e.check === "test-add-on"
+    (e) => e.check === "testing-information"
   );
   manualEntry["default-note"] = "- ...";
   const marker = "- ...";

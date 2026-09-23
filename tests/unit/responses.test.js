@@ -88,7 +88,12 @@ test("reading a per-mode response with no mode is refused, in every reader", () 
       entry({ check: "eval-call", "sweep-instruction": "look for X" }),
     ],
     "manual-checks": [
-      { title: "Y", check: "test-add-on", instructions: "i", ...entry({}) },
+      {
+        title: "Y",
+        check: "testing-information",
+        instructions: "i",
+        ...entry({}),
+      },
     ],
   });
   const re = /words its response per review mode, but it was read with no mode/;
@@ -450,14 +455,17 @@ test("the registry picks a wording per reader, and refuses an unauthored one", (
 // addressed:" with nothing beneath it.
 test("a deterministic run completes both kinds of answered item with its default note", () => {
   const reg = loadRegistry();
-  // An escalation that authors one (the shipped Experiment check does), and a manual check
-  // given one here - the shipped registry authors none, and inventing one is a product
-  // decision, not a test's.
+  // Both are shipped, so this asserts the real configuration rather than an invented one:
+  // the Experiment check authors an escalation's default note, and add-on-functionality
+  // authors a manual check's - a reported case there IS what the reviewer found, so its
+  // response ends on their list.
   const manualEntry = reg.doc["manual-checks"].find(
-    (e) => e.check === "test-add-on"
+    (e) => e.check === "add-on-functionality"
   );
-  manualEntry.response = "Fix the following:";
-  manualEntry["default-note"] = "- ...";
+  assert.ok(
+    manualEntry?.["default-note"],
+    "the manual check still authors one"
+  );
 
   const items = withDefaultNotes(
     [

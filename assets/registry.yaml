@@ -1572,13 +1572,42 @@ permission-prompts:
 
 
 manual-checks:
-# Manual: exercise the add-on in a test profile; may need credentials or info.
-- title: Test the add-on and request testing information if needed
-  check: test-add-on
+# Manual: run the add-on and see whether it does what its listing says. The questions are
+# the reviewer guide's (addons-reviewer-guide.thunderbird.net); the time budget is ours,
+# and shorter than the cap it names.
+#
+# A reported case of this check IS what the reviewer found - which feature failed is not
+# something a scan could name - so the response ends on a list and that list is their
+# words. The default-note stands in when they reported it without any.
+- title: Test the add-on
+  check: add-on-functionality
+  severity: info
+  instructions: |-
+    Install the add-on in a separate test profile and spend about 5 minutes
+    exercising it. You are not expected to test every feature. Does it act as
+    described in its ATN summary and description? Does it generally work - do
+    its action button and options page open? Where it signs in, do the
+    developer’s credentials reach the described functionality? Where it sends
+    data to a remote server, is it clear which data? And is there anything the
+    code review raised that you want to see for yourself? The browser console
+    and network monitor may help.
+  default-note: |-
+    - ...
+  response: |-
+    We observed the following while testing the submitted extension:
+
+# Manual: does reviewing this submission need anything it does not carry? Asked AFTER the
+# test above, because that is where the need shows itself: a reviewer finds out an add-on
+# signs in to a service by trying to use it. This response asks for credentials and nothing
+# else, which is why what a reviewer OBSERVES while testing is reported by the check above.
+- title: Request testing information if needed
+  check: testing-information
   severity: hold-or-error
   instructions: |-
-    Test the add-on’s functionality in a test profile, and check if it needs
-    additional information like credentials in order to continue the review.
+    Check whether reviewing this add-on needs anything the submission does not
+    provide: credentials for a service it signs in to, a test account, or
+    instructions for reaching a feature. A developer must supply testing
+    credentials where the add-on relies on a service.
   response: |-
     Please provide us with detailed information on how to test this add-on. If authentication to a website is necessary, give us a test username and password to facilitate our work. This can be provided in the Whiteboard field, which can be found in the Edit Listing page under the Technical Details section. This information is only available to reviewers.
 

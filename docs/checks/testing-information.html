@@ -3,29 +3,34 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Test the add-on and request testing information if needed</title>
+    <title>Request testing information if needed</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
         <h1>
-          Test the add-on and request testing information if needed
+          Request testing information if needed
           <span class="badge manual">manual</span>
         </h1>
-        <div class="check-id">test-add-on</div>
+        <div class="check-id">testing-information</div>
       </header>
 
       <h2>What it detects</h2>
       <p class="lead">
         This is a human-review item with no automated logic behind it. A
-        reviewer exercises the add-on's functionality in a dedicated test
-        profile to confirm it works as described.
+        reviewer asks whether the review can proceed with what the submission
+        carries, or whether something is missing that only the developer can
+        supply: credentials for a service the add-on signs in to, a test
+        account, or instructions for reaching a feature. A developer must
+        supply testing credentials where the add-on relies on a service.
       </p>
       <p>
-        While testing, the reviewer checks whether the review can proceed with
-        what is already available, or whether extra information — such as login
-        credentials for a website the add-on relies on — is needed to continue.
+        It follows <a href="add-on-functionality.html">Test the add-on</a>,
+        because that is where the need shows itself - a reviewer finds out an
+        add-on signs in to a service by trying to use it. This response asks for
+        credentials and nothing else, so what a reviewer observes while testing
+        is reported by that check rather than this one.
       </p>
 
       <h2>Decision flow</h2>
@@ -46,8 +51,12 @@ flowchart TD
       <div class="outcome">
         <strong>When it fires</strong>
         The developer is asked for detailed instructions on how to test the
-        add-on, and — if authentication is required — for a test username and
-        password supplied through the reviewer-only Whiteboard field.
+        add-on, and, if authentication is required, for a test username and
+        password supplied through the reviewer-only Whiteboard field. The
+        review is, on its own, put on hold rather than rejected: nothing is
+        wrong with the add-on, and a person continues once the information
+        arrives. Alongside a real error the submission is rejected anyway, and
+        the hold becomes one more item on that list.
       </div>
 
       <p class="source-note">

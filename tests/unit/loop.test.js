@@ -795,7 +795,7 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
   // Real check ids, because a reported case becomes a finding of its own check and takes
   // the severity that check declares.
   state.manual.forEach((m, i) => {
-    m.ruleId = ["test-add-on", "no-surprises-policy"][i];
+    m.ruleId = ["testing-information", "no-surprises-policy"][i];
   });
 
   const out = issue(state, stateFile, PHASES, REGISTRY);

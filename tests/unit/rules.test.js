@@ -949,7 +949,7 @@ test("a default-note must be prose, in either list", () => {
   });
   const manual = (extra) => ({
     title: "Y",
-    check: "test-add-on",
+    check: "testing-information",
     severity: "error",
     instructions: "answer it",
     ...extra,
@@ -1117,7 +1117,7 @@ test("a response worded per review mode is all-or-nothing, and never beside a ba
   });
   const manual = (extra) => ({
     title: "Y",
-    check: "test-add-on",
+    check: "testing-information",
     severity: "error",
     instructions: "answer it",
     ...extra,
@@ -1794,7 +1794,7 @@ test("manual checks have unique, doc-backed check ids distinct from rule ids", (
   const manualIds = reg.manualCheckIds();
   const manualTitles = reg.manualChecks();
   // One id per manual-checks entry.
-  assert.equal(manualIds.length, 9);
+  assert.equal(manualIds.length, 10);
   assert.equal(new Set(manualIds).size, manualIds.length, "ids are unique");
   // Manual ids are NOT in the runnable check namespace (no rule module).
   const runnable = new Set(reg.checkIds());
@@ -4052,7 +4052,7 @@ test("assertRequiredPhaseSections rejects a missing or empty required section", 
   const full = {
     "invalid-experiment-phase": [{ check: "experiment-not-allowed" }],
     "deterministic-phase": [{ check: "sync-xhr" }],
-    "manual-checks": [{ check: "test-add-on" }],
+    "manual-checks": [{ check: "testing-information" }],
   };
   // The complete set is accepted.
   assert.doesNotThrow(() => assertRequiredPhaseSections(full, "ok.yaml"));
