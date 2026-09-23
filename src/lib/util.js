@@ -376,6 +376,26 @@ export function manifestPathLine(ctx, ...path) {
 }
 
 /**
+ * The text of the file a vendor record anchors at, for locating its declaration line.
+ *
+ * A record names the file that DECLARED it, and the two kinds of declaration live in
+ * different parts of a source submission: a VENDOR entry is the add-on's own file, while a
+ * package.json dependency is the build's, at the archive root the add-on sits inside. The
+ * add-on's corpus is asked first and the submission's after, so each is read where it
+ * really is. In a built XPI the two are one artifact, so the first answer is the only one.
+ *
+ * Absent reads as empty, which costs the finding its line and nothing else - the same
+ * outcome as a token the file does not contain.
+ * @param {object} addon
+ * @param {string} file  The record's anchor path.
+ * @returns {string}
+ */
+export function anchorText(addon, file) {
+  const buf = addon?.files?.get(file) ?? addon?.store?.get(file);
+  return buf?.toString("utf8") ?? "";
+}
+
+/**
  * The line in `text` where `token` is DECLARED, across the dependency-file
  * formats a finding can anchor in. One question with three answers, because the
  * file is JSON in one submission and YAML in the next, and the caller records a

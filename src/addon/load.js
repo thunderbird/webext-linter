@@ -1,27 +1,23 @@
-// Loads a submitted add-on, whether it's an .xpi/.zip archive or an
-// already-unpacked directory, into an in-memory file map plus the parsed
-// manifest. Keeping the whole add-on in memory (paths -> Buffer) lets every
-// check read files without caring how the add-on was packaged.
+// Walks a submitted add-on - an .xpi/.zip archive or an already-unpacked directory - into
+// the Addon model: a file store plus the parsed manifest. The submission is on disk for
+// the whole review, so the store keeps keys and reads bytes when something asks
+// (./corpus.js); nothing is held twice.
 //
-// A packed archive is read exactly once, by being extracted to disk (extractZip)
-// and then walked back like any already-unpacked submission (readDir) - never held
-// as a second, in-memory-only copy alongside the one on disk. That destination is
-// the caller's to choose (loadAddon's `extractTo`): the review names it once, in
-// meta.xpiRoot, and hands the SAME folder to the reviewer and to this loader.
+// A packed archive is read exactly once, by being extracted to disk (extractZip) and then
+// walked back like any already-unpacked submission (readDir). That destination is the
+// caller's to choose (loadAddon's `extractTo`): the review names it once, in meta.xpiRoot,
+// and hands the SAME folder to the reviewer and to this loader.
 //
-// It also PARTITIONS a submitted SCA archive into the two artifacts a source-code
-// review reads. loadScaAddon takes the review-source subtree (--sca-source);
-// selectScaBuildFiles takes its COMPLEMENT - the archive minus that subtree, minus
-// the Experiment subtree (--sca-exp-source), minus node_modules - as the build
-// candidates. Two halves of ONE split: same archive, same --sca-* path semantics
-// (scaRootRelative), so they live together and cannot drift apart. The split is a
-// projection of the archive ALREADY in memory (loadAddon read it once); despite the
-// "load" in loadScaAddon, neither half reads the disk again.
+// It also PARTITIONS a submitted SCA archive into the three parts a source review reads -
+// the add-on source, the Experiment implementation, and the build tooling - as views over
+// that one store (scaViews). One pass and one set of prefixes, so no two parts can
+// disagree about where a file went, and the frames stay honest: the source is keyed
+// relative to the add-on, because that is how the developer wrote its declarations, and
+// the build is keyed relative to the archive, because that is where the build runs.
 //
-// Belongs here: unpacking the submission into the Addon model (files map +
-// manifest parse + manifestError), extracting a packed one to disk first, the SCA
-// archive partition above, the Manifest typedef, and the load-time path safety
-// guards.
+// Belongs here: walking the submission into the Addon model (store + manifest parse +
+// manifestError), extracting a packed one to disk first, the SCA partition above, the
+// Manifest typedef, and the load-time path safety guards.
 //
 // Does NOT belong here: reviewing the add-on - all verdicts live in the checks
 // (src/checks/*). Which of the build candidates the build actually RUNS is a
@@ -41,6 +37,7 @@ import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
 import { displayLine } from "../util/text.js";
 import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
 import { extractionDestination } from "../util/dest.js";
+import { FileStore, fileView } from "./corpus.js";
 
 /**
  * @typedef {object} GeckoSettings
@@ -116,16 +113,23 @@ import { extractionDestination } from "../util/dest.js";
  * honest value for a source review, whose files are a SUBTREE of an archive: no single path
  * names that, and for a zip root none exists.
  * @typedef {object} Addon
- * @property {Map<string, Buffer>} files  Add-on-relative path (posix "/")
- *   -> contents. The review corpus EXCLUDES manifest.json: assembleAddon lifts it
- *   into manifest / manifestText / manifestLoc and drops the key, so a corpus lookup
- *   can never return the manifest (in SCA it would be the source's pre-build one, not
- *   the shipped manifest). Read the manifest through those fields. (The SCA `build`
- *   corpus is selected separately and is not covered by this guarantee.)
+ * @property {object} files  The artifact's own corpus, keyed by a path relative to ITS
+ *   root (posix "/"): the store for a built XPI, a view for each part of a source archive
+ *   (./corpus.js). The corpus EXCLUDES manifest.json: assembleAddon lifts it into
+ *   manifest / manifestText / manifestLoc and drops the key, so a lookup can never return
+ *   the manifest (in SCA it would be the source's pre-build one, not the shipped
+ *   manifest). Read the manifest through those fields. (The SCA `build` view is a
+ *   different part of the archive and is not covered by this guarantee.)
+ * @property {object} [store]  The SUBMISSION's own corpus, keyed relative to the artifact
+ *   root the reviewer was given. For a built XPI it IS `files`. For a source archive it is
+ *   the whole --sca-root, which is the frame the build manifest and the lock are read in
+ *   and the frame a reviewer resolves a reported path against - `files` there is only the
+ *   add-on's own subtree. Reach for it deliberately: a check asking `store` is saying it
+ *   wants the submission, not the add-on.
  * @property {string[]} [nodeModules]  Posix paths of node_modules directories
  *   skipped at load (their contents are never read); empty when none. In SCA
  *   mode the committed-node-modules check rejects each. Set by loadAddon, so an
- *   add-on assembled from a file set (loadScaAddon) carries none.
+ *   add-on assembled as a view of an archive (scaViews) carries none.
  * @property {string[]} [archives]  Posix paths of committed binary archives
  *   (.zip/.xpi/... anywhere in the submission); empty when none. In SCA mode the
  *   committed-build-artifact check rejects each. Recorded at load, spanning the whole
@@ -176,6 +180,10 @@ export function loadAddon(source, extractTo) {
     ({ files, archives, skipped } = readDir(dest));
   }
   const addon = assembleAddon(files);
+  // The artifact's own root. For a built XPI the corpus IS the root, so the two are one
+  // object; a source archive splits into views whose keys are relative to their own root,
+  // and `store` stays the archive frame the build and the reviewer share (scaViews).
+  addon.store = files;
   addon.nodeModules = nodeModules;
   addon.archives = archives;
   addon.skipped = skipped;
@@ -183,9 +191,11 @@ export function loadAddon(source, extractTo) {
 }
 
 /**
- * Build an Addon record from an in-memory file map: parse its manifest.json
- * (BOM-tolerant, JSON5). Shared by loadAddon and the source code archive loader.
- * @param {Map<string, Buffer>} files
+ * Build an Addon record over one corpus: parse its manifest.json (BOM-tolerant, JSON5) and
+ * lift it off. Shared by loadAddon, which passes the whole store, and scaViews, which
+ * passes the source view - so the manifest a source review reads is the source's own, and
+ * dropping its key leaves the store, and every other view, untouched.
+ * @param {object} files  A store, a view, or any Map over the artifact's files.
  * @returns {Addon}
  */
 function assembleAddon(files) {
@@ -215,17 +225,6 @@ function assembleAddon(files) {
   files.delete("manifest.json");
   return addon;
 }
-
-// The dependency-manifest files loadScaAddon brings from the archive root into the
-// review files (the root is the authoritative manifest): the manifest itself plus every
-// lock the review installs from (src/vendor/locks.js TREE_LOCKS), so the dependency audit
-// reads the same files the reviewer's install would.
-const SCA_MANIFEST_FILES = [
-  "package.json",
-  "package-lock.json",
-  "npm-shrinkwrap.json",
-  "pnpm-lock.yaml",
-];
 
 /**
  * The archive key for a path INSIDE scaRoot: where it sits relative to the root, keyed the
@@ -300,125 +299,125 @@ export function hasParentSegment(value) {
 }
 
 /**
- * Load a source code archive. The readable add-on code lives at `scaSource`
- * within the extracted `scaRoot` archive; package.json/lock live at the
- * archive root. Returns a review Addon whose `files` are the scaSource subtree
- * (the prefix stripped, so `<scaSource>/manifest.json` becomes `manifest.json`)
- * PLUS the archive-root package.json + lock (so the dependency audit, which reads
- * addon.files, sees them).
+ * PARTITION a source code archive into the three parts a source review reads, as views
+ * over the one store the archive was walked into (./corpus.js). Every file is held once,
+ * by the store; a view adds a key set and the prefix its own root sits at.
  *
- * The source addon is PURE source - its own files and its own manifest.json. The
- * authoritative manifest is the built XPI's, exposed separately as ctx.manifest (the
- * orchestrator resolves it - see src/checks/context.js); nothing reviews the source
- * manifest, so it is left untouched here.
- * @param {Addon} archive  The scaRoot archive, loaded ONCE by the caller (loadAddon)
- *   and shared with selectScaBuildFiles - so the source tree is not read twice.
- * @param {string} scaSource  The add-on code root, absolute and inside scaRoot (the
- *   arg-array reader resolved it, src/cli.js). Equal to scaRoot for a flat layout.
- * @param {string} scaRoot  The source archive root, absolute (for the path math).
- * @returns {Addon}
+ *   source      the add-on code at `scaSource`, keyed relative to IT (`<scaSource>/main.js`
+ *               is `main.js`), MINUS the Experiment subtree. The developer writes a VENDOR
+ *               entry, a manifest ref and `_locales/...` relative to this root, so this is
+ *               the frame those must be read in.
+ *   experiment  the Experiment implementation at `scaExpSource`, wherever it sits - inside
+ *               the source or beside it. Privileged, non-WebExtension code: it is recorded
+ *               here ONCE so nothing downstream has to re-derive where it went.
+ *   build       everything else: build scripts, bundler configs, package.json/lock,
+ *               READMEs - keyed relative to the ARCHIVE, which is the frame the build runs
+ *               in. Dotfiles/dotfolders are dropped at any depth, except a plain `.npmrc`
+ *               (the registry config build-registry-redirect reads) that is not itself
+ *               buried in a dotfolder. node_modules never reaches here: loadAddon skips it
+ *               at load, and passes the directory paths through for committed-node-modules.
+ *
+ * The Experiment is disjoint from both others, and in a NESTED layout so are source and
+ * build. One pass, one set of prefixes, so no two of them can disagree about where a file
+ * went.
+ *
+ * A FLAT layout (scaSource IS the archive root) is the same partition with an empty source
+ * prefix, and there source and build OVERLAP - deliberately: there is no subtree to
+ * remove, the tooling is intermingled with the code, each half still feeds its own checks,
+ * and selectBuildCorpus keeps the build tight by tracing it off the root package.json.
+ *
+ * The source addon is PURE source - its own files and its own manifest.json, which
+ * assembleAddon lifts off the corpus. The authoritative manifest is the built XPI's,
+ * exposed separately as ctx.manifest (src/checks/context.js); nothing reviews the source
+ * manifest.
+ * @param {Addon} archive  The scaRoot archive, loaded ONCE by the caller (loadAddon).
+ * @param {{scaSource: string, scaRoot: string, scaExpSource?: string}} where  Absolute
+ *   paths, resolved by the arg-array reader (src/cli.js). scaSource equals scaRoot for a
+ *   flat layout; scaExpSource may sit anywhere under the root.
+ * The source and the experiment are keyed alike whenever the Experiment sits inside the
+ * add-on, so a check that must review the privileged code too reads the two as one corpus
+ * (`source.experiment` carries it onto the review addon for exactly that).
+ * @returns {{source: Addon, experiment: object,
+ *   build: {files: object, nodeModules: string[], archives: string[]}}}
  */
-export function loadScaAddon(archive, scaSource, scaRoot) {
-  const rel = scaRootRelative(scaSource, scaRoot, "--sca-source");
-  const prefix = rel ? `${rel}/` : "";
-  const files = new Map();
-  for (const [p, buf] of archive.files) {
-    if (!prefix) {
-      files.set(p, buf);
-    } else if (p.startsWith(prefix)) {
-      files.set(p.slice(prefix.length), buf);
+export function scaViews(archive, { scaSource, scaRoot, scaExpSource }) {
+  const store = archive.files;
+  const src = scaRootRelative(scaSource, scaRoot, "--sca-source");
+  const exp = scaExpSource
+    ? scaRootRelative(scaExpSource, scaRoot, "--sca-exp-source")
+    : null;
+  // "" is the archive root, which every key is under - so a flat layout's source prefix
+  // selects everything, and its build half is everything too. The two overlap there by
+  // design: the tooling is intermingled with the code, and each half still feeds its own
+  // checks. A prefix that was never given (no --sca-exp-source) is under nothing.
+  const under = (key, prefix) =>
+    prefix === "" ||
+    (Boolean(prefix) && (key === prefix || key.startsWith(`${prefix}/`)));
+
+  const sourceKeys = [];
+  const expKeys = [];
+  const buildKeys = [];
+  for (const key of store.keys()) {
+    const isExp = under(key, exp);
+    if (isExp) {
+      expKeys.push(key);
+    } else if (under(key, src)) {
+      sourceKeys.push(key);
     }
+    // The build half is the archive minus the add-on's own code: the source subtree when
+    // there is one to remove, and the Experiment wherever it sits. Dot-prefixed paths at
+    // any depth are VCS/editor/CI noise, except a plain .npmrc - unless it is itself
+    // buried in a dotfolder.
+    if (isExp || (src && under(key, src))) {
+      continue;
+    }
+    const segments = key.split("/");
+    const dots = segments.filter((seg) => seg.startsWith("."));
+    if (
+      dots.length > 0 &&
+      !(dots.length === 1 && segments[segments.length - 1] === ".npmrc")
+    ) {
+      continue;
+    }
+    buildKeys.push(key);
   }
-  if (files.size === 0) {
+  if (sourceKeys.length === 0) {
     throw new Error(
       `--sca-source "${scaSource}" matched no files under ${scaRoot}`
     );
   }
-  // Bring the archive-root dependency manifest into the review files (overriding
-  // any same-named file inside scaSource - the root is authoritative).
-  for (const name of SCA_MANIFEST_FILES) {
-    const buf = archive.files.get(name);
-    if (buf) {
-      files.set(name, buf);
-    }
-  }
-  return assembleAddon(files);
-}
 
-/**
- * SELECT the BUILD files of a source code archive - the COMPLEMENT of loadScaAddon over
- * the same, already-loaded archive (nothing is read from disk here): EVERY file in the
- * scaRoot archive EXCEPT the review source (scaSource), the Experiment source
- * (scaExpSource), and dotfiles/dotfolders (at any depth, except .npmrc). node_modules
- * never appears here -
- * loadAddon skips it at load (its contents are never read); its directories are passed
- * through as `nodeModules` for the committed-node-modules check. This is the tooling
- * that BUILDS the add-on - build scripts, bundler configs, Makefiles, package.json/lock,
- * READMEs - which the add-on review (loadScaAddon) deliberately drops. Keys keep their
- * real archive-relative paths (nothing is prefix-stripped). buildScaCtxs wraps these
- * as the SCA-only `input: build` checks' ctx.addon, so its files never enter the review
- * addon that the other checks scan.
- *
- * A pure EXCLUDE rule (no allow-list to maintain): what remains is the build candidate
- * pool, from which the setup build analysis (analyzeBuild) selects the build-relevant
- * subset by tracing package.json (src/build/corpus.js).
- *
- * When scaSource IS the archive root (a flat layout: manifest.json at the root, with the
- * build tooling intermingled), there is no source subtree to remove, so the candidate pool
- * is the whole root - and selectBuildCorpus still traces the build off the root package.json
- * exactly as in a nested layout. The pool then overlaps the review addon (loadScaAddon), but
- * the two feed different checks, and the package.json trace keeps the build corpus tight.
- * @param {Addon} archive  The scaRoot archive, loaded ONCE by the caller and shared
- *   with loadScaAddon (the tree is not read twice).
- * @param {string} scaSource  The review source subtree, absolute and inside scaRoot.
- * @param {string} scaRoot  The source archive root, absolute (for the path math).
- * @param {string} [scaExpSource]  The Experiment folder, absolute; its subtree is excluded
- *   too. It may sit anywhere under the root, not only inside scaSource.
- * @returns {{files: Map<string, Buffer>, nodeModules: string[], archives: string[]}}
- */
-export function selectScaBuildFiles(archive, scaSource, scaRoot, scaExpSource) {
-  const files = new Map();
-  const src = scaRootRelative(scaSource, scaRoot, "--sca-source");
-  // Nested layout: exclude the review-source subtree (it is the add-on, not the build).
-  // Flat layout (scaSource IS the archive root, src === ""): there is no subtree to
-  // exclude, so every file becomes a build candidate and selectBuildCorpus still traces
-  // the build off the root package.json.
-  const prefixes = [];
-  if (src) {
-    prefixes.push(src);
-  }
-  if (scaExpSource) {
-    const exp = scaRootRelative(scaExpSource, scaRoot, "--sca-exp-source");
-    if (exp) {
-      prefixes.push(exp);
-    }
-  }
-  for (const [p, buf] of archive.files) {
-    // Dot-prefixed paths at any depth are VCS/editor/CI noise, except a plain .npmrc -
-    // the registry config build-registry-redirect reads - unless it is itself buried in
-    // a dotfolder. node_modules never reaches here: loadAddon skips it at load.
-    const segments = p.split("/");
-    const dotSegments = segments.filter((s) => s.startsWith("."));
-    if (
-      dotSegments.length > 0 &&
-      !(dotSegments.length === 1 && segments[segments.length - 1] === ".npmrc")
-    ) {
-      continue;
-    }
-    // The review source + Experiment subtree are reviewed as the add-on, not the build.
-    if (prefixes.some((pre) => p === pre || p.startsWith(`${pre}/`))) {
-      continue;
-    }
-    files.set(p, buf);
-  }
-  // Copy nodeModules/archives so the build corpus owns its lists - the caller shares one
-  // archive object with loadScaAddon, and the aliased array must not leak mutations back
-  // to it (matching the fresh-Map discipline `files` already follows). Both span the whole
-  // --sca-root so the committed-* checks catch a tree anywhere, not just outside the source.
+  const source = assembleAddon(
+    fileView(store, { prefix: src, keys: sourceKeys })
+  );
+  source.store = store;
+  // A view is keyed in the frame of whatever CONTAINS it. An Experiment inside the add-on
+  // is part of the add-on's tree, so it is keyed like the source - which is what lets a
+  // check that needs both read one corpus across the two views, with `experiment/exp.js`
+  // meaning the same thing in each. One that sits beside the add-on is part of the
+  // archive's tree instead, and is keyed there: it is not the add-on's file to merge in.
+  // Keyed in the frame of whatever CONTAINS it: an Experiment inside the add-on is part of
+  // the add-on's tree and is keyed like the source, one beside it is part of the archive's
+  // and is keyed there. Only the SPELLING follows the layout - the corpus is always there,
+  // and always the same files, so nothing downstream has to ask where the folder was put.
+  const experiment = fileView(store, {
+    prefix: exp !== null && under(exp, src) ? src : "",
+    keys: expKeys,
+  });
+  source.experiment = experiment;
   return {
-    files,
-    nodeModules: [...archive.nodeModules],
-    archives: [...archive.archives],
+    source,
+    experiment,
+    // nodeModules/archives are COPIED so the build half owns its lists: the caller shares
+    // one archive object, and an aliased array must not leak mutations back to it. Both
+    // span the whole --sca-root, so the committed-* checks catch a tree anywhere - in the
+    // review source, the build tree, or the Experiment.
+    build: {
+      files: fileView(store, { keys: buildKeys }),
+      store,
+      nodeModules: [...archive.nodeModules],
+      archives: [...archive.archives],
+    },
   };
 }
 
@@ -541,7 +540,7 @@ function extractZip(zipPath, destDir) {
  *   skipped: string[]}}
  */
 function readDir(dir) {
-  const files = new Map();
+  const keys = [];
   const nodeModules = [];
   const archives = [];
   const skipped = [];
@@ -576,17 +575,19 @@ function readDir(dir) {
         if (ARCHIVE_EXTENSIONS.has(extname(rel))) {
           archives.push(rel);
         }
-        // Bound the total unpacked size, matching the archive path's zip-bomb cap.
+        // Bound the total unpacked size, matching the archive path's zip-bomb cap. The
+        // size is the file's own, read from the directory entry: the bytes stay on disk
+        // and the store reads them if something asks (./corpus.js).
         unpacked += fs.statSync(full).size;
         if (unpacked > ADDON_MAX_UNPACKED_BYTES) {
           throw addonTooLargeError();
         }
-        files.set(rel, fs.readFileSync(full));
+        keys.push(rel);
       }
     }
   };
   walk(dir);
-  return { files, nodeModules, archives, skipped };
+  return { files: new FileStore(dir, keys), nodeModules, archives, skipped };
 }
 
 /**

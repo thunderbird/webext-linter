@@ -23,7 +23,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { declarationLine } from "../../lib/util.js";
+import { anchorText, declarationLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -37,7 +37,7 @@ export default {
     const deps = addon?.vendor?.unpopularDeps ?? [];
     const findings = [];
     for (const { name, version, file, token } of deps) {
-      const text = addon.files?.get(file)?.toString("utf8") ?? "";
+      const text = anchorText(addon, file);
       // Anchor at the dependency's declaration line (a quoted JSON key in
       // package.json); fall back to a plain substring, then to no line.
       const line = token ? declarationLine(text, token) : null;

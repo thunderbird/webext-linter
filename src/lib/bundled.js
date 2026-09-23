@@ -28,6 +28,7 @@ import {
   CSS_EXTENSIONS,
   CODE_EXTENSIONS,
 } from "../util/files.js";
+import { withExperiment } from "../addon/corpus.js";
 import { isVendored } from "../vendor/resolve.js";
 import { collectJsSources } from "../addon/sources.js";
 import { rawSha256 } from "../normalize/hash.js";
@@ -123,7 +124,7 @@ export function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
   // it stays linted.
   const trusted = addon.experiments?.trustedFiles ?? new Set();
   const nonAuthored = new Set([...trusted]);
-  for (const [file, buf] of addon.files) {
+  for (const [file, buf] of withExperiment(addon)) {
     const ext = extname(file);
     // A vendored file (an exact VENDOR entry OR a file under a vendored folder) is
     // not the developer's code: skip scanning it and treat it as non-authored.

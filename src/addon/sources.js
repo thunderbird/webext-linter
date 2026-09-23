@@ -16,6 +16,7 @@
 // (extname, JS_EXTENSIONS) are src/util/files.js.
 
 import { eachElement } from "../scan/html-parse.js";
+import { withExperiment } from "./corpus.js";
 import { extractVueSfc } from "../scan/vue-sfc.js";
 import {
   extname,
@@ -87,7 +88,7 @@ import {
  */
 export function collectJsSources(addon) {
   const sources = [];
-  for (const [file, buf] of addon.files) {
+  for (const [file, buf] of withExperiment(addon)) {
     const ext = extname(file);
     if (JS_EXTENSIONS.has(ext)) {
       sources.push({

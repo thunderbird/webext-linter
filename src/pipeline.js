@@ -6,7 +6,7 @@
 // and I/O are the front-end's job. The submission itself is never modified or
 // repacked: the one thing this writes of it is a copy, the packed .xpi extracted
 // to XPI_ROOT so every reader - the checks, a reviewer, an agent - reads one
-// unpacked tree rather than the tool holding a second one in memory.
+// unpacked tree rather than the tool holding a second one of its own.
 //
 // Belongs here: the declared setup plan (SETUP_STEPS), the stage orchestration
 // (runPipeline), the XPI-only submission advice (resolveXpiOnlyAdvice) and the
@@ -40,13 +40,7 @@ import {
   loadSchemaAnnotations,
   applySchemaAnnotations,
 } from "./schema/annotate.js";
-import {
-  loadAddon,
-  loadScaAddon,
-  selectScaBuildFiles,
-  scaRootRelative,
-  relativeInside,
-} from "./addon/load.js";
+import { loadAddon, scaViews } from "./addon/load.js";
 import { isTranspiledSource } from "./util/files.js";
 import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
@@ -242,7 +236,7 @@ export const SETUP_STEPS = Object.freeze([
  *   a flat layout with manifest.json at the root.
  * @property {string} [scaExpSource]  SCA mode: the Experiment implementation folder,
  *   absolute and inside scaRoot, which is not necessarily inside scaSource. It reaches a
- *   check AS GIVEN (ctx.scaExpSource, beside ctx.scaSource); where it sits WITHIN the review
+ *   archive partition (scaViews), which gives it its own view; where it sits WITHIN the review
  *   source is derived at the one read that wants it (src/lib/reachability.js), in the
  *   keyspace the review addon's keys live in. Its privileged, non-WebExtension files are excluded
  *   from the WebExtension code checks (which review all of the readable source, having no
@@ -410,6 +404,8 @@ export async function runPipeline(opts) {
   let sourceFiles;
   /** The review source, absolute - the whole root when --sca-source named nothing. */
   let scaSource;
+  /** The SCA archive split into its source / experiment / build views (scaViews). */
+  let scaParts;
   /** The review schema (indexed) and the stamps meta publishes for it. */
   let schema;
   let schemaSource;
@@ -571,26 +567,21 @@ export async function runPipeline(opts) {
       xpiParsedSources = extractReview(xpiAddon, { schema, xpiAddon });
     },
 
-    // The submitted source archive, read ONCE for every later reader of it. It is read
-    // here because the XPI-only ADVICE below asks both what KIND of source it carries and
-    // whether the shipped scripts ARE that source - which needs bytes, not just names. They
-    // cost nothing extra: loadAddon has already decompressed them into memory, and the
-    // steps below reuse this same archive.
+    // The submitted source archive, walked ONCE and split here into the three views every
+    // later reader takes its part from (src/addon/load.js scaViews). It is done here
+    // because the XPI-only ADVICE below asks both what KIND of source the archive carries
+    // and whether the shipped scripts ARE that source - which needs bytes, not just names.
+    // Reading them costs nothing extra: the store reads a file once and the views share it.
     "source-archive": () => {
       if (setupFacts.sca) {
         scaArchive = loadAddon(opts.scaRoot);
-        const rel = scaRootRelative(
-          opts.scaSource || opts.scaRoot,
-          opts.scaRoot,
-          "--sca-source"
-        );
-        const prefix = rel ? `${rel}/` : "";
-        sourceFiles = new Map();
-        for (const [p, buf] of scaArchive.files) {
-          if (p.startsWith(prefix)) {
-            sourceFiles.set(p.slice(prefix.length), buf);
-          }
-        }
+        scaSource = opts.scaSource || opts.scaRoot;
+        scaParts = scaViews(scaArchive, {
+          scaSource,
+          scaRoot: opts.scaRoot,
+          scaExpSource: opts.scaExpSource,
+        });
+        sourceFiles = scaParts.source.files;
       }
 
       // An SCA submission is ALWAYS reviewed as SCA - this only decides whether to TELL the
@@ -618,35 +609,21 @@ export async function runPipeline(opts) {
     },
 
     // The review target of a source code review: the readable source. The archive was read
-    // ONCE above by `source-archive` (and is shared with selectScaBuildFiles in
-    // `build`); the review addon is the source subtree carrying the XPI's manifest. The
-    // review source is absolute: the whole root when --sca-source named nothing.
+    // ONCE above by `source-archive`, which also split it into its three views; the
+    // review addon is the source view carrying the XPI's manifest.
     "target-source": () => {
-      scaSource = opts.scaSource || opts.scaRoot;
-      addon = loadScaAddon(scaArchive, scaSource, opts.scaRoot);
+      addon = scaParts.source;
       for (const notice of scaArchive.skipped ?? []) {
         warn(notice);
       }
       // Mirror the XPI's experiment classification onto the review addon (the experiment
       // checks read ctx.experiments from it; in XPI mode the two are one addon anyway).
       addon.experiments = xpiAddon.experiments;
-      // Warn when --sca-exp-source matches nothing under the review source: a mis-typed path
-      // would silently exclude nothing and flood the report with false positives on the
-      // privileged Experiment code. Derived HERE, for this warning only - the checks are
-      // handed the two paths and ask the same question of them where they use it
-      // (src/lib/reachability.js). "" means there is nothing to exclude, which is also the
-      // answer when the folder sits elsewhere under the root: it was never in this file set.
-      const expExclude = opts.scaExpSource
-        ? (relativeInside(opts.scaExpSource, scaSource) ?? "")
-        : "";
-      if (
-        expExclude &&
-        ![...addon.files.keys()].some(
-          (f) => f === expExclude || f.startsWith(`${expExclude}/`)
-        )
-      ) {
+      // Warn when --sca-exp-source matches nothing: a mis-typed path would exclude nothing
+      // and flood the report with false positives on the privileged Experiment code.
+      if (opts.scaExpSource && scaParts.experiment.size === 0) {
         warn(
-          `--sca-exp-source "${opts.scaExpSource}" matched no files under --sca-source; ` +
+          `--sca-exp-source "${opts.scaExpSource}" matched no files under --sca-root; ` +
             "nothing will be excluded from the WebExtension code checks."
         );
       }
@@ -773,12 +750,7 @@ export async function runPipeline(opts) {
     // classifies what the build does, so it routes to the reviewer, who reproduces
     // it from the source by hand.
     build: () => {
-      addon.buildFiles = selectScaBuildFiles(
-        scaArchive,
-        scaSource,
-        opts.scaRoot,
-        opts.scaExpSource
-      );
+      addon.buildFiles = scaParts.build;
       addon.buildFiles.buildReview = analyzeBuild({ build: addon.buildFiles });
     },
   };

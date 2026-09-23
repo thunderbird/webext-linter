@@ -28,8 +28,6 @@ import { apiUsageOf } from "./extract.js";
  * @property {import("../schema/index.js").SchemaIndex} schema
  * @property {{allowExperiments?: boolean, libraryHashes?: Map<string, object>}} options
  * @property {object} mode  The REVIEW_MODE enum member (XPI/SCA); read as `mode?.sca`.
- * @property {string} [scaSource]
- * @property {string} [scaExpSource]
  * @property {boolean} scaNotRequired
  * @property {boolean} invalidExperiment
  * @property {?object} manifest
@@ -47,7 +45,18 @@ import { apiUsageOf } from "./extract.js";
  * for a field like buildFiles to put the SCA build tree in front of an input:source check). If this list is ever
  * INCOMPLETE, a check reads undefined and the tests fail loudly - the safe failure direction.
  *
- * `files` is the addon's own Map (referenced, not cloned), so a check reads the real bytes.
+ * `files` is the addon's own corpus (referenced, not cloned), so a check reads the real
+ * bytes. `store` is the SUBMISSION's, which in a source review is the whole --sca-root while
+ * `files` is only the add-on's subtree of it: the frame the build manifest and the lock are
+ * written in. It is named here because a dependency finding anchors at that manifest and has
+ * to find it to report a line; a check reaching for `store` is saying it wants the
+ * submission rather than the add-on, which is a different question, not a wider one. In an
+ * XPI review the two are one object. `experiment` is the privileged Experiment
+ * implementation (--sca-exp-source), which `files` deliberately excludes so the
+ * WebExtension checks never see Services/ChromeUtils code: a check that reviews a file for
+ * what it IS rather than for which API it calls - minified, obfuscated, a known library -
+ * reads both, and when the Experiment sits inside the add-on the two share a keyspace so
+ * the union is the add-on's whole tree.
  * `vendor`/`bundled` are the pipeline's pre-computed, reconciled classification (the lazy
  * fallbacks would recompute a less-complete one). `nodeModules`/`archives`/`buildReview` serve
  * the SCA build corpus (the build ctx is projected from addon.buildFiles itself);
@@ -67,6 +76,8 @@ import { apiUsageOf } from "./extract.js";
 function reviewView(addon) {
   return {
     files: addon.files,
+    store: addon.store,
+    experiment: addon.experiment,
     vendor: addon.vendor,
     bundled: addon.bundled,
     nodeModules: addon.nodeModules,
@@ -128,8 +139,6 @@ function projectCtx(
     // read rather than answered here, because the answer only means anything in the review
     // addon's own keyspace - and a value that reads "" in three different situations is not
     // one a check should be handed instead of the facts.
-    scaSource: env.scaSource,
-    scaExpSource: env.scaExpSource,
     // The shipped XPI turned out to BE the submitted source, so an XPI-only submission would
     // have been enough; the sca-not-required check reads this to say so. Advice only - this
     // review is a full SCA review either way.

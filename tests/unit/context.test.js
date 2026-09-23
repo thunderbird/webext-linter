@@ -105,9 +105,10 @@ test("buildXpiCtxs carries the XPI's own sources; isShippedView only in SCA", ()
   assert.equal(inSca.isShippedView, true); // gates reachability's SCA fallback
 
   // The two SCA paths reach a check AS GIVEN, absolute - never a prefix derived from them.
-  // Where the Experiment sits inside the source is a question about the review addon's own
-  // keys, so it is asked at the read (src/lib/reachability.js), not answered here: the same
-  // "" would otherwise stand for three unrelated situations.
+  // The --sca-* paths are NOT on the ctx: where the source and the Experiment sit is
+  // settled once, when the archive is split into views (src/addon/load.js scaViews), and a
+  // check reads the corpus it was routed rather than a path on disk. They stay on `meta`,
+  // for the report.
   const withPaths = buildXpiCtxs(
     xpi,
     xpiParsed,
@@ -117,8 +118,8 @@ test("buildXpiCtxs carries the XPI's own sources; isShippedView only in SCA", ()
       scaExpSource: "/r/src/experiments",
     })
   ).xpiCtx;
-  assert.equal(withPaths.scaSource, "/r/src");
-  assert.equal(withPaths.scaExpSource, "/r/src/experiments");
+  assert.equal(withPaths.scaSource, undefined);
+  assert.equal(withPaths.scaExpSource, undefined);
 
   const inXpi = buildXpiCtxs(
     xpi,
@@ -126,6 +127,55 @@ test("buildXpiCtxs carries the XPI's own sources; isShippedView only in SCA", ()
     envWith({ mode: REVIEW_MODE.XPI })
   ).xpiCtx;
   assert.equal(inXpi.isShippedView, undefined); // one artifact - not a distinct shipped view
+});
+
+// The Experiment implementation reaches a check. ctx.addon.files deliberately EXCLUDES it,
+// so the WebExtension API/permission/eval checks never false-positive on Services or
+// ChromeUtils - but a check that reviews a file for what it IS (minified, obfuscated, a
+// known library) must still see it: privileged code shipped unreadable is worse, not
+// better. Such a check reads ctx.addon.files and ctx.addon.experiment as one corpus, which
+// is only possible because both are allowlisted and, for an Experiment inside the add-on,
+// keyed in the same frame.
+test("a check can merge the source and Experiment corpora off ctx.addon", () => {
+  const source = addonWith({ "app.js": "export const x = 1;" });
+  const experiment = new Map([
+    ["experiment/exp.js", Buffer.from("ChromeUtils.import('x');")],
+  ]);
+  source.experiment = experiment;
+  const env = envWith({ mode: REVIEW_MODE.SCA });
+
+  const { scaCtx } = buildScaCtxs(
+    source,
+    parsed(source),
+    { files: new Map() },
+    env
+  );
+
+  // Apart: the WebExtension checks see the add-on's code and nothing privileged.
+  assert.ok(scaCtx.addon.files.has("app.js"));
+  assert.ok(!scaCtx.addon.files.has("experiment/exp.js"));
+  // Allowlisted, so a check that needs it can reach it at all (reviewView is a whitelist -
+  // an un-named field would silently read undefined here).
+  assert.equal(scaCtx.addon.experiment, experiment);
+
+  // Together: the corpus a what-is-this-file check reviews.
+  const merged = new Map([...scaCtx.addon.files, ...scaCtx.addon.experiment]);
+  assert.deepEqual(
+    [...merged.keys()].sort(),
+    ["app.js", "experiment/exp.js"],
+    "both artifacts' files, one corpus"
+  );
+  assert.match(merged.get("experiment/exp.js").toString("utf8"), /ChromeUtils/);
+
+  // In an XPI review there is no Experiment view to merge - the shipped artifact carries
+  // its experiment code like any other file, so the field is simply absent.
+  const xpiOnly = buildScaCtxs(
+    addonWith({ "app.js": "1;" }),
+    parsed(addonWith({ "app.js": "1;" })),
+    { files: new Map() },
+    env
+  ).scaCtx;
+  assert.equal(xpiOnly.addon.experiment, undefined);
 });
 
 // buildScaCtxs.buildCtx routes the SCA build corpus onto ctx.addon (the input: build seam),

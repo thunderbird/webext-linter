@@ -21,7 +21,11 @@ import { readVendorDeclarations, readVendorFile } from "../normalize/vendor.js";
 import { classifySource } from "./sources.js";
 import { lockedVersion, lockedPackages } from "./locks.js";
 import { SCHEME_RE } from "../lib/util.js";
-import { declaredDependencies, readManifest } from "./manifest.js";
+import {
+  declaredDependencies,
+  readManifest,
+  submissionFiles,
+} from "./manifest.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /** @typedef {import("../normalize/vendor.js").VendorEntry} VendorEntry */
@@ -499,7 +503,7 @@ function classifyDeps(deps, addon, reviewerInstalls) {
  *   devPackages: {name: string, version: string}[]}}
  */
 function resolvePackages(addon, reviewerInstalls) {
-  const pkg = readManifest(addon.files);
+  const pkg = readManifest(submissionFiles(addon));
   if (!pkg) {
     return {
       packages: [],

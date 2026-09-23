@@ -34,6 +34,7 @@ import {
   aliasTarget,
   declaredDependencies,
   readManifest,
+  submissionFiles,
   ownValue,
 } from "./manifest.js";
 
@@ -104,7 +105,8 @@ export const TREE_LOCKS = [
  * @returns {?string}  A TREE_LOCKS filename, or null.
  */
 function governingLock(addon) {
-  return TREE_LOCKS.find((file) => addon?.files?.has(file)) ?? null;
+  const files = submissionFiles(addon);
+  return TREE_LOCKS.find((file) => files?.has(file)) ?? null;
 }
 
 // A concrete released version. Anything else in a `version` field (a git ref, a
@@ -141,7 +143,7 @@ function parsedLock(addon, file) {
   if (byFile.has(file)) {
     return byFile.get(file);
   }
-  const text = addon.files?.get(file)?.toString("utf8");
+  const text = submissionFiles(addon)?.get(file)?.toString("utf8");
   let data = null;
   try {
     if (text) {
@@ -524,7 +526,7 @@ function declaredName(name, spec) {
  * @returns {LockGap[]}
  */
 export function lockGaps(addon) {
-  const files = addon?.files;
+  const files = submissionFiles(addon);
   if (!files) {
     return [];
   }

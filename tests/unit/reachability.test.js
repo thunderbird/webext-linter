@@ -192,9 +192,9 @@ test("pureWebExtensionReachable: webext tree + .html experiment params only", ()
 // SCA mode: there is no usable reachability tree over the readable source - the
 // manifest's BUILT entry points (from the XPI) don't exist in the source layout,
 // so the closure would be empty and every WebExtension code check would review
-// nothing. Instead the whole source is WebExtension code, minus an Experiment
-// subtree named by --sca-exp-source (privileged, non-WebExtension code).
-test("SCA mode: pureWebExtensionReachable is all source, minus --sca-exp-source", () => {
+// nothing. Instead the whole source corpus is WebExtension code - and it is already only
+// that, because the archive partition gave the Experiment implementation its own view.
+test("SCA mode: pureWebExtensionReachable is every file the source corpus holds", () => {
   // A built entry the readable source layout does not contain (the SCA mismatch).
   const manifest = {
     manifest_version: 3,
@@ -221,28 +221,19 @@ test("SCA mode: pureWebExtensionReachable is all source, minus --sca-exp-source"
   assert.ok(sca.pureWebExtensionReachable.has("helper.js"));
   assert.ok(sca.pureWebExtensionReachable.has("experiments/exp.js"));
 
-  // SCA mode + --sca-exp-source: the Experiment subtree drops out; the rest stays. Both
-  // paths are absolute and ctx holds them as given - where the Experiment sits INSIDE the
-  // source is this module's own question, asked in the keyspace these file keys live in.
+  // The Experiment subtree is not excluded HERE: the archive partition already gave it its
+  // own view, so the source corpus this reads never holds it (src/addon/load.js scaViews).
+  // What this module answers is only "every file the source corpus has" - which is why a
+  // corpus WITHOUT the Experiment leaves nothing of it to find, in any layout.
+  const files2 = Object.fromEntries(
+    Object.entries(files).filter(([f]) => !f.startsWith("experiments/"))
+  );
   const scaExp = buildReachability({
-    ...ctxFrom(files, manifest),
+    ...ctxFrom(files2, manifest),
     mode: REVIEW_MODE.SCA,
-    scaSource: "/r/src",
-    scaExpSource: "/r/src/experiments",
   });
   assert.ok(scaExp.pureWebExtensionReachable.has("helper.js"));
   assert.ok(!scaExp.pureWebExtensionReachable.has("experiments/exp.js"));
-
-  // A folder OUTSIDE the review source excludes nothing here: those files were never
-  // loaded into this file set (they are the build corpus's, and the Experiment's code is
-  // reviewed from the XPI).
-  const scaSibling = buildReachability({
-    ...ctxFrom(files, manifest),
-    mode: REVIEW_MODE.SCA,
-    scaSource: "/r/src",
-    scaExpSource: "/r/experiment",
-  });
-  assert.ok(scaSibling.pureWebExtensionReachable.has("experiments/exp.js"));
 
   // The SHIPPED view (isShippedView) is not the review source: it uses the closure
   // branch like an XPI review (its entry points resolve against its own files), so

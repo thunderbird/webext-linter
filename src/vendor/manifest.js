@@ -106,6 +106,21 @@ function parseManifest(buf) {
 }
 
 /**
+ * The SUBMISSION's own corpus - the frame a build manifest and a lock are written in.
+ *
+ * For a built XPI it is the artifact itself. For a source archive it is the whole
+ * --sca-root: `addon.files` there is the add-on's own subtree, whose root is NOT where the
+ * build runs, so reading a manifest from it would take a package.json the build never
+ * installs from. An addon with no separate store (a hand-built file map) answers with its
+ * files, which is the same thing for a single-artifact submission.
+ * @param {?object} addon
+ * @returns {?object}  The Map surface, or undefined.
+ */
+export function submissionFiles(addon) {
+  return addon?.store ?? addon?.files;
+}
+
+/**
  * The submission's ROOT package.json, parsed, or null when it is absent, unreadable, or
  * not a JSON object.
  * @param {?Map<string, Buffer>} files  The artifact's files.

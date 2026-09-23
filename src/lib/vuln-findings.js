@@ -23,7 +23,7 @@
 
 import { VERDICT } from "./enum.js";
 import { finding, SEVERITY } from "../report/finding.js";
-import { declarationLine } from "./util.js";
+import { anchorText, declarationLine } from "./util.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../report/finding.js").Severity} Severity */
@@ -67,7 +67,7 @@ export function vulnFindings(ctx, vulns) {
    */
   const fileText = (file) => {
     if (!textByFile.has(file)) {
-      textByFile.set(file, addon.files?.get(file)?.toString("utf8") ?? "");
+      textByFile.set(file, anchorText(addon, file));
     }
     return textByFile.get(file);
   };

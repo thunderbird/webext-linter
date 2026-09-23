@@ -132,6 +132,12 @@ function installFetchMock(dir, network) {
 // under review: a file kept inside it is a file the review sees the add-on shipping, and
 // hiding one would mean the harness loading the add-on itself and deleting the key before
 // handing it over - a test-only input on runPipeline.
+// A spec may also carry an "sca" block naming where the add-on code and the Experiment
+// implementation sit INSIDE the fixture's src/ tree (the --sca-root), as paths relative to
+// it: { "source": "addon", "expSource": "experiment" }. Omitting it is the flat layout,
+// where the source IS the root. The block is the only way a fixture can express a NESTED
+// submission, and the keyspaces only differ there - flat means the prefix is empty, so the
+// review source and the archive key a file identically.
 function loadFixture(dir) {
   const file = path.join(EXPECTED_DIR, `${path.basename(dir)}.json`);
   const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -139,14 +145,17 @@ function loadFixture(dir) {
     expect: parsed.expect ?? {},
     options: parsed.options ?? {},
     network: parsed.network ?? {},
+    sca: parsed.sca ?? {},
   };
 }
 
 // A fixture is an SCA (source-code archive) review when it holds two artifacts as
 // subfolders: `xpi/` (the shipped built add-on, the authoritative manifest) and
-// `src/` (the readable source tree the code checks review, e.g. a Vue .vue file).
-// The harness then drives runPipeline in SCA mode; a plain fixture folder is an
-// ordinary XPI review. Detected by layout, so the spec needs no extra flag.
+// `src/` (the submitted source archive). The harness then drives runPipeline in SCA
+// mode; a plain fixture folder is an ordinary XPI review. WHETHER a fixture is SCA is
+// detected by layout, so the spec needs no flag for it; where the add-on code sits
+// WITHIN the archive is the spec's "sca" block (see loadFixture), because no layout
+// convention can say which subfolder is the source and which is the Experiment.
 function isScaFixture(dir) {
   return ["xpi", "src"].every(
     (sub) =>
@@ -247,7 +256,7 @@ async function main() {
   let failed = 0;
   for (const name of addons) {
     const dir = path.join(ADDONS_DIR, name);
-    const { expect: expected, options, network } = loadFixture(dir);
+    const { expect: expected, options, network, sca } = loadFixture(dir);
     let problems;
     const restoreFetch = installFetchMock(dir, network);
     try {
@@ -267,14 +276,19 @@ async function main() {
       let review;
       if (isScaFixture(dir)) {
         // SCA mode: the shipped XPI is the authoritative artifact (addonPath), the
-        // src/ tree is the review target (scaRoot, flat so scaSource is ".").
+        // src/ tree is the submitted archive (scaRoot). Where the add-on code and the
+        // Experiment sit inside it comes from the spec's "sca" block; with none, the
+        // source IS the root - the flat layout. Named absolutely, like every other path
+        // opt, since that is what the arg reader hands the pipeline.
+        const scaRoot = path.join(dir, "src");
+        const inRoot = (value) =>
+          value ? path.join(scaRoot, value) : undefined;
         review = await runPipeline({
           ...base,
           addonPath: path.join(dir, "xpi"),
-          scaRoot: path.join(dir, "src"),
-          // The source IS the root here (a flat fixture layout), named absolutely like
-          // every other path opt.
-          scaSource: path.join(dir, "src"),
+          scaRoot,
+          scaSource: inRoot(sca.source) ?? scaRoot,
+          scaExpSource: inRoot(sca.expSource),
         });
       } else {
         // XPI mode: the fixture folder IS the add-on, and the pipeline loads it - the

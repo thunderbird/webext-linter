@@ -19,7 +19,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { manifestTokenLine } from "../../lib/util.js";
+import { anchorText, manifestTokenLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -31,7 +31,7 @@ export default {
   run(ctx) {
     const { addon } = ctx;
     const unsupported = addon?.vendor?.unsupportedDeps ?? [];
-    const text = addon.files.get("package.json")?.toString("utf8") ?? "";
+    const text = anchorText(addon, "package.json");
     const findings = [];
     for (const { name, spec } of unsupported) {
       const line = manifestTokenLine(text, name);
