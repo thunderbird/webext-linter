@@ -116,7 +116,7 @@
       "loc": null,
       "item": "https://unpkg.com/pkg@1.0.0/dist/bundle.min.js",
       "hint": "lib/a.min.js, lib/b.min.js",
-      "message": "Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous; and a directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/<name>@<version>/, or its registry tarball), or a GitHub tree URL (https://github.com/<owner>/<repo>/tree/<ref>/<path>)."
+      "message": "Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous. A directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/[name]@[version]/, or its registry tarball), or a GitHub tree URL (https://github.com/[owner]/[repo]/tree/[ref]/[path])."
     },
     {
       "ruleId": "vendor-ambiguous-source",
@@ -125,7 +125,7 @@
       "loc": null,
       "item": "https://unpkg.com/other@2.0.0/dist/other.min.js",
       "hint": "lib/c.min.js, lib/d.min.js",
-      "message": "Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous; and a directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/<name>@<version>/, or its registry tarball), or a GitHub tree URL (https://github.com/<owner>/<repo>/tree/<ref>/<path>)."
+      "message": "Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous. A directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/[name]@[version]/, or its registry tarball), or a GitHub tree URL (https://github.com/[owner]/[repo]/tree/[ref]/[path])."
     }
   ]
 }

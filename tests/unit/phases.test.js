@@ -260,12 +260,12 @@ test("a phase declares the kind of answer its entries take", () => {
 
 // ---- the early exit's registry half ----
 
-// Both finals hand over the same three parts, and which one is printed is decided at the
-// very end of the loop. One of them quietly missing a slot would drop that part from
-// exactly the reviews that took that branch, and from no others.
-test("a final that loses one of the three hand-over slots is refused", () => {
+// Both finals hand over the same parts, and which one is printed is decided at the very end
+// of the loop. One of them quietly missing a slot would drop that part from exactly the
+// reviews that took that branch, and from no others.
+test("a final that loses one of the hand-over slots is refused", () => {
   for (const key of ["final", "final-early-exit"]) {
-    for (const slot of ["{{details}}", "{{tally}}", "{{report}}"]) {
+    for (const slot of ["{{details}}", "{{tally}}"]) {
       const registry = fresh();
       const doc = registry.doc["llm-phases"];
       assert.ok(doc[key].includes(slot), `${key} carries ${slot} as shipped`);

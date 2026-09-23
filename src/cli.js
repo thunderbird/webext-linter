@@ -31,6 +31,7 @@ import {
   loopPromptLines,
 } from "./report/format.js";
 import { readState } from "./report/state.js";
+import { writeReportFile } from "./report/report-file.js";
 import {
   accept,
   issue,
@@ -1030,9 +1031,9 @@ async function runLoopPass(file, registry) {
     process.stdout.write("\n");
     return 0;
   }
-  // Settled. The last prompt differs from every other only in carrying what the reviewer
-  // is handed: the Review Details block (unless a phase handed it over already), the
-  // tally, and the report itself.
+  // Settled. The last prompt differs from every other only in carrying what the reviewer is
+  // left with: the tally, and the Review Details block - every path this review named, the
+  // report among them, and the line saying so where the review stopped.
   let review, applied, details, tally, report, earlyExit;
   try {
     ({ review, applied, details, tally, report, earlyExit } = settle(
@@ -1055,17 +1056,20 @@ async function runLoopPass(file, registry) {
       `Applied ${applied.length} verdict(s): ${applied.join(", ")}\n\n`
     );
   }
+  // The settled report goes to the FILE the review details link, not into the prompt: the
+  // hand-over used to print it here and ask for it back unchanged, and a model that rewords
+  // its input corrupts the one text a developer receives. Written before the prompt that
+  // names it, so the link is live the moment the reviewer is told to open it.
+  writeReportFile(state.paths?.report, report);
   // Both blocks travel in the text's own slots rather than as writes after it, so the
   // text says which is which. Printed in sequence they would be two documents with
   // nothing between them saying where one ends.
-  // A review that STOPPED hands over the same three parts under a text that says so:
-  // "the review is settled" is not true of one cut short, and the agent relays what it
-  // is given.
+  // A review that STOPPED hands over the same parts under a text that says so: "the review
+  // is settled" is not true of one cut short, and the agent relays what it is given.
   process.stdout.write(
     `${fillSlots(earlyExit ? texts.finalEarlyExit : texts.final, {
       details,
       tally,
-      report,
     })}\n`
   );
   return hasErrors(review.findings) ? 1 : 0;

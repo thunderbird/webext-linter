@@ -928,6 +928,7 @@ export async function runPipeline(opts) {
   // by --llm-skip-summary, the build report by a review that is not a source code one.
   let summaryPath = null;
   let buildPath = null;
+  let reportPath = null;
   // The REVIEW LOOP's state, built once the review is final and handed to `issue` below.
   // A LOCAL, never hung off meta: it carries the report, and the report carries meta.
   let loopState = null;
@@ -950,14 +951,19 @@ export async function runPipeline(opts) {
     const files = reviewFilePaths(xpiAddon, addonPath);
     summaryPath = skip.includes("summary") ? null : files.summary;
     buildPath = mode?.sca ? files.build : null;
+    // Ungated, unlike the two above: every review has a report, and this one is written by
+    // the linter (src/report/report-file.js) rather than asked of an agent, so there is no
+    // step whose absence could leave the path naming nothing.
+    reportPath = files.report;
     // Named on meta BEFORE the state is built: `issue` writes the state, and a field set
     // after that never reaches the passes that read it back. A path printed for a file
     // nobody is asked to write would be an instruction with no step behind it - which is
-    // why each is null above unless the step that writes it prints: the description is
-    // withheld by --llm-skip-summary, the build report by a review that is not a source
-    // code one.
+    // why the first two are null above unless the step that writes them prints: the
+    // description is withheld by --llm-skip-summary, the build report by a review that is
+    // not a source code one.
     meta.summaryFile = summaryPath ?? undefined;
     meta.buildFile = buildPath ?? undefined;
+    meta.reportFile = reportPath;
     // Claimed empty, so a directory this run cannot write to fails before the review is
     // built rather than when the finished review is written to it.
     fs.writeFileSync(files.state, "");
@@ -1006,6 +1012,7 @@ export async function runPipeline(opts) {
         review: meta.reviewFile,
         description: summaryPath,
         build: buildPath,
+        report: reportPath,
         schemaCache: opts.schemaCache,
         scaRoot: opts.scaRoot ?? null,
         // The block a phase that READS the add-on prints: which artifact, and the schema

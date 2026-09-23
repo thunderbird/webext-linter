@@ -12,7 +12,7 @@ You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 The review was not completed and the report is incomplete due to the following issues:
-- A build that cannot be reproduced
+- Build process issues
 
 ── Extended Code Review ──
 

@@ -15,6 +15,7 @@ import { loadRegistry } from "../../src/checks/registry.js";
 import { REVIEW_MODE } from "../../src/lib/enum.js";
 import { renderFindings } from "../../src/report/responses.js";
 import { STATE_VERSION } from "../../src/report/state.js";
+import { writeReportFile } from "../../src/report/report-file.js";
 import {
   issue,
   accept,
@@ -69,6 +70,9 @@ function review(
           xpi: `${dir}/a.xpi`,
           xpiRoot: `${dir}/a.xpi.extracted/`,
           xpiFile: "a.xpi",
+          // The report the reviewer sends. Named here because it is a row of that block
+          // like any other, and the one the last prompt exists to leave them holding.
+          reportFile: `${base}.report.md`,
         },
         mode: "xpi",
       },
@@ -100,13 +104,63 @@ function review(
           }
         : null,
       run: { skip: [], sca: false, sweep },
-      paths: { description: `${base}.summary.md`, build: null },
+      paths: {
+        description: `${base}.summary.md`,
+        build: null,
+        report: `${base}.report.md`,
+      },
       answers: {},
       route: {},
       sweep: null,
     },
   };
 }
+
+// The report is the one review document the LINTER writes. It is refreshed when the `ask`
+// phase goes out - that phase hands the reviewer the Review Details block, which links the
+// file, and they read it to answer the very questions it puts - and written again from the
+// settled review once those answers are in. Asking the agent to reproduce the report in the
+// chat is what this replaced, so the two writes are what the reviewer actually gets.
+test("the report file is written for the questions and rewritten once they are answered", () => {
+  const dir = tmp();
+  const { state, stateFile } = review(dir);
+  const file = state.paths.report;
+
+  // Nothing yet: the path is named, but no phase has handed it to anyone.
+  assert.equal(fs.existsSync(file), false);
+
+  const seen = [];
+  for (let pass = 0; pass < 10; pass++) {
+    const out = issue(state, stateFile, PHASES, REGISTRY);
+    if (!out) {
+      break;
+    }
+    seen.push(out.phase.name);
+    // Written exactly when `ask` goes out, and not before it.
+    assert.equal(
+      fs.existsSync(file),
+      seen.includes("ask"),
+      `after issuing ${out.phase.name}`
+    );
+    const handed = handBack(state, (e) => {
+      if (out.phase.name === "spawn") return [];
+      if (out.phase.name === "verify")
+        return e.index === 1 ? "withdrawn" : "reported";
+      if (out.phase.name === "settle") return "ask";
+      return "Clear";
+    });
+    accept(state, handed, PHASES, REGISTRY);
+  }
+  assert.ok(seen.includes("ask"), "the fixture reaches the ask phase");
+
+  // What the reviewer opened while answering, and what the same file says afterwards. The
+  // settled copy is the authority: it is written from the review the answers produced.
+  const asked = fs.readFileSync(file, "utf8");
+  const settled = settle(state, REGISTRY);
+  writeReportFile(file, settled.report);
+  assert.equal(fs.readFileSync(file, "utf8"), `${settled.report}\n`);
+  assert.notEqual(asked, "", "the copy handed to the reviewer is not empty");
+});
 
 /** Fill every slot the way an obedient agent would, and hand it back. */
 function handBack(state, answerFor) {
@@ -567,7 +621,7 @@ test("--llm-skip-sweep asks for no sweep, though the instructions still exist", 
  * own step: a phase can hand out and take back cleanly and still refuse what it took when
  * the report is built from it.
  * @returns {{seen: string[], details: string}}  The phases issued, and the Review Details
- *   block the report carries - empty when a phase handed it over already.
+ *   block the settled review hands over.
  */
 function phasesOf(state, stateFile) {
   const seen = [];
@@ -658,26 +712,25 @@ test("every combination of the skips issues exactly the phases it should", () =>
     const where = `skips: ${skip.join(",") || "none"}`;
     assert.deepEqual(seen, expected, where);
 
-    // The Review Details block is handed over ONCE, by whichever phase gets there first:
-    // `ask` before it asks anything, or the report when that phase is never issued.
-    // Never twice, and never not at all.
-    if (seen.includes("ask")) {
-      assert.equal(details, "", `${where}: the ask phase handed it over`);
-    } else {
-      // Written for a chat: a list of links, then what the verdicts mean anything
-      // against. The heading above it is the agent's to write, so it is not in here.
-      assert.match(
-        details,
-        /^\* XPI_FILE: /m,
-        `${where}: the report hands it over`
-      );
-      assert.match(
-        details,
-        /^\* XPI_ROOT: \[/m,
-        `${where}: and where to read it`
-      );
-      assert.match(details, /^schema /m, `${where}: and says what against`);
-    }
+    // The block ends EVERY settled review, whether or not the `ask` phase showed the same
+    // one earlier. That copy was for answering the questions with, and by the time they are
+    // answered it is far above the reviewer - while the report they are about to send, and
+    // the package it is about, are rows in this one.
+    //
+    // Written for a chat: a list of links, then what the verdicts mean anything against.
+    // The heading above it is named by the text that carries it, so it is not in here.
+    assert.match(details, /^\* XPI_FILE: /m, `${where}: every path it named`);
+    assert.match(
+      details,
+      /^\* XPI_ROOT: \[/m,
+      `${where}: and where to read it`
+    );
+    assert.match(
+      details,
+      /^\* REVIEW_REPORT: \[/m,
+      `${where}: the report among them`
+    );
+    assert.match(details, /^schema /m, `${where}: and says what against`);
   }
 });
 
@@ -894,6 +947,42 @@ test("withdrawing the blocking findings puts the question block back", () => {
   );
   assert.ok(seen.includes("ask"), `ask was not issued: ${seen.join(", ")}`);
   assert.equal(settled.earlyExit, false);
+});
+
+// Whether the review stopped is a fact about the review, so the hand-over carries it too -
+// not just the developer's text. It rides in the details block rather than in the text
+// around it because the two finals are asserted byte-identical below their opening line, so
+// a trailer authored into the stopped one could not exist.
+test("a stopped review closes its details block with the reason", () => {
+  const dir = tmp();
+  const { state, stateFile } = blockingReview(dir);
+  const { settled } = driveLoop(state, stateFile, (phase) =>
+    phase === "verify" ? "reported" : "cleared"
+  );
+  const lines = settled.details.split("\n");
+  assert.match(
+    settled.details,
+    /^\* XPI_FILE: /m,
+    "the block is still the block"
+  );
+  assert.equal(
+    lines.at(-2),
+    "The review was not completed and the report is incomplete due to the following issues:"
+  );
+  assert.equal(lines.at(-1), "- Known security vulnerabilities");
+
+  // ... and a review that ran to the end closes with the block itself. Nothing says a
+  // review stopped unless one did.
+  const clean = blockingReview(tmp());
+  const ran = driveLoop(clean.state, clean.stateFile, (phase) =>
+    phase === "verify" ? "withdrawn" : "cleared"
+  );
+  assert.doesNotMatch(ran.settled.details, /review was not completed/);
+  assert.match(
+    ran.settled.details,
+    /^schema /m,
+    "and ends where it always did"
+  );
 });
 
 // What a stopped review hands the reviewer: the closing line in the developer's text, no

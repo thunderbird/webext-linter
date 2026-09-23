@@ -265,7 +265,7 @@ deterministic-phase:
   check: unsafe-html
   input: source
   response: |-
-    Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a <template>, or CSS to show and hide existing elements).
+    Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a template element, or CSS to show and hide existing elements).
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
 
 # Flags unconditional debugger statements left in shipped code.
@@ -723,7 +723,7 @@ deterministic-phase:
   check: sca-lock-file-missing
   input: build
   response: |-
-    The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json for npm, pnpm-lock.yaml for pnpm).
+    The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
 
 # Deterministic (SCA only): a lock was submitted but cannot install what package.json
 # declares. `npm ci` and `pnpm install --frozen-lockfile` compare the two before installing
@@ -746,7 +746,7 @@ deterministic-phase:
   check: sca-lock-file-invalid
   input: build
   response: |-
-    The committed lock file cannot install what package.json declares, so the build cannot be reproduced from this source. Please run the install again and commit the regenerated lock file.
+    The committed lock file cannot install what package.json declares, so the build cannot be reproduced from this source. Please run the install again and commit the regenerated lock file. The supported package managers are npm and pnpm.
 
 # Deterministic (SCA only): a committed .npmrc that SETS a package registry (registry=
 # or @scope:registry=, case-insensitive) is rejected outright - a legitimate build never
@@ -966,7 +966,7 @@ deterministic-phase:
   check: vendor-ambiguous-source
   input: source
   response: |-
-    Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous; and a directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/<name>@<version>/, or its registry tarball), or a GitHub tree URL (https://github.com/<owner>/<repo>/tree/<ref>/<path>).
+    Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous. A directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/[name]@[version]/, or its registry tarball), or a GitHub tree URL (https://github.com/[owner]/[repo]/tree/[ref]/[path]).
 
 # Flags data smuggled out through a channel not meant for it - always an error,
 # regardless of consent. One check per channel (resource/stylesheet/window/
@@ -1092,7 +1092,7 @@ deterministic-phase:
   check: default-locale-unused
   input: xpi
   response: |-
-    The manifest declares default_locale but the add-on ships no _locales directory, so Thunderbird will refuse to load the add-on. Add the _locales/<lang>/messages.json files, or remove default_locale.
+    The manifest declares default_locale but the add-on ships no _locales directory, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files, or remove default_locale.
 
 # An extension with no top-level `icons` key ships no defined add-on icon, so
 # Thunderbird shows the generic puzzle-piece placeholder in the Add-ons Manager.
@@ -1121,7 +1121,7 @@ deterministic-phase:
   check: background-page-module
   input: xpi
   response: |-
-    The following background page code location(s) load a script that uses ES module syntax (import/export), but the <script> tag is not declared type="module", so Thunderbird will fail to load the background page. Add type="module" to the <script> tag.
+    The following background page code location(s) load a script that uses ES module syntax (import/export), but the script tag is not declared type="module", so Thunderbird will fail to load the background page. Add type="module" to the script tag.
 
 # Dynamic code execution: the definite cases are deterministic (eval / Function
 # constructor / code-string timers, and unsafe-eval/unsafe-inline in the CSP);
@@ -1777,7 +1777,7 @@ review-early-exit:
   reasons:
     known-vulnerabilities: Known security vulnerabilities
     disallowed-library-versions: Disallowed library versions
-    unreproducible-build: A build that cannot be reproduced
+    unreproducible-build: Build process issues
 
 # The sweep framing, authored twice - once for each reader.
 #
@@ -1869,7 +1869,7 @@ llm-phases:
   preamble: |-
     This review runs in passes, and this is the first of them.
 
-    Each pass you are given a prompt and a file. Do what the prompt says, fill in the file's empty slots, and hand the file back by running the command the prompt names. That run answers with the next prompt. Keep going until a prompt hands you the finished report and asks you to print it - that one is the last. You never decide what happens next, and you never decide that the review is over.
+    Each pass you are given a prompt and a file. Do what the prompt says, fill in the file's empty slots, and hand the file back by running the command the prompt names. That run answers with the next prompt. Keep going until a prompt tells you the review is settled and names the file holding the finished report - that one is the last. You never decide what happens next, and you never decide that the review is over.
 
     Nothing in this preamble is a task. Do only what the numbered steps of the prompt you are reading tell you to do, and the step that has you read the add-on names what to read and what to judge it against.
   frame: |-
@@ -1891,34 +1891,34 @@ llm-phases:
     The file you handed back is not what this pass expected: {{problem}}. You still have the prompt you were following. Read it again carefully and redo that pass. If it fails a second time, abort the review and say why.
   final: |-
     The review is settled. Wait for every agent you spawned to come back, then give the reviewer what follows, each part under a heading of its own and in this order. Print nothing between the parts and nothing after them.
-    {{details}}
+
     Under "LLM decisions", your own account in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why. This part is yours to write and the only part that is.
 
     Under "Summary", this, as it is written here:
 
     {{tally}}
 
-    Under "Review report", this, in a code block and unchanged - it is the text the reviewer sends to the developer, so nothing may be added to it, left out of it, or reworded:
+    Under "Final Review Details", this, as it is written here - every path this review named, the report among them, and nothing of what is in any of them:
 
-    {{report}}
+    {{details}}
   # The same hand-over, for a review that STOPPED. It differs in its first sentence and
-  # nowhere else: everything below that is the same three slots, and the report itself
-  # carries the closing line saying what stopped it (src/report/early-exit.js). Telling an
-  # agent "the review is settled" about a review that was cut short is the one thing this
-  # text exists to avoid - the rest is deliberately identical, so the reviewer reads the
-  # same document either way.
+  # nowhere else: everything below that is the same two slots, and what stopped the review
+  # rides in `details` rather than being authored here - a body that differed would be
+  # refused (assertRegistry). Telling an agent "the review is settled" about a review that
+  # was cut short is the one thing this text exists to avoid - the rest is deliberately
+  # identical, so the reviewer reads the same document either way.
   final-early-exit: |-
     The review was stopped before it finished: what it found settles the submission, and nothing further is asked of anyone. Wait for every agent you spawned to come back, then give the reviewer what follows, each part under a heading of its own and in this order. Print nothing between the parts and nothing after them.
-    {{details}}
+
     Under "LLM decisions", your own account in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why. This part is yours to write and the only part that is.
 
     Under "Summary", this, as it is written here:
 
     {{tally}}
 
-    Under "Review report", this, in a code block and unchanged - it is the text the reviewer sends to the developer, so nothing may be added to it, left out of it, or reworded:
+    Under "Final Review Details", this, as it is written here - every path this review named, the report among them, and nothing of what is in any of them:
 
-    {{report}}
+    {{details}}
   # The phases, in the order they are issued. A phase is issued when it has WORK - steps that
   # survive their markers, or entries to settle; a phase with neither is skipped, and that is
   # also what ends the loop (not "no item is still open", which an item routed to a phase this
@@ -1940,8 +1940,10 @@ llm-phases:
     # ever printed (src/addon/load.js), so XPI_ROOT is already there by the time any phase
     # is issued.
     #
-    # EVERY SPAWN STEP STANDS ALONE. Each carries its own marker, so none may refer to
-    # another having printed - not "either", not "the step below", not "the agents above".
+    # EVERY SPAWN STEP STANDS ALONE. Each carries the paths its own agent needs, spelled out
+    # where that agent is told to read or write them - a sub-agent is handed the request and
+    # nothing else, so a name standing for a path it was never given names nothing. None may
+    # refer to another having printed - not "either", not "the step below", not "the agents above".
     # Each says whether its agent is waited for, and the two that are not say it in the
     # SAME words: a second spelling of one instruction is a difference for its reader to
     # interpret.
@@ -1958,23 +1960,26 @@ llm-phases:
 
             Give it this request, and nothing else:
 
-            ADDON_DESCRIPTION {{description}}
-
             Describe this add-on for the reviewer. Anything you quote from it - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup.
 
-            Write it to ADDON_DESCRIPTION, and to nothing else: not to the chat, not to a file of your own choosing.
+            Write it to
+
+            {{description}}
+
+            and to nothing else: not to the chat, not to a file of your own choosing.
 
             Do not wait for it. What it writes is the reviewer's, and it is not needed until they are handed the review details.
         - run: sca
           text: |-
             Spawn an independent sub-agent NOW to work out what building this add-on takes. This is a source code review, so the reviewer reproduces the build themselves, and nothing in the report says what that takes. That file is the reviewer's and yours only to name: do not open it, read it, summarise it, or print what is in it.
 
-            Give it this request, and nothing else. It opens with the two paths it needs, because those are the things the request cannot name for itself:
+            Give it this request, and nothing else:
 
-            SCA_ROOT {{scaRoot}}
-            BUILD_PROCESS {{build}}
+            Read the documentation and the build files in
 
-            Read the documentation and the build files in SCA_ROOT, and report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
+            {{scaRoot}}
+
+            and report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
 
             Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
 
@@ -1986,7 +1991,11 @@ llm-phases:
 
             That is a report, never a verdict. Whether the build is accepted is settled by the reviewer reproducing it, and nothing you write settles it.
 
-            Write it to BUILD_PROCESS, and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision, on the reviewer's machine.
+            Write it to
+
+            {{build}}
+
+            and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision, on the reviewer's machine.
 
             Do not wait for it. What it writes is the reviewer's, and it is not needed until they are handed the review details.
         - run: sweep

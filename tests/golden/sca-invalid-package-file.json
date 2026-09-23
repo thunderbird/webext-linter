@@ -108,7 +108,7 @@
       "reasons": [
         {
           "id": "unreproducible-build",
-          "text": "A build that cannot be reproduced"
+          "text": "Build process issues"
         }
       ]
     }

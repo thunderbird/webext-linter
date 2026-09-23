@@ -40,8 +40,10 @@ export const REVIEW_SUFFIX = ".review.json";
  *   to leave out (PROMPT_SKIPS), whether it is a source code review, and whether it
  *   sweeps. One record, read by everything that asks: a step prints by it, the routing
  *   drops entries by it, and both legs of a hand-over ask it the same question.
- * @property {object} paths  The values a step names: description, build, schemaCache,
- *   scaRoot. Held here because a later pass prints them and cannot re-derive a moment.
+ * @property {object} paths  The values a step names: description, build, report,
+ *   schemaCache, scaRoot. Held here because a later pass prints them and cannot re-derive
+ *   a moment - and `report` is also where a later pass WRITES, so losing it would leave the
+ *   reviewer holding a link to a file nothing refreshes.
  * @property {?string} phase  The phase in flight - what went out last, and so what the
  *   next hand-back is read as.
  * @property {string[]} issued  Every phase that has gone out, in order. What the final

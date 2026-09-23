@@ -1396,7 +1396,7 @@ const PHASE_TEXTS = {
 };
 
 /** What the last prompt hands the reviewer, whichever of the two texts carries it. */
-const FINAL_SLOTS = ["{{details}}", "{{tally}}", "{{report}}"];
+const FINAL_SLOTS = ["{{details}}", "{{tally}}"];
 
 /**
  * Every verdict the loop knows. A PHASE accepts a subset of these, declared beside its

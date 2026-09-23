@@ -125,7 +125,7 @@ test("an escalated case stops the review once it is reported, and not before", (
     earlyExitOf(ordered, { [index]: "reported" }, registry).reasons.map(
       (r) => r.text
     ),
-    ["A build that cannot be reproduced"]
+    ["Build process issues"]
   );
 });
 

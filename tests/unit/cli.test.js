@@ -51,6 +51,16 @@ function entriesOf(stdout) {
   return JSON.parse(fs.readFileSync(file, "utf8")).entries;
 }
 
+/** What the reviewer sends to the developer. The linter WRITES this one, and the final
+ *  prompt links it rather than reproducing it - so a test asserting on the report reads
+ *  the file, the way the reviewer does. Read out of the link's target, because a path
+ *  taken as "the next run of non-space" would take the `](` with it. */
+function reportOf(stdout) {
+  const at = stdout.match(/\]\((\S+\.report\.md)\)/);
+  assert.ok(at, "the prompt links the report file");
+  return fs.readFileSync(at[1], "utf8");
+}
+
 /** Run a root entry file, capturing stdout/stderr/exit code. */
 function runFile(file, args = []) {
   const r = spawnSync(process.execPath, [file, ...args], { encoding: "utf8" });
@@ -558,14 +568,15 @@ test("reviewing a fixture renders to stdout with a severity-based exit", () => {
   assert.ok(Array.isArray(json.findings));
 });
 
-// The seam between the two: a source code review's own steps send a sub-agent to paths, and
-// the Review Details block names them. Both come from what the review RESOLVED to be, never
-// from the flags it was given - a rejected Experiment keeps --sca-root and is still an XPI
-// review, and reading the flag there would send an agent to a root nothing had read, under
-// a name the block never prints. Driven through the CLI because that is the seam: rendering the
-// two halves from a hand-built meta cannot catch a pipeline that feeds them different
-// values.
-test("a source code review's steps carry exactly the paths its header names", () => {
+// A source code review's own steps send a sub-agent to paths, and those paths are what the
+// review RESOLVED to be, never what the flags asked for - a rejected Experiment keeps
+// --sca-root and is still an XPI review, so a step reading the flag would send an agent to a
+// root nothing had read. Driven through the CLI because that is the seam: rendering from a
+// hand-built meta cannot catch a pipeline that feeds its two halves different values.
+//
+// Keyed on the paths themselves, because a path is all a step gives out: a sub-agent is
+// handed the request and nothing else, so nothing in one stands for a path by name.
+test("a source code review's steps carry the paths the review resolved to", () => {
   const sca = path.join(ROOT, "tests", "addons", "build-hygiene-sca");
   const r = run([
     path.join(sca, "xpi"),
@@ -576,19 +587,21 @@ test("a source code review's steps carry exactly the paths its header names", ()
     ".",
     "--llm-review",
   ]);
-  const root = headerValue(r.stdout, "SCA_ROOT");
-  const build = headerValue(r.stdout, "BUILD_PROCESS");
-  assert.equal(root, path.join(sca, "src"));
-  assert.match(build, /\.build\.md$/);
-  // Each sits on its own line inside the step that hands them over, unwrapped and
-  // unaltered, so what the agent is given is what the reviewer was shown.
+  // Each sits on its own line inside the step that hands it over, unwrapped and unaltered,
+  // so the agent can copy it whole.
   const lines = r.stdout.split("\n").map((l) => l.trim());
-  assert.ok(lines.includes(root), "the prompt carries SCA_ROOT");
-  assert.ok(lines.includes(build), "the prompt carries BUILD_PROCESS");
+  assert.ok(
+    lines.includes(path.join(sca, "src")),
+    "the step names the source root"
+  );
+  assert.ok(
+    lines.some((l) => /\.build\.md$/.test(l)),
+    "and where the build report goes"
+  );
 
   // An invalid Experiment submitted WITH --sca-root is rejected from the shipped XPI alone:
-  // the source archive is never read, so neither name may appear anywhere - not in the
-  // block, and not in a step asking for work on a root this review does not have.
+  // the source archive is never read, so neither path may appear anywhere - not in a block
+  // naming it, and not in a step asking for work on a root this review does not have.
   const exp = path.join(ROOT, "tests", "addons", "experiment-disallowed-sca");
   const rejected = run([
     path.join(exp, "xpi"),
@@ -601,6 +614,12 @@ test("a source code review's steps carry exactly the paths its header names", ()
   ]);
   assert.match(rejected.stdout, /── LLM Prompt ──/);
   assert.doesNotMatch(rejected.stdout, /SCA_ROOT|BUILD_PROCESS/);
+  const rejectedLines = rejected.stdout.split("\n").map((l) => l.trim());
+  assert.ok(!rejectedLines.includes(exp), "no source root is handed out");
+  assert.ok(
+    !rejectedLines.some((l) => /\.build\.md$/.test(l)),
+    "and no build report is asked for"
+  );
 });
 
 // --llm-review end to end. Its whole output is the prompt, the Review Details section and
@@ -630,7 +649,7 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   );
   // The description is a file the reader writes and the reviewer opens: this run names
   // the path, and never reads what lands there.
-  assert.match(headerValue(on.stdout, "ADDON_DESCRIPTION"), /\.summary\.md$/);
+  assert.match(on.stdout, /^\s*\S+\.summary\.md$/m);
   assert.ok(
     !on.stdout.includes('"Report"'),
     "the answers are not prose in the prompt"
@@ -812,8 +831,9 @@ test("the two skips withhold the description and the manual items", () => {
   // The inverse of the --llm-review assertions above: these are the two withheld steps,
   // and their absence is the whole feature.
   assert.ok(!on.stdout.includes('"answers"'), "no manual questions asked");
-  assert.ok(
-    !on.stdout.includes("ADDON_DESCRIPTION"),
+  assert.doesNotMatch(
+    on.stdout,
+    /\.summary\.md/,
     "no add-on description asked for, and no file named for one"
   );
   // ...while the step that closes the round trip survives the renumbering.
@@ -845,12 +865,13 @@ test("each skip leaves out its own part and nothing else", () => {
     "--llm-skip-summary",
   ]);
   assert.equal(noSummary.code, 0, noSummary.stderr);
-  assert.ok(!noSummary.stdout.includes("ADDON_DESCRIPTION"));
+  assert.doesNotMatch(noSummary.stdout, /\.summary\.md/);
   // The questions are a later pass, so the first prompt names none either way. What the
   // skip decides is whether the FILE still carries them.
 
-  assert.ok(
-    !noSummary.stdout.includes("ADDON_DESCRIPTION"),
+  assert.doesNotMatch(
+    noSummary.stdout,
+    /Spawn an independent sub-agent NOW to describe/,
     "no description agent is spawned"
   );
 
@@ -862,7 +883,7 @@ test("each skip leaves out its own part and nothing else", () => {
     "--llm-skip-manual",
   ]);
   assert.equal(noManual.code, 0, noManual.stderr);
-  assert.match(headerValue(noManual.stdout, "ADDON_DESCRIPTION"), /\.md$/);
+  assert.match(noManual.stdout, /^\s*\S+\.summary\.md$/m);
   assert.ok(!noManual.stdout.includes('"answers"'), "no questions asked");
   assert.ok(
     !itemsOf(noManual).some((x) => manualSections.includes(x.section)),
@@ -892,9 +913,14 @@ test("a review with nothing to settle names no description file", () => {
   assert.match(r.stdout, /^1\. Spawn an independent sub-agent/m);
   assert.doesNotMatch(r.stdout, /Verify every entry/, "nothing to verify");
   assert.doesNotMatch(r.stdout, /Settle each entry/, "nothing to settle");
-  // The step that spawns the description agent names the file it writes - printed by the
-  // step that uses it, which is the only place any path is given out.
-  assert.match(r.stdout, /ADDON_DESCRIPTION\n\s+\S+\.summary\.md/);
+  // The step that spawns the description agent gives it the PATH it writes to, on a line
+  // of its own and in the sentence that tells it to write - a sub-agent is handed the
+  // request and nothing else, so a name standing for a path it never saw names nothing.
+  assert.match(
+    r.stdout,
+    /Write it to\n\n\s+\S+\.summary\.md\n\n\s+and to nothing else/
+  );
+  assert.doesNotMatch(r.stdout, /ADDON_DESCRIPTION/);
   // The review file is handed over with nothing to answer: this phase has a step to do
   // and no entries, which is work either way.
   assert.deepEqual(entriesOf(r.stdout), []);
@@ -1070,10 +1096,15 @@ test("a swept case becomes an item of its check and settles like any other", () 
   // The invariant clause, not the subject: what the response calls the data (user data,
   // telemetry, ...) is wording the registry owns and may reword, and this test is about
   // the response reaching the output at all.
-  assert.match(out.stdout, /to a remote server without an explicit opt-in/);
+  const report = reportOf(out.stdout);
+  assert.match(report, /to a remote server without an explicit opt-in/);
+  // Squared off on the way into the report, like every other angle bracket in it. The hint
+  // is a THIRD source of them, after our own prose and the submission's own tokens: the
+  // agent wrote this one, and it names an HTML element, so it would open a tag in the
+  // document the reviewer sends.
   assert.match(
-    out.stdout,
-    /background\.js:12 - <a ping> attribute carries the message digest/
+    report,
+    /background\.js:12 - \[a ping\] attribute carries the message digest/
   );
 });
 
@@ -1129,8 +1160,9 @@ test("a swept case of a check that files findings is verified like one", () => {
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
     out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
   }
-  assert.match(out.stdout, /Data is sent over an unencrypted connection/);
-  assert.match(out.stdout, /sync\.js:12 - posts over http:\/\//);
+  const report = reportOf(out.stdout);
+  assert.match(report, /Data is sent over an unencrypted connection/);
+  assert.match(report, /sync\.js:12 - posts over http:\/\//);
 });
 
 // ---- --llm-sca-review ----

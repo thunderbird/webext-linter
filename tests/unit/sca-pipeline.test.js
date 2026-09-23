@@ -502,16 +502,20 @@ test("an SCA --llm-review names a build report beside the add-on", async () => {
     const base = path.basename(meta.reviewFile, ".review.json");
     assert.equal(path.basename(meta.buildFile), `${base}.build.md`);
     assert.equal(path.basename(meta.summaryFile), `${base}.summary.md`);
-    // Named, never written: this tool only says where it goes.
+    assert.equal(path.basename(meta.reportFile), `${base}.report.md`);
+    // Named, never written: this tool only says where these two go.
     assert.equal(fs.existsSync(meta.buildFile), false);
+    assert.equal(fs.existsSync(meta.summaryFile), false);
 
-    // An XPI review has no build to reproduce, so it names none.
+    // An XPI review has no build to reproduce, so it names none - but every review has a
+    // report, and that one this tool writes itself, so it is named either way.
     const xpiOnly = await runPipeline({
       addonPath: xpi,
       llmReview: true,
       ...OFFLINE,
     });
     assert.equal(xpiOnly.meta.buildFile, undefined);
+    assert.match(xpiOnly.meta.reportFile, /\.report\.md$/);
   } finally {
     fs.rmSync(xpi, { recursive: true, force: true });
     fs.rmSync(src, { recursive: true, force: true });

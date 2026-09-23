@@ -94,6 +94,10 @@ const SEV_COLOR = {
  *   file's name. Named by this tool, written and read by neither.
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
  *   in a source code review, where the reviewer reproduces the build.
+ * @property {string} [reportFile]  Where the text the reviewer sends to the developer is
+ *   written - beside the other two, sharing their name. Unlike them this tool WRITES it
+ *   (src/report/report-file.js), which is why it is named for every review rather than
+ *   only when some step prints.
  * @property {boolean} [prompting]  This run handed out a PHASE of the review loop, so
  *   its whole output is that prompt: the report is not printed beside it, and neither is
  *   the header or the Summary.
@@ -651,6 +655,9 @@ export function detailLinkLines(meta) {
   if (meta.buildFile) {
     rows.push(["BUILD_PROCESS", "build.md", meta.buildFile]);
   }
+  if (meta.reportFile) {
+    rows.push(["REVIEW_REPORT", "report.md", meta.reportFile]);
+  }
   return [
     ...rows.map(([name, text, target]) =>
       text === null
@@ -705,6 +712,34 @@ function issuesLines(
 }
 
 /**
+ * The developer's text with its angle brackets squared off, which is the last thing done to
+ * it either way it is produced.
+ *
+ * This document is read as MARKUP at least once: the reviewer opens the .md the loop writes,
+ * and pastes it into a response box that renders it. A `<` there opens a tag, and the ones
+ * whose content is not text - `<template>`, `<script>` - swallow everything after them, so a
+ * rejection can arrive with its reasons missing and nothing to say they were cut. That has
+ * happened to real reports.
+ *
+ * Applied to the finished body rather than to either SOURCE of the text, because both sources
+ * produce it: a response is ours to write, `<all_urls>` is the submission's to declare, and
+ * neither can be trusted to stay bracket-free. Squared off rather than escaped, because the
+ * same string is read in a terminal and pasted into a box that may render nothing - `&lt;` is
+ * wrong in both of those, and `[all_urls]` is wrong in none of them.
+ *
+ * NOT applied to the JSON report (which is a machine contract - `item` keeps the token the
+ * manifest wrote), to a path (which the reader copies back - displayPath alters nothing), or
+ * to the to-do sections (which reach a terminal and an agent, never this document).
+ * @param {string[]} lines
+ * @returns {string[]}
+ */
+function squared(lines) {
+  // An ANSI colour escape is `\x1b[90m` - no angle bracket, so the tints already in these
+  // lines pass through untouched.
+  return lines.map((line) => line.replace(/</g, "[").replace(/>/g, "]"));
+}
+
+/**
  * The same section WITHOUT its header: the text a developer receives.
  *
  * Split out because the review loop hands this to the reviewer to paste into the response
@@ -737,7 +772,7 @@ export function issuesBodyLines(
   const issues = items.map((x) => x.target);
   if (issues.length === 0) {
     out.push(intros.none ?? "The automated review did not find any issues.");
-    return [...out, ...earlyExitLines(earlyExit)];
+    return squared([...out, ...earlyExitLines(earlyExit)]);
   }
   const intro = intros[verdictKey(issues)];
   let n = 0;
@@ -776,7 +811,7 @@ export function issuesBodyLines(
     grey("You can run this automated review yourself before submitting:")
   );
   out.push(grey("https://github.com/thunderbird/webext-linter"));
-  return [...out, ...earlyExitLines(earlyExit)];
+  return squared([...out, ...earlyExitLines(earlyExit)]);
 }
 
 /**

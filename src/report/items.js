@@ -137,20 +137,22 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
 }
 
 /**
- * The four paths this run names, sharing one name and one moment:
+ * The five paths this run names, sharing one name and one moment:
  *
  * - `state`, the linter's own record of the review, and `review`, the file it hands the
  *   agent one phase at a time. Both in the system temp directory. They SHARE A STEM, which
  *   is what makes the pointer in the handed-back file checkable rather than trusted.
  * - `summary`, where a sub-agent writes the add-on description for the reviewer.
  * - `build`, where another writes what building the add-on takes, in a source code review.
+ * - `report`, the text the reviewer sends to the developer.
  *
- * The latter two sit BESIDE the submitted .xpi, in the folder the reviewer is working out
+ * The latter three sit BESIDE the submitted .xpi, in the folder the reviewer is working out
  * of, so what they are handed opens where they are looking - a path outside it is one their
- * client will not follow. This linter writes neither and reads neither; it only says where
- * they go, so a name cannot drift from the review it belongs to.
+ * client will not follow. Of those three the linter writes only `report`, and reads none of
+ * them; for the other two it says where they go and nothing more, so a name cannot drift
+ * from the review it belongs to.
  *
- * One base for all four: a name and a version do not identify a review - two submissions can
+ * One base for all five: a name and a version do not identify a review - two submissions can
  * share both (a fork, a resubmission, an add-on reviewed twice in a session) - so the run's
  * own moment separates them, and a later run does not open what an earlier one left
  * behind. Millisecond resolution, which separates reviews a person runs; two started in
@@ -159,26 +161,30 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
  * review file's path and finds the rest from it, so no later run has to recompute a moment
  * it does not have.
  *
- * Where the shipped package is unpacked (XPI_ROOT) is NOT one of these: unlike these four,
+ * Where the shipped package is unpacked (XPI_ROOT) is NOT one of these: unlike these five,
  * the linter itself writes there (src/addon/load.js), before this is ever called, and its
  * path follows the submitted file's own name rather than this shared stem - see
  * src/pipeline.js.
  * @param {import("../addon/load.js").Addon} addon  The shipped add-on - read for the name
- *   it lends all four (its id and version).
+ *   it lends all five (its id and version).
  * @param {string} xpiPath  Where that add-on IS, absolute. An Addon carries no path of its
  *   own, so the caller passes the one the run was given (src/pipeline.js), which resolved
  *   it - nothing re-resolves it here.
- * @returns {{summary: string, build: string, state: string, review: string}}
+ * @returns {{summary: string, build: string, report: string, state: string, review: string}}
  */
 export function reviewFilePaths(addon, xpiPath) {
   const base = reviewFileBase(addon);
   // Beside the .xpi, which is the folder a reviewer downloaded it into. For an unpacked
   // submission that is the folder holding it, for the same reason: not inside what is being
-  // reviewed. Taken once, so the two cannot land in different folders.
+  // reviewed. Taken once, so the three cannot land in different folders.
   const beside = path.dirname(xpiPath);
   return {
     summary: path.join(beside, `${base}.summary.md`),
     build: path.join(beside, `${base}.build.md`),
+    // The one of these the linter writes itself (src/report/report-file.js): the reviewer
+    // reads it while answering, so it is refreshed before the questions are put to them and
+    // rewritten once they are answered.
+    report: path.join(beside, `${base}.report.md`),
     // The REVIEW LOOP's pair. They share this stem so `base` in the file the agent hands
     // back is CHECKABLE rather than trusted: the linter derives the state path from the
     // review path it was given and compares the two.

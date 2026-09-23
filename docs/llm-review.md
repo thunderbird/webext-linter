@@ -199,18 +199,31 @@ what this review is and where to read it:
 | `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
 | `ADDON_DESCRIPTION` | Where a sub-agent wrote a description of the add-on, for reading while answering |
 | `BUILD_PROCESS` | Where another wrote what building the add-on takes, in a source code review |
+| `REVIEW_REPORT` | The text the reviewer sends to the developer, written by the linter |
 
-The linter names those last two; it writes neither and reads neither. They are the
-reviewer's, and the agent conducting the review is told only to name them - not to open,
-read, summarise or print what the sub-agent wrote there.
+The linter names all three and reads none of them. The first two are a sub-agent's, and the
+agent conducting the review is told only to name them - not to open, read, summarise or
+print what was written there.
 
-The block is handed over once, by whichever comes first: the `ask` phase before it asks
-anything, or the finished report when nothing is ever put to a reviewer.
+`REVIEW_REPORT` it writes itself, twice: once as the `ask` phase goes out, so the reviewer
+can read the report while answering the questions it puts, and again from the settled review
+once those answers are in. It is a file rather than something the agent prints because
+printing it failed - the hand-over used to carry the report and ask for it back "in a code
+block and unchanged", and that is the one text where a model rewording its input reaches the
+developer.
 
-The last pass prints the report, and the agent's own account of it, each under a heading
-of its own: **LLM decisions** (every finding it withdrew and every verdict it reached,
-with its reasons - the only part that is the agent's to write), **Summary** (the tally),
-and **Review report** (the text the reviewer sends to the developer, unchanged).
+The block is handed over twice, for two different readings. The `ask` phase hands it over
+before it asks anything, so the reviewer can open those files while answering, and the last
+pass hands it over again as what they are left holding.
+
+The last pass hands over the agent's own account and the block, each under a heading of its
+own: **LLM decisions** (every finding it withdrew and every verdict it reached, with its
+reasons - the only part that is the agent's to write), **Summary** (the tally), and **Final
+Review Details** (every path this review named, `REVIEW_REPORT` among them, and nothing of
+what is in any of them). Where the review stopped early, the line saying so closes that
+block - the two final texts are asserted identical below their opening line, so what differs
+between a settled review and a stopped one has to travel in the block rather than around
+it.
 
 
 ## Preparing a source code review

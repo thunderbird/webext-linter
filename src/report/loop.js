@@ -22,11 +22,13 @@ import {
   writeReviewFile,
 } from "./handback.js";
 import { writeState } from "./state.js";
+import { writeReportFile } from "./report-file.js";
 import { reviewItems } from "./items.js";
 import { mergeSweepResults } from "./sweep.js";
 import { resolveHolds } from "./finding.js";
 import {
   detailLinkLines,
+  earlyExitLines,
   issuesBodyLines,
   locusLabeler,
   summaryBodyLines,
@@ -110,6 +112,22 @@ export function issue(state, stateFile, phases, registry) {
       ? spawnRows(state)
       : phaseEntries(state, registry, phase, run);
   state.phase = phase.name;
+  // The `ask` phase hands the reviewer the Review Details block, and that block links the
+  // report. Refresh the file first, so the link opens the review as it stands rather than
+  // nothing at all - the reviewer reads it to answer the very questions this phase puts.
+  //
+  // Settled on a COPY: settle() applies the verdicts in place, and this pass is not the
+  // last. What the copy answers is "what would the report say if the review ended now",
+  // which is the review minus what the pending questions have yet to produce.
+  //
+  // Only on this phase, not on every pass: settling walks every answer recorded so far, and
+  // a throw inside issue() would break the loop over a file nobody has been handed yet.
+  if (phase.name === "ask") {
+    writeReportFile(
+      state.paths?.report,
+      settle(structuredClone(state), registry).report
+    );
+  }
   writeState(stateFile, state);
   writeReviewFile(state.review, reviewFile(stateFile, entries));
   return { phase, steps, entries };
@@ -221,24 +239,26 @@ function phaseEntries(state, registry, phase, run) {
 }
 
 /**
- * The Review Details block a reviewer is handed with the finished report, when no phase
- * handed it over already.
+ * What the LAST prompt hands over: every path this review named, and - where the review
+ * stopped - the line saying so.
  *
- * It names the files written FOR the reviewer, and they exist to be read WHILE the
- * questions are answered - so the `ask` phase hands the block over before it asks
- * anything. When there is nothing to ask, that phase is never issued and the reviewer
- * would never be told those files exist, so it travels with the report instead: once,
- * either way, and never twice.
+ * Handed over on EVERY settled review, including one whose `ask` phase already showed the
+ * same block. That is not a duplicate: the `ask` copy exists to be read WHILE the questions
+ * are answered, and by the time they have been, it is far above the reviewer. The report they
+ * are about to send is one of these rows, and so is the package it is about.
+ *
+ * The early-exit lines belong to the block rather than to the text around it, because the two
+ * finals are asserted byte-identical below their opening line (src/checks/registry.js): a
+ * trailer authored into the stopped one could not exist. earlyExitLines answers [] for a
+ * review that did not stop, so this is asked unconditionally and the block simply ends
+ * sooner.
  * @param {import("./state.js").LoopState} state
+ * @param {?{intro: string, reasons: {id: string, text: string}[]}} earlyExit  What stopped the
+ *   review, or null where nothing did.
  * @returns {string}
  */
-function detailBlock(state) {
-  // Carries its own heading line, unlike the copy the `ask` phase hands over: there the
-  // step text names the heading, and here the part is conditional - a sentence introducing
-  // it would be left introducing nothing on every review that asked something.
-  return (state.issued ?? []).includes("ask")
-    ? ""
-    : `\nUnder "Review details", this:\n\n${reviewDetails(state)}\n`;
+function finalDetails(state, earlyExit) {
+  return [reviewDetails(state), ...earlyExitLines(earlyExit)].join("\n");
 }
 
 /**
@@ -308,20 +328,18 @@ export function settle(state, registry) {
     // Which hand-over text the last prompt carries. Telling an agent the review is
     // settled, when it stopped, is the one thing the second text exists to avoid.
     earlyExit: Boolean(earlyExit),
-    // The Review Details block, above the finished report. Pure from meta, which is
-    // stored - so this pass prints what a settled report has always printed, without the
-    // add-on being read a second time.
-    //
-    // `details` is empty when the `ask` phase already handed the block over: it says the
-    // same thing either way, and saying it twice would have the reviewer reading a list
-    // of paths they have already been given.
-    details: detailBlock(state),
+    // The Review Details block the reviewer is left with, and the line saying the review
+    // stopped where one did. Pure from meta, which is stored - so this pass prints what a
+    // settled report has always printed, without the add-on being read a second time.
+    details: finalDetails(state, earlyExit),
     // The tally, which only this pass can be right about: every earlier one runs before
     // the answers are applied, and would count items the reviewer is in the middle of
     // settling.
     tally: summaryBodyLines(findings, manual, null).join("\n"),
     // The developer's half of the report, without the section header the linter prints
-    // around it - this is pasted into a response box, not into a terminal.
+    // around it - this is pasted into a response box, not into a terminal. Written to the
+    // file below rather than printed into the prompt: asking a model to reproduce it
+    // unchanged is what this replaced.
     report: issuesBodyLines(
       orderReview(findings, manual).filter((x) => x.kind === "finding"),
       registry.issueHeadings(),

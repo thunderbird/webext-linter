@@ -1646,3 +1646,48 @@ test("a prompt naming a value nothing filled is refused", () => {
   assert.ok(filled.some((l) => l.includes("the block")));
   assert.ok(filled.some((l) => l.includes('{"a": 1}')));
 });
+
+// This document is read as MARKUP at least once - the reviewer opens the .md the loop
+// writes and pastes it into a box that renders it - and a `<` there opens a tag. The ones
+// whose content is not text swallow everything after them, which is how a real report lost
+// its closing lines to a `<template>` named in a response.
+//
+// Squared off on the way out, so BOTH sources are covered by one pass: the prose is ours to
+// write, the subject is the submission's to declare, and neither can be trusted to stay
+// bracket-free.
+test("the report body squares off every angle bracket, from either source", () => {
+  const r = review();
+  r.meta.reviewed = true;
+  r.findings = [
+    {
+      ruleId: "minimize-host-permissions",
+      severity: "warning",
+      // The submission's: <all_urls> is a real permission token, written by its manifest.
+      item: "<all_urls>",
+      listItem: true,
+      file: "manifest.json",
+      loc: { line: 6 },
+      // Ours: a response naming an HTML element it wants the developer to use instead.
+      message: "Use textContent or a <template>, never innerHTML.",
+    },
+  ];
+  const text = formatText(r);
+  assert.match(text, /Use textContent or a \[template\], never innerHTML\./);
+  assert.match(text, /^ - manifest\.json:6 - \[all_urls\]$/m);
+  assert.doesNotMatch(text, /[<>]/);
+
+  // The JSON is a machine contract, not a rendered document: a consumer matching on the
+  // permission keeps seeing the token the manifest wrote.
+  const json = JSON.parse(formatJson(r));
+  assert.equal(json.findings[0].item, "<all_urls>");
+  assert.match(json.findings[0].message, /a <template>/);
+});
+
+// The body a clean review produces takes the same way out, so nothing depends on there
+// being findings for it to be safe.
+test("a report with no findings is squared off too", () => {
+  const r = review();
+  r.meta.reviewed = true;
+  r.verdictIntros = { none: "Nothing found. Read <template> for more." };
+  assert.match(formatText(r), /Nothing found\. Read \[template\] for more\./);
+});
