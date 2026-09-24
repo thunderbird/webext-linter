@@ -121,7 +121,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "A VENDOR file is present but no third-party library could be parsed from it. Declare each library in package.json instead and let the build script copy it from node_modules, rather than committing the file. Keep a single VENDOR.md file only for what that route cannot cover.\nRead more #1: https://extensionworkshop.com/documentation/publish/source-code-submission/\nRead more #2: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
+      "message": "A VENDOR file is present but no third-party library could be parsed from it. Declare each library in package.json instead and let the build script copy it from node_modules, rather than committing the file. Keep a single VENDOR.md file only for what that route cannot cover.\nRead more #1: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html\nRead more #2: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
     }
   ]
 }

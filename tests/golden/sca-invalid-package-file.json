@@ -130,7 +130,7 @@
       "loc": null,
       "item": "could not be read",
       "hint": null,
-      "message": "The committed package.json cannot be read, so the build it defines cannot be run. Please commit a valid package.json."
+      "message": "The committed package.json cannot be read, so the build it defines cannot be run. Please commit a valid package.json.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }

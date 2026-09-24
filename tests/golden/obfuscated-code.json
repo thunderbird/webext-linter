@@ -106,7 +106,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.\nPlease read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/"
+      "message": "The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.\nPlease read the instructions: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }

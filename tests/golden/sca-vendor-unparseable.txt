@@ -3,7 +3,7 @@
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
 1) A VENDOR file is present but no third-party library could be parsed from it. Declare each library in package.json instead and let the build script copy it from node_modules, rather than committing the file. Keep a single VENDOR.md file only for what that route cannot cover.
-Read more #1: https://extensionworkshop.com/documentation/publish/source-code-submission/
+Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 Read more #2: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
  - [SCA] VENDOR.md
 

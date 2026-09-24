@@ -3,7 +3,7 @@
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
 1) The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.
-Read more: https://extensionworkshop.com/documentation/publish/source-code-submission/
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - [SCA] package.json:5 - helper (file:../shared/helper)
 
 [XPI] = source file in the submitted XPI

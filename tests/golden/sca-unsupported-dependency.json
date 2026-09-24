@@ -123,7 +123,7 @@
       },
       "item": "helper (file:../shared/helper)",
       "hint": null,
-      "message": "The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.\nRead more: https://extensionworkshop.com/documentation/publish/source-code-submission/"
+      "message": "The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }

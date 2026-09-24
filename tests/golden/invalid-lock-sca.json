@@ -132,7 +132,7 @@
       },
       "item": "web-ext (^8.0.0) - not recorded in the lock file",
       "hint": null,
-      "message": "The committed lock file cannot install what package.json declares, so the build cannot be reproduced from this source. Please run the install again and commit the regenerated lock file. The supported package managers are npm and pnpm."
+      "message": "The committed lock file cannot install what package.json declares, so the build cannot be reproduced from this source. Please run the install again and commit the regenerated lock file. The supported package managers are npm and pnpm.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }

@@ -3,6 +3,7 @@
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
 1) The submitted source archive contains no package.json, so there is no build process the shipped add-on can be reproduced from.
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive

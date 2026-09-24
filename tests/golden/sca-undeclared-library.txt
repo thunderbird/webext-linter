@@ -3,11 +3,11 @@
 Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
 
 1) The following bundled files were recognized as third-party libraries (via a jsDelivr CDN hash lookup) but are not declared as such. An archive holds your authored code, not its dependencies - those should come in through the build process. Declare each in package.json and let the build script copy it from node_modules, rather than committing the file.
-Read more: https://extensionworkshop.com/documentation/publish/source-code-submission/
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - [SCA] lib/undeclared.min.js - tinybundle 3.2.1 - https://cdn.jsdelivr.net/npm/tinybundle@3.2.1/dist/tinybundle.min.js
 
 2) The following bundled files were recognized as third-party libraries (via the Mozilla library hash database) but are not declared as such. An archive holds your authored code, not its dependencies - those should come in through the build process. Declare each in package.json and let the build script copy it from node_modules, rather than committing the file.
-Read more: https://extensionworkshop.com/documentation/publish/source-code-submission/
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - [SCA] vendor/bootstrap/bootstrap.min.css - bootstrap 5.3.0
 
 [XPI] = source file in the submitted XPI

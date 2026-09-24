@@ -3,7 +3,7 @@
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
 1) The following file(s) cannot be reviewed in this form: they are minified, machine-generated, or not parsable as JavaScript. Dependencies should come in through the build process, from package.json and node_modules. Your own code belongs in the archive readable - the build may still minify what the XPI ships. If a file is not JavaScript at all - data with a .js name, say - give it an extension that matches its content.
-Read more: https://extensionworkshop.com/documentation/publish/source-code-submission/
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - [SCA] background.js
 
 [XPI] = source file in the submitted XPI

@@ -4,12 +4,12 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 
 1) The following file(s) cannot be reviewed in this form: they are minified, machine-generated, or not parsable as JavaScript. If a file is a third-party library, declare it and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice. If it is your own code, ship the original, readable source instead - the add-on need not be minified. Where a build step produces it, supply the build's sources and the instructions to reproduce the shipped XPI, using the source code upload field at submission or on the version page. Note that this route slows review down: the build must be verified by hand. If a file is not JavaScript at all - data with a .js name, say - give it an extension that matches its content.
 Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
-Read more #2: https://extensionworkshop.com/documentation/publish/source-code-submission/
+Read more #2: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - disguised.html:2
  - packed.html:1
 
 2) The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
-Please read the instructions: https://extensionworkshop.com/documentation/publish/source-code-submission/
+Please read the instructions: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - hidden.html:1
 
 We kindly ask you to resolve the following issues with your next release:
