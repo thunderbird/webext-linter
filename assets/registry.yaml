@@ -715,7 +715,8 @@ deterministic-phase:
 # unlike build-registry-redirect, which scans every depth because it detects a disallowed
 # thing rather than asserting a requirement. Nothing here goes looking
 # for a manifest or a lock deeper in the archive: they sit at the root, which is what the
-# root IS.
+# root IS. WHICH folder that is was settled before any check ran (src/addon/sca-root.js),
+# because the root is named by someone who has not looked inside the archive yet.
 - title: Missing lock file
   severity: error
   sca: true
@@ -1814,18 +1815,24 @@ llm-sca-review-prompt:
   # what this prompt can evaluate rather than merely being a boolean.
   outcome:
     - text: |-
-        Extract SOURCE_ARCHIVE into SCA_ROOT, given above.
+        Extract SOURCE_ARCHIVE into EXTRACT_TO, given above.
 
         Unpack until the add-on's own files appear, which is TWICE for an archive packed twice - a .tar.gz is a tar inside a gzip. Then stop. Anything you find INSIDE the extracted tree is part of the source and stays packed: the review reports those as committed build artifacts, and unpacking one deletes a finding.
-    - text: |-
-        In SCA_ROOT, decide which directory holds the ADD-ON's own code. Its path relative to SCA_ROOT is <SCA_SOURCE>.
 
-        Read what SCA_ROOT contains and judge it. When ONE directory clearly holds the add-on's code and EVERY other directory holds only what the add-on does not ship - tests, documentation, build tooling, CI configuration, examples - then that one directory is <SCA_SOURCE>. When that split cannot be made cleanly, <SCA_SOURCE> is "." and the whole of SCA_ROOT is reviewed.
+        Move nothing and rename nothing. Where the files land is where they were submitted, and the two steps below read them as they lie.
+    - text: |-
+        In EXTRACT_TO, find the directory holding package.json. That directory is <SCA_ROOT>, absolute.
+
+        One rule, and nothing to weigh: the root of a source archive is where its build runs, and the build runs where package.json is. Usually that is EXTRACT_TO itself. Where the archive carries its contents in a directory of its own, it is that directory, however many of them it took to get there. Where several hold one, it is the one holding the lock file beside it - package-lock.json, pnpm-lock.yaml or npm-shrinkwrap.json - because that is the pair an install reads. Never look inside node_modules: those are installed dependencies, each with a package.json of its own, and none of them is this submission.
+    - text: |-
+        In <SCA_ROOT>, decide which directory holds the ADD-ON's own code. Its path relative to <SCA_ROOT> is <SCA_SOURCE>.
+
+        Read what <SCA_ROOT> contains and judge it. When ONE directory clearly holds the add-on's code and EVERY other directory holds only what the add-on does not ship - tests, documentation, build tooling, CI configuration, examples - then that one directory is <SCA_SOURCE>. When that split cannot be made cleanly, <SCA_SOURCE> is "." and the whole of <SCA_ROOT> is reviewed.
 
         Judge by the code, never by where a manifest.json sits: a build can generate or move it, and a directory chosen that way hides every file outside it. The two mistakes are not equal - too wide only adds noise, too narrow leaves a file unreviewed as add-on code with nothing to say so. When unsure, be too wide.
     - run: experiments
       text: |-
-        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look under <SCA_SOURCE>: those paths are relative to the add-on's own root. Its path relative to SCA_ROOT is <SCA_EXP_SOURCE>.
+        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look under <SCA_SOURCE>: those paths are relative to the add-on's own root. Its path relative to <SCA_ROOT> is <SCA_EXP_SOURCE>.
     - text: |-
         Run the linter with exactly these flags, and nothing else:
 

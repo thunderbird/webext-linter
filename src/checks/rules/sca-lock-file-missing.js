@@ -14,7 +14,9 @@
 // Only the ROOT package.json is read - that is the build's entry point
 // (src/build/corpus.js), while a nested one is a workspace member or a vendored library's
 // own copy. Every build file this review reads is read at that root, for the same reason:
-// it is the directory the install runs in.
+// it is the directory the install runs in. Which folder IS the root was settled before any
+// check ran (src/addon/sca-root.js), so this reads a root that has been confirmed to be one
+// rather than the folder a command line happened to name.
 //
 // Belongs here: deciding whether a lock was owed and is absent. Does NOT belong here:
 // whether a present lock works (-> sca-lock-file-invalid) or the wording (-> the registry).

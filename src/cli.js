@@ -355,11 +355,13 @@ function shellArg(value) {
  * A flag given no value never reaches here - main() refuses one before any branch - so
  * the truth test below only skips the flags this run was not given.
  *
- * --sca-root prints the LITERAL destination this run already chose (submission.extracted,
- * named on the same terms as the XPI's own extraction) - not a placeholder the reader
- * works out, because there is nothing left to work out: the "Submission" block above names
- * the same value under SCA_ROOT. --sca-source stays a placeholder; only its reader can
- * open the archive and say where the add-on's own code sits inside it.
+ * --sca-root and --sca-source are both placeholders, because only their reader can settle
+ * them. The "Submission" block names EXTRACT_TO, which is where this run asks for the
+ * archive to be unpacked - path math, decided before anything has been extracted. Which
+ * folder inside it is the source ROOT is a fact about what the archive turned out to hold,
+ * and naming the destination as though it were the root is what sent a review at a folder
+ * holding none of the build. The review settles the root again from what it finds
+ * (src/addon/sca-root.js), so a near miss here costs nothing.
  * @param {Record<string, string|boolean>} values
  * @param {{xpi: string, extracted: string}} submission  From scaSubmission().
  * @returns {{flags: string[], experiments: boolean}}
@@ -374,10 +376,7 @@ function reviewCommand(values, submission) {
       type === "string" ? `--${name} ${shellArg(values[name])}` : `--${name}`
     );
   }
-  flags.push(
-    `--sca-root ${shellArg(submission.extracted)}`,
-    "--sca-source <SCA_SOURCE>"
-  );
+  flags.push("--sca-root <SCA_ROOT>", "--sca-source <SCA_SOURCE>");
   const experiments = Boolean(values["allow-experiments"]);
   if (experiments) {
     flags.push("--sca-exp-source <SCA_EXP_SOURCE>");

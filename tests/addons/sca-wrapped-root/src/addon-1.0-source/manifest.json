@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "SCA wrapped root",
+  "version": "1.0",
+  "description": "Its source archive carries everything in one directory of its own.",
+  "permissions": [
+    "messagesRead",
+    "accountsRead"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "icons": {
+    "64": "icon.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sca-wrapped-root@example.com",
+      "strict_min_version": "128.0"
+    }
+  }
+}

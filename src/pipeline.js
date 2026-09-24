@@ -41,6 +41,7 @@ import {
   applySchemaAnnotations,
 } from "./schema/annotate.js";
 import { loadAddon, scaViews } from "./addon/load.js";
+import { settleScaRoot } from "./addon/sca-root.js";
 import { isTranspiledSource } from "./util/files.js";
 import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
@@ -333,6 +334,18 @@ export async function runPipeline(opts) {
     warningsAsErrors: Boolean(opts.warningsAsErrors),
   });
 
+  // Which folder is the source root, settled before anything reads it
+  // (src/addon/sca-root.js). Whoever named --sca-root had not looked inside it yet - an
+  // archive is extracted by the reader of the --llm-sca-review prompt, into a destination
+  // worked out by path math - so an archive carrying its contents in one directory of its own
+  // leaves the build files a level below the root it was given.
+  //
+  // Rebound onto `opts`, once, rather than threaded: every reader below asks opts.scaRoot,
+  // and a settled value beside the one it was given is two answers to one question. The
+  // narration comes later, with the rest of Setup.
+  const scaMove = settleScaRoot(opts);
+  opts = { ...opts, ...scaMove };
+
   // Load the .xpi. Read before the "Setup" banner because it sizes the feed - it gives
   // the mode and whether the add-on is an Experiment. Every slow NETWORK step below (the
   // experiment fetch, schema fetch, vendor verification, CDN lookups) plus the AST parse
@@ -582,6 +595,15 @@ export async function runPipeline(opts) {
     // Reading them costs nothing extra: the store reads a file once and the views share it.
     "source-archive": () => {
       if (setupFacts.sca) {
+        // Said where the source archive is read, because that is what it is about, and said
+        // at all because the root reviewed is then not the root the command named - the
+        // reviewer has to be able to see which folder their verdicts are about.
+        if (scaMove.movedFrom) {
+          progress(
+            `Source root: ${opts.scaRoot} (${scaMove.movedFrom} holds no build manifest)`,
+            FEED.DETAIL
+          );
+        }
         scaArchive = loadAddon(opts.scaRoot);
         scaSource = opts.scaSource || opts.scaRoot;
         scaParts = scaViews(scaArchive, {

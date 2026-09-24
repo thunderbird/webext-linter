@@ -239,12 +239,20 @@ node verify.js ./submission-folder --llm-sca-review
 ```
 
 It reviews nothing. It names which file is the add-on and which is the source, computes
-where the source archive should be extracted (`SCA_ROOT`, beside the archive and named
-after it), and asks its reader to extract it there and work out two things that only
-reading the tree can settle: which directory holds the add-on's own code
+where the source archive should be extracted (`EXTRACT_TO`, beside the archive and named
+after it), and asks its reader to extract it there and work out three things that only
+reading the tree can settle: which directory is the source root, being the one holding
+`package.json` (`<SCA_ROOT>`), which directory inside it holds the add-on's own code
 (`<SCA_SOURCE>`), and - when Experiments are allowed - which holds the Experiment
-implementation (`<SCA_EXP_SOURCE>`). A name in `<angle brackets>` is one of those; every
-other name is given.
+implementation (`<SCA_EXP_SOURCE>`). A name in `<angle brackets>` is one of those, and
+every other name is given.
+
+Where the archive is extracted and where its build runs are two different places, which is
+why `EXTRACT_TO` is not `<SCA_ROOT>`: an archive that carries its contents in a directory
+of its own puts the build files a level below the destination. The review does not depend
+on that being answered correctly - handed a root with no `package.json` and one subfolder
+that has one, it settles the root itself before reading anything (`src/addon/sca-root.js`)
+and says so in its Setup feed.
 
 It then prints the review command to run, which is this run's own flags with
 `--llm-review` in place of `--llm-sca-review` and the `--sca-*` arguments filled in. That

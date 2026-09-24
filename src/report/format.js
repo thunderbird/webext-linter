@@ -406,7 +406,7 @@ const SUBMISSION_VALUES = [
   ["XPI", "xpi"],
   ["SOURCE_ARCHIVE", "source"],
   ["FOLDER", "folder"],
-  ["SCA_ROOT", "extracted"],
+  ["EXTRACT_TO", "extracted"],
 ];
 
 /**

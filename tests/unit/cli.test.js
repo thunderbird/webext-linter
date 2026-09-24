@@ -1278,9 +1278,9 @@ test("the command --llm-sca-review prints names the file its block names", () =>
 test("--llm-sca-review prints the flags the review is run with", () => {
   const dir = submissionFolder();
   const xpi = path.join(dir, "addon.xpi");
-  // Computed the same way scaSubmission() does: beside the source archive, named after
-  // it. Real, not a placeholder - --sca-root is now given, not worked out.
-  const scaRoot = `${path.join(dir, "src-4.3.12.tar_ABC.gz")}.extracted${path.sep}`;
+  // Both SCA paths are placeholders: only a reader who has opened the archive can say
+  // which folder is the root and which part of it is the add-on's own code. The
+  // extraction DESTINATION is given, above the flags, under EXTRACT_TO.
   // The flags are the paragraph after the step that says to run the linter, indented
   // beneath its number and ending at the blank line before the next step.
   const flagsOf = (r) =>
@@ -1299,7 +1299,7 @@ test("--llm-sca-review prints the flags the review is run with", () => {
         `--llm-review ${xpi}`,
         "--eslint",
         "--allow-experiments",
-        `--sca-root ${scaRoot}`,
+        "--sca-root <SCA_ROOT>",
         "--sca-source <SCA_SOURCE>",
         "--sca-exp-source <SCA_EXP_SOURCE>",
       ],
@@ -1311,7 +1311,7 @@ test("--llm-sca-review prints the flags the review is run with", () => {
     [
       `--llm-review ${xpi}`,
       "--checks-only unused-files",
-      `--sca-root ${scaRoot}`,
+      "--sca-root <SCA_ROOT>",
       "--sca-source <SCA_SOURCE>",
     ],
     "--flag=value"
@@ -1330,7 +1330,7 @@ test("--llm-sca-review prints the flags the review is run with", () => {
       `--llm-review ${xpi}`,
       "--eslint",
       "--verbose",
-      `--sca-root ${scaRoot}`,
+      "--sca-root <SCA_ROOT>",
       "--sca-source <SCA_SOURCE>",
     ]
   );
@@ -1340,11 +1340,11 @@ test("--llm-sca-review prints the flags the review is run with", () => {
   const plain = run([dir, "--llm-sca-review"]);
   assert.deepEqual(flagsOf(plain), [
     `--llm-review ${xpi}`,
-    `--sca-root ${scaRoot}`,
+    "--sca-root <SCA_ROOT>",
     "--sca-source <SCA_SOURCE>",
   ]);
   assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
-  assert.match(plain.stdout, /\n4\. That review prints a prompt of its own/);
+  assert.match(plain.stdout, /\n5\. That review prints a prompt of its own/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -1386,9 +1386,9 @@ test("the command --llm-sca-review prints is one the tool accepts", () => {
   ]);
   assert.equal(prepared.code, 0, prepared.stderr);
 
-  // SCA_ROOT is given, not worked out: extract into the exact folder the tool named,
-  // same as its reader would.
-  const root = headerValue(prepared.stdout, "SCA_ROOT");
+  // EXTRACT_TO is given: unpack into the exact folder the tool named, same as its reader
+  // would. Which folder inside it is the ROOT is the reader's to settle, below.
+  const root = headerValue(prepared.stdout, "EXTRACT_TO");
   fs.cpSync(
     path.join(ROOT, "tests", "addons", "build-hygiene-sca", "src"),
     root,
@@ -1404,14 +1404,16 @@ test("the command --llm-sca-review prints is one the tool accepts", () => {
     .map((l) => l.trim())
     .filter(Boolean);
 
-  // Substitute what its reader still has to work out - where the add-on's own code sits
-  // inside SCA_ROOT - and run what is left.
+  // Substitute what its reader still has to work out - which folder is the source root,
+  // and where the add-on's own code sits inside it - and run what is left. Here the
+  // archive unpacked flat, so the root IS the folder it was unpacked into.
   const argv = flags
     .flatMap((line) => {
       const [flag, ...rest] = line.split(" ");
       const value = rest.join(" ").replace(/^'|'$/g, "");
       return value ? [flag, value] : [flag];
     })
+    .map((arg) => (arg === "<SCA_ROOT>" ? root : arg))
     .map((arg) => (arg === "<SCA_SOURCE>" ? "." : arg));
   const review = run(argv);
 
