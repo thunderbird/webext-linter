@@ -25,7 +25,11 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { anchorText, manifestTokenLine } from "../../lib/util.js";
+import {
+  anchorText,
+  manifestTokenLine,
+  utf8ComparisonSigns,
+} from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -57,8 +61,16 @@ export default {
         VERDICT.FAIL
       );
       // Collapsed response (no {{item}}): the subject renders on the location line
-      // as `name (spec)`, matching the other dependency rejects.
-      findings.push(finding({ file: at, loc, item: `${name} (${spec})` }));
+      // as `name (spec)`, matching the other dependency rejects. utf8ComparisonSigns:
+      // a spec's comparison signs must stay readable/copyable, unlike free prose - see
+      // its own doc comment (src/lib/util.js).
+      findings.push(
+        finding({
+          file: at,
+          loc,
+          item: utf8ComparisonSigns(`${name} (${spec})`),
+        })
+      );
     }
     return { findings };
   },

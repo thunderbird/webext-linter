@@ -7,10 +7,10 @@
 // Belongs here: generic, dependency-light check helpers - dedupe, the
 // asArray/asObject manifest guards, isMatchPattern/isBroadHost, trunc, SCHEME_RE,
 // escapeRegExp/wholeWordRe, the line locators (manifestTokenLine, manifestPathLine,
-// lineContaining, declarationLine), the doc/dependency-file tests (isDocMetadataFile, isDocFile,
-// DEPENDENCY_FILE_RE), isExperiment/strictMaxVersion, the version family
-// (strictMinVersion, parseVersion, cmpVersion, versionInBounds), the suspected-loader
-// helper referrerSupported, and the feed-note builder loaderTrace.
+// lineContaining, declarationLine), utf8ComparisonSigns, the doc/dependency-file tests
+// (isDocMetadataFile, isDocFile, DEPENDENCY_FILE_RE), isExperiment/strictMaxVersion, the
+// version family (strictMinVersion, parseVersion, cmpVersion, versionInBounds), the
+// suspected-loader helper referrerSupported, and the feed-note builder loaderTrace.
 //
 // Does NOT belong here: anything with a heavier dependency or a single home -
 // reachability lives in reachability.js, permission analysis in permissions.js,
@@ -438,6 +438,42 @@ function yamlKeyLine(text, key) {
     }
   }
   return null;
+}
+
+/**
+ * Every comparison sign in a version-range spec, defused for display without losing its
+ * shape: `<=`/`>=` become the exact math symbols `≤`/`≥` (U+2264/U+2265), and whatever bare
+ * `<`/`>` remains becomes its fullwidth lookalike `＜`/`＞` (U+FF1C/U+FF1E) - never the
+ * report's blanket bracket substitution (src/report/format.js squared(), `<`/`>` -> `[`/`]`).
+ * The two-character replacements run first, so `<=` becomes `≤` outright rather than `＜=`.
+ *
+ * Only for a finding's `item` where it is a raw npm/lock-file spec a developer may need to
+ * read accurately and copy back into their own package.json: unsupported-dependency,
+ * xpi-lock-file-missing, xpi-lock-file-invalid, sca-lock-file-invalid. squared()'s blanket
+ * bracket substitution is correct and unchanged for every other check - free-form text (an
+ * add-on name, a banned-library reason) has no "must stay visually exact" requirement the
+ * way a comparison operator does; `[`/`]` there is display noise, not lost meaning.
+ *
+ * Unconditional - every occurrence, not just ones shaped like an HTML tag. A narrower rule
+ * isn't airtight anyway: classifyDeps/lockGaps admit a "range" by absence of `:`/`/`, not by
+ * real semver grammar, so a crafted spec with neither character could still carry HTML-shaped
+ * text this has to defuse regardless of what follows it.
+ *
+ * None of the four replacement characters is the literal `<`/`>` a renderer acts on, so this
+ * is as safe against HTML/markdown injection as squared()'s brackets - but reads correctly as
+ * a comparison on screen. Known, accepted tradeoff: a value copied back byte-for-byte into
+ * real code silently isn't valid semver syntax either way (as `[`/`]` already wasn't) -
+ * readable-and-plausible-to-mis-copy beats unreadable-and-obviously-wrong for content whose
+ * whole point is to show the developer an accurate comparison.
+ * @param {string} text
+ * @returns {string}
+ */
+export function utf8ComparisonSigns(text) {
+  return text
+    .replace(/<=/g, "≤")
+    .replace(/>=/g, "≥")
+    .replace(/</g, "＜")
+    .replace(/>/g, "＞");
 }
 
 /**

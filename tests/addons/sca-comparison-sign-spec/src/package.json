@@ -1,0 +1,7 @@
+{
+  "name": "sca-comparison-sign-spec",
+  "version": "1.0.0",
+  "dependencies": {
+    "drifted": ">=2.0.0 <3.0.0"
+  }
+}

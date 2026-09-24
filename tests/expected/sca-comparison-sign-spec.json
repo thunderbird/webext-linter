@@ -1,0 +1,6 @@
+{
+  "_comment": "A declared range with comparison signs (>=2.0.0 <3.0.0) whose pinned version (1.5.0, via a root record restating an older >=1.0.0 <2.0.0) does not satisfy it. sca-lock-file-invalid's item must read the comparison signs correctly (≥/＜, via utf8ComparisonSigns) rather than squared() 's unreadable brackets. Decided offline, no fetch.",
+  "expect": {
+    "sca-lock-file-invalid": ["package-lock.json:14"]
+  }
+}

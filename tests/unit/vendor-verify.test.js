@@ -1466,6 +1466,25 @@ test("the two ranged-dependency checks read their own list, anchored in package.
   );
 });
 
+// A comparison-sign-bearing spec reads correctly, not squared() 's unreadable brackets -
+// see utf8ComparisonSigns (src/lib/util.js).
+test("both ranged-dependency checks keep a comparison-sign spec readable", () => {
+  const pkg = '{\n  "dependencies": {\n    "lodash": ">=4.17.0 <5.0.0"\n  }\n}';
+  const ctxWith = (vendor) => ({
+    addon: {
+      files: new Map([["package.json", Buffer.from(pkg)]]),
+      vendor: store(vendor),
+    },
+  });
+  const dep = [{ name: "lodash", spec: ">=4.17.0 <5.0.0" }];
+
+  const missing = xpiLockFileMissing.run(ctxWith({ unlocked: dep })).findings;
+  assert.equal(missing[0].item, "lodash (≥4.17.0 ＜5.0.0)");
+
+  const invalid = xpiLockFileInvalid.run(ctxWith({ unpinned: dep })).findings;
+  assert.equal(invalid[0].item, "lodash (≥4.17.0 ＜5.0.0)");
+});
+
 test("unpinned-vendor-source: anchored on the VENDOR line, URL as the hint", () => {
   const url = "https://unpkg.com/x/x.js";
   const ctx = {

@@ -1784,6 +1784,33 @@ test("sca-lock-file-invalid anchors each gap and names what is wrong", () => {
   );
 });
 
+// A comparison-sign-bearing spec/recorded pin reads correctly, not squared() 's unreadable
+// brackets - see utf8ComparisonSigns (src/lib/util.js).
+test("sca-lock-file-invalid keeps a comparison-sign spec readable in the item", () => {
+  const out = scaLockFileInvalid.run({
+    addon: {
+      files: fileMap({
+        "package.json": JSON.stringify({
+          dependencies: { drifted: ">=2.0.0 <3.0.0" },
+        }),
+        "package-lock.json": JSON.stringify({
+          lockfileVersion: 3,
+          packages: {
+            "": { dependencies: { drifted: ">=1.0.0 <2.0.0" } },
+            "node_modules/drifted": { version: "1.5.0" },
+          },
+        }),
+      }),
+    },
+  }).findings;
+  assert.deepEqual(
+    out.map((f) => f.item),
+    [
+      "drifted 1.5.0 installed via ≥1.0.0 ＜2.0.0 locking does not satisfy the declared ≥2.0.0 ＜3.0.0",
+    ]
+  );
+});
+
 // ---- manual-checks ----
 // Every entry is emitted for every review: the list is the always-by-hand work, with
 // no gate of its own. What a CHECK escalates is surfaced by the orchestrator instead.

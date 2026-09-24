@@ -19,7 +19,11 @@
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { lockGaps } from "../../vendor/locks.js";
-import { declarationLine, manifestTokenLine } from "../../lib/util.js";
+import {
+  declarationLine,
+  manifestTokenLine,
+  utf8ComparisonSigns,
+} from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -48,7 +52,12 @@ export default {
       const loc = line ? { line } : undefined;
       const item = subject(gap);
       ctx.note?.(gap.file, loc, item, VERDICT.FAIL);
-      findings.push(finding({ file: gap.file, loc, item }));
+      // utf8ComparisonSigns: a spec's comparison signs must stay readable/copyable,
+      // unlike free prose - see its own doc comment (src/lib/util.js). Applied only to
+      // the report's item, not the feed note above, matching the other three checks.
+      findings.push(
+        finding({ file: gap.file, loc, item: utf8ComparisonSigns(item) })
+      );
     }
     return { findings };
   },

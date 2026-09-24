@@ -46,3 +46,12 @@ test("a dep whose token is absent from package.json anchors at the file, no line
   assert.equal(out.length, 1);
   assert.ok(!out[0].loc);
 });
+
+// A comparison-sign-bearing spec reads correctly, not squared() 's unreadable brackets -
+// see utf8ComparisonSigns (src/lib/util.js).
+test("a spec with comparison signs stays readable in the item", () => {
+  const out = unsupportedDependency.run(
+    ctxWith([{ name: "weird", spec: ">=4.17.0 <5.0.0" }])
+  ).findings;
+  assert.equal(out[0].item, "weird (≥4.17.0 ＜5.0.0)");
+});
