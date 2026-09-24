@@ -1457,10 +1457,40 @@ deterministic-phase:
     Report it if it breaches the policy, and clear it if it does not.
   sweep-instruction: |-
     Content shipped inside the package - the name and description in manifest.json,
-    an icon, or any bundled text, image or media - that is spam, inappropriate,
-    misleading or low-effort, or that breaches Mozilla's Acceptable Use Policy.
+    or any bundled text, image or media - that is spam, inappropriate, misleading
+    or low-effort, or that breaches Mozilla's Acceptable Use Policy.
   response: |-
     Content shipped inside this add-on does not meet our content requirements. It must not be spam, inappropriate, misleading, or low-effort, and it must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please correct the affected content and submit a new version.
+
+# The icon half of the brief above, asked separately because it is a different question with
+# a different answer: not whether the image is acceptable, but whether it imitates a mark
+# nobody else may use. The ATN listing icon is asked the same thing by a manual check
+# (icon-trademark-imitation); this one is about the icons the package SHIPS, which is why
+# its answer is a new version rather than a listing edit. Like the check above it scans
+# nothing - whether an image imitates a logo is not decidable from the bytes - so its whole
+# contribution is the brief a reviewer or an agent sweeps for.
+- title: Check the shipped icons for trademark or logo imitation
+  severity: error
+  check: shipped-icon-trademark-imitation
+  input: xpi
+  settle-verbs: [cleared, ask]
+  instructions-for-llm: |-
+    The location below was returned as an icon that may imitate or incorporate
+    the Thunderbird, Firefox or Mozilla logo. Read the icon it names as it ships.
+    Clear it where it plainly imitates neither, and hand it to the reviewer where
+    it may imitate either. Whether an icon imitates a mark is the reviewer's to
+    decide, not yours.
+  instructions-for-human: |-
+    Look at the icon at the location below as it ships, and decide whether it
+    imitates or incorporates the Thunderbird, Firefox or Mozilla logo. Only the icons
+    inside the submitted package belong here; the icon on the ATN listing page is
+    a separate check. Report it if it imitates the logo, and clear it if it does
+    not.
+  sweep-instruction: |-
+    An icon shipped inside the package that imitates or incorporates the Thunderbird,
+    Firefox or Mozilla logo.
+  response: |-
+    An icon shipped inside this add-on imitates or incorporates a Mozilla trademark (the Thunderbird, Firefox or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please use a distinct icon and submit a new version.
 
 # The token vocabulary the unused-permission check scans for, one entry per
 # permission group. Each entry may carry min_strict_version / max_strict_version (an
@@ -1580,6 +1610,61 @@ permission-prompts:
 
 
 manual-checks:
+# Manual: limited/non-public audience (better self-hosted than publicly listed).
+- title: Check suitability for listing
+  check: suitability-for-listing
+  severity: error
+  instructions: |-
+    Judge whether the add-on targets a limited or non-public audience (for
+    example an internal, single-organization, or test-only add-on) and should
+    better self-hosted than publicly listed on ATN.
+  response: |-
+    Due to its limited or non-public audience, this add-on is not suitable for listing on ATN (addons.thunderbird.net). Please consider self-hosting and distributing it yourself.
+
+# Manual: the content on the ATN LISTING. Nothing here is in the package, so every
+# fix is an edit on addons.thunderbird.net and no new version is needed.
+- title: Check the listing for unacceptable content
+  check: unacceptable-listing-content
+  severity: hold-or-error
+  instructions: |-
+    Inspect the add-on listing page on ATN: its summary, description and
+    screenshots. Determine whether any of it is spam, inappropriate, or
+    misleading, or breaches Mozilla's Acceptable Use Policy
+    (https://www.mozilla.org/about/legal/acceptable-use/). The description here is
+    the one on the listing page, not the one in manifest.json. Only the listing
+    belongs here. What the package itself ships is a separate check.
+  response: |-
+    The add-on listing page on ATN (addons.thunderbird.net) does not meet our content requirements. Its summary, description and screenshots must not be spam, inappropriate, or misleading, and they must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please update the listing.
+
+# Manual: the ATN listing page lacks usage details/entry points or screenshots.
+- title: Missing ATN description or details
+  check: missing-atn-description
+  severity: hold-or-error
+  instructions: |-
+    Verify that the add-on listing page on ATN includes detailed instructions on
+    how to use the add-on and where to find its entry points. It should also
+    include screenshots to help users quickly understand how the add-on works.
+  response: |-
+    The add-on listing page on ATN (addons.thunderbird.net) should include detailed instructions on how to use the add-on and where to find its entry points. It should also include screenshots to help users quickly understand how the add-on works. Please update the listing.
+
+# Manual: the ATN listing page should have an English version.
+- title: Missing English ATN localization
+  check: missing-english-atn-localization
+  severity: info
+  instructions: |-
+    Verify that the ATN listing page also has an English version.
+  response: |-
+    The add-on listing page on ATN (addons.thunderbird.net) should also have an English localization. English serves as the default language in Thunderbird, and most users who do not understand the available non-English version will most likely be able to read English. Please update the listing.
+
+# Manual: icon imitating the Thunderbird/Firefox/Mozilla logo (an image checks can’t see).
+- title: Check the icon for trademark or logo imitation
+  check: icon-trademark-imitation
+  severity: error
+  instructions: |-
+    Inspect the add-on’s icon as it is shown on the add-on listing page on ATN. Decide whether it imitates or incorporates the Thunderbird, Firefox or Mozilla logo.
+  response: |-
+    The icon on this add-on’s listing page on ATN (addons.thunderbird.net) imitates or incorporates a Mozilla trademark (the Thunderbird, Firefox or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please update the listing with a distinct icon.
+
 # Manual: run the add-on and see whether it does what its listing says. The questions are
 # the reviewer guide's (addons-reviewer-guide.thunderbird.net); the time budget is ours,
 # and shorter than the cap it names.
@@ -1645,63 +1730,7 @@ manual-checks:
     add-on requires a subscription or other form of payment to function but the
     "needs payment" flag on the add-on’s ATN listing page is not enabled.
   response: |-
-    It looks like a payment is required to use this add-on or the service this add-on relies on, either upfront, after a trial period or in conjunction with a paid software. If so, we need to ask you to update the payment status to yes.
-
-# Manual: limited/non-public audience (better self-hosted than publicly listed).
-- title: Check suitability for listing
-  check: suitability-for-listing
-  severity: error
-  instructions: |-
-    Judge whether the add-on targets a limited or non-public audience (for
-    example an internal, single-organization, or test-only add-on) and should
-    better self-hosted than publicly listed on ATN.
-  response: |-
-    Due to its limited or non-public audience, this add-on is not suitable for listing on ATN (addons.thunderbird.net). Please consider self-hosting and distributing it yourself.
-
-# Manual: the content on the ATN LISTING. Nothing here is in the package, so every
-# fix is an edit on addons.thunderbird.net and no new version is needed.
-- title: Check the listing for unacceptable content
-  check: unacceptable-listing-content
-  severity: hold-or-error
-  instructions: |-
-    Inspect the add-on listing page on ATN: its summary, description and
-    screenshots. Determine whether any of it is spam, inappropriate, or
-    misleading, or breaches Mozilla's Acceptable Use Policy
-    (https://www.mozilla.org/about/legal/acceptable-use/). The description here is
-    the one on the listing page, not the one in manifest.json. Only the listing
-    belongs here. What the package itself ships is a separate check.
-  response: |-
-    The add-on listing page on ATN (addons.thunderbird.net) does not meet our content requirements. Its summary, description and screenshots must not be spam, inappropriate, or misleading, and they must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please update the listing. A new version of the add-on is not needed.
-
-# Manual: icon imitating the Thunderbird/Mozilla logo (an image checks can’t see).
-- title: Check the icon for trademark or logo imitation
-  check: icon-trademark-imitation
-  severity: error
-  instructions: |-
-    Inspect the add-on’s icon, if it imitates or incorporates the Thunderbird or
-    Mozilla logo.
-  response: |-
-    This add-on’s icon imitates or incorporates a Mozilla trademark (the Thunderbird or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please use a distinct icon.
-
-# Manual: the ATN listing page lacks usage details/entry points or screenshots.
-- title: Missing ATN description or details
-  check: missing-atn-description
-  severity: hold-or-error
-  instructions: |-
-    Verify that the add-on listing page on ATN includes detailed instructions on
-    how to use the add-on and where to find its entry points. It should also
-    include screenshots to help users quickly understand how the add-on works.
-  response: |-
-    The add-on listing page on ATN (addons.thunderbird.net) should include detailed instructions on how to use the add-on and where to find its entry points. Please also include screenshots to help users quickly understand how the add-on works.
-
-# Manual: the ATN listing page should have an English version.
-- title: Missing English ATN localization
-  check: missing-english-atn-localization
-  severity: info
-  instructions: |-
-    Verify that the ATN listing page also has an English version.
-  response: |-
-    The add-on listing page on ATN (addons.thunderbird.net) should also have an English localization. English serves as the default language in Thunderbird, and most users who do not understand the available non-English version will most likely be able to read English.
+    It looks like a payment is required to use this add-on or the service this add-on relies on, either upfront, after a trial period or in conjunction with a paid software. If so, please update the payment status on the listing to yes.
 
 # Manual: is this a fork of an existing add-on that must be distinguished from the
 # original?

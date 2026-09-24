@@ -77,14 +77,20 @@ Suggested verdict: error
 Suggested response: The following code location(s) appear to send data through a channel not meant for data transmission - a URL used for loading, styling, opening or navigating, with data riding in it. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 9) Check the package for unacceptable content: Content shipped inside the
-   package - the name and description in manifest.json, an icon, or any bundled
-   text, image or media - that is spam, inappropriate, misleading or low-effort,
-   or that breaches Mozilla's Acceptable Use Policy.
+   package - the name and description in manifest.json, or any bundled text,
+   image or media - that is spam, inappropriate, misleading or low-effort, or
+   that breaches Mozilla's Acceptable Use Policy.
 Suggested verdict: error
 Suggested response: Content shipped inside this add-on does not meet our content requirements. It must not be spam, inappropriate, misleading, or low-effort, and it must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please correct the affected content and submit a new version.
+
+10) Check the shipped icons for trademark or logo imitation: An icon shipped
+    inside the package that imitates or incorporates the Thunderbird, Firefox or
+    Mozilla logo.
+Suggested verdict: error
+Suggested response: An icon shipped inside this add-on imitates or incorporates a Mozilla trademark (the Thunderbird, Firefox or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please use a distinct icon and submit a new version.
 
 ── Summary ──
 
 1 error(s), 0 hold, 0 warning(s), 0 info,
 1 extended code review item(s), 0 extended manual review item(s),
-9 standard code review item(s), 0 standard manual review item(s)
+10 standard code review item(s), 0 standard manual review item(s)

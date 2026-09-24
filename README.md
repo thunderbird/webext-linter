@@ -359,7 +359,7 @@ machine.
 | `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, stops the review). The lock is owed by the manifest, not by what it declares: both installers refuse without one whatever it holds. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |
 | `string-timer` | A code string passed to `setTimeout`/`setInterval` (it is eval'd) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
 | `sync-xhr` | Synchronous `XMLHttpRequest` (`open(..., false)`). |
-| `trademark-violation` | Add-on name (resolved from `_locales` for a `__MSG__` name) using a Mozilla brand term - `Firefox`/`Mozilla`/`MZLA` anywhere, in any locale (error, case-insensitive). Needs no knowledge of the language, so it is always a finding, and each offending name is reported once naming every locale that states it. `Thunderbird` is the two checks below, and a name carrying a brand term is left to this one alone, since it is refused either way. The icon is a separate manual check. |
+| `trademark-violation` | Add-on name (resolved from `_locales` for a `__MSG__` name) using a Mozilla brand term - `Firefox`/`Mozilla`/`MZLA` anywhere, in any locale (error, case-insensitive). Needs no knowledge of the language, so it is always a finding, and each offending name is reported once naming every locale that states it. `Thunderbird` is the two checks below, and a name carrying a brand term is left to this one alone, since it is refused either way. The icon is checked separately, on the listing and in the package. |
 | `trademark-thunderbird-locale` | `Thunderbird` in a name resolved from `_locales`, other than as a trailing "for Thunderbird". A name from an `en*` locale is a finding - the policy is written in English - and a name decided that way is not also escalated because another locale states it. A name from any other locale escalates to code review, because the allowed and forbidden readings share one shape ("X para Thunderbird" is allowed, "X de Thunderbird" is not), word order and word boundaries both vary, and telling them apart needs the meaning of a word. Answerable from the package, since every locale file ships in it and its directory names the language. |
 | `trademark-thunderbird-name` | The same question for a name the manifest states literally. It carries no locale tag, so nothing in the package says what language it is in and the language must be settled first - not answerable from the submission, so it escalates to manual review and never rejects on its own. |
 | `unknown-api` | Unknown namespaces, unknown members (incl. methods on property types like `storage.local.x`), and APIs marked `unsupported`. |
@@ -426,6 +426,7 @@ result into the owning check - described in
 | `disguised-navigation` | Data in the URL an already-open context is sent to. |
 | `privacy-policy` | The add-on reaching a developer-chosen remote service by an unlisted route. |
 | `unacceptable-package-content` | Content the add-on ships - its name and description, an icon, or bundled text, images or media - that is spam, inappropriate, misleading or low-effort, or breaches Mozilla's Acceptable Use Policy. |
+| `shipped-icon-trademark-imitation` | An icon the add-on ships that imitates or incorporates the Thunderbird, Firefox or Mozilla logo. Acceptability is the row above; this row is the trademark. |
 
 ### Manual checks
 
@@ -436,15 +437,15 @@ report's **Standard Manual Review** to-do list, unless the review stopped early.
 
 | Check id (`check:`) | What the reviewer verifies |
 | --- | --- |
+| `suitability-for-listing` | Whether the add-on targets a limited or non-public audience (better self-hosted than listed). |
+| `unacceptable-listing-content` | The ATN listing page - its summary, description and screenshots - for spam, inappropriate or misleading content, and against Mozilla's Acceptable Use Policy. Every fix here is a listing edit, so no new version is needed. |
+| `missing-atn-description` | The ATN listing page has usage instructions, entry points, and screenshots. |
+| `missing-english-atn-localization` | The ATN listing page also has an English version. |
+| `icon-trademark-imitation` | The icon on the ATN listing page, for imitation of the Thunderbird, Firefox or Mozilla logo (an image the automated checks can't inspect). The icons the package ships are a separate check. |
 | `add-on-functionality` | The add-on running in a test profile: whether it acts as its ATN listing describes, generally works, reaches the described functionality with the developer's credentials, and makes clear what it sends to any remote server. |
 | `testing-information` | Whether the review needs anything the submission does not carry - credentials for a service the add-on signs in to, a test account, or instructions for reaching a feature. Asked after the test above, because that is where the need shows itself. |
 | `no-surprises-policy` | The code diff for behavior not documented on the ATN listing that could surprise the user. |
 | `missing-payment-disclosure` | Whether the add-on requires payment but the "needs payment" flag is not set on ATN. |
-| `suitability-for-listing` | Whether the add-on targets a limited or non-public audience (better self-hosted than listed). |
-| `unacceptable-listing-content` | The ATN listing page - its summary, description and screenshots - for spam, inappropriate or misleading content, and against Mozilla's Acceptable Use Policy. Every fix here is a listing edit, so no new version is needed. |
-| `icon-trademark-imitation` | The icon for imitation of the Thunderbird or Mozilla logo (an image the automated checks can't inspect). |
-| `missing-atn-description` | The ATN listing page has usage instructions, entry points, and screenshots. |
-| `missing-english-atn-localization` | The ATN listing page also has an English version. |
 | `forked-add-on` | A forked add-on is clearly distinguished from the original and offers a significant difference in functionality and/or code. |
 
 

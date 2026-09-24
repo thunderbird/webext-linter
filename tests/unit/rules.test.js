@@ -719,6 +719,7 @@ test("every escalating check lands in the section its reader implies", async () 
       "privacy-policy",
       "remote-eval",
       "remote-resources",
+      "shipped-icon-trademark-imitation",
       "strict-min-version-api",
       "trademark-thunderbird-locale",
       "unacceptable-package-content",
@@ -804,6 +805,7 @@ test("every check's severity is pinned to its band", async () => {
       "sca-lock-file-missing",
       "sca-package-file-invalid",
       "sca-package-file-missing",
+      "shipped-icon-trademark-imitation",
       "strict-max-version-api",
       "strict-min-version-api",
       "string-timer",
@@ -891,6 +893,7 @@ test("the checks that sweep their own blind spot are exactly these", () => {
       ["data-exfiltration", "error"],
       ["disguised-transmission", "error"],
       ["unacceptable-package-content", "error"],
+      ["shipped-icon-trademark-imitation", "error"],
     ]
   );
   // Every one of them can actually receive what its sweep finds: a band to stamp the case
@@ -1275,7 +1278,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
   // The ONLY checks that read the built XPI instead of the review target: the file /
   // _locales / reachability-structure checks, unused-permission (it judges whether a
   // declared permission is exercised in the SHIPPED bytes), and
-  // unacceptable-package-content, which scans nothing itself but must be able to reach
+  // unacceptable-package-content and shipped-icon-trademark-imitation, which scan nothing themselves but must be able to reach
   // everything the package ships for what its sweep finds. Extending this set is
   // deliberate - update the check AND this pin together.
   assert.deepEqual(xpi, [
@@ -1286,6 +1289,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "default-locale-unused",
     "minimize-web-accessible-resources",
     "missing-english-localization",
+    "shipped-icon-trademark-imitation",
     "trademark-thunderbird-locale",
     "trademark-thunderbird-name",
     "trademark-violation",

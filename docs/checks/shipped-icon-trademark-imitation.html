@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Check the shipped icons for trademark or logo imitation</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Check the shipped icons for trademark or logo imitation
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">shipped-icon-trademark-imitation</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This check scans nothing. Whether an image imitates or incorporates the
+        Thunderbird, Firefox or Mozilla logo is a judgement about what it looks like, not
+        something decidable from the bytes, so what it contributes is a blind
+        spot: a standing brief naming what to look for among the icons the
+        package ships.
+      </p>
+      <p>
+        Every review prints that brief under <strong>Standard Code Review</strong>,
+        for a reviewer covering it by hand. When an agent is reviewing, it sweeps
+        for the same thing and hands back what it finds; each location comes back
+        as a case of this check, screened by the agent and put to the reviewer if
+        it survives. The agent can drop a candidate but never rule on one -
+        whether an icon takes a mark nobody else may use is a person's judgement.
+      </p>
+      <p>
+        The icons judged here are the ones inside the submitted package, so a fix
+        needs a new version. The icon on the ATN listing page is a different
+        image with a different remedy, judged by the manual
+        <a href="icon-trademark-imitation.html">icon-trademark-imitation</a>
+        check, where the fix is a listing edit. Whether shipped content is otherwise acceptable - spam,
+        misleading, low-effort - is a different question, asked of the same
+        package by
+        <a href="unacceptable-package-content.html"
+          >unacceptable-package-content</a
+        >, whose brief covers icons too on those grounds.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Every review"] --> X{"A rejected Experiment?<br/>(bundles an unsupported draft,<br/>no --allow-experiments)"}
+  X -- yes --> S([skip — the reject phase<br/>runs alone])
+  X -- no --> B(["listed under Standard Code Review:<br/>look at the icons the package ships"])
+  B --> C{"Is an agent sweeping?"}
+  C -- no --> M([the reviewer covers it by hand])
+  C -- yes --> D{"The sweep returns an icon"}
+  D -- "screened: plainly imitates neither" --> OK([cleared — never reaches the reviewer])
+  D -- "screened: may imitate the logo" --> Q(["put to the reviewer, who reports<br/>it or clears it"])
+
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class S skip;
+  class M manual;
+  class Q manual;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told that an icon shipped inside the add-on imitates or
+        incorporates a Mozilla trademark, which Mozilla's Trademark Policy does
+        not allow, and is asked to use a distinct icon and submit a new version.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/shipped-icon-trademark-imitation.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

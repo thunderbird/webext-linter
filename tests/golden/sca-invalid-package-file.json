@@ -101,7 +101,8 @@
       "remote-eval",
       "data-exfiltration",
       "disguised-transmission",
-      "unacceptable-package-content"
+      "unacceptable-package-content",
+      "shipped-icon-trademark-imitation"
     ],
     "earlyExit": {
       "intro": "The review was not completed and the report is incomplete due to the following issues:",

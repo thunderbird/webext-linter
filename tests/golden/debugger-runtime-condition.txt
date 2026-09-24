@@ -87,17 +87,56 @@ Suggested verdict: error
 Suggested response: The following code location(s) appear to send data through a channel not meant for data transmission - a URL used for loading, styling, opening or navigating, with data riding in it. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 9) Check the package for unacceptable content: Content shipped inside the
-   package - the name and description in manifest.json, an icon, or any bundled
-   text, image or media - that is spam, inappropriate, misleading or low-effort,
-   or that breaches Mozilla's Acceptable Use Policy.
+   package - the name and description in manifest.json, or any bundled text,
+   image or media - that is spam, inappropriate, misleading or low-effort, or
+   that breaches Mozilla's Acceptable Use Policy.
 Suggested verdict: error
 Suggested response: Content shipped inside this add-on does not meet our content requirements. It must not be spam, inappropriate, misleading, or low-effort, and it must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please correct the affected content and submit a new version.
+
+10) Check the shipped icons for trademark or logo imitation: An icon shipped
+    inside the package that imitates or incorporates the Thunderbird, Firefox or
+    Mozilla logo.
+Suggested verdict: error
+Suggested response: An icon shipped inside this add-on imitates or incorporates a Mozilla trademark (the Thunderbird, Firefox or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please use a distinct icon and submit a new version.
 
 ── Standard Manual Review ──
 
 Continue manual review for the following checks:
 
-1) Test the add-on: Install the add-on in a separate test profile and spend
+1) Check suitability for listing: Judge whether the add-on targets a limited or
+   non-public audience (for example an internal, single-organization, or
+   test-only add-on) and should better self-hosted than publicly listed on ATN.
+Suggested verdict: error
+Suggested response: Due to its limited or non-public audience, this add-on is not suitable for listing on ATN (addons.thunderbird.net). Please consider self-hosting and distributing it yourself.
+
+2) Check the listing for unacceptable content: Inspect the add-on listing page
+   on ATN: its summary, description and screenshots. Determine whether any of it
+   is spam, inappropriate, or misleading, or breaches Mozilla's Acceptable Use
+   Policy (https://www.mozilla.org/about/legal/acceptable-use/). The description
+   here is the one on the listing page, not the one in manifest.json. Only the
+   listing belongs here. What the package itself ships is a separate check.
+Suggested verdict: hold
+Suggested response: The add-on listing page on ATN (addons.thunderbird.net) does not meet our content requirements. Its summary, description and screenshots must not be spam, inappropriate, or misleading, and they must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please update the listing.
+
+3) Missing ATN description or details: Verify that the add-on listing page on
+   ATN includes detailed instructions on how to use the add-on and where to find
+   its entry points. It should also include screenshots to help users quickly
+   understand how the add-on works.
+Suggested verdict: hold
+Suggested response: The add-on listing page on ATN (addons.thunderbird.net) should include detailed instructions on how to use the add-on and where to find its entry points. It should also include screenshots to help users quickly understand how the add-on works. Please update the listing.
+
+4) Missing English ATN localization: Verify that the ATN listing page also has
+   an English version.
+Suggested verdict: info
+Suggested response: The add-on listing page on ATN (addons.thunderbird.net) should also have an English localization. English serves as the default language in Thunderbird, and most users who do not understand the available non-English version will most likely be able to read English. Please update the listing.
+
+5) Check the icon for trademark or logo imitation: Inspect the add-on’s icon as
+   it is shown on the add-on listing page on ATN. Decide whether it imitates or
+   incorporates the Thunderbird, Firefox or Mozilla logo.
+Suggested verdict: error
+Suggested response: The icon on this add-on’s listing page on ATN (addons.thunderbird.net) imitates or incorporates a Mozilla trademark (the Thunderbird, Firefox or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please update the listing with a distinct icon.
+
+6) Test the add-on: Install the add-on in a separate test profile and spend
    about 5 minutes exercising it. You are not expected to test every feature.
    Does it act as described in its ATN summary and description? Does it
    generally work - do its action button and options page open? Where it signs
@@ -110,7 +149,7 @@ Suggested response: We observed the following while testing the submitted extens
 
 - ...
 
-2) Request testing information if needed: Check whether reviewing this add-on
+7) Request testing information if needed: Check whether reviewing this add-on
    needs anything the submission does not provide: credentials for a service it
    signs in to, a test account, or instructions for reaching a feature. A
    developer must supply testing credentials where the add-on relies on a
@@ -118,7 +157,7 @@ Suggested response: We observed the following while testing the submitted extens
 Suggested verdict: hold
 Suggested response: Please provide us with detailed information on how to test this add-on. If authentication to a website is necessary, give us a test username and password to facilitate our work. This can be provided in the Whiteboard field, which can be found in the Edit Listing page under the Technical Details section. This information is only available to reviewers.
 
-3) Check for "No Surprises" policy violations: Test the add-on’s functionality
+8) Check for "No Surprises" policy violations: Test the add-on’s functionality
    in a test profile and inspect the code for any unexpected features or
    behavior that is not documented on the ATN listing page and could be a
    surprise to the user. A diff against the last accepted version may be
@@ -128,44 +167,12 @@ Suggested response: Your add-on includes a feature that is not related to its pr
 
 - ...
 
-4) Check for a missing payment disclosure: Test the add-on’s functionality in a
+9) Check for a missing payment disclosure: Test the add-on’s functionality in a
    test profile. Verify whether the add-on requires a subscription or other form
    of payment to function but the "needs payment" flag on the add-on’s ATN
    listing page is not enabled.
 Suggested verdict: hold
-Suggested response: It looks like a payment is required to use this add-on or the service this add-on relies on, either upfront, after a trial period or in conjunction with a paid software. If so, we need to ask you to update the payment status to yes.
-
-5) Check suitability for listing: Judge whether the add-on targets a limited or
-   non-public audience (for example an internal, single-organization, or
-   test-only add-on) and should better self-hosted than publicly listed on ATN.
-Suggested verdict: error
-Suggested response: Due to its limited or non-public audience, this add-on is not suitable for listing on ATN (addons.thunderbird.net). Please consider self-hosting and distributing it yourself.
-
-6) Check the listing for unacceptable content: Inspect the add-on listing page
-   on ATN: its summary, description and screenshots. Determine whether any of it
-   is spam, inappropriate, or misleading, or breaches Mozilla's Acceptable Use
-   Policy (https://www.mozilla.org/about/legal/acceptable-use/). The description
-   here is the one on the listing page, not the one in manifest.json. Only the
-   listing belongs here. What the package itself ships is a separate check.
-Suggested verdict: hold
-Suggested response: The add-on listing page on ATN (addons.thunderbird.net) does not meet our content requirements. Its summary, description and screenshots must not be spam, inappropriate, or misleading, and they must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please update the listing. A new version of the add-on is not needed.
-
-7) Check the icon for trademark or logo imitation: Inspect the add-on’s icon, if
-   it imitates or incorporates the Thunderbird or Mozilla logo.
-Suggested verdict: error
-Suggested response: This add-on’s icon imitates or incorporates a Mozilla trademark (the Thunderbird or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please use a distinct icon.
-
-8) Missing ATN description or details: Verify that the add-on listing page on
-   ATN includes detailed instructions on how to use the add-on and where to find
-   its entry points. It should also include screenshots to help users quickly
-   understand how the add-on works.
-Suggested verdict: hold
-Suggested response: The add-on listing page on ATN (addons.thunderbird.net) should include detailed instructions on how to use the add-on and where to find its entry points. Please also include screenshots to help users quickly understand how the add-on works.
-
-9) Missing English ATN localization: Verify that the ATN listing page also has
-   an English version.
-Suggested verdict: info
-Suggested response: The add-on listing page on ATN (addons.thunderbird.net) should also have an English localization. English serves as the default language in Thunderbird, and most users who do not understand the available non-English version will most likely be able to read English.
+Suggested response: It looks like a payment is required to use this add-on or the service this add-on relies on, either upfront, after a trial period or in conjunction with a paid software. If so, please update the payment status on the listing to yes.
 
 10) Forked add-on: Check if the submission is a fork of an existing add-on. Such
     forks are only allowed on ATN if they are clearly distinguished from the
@@ -188,4 +195,4 @@ Because the original project is still active, your submission does not meet thes
 
 0 error(s), 0 hold, 0 warning(s), 0 info,
 5 extended code review item(s), 0 extended manual review item(s),
-9 standard code review item(s), 10 standard manual review item(s)
+10 standard code review item(s), 10 standard manual review item(s)
