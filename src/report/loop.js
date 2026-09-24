@@ -337,9 +337,9 @@ export function settle(state, registry) {
     // settling.
     tally: summaryBodyLines(findings, manual, null).join("\n"),
     // The developer's half of the report, without the section header the linter prints
-    // around it - this is pasted into a response box, not into a terminal. Written to the
-    // file below rather than printed into the prompt: asking a model to reproduce it
-    // unchanged is what this replaced.
+    // around it - this is pasted into a response box, not into a terminal. It goes to the
+    // file below rather than into the prompt, so no model is ever in a position to reword
+    // it (src/report/report-file.js).
     report: issuesBodyLines(
       orderReview(findings, manual).filter((x) => x.kind === "finding"),
       registry.issueHeadings(),

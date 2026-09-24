@@ -1,0 +1,4 @@
+{
+  "_comment": "package.json declares lodash as a range and the add-on commits the lock file that resolves it, which is what the vendoring guide asks for. The lock records the exact version bundled, so the declaration pins to 4.17.21 and neither lock check fires. The lock itself is exempt from unused-files - the review asks for it, so reporting it as unused would answer that with the opposite instruction. Offline: nothing is fetched, so the pinned package is simply not verified here.",
+  "expect": {}
+}

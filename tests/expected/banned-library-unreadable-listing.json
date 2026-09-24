@@ -1,0 +1,4 @@
+{
+  "_comment": "The third answer the shipping question can have, and the one with no mock: nothing answers for https://unpkg.com/jquery@2.2.4/?meta, so the fetch 404s and no packaged file is shown to have come from that release. The declaration is not taken on its word - banned-library stays silent and the review completes, even though the add-on does in fact ship a copy. That is deliberate: a route that is really gone raises NetworkGoneError and exits 2 long before a verdict, so a listing that fails while the network answers is a 404 saying no such release was published. Its siblings cover the other two answers - banned-library matches and rejects, banned-library-not-shipped is answered and absent. The shipped copy is verified against nothing, so it is reviewed as authored code.",
+  "expect": {}
+}

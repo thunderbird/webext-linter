@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Lock Without Manifest",
+  "version": "1.0",
+  "description": "Ships a lock file with no package.json beside it.",
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

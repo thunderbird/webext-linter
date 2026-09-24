@@ -554,24 +554,43 @@ deterministic-phase:
 
 # A shipped package.json `dependencies` entry is a VENDORING declaration: a file bundled in
 # this XPI was copied from that npm release. verifyPackage takes it literally, fetching that
-# release's listing and matching the shipped bytes, so a spec naming no single release (a
-# range, a dist-tag, a partial version, a wildcard) leaves nothing to compare.
-# sca: false - the XPI type's half of the pinnability question. A source archive answers it
-# with its lock, where a range is legitimate (sca-lock-file-missing / sca-lock-file-invalid).
+# release's listing and matching the shipped bytes, so the declaration has to name one
+# release. A range names one only through a lock, and a developer who ships a range is asked
+# to commit the lock beside it - what the lock records is the version that was bundled.
+#
+# Two ways that fails, kept apart because the remedies are: no lock was committed at all,
+# and a lock was but it resolves nothing for that name. resolveVendor decides which
+# (classifyDeps), so a dependency is never reported by both.
+#
+# sca: false on both - the XPI type's half of the pinnability question. A source archive
+# asks it of the tree it installs instead (sca-lock-file-missing / sca-lock-file-invalid).
 # Whether the SOURCE a declaration names is supported is a separate axis
 # (unsupported-dependency), which applies to both types.
-- title: Unpinned vendored library
+- title: Missing lock file for a ranged dependency
   severity: error
   sca: false
-  check: xpi-package-unpinned
+  check: xpi-lock-file-missing
   input: source
   response: |-
-    The following dependencies are not pinned to an exact version. The linter supports only bare version values like "4.17.21". Update each dependency in package.json included in the XPI to that form.
+    The following dependencies are declared as a version range, and the add-on ships no lock file to resolve them. A range names no single release, so there is nothing to verify the bundled copy against. Commit the lock file your package manager wrote alongside package.json - package-lock.json, npm-shrinkwrap.json or pnpm-lock.yaml - which records the exact version that was bundled. Pinning each dependency in package.json to a bare version like "4.17.21" instead also works.
+
+# The other half: a lock IS committed and still resolves nothing for this dependency - it
+# was regenerated without it, records it under another name, or does not parse. The
+# submission is not asked to commit a lock it already has, so this wording asks for the one
+# thing that would settle it.
+- title: Dependency the lock file does not pin
+  severity: error
+  sca: false
+  check: xpi-lock-file-invalid
+  input: source
+  response: |-
+    The following dependencies are declared as a version range, and the lock file the add-on ships records no version for them. A range names no single release, so there is nothing to verify the bundled copy against. Regenerate the lock file so it records what was bundled, or pin each dependency in package.json to a bare version like "4.17.21".
 
 # A package.json dependency from a source the review cannot identify or verify - only npm
 # and GitHub URLs are supported. Rejects everything else. This is the SOURCE axis alone:
 # whether the release a spec names can be pinned is a separate question, answered per
-# submission type (xpi-package-unpinned, sca-lock-file-missing / sca-lock-file-invalid).
+# submission type (xpi-lock-file-missing / xpi-lock-file-invalid, sca-lock-file-missing /
+# sca-lock-file-invalid).
 - title: Unsupported dependency source
   severity: error
   check: unsupported-dependency
@@ -709,7 +728,8 @@ deterministic-phase:
 # TYPE, never by the file's contents: here a package.json is a build manifest whatever it
 # carries, so whatever it declares is installed. An absent `scripts` block is not a second
 # reading and not grounds for anything. The mirror holds in a built XPI, where the same
-# file is a vendoring manifest whatever it carries (xpi-package-unpinned). The lock is owed
+# file is a vendoring manifest whatever it carries (xpi-lock-file-missing /
+# xpi-lock-file-invalid). The lock is owed
 # by the manifest, never by what it happens to declare: both installers refuse without one
 # whatever it holds, and a root declaring nothing itself is a workspace root or a manifest
 # whose declarations moved, not a submission that installs nothing.

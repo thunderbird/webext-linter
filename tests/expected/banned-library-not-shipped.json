@@ -1,0 +1,30 @@
+{
+  "_comment": "The same two disallowed libraries banned-library declares, and neither one ships. The published file listing for each answers, and nothing in the XPI came from either release, so the add-on is not carrying them and the audit is not made: no finding, no early exit, and the Standard Manual Review section is present and asked. That is the whole point of the fixture - the policy blocklist is matched locally, with no request to skip, so without the shipping gate both would be reported here as bundled. Its sibling banned-library pins the other half: there the listing cannot be read, so the question stays open and the audit IS made.",
+  "network": {
+    "https://unpkg.com/jquery@2.2.4/?meta": {
+      "json": {
+        "type": "directory",
+        "files": [
+          {
+            "path": "/dist/jquery.js",
+            "type": "application/javascript",
+            "integrity": "sha256-dGhpcyBpcyBub3Qgd2hhdCB0aGUgYWRkb24gc2hpcHM="
+          }
+        ]
+      }
+    },
+    "https://unpkg.com/angular@1.5.0/?meta": {
+      "json": {
+        "type": "directory",
+        "files": [
+          {
+            "path": "/angular.js",
+            "type": "application/javascript",
+            "integrity": "sha256-bm9yIGlzIHRoaXMsIHNvIG5laXRoZXIgb25lIG1hdGNoZXM="
+          }
+        ]
+      }
+    }
+  },
+  "expect": {}
+}

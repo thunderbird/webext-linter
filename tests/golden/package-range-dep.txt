@@ -2,7 +2,7 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) The following dependencies are not pinned to an exact version. The linter supports only bare version values like "4.17.21". Update each dependency in package.json included in the XPI to that form.
+1) The following dependencies are declared as a version range, and the add-on ships no lock file to resolve them. A range names no single release, so there is nothing to verify the bundled copy against. Commit the lock file your package manager wrote alongside package.json - package-lock.json, npm-shrinkwrap.json or pnpm-lock.yaml - which records the exact version that was bundled. Pinning each dependency in package.json to a bare version like "4.17.21" instead also works.
  - package.json:5 - lodash (^4.17.21)
 
 You can run this automated review yourself before submitting:

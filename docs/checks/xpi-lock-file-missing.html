@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Missing lock file for a ranged dependency</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Missing lock file for a ranged dependency <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">xpi-lock-file-missing</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A dependency declared in a shipped package.json as a version RANGE, which
+        no lock file resolves. Such a declaration says a bundled file was copied
+        from a published release, and the review checks that literally by
+        fetching that release and comparing it against the shipped bytes. A range
+        names no single release, so the lock committed beside it is what says
+        which one was bundled.
+      </p>
+      <p>
+        This is the requirement for an add-on submitted as a built XPI, where
+        package.json serves to declare bundled third-party code. The vendoring
+        guide asks a developer who keeps a range to commit the lock file
+        alongside it - package-lock.json, npm-shrinkwrap.json or pnpm-lock.yaml -
+        because the lock records the exact version that was bundled. With no lock
+        at all, nothing resolves the range. A source-code submission answers the
+        same question against the tree the reviewer installs, so this check does
+        not run there. A lock that IS committed and still resolves nothing is a
+        different remedy and a different check,
+        <a href="xpi-lock-file-invalid.html">xpi-lock-file-invalid</a>; a
+        dependency is never reported by both. Whether the source a dependency
+        names is supported at all is a separate question, answered by Unsupported
+        dependency source.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A dependency in the shipped package.json"] --> Z{"Reviewing a source<br/>code archive?"}
+  Z -- yes --> S([skip: the tree the reviewer<br/>installs answers this])
+  Z -- no --> B{"Spec is one exact version?"}
+  B -- yes --> OK([no finding])
+  B -- no --> C{"Spec points at git, a URL,<br/>a file, or a workspace?"}
+  C -- yes --> S2([skip: a question of source, not pinning])
+  C -- no --> D{"Is a lock file committed?"}
+  D -- yes --> S3([skip: the other check<br/>answers this one])
+  D -- no --> ERR([ERROR: commit the lock file])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK,OK2 ok;
+  class S,S2,S3 skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told the dependency is a range with no lock file to
+        resolve it, and is asked to commit the lock their package manager wrote,
+        or to pin the dependency to a bare version instead.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/xpi-lock-file-missing.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

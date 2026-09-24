@@ -14,6 +14,9 @@ We kindly ask you to resolve the following issues with your next release:
 3) A build dependency this add-on declares has known security vulnerabilities: vitest (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update vitest to a patched release or later.
  - [SCA] package.json:8
 
+4) A build dependency this add-on declares has known security vulnerabilities: platform-binary (2.3.3) is affected by published advisories of moderate severity (GHSA-fixture-example). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update platform-binary to a patched release or later.
+ - [SCA] package.json:11
+
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
 
@@ -205,6 +208,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 hold, 2 warning(s), 0 info,
+1 error(s), 0 hold, 3 warning(s), 0 info,
 1 extended code review item(s), 1 extended manual review item(s),
 10 standard code review item(s), 10 standard manual review item(s)

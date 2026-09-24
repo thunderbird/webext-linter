@@ -1,0 +1,36 @@
+{
+  "_comment": "The whole chain in one fixture: package.json declares lodash as a range, the committed lock resolves it to 4.17.21, and the add-on ships the library. The lock's pin is what names a release, the release's published listing is what the shipped bytes are matched against, and the match is what puts the dependency in front of the OSV audit - so vendor-vulnerable rejects. Nothing here rests on the file's NAME: it ships as lib/collection-helpers.js, which says nothing about lodash, exactly as a real submission ships a library under the name its own build gave it. The match also makes the file vendored, so the source scanners leave it alone. Its sibling package-range-locked pins the offline half, that a resolving lock silences both lock checks.",
+  "network": {
+    "https://unpkg.com/lodash@4.17.21/?meta": {
+      "meta": { "/lodash.core.js": "lib/collection-helpers.js" }
+    },
+    "https://api.npmjs.org/downloads/point/last-month/lodash": {
+      "json": { "downloads": 50000000 }
+    },
+    "https://api.osv.dev/v1/query": {
+      "json": {
+        "vulns": [
+          {
+            "id": "GHSA-35jh-r3h4-6jhm",
+            "aliases": ["CVE-2021-23337"],
+            "database_specific": { "severity": "HIGH" },
+            "affected": [
+              {
+                "package": { "name": "lodash", "ecosystem": "npm" },
+                "ranges": [
+                  {
+                    "type": "SEMVER",
+                    "events": [{ "introduced": "0" }, { "fixed": "4.17.22" }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "vendor-vulnerable": ["package.json:5"]
+  }
+}

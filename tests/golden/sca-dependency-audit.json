@@ -108,12 +108,12 @@
   "summary": {
     "error": 1,
     "hold": 0,
-    "warning": 2,
+    "warning": 3,
     "info": 0,
     "byRule": {
       "unpopular-source-dependency": 1,
       "vendor-vulnerable": 1,
-      "vendor-vulnerable-dev": 1
+      "vendor-vulnerable-dev": 2
     }
   },
   "findings": [
@@ -149,6 +149,17 @@
       "item": "vitest",
       "hint": null,
       "message": "A build dependency this add-on declares has known security vulnerabilities: vitest (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update vitest to a patched release or later."
+    },
+    {
+      "ruleId": "vendor-vulnerable-dev",
+      "severity": "warning",
+      "file": "package.json",
+      "loc": {
+        "line": 11
+      },
+      "item": "platform-binary",
+      "hint": null,
+      "message": "A build dependency this add-on declares has known security vulnerabilities: platform-binary (2.3.3) is affected by published advisories of moderate severity (GHSA-fixture-example). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update platform-binary to a patched release or later."
     }
   ]
 }

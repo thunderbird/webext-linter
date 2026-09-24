@@ -314,6 +314,15 @@ export const VENDOR_OSV_HYDRATE_MAX = 2000;
 export const VENDOR_LOCK_MAX_PACKAGES = 10000;
 
 /**
+ * How deep a chain of file:/link: local packages is walked (the root's own target is depth
+ * 1). A real monorepo-style split nests one, occasionally two levels; this is a runaway
+ * bound, not a policy - a genuine cycle (A -> B -> A) is already stopped by the manifests
+ * already found, so this only stops a long CHAIN of distinct directories a submission could
+ * otherwise make the walk follow indefinitely.
+ */
+export const LOCAL_MANIFEST_MAX_DEPTH = 8;
+
+/**
  * The OSV bands a lock-tree advisory is reported at. A package nobody declared is
  * only worth the developer's attention when it would fail the review, so a
  * moderate or low one deep in the tree produces nothing at all. Declared

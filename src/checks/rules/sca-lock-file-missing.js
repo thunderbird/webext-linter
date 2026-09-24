@@ -9,7 +9,7 @@
 // is installed and a lock is owed. An absent `scripts` block is not a second reading and
 // not grounds for anything - it neither exempts a submission nor is complained about. The
 // mirror holds in a built XPI, where the same file is a vendoring manifest whatever it
-// carries (-> xpi-package-unpinned).
+// carries (-> xpi-lock-file-missing / xpi-lock-file-invalid).
 //
 // Only the ROOT package.json is read - that is the build's entry point
 // (src/build/corpus.js), while a nested one is a workspace member or a vendored library's

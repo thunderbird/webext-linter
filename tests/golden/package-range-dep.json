@@ -48,7 +48,8 @@
       "experiment-manual-review",
       "experiment-unknown-api",
       "non-experiment-strict-max-version",
-      "xpi-package-unpinned",
+      "xpi-lock-file-missing",
+      "xpi-lock-file-invalid",
       "unsupported-dependency",
       "vendor-vulnerable",
       "banned-library",
@@ -96,12 +97,12 @@
     "warning": 0,
     "info": 0,
     "byRule": {
-      "xpi-package-unpinned": 1
+      "xpi-lock-file-missing": 1
     }
   },
   "findings": [
     {
-      "ruleId": "xpi-package-unpinned",
+      "ruleId": "xpi-lock-file-missing",
       "severity": "error",
       "file": "package.json",
       "loc": {
@@ -109,7 +110,7 @@
       },
       "item": "lodash (^4.17.21)",
       "hint": null,
-      "message": "The following dependencies are not pinned to an exact version. The linter supports only bare version values like \"4.17.21\". Update each dependency in package.json included in the XPI to that form."
+      "message": "The following dependencies are declared as a version range, and the add-on ships no lock file to resolve them. A range names no single release, so there is nothing to verify the bundled copy against. Commit the lock file your package manager wrote alongside package.json - package-lock.json, npm-shrinkwrap.json or pnpm-lock.yaml - which records the exact version that was bundled. Pinning each dependency in package.json to a bare version like \"4.17.21\" instead also works."
     }
   ]
 }

@@ -10,6 +10,7 @@
 //   node tests/run-tests.js
 //   UPDATE_GOLDEN=1 node tests/run-tests.js
 
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,6 +78,15 @@ const REAL_FETCH = globalThis.fetch;
  *                           (and could not be read in a diff). Each path is published
  *                           at the in-package path the declaration names, which is
  *                           what the verification actually checks.
+ *   { "meta": {"<published path>": "<fixture path>"} }
+ *                           an unpkg "?meta" listing PUBLISHING those fixture files,
+ *                           each entry's `integrity` computed here from the file's own
+ *                           bytes. The way to express "the add-on is carrying this
+ *                           release": that is decided by a content hash, so a listing
+ *                           written by hand would be a committed digest that rots the
+ *                           day the fixture file is edited. A listing whose files are
+ *                           meant NOT to match is a plain `json` instead - nothing
+ *                           there has to stay in step with anything.
  *   { "status": <code> }    an HTTP negative, with an empty body.
  * @param {string} dir  The fixture directory; `sameAs` resolves against it.
  * @param {object} spec
@@ -97,6 +107,20 @@ function fetchResponse(dir, spec) {
       ])
     );
     return new Response(makeTgz(entries), { status });
+  }
+  if (spec.meta !== undefined) {
+    const files = Object.entries(spec.meta).map(([published, file]) => {
+      const bytes = fs.readFileSync(path.join(dir, file));
+      return {
+        path: published,
+        type: "application/javascript",
+        integrity: `sha256-${createHash("sha256").update(bytes).digest("base64")}`,
+      };
+    });
+    return new Response(JSON.stringify({ type: "directory", files }), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
   }
   if (spec.json !== undefined) {
     return new Response(JSON.stringify(spec.json), {

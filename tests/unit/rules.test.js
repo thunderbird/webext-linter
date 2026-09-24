@@ -637,12 +637,13 @@ test("code-sanity is gated by the --eslint flag", async () => {
 test("checks carry the sca mode tag (true=SCA-only, false=XPI-only, undefined=both)", async () => {
   const checks = allChecks(await loadChecks(loadRegistry()));
   const sca = (id) => checks.find((x) => x.id === id)?.sca;
-  // The pinnability requirement is worded per submission type, so its XPI half is the
-  // one check that must NOT run on a source archive: a range is legitimate there, pinned
-  // by the lock the two sca:true checks below require.
+  // The pinnability requirement is worded per submission type, so its XPI half must NOT
+  // run on a source archive, which asks the same question of the tree it installs instead
+  // (the two sca:true checks below). Two checks, because a range with no lock and a range
+  // the committed lock does not cover have different remedies.
   assert.deepEqual(
     checks.filter((c) => c.sca === false).map((c) => c.id),
-    ["xpi-package-unpinned"]
+    ["xpi-lock-file-missing", "xpi-lock-file-invalid"]
   );
   // minified-code runs in BOTH modes: a minified file is non-authored and rejected
   // whether it ships in a built XPI or sits in a source-code submission's source.
@@ -671,7 +672,8 @@ test("checks carry the sca mode tag (true=SCA-only, false=XPI-only, undefined=bo
   assert.equal(sca("sca-lock-file-invalid"), true); // SCA-only lock policy
   // Its SCA counterparts are the two above; the source-trust axis beside it is untagged,
   // because where a package comes from matters in either submission type.
-  assert.equal(sca("xpi-package-unpinned"), false);
+  assert.equal(sca("xpi-lock-file-missing"), false);
+  assert.equal(sca("xpi-lock-file-invalid"), false);
   assert.equal(sca("unsupported-dependency"), undefined);
   assert.equal(sca("eval-call"), undefined); // a code check: both modes
   assert.equal(sca("unknown-api"), undefined);
@@ -828,7 +830,8 @@ test("every check's severity is pinned to its band", async () => {
       "vendor-vulnerable-indirect",
       "vendor-vulnerable-indirect-dev",
       "vendored-remote-resources",
-      "xpi-package-unpinned",
+      "xpi-lock-file-invalid",
+      "xpi-lock-file-missing",
     ],
     warning: [
       "async-onmessage",

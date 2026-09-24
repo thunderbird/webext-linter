@@ -36,6 +36,8 @@ import {
   readManifest,
   submissionFiles,
   ownValue,
+  resolveLocalManifests,
+  MANIFEST_FILE,
 } from "./manifest.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
@@ -59,7 +61,8 @@ import {
  * package.json declares.
  * @property {string} file  The finding's anchor, which is the file the failing value sits
  *   in: the LOCK for `unsatisfied` (the version it pins) and when the lock cannot be read
- *   at all, package.json for every other declaration gap.
+ *   at all, the declaring manifest for every other declaration gap - the root
+ *   package.json, or a nested one reached by a file:/link: walk (SCA mode only).
  * @property {?string} name  The declared package, or null for an unreadable lock.
  * @property {?string} spec  What package.json asks for it, or null (same).
  * @property {?string} recorded  The spec the lock's root record restates - where its pin
@@ -99,12 +102,15 @@ export const TREE_LOCKS = [
  * npm-shrinkwrap.json is added next to it).
  *
  * Picking by "first that answers" instead would let an unreadable governing lock launder a
- * pin out of a file the install never opens, which is the hazard reviewerInstalls exists to
- * prevent (-> ./resolve.js).
+ * pin out of a file the install never opens.
+ *
+ * Also the answer to "did this submission commit a lock at all", which is what tells a
+ * ranged dependency nothing resolves apart from one a committed lock simply does not cover
+ * (-> ./resolve.js classifyDeps).
  * @param {?Addon} addon
  * @returns {?string}  A TREE_LOCKS filename, or null.
  */
-function governingLock(addon) {
+export function governingLock(addon) {
   const files = submissionFiles(addon);
   return TREE_LOCKS.find((file) => files?.has(file)) ?? null;
 }
@@ -511,7 +517,10 @@ function declaredName(name, spec) {
 /**
  * Every way the committed lock cannot install what the root package.json declares - what
  * `npm ci` and `pnpm install --frozen-lockfile` refuse over, decided offline from the two
- * files alone. Read by the sca-lock-file-invalid check.
+ * files alone - PLUS every manifest a file:/link: chain reaches from the root
+ * (resolveLocalManifests): `npm ci` installs a locally-linked package's own declared
+ * dependencies from the same ONE governing lock, so they are held to the same question.
+ * Read by the sca-lock-file-invalid check.
  *
  * Returns nothing when the manifest declares nothing this lock could pin, or when there is
  * no lock at all - the latter being sca-lock-file-missing's question, which also decides
@@ -543,9 +552,23 @@ export function lockGaps(addon) {
   // verbatim. So the comparison reads it without having to know it is an alias, and `npm
   // ci` and `pnpm install --frozen-lockfile` refuse over a missing or stale one exactly as
   // they do for the rest - which is the question this check answers.
-  const declared = declaredDependencies(pkg).filter(
-    ({ spec }) => !/[:/]/.test(spec) || Boolean(aliasTarget(spec))
-  );
+  const nonRegistry = ({ spec }) =>
+    !/[:/]/.test(spec) || Boolean(aliasTarget(spec));
+  const declared = declaredDependencies(pkg)
+    .filter(nonRegistry)
+    .map((d) => ({ ...d, manifestFile: MANIFEST_FILE, rootKey: "" }));
+  // Every manifest a file:/link: chain reaches (SCA mode only - resolveLocalManifests
+  // itself is a no-op with no lock/store to read from otherwise) declares real external
+  // dependencies too, `npm ci` installs them from the same ONE governing lock the root
+  // does, and they are held to the same "can the lock install this" question - see the
+  // rootKey handling in npmGap/pnpmGap below for how a NESTED manifest's declaration is
+  // compared, which is not the same lookup as the root's.
+  const { manifests } = resolveLocalManifests(addon);
+  for (const m of manifests) {
+    for (const d of declaredDependencies(m.pkg).filter(nonRegistry)) {
+      declared.push({ ...d, manifestFile: m.file, rootKey: m.dir });
+    }
+  }
   const file = governingLock(addon);
   if (!file) {
     return []; // no lock at all is sca-lock-file-missing's question, not this one
@@ -591,8 +614,16 @@ export function lockGaps(addon) {
     ]);
   }
   const reported = new Set();
-  for (const { map, name, spec } of declared) {
-    const gap = reader.gap(data, map, name, spec, rangesFor.get(name));
+  for (const { map, name, spec, manifestFile, rootKey } of declared) {
+    const gap = reader.gap(
+      data,
+      map,
+      name,
+      spec,
+      rangesFor.get(name),
+      addon,
+      rootKey
+    );
     // The npm reader answers about the ONE resolved node, so a package declared in two
     // maps must not be reported twice for it.
     if (gap?.reason === "unsatisfied" && reported.has(name)) {
@@ -602,8 +633,8 @@ export function lockGaps(addon) {
       reported.add(name);
       // An `unsatisfied` gap is about the version the LOCK pins, so it is reported there,
       // at that entry - the way a tree vulnerability is (src/lib/vuln-findings.js). Every
-      // other reason is about the declaration, which lives in package.json.
-      const at = gap.reason === "unsatisfied" ? file : "package.json";
+      // other reason is about the declaration, which lives in the declaring manifest.
+      const at = gap.reason === "unsatisfied" ? file : manifestFile;
       gaps.push({ file: at, name, spec, ...gap });
     }
   }
@@ -611,21 +642,63 @@ export function lockGaps(addon) {
 }
 
 /**
- * One declaration against an npm lock. lockfileVersion 2/3 restates the root manifest under
- * `packages[""]`, which is what `npm ci` compares package.json against; the installed entry
- * is checked too, since a root record naming a package that resolved to nothing installs
- * nothing. lockfileVersion 1 carries no such restatement (its top level is the hoisted
- * tree), so only presence is checkable there - no `stale` verdict rather than a guessed one.
+ * Whether `installed` satisfies any of `ranges` - the one comparison both npmGap's precise
+ * path and its flat fallback make, once each has its own idea of `recorded` (what the
+ * declaration is compared against, kept only to say WHERE the pin came from) and
+ * `reason` (`unsatisfied` for a real restated spec, `stale` for the fallback, which cannot
+ * tell a stale pin from a genuinely undeclared one - see npmGap).
+ *
+ * A range this cannot read - a dist-tag, anything exotic - says nothing at all. This check
+ * halts a review, so an undecidable case has to be silent rather than a guess. Satisfied by
+ * ANY range declared for this name, not each in turn: npm resolves one node per name and
+ * lets a second declaration win (measured: `dependencies: ^3.0.1` beside `devDependencies:
+ * ^2.0.0` installs 2.0.0 and `npm ci` accepts it), so holding the pin to every declaration
+ * separately rejects a lock npm is happy with.
+ * @param {string} installed @param {string[]} ranges
+ * @param {string} recorded @param {string} token @param {string} reason
+ * @returns {?{recorded: string, installed: string, token: string, reason: string}}
+ */
+function satisfiesGap(installed, ranges, recorded, token, reason) {
+  const readable = ranges.filter((r) => semver.validRange(r));
+  if (!readable.length || !semver.valid(installed)) {
+    return null;
+  }
+  return readable.some((r) => semver.satisfies(installed, r))
+    ? null
+    : { recorded, installed, token, reason };
+}
+
+/**
+ * One declaration against an npm lock. lockfileVersion 2/3 restates EVERY local manifest's
+ * own declarations this way - the root under `packages[""]`, and (per the real submission
+ * this was verified against) a file:/link:-linked package under `packages[<its own
+ * relative path>]`, the same path resolveLocalManifests already computes for it. `rootKey`
+ * says which: `""` for the root, a nested manifest's own `dir` otherwise. The installed
+ * entry is checked too, since a restated record naming a package that resolved to nothing
+ * installs nothing.
+ *
+ * A restated record is expected at `rootKey` whenever this reader was chosen at all (the
+ * true root's is required by recognisesNpm) - EXCEPT that this feature's own path
+ * arithmetic could in principle diverge from the lock's own key for a nested manifest (an
+ * unverified edge case). When no record sits at `rootKey`, this falls back to the flat,
+ * hoisted, name-only lookup `lockedVersion`/`npmLock` already trust for pinning: it cannot
+ * distinguish a stale pin from a genuinely undeclared one (both come back "stale"/"absent"
+ * from the SAME flat fact), but it does not silently pass an uninstallable declaration.
+ *
+ * lockfileVersion 1 carries no restatement at all (its top level is the hoisted tree), for
+ * root or nested alike - no `stale`/`unsatisfied` verdict rather than a guessed one.
  * @param {object} data  Parsed lock. @param {string} map  The declaring dependency map.
  * @param {string} name @param {string} spec  What package.json asks for.
+ * @param {string[]} ranges @param {Addon} addon  For the flat-fallback lookup.
+ * @param {string} [rootKey]  `""` for the root, else a nested manifest's own `dir`.
  * @returns {?{recorded: ?string, reason: string}}
  */
-function npmGap(data, map, name, spec, ranges) {
+function npmGap(data, map, name, spec, ranges, addon, rootKey = "") {
   // A recorded entry only covers a declaration if the install can read a VERSION out of it.
   // lockedVersion reads that same field, so requiring it here is what keeps the two from
-  // disagreeing about one declaration - calling it covered here while failing to pin it
-  // there leaves a dependency that nothing reports and nothing audits: `unpinned` is read
-  // only by xpi-package-unpinned, which does not run in the mode that consults a lock.
+  // disagreeing about one declaration. They must agree because both modes consult a lock:
+  // calling a declaration covered here while failing to pin it there would leave it named
+  // by no gap and pinned by no version - reported as neither, and audited as nothing.
   if (!plainObject(data.packages)) {
     // lockfileVersion 1: the hoisted tree is all there is to go on. It restates no ranges,
     // so there is nothing to satisfy and presence is the whole test.
@@ -633,11 +706,21 @@ function npmGap(data, map, name, spec, ranges) {
       ? null
       : { recorded: null, reason: "absent" };
   }
-  // Across ALL the root record's maps, not the declaring one: `npm ci` compares the two
+  const root = data.packages[rootKey];
+  if (!plainObject(root)) {
+    // No restated record at this path - see the doc comment above. Falls back to the flat
+    // lookup rather than reporting every correctly-installed nested dependency "absent".
+    const installed = lockedVersion(addon, name);
+    if (!installed) {
+      return { recorded: null, reason: "absent" };
+    }
+    const token = `node_modules/${name}`;
+    return satisfiesGap(installed, ranges, installed, token, "stale");
+  }
+  // Across ALL the record's maps, not the declaring one: `npm ci` compares the two
   // manifests by NAME, so moving a package between dependencies and devDependencies
   // without regenerating is an install it accepts. pnpm is stricter, which is why its
   // reader keys by map.
-  const root = data.packages[""];
   let recorded;
   for (const m of DECLARATION_MAPS) {
     const found = ownValue(root?.[m], name);
@@ -655,50 +738,60 @@ function npmGap(data, map, name, spec, ranges) {
     return { recorded: null, reason: "absent" };
   }
   // npm's OWN question, and the only one worth asking: does the version this lock pins
-  // satisfy the range the manifest declares? The root record restates the manifest as it
+  // satisfy the range the manifest declares? The restated record mirrors the manifest as it
   // stood when the lock was written, so comparing the two SPECS answers a different
   // question and gets it wrong both ways - "3.0.1" against a recorded "^3.0.1" is the same
   // install (npm: "added 2 packages") while the strings differ, and "^3.0.0" against a
   // recorded ">=2.0.0" is two overlapping ranges while the pinned 6.0.0 satisfies neither
   // the declaration nor npm (npm: "Invalid: lock file's chalk@6.0.0 does not satisfy
-  // chalk@3.0.0"). The recorded spec is kept only to say WHERE the pin came from.
-  //
-  // Satisfied by ANY range declared for this name, not each in turn. npm resolves one node
-  // per name and lets a second declaration win: measured, `dependencies: ^3.0.1` beside
-  // `devDependencies: ^2.0.0` installs 2.0.0 and `npm ci` accepts it, so holding the pin to
-  // every declaration separately rejects a lock npm is happy with.
-  //
-  // A range this cannot read - a dist-tag, anything exotic - says nothing at all. This
-  // check halts a review, so an undecidable case has to be silent rather than a guess.
-  const readable = ranges.filter((r) => semver.validRange(r));
-  if (!readable.length || !semver.valid(installed)) {
-    return null;
-  }
-  return readable.some((r) => semver.satisfies(installed, r))
-    ? null
-    : {
-        recorded: String(recorded).trim(),
-        installed,
-        token,
-        reason: "unsatisfied",
-      };
+  // chalk@3.0.0").
+  return satisfiesGap(
+    installed,
+    ranges,
+    String(recorded).trim(),
+    token,
+    "unsatisfied"
+  );
 }
 
 /**
- * One declaration against a pnpm lock. The importers ARE the manifests restated, and the
- * recorded specifier is what `--frozen-lockfile` compares against. v6+ carries it on the
- * entry; v5 keeps a separate `specifiers` map, per importer when the lock has importers and
- * at the top level when it does not - so a string entry looks in both, nearest first.
+ * One declaration against a pnpm lock. The importers ARE the manifests restated - one per
+ * workspace-relative path, `"."` being the root's own - and the recorded specifier is what
+ * `--frozen-lockfile` compares against. `rootKey` picks which: `""` (the default, mapped to
+ * the `"."` importer below) for the root, a nested manifest's own `dir` otherwise. v6+
+ * carries the specifier on the entry; v5 keeps a separate `specifiers` map, per importer
+ * when the lock has importers and at the top level when it does not - so a string entry
+ * looks in both, nearest first.
+ *
+ * When no importer sits at the resolved path (expected for the root only in the flat v5/v6
+ * shape that carries no `importers` map at all, where the whole lock stands in for it - and,
+ * unverified against a real pnpm lockfile, possibly for a nested `file:`-linked package that
+ * is not a declared pnpm workspace member), this falls back to presence alone via the same
+ * flat, hoisted lookup pinning trusts. Unlike npmGap's fallback this cannot even approximate
+ * `stale`: this reader's comparison is textual (the recorded SPECIFIER against the declared
+ * one), and there is no restated specifier to compare without a record - so the fallback is
+ * silent on staleness rather than a guessed one, `absent` only when the lock does not
+ * install this name at all.
  * @param {object} data  Parsed lock. @param {string} map  The declaring dependency map.
  * @param {string} name @param {string} spec  What package.json asks for.
+ * @param {string[]} _ranges  Unused - see the comment on the textual comparison.
+ * @param {Addon} addon  For the flat-fallback lookup.
+ * @param {string} [rootKey]  `""` for the root, else a nested manifest's own `dir`.
  * @returns {?{recorded: ?string, reason: string}}
  */
-function pnpmGap(data, map, name, spec, _ranges) {
+function pnpmGap(data, map, name, spec, _ranges, addon, rootKey = "") {
   // Textual, deliberately, and NOT the semantic comparison npmGap makes: `pnpm install
   // --frozen-lockfile` compares the recorded specifier to the declared one as text and
   // refuses on any difference (ERR_PNPM_OUTDATED_LOCKFILE, "specifiers in the lockfile
   // don't match"). So the range plays no part here.
-  const importer = plainObject(data.importers) ? data.importers["."] : data;
+  const importers = plainObject(data.importers) ? data.importers : null;
+  const importer =
+    rootKey === "" ? (importers?.["."] ?? data) : importers?.[rootKey];
+  if (!plainObject(importer)) {
+    return lockedVersion(addon, name)
+      ? null
+      : { recorded: null, reason: "absent" };
+  }
   const entry = ownValue(importer?.[map], name);
   if (entry === undefined) {
     return { recorded: null, reason: "absent" };

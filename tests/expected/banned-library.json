@@ -1,5 +1,19 @@
 {
-  "_comment": "package.json pins jquery to 2.2.4 and angular to 1.5.0, both of which Mozilla add-on policy bans (per assets/library-blocks.yaml). The banned-library check flags each as an error, and the OSV audit is skipped for them (banned -> no request). Their messages interpolate the version and the policy reason as well as the name, so the two findings never share a message and stay separate entries. Decided offline, no fetch. It also pins the EARLY EXIT's second reason id: banned-library names `disallowed-library-versions`, so the golden's closing block differs from the vulnerability fixtures' and the Standard Manual Review section is absent, its tally count 0.",
+  "_comment": "package.json pins jquery to 2.2.4 and angular to 1.5.0, both of which Mozilla add-on policy bans (per assets/library-blocks.yaml), AND the add-on ships both - each shipped file is published in its release's listing, so the add-on is carrying the two releases it names. That is what puts the declarations in front of the policy blocklist: a version nobody ships is not something the add-on can be told it bundles, which its sibling banned-library-not-shipped pins. The blocklist is matched offline, so a banned version is recorded and SKIPS the OSV request - no OSV mock is needed or made. Their messages interpolate the version and the policy reason as well as the name, so the two findings never share a message and stay separate entries. The shipped libraries match their releases, so they are vendored and the source scanners leave them alone. It also pins the EARLY EXIT's second reason id: banned-library names `disallowed-library-versions`, so the golden's closing block differs from the vulnerability fixtures' and the Standard Manual Review section is absent, its tally count 0.",
+  "network": {
+    "https://unpkg.com/jquery@2.2.4/?meta": {
+      "meta": { "/dist/jquery.js": "lib/jquery.js" }
+    },
+    "https://unpkg.com/angular@1.5.0/?meta": {
+      "meta": { "/angular.js": "lib/angular.js" }
+    },
+    "https://api.npmjs.org/downloads/point/last-month/jquery": {
+      "json": { "downloads": 9000000 }
+    },
+    "https://api.npmjs.org/downloads/point/last-month/angular": {
+      "json": { "downloads": 2000000 }
+    }
+  },
   "expect": {
     "banned-library": ["package.json:5", "package.json:6"]
   }

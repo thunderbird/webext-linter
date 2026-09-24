@@ -133,14 +133,8 @@ function projectCtx(
     // "xpi" (a built add-on) or "sca" (a source-code archive review, --sca-root). Gates checks
     // via scaEligible.
     mode: env.mode,
-    // SCA mode: the two paths the run was GIVEN, absolute. buildReachability asks them
-    // where the Experiment subtree sits inside the review source, and excludes it from the
-    // WebExtension code checks. Both undefined in XPI mode. The question is asked at the
-    // read rather than answered here, because the answer only means anything in the review
-    // addon's own keyspace - and a value that reads "" in three different situations is not
-    // one a check should be handed instead of the facts.
     // The shipped XPI turned out to BE the submitted source, so an XPI-only submission would
-    // have been enough; the sca-not-required check reads this to say so. Advice only - this
+    // have been enough. The sca-not-required check reads this to say so. Advice only - this
     // review is a full SCA review either way.
     scaNotRequired: env.scaNotRequired,
     // The authoritative manifest/experiments are the SHIPPED artifact's (the built XPI) - what

@@ -2,16 +2,22 @@
 // support. Only two sources are auditable: an npm package and a GitHub URL (rated by
 // popularity). This is the SOURCE axis - whether the release a spec names can be
 // pinned at all is a separate question, answered per submission type
-// (xpi-package-unpinned, sca-lock-file-missing / sca-lock-file-invalid).
-// Anything else - a local file: path, a link:/workspace: ref, a tarball URL, or a
-// non-GitHub git source - cannot be identified or vetted, so the
-// developer must re-declare it as a pinned npm/GitHub dependency or bundle the
-// library with the add-on as authored code so it can be reviewed directly.
+// (xpi-lock-file-missing / xpi-lock-file-invalid, sca-lock-file-missing /
+// sca-lock-file-invalid).
+// Anything else - a workspace: ref, a tarball URL, a non-GitHub git source, or a
+// file:/link: path that does NOT resolve to a real directory inside the submission -
+// cannot be identified or vetted, so the developer must re-declare it as a pinned
+// npm/GitHub dependency or bundle the library with the add-on as authored code so it
+// can be reviewed directly. A file:/link: path that DOES resolve inside the submission
+// (SCA mode only) is exactly that already - resolveVendor drops it from
+// unsupportedDeps entirely and classifies ITS OWN declared dependencies the same way
+// (src/vendor/manifest.js resolveLocalManifests), so it never reaches this check at
+// all; only an unresolvable one, root or nested, does.
 // An `npm:<name>@<range>` alias is NOT one of them: it installs a registry package under
 // another name, so it is classified by what it installs and the spelling decides nothing.
 // resolveVendor already classified these (src/vendor/resolve.js ->
-// addon.vendor.unsupportedDeps); this check only reads that and emits a finding
-// per entry. Deterministic, no network.
+// addon.vendor.unsupportedDeps, each item carrying the manifest that declared it);
+// this check only reads that and emits a finding per entry. Deterministic, no network.
 //
 // Belongs here: turning each unsupported dependency into a finding (+ a feed
 // note). Does NOT belong here: parsing package.json / classifying specs (->
@@ -31,22 +37,28 @@ export default {
   run(ctx) {
     const { addon } = ctx;
     const unsupported = addon?.vendor?.unsupportedDeps ?? [];
-    const text = anchorText(addon, "package.json");
+    // Memoized per distinct file: a nested manifest can declare several unsupported
+    // specs, and re-reading/re-decoding the same bytes once per one would be wasted work.
+    const textByFile = new Map();
     const findings = [];
-    for (const { name, spec } of unsupported) {
+    for (const { name, spec, file } of unsupported) {
+      const at = file ?? "package.json";
+      let text = textByFile.get(at);
+      if (text === undefined) {
+        text = anchorText(addon, at);
+        textByFile.set(at, text);
+      }
       const line = manifestTokenLine(text, name);
       const loc = line ? { line } : undefined;
       ctx.note?.(
-        "package.json",
+        at,
         loc,
         `${name} ("${spec}") is from an unsupported source`,
         VERDICT.FAIL
       );
       // Collapsed response (no {{item}}): the subject renders on the location line
       // as `name (spec)`, matching the other dependency rejects.
-      findings.push(
-        finding({ file: "package.json", loc, item: `${name} (${spec})` })
-      );
+      findings.push(finding({ file: at, loc, item: `${name} (${spec})` }));
     }
     return { findings };
   },

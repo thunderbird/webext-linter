@@ -20,6 +20,7 @@
 // when a lock is owed, which is the check that asks.
 
 import { parseJson } from "../util/json.js";
+import { LOCAL_MANIFEST_MAX_DEPTH } from "../config.js";
 
 /**
  * @typedef {object} DeclaredDependency  One dependency a manifest declares.
@@ -40,6 +41,14 @@ export const DECLARATION_MAPS = [
   "devDependencies",
   "optionalDependencies",
 ];
+
+// Of those, the ones that declare something the INSTALL runs rather than something the
+// add-on ships. An optionalDependency is one of them: npm installs it where the platform
+// allows, and what it usually names is a platform-specific binary the build uses, not a
+// library that ends up in the package. Read by classifyManifest, which judges these on
+// what running them costs a reviewer rather than on what a bundled copy would be
+// verified against.
+export const BUILD_TIME_MAPS = ["devDependencies", "optionalDependencies"];
 
 /**
  * Whether a value is a plain JSON object - the only shape any of the maps here may take.
@@ -194,4 +203,139 @@ export function aliasTarget(spec) {
  */
 export function ownValue(obj, key) {
   return plainObject(obj) && Object.hasOwn(obj, key) ? obj[key] : undefined;
+}
+
+/** @typedef {object} LocalTarget  One file:/link: declaration that resolves to a real
+ * directory inside the submission - whether or not that directory has its own readable
+ * package.json (see LocalManifest).
+ * @property {string} declaringFile  The package.json (store-relative) that declared it -
+ *   MANIFEST_FILE for the root, a LocalManifest.file otherwise.
+ * @property {string} name  The name it was declared under.
+ * @property {string} dir  The store-relative posix directory the spec resolves to.
+ */
+/** @typedef {object} LocalManifest  One nested package.json reachable by the walk.
+ * @property {string} dir  Its store-relative posix directory ("" excluded - that's root).
+ * @property {string} file  `${dir}/package.json` - what a finding built from ITS OWN
+ *   declarations anchors at.
+ * @property {object} pkg  Its parsed contents.
+ */
+
+// file:/link: only - not workspace:, whose value is normally a bare range ("workspace:*",
+// "workspace:^1.0.0") rather than a path. Resolving a REAL workspace: dependency needs
+// matching its name against the root's own "workspaces" glob patterns, a different
+// algorithm this does not implement; such a spec is left to fall through to `unsupported`
+// exactly as it does today.
+const LOCAL_SPEC = /^(?:file|link):(.*)$/i;
+
+/**
+ * Resolve `target` (the text after `file:`/`link:`) against `baseDir` (the declaring
+ * manifest's OWN store-relative directory, "" for the root) into a store-relative posix
+ * directory, or null when it steps outside the store (a leading "/" - never inside a store
+ * that has no filesystem root of its own to collide with - or a ".." with nothing left to
+ * pop). Pure path arithmetic: does not touch the store, so it never says whether the
+ * directory is actually THERE.
+ * @param {string} baseDir @param {string} target
+ * @returns {?string}
+ */
+function resolveLocalDir(baseDir, target) {
+  const t = target.trim();
+  if (!t || t.startsWith("/")) {
+    return null;
+  }
+  const parts = [];
+  for (const seg of (baseDir ? `${baseDir}/${t}` : t).split("/")) {
+    if (seg === "" || seg === ".") {
+      continue;
+    }
+    if (seg === "..") {
+      if (parts.length === 0) {
+        return null; // escapes the store root
+      }
+      parts.pop();
+    } else {
+      parts.push(seg);
+    }
+  }
+  return parts.join("/"); // "" only when this names the store root itself
+}
+
+/**
+ * Every file:/link: target reachable from the submission's root manifest, walked
+ * recursively - the SCA-only case where `npm ci`/`npm install` resolves a dependency
+ * entirely from a LOCAL directory already inside the submission (never the registry,
+ * whatever the package name looks like) and additionally installs THAT package's own
+ * dependencies and devDependencies, fetched from the real registry like any other source.
+ *
+ * Two lists, because the two questions a caller asks are different. `targets`: is this
+ * declaration ITSELF a real, present directory in the store - the fact that lets
+ * classifyDeps drop it from `unsupported` (authored code, reviewed wherever it sits,
+ * nothing to reject) whether or not that directory turns out to hold a readable manifest.
+ * `manifests`: which of those directories has ITS OWN readable package.json to recurse
+ * into - a directory that exists but carries no manifest (or one that fails to parse) is
+ * still authored code with nothing further to check, so it contributes to `targets` alone.
+ *
+ * A spec that escapes the store (resolveLocalDir) or names a directory the store does not
+ * actually hold anything under is left out of BOTH lists - the caller's classifyDeps still
+ * buckets that spec as `unsupported`, exactly as today.
+ *
+ * The loop guard is the manifests already found, not a separate tracking structure:
+ * `manifests` is recorded keyed by resolved directory as the walk proceeds, and a directory
+ * already present there is not walked again - still added to `targets` (the declaration is
+ * honestly satisfied) but not re-entered into `manifests` or recursed into, which is what
+ * breaks a cycle (A -> B -> A) and a self-reference (a manifest declaring `file:.`/`file:..`
+ * back at its own directory or the root). Depth is capped at LOCAL_MANIFEST_MAX_DEPTH.
+ * @param {object} addon
+ * @returns {{targets: LocalTarget[], manifests: LocalManifest[]}}
+ */
+export function resolveLocalManifests(addon) {
+  const files = submissionFiles(addon);
+  const root = readManifest(files);
+  const targets = [];
+  /** @type {Map<string, LocalManifest>} */
+  const manifests = new Map();
+  if (!files || !root) {
+    return { targets, manifests: [] };
+  }
+  const dirHasFiles = (dir) => {
+    // The store root itself: trivially true whenever we get this far (root was just read
+    // above), and `key.startsWith("" + "/")` would never match a normal relative key, so
+    // this has to be its own case rather than falling into the loop below.
+    if (dir === "") {
+      return true;
+    }
+    for (const key of files.keys()) {
+      if (key === dir || key.startsWith(`${dir}/`)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const walk = (pkg, baseDir, declaringFile, depth) => {
+    if (depth > LOCAL_MANIFEST_MAX_DEPTH) {
+      return;
+    }
+    for (const { name, spec } of declaredDependencies(pkg)) {
+      const m = LOCAL_SPEC.exec(spec.trim());
+      if (!m) {
+        continue;
+      }
+      const dir = resolveLocalDir(baseDir, m[1]);
+      if (dir === null || !dirHasFiles(dir)) {
+        continue; // escapes the store, or nothing there
+      }
+      targets.push({ declaringFile, name, dir });
+      if (dir === "" || manifests.has(dir)) {
+        continue; // the store root, or a directory already walked - cycle/self-reference
+      }
+      const file = `${dir}/${MANIFEST_FILE}`;
+      const pkgData = parseManifest(files.get(file));
+      if (!pkgData) {
+        continue; // directory exists, no readable manifest - nothing to recurse into
+      }
+      manifests.set(dir, { dir, file, pkg: pkgData });
+      walk(pkgData, dir, file, depth + 1);
+    }
+  };
+  walk(root, "", MANIFEST_FILE, 1);
+  return { targets, manifests: [...manifests.values()] };
 }

@@ -398,12 +398,13 @@ test("unused-files: junk + orphan are findings; mentioned -> escalation", () => 
   assert.ok(!found.includes("bg.js")); // reachable
 });
 
-// The build-manager files, in a BUILT XPI. Exactly one of them has a reader there: the
-// ROOT package.json, which the XPI carries as its vendoring manifest (xpi-package-unpinned
-// and the dependency audit read it). Everything else in that family is read by nothing and
-// is therefore what this check exists to report - a lock most of all, since the review has
-// decided a file named package-lock.json inside an XPI is not a lock at all.
-test("unused-files exempts the root package.json only, not a nested one and not a lock", () => {
+// The build-manager files, in a BUILT XPI. Two of them have a reader there: the ROOT
+// package.json, which the XPI carries as its vendoring manifest, and the ROOT lock beside
+// it, which pins whatever that manifest declares as a range (xpi-lock-file-missing asks for
+// it). The review cannot both ask for a file and report it as unused. Everything else in
+// that family is read by nothing and is what this check exists to report - a lock BELOW the
+// root included, since only the root's is consulted.
+test("unused-files exempts the root package.json and lock, not one below the root", () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -419,15 +420,13 @@ test("unused-files exempts the root package.json only, not a nested one and not 
     ...manualItems(result).map((m) => m.file),
   ];
 
-  assert.ok(
-    !reported.includes("package.json"),
-    "the root package.json is the XPI's vendoring manifest"
-  );
-  for (const read_by_nothing of [
-    "package-lock.json",
-    "pnpm-lock.yaml",
-    "lib/vendored/package.json",
-  ]) {
+  for (const read of ["package.json", "package-lock.json", "pnpm-lock.yaml"]) {
+    assert.ok(
+      !reported.includes(read),
+      `the root ${read} is read by the vendoring resolution`
+    );
+  }
+  for (const read_by_nothing of ["lib/vendored/package.json"]) {
     assert.ok(reported.includes(read_by_nothing), read_by_nothing);
   }
 });

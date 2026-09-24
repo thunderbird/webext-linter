@@ -642,8 +642,8 @@ function lock2() {
 //
 // The direction that matters is the silent one. A declaration this check passes but
 // lockedVersion cannot pin lands in `vendor.unpinned`, whose only reader is
-// xpi-package-unpinned - and that check is `sca: false`, while lockedVersion is only ever
-// called in an SCA review. So such a dependency is reported by nobody, and never reaches
+// xpi-lock-file-invalid - and that check is `sca: false`, so in a source review nothing
+// reads the bucket at all. Such a dependency is then reported by nobody, and never reaches
 // the OSV audit, the blocklist or the popularity gate either, because it never enters
 // `packages`. Nothing about the report would look wrong.
 test("a declaration this check passes is one lockedVersion can pin", () => {
@@ -698,4 +698,101 @@ test("a declaration this check passes is one lockedVersion can pin", () => {
       );
     }
   }
+});
+
+// ---- file:/link: local packages (SCA mode only) -----------------------------------------
+// A file:/link: dependency that resolves inside the submission is authored code, so IT is
+// never a lockGaps subject (the non-registry filter drops it, same as any file:/link:
+// spec) - but its OWN declared dependencies are real external sources `npm ci` installs
+// from the SAME governing lock, and are held to the same question. npm's lockfileVersion
+// 2/3 restates a locally-linked package's own manifest under ITS OWN relative-path key,
+// exactly the way it restates the root's under "" - verified against a real submission
+// (markdown-here-revival's package-lock.json carries `packages["mailext-options-sync"]`,
+// restating that linked package's devDependencies, alongside the usual
+// `packages["node_modules/@jfx2006/mailext-options-sync"]` link entry pointing at it).
+
+test("lockGaps: a nested manifest's restated record is compared exactly like the root's", () => {
+  const addon = fakeAddon({
+    "package.json": { dependencies: { helper: "file:./helper" } },
+    "helper/package.json": { dependencies: { ms: "^2.1.3" } },
+    "package-lock.json": {
+      lockfileVersion: 3,
+      packages: {
+        "": { dependencies: { helper: "file:./helper" } },
+        "node_modules/helper": { resolved: "helper", link: true },
+        helper: { dependencies: { ms: "^2.1.3" } },
+        "node_modules/ms": { version: "1.0.0" }, // does not satisfy ^2.1.3
+      },
+    },
+  });
+  const gaps = lockGaps(addon);
+  assert.deepEqual(
+    gaps.map((g) => `${g.file}:${g.name}:${g.reason}:${g.recorded}`),
+    ["package-lock.json:ms:unsatisfied:^2.1.3"]
+  );
+});
+
+test("lockGaps: a name absent from the nested manifest's restated record is absent, anchored there", () => {
+  const addon = fakeAddon({
+    "package.json": { dependencies: { helper: "file:./helper" } },
+    "helper/package.json": {
+      dependencies: { ms: "^2.1.3", other: "^1.0.0" },
+    },
+    "package-lock.json": {
+      lockfileVersion: 3,
+      packages: {
+        "": { dependencies: { helper: "file:./helper" } },
+        "node_modules/helper": { resolved: "helper", link: true },
+        // "other" is declared but never restated here - the lock does not cover it.
+        helper: { dependencies: { ms: "^2.1.3" } },
+        "node_modules/ms": { version: "2.1.3" },
+      },
+    },
+  });
+  assert.deepEqual(
+    lockGaps(addon).map((g) => `${g.file}:${g.name}:${g.reason}`),
+    ["helper/package.json:other:absent"]
+  );
+});
+
+// The precise path above depends on the lock restating the nested manifest under its own
+// relative-path key. If it does not (an unverified edge case for a file:/link: target that
+// is not a genuine npm-recorded local package), this falls back to the same flat, hoisted,
+// name-only lookup pinning already trusts (lockedVersion) - catching a real problem rather
+// than silently passing an uninstallable nested declaration, at the cost of reporting every
+// such fault as generic "absent"/"stale" rather than distinguishing them precisely.
+test("lockGaps: with no restated record at the nested path, falls back to the flat lookup", () => {
+  const noRestatement = (installed) =>
+    fakeAddon({
+      "package.json": { dependencies: { helper: "file:./helper" } },
+      "helper/package.json": { dependencies: { ms: "^2.1.3" } },
+      "package-lock.json": {
+        lockfileVersion: 3,
+        packages: {
+          "": { dependencies: { helper: "file:./helper" } },
+          "node_modules/helper": { resolved: "helper", link: true },
+          // No "helper" key at all - nothing restates the nested manifest.
+          ...installed,
+        },
+      },
+    });
+  // Flat-resolvable and satisfies the range: no gap, same as a covered root declaration.
+  assert.deepEqual(
+    lockGaps(noRestatement({ "node_modules/ms": { version: "2.1.3" } })),
+    []
+  );
+  // Flat-resolvable but does not satisfy the range: caught as "stale" (the fallback cannot
+  // tell a stale pin from a genuinely undeclared one, unlike the precise path's
+  // "unsatisfied").
+  assert.deepEqual(
+    lockGaps(noRestatement({ "node_modules/ms": { version: "1.0.0" } })).map(
+      (g) => `${g.file}:${g.name}:${g.reason}`
+    ),
+    ["helper/package.json:ms:stale"]
+  );
+  // Not resolvable at all: absent, exactly as an uncovered root declaration is.
+  assert.deepEqual(
+    lockGaps(noRestatement({})).map((g) => `${g.file}:${g.name}:${g.reason}`),
+    ["helper/package.json:ms:absent"]
+  );
 });

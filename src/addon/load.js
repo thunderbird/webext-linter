@@ -392,10 +392,8 @@ export function scaViews(archive, { scaSource, scaRoot, scaExpSource }) {
   // check that needs both read one corpus across the two views, with `experiment/exp.js`
   // meaning the same thing in each. One that sits beside the add-on is part of the
   // archive's tree instead, and is keyed there: it is not the add-on's file to merge in.
-  // Keyed in the frame of whatever CONTAINS it: an Experiment inside the add-on is part of
-  // the add-on's tree and is keyed like the source, one beside it is part of the archive's
-  // and is keyed there. Only the SPELLING follows the layout - the corpus is always there,
-  // and always the same files, so nothing downstream has to ask where the folder was put.
+  // Only the SPELLING follows the layout - the corpus is always there, and always the same
+  // files, so nothing downstream has to ask where the folder was put.
   const experiment = fileView(store, {
     prefix: exp !== null && under(exp, src) ? src : "",
     keys: expKeys,

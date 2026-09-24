@@ -245,7 +245,7 @@ test("resolveVendor classifies package.json deps by source", async () => {
     "package.json": JSON.stringify({
       dependencies: {
         pinned: "1.2.3", // npm, exact
-        ranged: "^2.0.0", // unpinned (no lock)
+        ranged: "^2.0.0", // a range, and no lock committed to resolve it
         ghshort: "github:o/r#v1.0.0", // github
         ghbare: "owner/repo", // github bare shorthand
         ghurl: "git+https://github.com/a/b.git", // github url
@@ -258,14 +258,15 @@ test("resolveVendor classifies package.json deps by source", async () => {
   });
   const v = await resolveVendor({ addon, enabled: false });
   assert.deepEqual(v.packages, [
-    { name: "pinned", version: "1.2.3" },
+    { name: "pinned", version: "1.2.3", file: "package.json" },
     // The alias enters as the package it installs, which is what OSV and npm know.
-    { name: "other", version: "1.0.0" },
+    { name: "other", version: "1.0.0", file: "package.json" },
   ]);
   assert.deepEqual(
-    v.unpinned.map((u) => u.name),
+    v.unlocked.map((u) => u.name),
     ["ranged"]
   );
+  assert.deepEqual(v.unpinned, []);
   assert.deepEqual(
     v.githubDeps.map((g) => `${g.name}:${g.repo}`),
     ["ghshort:o/r", "ghbare:owner/repo", "ghurl:a/b", "ghscp:scp/repo"]
@@ -279,10 +280,93 @@ test("resolveVendor classifies package.json deps by source", async () => {
     v.unsupportedDeps.map((u) => u.name),
     ["local", "gitlab"]
   );
+  // "local" (file:../x) still rejects with reviewerInstalls: true - the SCA-only mode
+  // this feature adds - because no "x" directory exists anywhere in the store for it to
+  // resolve to. Never exercised before this test passed reviewerInstalls at all.
+  const scaV = await resolveVendor({
+    addon,
+    reviewerInstalls: true,
+    enabled: false,
+  });
+  assert.deepEqual(
+    scaV.unsupportedDeps.map((u) => u.name),
+    ["local", "gitlab"]
+  );
 });
 
 // devDependencies never ship, but the SCA reviewer builds from source, so their
 // pinned npm packages are OSV-audited too. Only the pinned-npm bucket lands in
+// An optionalDependency is a build-time declaration, classified with the dev ones: npm
+// installs it where the platform allows, so whoever installs from this manifest runs it.
+// It must not fall out of the classification altogether - the lock's own direct set spans
+// every declaration map, so the whole-tree audit skips it as declared (alreadyAudited) and
+// a declared audit is the only thing left that can receive it.
+test("resolveVendor classifies an optionalDependency as build-time", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: { prod: "1.0.0" },
+      optionalDependencies: { "platform-binary": "2.3.3" },
+    }),
+  });
+  const v = await resolveVendor({
+    addon,
+    reviewerInstalls: true,
+    enabled: false,
+  });
+  assert.deepEqual(v.devPackages, [
+    { name: "platform-binary", version: "2.3.3", file: "package.json" },
+  ]);
+  // Never as a shipped one: nothing vendors from it, so it is not held to a release.
+  assert.deepEqual(v.packages, [
+    { name: "prod", version: "1.0.0", file: "package.json" },
+  ]);
+});
+
+// npm's package.json docs: "Entries in optionalDependencies will override entries of the
+// same name in dependencies". The optional spec is therefore the one installed, so it is
+// the one audited - and only it, so one package is classified once and the two vuln
+// checks never both report it. Auditing the losing `dependencies` spec would hold the
+// release to a version npm never resolves.
+test("resolveVendor lets an optional entry win over a dependencies entry of the same name", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: { both: "1.0.0" },
+      optionalDependencies: { both: "2.0.0" },
+    }),
+  });
+  const v = await resolveVendor({
+    addon,
+    reviewerInstalls: true,
+    enabled: false,
+  });
+  assert.deepEqual(v.packages, []);
+  assert.deepEqual(v.devPackages, [
+    { name: "both", version: "2.0.0", file: "package.json" },
+  ]);
+});
+
+// Both overrides at once: the optional entry beats the prod one, and having lost, that
+// prod entry cannot go on to displace the dev copy either - the name is classified once,
+// as the spec npm installs.
+test("resolveVendor resolves a name declared in all three maps to the optional entry", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: { all: "1.0.0" },
+      devDependencies: { all: "3.0.0" },
+      optionalDependencies: { all: "2.0.0" },
+    }),
+  });
+  const v = await resolveVendor({
+    addon,
+    reviewerInstalls: true,
+    enabled: false,
+  });
+  assert.deepEqual(v.packages, []);
+  assert.deepEqual(v.devPackages, [
+    { name: "all", version: "2.0.0", file: "package.json" },
+  ]);
+});
+
 // devPackages: an exact spec, or - for a source archive, whose lock is what the reviewer
 // installs from - a range that lock pins. A range with no lock, a github source, and an
 // unsupported source are dropped, and never leak into the prod buckets.
@@ -308,11 +392,13 @@ test("resolveVendor collects pinned npm devDependencies in devPackages", async (
     enabled: false,
   });
   assert.deepEqual(v.devPackages, [
-    { name: "esbuild", version: "0.19.0" },
-    { name: "webpack", version: "5.88.0" },
+    { name: "esbuild", version: "0.19.0", file: "package.json" },
+    { name: "webpack", version: "5.88.0", file: "package.json" },
   ]);
   // Prod deps are unaffected, and no dev dep leaks into the prod buckets.
-  assert.deepEqual(v.packages, [{ name: "prod", version: "1.0.0" }]);
+  assert.deepEqual(v.packages, [
+    { name: "prod", version: "1.0.0", file: "package.json" },
+  ]);
   // WHO a dev dependency comes from is judged exactly as for a production one, because
   // the reviewer's install clones and RUNS it. Pinning is not: nothing vendors from a dev
   // dep, so no release is ever fetched to compare against.
@@ -351,11 +437,116 @@ test("resolveVendor treats a dep in both dependencies and devDependencies as pro
   });
   const v = await resolveVendor({ addon, enabled: false });
   assert.deepEqual(v.packages, [
-    { name: "shared", version: "1.0.0" },
-    { name: "prodonly", version: "2.0.0" },
+    { name: "shared", version: "1.0.0", file: "package.json" },
+    { name: "prodonly", version: "2.0.0", file: "package.json" },
   ]);
   // "shared" is NOT in devPackages - only the genuinely dev-only package is.
-  assert.deepEqual(v.devPackages, [{ name: "devonly", version: "3.0.0" }]);
+  assert.deepEqual(v.devPackages, [
+    { name: "devonly", version: "3.0.0", file: "package.json" },
+  ]);
+});
+
+// ---- file:/link: local packages (SCA mode only) ----
+// A file:/link: spec that resolves to a real directory inside the submission is authored
+// code, not a dependency: it never reaches unsupportedDeps. Its OWN declared dependencies
+// (both dependencies and devDependencies - npm installs a locally-linked package's
+// devDependencies unconditionally) are real external sources and classified exactly like
+// the root's, tagged with the nested manifest's own path.
+test("resolveVendor recurses into a file:-linked local package's own dependencies", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: { "@scope/helper": "file:./helper" },
+    }),
+    "helper/package.json": JSON.stringify({
+      dependencies: { pinned: "1.0.0" },
+      devDependencies: { ranged: "^2.0.0" },
+    }),
+    "helper/index.js": "export {};\n",
+    "package-lock.json": JSON.stringify({
+      packages: { "node_modules/ranged": { version: "2.5.0" } },
+    }),
+  });
+  const v = await resolveVendor({
+    addon,
+    reviewerInstalls: true,
+    enabled: false,
+  });
+  // The file: entry itself names authored code - dropped entirely, not "unsupported".
+  assert.deepEqual(v.unsupportedDeps, []);
+  assert.deepEqual(v.packages, [
+    { name: "pinned", version: "1.0.0", file: "helper/package.json" },
+  ]);
+  assert.deepEqual(v.devPackages, [
+    { name: "ranged", version: "2.5.0", file: "helper/package.json" },
+  ]);
+});
+
+// A file: target that resolves to a real directory but one with no readable package.json
+// is still authored code (the bytes are right there) - dropped from unsupported, with
+// nothing further to classify, rather than rejected for lacking a manifest.
+test("resolveVendor treats a file: target with no manifest as authored code, nothing further", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: { assets: "file:./assets" },
+    }),
+    "assets/logo.png": "not-really-a-png",
+  });
+  const v = await resolveVendor({
+    addon,
+    reviewerInstalls: true,
+    enabled: false,
+  });
+  assert.deepEqual(v.unsupportedDeps, []);
+  assert.deepEqual(v.packages, []);
+  assert.deepEqual(v.devPackages, []);
+});
+
+// A file: chain that loops back on itself (a nested manifest referencing an ancestor
+// directory, including the root) is not an error: that directory genuinely is part of the
+// submission. It is accepted like any other resolving local target - dropped from
+// unsupported - but not re-walked, which is what keeps the recursion from looping forever.
+test("resolveVendor accepts a file: cycle without recursing forever", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: { nested: "file:./nested" },
+    }),
+    "nested/package.json": JSON.stringify({
+      dependencies: { back: "file:.." }, // points back at the submission root
+    }),
+  });
+  const v = await resolveVendor({
+    addon,
+    reviewerInstalls: true,
+    enabled: false,
+  });
+  // Neither "nested" (root -> nested) nor "back" (nested -> root) is a dependency needing
+  // verification - both name real, already-known directories.
+  assert.deepEqual(v.unsupportedDeps, []);
+  assert.deepEqual(v.packages, []);
+});
+
+// A file: spec declared by a NESTED manifest that escapes the submission (or names
+// nothing present) stays unsupported exactly as a root-level one does - anchored at the
+// nested manifest, not at the root package.json, so the reviewer is pointed at the file
+// that actually declared it.
+test("resolveVendor keeps an unresolvable file: spec unsupported, anchored at the nested manifest", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: { nested: "file:./nested" },
+    }),
+    "nested/package.json": JSON.stringify({
+      dependencies: { escape: "file:../../outside" }, // nothing exists above the root
+    }),
+    "nested/index.js": "export {};\n",
+  });
+  const v = await resolveVendor({
+    addon,
+    reviewerInstalls: true,
+    enabled: false,
+  });
+  assert.deepEqual(v.unsupportedDeps, [
+    { name: "escape", spec: "file:../../outside", file: "nested/package.json" },
+  ]);
 });
 
 // ---- verifiedVendorSource ----

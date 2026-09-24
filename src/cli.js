@@ -1076,10 +1076,10 @@ async function runLoopPass(file, base) {
       `Applied ${applied.length} verdict(s): ${applied.join(", ")}\n\n`
     );
   }
-  // The settled report goes to the FILE the review details link, not into the prompt: the
-  // hand-over used to print it here and ask for it back unchanged, and a model that rewords
-  // its input corrupts the one text a developer receives. Written before the prompt that
-  // names it, so the link is live the moment the reviewer is told to open it.
+  // The settled report goes to the FILE the review details link, never into the prompt: a
+  // model asked to hand it back would reword its input, and this is the one text a
+  // developer receives. Written before the prompt that names it, so the link is live the
+  // moment the reviewer is told to open it.
   writeReportFile(state.paths?.report, report);
   // Both blocks travel in the text's own slots rather than as writes after it, so the
   // text says which is which. Printed in sequence they would be two documents with

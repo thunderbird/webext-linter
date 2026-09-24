@@ -1,0 +1,11 @@
+{
+  "name": "@fixture/nested-helper",
+  "version": "1.0.0",
+  "dependencies": {
+    "tiny-obscure-helper": "1.0.0"
+  },
+  "devDependencies": {
+    "tiny-obscure-tool": "1.0.0",
+    "escape": "file:../../outside"
+  }
+}

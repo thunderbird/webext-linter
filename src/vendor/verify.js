@@ -29,9 +29,12 @@
 //     vendored any packaged file whose content hash matches a published file's
 //     integrity - matched locally, no file bytes downloaded, so it scales to a
 //     large package. A file that does not hash-match is left alone, as it may be
-//     the author's own code or a modified copy. The same pinned name@version is
-//     also audited against OSV (auditNpm); known advisories are recorded for
-//     the vendor-vulnerable check.
+//     the author's own code or a modified copy. That same match decides whether the
+//     name@version is audited against OSV (auditNpm) at all: the advisory and policy
+//     findings it feeds speak about a library the add-on SHIPS, and an XPI carries
+//     its libraries as-is, so a release none of the packaged files came from is not
+//     one this add-on can be told it bundles. A listing that cannot be read leaves
+//     the question open and the audit is made.
 //   - the whole installed tree, in a source-code review only: every package the
 //     committed lock file records, declared or pulled in by another package, is
 //     OSV-audited in one batch (auditLockedPackages). This is where almost all of
@@ -142,8 +145,19 @@ export async function verifyVendor(addon, net = defaultNet, blocks) {
   if (!vendor) {
     return;
   }
+  // Audited only where the add-on is carrying the release. The findings this feeds - a
+  // published advisory (vendor-vulnerable) and a policy-blocked version (banned-library) -
+  // speak about a library the add-on SHIPS, and end the review on it, so a declaration the
+  // packaged files do not bear out must not raise either.
+  const carried = [];
   for (const pkg of vendor.packages) {
-    await verifyPackage(pkg, addon, vendor, net);
+    if (!(await verifyPackage(pkg, addon, vendor, net))) {
+      debug(
+        `package.json ${pkg.name}@${pkg.version}: no packaged file is from it`
+      );
+      continue;
+    }
+    carried.push(pkg);
     await auditNpm(
       pkg.name,
       pkg.version,
@@ -155,6 +169,13 @@ export async function verifyVendor(addon, net = defaultNet, blocks) {
       blocks
     );
   }
+  vendor.packages = carried;
+  // Only the pinned declarations are settled this way, and the ones no release could be
+  // named for - a bare range, a lock that pins nothing, an unsupported spec - are
+  // deliberately left alone. Asking the same question of those would be circular: the
+  // match needs a release, a release needs a pin, and the checks reading those buckets are
+  // the ones DEMANDING the pin. So the lock requirement is unconditional and local, and it
+  // is what makes this match possible on the next submission.
   // A `not-popular` outcome is reconciled into addon.bundled.untrusted later, by
   // applyUnverifiedVendor (src/lib/bundled.js), because addon.bundled is
   // built AFTER this step in the pipeline. It stays in vendor.results until then.
@@ -288,7 +309,7 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
     await auditNpm(
       pkg.name,
       pkg.version,
-      "package.json",
+      pkg.file,
       pkg.name,
       vendor,
       net,
@@ -300,7 +321,7 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
       vendor.unpopularDeps.push({
         name: pkg.name,
         version: pkg.version,
-        file: "package.json",
+        file: pkg.file,
         token: pkg.name,
       });
     }
@@ -314,7 +335,7 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
       vendor.unpopularDeps.push({
         name: dep.name,
         version: dep.spec,
-        file: "package.json",
+        file: dep.file,
         token: dep.name,
       });
     }
@@ -334,7 +355,7 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
     await auditNpm(
       pkg.name,
       pkg.version,
-      "package.json",
+      pkg.file,
       pkg.name,
       vendor,
       net,
@@ -345,7 +366,7 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
       vendor.unpopularDeps.push({
         name: pkg.name,
         version: pkg.version,
-        file: "package.json",
+        file: pkg.file,
         token: pkg.name,
       });
     }
@@ -1306,45 +1327,63 @@ async function verifyFolder(entry, addon, vendor, net) {
  * recording each match as vendored. The match is purely local - the listing is
  * the only fetch and no file bytes are downloaded - so it scales to large
  * packages.
+ *
+ * It also ANSWERS whether the declaration describes this artifact at all, which is
+ * what the return value carries. The question is decidable here because this runs on
+ * the shipped XPI alone (verifyVendor's only caller is the shipped-artifact phase),
+ * and an XPI carries its vendored libraries as-is - a submission that bundles or
+ * minifies them belongs in a source-code review instead. So a release none of the
+ * packaged files came from is a release this add-on does not carry, and the caller
+ * audits accordingly. A listing that cannot be read decides nothing, and says so.
  * @param {{name: string, version: string}} pkg
  * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
- * @returns {Promise<void>}
+ * @returns {Promise<boolean>}  Whether any packaged file is this release's. A listing
+ *   that cannot be read answers no: a 404 says there is no such published release, and a
+ *   route that is actually gone never gets this far (rethrowIfNetworkGone -> exit 2).
  */
 async function verifyPackage(pkg, addon, vendor, net) {
-  // A declared dependency whose files match nothing in the package is silently
-  // ignored, by design: dependencies are installed/bundled at build time, so a
-  // not-yet-built submission legitimately omits them (unlike a VENDOR entry,
-  // whose file must be present - see missing-vendor-file.js). We only record the
-  // files that DO match.
   const base = `https://unpkg.com/${pkg.name}@${pkg.version}`;
   let listing;
   try {
     listing = await net.fetchJson(`${base}/?meta`);
   } catch (err) {
     rethrowIfNetworkGone(err);
-    return; // can't list the package - its files (if shipped) are scanned as-is
+    return false; // no listing, so nothing is shown to have come from it
   }
   const byHash = indexBySri(listing);
   const algos = [...new Set([...byHash.keys()].map((k) => k.split("-")[0]))];
-  let popular = null; // looked up once, lazily, only if a file actually matches
+  let popular = null; // looked up once, lazily, only if a file is recorded
+  let carried = false;
   for (const [addonPath, mine] of addon.files) {
-    if (isVendored(vendor, addonPath)) {
-      continue; // already vendored (a VENDOR file entry or folder)
-    }
     // A packaged file is vendored when its exact content hash matches a
     // published file (basename-independent - a renamed verbatim copy still
     // matches). A file that does not hash-match is left alone (it may be the
     // author's own code, or a modified copy).
     let path = null;
-    for (const algo of algos) {
-      const sri = `${algo}-${createHash(algo).update(mine).digest("base64")}`;
-      if (byHash.has(sri)) {
-        path = byHash.get(sri);
+    for (const candidate of eolRenderings(mine)) {
+      for (const algo of algos) {
+        const sri = `${algo}-${createHash(algo)
+          .update(candidate)
+          .digest("base64")}`;
+        if (byHash.has(sri)) {
+          path = byHash.get(sri);
+          break;
+        }
+      }
+      if (path) {
         break;
       }
     }
     if (!path) {
       continue;
+    }
+    // Tested before the exemption, because the two ask different questions: whether
+    // the add-on CARRIES this release is answered by the file whoever declared it,
+    // while the exemption from content review is already held by the declaration that
+    // covers it - and granting it twice would push a second result row for one file.
+    carried = true;
+    if (isVendored(vendor, addonPath)) {
+      continue; // already vendored (a VENDOR file entry or folder)
     }
     if (popular === null) {
       popular = await isPopular(
@@ -1360,6 +1399,35 @@ async function verifyPackage(pkg, addon, vendor, net) {
       outcome: popular ? "verified" : "not-popular",
     });
   }
+  return carried;
+}
+
+/**
+ * The packaged file as each end-of-line rendering it could have been published in,
+ * the file's own bytes first.
+ *
+ * A vendored copy routinely differs from its release in line endings alone - a
+ * checkout on one platform, a copy through an editor - and is the same release, which
+ * is why every other compare in this module forgives it (verifyUrl via eolEqual,
+ * verifyTarball and verifyFolder via normalizedSha256). This compare cannot forgive it
+ * the same way: the published listing offers a hash of the release's EXACT bytes and
+ * not the bytes, so normalizing one side would only put the two hashes in different
+ * spaces. It asks the answerable question instead - whether some rendering of this file
+ * IS the published one - which is the same tolerance reached from the other end.
+ * @param {Buffer} buf  The packaged file.
+ * @returns {Buffer[]}  Distinct candidates, the original included.
+ */
+function eolRenderings(buf) {
+  const lf = buf.toString("latin1").replace(/\r\n?/g, "\n");
+  const seen = new Set([buf.toString("latin1")]);
+  const out = [buf];
+  for (const text of [lf, lf.replace(/\n/g, "\r\n")]) {
+    if (!seen.has(text)) {
+      seen.add(text);
+      out.push(Buffer.from(text, "latin1"));
+    }
+  }
+  return out;
 }
 
 /**

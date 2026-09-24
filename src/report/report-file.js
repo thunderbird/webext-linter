@@ -1,11 +1,9 @@
 // The one review document this tool WRITES: the text the reviewer sends to the developer.
 //
 // The other two beside the submitted .xpi are written by sub-agents and only NAMED here
-// (src/report/items.js reviewFilePaths). This one is not asked of anyone, because asking
-// was what failed: the hand-over used to print the report into the chat and tell the model
-// to reproduce it "in a code block and unchanged", and a model that rewords its input
-// corrupts the one text a developer actually receives. A file the linter writes cannot be
-// reworded.
+// (src/report/items.js reviewFilePaths). This one is asked of nobody: a model that rewords
+// its input would corrupt the one text a developer actually receives, and a file the linter
+// writes itself cannot be reworded.
 //
 // Written TWICE, because the reviewer reads it while they answer:
 //  - before the Review Details block is handed over, so the link they are given already

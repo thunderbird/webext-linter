@@ -1,6 +1,6 @@
 {
-  "_comment": "package.json declares lodash as a range (^4.17.21), so the vendoring declaration names no single release to fetch and compare the shipped bytes against: xpi-package-unpinned rejects it. package.json is exempt from unused-files. Decided offline, no fetch.",
+  "_comment": "package.json declares lodash as a range (^4.17.21) and the add-on ships no lock file, so the vendoring declaration names no single release to fetch and compare the shipped bytes against. A range is legitimate where a lock resolves it - the vendoring guide asks a developer shipping one to commit the lock beside it - so what is reported is the missing lock, not the range. The sibling case, a lock that resolves nothing for the name, is xpi-lock-file-invalid. package.json is exempt from unused-files. Decided offline, no fetch.",
   "expect": {
-    "xpi-package-unpinned": ["package.json:5"]
+    "xpi-lock-file-missing": ["package.json:5"]
   }
 }

@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Package Range Locked",
+  "version": "1.0",
+  "description": "Declares a range and commits the lock file that resolves it.",
+  "permissions": [
+    "messagesRead",
+    "accountsRead"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "compose_action": {
+    "default_title": "Compose"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png"
+  }
+}

@@ -19,7 +19,8 @@ import {
 } from "../../src/vendor/verify.js";
 import { NetworkGoneError, setNetworkPacing } from "../../src/util/net.js";
 import { parseLibraryBlocks } from "../../src/lib/library-blocks.js";
-import xpiPackageUnpinned from "../../src/checks/rules/xpi-package-unpinned.js";
+import xpiLockFileMissing from "../../src/checks/rules/xpi-lock-file-missing.js";
+import xpiLockFileInvalid from "../../src/checks/rules/xpi-lock-file-invalid.js";
 import unpinnedVendorSource from "../../src/checks/rules/unpinned-vendor-source.js";
 import vendorModified from "../../src/checks/rules/vendor-modified.js";
 import missingVendorFile from "../../src/checks/rules/missing-vendor-file.js";
@@ -173,13 +174,15 @@ function addonWith(files, vendor) {
 
 // An injectable transport. `bytes` answers every fetchBytes (the VENDOR case);
 // `files` answers per-URL (the package case, a missing URL is a 404); `listing`
-// answers the "?meta" tree; `downloads` drives the npm popularity lookup; `osv`
+// answers the "?meta" tree, and `throwOnListing` makes that lookup fail instead;
+// `downloads` drives the npm popularity lookup; `osv`
 // answers the OSV audit postJson (an object, or a function of the request body),
 // and `throwOnPost` makes the audit POST fail (the offline case).
 function net({
   bytes,
   files,
   listing,
+  throwOnListing,
   downloads = 99999,
   stars = 99999,
   throwOnFetch,
@@ -220,6 +223,9 @@ function net({
         return advisories[id];
       }
       if (url.includes("?meta")) {
+        if (throwOnListing) {
+          throw new Error("offline");
+        }
         return listing ?? { type: "directory", files: [] };
       }
       const popularityUrl =
@@ -258,6 +264,7 @@ const store = (over = {}) => ({
   manifest: [],
   packages: [],
   unpinned: [],
+  unlocked: [],
   githubDeps: [],
   unsupportedDeps: [],
   missing: [],
@@ -320,7 +327,9 @@ test("missing-vendor-file: says nothing when every declared file is shipped", ()
 test("verifyScaDependencies: a non-popular declared dep is recorded as unreviewable", async () => {
   const addon = addonWith(
     { "package.json": '{"dependencies":{"niche":"1.0.0"}}' },
-    store({ packages: [{ name: "niche", version: "1.0.0" }] })
+    store({
+      packages: [{ name: "niche", version: "1.0.0", file: "package.json" }],
+    })
   );
   await verifyScaDependencies(
     addon,
@@ -367,7 +376,13 @@ test("verifyScaDependencies: a low-star GitHub dep is recorded as unreviewable",
     { "package.json": "{}" },
     store({
       githubDeps: [
-        { name: "widget", spec: "u/widget", repo: "u/widget", ref: null },
+        {
+          name: "widget",
+          spec: "u/widget",
+          repo: "u/widget",
+          ref: null,
+          file: "package.json",
+        },
       ],
     })
   );
@@ -445,7 +460,11 @@ test("verifyScaDependencies: a GitHub stars lookup failure records nothing", asy
 test("verifyScaDependencies: a dev dependency is OSV-audited AND popularity-gated", async () => {
   const addon = addonWith(
     { "package.json": '{"devDependencies":{"build-tool":"1.0.0"}}' },
-    store({ devPackages: [{ name: "build-tool", version: "1.0.0" }] })
+    store({
+      devPackages: [
+        { name: "build-tool", version: "1.0.0", file: "package.json" },
+      ],
+    })
   );
   await verifyScaDependencies(
     addon,
@@ -779,15 +798,127 @@ test("verifyVendor: a flat ?meta file is matched by sha256 integrity, no downloa
   ]);
 });
 
+// ---- whether the add-on is carrying the release it declares ----
+// The shipped XPI carries its libraries as-is, so the hash match against the published
+// release answers whether a package.json dependency describes this artifact at all -
+// and the OSV audit and the policy blocklist, whose findings both say the add-on ships
+// the library and both end the review, are made only where it does. The three answers
+// the question can have are pinned here, since a golden can only show two of them.
+
+const ADVISORY = {
+  vulns: [{ id: "GHSA-x", database_specific: { severity: "HIGH" } }],
+};
+
+test("verifyVendor: a declared dependency no packaged file came from is not audited", async () => {
+  const sri = `sha256-${createHash("sha256").update("UPSTREAM").digest("base64")}`;
+  const addon = addonWith(
+    { "bg.js": "MY OWN CODE" },
+    store({ packages: [{ name: "jszip", version: "3.10.1" }] })
+  );
+  const listing = { files: [{ path: "/dist/jszip.js", integrity: sri }] };
+  const calls = { query: [] };
+  await verifyVendor(
+    addon,
+    net({ listing, osv: ADVISORY, calls, throwOnFetch: true })
+  );
+  // Not merely unreported - never asked. The request itself is the cost.
+  assert.deepEqual(calls.query, []);
+  assert.deepEqual(addon.vendor.vulnerabilities, []);
+});
+
+test("verifyVendor: a declared dependency the add-on ships is audited", async () => {
+  const body = "LIB\n";
+  const sri = `sha256-${createHash("sha256").update(body).digest("base64")}`;
+  const addon = addonWith(
+    { "vendor/lib.js": body },
+    store({ packages: [{ name: "jszip", version: "3.10.1" }] })
+  );
+  const listing = { files: [{ path: "/dist/jszip.js", integrity: sri }] };
+  const calls = { query: [] };
+  await verifyVendor(
+    addon,
+    net({ listing, osv: ADVISORY, calls, throwOnFetch: true })
+  );
+  assert.equal(calls.query.length, 1);
+  assert.equal(addon.vendor.vulnerabilities[0].name, "jszip");
+});
+
+test("verifyVendor: a copy differing only in line endings is the release it declares", async () => {
+  // The published listing offers a hash of the release's exact bytes, so the packaged
+  // file is offered back in each rendering it could have been published in. A CRLF
+  // checkout of an LF release is the ordinary case, and is the same library.
+  const published = "LIB\nLINE2\n";
+  const sri = `sha256-${createHash("sha256").update(published).digest("base64")}`;
+  const addon = addonWith(
+    { "vendor/lib.js": "LIB\r\nLINE2\r\n" },
+    store({ packages: [{ name: "jszip", version: "3.10.1" }] })
+  );
+  const listing = { files: [{ path: "/dist/jszip.js", integrity: sri }] };
+  const calls = { query: [] };
+  await verifyVendor(
+    addon,
+    net({ listing, osv: ADVISORY, calls, throwOnFetch: true })
+  );
+  assert.equal(calls.query.length, 1);
+  assert.equal(addon.vendor.vulnerabilities[0].name, "jszip");
+  assert.ok(addon.vendor.set.has("vendor/lib.js"));
+});
+
+test("verifyVendor: a listing that cannot be read is not audited either", async () => {
+  const addon = addonWith(
+    { "vendor/lib.js": "LIB\n" },
+    store({ packages: [{ name: "jszip", version: "3.10.1" }] })
+  );
+  const calls = { query: [] };
+  await verifyVendor(
+    addon,
+    net({ throwOnListing: true, osv: ADVISORY, calls, throwOnFetch: true })
+  );
+  // A 404 says the release was never published, so nothing packaged can have come from
+  // it. This is not the offline case being decided quietly: a route that is really gone
+  // raises NetworkGoneError through every swallow site and ends the run, so it never
+  // reaches a verdict to be wrong about.
+  assert.deepEqual(calls.query, []);
+  assert.deepEqual(addon.vendor.vulnerabilities, []);
+  assert.deepEqual(addon.vendor.packages, []);
+});
+
+test("verifyVendor: a shipped file another declaration covers still answers for the release", async () => {
+  const body = "LIB\n";
+  const sri = `sha256-${createHash("sha256").update(body).digest("base64")}`;
+  const addon = addonWith(
+    { "vendor/lib.js": body },
+    // A VENDOR entry already exempts the file, which is what resolveVendor records
+    // offline. The file is still the release's, so the dependency is still audited -
+    // and is still recorded only once.
+    store({
+      set: new Set(["vendor/lib.js"]),
+      packages: [{ name: "jszip", version: "3.10.1" }],
+    })
+  );
+  const listing = { files: [{ path: "/dist/jszip.js", integrity: sri }] };
+  const calls = { query: [] };
+  await verifyVendor(
+    addon,
+    net({ listing, osv: ADVISORY, calls, throwOnFetch: true })
+  );
+  assert.equal(calls.query.length, 1);
+  assert.equal(addon.vendor.vulnerabilities[0].name, "jszip");
+  assert.deepEqual(addon.vendor.results, []);
+});
+
 // ---- OSV vulnerability audit (network injected) ----
 
 // A package OSV reports an advisory for is recorded on vendor.vulnerabilities,
 // aggregated per package: a CVE alias is preferred over the OSV id, the severity
 // is the database-specific label, and the fixed versions come from the matching
-// npm `affected` ranges. `throwOnFetch` proves the ?meta path is independent.
+// npm `affected` ranges. The add-on ships the library, which is what puts the
+// dependency in front of the audit at all.
 test("verifyVendor: the OSV audit records a vulnerable pinned package", async () => {
+  const body = "LODASH\n";
+  const sri = `sha256-${createHash("sha256").update(body).digest("base64")}`;
   const addon = addonWith(
-    {},
+    { "vendor/lodash.js": body },
     store({ packages: [{ name: "lodash", version: "4.17.20" }] })
   );
   const osv = {
@@ -810,7 +941,8 @@ test("verifyVendor: the OSV audit records a vulnerable pinned package", async ()
       },
     ],
   };
-  await verifyVendor(addon, net({ listing: { files: [] }, osv }));
+  const listing = { files: [{ path: "/lodash.js", integrity: sri }] };
+  await verifyVendor(addon, net({ listing, osv }));
   assert.deepEqual(addon.vendor.vulnerabilities, [
     {
       name: "lodash",
@@ -1295,20 +1427,43 @@ test("vendor-vuln-unknown: no unaudited entries -> no findings", () => {
   assert.deepEqual(vendorVulnUnknown.run(ctx).findings, []);
 });
 
-test("xpi-package-unpinned: one finding per unpinned dep, anchored in package.json", () => {
+// A range resolves through the lock beside it, so the two ways that fails are two checks
+// reading two lists. Each reports only its own: resolveVendor decides which case a
+// dependency is in, so a submission is never told both to commit a lock and to regenerate
+// the one it committed.
+test("the two ranged-dependency checks read their own list, anchored in package.json", () => {
   const pkg = '{\n  "dependencies": {\n    "lodash": "^4.17.21"\n  }\n}';
-  const ctx = {
+  const ctxWith = (vendor) => ({
     addon: {
       files: new Map([["package.json", Buffer.from(pkg)]]),
-      vendor: store({ unpinned: [{ name: "lodash", spec: "^4.17.21" }] }),
+      vendor: store(vendor),
     },
-  };
-  const out = xpiPackageUnpinned.run(ctx).findings;
-  assert.equal(out.length, 1);
-  assert.equal(out[0].file, "package.json");
-  assert.equal(out[0].loc.line, 3);
+  });
+  const dep = [{ name: "lodash", spec: "^4.17.21" }];
+
+  // No lock committed at all.
+  const missing = xpiLockFileMissing.run(ctxWith({ unlocked: dep })).findings;
+  assert.equal(missing.length, 1);
+  assert.equal(missing[0].file, "package.json");
+  assert.equal(missing[0].loc.line, 3);
   // Collapsed response: name + spec render together on the location line.
-  assert.equal(out[0].item, "lodash (^4.17.21)");
+  assert.equal(missing[0].item, "lodash (^4.17.21)");
+
+  // A lock, and it resolves nothing for the name.
+  const invalid = xpiLockFileInvalid.run(ctxWith({ unpinned: dep })).findings;
+  assert.equal(invalid.length, 1);
+  assert.equal(invalid[0].loc.line, 3);
+  assert.equal(invalid[0].item, "lodash (^4.17.21)");
+
+  // Neither reads the other's list.
+  assert.deepEqual(
+    xpiLockFileMissing.run(ctxWith({ unpinned: dep })).findings,
+    []
+  );
+  assert.deepEqual(
+    xpiLockFileInvalid.run(ctxWith({ unlocked: dep })).findings,
+    []
+  );
 });
 
 test("unpinned-vendor-source: anchored on the VENDOR line, URL as the hint", () => {

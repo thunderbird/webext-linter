@@ -2005,12 +2005,13 @@ export function formatNote(file, loc, item, verdict, label = "") {
  * `sca: true` only in SCA mode (a source code archive,
  * triggered by `--sca-root`), `sca: false` only in XPI mode (reviewing a built
  * add-on), an omitted `sca` in both. The `--sca-root` build and dependency checks are
- * `sca: true`. Exactly one check is `sca: false`: xpi-package-unpinned, whose
- * requirement - a vendoring declaration must name one exact release - a source archive
- * answers with its lock file instead. The gate is for a check that genuinely cannot run
- * on a source archive, never a way to exempt a source archive's declared files from
- * review: a declaration nothing verified exempts nothing, and here the question does not
- * disappear, it moves to the two sca:true lock checks.
+ * `sca: true`. Two checks are `sca: false`: xpi-lock-file-missing and
+ * xpi-lock-file-invalid, which ask what pins a shipped vendored copy - a question a
+ * source archive answers differently, because it ships no copy and installs at build
+ * time. The gate is for a check that genuinely cannot run on a source archive, never a
+ * way to exempt a source archive's declared files from review: a declaration nothing
+ * verified exempts nothing, and here the question does not disappear, it moves to the
+ * two sca:true lock checks.
  * @param {{sca?: boolean}} entry @param {boolean} inScaMode
  * @returns {boolean}
  */

@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Package Range Locked Shipped",
+  "version": "1.0",
+  "description": "Declares a range, commits the lock that resolves it, and ships the library.",
+  "permissions": ["messagesRead", "accountsRead"],
+  "background": { "scripts": ["lib/collection-helpers.js", "background.js"] },
+  "compose_action": { "default_title": "Compose" },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

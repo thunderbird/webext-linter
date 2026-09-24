@@ -1,0 +1,6 @@
+{
+  "_comment": "A lock file shipped with no package.json beside it. The root lock's exemption from unused-files exists because the review ASKS for it - xpi-lock-file-missing tells a developer shipping a ranged dependency to commit one - and that reason needs a manifest: with nothing declaring a dependency there is nothing to resolve, no check asks for the lock, and no part of the review reads it. So it is reported like any other file the add-on does not use, rather than exempted on the strength of its name. Its counterpart is package-range-locked, where the same file sits beside a package.json that needs it and is correctly left alone.",
+  "expect": {
+    "unused-files": ["package-lock.json"]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "sca-nested-dependency",
+  "version": "1.0.0",
+  "dependencies": {
+    "@fixture/nested-helper": "file:./nested-helper",
+    "popular-dep": "1.0.0"
+  }
+}

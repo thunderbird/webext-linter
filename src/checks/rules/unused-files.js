@@ -27,17 +27,28 @@ import {
   isExperiment,
 } from "../../lib/util.js";
 import { MANIFEST_FILE } from "../../vendor/manifest.js";
+import { TREE_LOCKS } from "../../vendor/locks.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
-// Never flag: locale message catalogs, and the ROOT package.json - the one build-manager
-// file a built XPI actually reads, as the vendoring manifest behind xpi-package-unpinned /
-// unsupported-dependency / vendor-vulnerable. Nothing else in that family earns an
-// exemption here, at any depth: a lock shipped in an XPI is read by NOTHING (src/vendor/
-// resolve.js - "a file named package-lock.json shipped there is not a lock"), and a
-// package.json below the root declares nothing this review resolves, so both are exactly
-// what this check exists to report. An .npmrc needs no entry either way - the JUNK rule
-// below is tested first and reports every dotfile.
+// Never flag: locale message catalogs, the ROOT package.json, and the ROOT lock file
+// BESIDE IT. The package.json is the one build-manager file a built XPI actually reads, as
+// the vendoring manifest behind unsupported-dependency / vendor-vulnerable; the lock
+// beside it is read too, for the version a declared range resolves to
+// (src/vendor/resolve.js classifyDeps).
+//
+// The lock is exempt because the review ASKS for it: xpi-lock-file-missing tells a
+// developer shipping a range to commit one, and reporting the same file as unused would
+// answer that with the opposite instruction. That reason needs the manifest to exist -
+// with no package.json there is no declaration to resolve, nothing ever reads the lock,
+// and no check asks for it, so a lock shipped alone is an unused file like any other and
+// is reported. Exempting it on the strength of its NAME would be the one case where this
+// check stays quiet about a file nothing in the submission can use.
+//
+// Only at the ROOT, and nothing else in that family at any depth: a package.json or a lock
+// below the root declares nothing this review resolves, so those are exactly what this
+// check exists to report. An .npmrc needs no entry either way - the JUNK rule below is
+// tested first and reports every dotfile.
 //
 // Documentation / project metadata is exempted separately by isDocMetadataFile
 // (a documentation extension settles it; a .txt or an extensionless file needs a
@@ -77,6 +88,8 @@ export default {
     // is the XPI's own classification (getBundled over ctx.addon), intrinsic to the
     // artifact under review, so it needs no cross-artifact review-target metadata.
     const skip = new Set(nonAuthoredJs(ctx));
+    // The lock's exemption is the manifest's: see the header. Read once, not per file.
+    const manifestShipped = addon.files.has(MANIFEST_FILE);
     // An Experiment loads its files by mechanisms static analysis can't trace, so
     // "not reachable" is unreliable there - we'd mostly flag working experiment code.
     // Report only unambiguous junk; a separate "review the whole Experiment" check
@@ -99,6 +112,7 @@ export default {
       }
       if (
         file === MANIFEST_FILE ||
+        (manifestShipped && TREE_LOCKS.includes(file)) ||
         skip.has(file) ||
         isDocMetadataFile(file) ||
         ALLOW.some((re) => re.test(file))

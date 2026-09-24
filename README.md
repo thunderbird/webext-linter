@@ -372,7 +372,8 @@ machine.
 | `vendor-modified` | A declared third-party file whose bytes don't match its pinned source (EOL-tolerant compare) - it appears modified from upstream (error). |
 | `multiple-vendor-files` | More than one file in the package root names itself the VENDOR manifest (`VENDOR`, `VENDOR.md`, `VENDORS`, `VENDORS.md`), so which one the review reads would depend on the archive's order (error). None of them is read while it is ambiguous. |
 | `vendor-unparseable` | A VENDOR file is present but yielded no declaration, so nothing can be verified (error). The parse is all-or-nothing: it reads only what is marked as a declaration - a path and a source URL paired by a colon, a key, or Markdown link syntax - and a fault anywhere discards the whole file. |
-| `xpi-package-unpinned` | A dependency in a SHIPPED `package.json` that names no single npm release - a range, a dist-tag, a partial version, a wildcard (error). The declaration states that a bundled file was copied from that release, and the review fetches that release to compare the shipped bytes against it, so a spec naming no one release leaves nothing to compare. XPI submissions only: a source archive answers pinning with its lock file instead. |
+| `xpi-lock-file-missing` | A dependency in a SHIPPED `package.json` declared as a range, with no lock file committed to resolve it (error). The declaration states that a bundled file was copied from that release, and the review fetches that release to compare the shipped bytes against it, so a range names nothing to compare against until a lock says which version was bundled. Any of `package-lock.json`, `npm-shrinkwrap.json` or `pnpm-lock.yaml` is accepted. XPI submissions only: a source archive answers pinning against the tree the reviewer installs. |
+| `xpi-lock-file-invalid` | The same declaration where a lock file IS committed and records no version for it (error) - regenerated from another manifest, keyed under another name, or unparseable. Kept apart from the row above because the remedy is: regenerate the lock rather than commit one. A dependency is never reported by both. |
 
 ### Checks that escalate
 
@@ -426,7 +427,7 @@ result into the owning check - described in
 | `disguised-navigation` | Data in the URL an already-open context is sent to. |
 | `privacy-policy` | The add-on reaching a developer-chosen remote service by an unlisted route. |
 | `unacceptable-package-content` | Content the add-on ships - its name and description, an icon, or bundled text, images or media - that is spam, inappropriate, misleading or low-effort, or breaches Mozilla's Acceptable Use Policy. |
-| `shipped-icon-trademark-imitation` | An icon the add-on ships that imitates or incorporates the Thunderbird, Firefox or Mozilla logo. Acceptability is the row above; this row is the trademark. |
+| `shipped-icon-trademark-imitation` | An icon the add-on ships that imitates or incorporates the Thunderbird, Firefox or Mozilla logo. Acceptability is the row above, this row is the trademark. |
 
 ### Manual checks
 
