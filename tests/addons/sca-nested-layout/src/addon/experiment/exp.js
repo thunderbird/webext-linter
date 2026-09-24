@@ -1,4 +1,4 @@
-// Privileged Experiment implementation, INSIDE --sca-source. Two things at once:
+// Privileged Experiment implementation, named by --sca-exp-source. Two things at once:
 // the ChromeUtils call is legitimate here and core-symbol-in-webext must stay silent on
 // it (that is what --sca-exp-source is for), while the innerHTML sink is not excused by
 // being privileged - it is worse there - so unsafe-html must still report it. The

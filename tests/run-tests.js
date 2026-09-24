@@ -311,7 +311,6 @@ async function main() {
           ...base,
           addonPath: path.join(dir, "xpi"),
           scaRoot,
-          scaSource: inRoot(sca.source) ?? scaRoot,
           scaExpSource: inRoot(sca.expSource),
         });
       } else {

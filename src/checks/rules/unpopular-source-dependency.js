@@ -2,7 +2,7 @@
 // widely-used library. In a source-code submission the dependency code is not in
 // the readable source (it is pulled in at build) and is mangled in the built XPI,
 // so a non-popular one cannot be reviewed. The remedy differs by what it is for: a
-// SHIPPED dependency can be included readable inside --sca-source instead, and a BUILD
+// SHIPPED dependency can be included readable in the archive instead, and a BUILD
 // one cannot, so there the answer is a widely-used equivalent, or dropping the dependency
 // where reproducing the XPI never needed it. Build dependencies are
 // held to the same bar for the reason they are OSV-audited - the reviewer installs and

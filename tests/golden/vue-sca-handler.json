@@ -5,7 +5,6 @@
     "xpiRoot": "<root>/tests/addons/vue-sca-handler/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/vue-sca-handler/src",
-    "scaSource": "<root>/tests/addons/vue-sca-handler/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

@@ -5,12 +5,16 @@
 // need not be held a second time. The store keeps a key and a path, and reads a file the
 // first time something asks for it.
 //
-// A VIEW is a store plus a prefix and the keys under it. It holds no bytes and no entries:
-// it answers `get("lib/widget.js")` by asking the store for `<prefix>/lib/widget.js`. That
-// is what lets one store carry an archive whose parts are read in different frames - the
-// build tooling reads archive-relative paths, while the add-on's own declarations (a VENDOR
-// entry, a manifest ref, `_locales/...`) are written by the developer relative to the ADD-ON
-// root and must be read the way they were written.
+// A VIEW is a store plus the keys it holds. It carries no bytes and no entries of its own,
+// and it does not re-key: every view spells a file the way the SUBMISSION does, because that
+// is the one frame in which every part of a submission can be named. A file beside the
+// add-on has no add-on-relative spelling, so a corpus keyed against the add-on could never
+// hold one.
+//
+// A path written INSIDE a declaration - a VENDOR entry naming the file it covers - is
+// relative to the file that declares it, so it is joined at the READ, against that file's
+// own directory. Never baked into the keys, which is what keeps the corpus able to name the
+// whole submission.
 //
 // Both present the Map surface the review already uses (`get`/`has`/`keys`/`size`/`delete`
 // and iteration), so a corpus, a view and a plain Map are interchangeable - which is why the
@@ -104,40 +108,34 @@ export class FileStore {
 }
 
 /**
- * A view of `store` restricted to one subtree, keyed relative to it.
+ * A view of `store` restricted to the keys it names, in the STORE's frame.
  *
- * `prefix` is the store key the view's own root sits at ("" when the view IS the store's
- * root). `keys` are the store keys the view holds - passed in rather than derived from the
- * prefix, because a view may exclude a subtree that sits inside it (the add-on source
- * excludes the Experiment implementation).
+ * `keys` are listed rather than derived from a prefix, because a view may exclude a subtree
+ * that sits inside it (the add-on source excludes the Experiment implementation). Nothing is
+ * re-keyed: every view spells a file the way the submission does, which is the only frame
+ * that can name the whole of it.
  * @param {FileStore|Map<string, Buffer>} store
- * @param {{prefix?: string, keys: Iterable<string>}} args
- * @returns {object}  The Map surface, over view-relative keys.
+ * @param {{keys: Iterable<string>}} args
+ * @returns {object}  The Map surface, over store keys.
  */
-export function fileView(store, { prefix = "", keys }) {
+export function fileView(store, { keys }) {
   const held = new Set(keys);
-  const at = prefix ? `${prefix}/` : "";
-  const storeKey = (key) => `${at}${key}`;
-  const viewKey = (key) => (at ? key.slice(at.length) : key);
   const view = {
     get size() {
       return held.size;
     },
     /** @param {string} key */
-    has: (key) => held.has(storeKey(key)),
+    has: (key) => held.has(key),
     /** @param {string} key */
-    get: (key) =>
-      held.has(storeKey(key)) ? store.get(storeKey(key)) : undefined,
+    get: (key) => (held.has(key) ? store.get(key) : undefined),
     /** @param {string} key */
-    delete: (key) => held.delete(storeKey(key)),
+    delete: (key) => held.delete(key),
     *keys() {
-      for (const key of held) {
-        yield viewKey(key);
-      }
+      yield* held;
     },
     *entries() {
       for (const key of held) {
-        yield [viewKey(key), store.get(key)];
+        yield [key, store.get(key)];
       }
     },
   };

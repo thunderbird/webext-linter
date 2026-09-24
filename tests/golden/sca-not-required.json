@@ -5,7 +5,6 @@
     "xpiRoot": "<root>/tests/addons/sca-not-required/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-not-required/src",
-    "scaSource": "<root>/tests/addons/sca-not-required/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

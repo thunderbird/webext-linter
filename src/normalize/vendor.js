@@ -39,6 +39,8 @@
 // unused-files exempts them. Fetching/verifying the declared source is the
 // vendor verification pre-step + the vendor checks. This file makes no verdict.
 
+import { basename, dirname } from "../util/files.js";
+
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /** @typedef {{path: string, sourceUrl: ?string, kind?: string}} VendorEntry */
 
@@ -49,14 +51,22 @@ const VENDOR_NAMES = new Set(["vendor", "vendor.md", "vendors", "vendors.md"]);
  * Every packaged file whose name says it is the VENDOR manifest, sorted so the answer
  * does not depend on the order the archive happens to list them in. More than one is
  * a contradiction only the developer can settle - see multiple-vendor-files.
+ *
+ * Found at ANY depth, because a submission need not put the add-on at its root: a real
+ * archive carries it at `extension/VENDOR`, beside the code it declares. What it declares
+ * is then read relative to where IT sits (readVendorDeclarations), which is how the
+ * developer wrote it.
  * @param {Addon} addon
  * @returns {string[]}
  */
 export function vendorFileNames(addon) {
   const files = addon?.files;
-  return files
-    ? [...files.keys()].filter((f) => VENDOR_NAMES.has(f.toLowerCase())).sort()
-    : [];
+  if (!files) {
+    return [];
+  }
+  return [...files.keys()]
+    .filter((f) => VENDOR_NAMES.has(basename(f).toLowerCase()))
+    .sort();
 }
 
 /**
@@ -674,11 +684,17 @@ function scanVendorRecords(addon) {
 export function readVendorDeclarations(addon) {
   const paths = new Set(addon.files.keys());
   const holds = (dir) => [...paths].some((p) => p.startsWith(`${dir}/`));
+  const at = dirname(readVendorFile(addon)?.name ?? "");
   const resolved = [];
   const missing = [];
   const seen = new Set();
   for (const r of scanVendorRecords(addon)) {
-    const path = normalizeToken(r.token);
+    // A declaration is written relative to the file that MAKES it, so the token is joined
+    // to the VENDOR file's own directory - once, at the only place the parse output meets
+    // the submission. Every consumer downstream reads a corpus key, and a finding anchors
+    // at the path the reviewer will look for in the archive they were given.
+    const token = normalizeToken(r.token);
+    const path = at ? `${at}/${token}` : token;
     if (seen.has(path)) {
       continue;
     }

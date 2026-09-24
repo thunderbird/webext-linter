@@ -5,7 +5,6 @@
     "xpiRoot": "<root>/tests/addons/missing-lock-sca/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/missing-lock-sca/src",
-    "scaSource": "<root>/tests/addons/missing-lock-sca/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

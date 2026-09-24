@@ -5,7 +5,6 @@
     "xpiRoot": "<root>/tests/addons/sca-nested-dependency/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-nested-dependency/src",
-    "scaSource": "<root>/tests/addons/sca-nested-dependency/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
@@ -106,13 +105,13 @@
     ]
   },
   "summary": {
-    "error": 3,
+    "error": 4,
     "hold": 0,
     "warning": 0,
     "info": 0,
     "byRule": {
       "unpopular-source-dependency": 2,
-      "unsupported-dependency": 1
+      "unsupported-dependency": 2
     }
   },
   "findings": [
@@ -146,6 +145,17 @@
         "line": 9
       },
       "item": "escape (file:../../outside)",
+      "hint": null,
+      "message": "The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+    },
+    {
+      "ruleId": "unsupported-dependency",
+      "severity": "error",
+      "file": "package.json",
+      "loc": {
+        "line": 7
+      },
+      "item": "laundered (https://attacker.example/evil.tgz)",
       "hint": null,
       "message": "The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }

@@ -5,7 +5,6 @@
     "xpiRoot": "<root>/tests/addons/sca-vendor-declared/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-vendor-declared/src",
-    "scaSource": "<root>/tests/addons/sca-vendor-declared/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

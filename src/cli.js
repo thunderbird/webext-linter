@@ -217,10 +217,6 @@ function helpText(checkIds) {
       "The extracted source root, holding package.json and the lock file. A folder, not a packed archive: a source archive comes in too many formats for this tool to open, so extract it yourself - unlike the submitted .xpi, which this tool extracts. Setting it switches the review to SCA mode.",
     ],
     [
-      "--sca-source <path>",
-      "The add-on code root, inside --sca-root: a path relative to it (e.g. src or addon), or an absolute path within it - the spelling the report itself prints. Optional; defaults to the whole --sca-root reviewed as the source - a flat layout where manifest.json sits at the root. Needs --sca-root.",
-    ],
-    [
       "--sca-exp-source <path>",
       "The Experiment implementation folder, inside --sca-root - relative to it or absolute within it, anywhere under it (e.g. addon/experiment-api, or a sibling of the source like experiment). Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-root; REQUIRED when --allow-experiments is used in SCA mode.",
     ],
@@ -294,7 +290,6 @@ const OPTIONS = {
   eslint: { type: "boolean" },
   "allow-experiments": { type: "boolean" },
   "sca-root": { type: "string" },
-  "sca-source": { type: "string" },
   "sca-exp-source": { type: "string" },
   "report-format": { type: "string" },
   "llm-sca-review": { type: "boolean" },
@@ -321,7 +316,7 @@ function reviewSkips(values) {
 }
 
 /** The --sca-* flags, which --llm-sca-review exists to work out and so refuses to be given. */
-const SCA_FLAGS = ["sca-root", "sca-source", "sca-exp-source"];
+const SCA_FLAGS = ["sca-root", "sca-exp-source"];
 
 /**
  * One argument as it must be TYPED: quoted when it carries whitespace, because these lines
@@ -355,8 +350,7 @@ function shellArg(value) {
  * A flag given no value never reaches here - main() refuses one before any branch - so
  * the truth test below only skips the flags this run was not given.
  *
- * --sca-root and --sca-source are both placeholders, because only their reader can settle
- * them. The "Submission" block names EXTRACT_TO, which is where this run asks for the
+ * --sca-root is a placeholder, because only its reader can settle it. The "Submission" block names EXTRACT_TO, which is where this run asks for the
  * archive to be unpacked - path math, decided before anything has been extracted. Which
  * folder inside it is the source ROOT is a fact about what the archive turned out to hold,
  * and naming the destination as though it were the root is what sent a review at a folder
@@ -376,7 +370,7 @@ function reviewCommand(values, submission) {
       type === "string" ? `--${name} ${shellArg(values[name])}` : `--${name}`
     );
   }
-  flags.push("--sca-root <SCA_ROOT>", "--sca-source <SCA_SOURCE>");
+  flags.push("--sca-root <SCA_ROOT>");
   const experiments = Boolean(values["allow-experiments"]);
   if (experiments) {
     flags.push("--sca-exp-source <SCA_EXP_SOURCE>");
@@ -773,17 +767,11 @@ export async function main(argv) {
   // in the same breath, so the file handed back would belong to neither. Refuse rather
   // than pick one.
 
-  // --sca-root is the SCA-mode switch. --sca-source and --sca-exp-source name locations
-  // INSIDE it, so they are meaningless on their own - and unresolvable, since this layer
-  // resolves them against it. --sca-root alone is fine: the source then defaults to the
-  // whole root.
-  if (
-    (values["sca-source"] || values["sca-exp-source"]) &&
-    !values["sca-root"]
-  ) {
-    process.stderr.write(
-      "--sca-source and --sca-exp-source require --sca-root (SCA mode).\n"
-    );
+  // --sca-root is the SCA-mode switch. --sca-exp-source names a location INSIDE it, so it
+  // is meaningless on its own - and unresolvable, since this layer resolves it against the
+  // root. --sca-root alone is fine: the whole archive is the review source.
+  if (values["sca-exp-source"] && !values["sca-root"]) {
+    process.stderr.write("--sca-exp-source requires --sca-root (SCA mode).\n");
     return 2;
   }
 
@@ -935,7 +923,6 @@ function pipelineOptsFromValues(values) {
     allowExperiments: values["allow-experiments"],
     warningsAsErrors: values["warnings-as-errors"],
     scaRoot,
-    scaSource: inRoot(values["sca-source"]),
     scaExpSource: inRoot(values["sca-exp-source"]),
     llmReview: Boolean(values["llm-review"]),
     llmSkip: reviewSkips(values),

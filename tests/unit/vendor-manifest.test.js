@@ -40,8 +40,15 @@ test("resolveLocalManifests: a file: target with its own manifest is in both lis
     "helper/index.js": "export {};\n",
   });
   const { targets, manifests } = resolveLocalManifests(addon);
+  // The MAP is carried, not only the name: a name may be written in several maps with
+  // different specs, so what resolved has to say which declaration it was.
   assert.deepEqual(targets, [
-    { declaringFile: "package.json", name: "helper", dir: "helper" },
+    {
+      declaringFile: "package.json",
+      map: "dependencies",
+      name: "helper",
+      dir: "helper",
+    },
   ]);
   assert.deepEqual(
     manifests.map((m) => m.dir),
@@ -60,7 +67,12 @@ test("resolveLocalManifests: link: resolves the same way file: does", () => {
   });
   const { targets } = resolveLocalManifests(addon);
   assert.deepEqual(targets, [
-    { declaringFile: "package.json", name: "helper", dir: "helper" },
+    {
+      declaringFile: "package.json",
+      map: "dependencies",
+      name: "helper",
+      dir: "helper",
+    },
   ]);
 });
 
@@ -75,7 +87,12 @@ test("resolveLocalManifests: a file: target with no manifest is a target but not
   });
   const { targets, manifests } = resolveLocalManifests(addon);
   assert.deepEqual(targets, [
-    { declaringFile: "package.json", name: "assets", dir: "assets" },
+    {
+      declaringFile: "package.json",
+      map: "dependencies",
+      name: "assets",
+      dir: "assets",
+    },
   ]);
   assert.deepEqual(manifests, []);
 });

@@ -1,8 +1,8 @@
 // What a source code submission looks like on disk, for --llm-sca-review: a folder holding
 // the built add-on and an archive of the source it was built from.
 //
-// An SCA review needs three arguments, and two of them - --sca-source and
-// --sca-exp-source - nobody can write without opening that source archive. This module
+// An SCA review needs the source archive's own paths, and nobody can write
+// --sca-exp-source without opening it. This module
 // does the half a program can do: which file is the add-on, which is the source, and where
 // the source is to be extracted (--sca-root, below). The prompt hands the other two to
 // whoever can open the archive.

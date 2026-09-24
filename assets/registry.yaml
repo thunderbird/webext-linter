@@ -420,7 +420,7 @@ deterministic-phase:
 # SCA mode (source code archive, sca: true): a declared dependency that is not a confirmed
 # widely-used library cannot be reviewed - its code is pulled in at build, absent from the
 # readable source and mangled in the built XPI - so a SHIPPED one must be included readable
-# inside --sca-source. BUILD dependencies are held to the same bar, for the reason they are
+# in the archive. BUILD dependencies are held to the same bar, for the reason they are
 # OSV-audited: the reviewer installs and runs them, so an obscure build tool is code we ask
 # them to execute on nobody's word, and refusing only the vulnerabilities we can name would
 # protect them from the named risk alone. They cannot be shipped readable, so the remedy is
@@ -1879,15 +1879,9 @@ llm-sca-review-prompt:
         In EXTRACT_TO, find the directory holding package.json. That directory is <SCA_ROOT>, absolute.
 
         One rule, and nothing to weigh: the root of a source archive is where its build runs, and the build runs where package.json is. Usually that is EXTRACT_TO itself. Where the archive carries its contents in a directory of its own, it is that directory, however many of them it took to get there. Where several hold one, it is the one holding the lock file beside it - package-lock.json, pnpm-lock.yaml or npm-shrinkwrap.json - because that is the pair an install reads. Never look inside node_modules: those are installed dependencies, each with a package.json of its own, and none of them is this submission.
-    - text: |-
-        In <SCA_ROOT>, decide which directory holds the ADD-ON's own code. Its path relative to <SCA_ROOT> is <SCA_SOURCE>.
-
-        Read what <SCA_ROOT> contains and judge it. When ONE directory clearly holds the add-on's code and EVERY other directory holds only what the add-on does not ship - tests, documentation, build tooling, CI configuration, examples - then that one directory is <SCA_SOURCE>. When that split cannot be made cleanly, <SCA_SOURCE> is "." and the whole of <SCA_ROOT> is reviewed.
-
-        Judge by the code, never by where a manifest.json sits: a build can generate or move it, and a directory chosen that way hides every file outside it. The two mistakes are not equal - too wide only adds noise, too narrow leaves a file unreviewed as add-on code with nothing to say so. When unsure, be too wide.
     - run: experiments
       text: |-
-        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look under <SCA_SOURCE>: those paths are relative to the add-on's own root. Its path relative to <SCA_ROOT> is <SCA_EXP_SOURCE>.
+        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under <SCA_ROOT>. Its path relative to <SCA_ROOT> is <SCA_EXP_SOURCE>.
     - text: |-
         Run the linter with exactly these flags, and nothing else:
 

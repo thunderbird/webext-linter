@@ -123,7 +123,7 @@ const COLLAPSE_MODES = new Set(["subject"]);
 
 // The `input` a check entry declares - which add-on artifact is ctx.addon when the
 // check runs. "source" = the REVIEW TARGET, the readable submitted code (the readable
-// --sca-source in an SCA review, the built XPI in an XPI review - the only artifact
+// --sca-root in an SCA review, the built XPI in an XPI review - the only artifact
 // there); "xpi" = ALWAYS the built XPI (the shipped artifact), for the structure checks
 // that describe what ships; "build" = the SCA build files (the archive minus the review
 // source minus node_modules), for the build review; "manifest" = the shipped manifest

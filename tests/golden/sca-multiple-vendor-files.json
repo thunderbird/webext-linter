@@ -5,7 +5,6 @@
     "xpiRoot": "<root>/tests/addons/sca-multiple-vendor-files/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-multiple-vendor-files/src",
-    "scaSource": "<root>/tests/addons/sca-multiple-vendor-files/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

@@ -173,30 +173,19 @@ test("a pipeline hard-fail aborts: exit 2 and 'verify failed' on stderr", () => 
   assert.match(r.stderr, /verify failed/);
 });
 
-// --sca-root is the SCA-mode switch; --sca-source / --sca-exp-source name locations
-// inside it, so they are a usage error on their own. (--sca-root alone is fine -
-// --sca-source defaults to ".".)
-test("--sca-source without --sca-root is a usage error (exit 2)", () => {
-  const r = run(["some.xpi", "--sca-source", "src"]);
+// --sca-root is the SCA-mode switch; --sca-exp-source names a location inside it, so it
+// is a usage error on its own. (--sca-root alone is fine - the whole archive is reviewed.)
+test("--sca-exp-source without --sca-root is a usage error (exit 2)", () => {
+  const r = run(["some.xpi", "--sca-exp-source", "src"]);
   assert.equal(r.code, 2);
-  assert.match(
-    r.stderr,
-    /--sca-source and --sca-exp-source require --sca-root/
-  );
+  assert.match(r.stderr, /--sca-exp-source requires --sca-root/);
 });
 
 // In SCA mode, Experiment code is told apart from WebExtension code only by
 // --sca-exp-source, so --allow-experiments without it is a usage error (else the
 // privileged Experiment code would be reviewed as WebExtension code).
 test("--allow-experiments in SCA mode requires --sca-exp-source (exit 2)", () => {
-  const r = run([
-    "some.xpi",
-    "--sca-root",
-    ROOT,
-    "--sca-source",
-    "src",
-    "--allow-experiments",
-  ]);
+  const r = run(["some.xpi", "--sca-root", ROOT, "--allow-experiments"]);
   assert.equal(r.code, 2);
   assert.match(
     r.stderr,
@@ -253,18 +242,11 @@ test("--sca-root must point at a folder (exit 2)", () => {
     );
   }
 
-  // The other two name folders INSIDE the root, and are asked the same question. The
-  // Experiment one is why this is a refusal and not a warning: warn and carry on, and the
-  // review reads the Experiment's privileged code as WebExtension code.
-  for (const flag of ["--sca-source", "--sca-exp-source"]) {
-    const r = run([
-      "some.xpi",
-      "--sca-root",
-      dir,
-      ...(flag === "--sca-exp-source" ? ["--sca-source", "."] : []),
-      flag,
-      "no-such-dir",
-    ]);
+  // The other names a folder INSIDE the root, and is asked the same question. It is why
+  // this is a refusal and not a warning: warn and carry on, and the review reads the
+  // Experiment's privileged code as WebExtension code.
+  for (const flag of ["--sca-exp-source"]) {
+    const r = run(["some.xpi", "--sca-root", dir, flag, "no-such-dir"]);
     assert.equal(r.code, 2, flag);
     assert.match(
       r.stderr,
@@ -414,26 +396,25 @@ test("a folder flag is checked against the folder the review will read", () => {
   fs.mkdirSync(path.join(dir, "src"));
 
   // Only src/ exists: naming .src refuses, rather than reviewing src/ without a word.
-  const missing = run(["some.xpi", "--sca-root", dir, "--sca-source", ".src"]);
+  const missing = run([
+    "some.xpi",
+    "--sca-root",
+    dir,
+    "--sca-exp-source",
+    ".src",
+  ]);
   assert.equal(missing.code, 2);
-  assert.match(missing.stderr, /--sca-source must point at a folder: "\.src"/);
+  assert.match(
+    missing.stderr,
+    /--sca-exp-source must point at a folder: "\.src"/
+  );
   assert.match(missing.stderr, new RegExp(`${dir}/\\.src`), "looked in .src");
 
   // With the folder there, it passes this guard and the run reaches the next refusal.
   fs.mkdirSync(path.join(dir, ".src"));
-  const ok = run([
-    "some.xpi",
-    "--sca-root",
-    dir,
-    "--sca-source",
-    ".src",
-    "--allow-experiments",
-  ]);
-  assert.equal(ok.code, 2);
-  assert.match(
-    ok.stderr,
-    /--sca-exp-source is required with --allow-experiments/
-  );
+  const ok = run(["some.xpi", "--sca-root", dir, "--sca-exp-source", ".src"]);
+  // The run goes on to fail on the missing add-on instead, which is the point: this guard
+  // no longer has anything to say about it.
   assert.doesNotMatch(ok.stderr, /must point at a folder/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -455,25 +436,16 @@ test("a folder flag takes an absolute path inside the root, and refuses one outs
     "some.xpi",
     "--sca-root",
     dir,
-    "--sca-source",
+    "--sca-exp-source",
     path.join(dir, "src"),
   ]);
   assert.doesNotMatch(
     inside.stderr,
-    /--sca-source/,
+    /--sca-exp-source/,
     "an absolute path inside is taken"
   );
   for (const argv of [
-    ["some.xpi", "--sca-root", dir, "--sca-source", "/tmp"],
-    [
-      "some.xpi",
-      "--sca-root",
-      dir,
-      "--sca-source",
-      ".",
-      "--sca-exp-source",
-      "/tmp",
-    ],
+    ["some.xpi", "--sca-root", dir, "--sca-exp-source", "/tmp"],
   ]) {
     const r = run(argv);
     assert.equal(r.code, 2, argv.join(" "));
@@ -482,13 +454,10 @@ test("a folder flag takes an absolute path inside the root, and refuses one outs
 
   for (const argv of [
     ["some.xpi", "--sca-root", `${dir}/../${path.basename(dir)}`],
-    ["some.xpi", "--sca-root", dir, "--sca-source", "../*"],
     [
       "some.xpi",
       "--sca-root",
       dir,
-      "--sca-source",
-      ".",
       "--sca-exp-source",
       `../${path.basename(dir)}/src`,
     ],
@@ -588,8 +557,6 @@ test("a source code review's steps carry the paths the review resolved to", () =
     ...OFFLINE_FLAGS,
     "--sca-root",
     path.join(sca, "src"),
-    "--sca-source",
-    ".",
     "--llm-review",
   ]);
   // Each sits on its own line inside the step that hands it over, unwrapped and unaltered,
@@ -613,8 +580,6 @@ test("a source code review's steps carry the paths the review resolved to", () =
     ...OFFLINE_FLAGS,
     "--sca-root",
     exp,
-    "--sca-source",
-    "src",
     "--llm-review",
   ]);
   assert.match(rejected.stdout, /── LLM Prompt ──/);
@@ -822,32 +787,37 @@ test("JSON output is fully silent on stderr, even with --verbose", () => {
   assert.equal(r.stderr, "");
 });
 
-// --sca-root / --sca-source flow through to the source-code submission pipeline
-// opts (the pipeline derives SCA mode from both being set).
+// --sca-root / --sca-exp-source flow through to the source-code submission pipeline opts
+// (--sca-root alone switches the review to SCA mode).
 // The reader is where a path stops being a spelling and becomes a place: --sca-root against
-// the working directory, and the two that name a folder inside it against the RESOLVED root.
-// Everything downstream is handed absolutes and re-resolves nothing.
-test("--sca-root / --sca-source map to the sca pipeline opts", () => {
-  const o = pipelineOptsFromArgv(["--sca-root", "pkg", "--sca-source", "src"]);
+// the working directory, and the one that names a folder inside it against the RESOLVED
+// root. Everything downstream is handed absolutes and re-resolves nothing.
+test("--sca-root / --sca-exp-source map to the sca pipeline opts", () => {
+  const o = pipelineOptsFromArgv([
+    "--sca-root",
+    "pkg",
+    "--sca-exp-source",
+    "exp",
+  ]);
   assert.equal(o.scaRoot, path.resolve("pkg"));
-  assert.equal(o.scaSource, path.resolve("pkg", "src"));
+  assert.equal(o.scaExpSource, path.resolve("pkg", "exp"));
   // Every spelling of the same folder arrives as one value.
   for (const written of [
-    "src",
-    "./src",
-    "./src/",
-    path.resolve("pkg", "src"),
+    "exp",
+    "./exp",
+    "./exp/",
+    path.resolve("pkg", "exp"),
   ]) {
     const each = pipelineOptsFromArgv([
       "--sca-root",
       "pkg",
-      "--sca-source",
+      "--sca-exp-source",
       written,
     ]);
-    assert.equal(each.scaSource, path.resolve("pkg", "src"), written);
+    assert.equal(each.scaExpSource, path.resolve("pkg", "exp"), written);
   }
   assert.ok(!pipelineOptsFromArgv([]).scaRoot);
-  assert.ok(!pipelineOptsFromArgv([]).scaSource);
+  assert.ok(!pipelineOptsFromArgv([]).scaExpSource);
 });
 
 // The two skips end to end: the same round trip, minus the two parts that need a person.
@@ -1300,7 +1270,6 @@ test("--llm-sca-review prints the flags the review is run with", () => {
         "--eslint",
         "--allow-experiments",
         "--sca-root <SCA_ROOT>",
-        "--sca-source <SCA_SOURCE>",
         "--sca-exp-source <SCA_EXP_SOURCE>",
       ],
       flag.join(" ")
@@ -1312,7 +1281,6 @@ test("--llm-sca-review prints the flags the review is run with", () => {
       `--llm-review ${xpi}`,
       "--checks-only unused-files",
       "--sca-root <SCA_ROOT>",
-      "--sca-source <SCA_SOURCE>",
     ],
     "--flag=value"
   );
@@ -1326,13 +1294,7 @@ test("--llm-sca-review prints the flags the review is run with", () => {
   );
   assert.deepEqual(
     flagsOf(run([dir, "--llm-sca-review", "--eslint", "--verbose"])),
-    [
-      `--llm-review ${xpi}`,
-      "--eslint",
-      "--verbose",
-      "--sca-root <SCA_ROOT>",
-      "--sca-source <SCA_SOURCE>",
-    ]
+    [`--llm-review ${xpi}`, "--eslint", "--verbose", "--sca-root <SCA_ROOT>"]
   );
 
   // Without --allow-experiments nothing reads --sca-exp-source, so the prompt neither
@@ -1341,10 +1303,9 @@ test("--llm-sca-review prints the flags the review is run with", () => {
   assert.deepEqual(flagsOf(plain), [
     `--llm-review ${xpi}`,
     "--sca-root <SCA_ROOT>",
-    "--sca-source <SCA_SOURCE>",
   ]);
   assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
-  assert.match(plain.stdout, /\n5\. That review prints a prompt of its own/);
+  assert.match(plain.stdout, /\n4\. That review prints a prompt of its own/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -1413,8 +1374,7 @@ test("the command --llm-sca-review prints is one the tool accepts", () => {
       const value = rest.join(" ").replace(/^'|'$/g, "");
       return value ? [flag, value] : [flag];
     })
-    .map((arg) => (arg === "<SCA_ROOT>" ? root : arg))
-    .map((arg) => (arg === "<SCA_SOURCE>" ? "." : arg));
+    .map((arg) => (arg === "<SCA_ROOT>" ? root : arg));
   const review = run(argv);
 
   // A review may pass or find something (0 or 1); what it must not be is a usage error,
@@ -1477,7 +1437,6 @@ test("--llm-sca-review refuses what it cannot be combined with", () => {
   const dir = submissionFolder();
   const cases = [
     [["--sca-root", "src"], /works out --sca-root for you/],
-    [["--sca-source", "."], /works out --sca-source for you/],
     [["--llm-review"], /comes BEFORE a review/],
     [["--llm-verdict", "answers.json"], /comes BEFORE a review/],
     [["--report-format", "json"], /--llm-sca-review is text only/],

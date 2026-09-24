@@ -281,7 +281,7 @@ export async function verifyVendorDeclarations(
  * vendor.vulnerabilities, read by vendor-vulnerable) and (b) a non-popular verdict
  * (-> vendor.unpopularDeps, read by unpopular-source-dependency): a dependency
  * that is not a confirmed widely-used library is pulled in at build and cannot be
- * reviewed, so the developer must ship its readable source in --sca-source. Each
+ * reviewed, so the developer must ship its readable source in the archive. Each
  * pinned devDependency additionally gets (c) an OSV audit (-> vendor.devVulnerabilities,
  * read by vendor-vulnerable-dev), and is popularity-gated like the rest: the reviewer
  * installs and RUNS a build tool on their own machine, so refusing the vulnerabilities we

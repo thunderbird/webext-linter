@@ -195,7 +195,7 @@ what this review is and where to read it:
 | --- | --- |
 | `XPI_FILE` | What was submitted, by name - the .xpi as ATN named it, or the folder's own name where the submission arrived unpacked |
 | `XPI_ROOT` | The shipped package, unpacked, ready to read |
-| `SCA_ROOT` / `SCA_SOURCE` | A source code review's source root, and the add-on's own code inside it |
+| `SCA_ROOT` | A source code review's source root - the whole of which is reviewed |
 | `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
 | `ADDON_DESCRIPTION` | Where a sub-agent wrote a description of the add-on, for reading while answering |
 | `BUILD_PROCESS` | Where another wrote what building the add-on takes, in a source code review |
@@ -242,10 +242,11 @@ It reviews nothing. It names which file is the add-on and which is the source, c
 where the source archive should be extracted (`EXTRACT_TO`, beside the archive and named
 after it), and asks its reader to extract it there and work out three things that only
 reading the tree can settle: which directory is the source root, being the one holding
-`package.json` (`<SCA_ROOT>`), which directory inside it holds the add-on's own code
-(`<SCA_SOURCE>`), and - when Experiments are allowed - which holds the Experiment
-implementation (`<SCA_EXP_SOURCE>`). A name in `<angle brackets>` is one of those, and
-every other name is given.
+`package.json` (`<SCA_ROOT>`), and - when Experiments are allowed - which holds the
+Experiment implementation (`<SCA_EXP_SOURCE>`). A name in `<angle brackets>` is one of
+those, and every other name is given. Nothing asks which directory holds the add-on's own
+code: the whole of `<SCA_ROOT>` is reviewed, because a build may move or generate anything
+and no subtree can be shown to be the add-on's.
 
 Where the archive is extracted and where its build runs are two different places, which is
 why `EXTRACT_TO` is not `<SCA_ROOT>`: an archive that carries its contents in a directory

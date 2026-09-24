@@ -76,8 +76,6 @@ const SEV_COLOR = {
  *   a reviewer recognises the submission by. Always set, alongside xpiRoot.
  * @property {string} [scaRoot]  SCA review: the source root the run was given
  *   (--sca-root), resolved.
- * @property {string} [scaSource]  SCA review: the add-on's own code root within that
- *   root, resolved - the root itself when no subtree was named.
  * @property {string} [scaExpSource]  SCA review: the Experiment implementation folder
  *   (--sca-exp-source), resolved, when one was named. Its files are privileged code and are
  *   excluded from the WebExtension checks, so naming it is how a reader sees that anything
@@ -441,7 +439,7 @@ function valueLines(entries) {
  * SCA_ROOT among them: this tool cannot open a source archive itself, but it can still
  * name where one should land, the same way it names FOLDER or SOURCE_ARCHIVE. The STEPS
  * are prose, and they name those given values - and the ones the reader still has to work
- * out, <SCA_SOURCE>, <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS
+ * out, <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS
  * are the finished command, one flag per line, filled into the step that says to run it.
  *
  * What this run was given decides what is printed: a step marked `run: experiments` is
@@ -512,7 +510,7 @@ export function scaPromptLines(prompt, submission, review) {
 export function packageLines(meta, schemaCache) {
   const values = [];
   if (meta.scaRoot) {
-    values.push(["SCA_ROOT", meta.scaRoot], ["SCA_SOURCE", meta.scaSource]);
+    values.push(["SCA_ROOT", meta.scaRoot]);
     if (meta.scaExpSource) {
       values.push(["SCA_EXP_SOURCE", meta.scaExpSource]);
     }
@@ -549,7 +547,7 @@ export function packageLines(meta, schemaCache) {
  * labels every locus [XPI]/[SCA], and the block names the artifacts behind those labels -
  * the shipped add-on as XPI_FILE (what was submitted, by name) and XPI_ROOT (where its
  * files can be READ, packed or not), and the [SCA] side as the
- * values the run was GIVEN: SCA_ROOT, SCA_SOURCE, and SCA_EXP_SOURCE when one was named.
+ * values the run was GIVEN: SCA_ROOT, and SCA_EXP_SOURCE when one was named.
  * Each stands on its own line rather than being composed into one path, because each is a
  * value its reader hands back - to this tool as a flag, or to an agent as a folder to read.
  *
@@ -570,7 +568,7 @@ export function headerLines(meta) {
     ["XPI_ROOT", meta.xpiRoot],
   ];
   if (meta.scaRoot) {
-    values.push(["SCA_ROOT", meta.scaRoot], ["SCA_SOURCE", meta.scaSource]);
+    values.push(["SCA_ROOT", meta.scaRoot]);
   }
   // Only when it was given: it is the optional one of the three, and what it names was
   // excluded from the WebExtension code checks - which nothing else in the report says.
@@ -641,10 +639,7 @@ export function detailLinkLines(meta) {
     rows.push(["XPI_ROOT", "extracted addon", meta.xpiRoot]);
   }
   if (meta.scaRoot) {
-    rows.push(
-      ["SCA_ROOT", "source archive", meta.scaRoot],
-      ["SCA_SOURCE", "add-on source", meta.scaSource]
-    );
+    rows.push(["SCA_ROOT", "source archive", meta.scaRoot]);
   }
   if (meta.scaExpSource) {
     rows.push(["SCA_EXP_SOURCE", "experiment source", meta.scaExpSource]);

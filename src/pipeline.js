@@ -230,17 +230,13 @@ export const SETUP_STEPS = Object.freeze([
  *   bandUnder). Off by default.
  * @property {string} [scaRoot]  SCA mode: the source archive root, absolute - an extracted
  *   folder holding package.json/lock. Setting it switches the
- *   review to SCA mode - the readable source (scaSource) is reviewed and its declared
- *   dependencies are audited; the positional XPI is the shipped artifact against which
+ *   review to SCA mode - the whole archive is reviewed as the readable source and its
+ *   declared dependencies are audited; the positional XPI is the shipped artifact against which
  *   the manifest, experiments and file-completeness (`input: xpi`) checks all run (a
  *   separate shipped context the orchestrator routes them to - see buildXpiCtxs in
  *   src/checks/context.js).
- * @property {string} [scaSource]  The add-on code root, absolute and inside scaRoot
- *   (--sca-source names it relative to the root, or absolute within it). Optional;
- *   defaults to scaRoot itself -
- *   a flat layout with manifest.json at the root.
  * @property {string} [scaExpSource]  SCA mode: the Experiment implementation folder,
- *   absolute and inside scaRoot, which is not necessarily inside scaSource. It reaches a
+ *   absolute and inside scaRoot. It reaches a
  *   archive partition (scaViews), which gives it its own view; where it sits WITHIN the review
  *   source is derived at the one read that wants it (src/lib/reachability.js), in the
  *   keyspace the review addon's keys live in. Its privileged, non-WebExtension files are excluded
@@ -297,9 +293,8 @@ export async function runPipeline(opts) {
   // for "which add-on": what the report names, what a verdict file is checked against, and
   // where the description file goes. An Addon carries no path of its own
   // (src/addon/load.js), and nothing here resolves one - the arg-array reader did.
-  // SCA (source code archive) mode is on when --sca-root is set; --sca-source is optional
-  // and defaults to the root itself (a flat layout, manifest.json at the root, the build
-  // tooling intermingled). It splits the review across TWO add-on artifacts with a fixed
+  // SCA (source code archive) mode is on when --sca-root is set, and the whole of that
+  // root is the review source. It splits the review across TWO add-on artifacts with a fixed
   // ROLE each, resolved here ONCE so nothing downstream re-branches on the mode:
   //
   //   xpiAddon - the built XPI (the positional addonPath). The SHIPPED artifact,
@@ -307,8 +302,8 @@ export async function runPipeline(opts) {
   //     behavioral review summary (what actually runs on a user's machine).
   //   addon    - the deterministic review target (becomes ctx.addon): the readable
   //     code the source-level checks scan. In XPI mode it simply IS xpiAddon; in
-  //     SCA mode it is the readable source at scaSource - a synthetic addon whose
-  //     files are the source but whose manifest is the XPI's (scaViews), so the
+  //     SCA mode it is the whole submission - a synthetic addon whose
+  //     files are the archive's but whose manifest is the XPI's (scaViews), so the
   //     checks stay mode-agnostic.
   //
   // So downstream: read `addon` for the code under review, `xpiAddon` for the
@@ -316,10 +311,9 @@ export async function runPipeline(opts) {
   // dependency resolution (--sca-root vs the XPI's VENDOR/package.json) and the
   // check gate (ctx.mode -> scaEligible). Minified code is non-authored (and rejected)
   // in both modes: a source-code submission's promise is readable source, so a minified
-  // file in --sca-source is rejected like one in an XPI, not scanned as authored.
-  // The root case (scaRootRelative keys it as "") is handled throughout: the source view
-  // holds every file, and selectBuildCorpus traces the build off the root package.json
-  // (there is no source subtree to exclude).
+  // file in the archive is rejected like one in an XPI, not scanned as authored.
+  // The source view holds every file, and selectBuildCorpus traces the build off the root
+  // package.json - the two halves overlap, which is what the build checks want.
   //
   // The review mode is DERIVED from the two facts below and assigned nowhere, so it cannot
   // drift from the steps that ran: --sca-root makes it a source code review, and a REJECTED
@@ -420,11 +414,9 @@ export async function runPipeline(opts) {
   /** The submitted source archive: read by `source-archive`, reused by `target-source`
    * and `build`. */
   let scaArchive;
-  /** The submitted archive's files, keyed relative to --sca-source, for the XPI-only
+  /** The submitted archive's files, keyed as the submission keys them - for the XPI-only
    * advice (resolveXpiOnlyAdvice), which compares their bytes against the shipped ones. */
   let sourceFiles;
-  /** The review source, absolute - the whole root when --sca-source named nothing. */
-  let scaSource;
   /** The SCA archive split into its source / experiment / build views (scaViews). */
   let scaParts;
   /** The review schema (indexed) and the stamps meta publishes for it. */
@@ -605,9 +597,7 @@ export async function runPipeline(opts) {
           );
         }
         scaArchive = loadAddon(opts.scaRoot);
-        scaSource = opts.scaSource || opts.scaRoot;
         scaParts = scaViews(scaArchive, {
-          scaSource,
           scaRoot: opts.scaRoot,
           scaExpSource: opts.scaExpSource,
         });
@@ -691,15 +681,12 @@ export async function runPipeline(opts) {
         // what they say back when they talk about it. The folder's name where the
         // submission was already unpacked, which is the same thing said the same way.
         xpiFile: path.basename(addonPath),
-        // Named iff the readable source is what was reviewed: `scaSource` is set by
+        // Named iff the readable source is what was reviewed: `scaParts` is set by
         // `target-source`, which runs only then. meta names the artifacts this review
         // READ, so the step that loaded one is what decides whether it appears here.
-        ...(scaSource
+        ...(scaParts
           ? {
               scaRoot: opts.scaRoot,
-              // The subtree as the review READ it - absolute like every other path here, so
-              // every spelling the flag allows ("addon", "./addon/", ".") reaches one value.
-              scaSource,
               // The one input that NARROWS the review: that subtree is privileged code and is
               // excluded from the WebExtension checks. Named only when it was given, because a
               // name printed for a value nobody supplied says something false - and unnamed, a
@@ -849,7 +836,6 @@ export async function runPipeline(opts) {
     schema,
     options: { allowExperiments: opts.allowExperiments, libraryHashes },
     mode,
-    scaSource,
     scaExpSource: opts.scaExpSource,
     scaNotRequired,
     invalidExperiment,
@@ -1463,7 +1449,7 @@ export function selectSchemaChannel({ candidates, strictMax }) {
  *
  * an SCA submission is ALWAYS reviewed as SCA. Routing on this would let a wrong answer
  * silently narrow the review, and no content test can be trusted with that: a committed,
- * unminified `dist/` inside --sca-source is its own twin under any of them, so a build can
+ * unminified `dist/` in the archive is its own twin under any of them, so a build can
  * always be dressed up as source. As advice, a wrong answer is only wrong advice.
  *
  * Three questions, all of which must say yes:
@@ -1471,9 +1457,11 @@ export function selectSchemaChannel({ candidates, strictMax }) {
  *  - can the shipped bytes be READ? (hasUnreviewableCode - minified, obfuscated, or an
  *    unreadable untrusted library, on the XPI's own vendor-aware classification)
  *  - is the shipped KIND the source kind? (isTranspiledSource over the archive's paths -
- *    a transpiler's output is perfectly readable and is still not the source). Deliberately
- *    narrow: it scans only under --sca-source, so a build config elsewhere does not veto a
- *    plain-JS add-on. It is what catches a NON-JS build - .scss -> .css with every script
+ *    a transpiler's output is perfectly readable and is still not the source). It scans the
+ *    WHOLE archive, build tooling included, because nothing in a source archive says which
+ *    files the build uses - so a typed build config withholds the advice too. That is the
+ *    conservative direction: this only ever tells a developer they could have submitted
+ *    LESS. It is what catches a NON-JS build - .scss -> .css with every script
  *    copied verbatim - which the third question, being JS-only, cannot see.
  *  - are the shipped bytes THE SOURCE? (untwinnedShippedJs - every shipped script must
  *    exist, byte-identical, in the archive). Without it the first two answer "is the
@@ -1498,7 +1486,8 @@ export function selectSchemaChannel({ candidates, strictMax }) {
  * @param {import("./addon/load.js").Addon} [addon]  The built XPI itself, so the
  *   question also sees code shipped inside a page (hasUnreviewableCode).
  * @param {Map<string, Buffer>} [sourceFiles]  The submitted archive's files, keyed
- *   relative to --sca-source. Omitted means none were read, which withholds the advice.
+ *   keyed as the submission keys them. Omitted means none were read, which withholds the
+ *   advice.
  * @returns {boolean}  True only when all three say the XPI stands on its own.
  */
 export function resolveXpiOnlyAdvice(opts, bundled, addon, sourceFiles) {

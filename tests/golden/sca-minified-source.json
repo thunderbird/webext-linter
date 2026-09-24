@@ -5,7 +5,6 @@
     "xpiRoot": "<root>/tests/addons/sca-minified-source/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-minified-source/src",
-    "scaSource": "<root>/tests/addons/sca-minified-source/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

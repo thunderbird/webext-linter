@@ -1498,7 +1498,6 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
     headerLines({
       ...base,
       scaRoot: "/x/src",
-      scaSource: "/x/src/addon",
       scaExpSource: "/x/src/addon/experiment-api",
     }),
     [
@@ -1509,9 +1508,7 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
       "    /x/a.xpi.extracted/",
       "  SCA_ROOT",
       "    /x/src",
-      "  SCA_SOURCE",
-      "    /x/src/addon",
-      // The optional one of the three: what it names was excluded from the WebExtension
+      // The optional one of the two: what it names was excluded from the WebExtension
       // checks, and nothing else in the report says so.
       "  SCA_EXP_SOURCE",
       "    /x/src/addon/experiment-api",
@@ -1551,7 +1548,6 @@ test("detailLinkLines links every location but XPI_FILE", () => {
   const lines = detailLinkLines({
     ...base,
     scaRoot: "/x/src",
-    scaSource: "/x/src/addon",
     summaryFile: "/x/a.summary.md",
     buildFile: "/x/a.build.md",
   });
@@ -1559,7 +1555,6 @@ test("detailLinkLines links every location but XPI_FILE", () => {
     "* XPI_FILE: a.xpi",
     "* XPI_ROOT: [extracted addon](/x/a.xpi.extracted/)",
     "* SCA_ROOT: [source archive](/x/src)",
-    "* SCA_SOURCE: [add-on source](/x/src/addon)",
     "* ADDON_DESCRIPTION: [summary.md](/x/a.summary.md)",
     "* BUILD_PROCESS: [build.md](/x/a.build.md)",
     "",

@@ -43,8 +43,8 @@ import { JS_EXTENSIONS } from "../util/files.js";
  * content still decides, so it cannot create a false match on its own.
  *
  * @param {Map<string, Buffer>} shipped  The built XPI's files.
- * @param {Map<string, Buffer>} source  The archive's files, keyed relative to
- *   --sca-source.
+ * @param {Map<string, Buffer>} source  The archive's files, keyed as the submission
+ *   keys them.
  * @param {{exempt?: Set<string>}} [opts]  `exempt` names shipped paths that need no twin
  *   - ONLY the content-hash-identified libraries; see the caller for why a VENDOR
  *   declaration must never reach this set.

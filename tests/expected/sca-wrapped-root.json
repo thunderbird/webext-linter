@@ -1,7 +1,8 @@
 {
-  "_comment": "A source archive that carries everything in a directory of its own, which is the shape a repository download produces - so --sca-root is handed the folder ABOVE the build files, and --sca-source names that directory. Nobody who names the root has looked inside the archive yet, so the review settles which folder IS the root before it reads one (src/addon/sca-root.js): the lone subfolder holding a package.json becomes it, and --sca-source, being that same directory, keys as the flat root. What proves the correction happened is WHICH finding this produces. Uncorrected, the root holds no manifest and sca-package-file-missing rejects the submission as having no build at all. Corrected, the manifest is read where it lies, declares a range, commits no lock, and sca-lock-file-missing says so - the fault the submission actually has.",
-  "sca": { "source": "addon-1.0-source" },
+  "_comment": "A source archive that carries everything in a directory of its own, which is the shape a repository download produces - so --sca-root is handed the folder ABOVE the build files. Nobody who names the root has looked inside the archive yet, so the review settles which folder IS the root before it reads one (src/addon/sca-root.js): the lone subfolder holding a package.json becomes it. What proves the correction happened is WHICH finding this produces. Uncorrected, the root holds no manifest and sca-package-file-missing rejects the submission as having no build at all. Corrected, the manifest is read where it lies, declares a range, commits no lock, and sca-lock-file-missing says so - the fault the submission actually has.",
   "expect": {
-    "sca-lock-file-missing": ["package.json"]
+    "sca-lock-file-missing": [
+      "package.json"
+    ]
   }
 }

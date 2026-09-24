@@ -22,6 +22,7 @@ import { classifySource } from "./sources.js";
 import { governingLock, lockedVersion, lockedPackages } from "./locks.js";
 import { SCHEME_RE } from "../lib/util.js";
 import {
+  declarationKey,
   declaredDependencies,
   readManifest,
   submissionFiles,
@@ -464,7 +465,7 @@ function classifyDeps(deps, addon, file, resolvedLocal) {
   const unlocked = [];
   const githubDeps = [];
   const unsupported = [];
-  for (const { name, spec, installs } of deps) {
+  for (const { map, name, spec, installs } of deps) {
     // Classified by what npm INSTALLS, reported by what the developer WROTE. The two come
     // apart for an `npm:` alias, where the spec names another package: the source, the pin
     // and the audited release are all the target's, while a finding has to quote the
@@ -484,7 +485,7 @@ function classifyDeps(deps, addon, file, resolvedLocal) {
       const gh = parseGithubSpec(target.spec);
       if (gh) {
         githubDeps.push({ name, spec, repo: gh.repo, ref: gh.ref, file });
-      } else if (resolvedLocal?.has(name)) {
+      } else if (resolvedLocal?.has(declarationKey(map, name))) {
         continue;
       } else {
         unsupported.push({ name, spec, file });
@@ -627,12 +628,17 @@ function resolvePackages(addon, reviewerInstalls) {
   const { targets, manifests } = reviewerInstalls
     ? resolveLocalManifests(addon)
     : { targets: [], manifests: [] };
+  // Keyed by DECLARATION, never by name: one name may be written in several maps with
+  // different specs, and a resolved file:/link: spec exempts the declaration that resolved
+  // and no other. Keyed by name, a harmless `"x": "file:."` under devDependencies would
+  // exempt whatever else the manifest declares as `x` - and npm installs that one, since
+  // the dependencies copy wins over devDependencies.
   const resolvedByFile = new Map();
   for (const t of targets) {
     if (!resolvedByFile.has(t.declaringFile)) {
       resolvedByFile.set(t.declaringFile, new Set());
     }
-    resolvedByFile.get(t.declaringFile).add(t.name);
+    resolvedByFile.get(t.declaringFile).add(declarationKey(t.map, t.name));
   }
 
   const out = classifyManifest(

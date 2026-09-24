@@ -120,8 +120,6 @@ test("the setup feed of a source code review", () => {
       path.join(addon("build-hygiene-sca"), "xpi"),
       "--sca-root",
       path.join(addon("build-hygiene-sca"), "src"),
-      "--sca-source",
-      ".",
     ]),
     [
       "[1/13] Reading add-on",
@@ -190,13 +188,7 @@ test("a rejected Experiment stops the setup feed where the review stops", () => 
 test("a rejected Experiment submitted as source stops at three of a source review's total", () => {
   const dir = addon("experiment-disallowed-sca");
   assert.deepEqual(
-    setupFeed([
-      path.join(dir, "xpi"),
-      "--sca-root",
-      path.join(dir, "src"),
-      "--sca-source",
-      ".",
-    ]),
+    setupFeed([path.join(dir, "xpi"), "--sca-root", path.join(dir, "src")]),
     [
       "[1/14] Reading add-on",
       "[2/14] Fetching review schemas (release-mv3)",

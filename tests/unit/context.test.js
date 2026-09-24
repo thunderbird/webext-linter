@@ -23,7 +23,6 @@ const envWith = (over = {}) => ({
   schema: { s: 1 },
   options: {},
   mode: REVIEW_MODE.XPI,
-  scaSource: undefined,
   scaExpSource: undefined,
   scaNotRequired: false,
   invalidExperiment: false,
@@ -114,11 +113,9 @@ test("buildXpiCtxs carries the XPI's own sources; isShippedView only in SCA", ()
     xpiParsed,
     envWith({
       mode: REVIEW_MODE.SCA,
-      scaSource: "/r/src",
       scaExpSource: "/r/src/experiments",
     })
   ).xpiCtx;
-  assert.equal(withPaths.scaSource, undefined);
   assert.equal(withPaths.scaExpSource, undefined);
 
   const inXpi = buildXpiCtxs(

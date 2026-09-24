@@ -110,7 +110,6 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | Option | Description |
 | --- | --- |
 | `--sca-root <folder>` | The **extracted** source root (holds `package.json`/lock) - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
-| `--sca-source <path>` | The add-on code root, **inside** `--sca-root`: relative to it (e.g. `src`) or absolute within it. Optional, and defaults to the whole `--sca-root` reviewed as the source. Needs `--sca-root`. |
 | `--sca-exp-source <path>` | The Experiment implementation folder, **inside** `--sca-root`, anywhere under it. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--sca-root`, and is required when `--allow-experiments` is used in SCA mode. |
 
 **Other:**
@@ -135,7 +134,7 @@ SCA mode reviews the readable source instead while still treating the XPI as the
 authoritative shipped artifact:
 
 ```
-node verify.js built.xpi --sca-root ./source-archive --sca-source src
+node verify.js built.xpi --sca-root ./source-archive
 ```
 
 A source archive is always reviewed as one - the review is never re-routed to the XPI on
@@ -153,13 +152,10 @@ appears in.
   submitted `.xpi`, which this tool extracts itself, a source archive comes in too
   many formats for this tool to open - extract it first, and every format then
   works, because `tar` handles what this tool does not.
-  `--sca-source` is the add-on code
-  root within it - written relative to `--sca-root` (e.g. `src`) or as an absolute path
-  inside it, which is the form the report prints, so a path can be handed straight back.
-  It is **optional and defaults to the whole `--sca-root`** reviewed as the source, for
-  a flat layout with `manifest.json` at the root (`node verify.js built.xpi --sca-root
-  ./source-archive`). Either way it must land inside `--sca-root`: a path resolving
-  outside names a folder on the reviewing machine, which is not part of the submission.
+  **The whole `--sca-root` is the review source.** There is no flag naming a subtree of
+  it, because no subtree can be called the add-on's: a build may move, rename or generate
+  anything, so a path in a source archive cannot be trusted and nothing can say which files
+  are used. Every file in the archive is assumed used and is reviewed.
 - The **readable source** is reviewed for code defects (the API/permission/eval/
   exfiltration checks run over every source file).
 - The **declared dependencies** (`--sca-root`'s `package.json`) are audited, build
@@ -183,8 +179,8 @@ appears in.
   since those state none at all. Declared
   and pulled-in cases are separate checks, because the developer fixes them
   differently: update this package, or update the one that pulls it in.
-- The **build tooling** (everything in `--sca-root` outside `--sca-source` - build
-  scripts, configs, `.npmrc`) is reviewed. Two requirements decide whether the build
+- The **build tooling** (build scripts, configs, `.npmrc`) is reviewed as part of the
+  submission like everything else, and additionally feeds the build checks below. Two requirements decide whether the build
   can be reproduced at all: the archive must **carry a build** (no `package.json` at
   `--sca-root` means there is nothing to reproduce), and it must commit a **lock file**
   that installs exactly what `package.json` declares. npm and pnpm are the only package
@@ -464,7 +460,7 @@ node verify.js ./my-addon
 node verify.js ./submission.xpi --report-format json
 
 # Review a source-code submission (the built XPI plus its readable source)
-node verify.js ./built.xpi --sca-root ./source --sca-source src
+node verify.js ./built.xpi --sca-root ./source
 ```
 
 ## Contributing

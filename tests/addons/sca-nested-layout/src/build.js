@@ -1,3 +1,3 @@
-// Build tooling: it sits OUTSIDE --sca-source, so it is a build file and never
-// reviewed as add-on code. Names a fake API that would be reported if it were.
+// Build tooling, beside the add-on's own code. The whole archive is the review source, so
+// this is reviewed like any other file - which its fake API namespace reports.
 browser.totallyFakeBuildNamespace.doThing();

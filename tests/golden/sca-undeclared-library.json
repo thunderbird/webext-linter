@@ -5,7 +5,6 @@
     "xpiRoot": "<root>/tests/addons/sca-undeclared-library/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-undeclared-library/src",
-    "scaSource": "<root>/tests/addons/sca-undeclared-library/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

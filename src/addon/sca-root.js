@@ -117,35 +117,32 @@ function buildRootBelow(root) {
 }
 
 /**
- * Settle which folder this review treats as --sca-root, and the two flags resolved against it.
+ * Settle which folder this review treats as --sca-root, and --sca-exp-source with it.
  *
- * Returns the triple to use, corrected or not. The caller applies it wholesale rather than
- * reading the flags again, so `scaRoot`, `scaSource` and `scaExpSource` can never be read from
- * two different answers.
+ * Returns the pair to use, corrected or not. The caller applies it wholesale rather than
+ * reading the flags again, so `scaRoot` and `scaExpSource` can never be read from two
+ * different answers.
  *
  * The root moves only when it holds no manifest itself AND exactly one folder below it can be
  * meant (buildRootBelow walks that down). A lock is never required for the move, only ever
  * used to choose between several: a submission that forgot one is still re-rooted, so the
  * review reports the missing lock it has rather than the missing build it does not.
  *
- * CONTAINMENT IS NOT NEGOTIABLE, so it decides too. --sca-source and --sca-exp-source name
- * folders inside the source root - enforced at the CLI (src/cli.js folderProblem) and again
- * when the views are built (scaRootRelative in ./load.js, which throws) - and a correction
- * that put either outside would swap a wrong root for a failed run. Where that is what the
- * move would do, there is no move. Neither is re-derived: both are already absolute, one
- * inside the candidate stays where it is, one that IS the candidate keys as the flat root, and
- * an unset --sca-source needs no answer here because the pipeline defaults it to whatever root
- * is settled.
- * @param {{scaRoot?: string, scaSource?: string, scaExpSource?: string}} opts  Absolute paths,
- *   as the CLI resolved them.
- * @returns {{scaRoot?: string, scaSource?: string, scaExpSource?: string, movedFrom: ?string}}
- *   The triple to review with. `movedFrom` is the root that was given when it was corrected,
+ * CONTAINMENT IS NOT NEGOTIABLE, so it decides too. --sca-exp-source names a folder inside
+ * the source root - enforced at the CLI (src/cli.js folderProblem) and again when the views
+ * are built (scaRootRelative in ./load.js, which throws) - and a correction that put it
+ * outside would swap a wrong root for a failed run. Where that is what the move would do,
+ * there is no move. It is not re-derived: it is already absolute, and one inside the
+ * candidate stays where it is.
+ * @param {{scaRoot?: string, scaExpSource?: string}} opts  Absolute paths, as the CLI
+ *   resolved them.
+ * @returns {{scaRoot?: string, scaExpSource?: string, movedFrom: ?string}}
+ *   The pair to review with. `movedFrom` is the root that was given when it was corrected,
  *   and null when it stands - the run narrates the difference rather than changing it silently.
  */
 export function settleScaRoot(opts) {
   const given = {
     scaRoot: opts.scaRoot,
-    scaSource: opts.scaSource,
     scaExpSource: opts.scaExpSource,
     movedFrom: null,
   };
@@ -156,8 +153,10 @@ export function settleScaRoot(opts) {
   if (!scaRoot) {
     return given;
   }
-  const holds = (value) => !value || relativeInside(value, scaRoot) !== null;
-  if (!holds(opts.scaSource) || !holds(opts.scaExpSource)) {
+  if (
+    opts.scaExpSource &&
+    relativeInside(opts.scaExpSource, scaRoot) === null
+  ) {
     return given;
   }
   return { ...given, scaRoot, movedFrom: opts.scaRoot };

@@ -5,7 +5,6 @@
     "xpiRoot": "<root>/tests/addons/sca-nested-layout/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-nested-layout/src",
-    "scaSource": "<root>/tests/addons/sca-nested-layout/src/addon",
     "scaExpSource": "<root>/tests/addons/sca-nested-layout/src/addon/experiment",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
@@ -120,7 +119,7 @@
     {
       "ruleId": "unsafe-html",
       "severity": "info",
-      "file": "experiment/exp.js",
+      "file": "addon/experiment/exp.js",
       "loc": {
         "line": 7,
         "column": 0
@@ -132,16 +131,16 @@
     {
       "ruleId": "untrusted-library",
       "severity": "info",
-      "file": "lib/widget.js",
+      "file": "addon/lib/widget.js",
       "loc": null,
-      "item": "lib/widget.js",
+      "item": "addon/lib/widget.js",
       "hint": "https://unpkg.com/widget@1.0.0/dist/widget.js",
       "message": "The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies and are reviewed as authored code, so a finding may be reported against library code."
     },
     {
       "ruleId": "unsafe-html",
       "severity": "info",
-      "file": "lib/widget.js",
+      "file": "addon/lib/widget.js",
       "loc": {
         "line": 3,
         "column": 0

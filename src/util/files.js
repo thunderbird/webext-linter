@@ -48,7 +48,7 @@ export const SFC_EXTENSIONS = new Set([".vue"]);
  *  the readable-shipped-bytes test cannot see the difference, since a transpiler's output
  *  is perfectly readable. Still needed alongside the shipped-bytes test, which is JS-only:
  *  a .scss -> .css build with every script copied verbatim is invisible to that one and
- *  visible here. Deliberately by extension only, and scanned only under --sca-source: the
+ *  visible here. Deliberately by extension only, and scanned over the whole archive: the
  *  question is what KIND of source the archive carries, and no file content or build
  *  config is consulted to answer it. */
 const TRANSPILED_SOURCE_EXTENSIONS = new Set([

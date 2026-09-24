@@ -188,7 +188,7 @@ flowchart TB
   IQ -- yes --> SETINV
 
   subgraph P3 ["runPipeline() · Phase 3 - SCA only: analyse the readable SOURCE → its parsed sources + the build corpus"]
-    LSRC["the review target, from the archive Phase 2 read → scaViews()<br/>addon.experiments = xpiAddon.experiments"] --> LSQ{{"--sca-source resolves within --sca-root,<br/>and matches files?"}}
+    LSRC["the review target, from the archive Phase 2 read → scaViews()<br/>addon.experiments = xpiAddon.experiments"] --> LSQ{{"--sca-exp-source resolves within --sca-root?"}}
     LSQ -- no --> P3F((("THROW<br/>exit 2")))
     LSQ -- yes --> SV["resolveVendor(source) → verifyScaDependencies()<br/>the source's package.json"]
     SV --> SC["classifyReview(source)<br/>library hash · minified · obfuscation · vendored"]
@@ -268,7 +268,7 @@ flowchart TB
         asks only whether the developer could have skipped the archive; all three
         answers yes and <code>sca-not-required</code> (info) says so for next time.
         Routing on that answer would be a bypass: a committed, unminified
-        <code>dist/</code> inside <code>--sca-source</code> is its own twin under
+        <code>dist/</code> in the archive is its own twin under
         any content test, so a build could be dressed up as source and shrink its
         own review. In SCA the readable source is
         then analysed on its own in Phase&nbsp;3 (<code>siblings.source</code>);

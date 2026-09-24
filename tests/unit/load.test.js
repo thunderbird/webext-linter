@@ -63,14 +63,13 @@ test("directory load records a symlinked node_modules without following it", () 
 });
 
 // A source code archive: the add-on code is at <root>/src, package.json/lock at the root.
-// scaViews splits the archive into the three parts a source review reads, as views over the
-// one store it was walked into. The source view is keyed relative to the ADD-ON (the prefix
-// is not retained), because that is the frame the developer wrote its declarations in; the
-// build manifest is NOT copied into it - it stays where it is, and `store` is how a reader
-// that wants the submission's own root asks for it. The source's own manifest.json is parsed
-// and, like any manifest, lifted off the corpus. The authoritative (shipped) manifest is the
-// built XPI's, resolved separately into ctx.manifest (context.js).
-test("scaViews keys the source view to the add-on and leaves the build manifest at the root", () => {
+// scaViews splits the archive into the parts a source review reads, as views over the one
+// store it was walked into, all keyed against the SUBMISSION. The whole archive IS the
+// review source - a build may move, rename or generate anything, so there is no subtree that
+// can be called the add-on's and no way to tell which files are used. A manifest found
+// anywhere is parsed and lifted off the corpus, so a pre-build manifest is never reviewed as
+// source; the authoritative one is the built XPI's (ctx.manifest, context.js).
+test("scaViews keys every view to the submission and reviews the whole archive", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-sca-"));
   fs.mkdirSync(path.join(root, "src"));
   fs.writeFileSync(
@@ -88,43 +87,35 @@ test("scaViews keys the source view to the add-on and leaves the build manifest 
   // The pipeline reads the --sca-root archive ONCE and splits it, so the tree is never
   // walked twice and no part holds a second copy of any file.
   const archive = loadAddon(root);
-  const { source } = scaViews(archive, {
-    scaSource: path.join(root, "src"),
-    scaRoot: root,
-  });
+  const { source } = scaViews(archive, { scaRoot: root });
 
-  assert.ok(source.files.has("background.js"), "src file, prefix stripped");
-  assert.ok(!source.files.has("src/background.js"), "prefix not retained");
-  // The build manifest is NOT in the add-on's own corpus - it is not the add-on's file.
-  // It is reached through the submission store, at the key it really has.
   assert.ok(
-    !source.files.has("package.json"),
-    "root package.json is not grafted into the source"
+    source.files.has("src/background.js"),
+    "keyed as the archive keys it"
   );
-  assert.ok(source.store.has("package.json"), "store holds it at the root");
+  assert.ok(!source.files.has("background.js"), "not re-keyed to the add-on");
+  // The build tooling is part of the submission and is reviewed with the rest of it: a
+  // build script is code a reviewer has to read, and nothing can show it does not ship.
+  assert.ok(
+    source.files.has("package.json"),
+    "the whole archive is the review source"
+  );
   assert.equal(
-    source.files.get("background.js").toString("utf8"),
+    source.files.get("src/background.js").toString("utf8"),
     "browser.runtime.id;\n",
     "a view reads its bytes through the store"
   );
-  // Pure source: the source's own manifest.json is parsed, not injected/overwritten.
-  assert.equal(
-    source.manifest.name,
-    "FROM-SOURCE",
-    "source's own manifest kept"
-  );
-  // The manifest is lifted off the corpus into manifestText and the key dropped, so a
-  // corpus lookup can never return the source's pre-build manifest. Dropping it from the
-  // VIEW leaves the store untouched: the two are different key sets over one set of bytes.
+  // A manifest ANYWHERE is lifted off the corpus, so a pre-build manifest is never
+  // reviewed as source. Dropping it from the VIEW leaves the store untouched: the two are
+  // different key sets over one set of bytes.
   assert.ok(
-    !source.files.has("manifest.json"),
-    "manifest.json removed from the source view"
+    !source.files.has("src/manifest.json"),
+    "a manifest below the root is lifted too"
   );
   assert.ok(
     source.store.has("src/manifest.json"),
     "the store still holds it at its real path"
   );
-  assert.equal(source.manifestText, srcManifest);
 
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -133,8 +124,8 @@ test("scaViews keys the source view to the add-on and leaves the build manifest 
 // must see the privileged Experiment code too: shipping it unreadable is worse there, not
 // better. The source view excludes it (so the WebExtension API/permission checks never
 // false-positive on Services/ChromeUtils), so such a check reads BOTH views - which works
-// because an Experiment inside the add-on is keyed in the add-on's frame, exactly as the
-// source is. Merging them reproduces the add-on's whole tree, one entry per file.
+// because every view is keyed against the submission, so one file has one spelling
+// wherever it is read. Merging them reproduces the add-on's whole tree, one entry per file.
 test("the source and experiment views merge into the add-on's whole tree", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scam-"));
   fs.mkdirSync(path.join(root, "addon", "experiment"), { recursive: true });
@@ -147,50 +138,54 @@ test("the source and experiment views merge into the add-on's whole tree", () =>
   );
 
   const { source, experiment } = scaViews(loadAddon(root), {
-    scaSource: path.join(root, "addon"),
     scaRoot: root,
     scaExpSource: path.join(root, "addon", "experiment"),
   });
 
   // Apart, each holds only its own - which is what keeps privileged code away from the
   // WebExtension checks.
-  assert.deepEqual([...source.files.keys()].sort(), ["main.js"]);
-  assert.deepEqual([...experiment.keys()].sort(), ["experiment/exp.js"]);
+  assert.deepEqual([...source.files.keys()].sort(), [
+    "addon/main.js",
+    "package.json",
+  ]);
+  assert.deepEqual([...experiment.keys()].sort(), ["addon/experiment/exp.js"]);
 
-  // Together, they are the add-on subtree (minus manifest.json, which assembleAddon lifts
+  // Together, they are the whole submission (minus the manifests, which assembleAddon lifts
   // off) - no key belongs to both, and none is lost between them.
   const merged = new Map([...source.files, ...experiment]);
   assert.deepEqual(
     [...merged.keys()].sort(),
-    ["experiment/exp.js", "main.js"],
-    "the union is the add-on's own tree"
+    ["addon/experiment/exp.js", "addon/main.js", "package.json"],
+    "the union is the whole submission"
   );
   assert.equal(merged.size, source.files.size + experiment.size, "disjoint");
   // Merged, a file still reads its real bytes: a view resolves through the one store.
   assert.match(
-    merged.get("experiment/exp.js").toString("utf8"),
+    merged.get("addon/experiment/exp.js").toString("utf8"),
     /ChromeUtils/,
     "the merged corpus reads the Experiment's bytes"
   );
 
   // The same corpus a check is handed: `experiment` rides on the review addon, so a check
   // needing both never has to know where the folder was named.
-  assert.deepEqual([...source.experiment.keys()].sort(), ["experiment/exp.js"]);
+  assert.deepEqual([...source.experiment.keys()].sort(), [
+    "addon/experiment/exp.js",
+  ]);
   assert.deepEqual(
     [...withExperiment(source).keys()].sort(),
-    ["experiment/exp.js", "main.js"],
+    ["addon/experiment/exp.js", "addon/main.js", "package.json"],
     "withExperiment says what 'everything the add-on ships' means, in one place"
   );
 
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// An Experiment BESIDE the add-on is keyed in the archive's frame rather than the add-on's,
-// because that is what contains it. Only the SPELLING differs: the corpus is present in both
-// layouts and merges in both, so a check that reviews privileged code for what it IS covers
-// it wherever the developer put the folder - and the source view excludes it either way,
+// An Experiment BESIDE the add-on is keyed exactly as one inside it would be - against the
+// submission - so where the developer put the folder changes the path and nothing else. The
+// corpus is present in both layouts and merges in both, so a check that reviews privileged
+// code for what it IS covers it either way, and the source view excludes it either way,
 // which is what keeps the WebExtension checks layout-independent.
-test("a sibling Experiment is keyed to the archive, not the add-on", () => {
+test("a sibling Experiment is keyed like any other part of the submission", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scas-"));
   fs.mkdirSync(path.join(root, "addon"), { recursive: true });
   fs.mkdirSync(path.join(root, "experiment"), { recursive: true });
@@ -199,22 +194,25 @@ test("a sibling Experiment is keyed to the archive, not the add-on", () => {
   fs.writeFileSync(path.join(root, "experiment", "exp.js"), "1;\n");
 
   const { source, experiment, build } = scaViews(loadAddon(root), {
-    scaSource: path.join(root, "addon"),
     scaRoot: root,
     scaExpSource: path.join(root, "experiment"),
   });
 
-  assert.deepEqual([...source.files.keys()].sort(), ["main.js"]);
+  assert.deepEqual([...source.files.keys()].sort(), ["addon/main.js"]);
   assert.deepEqual([...experiment.keys()].sort(), ["experiment/exp.js"]);
-  // And it is still nobody else's: the build half never takes the Experiment.
-  assert.deepEqual([...build.files.keys()].sort(), []);
+  // And it is still nobody else's: the build half never takes the Experiment. It does hold
+  // everything the source half holds, which is the point - the two overlap by design.
+  assert.deepEqual([...build.files.keys()].sort(), [
+    "addon/main.js",
+    "addon/manifest.json",
+  ]);
   // The corpus is there either way: where the folder was PUT changes how its files are
   // spelled, never whether they are reviewed. A check merging the two gets the same
   // Experiment here as it does when the folder sits inside the add-on.
   assert.equal(source.experiment, experiment);
   assert.deepEqual([...withExperiment(source).keys()].sort(), [
+    "addon/main.js",
     "experiment/exp.js",
-    "main.js",
   ]);
 
   fs.rmSync(root, { recursive: true, force: true });
@@ -233,31 +231,35 @@ test("scaViews puts every file in the right part, and the Experiment in only one
   fs.writeFileSync(path.join(root, "src", "exp", "api.js"), "1;\n");
 
   const { source, experiment, build } = scaViews(loadAddon(root), {
-    scaSource: path.join(root, "src"),
     scaRoot: root,
     scaExpSource: path.join(root, "src", "exp"),
   });
 
-  // The Experiment sits INSIDE the source subtree and still belongs to neither the source
-  // nor the build: privileged code is its own part, wherever the developer put it. Inside
-  // the add-on it is keyed in the add-on's frame, so the two views can be read as one.
-  assert.deepEqual([...source.files.keys()].sort(), ["main.js"]);
-  assert.deepEqual([...experiment.keys()].sort(), ["exp/api.js"]);
+  // The Experiment belongs to neither the source nor the build: privileged code is its own
+  // part, wherever the developer put it. Everything else is in BOTH, keyed against the
+  // submission, so the views can be read as one.
+  assert.deepEqual([...source.files.keys()].sort(), [
+    "build.js",
+    "package.json",
+    "src/main.js",
+  ]);
+  assert.deepEqual([...experiment.keys()].sort(), ["src/exp/api.js"]);
   assert.deepEqual([...build.files.keys()].sort(), [
     "build.js",
     "package.json",
+    "src/main.js",
+    "src/manifest.json",
   ]);
 
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// The BUILD view is the archive minus the add-on's own code: minus the review
-// source (scaSource), the Experiment source (scaExpSource), node_modules, and
-// dotfiles/dotfolders - the build scripts / config the review otherwise drops. Keys
-// keep their real archive paths (unstripped); the root package.json/lock stay, and a
+// The BUILD view is the archive minus the Experiment source (scaExpSource), node_modules,
+// and dotfiles/dotfolders. It OVERLAPS the review source, which is now the whole archive:
+// the tooling is intermingled with the code and each half still feeds its own checks. A
 // ROOT .npmrc is kept (the one dotfile exception the build-tooling checks read - npm takes
 // its config from the directory the install runs in, which is the archive root).
-test("the build view holds the files outside scaSource + scaExpSource", () => {
+test("the build view holds the archive minus the Experiment and the dotfiles", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scab-"));
   fs.mkdirSync(path.join(root, "src", "experiment"), { recursive: true });
   fs.mkdirSync(path.join(root, "scripts"));
@@ -293,7 +295,6 @@ test("the build view holds the files outside scaSource + scaExpSource", () => {
   const {
     build: { files, nodeModules },
   } = scaViews(loadAddon(root), {
-    scaSource: path.join(root, "src"),
     scaRoot: root,
     scaExpSource: path.join(root, "src", "experiment"),
   });
@@ -302,10 +303,13 @@ test("the build view holds the files outside scaSource + scaExpSource", () => {
     "package-lock.json",
     "package.json",
     "scripts/build.sh",
+    "src/background.js",
     "webpack.config.js",
   ]);
   assert.ok(files.has(".npmrc"));
-  assert.ok(!files.has("background.js") && !files.has("src/background.js"));
+  // The add-on's own code is a build candidate too: nothing separates it from the tooling
+  // once there is no source subtree to remove.
+  assert.ok(files.has("src/background.js"));
   assert.ok(!files.has("src/experiment/exp.js"));
   assert.ok(!files.has("sub/node_modules/dep/webpack.config.js"));
   assert.ok(!files.has("scripts/.npmrc")); // a .npmrc in a subfolder is dropped
@@ -322,10 +326,9 @@ test("the build view holds the files outside scaSource + scaExpSource", () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// A flat layout: scaSource IS the archive root, so there is no source subtree to
-// exclude - every file becomes a build candidate, and selectBuildCorpus (called by
-// analyzeBuild) still traces the build off the root package.json.
-test("a flat layout keeps the whole root as build candidates", () => {
+// Every file is a build candidate, and selectBuildCorpus (called by analyzeBuild) still
+// traces the build off the root package.json.
+test("the whole root stays a set of build candidates", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scab0-"));
   fs.writeFileSync(
     path.join(root, "package.json"),
@@ -334,15 +337,12 @@ test("a flat layout keeps the whole root as build candidates", () => {
   fs.writeFileSync(path.join(root, "background.js"), "1;\n");
   const {
     build: { files },
-  } = scaViews(loadAddon(root), { scaSource: root, scaRoot: root });
+  } = scaViews(loadAddon(root), { scaRoot: root });
   assert.ok(
     files.has("package.json"),
     "the root package.json is a build candidate"
   );
-  assert.ok(
-    files.has("background.js"),
-    "root files are build candidates in a flat layout"
-  );
+  assert.ok(files.has("background.js"), "root files are build candidates");
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -379,7 +379,7 @@ test("scaRootRelative keys a path inside the root, and refuses one outside", () 
     `${root}/a/../..`,
   ]) {
     assert.throws(
-      () => scaRootRelative(outside, root, "--sca-source"),
+      () => scaRootRelative(outside, root, "--sca-exp-source"),
       /is not inside --sca-root/,
       outside
     );

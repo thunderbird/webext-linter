@@ -240,6 +240,55 @@ test("resolveVendor records a folder declaration", async () => {
 // an unpinned range, and an unsupported source (file:/non-github git). An `npm:` alias
 // is npm like any other: it is classified by the package it INSTALLS, so the name it is
 // written under never decides whether its source can be verified.
+// npm accepts one name in several maps with different specs, and defines a precedence for
+// each pair - so a name cannot stand in for a declaration. A `file:` spec that resolves
+// exempts ITS OWN declaration from unsupported-dependency and no other: otherwise one
+// harmless line launders whatever else the manifest declares under that name, and npm
+// installs the laundered one, since the `dependencies` copy wins over `devDependencies`.
+test("a resolved file: spec exempts its own declaration, not the name", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: { evil: "https://attacker.example/evil.tgz" },
+      devDependencies: { evil: "file:." },
+    }),
+    "bg.js": "1;\n",
+  });
+  const v = await resolveVendor({
+    addon,
+    reviewerInstalls: true,
+    enabled: false,
+  });
+  assert.deepEqual(v.unsupportedDeps, [
+    {
+      name: "evil",
+      spec: "https://attacker.example/evil.tgz",
+      file: "package.json",
+    },
+  ]);
+});
+
+// The other direction, so the fix cannot be "exempt nothing": a file: spec that resolves is
+// still dropped, in whichever map it was written - optionalDependencies included, which
+// joined the build-time bucket alongside devDependencies.
+test("a resolved file: spec is exempt in whichever map declares it", async () => {
+  for (const map of [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+  ]) {
+    const addon = fakeAddon({
+      "package.json": JSON.stringify({ [map]: { helper: "file:." } }),
+      "bg.js": "1;\n",
+    });
+    const v = await resolveVendor({
+      addon,
+      reviewerInstalls: true,
+      enabled: false,
+    });
+    assert.deepEqual(v.unsupportedDeps, [], map);
+  }
+});
+
 test("resolveVendor classifies package.json deps by source", async () => {
   const addon = fakeAddon({
     "package.json": JSON.stringify({

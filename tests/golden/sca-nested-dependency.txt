@@ -10,6 +10,7 @@ Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubm
 2) The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - [SCA] nested-helper/package.json:9 - escape (file:../../outside)
+ - [SCA] package.json:7 - laundered (https://attacker.example/evil.tgz)
 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
@@ -202,6 +203,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-3 error(s), 0 hold, 0 warning(s), 0 info,
+4 error(s), 0 hold, 0 warning(s), 0 info,
 1 extended code review item(s), 1 extended manual review item(s),
 10 standard code review item(s), 10 standard manual review item(s)

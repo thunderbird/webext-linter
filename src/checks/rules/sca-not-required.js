@@ -4,7 +4,7 @@
 //
 // ADVICE, not a routing decision. The review this fires in is still a full SCA review -
 // nothing is narrowed by it. That is deliberate: no content test can be trusted to route,
-// because a committed unminified build inside --sca-source is its own twin under any of
+// because a committed unminified build in the archive is its own twin under any of
 // them, and routing on that would let a build be dressed up as source.
 //
 // Belongs here: turning the pipeline's ctx.scaNotRequired into a finding. Does NOT belong

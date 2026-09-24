@@ -268,7 +268,7 @@ const xpi = (spec = {}) => ({
     Object.entries(spec).map(([f, t]) => [f, Buffer.from(t, "utf8")])
   ),
 });
-/** A source archive, same shape as what the pipeline slices out of --sca-source. */
+/** A source archive, same shape as what the pipeline reads out of --sca-root. */
 const src = (spec = {}) =>
   new Map(Object.entries(spec).map(([f, t]) => [f, Buffer.from(t, "utf8")]));
 

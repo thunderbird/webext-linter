@@ -139,8 +139,8 @@ test("node_modules and dotfolders are skipped at every level", () => {
 });
 
 // Containment is an invariant of every source code review, so it decides here too: a move
-// that put either flag outside the root would trade a wrong root for a failed run.
-test("the move is abandoned where a flag would fall outside the new root", () => {
+// that put --sca-exp-source outside the root would trade a wrong root for a failed run.
+test("the move is abandoned where the Experiment folder would fall outside", () => {
   const root = tree({
     "wrap/package.json": PKG,
     "wrap/addon/x.js": "",
@@ -151,31 +151,33 @@ test("the move is abandoned where a flag would fall outside the new root", () =>
   // Inside the candidate: it moves, and the flag is untouched.
   const inside = settleScaRoot({
     scaRoot: root,
-    scaSource: path.join(wrap, "addon"),
+    scaExpSource: path.join(wrap, "addon"),
   });
   assert.equal(inside.scaRoot, wrap);
-  assert.equal(inside.scaSource, path.join(wrap, "addon"));
+  assert.equal(inside.scaExpSource, path.join(wrap, "addon"));
 
-  // The candidate ITSELF: that is the flat layout, and the root contains itself.
-  assert.equal(settleScaRoot({ scaRoot: root, scaSource: wrap }).scaRoot, wrap);
+  // The candidate ITSELF: the root contains itself.
+  assert.equal(
+    settleScaRoot({ scaRoot: root, scaExpSource: wrap }).scaRoot,
+    wrap
+  );
 
   // A sibling of the candidate, and the old root itself: both outside, so neither moves.
-  for (const scaSource of [path.join(root, "other"), root]) {
-    assert.equal(settleScaRoot({ scaRoot: root, scaSource }).movedFrom, null);
+  for (const scaExpSource of [path.join(root, "other"), root]) {
+    assert.equal(
+      settleScaRoot({ scaRoot: root, scaExpSource }).movedFrom,
+      null
+    );
   }
-  // The Experiment folder answers the same question.
-  assert.equal(
-    settleScaRoot({ scaRoot: root, scaExpSource: path.join(root, "other") })
-      .movedFrom,
-    null
-  );
+
+  // Nothing to contain: the move stands on the root alone.
+  assert.equal(settleScaRoot({ scaRoot: root }).scaRoot, wrap);
 });
 
 // An XPI review names no root at all, and nothing here may invent one.
 test("no --sca-root is nothing to settle", () => {
   assert.deepEqual(settleScaRoot({}), {
     scaRoot: undefined,
-    scaSource: undefined,
     scaExpSource: undefined,
     movedFrom: null,
   });

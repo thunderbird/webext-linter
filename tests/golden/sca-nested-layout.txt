@@ -4,11 +4,11 @@ Thank you for your contribution, it will be approved shortly. We would like to s
 
 1) Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a template element, or CSS to show and hide existing elements).
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html.
- - [SCA] experiment/exp.js:7 - .innerHTML
- - [SCA] lib/widget.js:3 - .innerHTML
+ - [SCA] addon/experiment/exp.js:7 - .innerHTML
+ - [SCA] addon/lib/widget.js:3 - .innerHTML
 
 2) The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies and are reviewed as authored code, so a finding may be reported against library code.
- - [SCA] lib/widget.js - https://unpkg.com/widget@1.0.0/dist/widget.js
+ - [SCA] addon/lib/widget.js - https://unpkg.com/widget@1.0.0/dist/widget.js
 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
@@ -28,7 +28,8 @@ Continue manual review for the following checks:
 Suggested verdict: error
 Suggested response: The following WebExtension APIs are not supported in the targeted Thunderbird version.
 Read more: https://webextension-api.thunderbird.net/.
- - [SCA] main.js:4 - browser.totallyFakeNamespace - unknown namespace
+ - [SCA] addon/main.js:4 - browser.totallyFakeNamespace - unknown namespace
+ - [SCA] build.js:3 - browser.totallyFakeBuildNamespace - unknown namespace
 
 ── Extended Manual Review ──
 
@@ -202,5 +203,5 @@ Because the original project is still active, your submission does not meet thes
 ── Summary ──
 
 0 error(s), 0 hold, 0 warning(s), 3 info,
-1 extended code review item(s), 1 extended manual review item(s),
+2 extended code review item(s), 1 extended manual review item(s),
 10 standard code review item(s), 10 standard manual review item(s)

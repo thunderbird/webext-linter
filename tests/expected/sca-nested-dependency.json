@@ -1,15 +1,22 @@
 {
-  "_comment": "The root declares a file: dependency resolving to nested-helper/, a real directory inside the submission - authored code, never flagged as unsupported. nested-helper's OWN package.json is classified the same way the root's is: tiny-obscure-helper (a prod dep) and tiny-obscure-tool (a dev dep) are both pinned+locked but not widely used, so unpopular-source-dependency fires for each, anchored at nested-helper/package.json - proving both the packages AND devPackages recursion paths reach the real popularity audit with correct anchoring. nested-helper's own further file: reference (escape, pointing outside the submission) stays unsupported exactly as a root-level one would, also anchored at nested-helper/package.json rather than the root's. The root's own ordinary pinned dependency (popular-dep) gets no downloads stub, so it is left alone - proving the unaffected path.",
+  "_comment": "The root declares a file: dependency resolving to nested-helper/, a real directory inside the submission - authored code, never flagged as unsupported. nested-helper's OWN package.json is classified the same way the root's is: tiny-obscure-helper (a prod dep) and tiny-obscure-tool (a dev dep) are both pinned+locked but not widely used, so unpopular-source-dependency fires for each, anchored at nested-helper/package.json - proving both the packages AND devPackages recursion paths reach the real popularity audit with correct anchoring. nested-helper's own further file: reference (escape, pointing outside the submission) stays unsupported exactly as a root-level one would, also anchored at nested-helper/package.json rather than the root's. The root's own ordinary pinned dependency (popular-dep) gets no downloads stub, so it is left alone - proving the unaffected path. The root also declares `laundered` twice - an opaque tarball URL in dependencies and a `file:.` in devDependencies - which is the shape that used to launder the first past unsupported-dependency: the resolved set was keyed by NAME, so the harmless declaration exempted the dangerous one, and npm installs the dangerous one because the dependencies copy wins. Keyed by declaration, the tarball is reported and the `file:.` is still exempt, so exactly one finding appears for the pair.",
   "network": {
     "https://api.npmjs.org/downloads/point/last-month/tiny-obscure-helper": {
-      "json": { "downloads": 12 }
+      "json": {
+        "downloads": 12
+      }
     },
     "https://api.npmjs.org/downloads/point/last-month/tiny-obscure-tool": {
-      "json": { "downloads": 12 }
+      "json": {
+        "downloads": 12
+      }
     }
   },
   "expect": {
-    "unsupported-dependency": ["nested-helper/package.json:9"],
+    "unsupported-dependency": [
+      "package.json:7",
+      "nested-helper/package.json:9"
+    ],
     "unpopular-source-dependency": [
       "nested-helper/package.json:5",
       "nested-helper/package.json:8"

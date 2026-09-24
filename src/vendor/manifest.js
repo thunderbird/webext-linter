@@ -42,6 +42,22 @@ export const DECLARATION_MAPS = [
   "optionalDependencies",
 ];
 
+/**
+ * The key that identifies one declaration within a manifest.
+ *
+ * A name does not: npm accepts the same name in `dependencies`, `devDependencies` and
+ * `optionalDependencies` with different specs, and defines a precedence for each pair. The
+ * pair DOES, because a map is a JSON object, so a name appears at most once inside one -
+ * which is why the spec is not part of it. Built here so the side that records a resolved
+ * declaration and the side that asks about one cannot spell it differently.
+ * @param {string} map  A DECLARATION_MAPS member.
+ * @param {string} name  The package name as declared.
+ * @returns {string}
+ */
+export function declarationKey(map, name) {
+  return `${map}\u0000${name}`;
+}
+
 // Of those, the ones that declare something the INSTALL runs rather than something the
 // add-on ships. An optionalDependency is one of them: npm installs it where the platform
 // allows, and what it usually names is a platform-specific binary the build uses, not a
@@ -210,6 +226,9 @@ export function ownValue(obj, key) {
  * package.json (see LocalManifest).
  * @property {string} declaringFile  The package.json (store-relative) that declared it -
  *   MANIFEST_FILE for the root, a LocalManifest.file otherwise.
+ * @property {string} map  The declaration map it was written in (a DECLARATION_MAPS
+ *   member). Carried because a NAME does not identify a declaration: npm accepts the same
+ *   name in several maps with different specs, so what resolved has to say which one.
  * @property {string} name  The name it was declared under.
  * @property {string} dir  The store-relative posix directory the spec resolves to.
  */
@@ -314,7 +333,7 @@ export function resolveLocalManifests(addon) {
     if (depth > LOCAL_MANIFEST_MAX_DEPTH) {
       return;
     }
-    for (const { name, spec } of declaredDependencies(pkg)) {
+    for (const { map, name, spec } of declaredDependencies(pkg)) {
       const m = LOCAL_SPEC.exec(spec.trim());
       if (!m) {
         continue;
@@ -323,7 +342,7 @@ export function resolveLocalManifests(addon) {
       if (dir === null || !dirHasFiles(dir)) {
         continue; // escapes the store, or nothing there
       }
-      targets.push({ declaringFile, name, dir });
+      targets.push({ declaringFile, map, name, dir });
       if (dir === "" || manifests.has(dir)) {
         continue; // the store root, or a directory already walked - cycle/self-reference
       }

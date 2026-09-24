@@ -29,8 +29,9 @@
         node_modules is never read. When the submission is loaded, a node_modules
         directory is skipped and never opened; only its path is recorded, so a huge
         committed tree costs nothing and its contents can never influence the review.
-        This holds anywhere in the source root, including inside the add-on source
-        folder. Each recorded node_modules directory becomes one error finding.
+        This holds anywhere in the source root, at any depth, including inside the
+        Experiment implementation. Each recorded node_modules directory becomes one
+        error finding.
       </p>
 
       <h2>Decision flow</h2>
