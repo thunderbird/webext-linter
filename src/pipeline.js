@@ -362,7 +362,7 @@ export async function runPipeline(opts) {
   const xpiRoot = xpiRootBase.endsWith(path.sep)
     ? xpiRootBase
     : `${xpiRootBase}${path.sep}`;
-  const isExp = isExperiment(xpiAddon.manifest);
+  const isExp = isExperiment(xpiAddon.manifest?.json);
 
   // The facts each step's `when` is asked of, from what the fast .xpi read already gives
   // us: the mode, and whether this is an Experiment.
@@ -482,7 +482,7 @@ export async function runPipeline(opts) {
     schema: async (say) => {
       const resolved = await resolveReviewSchema({
         cacheDir: opts.schemaCache ?? DEFAULT_CACHE,
-        manifest: xpiAddon.manifest,
+        manifest: xpiAddon.manifest?.json ?? null,
         setupStep: say,
       });
       schemaSource = resolved.source;
@@ -529,7 +529,7 @@ export async function runPipeline(opts) {
     // schema/scripts live in the built XPI, so the manifest's paths resolve there).
     "experiment-schema": () => {
       schema.registerExperimentNamespaces(
-        experimentApiNamespaces(xpiAddon.manifest, xpiAddon.files)
+        experimentApiNamespaces(xpiAddon.manifest?.json, xpiAddon.files)
       );
     },
 
@@ -595,12 +595,16 @@ export async function runPipeline(opts) {
             FEED.DETAIL
           );
         }
-        // The one artifact where an installed dependency tree is not content: the
-        // reviewer installs it from the declared manifest and lock, so a committed one is
-        // recorded and rejected rather than read. The built add-on above is loaded the
-        // ordinary way, where such a folder is shipped content like any other.
+        // The two ways a submitted source archive is not an add-on. An installed
+        // dependency tree is not content: the reviewer installs it from the declared
+        // manifest and lock, so a committed one is recorded and rejected rather than read.
+        // And a root manifest.json here is a PRE-BUILD template, not what Thunderbird
+        // loads, so none is read - ctx.manifest is the shipped one and must be the only
+        // answer. The built add-on above is loaded the ordinary way, where a node_modules
+        // folder is shipped content like any other and the manifest IS the artifact's.
         scaArchive = loadAddon(opts.scaRoot, undefined, {
           recordInstalledTrees: true,
+          parseWebExtManifest: false,
         });
         scaViews(scaArchive, {
           scaRoot: opts.scaRoot,
@@ -635,7 +639,7 @@ export async function runPipeline(opts) {
 
     // The review target of a source code review: the readable source. The archive was read
     // ONCE above by `source-archive`, which also split it into its three views; the
-    // review target is the source view carrying the XPI's manifest.
+    // review target is that archive, which carries no manifest of its own.
     "target-source": () => {
       reviewTarget = scaArchive;
       for (const notice of scaArchive.skipped ?? []) {
@@ -849,10 +853,7 @@ export async function runPipeline(opts) {
     scaExpSource: opts.scaExpSource,
     scaNotRequired,
     invalidExperiment,
-    manifest: xpiAddon.manifest ?? null,
-    manifestError: xpiAddon.manifestError ?? null,
-    manifestLoc: xpiAddon.manifestLoc ?? null,
-    manifestText: xpiAddon.manifestText ?? "",
+    manifest: xpiAddon.manifest,
     experiments: xpiAddon.experiments ?? null,
   };
 
@@ -910,7 +911,7 @@ export async function runPipeline(opts) {
     schemaBranch,
     schemaChannel,
     applicationVersion: schema.applicationVersion,
-    manifestVersion: xpiAddon.manifest?.manifest_version ?? null,
+    manifestVersion: xpiAddon.manifest?.json?.manifest_version ?? null,
     checksRun: checksRun.map((c) => c.id),
     // The three to-do origins as ONE list, each carrying its own `default-note` where the
     // check authors one: a case a check escalated and a by-hand manual check are the same
@@ -1187,15 +1188,15 @@ function classifyReview(addon, { libraryHashes }) {
  *
  * Runs once per artifact - the shipped one, and in a source review the readable source -
  * which are two steps of the setup list under one label (SETUP_STEPS).
- * @param {import("./addon/load.js").Addon} addon  The review target, already classified.
+ * @param {import("./addon/load.js").Addon} addon  The artifact to extract, already classified.
  * @param {{schema: object,
  *   xpiAddon: import("./addon/load.js").Addon}} deps
  * @returns {import("./addon/sources.js").JsSource[]}  The parsed review sources.
  */
 function extractReview(addon, { schema, xpiAddon }) {
   const jsSources = collectJsSources(addon);
-  const experimentNamespaces = isExperiment(xpiAddon.manifest)
-    ? experimentApiNamespaces(xpiAddon.manifest, addon.files)
+  const experimentNamespaces = isExperiment(xpiAddon.manifest?.json)
+    ? experimentApiNamespaces(xpiAddon.manifest?.json, addon.files)
     : null;
   runExtractionPass(jsSources, {
     schema,

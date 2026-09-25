@@ -15,7 +15,7 @@ import { buildSchemaIndex } from "../../src/schema/index.js";
 import unusedFiles from "../../src/checks/rules/unused-files.js";
 import minimizeWar from "../../src/checks/rules/minimize-web-accessible-resources.js";
 import { loaderTrace } from "../../src/lib/util.js";
-import { withManifest, parsedSources } from "./manifest-ctx.js";
+import { withManifest, parsedSources, manifestOf } from "./manifest-ctx.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixtureSchema = buildSchemaIndex(
@@ -28,7 +28,7 @@ const fixtureSchema = buildSchemaIndex(
 function ctxFrom(files, manifest, schema) {
   const addon = {
     files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
-    manifest,
+    manifest: manifestOf(manifest, files["manifest.json"]),
   };
   return withManifest({
     addon,
@@ -262,13 +262,14 @@ test("SCA: reachability over the built XPI describes the XPI", () => {
   const mk = (obj) =>
     new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
   // The built XPI: its content script (the manifest entry) loads injected.js.
+  const xpiText = JSON.stringify(xpiManifest);
   const xpi = {
     files: mk({
-      "manifest.json": JSON.stringify(xpiManifest),
+      "manifest.json": xpiText,
       "content.js": `browser.runtime.getURL("injected.js");`,
       "injected.js": ``,
     }),
-    manifest: xpiManifest,
+    manifest: manifestOf(xpiManifest, xpiText),
   };
   const reach = buildReachability(
     withManifest({

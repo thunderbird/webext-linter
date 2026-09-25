@@ -55,7 +55,7 @@ export default {
       ctx.note?.("manifest.json", null, "no add-on name", VERDICT.SKIPPED);
       return { findings: [], escalations: [] };
     }
-    const line = manifestTokenLine(ctx.manifestText, "name");
+    const line = manifestTokenLine(ctx.manifest?.text, "name");
     const loc = line ? { line } : null;
     if (!offFormThunderbird(literal.name) || brandTerm(literal.name)) {
       ctx.note?.("manifest.json", loc, `name "${literal.name}"`, VERDICT.PASS);

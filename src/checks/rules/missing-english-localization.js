@@ -97,7 +97,7 @@ export default {
  *   escalations: import("../escalation.js").Escalation[]}}
  */
 function detectHardcodedLanguage(ctx, addon) {
-  const text = userFacingText(ctx.manifest, addon.files);
+  const text = userFacingText(ctx.manifest?.json, addon.files);
   /**
    * Record an advisory note against manifest.json.
    * @param {string} msg  The note text.
@@ -146,7 +146,7 @@ function detectHardcodedLanguage(ctx, addon) {
  * visible text of every packaged HTML document, whitespace-collapsed. The
  * franc input - excludes JS (string literals are noise) and binary assets.
  * @param {?import("../../addon/load.js").Manifest} manifest  The shipped
- *   manifest (ctx.manifest).
+ *   manifest (ctx.manifest.json).
  * @param {Map<string, Buffer>} files  The reviewed artifact's files.
  * @returns {string}
  */

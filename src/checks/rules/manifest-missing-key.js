@@ -13,7 +13,7 @@ const REQUIRED_KEYS = ["manifest_version", "name", "version"];
 
 export default {
   run(ctx) {
-    const m = ctx.manifest;
+    const m = ctx.manifest?.json;
     if (!m) {
       return { findings: [] };
     }

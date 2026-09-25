@@ -52,7 +52,7 @@ export default {
     const { pairs, resolved, localized, unreadable } = localizedNames(ctx);
     // Anchor on the manifest's `name` line: that is where the placeholder sits, and
     // it is the line a developer edits to rename the add-on.
-    const line = manifestTokenLine(ctx.manifestText, "name");
+    const line = manifestTokenLine(ctx.manifest?.text, "name");
     const loc = line ? { line } : null;
     if (!localized) {
       ctx.note?.(
@@ -80,7 +80,7 @@ export default {
       ctx.note?.(
         "manifest.json",
         loc,
-        `${ctx.manifest?.name} not resolvable`,
+        `${ctx.manifest?.json?.name} not resolvable`,
         VERDICT.SKIPPED
       );
       return { findings: [], escalations: [] };

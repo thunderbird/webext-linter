@@ -210,16 +210,17 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {import("../schema/index.js").SchemaIndex} schema  Resolved schema.
  * @property {object[]} jsSources  Parsed JS sources (see addon/sources.js).
  * @property {object[]} apiUsages  Per-source extracted API usage.
- * @property {?import("../addon/load.js").Manifest} manifest  The authoritative,
- *   SHIPPED manifest (the built XPI's - what Thunderbird loads), resolved once like
- *   `schema`. Every manifest / permission / API check reads this; there is no
- *   ctx.addon.manifest (reviewView strips it), which in SCA would be the readable
- *   source's pre-build template - no check reviews the source manifest.
- * @property {?string} manifestError  The shipped manifest's JSON parse error, or null.
- * @property {?import("../addon/manifest-loc.js").ManifestLoc} manifestLoc  Position
- *   index for the shipped manifest (manifestPathLine reads it).
- * @property {string} manifestText  The shipped manifest.json raw text (manifestTokenLine
- *   reads it); "" when absent.
+ * @property {?import("../addon/load.js").ManifestRecord} manifest  The authoritative,
+ *   SHIPPED manifest (the built XPI's - what Thunderbird loads), read once like `schema`:
+ *   `json` the parse, `text` the raw manifest.json (manifestTokenLine reads it), `error` the
+ *   JSON parse failure, `loc` the position index (manifestPathLine reads it). Null when the
+ *   shipped artifact holds no manifest.json; a file that is there but will not parse is a
+ *   record carrying `error`, so the two are separable here even where a reader still
+ *   answers `!json` to both.
+ *   Every manifest / permission / API check reads this; there is no ctx.addon.manifest
+ *   (reviewView strips it), and in SCA there is nothing behind it to strip - the source
+ *   archive is loaded without reading a manifest at all, because its root manifest.json is
+ *   a pre-build template no check reviews.
  * @property {?object} experiments  The Experiment classification (verifyExperiments),
  *   computed from the SHIPPED XPI, shared like the manifest. Null for a non-Experiment
  *   add-on.

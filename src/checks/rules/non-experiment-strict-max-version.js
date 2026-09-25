@@ -17,6 +17,7 @@ import {
   isExperiment,
   strictMaxVersion,
   manifestTokenLine,
+  skipWithoutManifest,
 } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -26,15 +27,9 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const m = ctx.manifest;
+    const m = ctx.manifest?.json;
     if (!m) {
-      ctx.note?.(
-        "manifest.json",
-        null,
-        "manifest did not parse",
-        VERDICT.SKIPPED
-      );
-      return { findings: [] };
+      return skipWithoutManifest(ctx);
     }
     if (isExperiment(m)) {
       ctx.note?.("manifest.json", null, "is an Experiment", VERDICT.SKIPPED);
@@ -51,7 +46,7 @@ export default {
       `strict_max_version ${max} on a non-Experiment`,
       VERDICT.FAIL
     );
-    const text = ctx.manifestText;
+    const text = ctx.manifest?.text;
     const line = manifestTokenLine(text, "strict_max_version");
     return {
       findings: [

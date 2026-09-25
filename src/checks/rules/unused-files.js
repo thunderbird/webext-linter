@@ -97,7 +97,7 @@ export default {
     // "not reachable" is unreliable there - we'd mostly flag working experiment code.
     // Report only unambiguous junk; a separate "review the whole Experiment" check
     // (out of scope) prompts the manual pass.
-    const experiment = isExperiment(ctx.manifest);
+    const experiment = isExperiment(ctx.manifest?.json);
     const findings = [];
     const escalations = [];
 

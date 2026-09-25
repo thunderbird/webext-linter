@@ -117,12 +117,13 @@ function analyzePermissions(ctx) {
     requirements,
     manifestKeys: manifestKeyNotes,
   };
-  if (!ctx.manifest) {
+  const manifest = ctx.manifest?.json;
+  if (!manifest) {
     return { missingPermissions, missingManifestKeys, usedPermissions, notes };
   }
 
-  const declared = declaredPermissions(ctx.manifest);
-  const manifestKeys = new Set(Object.keys(ctx.manifest));
+  const declared = declaredPermissions(manifest);
+  const manifestKeys = new Set(Object.keys(manifest));
   const missingReported = new Set();
   // namespace -> { alts:Set<key>, example, file, loc } for "manifest:<key>".
   const manifestKeyReqs = new Map();
@@ -191,7 +192,7 @@ function analyzePermissions(ctx) {
     for (const entry of entries) {
       if (
         !versionInBounds(
-          ctx.manifest,
+          manifest,
           entry.minStrictVersion,
           entry.maxStrictVersion
         )
@@ -378,13 +379,13 @@ export function enumerateUnusedPermissions(ctx, prompts) {
         u.usages?.some((x) => x.dynamicTail)
     ) &&
     !scanIsBlindToObfuscation(ctx);
-  const tokensFor = permissionTokens(ctx.manifest, prompts);
+  const tokensFor = permissionTokens(ctx.manifest?.json, prompts);
   // One scan over the live code + manifest for the union of every permission's
   // tokens, recording WHERE each occurs; each permission then reads its own subset,
   // both to decide presence (no occurrence, when decidable = unused) and to hand
   // the reviewer the sites to judge.
   const located = locateTokens(ctx, new Set([...tokensFor.values()].flat()));
-  const m = ctx.manifest ?? {};
+  const m = ctx.manifest?.json ?? {};
   const seen = new Set();
   const findings = [];
   const escalations = [];
@@ -516,12 +517,12 @@ function locateTokens(ctx, tokens) {
 
   if (bare.length) {
     const patterns = new Map(bare.map((t) => [t, wholeWordRe(t)]));
-    const manifestJson = JSON.stringify(ctx.manifest ?? {});
+    const manifestJson = JSON.stringify(ctx.manifest?.json ?? {});
     for (const [t, re] of patterns) {
       if (re.test(manifestJson)) {
         located.get(t).push({
           file: "manifest.json",
-          line: manifestTokenLine(ctx.manifestText, t),
+          line: manifestTokenLine(ctx.manifest?.text, t),
         });
       }
     }

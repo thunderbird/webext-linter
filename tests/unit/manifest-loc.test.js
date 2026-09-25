@@ -2,7 +2,7 @@
 // use by a check. A path lookup survives the two cases a text search for the value
 // cannot: \uXXXX escaping, and a value that appears more than once.
 
-import { withManifest } from "./manifest-ctx.js";
+import { withManifest, manifestOf } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -45,9 +45,10 @@ test("buildManifestLoc returns null for missing paths and unparseable text", () 
 // real host_permissions line (6), not the first textual occurrence (4).
 test("minimize-host-permissions anchors <all_urls> on its host_permissions line", () => {
   const addon = {
-    manifest: JSON.parse(TEXT), // decodes the escapes to "<all_urls>"
+    // The record carries the parse AND the bytes it came from, so the line index is built
+    // from the same text the finding is anchored in.
+    manifest: manifestOf(JSON.parse(TEXT), TEXT), // decodes the escapes to "<all_urls>"
     files: new Map([["manifest.json", Buffer.from(TEXT)]]),
-    manifestLoc: buildManifestLoc(TEXT),
   };
   const out = minimizeHostPermissions.run(withManifest({ addon })).findings;
   const f = out.find((x) => x.item === "<all_urls>");

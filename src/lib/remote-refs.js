@@ -114,7 +114,7 @@ function scan(ctx) {
     }
   }
 
-  out.cspHosts = analyzeCsp(ctx.manifest).remoteHosts;
+  out.cspHosts = analyzeCsp(ctx.manifest?.json).remoteHosts;
   return out;
 }
 

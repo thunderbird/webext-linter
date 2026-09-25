@@ -4,7 +4,7 @@
 // {icons}, ...), and resolving such a path against them (".." clamped at root).
 
 import { test } from "node:test";
-import { withManifest, parsedSources } from "./manifest-ctx.js";
+import { withManifest, parsedSources, manifestOf } from "./manifest-ctx.js";
 import assert from "node:assert/strict";
 
 import {
@@ -17,7 +17,7 @@ import { collectJsSources } from "../../src/addon/sources.js";
 function ctxFrom(files, manifest) {
   const addon = {
     files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
-    manifest,
+    manifest: manifestOf(manifest, files["manifest.json"]),
   };
   return withManifest({ addon, jsSources: parsedSources(addon) });
 }

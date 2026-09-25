@@ -19,20 +19,23 @@ import { experimentManifestKeys } from "../../lib/experiments.js";
 export default {
   run(ctx) {
     const { addon, schema } = ctx;
-    if (ctx.manifestError || !ctx.manifest) {
+    if (ctx.manifest?.error || !ctx.manifest?.json) {
       return { findings: [] }; // a missing/unparsable manifest is the manifest-* checks' job
     }
     if (schema.validManifestKeys.size === 0) {
       return { findings: [] };
     }
-    const text = ctx.manifestText;
+    const text = ctx.manifest.text;
     // The experiment-owned keys the header names: the add-on's own config.
     const expKeys = new Set(
-      Object.keys(asObject(ctx.manifest.experiment_apis))
+      Object.keys(asObject(ctx.manifest.json.experiment_apis))
     );
-    const expManifestKeys = experimentManifestKeys(ctx.manifest, addon.files);
+    const expManifestKeys = experimentManifestKeys(
+      ctx.manifest.json,
+      addon.files
+    );
     const out = [];
-    for (const key of Object.keys(ctx.manifest)) {
+    for (const key of Object.keys(ctx.manifest.json)) {
       const known =
         schema.validManifestKeys.has(key) ||
         expKeys.has(key) ||

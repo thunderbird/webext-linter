@@ -25,7 +25,7 @@ export default {
    * @returns {{findings: [], escalations: Escalation[]}}
    */
   run(ctx) {
-    const m = ctx.manifest;
+    const m = ctx.manifest?.json;
     if (!m || !isExperiment(m)) {
       ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
       return { findings: [], escalations: [] };

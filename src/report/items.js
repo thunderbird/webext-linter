@@ -201,7 +201,7 @@ export function reviewFilePaths(addon, xpiPath) {
  * @returns {string}
  */
 function addonIdOf(addon) {
-  const m = addon?.manifest;
+  const m = addon?.manifest?.json;
   return (
     m?.browser_specific_settings?.gecko?.id ??
     m?.applications?.gecko?.id ??
@@ -216,7 +216,7 @@ function addonIdOf(addon) {
  * @returns {string}
  */
 function reviewFileBase(addon) {
-  const m = addon?.manifest;
+  const m = addon?.manifest?.json;
   const id = addonIdOf(addon);
   const at = new Date().toISOString().replace(/[:.]/g, "-");
   // The id is the submission's, and an add-on with no gecko id lends its NAME - which has

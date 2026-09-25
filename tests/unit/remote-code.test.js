@@ -1,6 +1,6 @@
 // Unit tests for the remote-code scanners and check.
 
-import { withManifest, parsed } from "./manifest-ctx.js";
+import { withManifest, parsed, manifestOf } from "./manifest-ctx.js";
 import { VERDICT } from "../../src/lib/enum.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -516,7 +516,7 @@ function fakeCtx(files, manifest, vendor, bundled) {
     }
   }
   return {
-    addon: { files: map, manifest, vendor, bundled },
+    addon: { files: map, manifest: manifestOf(manifest), vendor, bundled },
     jsSources: parsed(jsSources),
     options: {},
   };
@@ -544,24 +544,16 @@ test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval",
   assert.equal(cspUnsafeEval.run(withManifest(ok)).findings.length, 0);
   assert.equal(cspUnsafeInline.run(withManifest(ok)).findings.length, 0);
 
-  // Both findings anchor on the content_security_policy line of the manifest
-  // text (fakeCtx does not put manifest.json in files, so build the ctx here).
+  // Both findings anchor on the content_security_policy line of the manifest text, so the
+  // record is built over THOSE bytes - the line the reviewer opens is a fact about the
+  // file as submitted, not about a re-serialization of the parse.
+  const locatedText =
+    '{\n  "manifest_version": 3,\n' +
+    "  \"content_security_policy\": { \"extension_pages\": \"script-src 'self' 'unsafe-eval' 'unsafe-inline'\" }\n}\n";
   const located = {
     addon: {
-      files: new Map([
-        [
-          "manifest.json",
-          Buffer.from(
-            '{\n  "manifest_version": 3,\n' +
-              "  \"content_security_policy\": { \"extension_pages\": \"script-src 'self' 'unsafe-eval' 'unsafe-inline'\" }\n}\n"
-          ),
-        ],
-      ]),
-      manifest: {
-        content_security_policy: {
-          extension_pages: "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
-        },
-      },
+      files: new Map([["manifest.json", Buffer.from(locatedText)]]),
+      manifest: manifestOf(JSON.parse(locatedText), locatedText),
     },
     jsSources: [],
     options: {},

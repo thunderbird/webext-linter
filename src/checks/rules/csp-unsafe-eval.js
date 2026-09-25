@@ -17,7 +17,7 @@ export default {
       return { findings: [] };
     }
     ctx.note?.("manifest.json", null, "CSP 'unsafe-eval'", VERDICT.FAIL);
-    const text = ctx.manifestText;
+    const text = ctx.manifest?.text;
     const line = manifestTokenLine(text, "content_security_policy");
     return {
       findings: [

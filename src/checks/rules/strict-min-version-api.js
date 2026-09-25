@@ -37,7 +37,8 @@ export default {
    *   escalations?: import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
-    const minStr = ctx.manifest ? strictMinVersion(ctx.manifest) : undefined;
+    const json = ctx.manifest?.json;
+    const minStr = json ? strictMinVersion(json) : undefined;
     const min = parseVersion(minStr);
     if (!min) {
       ctx.note?.(

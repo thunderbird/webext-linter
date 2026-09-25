@@ -2,7 +2,7 @@
 // schema-directed / bridge "referenced file not bundled" detection.
 
 import { test } from "node:test";
-import { withManifest, parsed } from "./manifest-ctx.js";
+import { withManifest, parsed, manifestOf } from "./manifest-ctx.js";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,7 +25,10 @@ function ctxWith(manifest, files = {}) {
   for (const [k, v] of Object.entries(files)) {
     map.set(k, Buffer.from(v));
   }
-  return withManifest({ addon: { files: map, manifest }, jsSources: [] });
+  return withManifest({
+    addon: { files: map, manifest: manifestOf(manifest) },
+    jsSources: [],
+  });
 }
 
 // The manifest half of this check asks the SCHEMA which keys carry a file path, so a ctx
@@ -198,12 +201,12 @@ test("anchors a missing manifest reference at its manifest.json line", () => {
   assert.equal(out[0].loc.line, 4); // the line citing the path
 });
 
-// Without a packaged manifest.json text to locate the path in, the finding names the
-// file and carries no line - degraded, never dropped.
-test("missing manifest reference falls back to no line when manifest.json text is absent", () => {
-  const out = bundledFiles.run(
-    manifestCtx({ content_scripts: [{ js: ["missing.js"] }] })
-  ).findings;
+// When the manifest text does not carry the path - a minified or rewritten manifest, say -
+// the finding names the file and carries no line: degraded, never dropped.
+test("missing manifest reference falls back to no line when the text lacks the path", () => {
+  const ctx = manifestCtx({ content_scripts: [{ js: ["missing.js"] }] });
+  ctx.manifest = manifestOf(ctx.manifest.json, "{}");
+  const out = bundledFiles.run(ctx).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "manifest.json");
   assert.equal(out[0].loc, null);

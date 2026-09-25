@@ -27,7 +27,7 @@ export default {
    * @returns {{findings: [], escalations: Escalation[]}}
    */
   run(ctx) {
-    const manifest = ctx.manifest;
+    const manifest = ctx.manifest?.json;
     if (
       !manifest ||
       !declaredPermissions(manifest).named.has(NATIVE_MESSAGING)

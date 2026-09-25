@@ -24,13 +24,13 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const m = ctx.manifest;
+    const m = ctx.manifest?.json;
     if (!m || !isExperiment(m)) {
       ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
       return { findings: [] };
     }
     const { schema } = ctx;
-    const text = ctx.manifestText ?? "";
+    const text = ctx.manifest?.text ?? "";
     const line = manifestTokenLine(text, "experiment_apis");
     const loc = line ? { line, column: 0 } : null;
 

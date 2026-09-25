@@ -3,7 +3,7 @@
 // NAMES an experiment_apis entry, or one the entry's schema DECLARES via a
 // `manifest` $extend block.
 
-import { withManifest } from "./manifest-ctx.js";
+import { withManifest, manifestOf } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -22,7 +22,7 @@ const schema = buildSchemaIndex(
 // any extra files (e.g. an experiment schema).
 const ctxOf = (manifest, extra = {}) => ({
   addon: {
-    manifest,
+    manifest: manifestOf(manifest),
     files: new Map(
       Object.entries({
         "manifest.json": JSON.stringify(manifest, null, 2),

@@ -158,13 +158,14 @@ deterministic-phase:
   response: |-
     The following APIs each need a manifest key that is not declared. Add one of the keys named for each API to manifest.json.
 
-# manifest.json is present but not valid JSON.
+# manifest.json is present but does not give a JSON object - it will not parse, or
+# it parses to a primitive or an array.
 - title: Invalid manifest JSON
   severity: error
   check: manifest-invalid-json
   input: manifest
   response: |-
-    Invalid manifest.json: manifest.json is not valid JSON.
+    Invalid manifest.json: manifest.json is not a valid JSON object.
     Read more: https://webextension-api.thunderbird.net/.
 
 # No manifest.json at the add-on root.

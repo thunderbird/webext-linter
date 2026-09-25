@@ -5,6 +5,7 @@ import {
   parsedSources,
   parsed,
   siblingsOf,
+  manifestOf,
 } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -106,7 +107,7 @@ const schema = buildSchemaIndex(
 
 const jsCtx = (code, manifest = {}) => ({
   jsSources: parsed([{ file: "f.js", code, lineOffset: 0, inline: false }]),
-  addon: { files: new Map(), manifest },
+  addon: { files: new Map(), manifest: manifestOf(manifest) },
   schema,
   options: {},
 });
@@ -138,6 +139,28 @@ function notesFrom(check, ctx) {
   check.run(withManifest(ctx));
   return notes;
 }
+
+// A check that reads the manifest and finds none accounts for its silence in the feed, and
+// the two reasons are not interchangeable: no manifest.json at all, versus one that is there
+// and will not parse. The reviewer reads that line to know what the submission looks like, so
+// "did not parse" about a file that does not exist describes the wrong add-on. Neither case
+// is this check's verdict - manifest-missing and manifest-invalid-json report those - which
+// is why it stays a SKIPPED note and produces no finding.
+test("a manifest-reading check names WHY there is no manifest, absent vs unparsable", () => {
+  const reasons = (manifest) =>
+    notesFrom(addonIconMissing, { addon: { manifest } }).map((n) => n.item);
+
+  assert.deepEqual(reasons(null), ["no manifest.json"]);
+  assert.deepEqual(
+    reasons({ json: null, text: "{ oops", error: "boom", loc: null }),
+    ["manifest did not parse"]
+  );
+  // Silence either way: the verdict belongs to the dedicated checks.
+  assert.deepEqual(
+    addonIconMissing.run(withManifest({ addon: { manifest: null } })).findings,
+    []
+  );
+});
 
 // ---- sync-xhr ----
 // Only the explicit async=false third arg to open() is a synchronous XHR;
@@ -267,7 +290,10 @@ test("sync-xhr / debugger / async-onmessage skip non-authored code", () => {
   const code = body + "var a = 1;\n".repeat(200); // >1KB so it is classified
   const ctxFor = (file, lib = false) => ({
     jsSources: parsed([{ file, code, lineOffset: 0 }]),
-    addon: { files: new Map([[file, Buffer.from(code)]]), manifest: {} },
+    addon: {
+      files: new Map([[file, Buffer.from(code)]]),
+      manifest: manifestOf({}),
+    },
     schema,
     options: lib
       ? {
@@ -345,7 +371,10 @@ test("code-sanity skips non-authored code, lints authored code", () => {
   const redecl = "var a = 1;\n".repeat(200); // ~2KB, trips no-redeclare, short lines
   const ctxFor = (file, lib = false) => ({
     jsSources: parsed([{ file, code: redecl, lineOffset: 0 }]),
-    addon: { files: new Map([[file, Buffer.from(redecl)]]), manifest: {} },
+    addon: {
+      files: new Map([[file, Buffer.from(redecl)]]),
+      manifest: manifestOf({}),
+    },
     options: lib
       ? {
           libraryHashes: new Map([
@@ -1347,13 +1376,14 @@ test("an input:xpi check escalates over its routed (XPI) addon", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   // bg.js is live and dynamically imports a runtime-built path that names helper.js,
   // so helper.js is ambiguous and unused-files escalates it.
+  const manifestText = JSON.stringify(manifest);
   const xpi = {
     files: mk({
-      "manifest.json": JSON.stringify(manifest),
+      "manifest.json": manifestText,
       "bg.js": `const p = "./helper.js";\nimport(p);`,
       "helper.js": `console.log(1);`,
     }),
-    manifest,
+    manifest: manifestOf(manifest, manifestText),
   };
   const [check] = allChecks(
     await loadChecks(loadRegistry(), { only: ["unused-files"] })
@@ -1970,7 +2000,7 @@ test("unused-permission lists the unprovable declared named permissions", () => 
   const ctx = {
     schema,
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
       ]),
@@ -2041,7 +2071,7 @@ test("unused-permission decides token-absent permissions deterministically", () 
   const ctx = {
     schema,
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
         ["bg.js", Buffer.from(code)],
@@ -2092,7 +2122,7 @@ test("unused-permission locates a bare token in a non-authored bundle (raw scan)
     jsSources,
     apiUsages: [],
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
         ["lib.js", Buffer.from(bundle)],
@@ -2138,7 +2168,7 @@ test("unused-permission resolves dotted injection tokens via api-usage; bare tok
     jsSources,
     apiUsages: [{ file: "bg.js", ...apiUsageOf(jsSources[0]) }],
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
         ["bg.js", Buffer.from(code)],
@@ -2203,7 +2233,7 @@ test("unused-permission grounds compose from the compose_scripts manifest key", 
   const ctx = {
     schema,
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
       ]),
@@ -2232,7 +2262,7 @@ test("message_display_scripts version-filters scripting on the 154 boundary", ()
     const ctx = withManifest({
       schema,
       addon: {
-        manifest,
+        manifest: manifestOf(manifest),
         files: new Map([
           ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
         ]),
@@ -2264,7 +2294,7 @@ test("unused-permission escalates instead of deciding when the scan is blind", (
   const base = () => ({
     schema,
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
       ]),
@@ -2355,7 +2385,7 @@ test("unused-permission: a version-excluded token-less entry does not poison", (
   const ctx = {
     schema,
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
       ]),
@@ -2387,7 +2417,7 @@ test("unused-permission: a token-less entry poisons its permissions", () => {
   const ctx = {
     schema,
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
       ]),
@@ -2434,7 +2464,7 @@ test("unused-permission selects token lists by strict_min_version", () => {
     const ctx = {
       schema,
       addon: {
-        manifest,
+        manifest: manifestOf(manifest),
         files: new Map([
           ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
         ]),
@@ -2473,7 +2503,7 @@ test("unused-permission drops permissions proved used by static analysis", () =>
     schema,
     note: (file, loc, item, verdict) => notes.push({ item, verdict }),
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
         ["bg.js", Buffer.from("")],
@@ -2513,7 +2543,7 @@ test("unused-permission credits function-level permissions (archive/delete)", ()
   const ctx = withManifest({
     schema,
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
         ["bg.js", Buffer.from("")],
@@ -2554,7 +2584,7 @@ test("unused-permission escalates unlimitedStorage (gates no API)", () => {
     schema,
     note: (file, loc, item, verdict) => notes.push({ item, verdict }),
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
       ]),
@@ -2585,7 +2615,7 @@ test("deprecated-api hint is the schema deprecation message, not a doc link", ()
   const ctx = {
     schema,
     addon: {
-      manifest: { background: { scripts: ["bg.js"] } },
+      manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
       files: new Map([["bg.js", Buffer.from("")]]),
     },
     apiUsages: [
@@ -2632,7 +2662,7 @@ test("unknown-api flags version_added:false as unsupported", () => {
   const ctx = {
     schema: local,
     addon: {
-      manifest: { background: { scripts: ["bg.js"] } },
+      manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
       files: new Map([["bg.js", Buffer.from("")]]),
     },
     apiUsages: [
@@ -2680,7 +2710,7 @@ test("unknown-api escalates every unavailable reference", () => {
   const ctx = withManifest({
     schema: local,
     addon: {
-      manifest: { background: { scripts: ["bg.js"] } },
+      manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
       files: new Map([["bg.js", Buffer.from("")]]),
     },
     apiUsages: [
@@ -2726,7 +2756,7 @@ test("unknown-api escalates a shim rather than settling it", () => {
     withManifest({
       schema, // `messages` is a real namespace; `nope`/`alsoNope` are not
       addon: {
-        manifest: { background: { scripts: ["bg.js"] } },
+        manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
         files: new Map([["bg.js", Buffer.from("")]]),
       },
       apiUsages: [
@@ -2759,7 +2789,7 @@ test("unknown-api: every shape around an absent namespace escalates, none reject
       withManifest({
         schema, // `messages` is a real namespace; `nope` is not
         addon: {
-          manifest: { background: { scripts: ["bg.js"] } },
+          manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
           files: new Map([["bg.js", Buffer.from(src)]]),
         },
         apiUsages: [{ file: "bg.js", usages }],
@@ -2823,7 +2853,7 @@ test("unknown-api: an aliased unknown member is listed at each site", () => {
     withManifest({
       schema, // messages is a known namespace; messages.nope is an unknown member
       addon: {
-        manifest: { background: { scripts: ["bg.js"] } },
+        manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
         files: new Map([["bg.js", Buffer.from(src)]]),
       },
       apiUsages: [{ file: "bg.js", usages }],
@@ -2853,7 +2883,7 @@ test("resolveApiUsages resolves reachable usages once; unknownApis is the unreco
   const ctx = withManifest({
     schema: local,
     addon: {
-      manifest: { background: { scripts: ["bg.js"] } },
+      manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
       files: new Map([
         ["bg.js", Buffer.from("")],
         ["orphan.js", Buffer.from("")], // present but reached from no entry point
@@ -2895,12 +2925,12 @@ const maxCtx = (max, usages) => ({
   addon: {
     // bg.js must be in the pure WebExtension tree for the validators to check it.
     files: new Map([["bg.js", Buffer.from("")]]),
-    manifest: {
+    manifest: manifestOf({
       background: { scripts: ["bg.js"] },
       ...(max
         ? { browser_specific_settings: { gecko: { strict_max_version: max } } }
         : {}),
-    },
+    }),
   },
   apiUsages: [{ file: "bg.js", usages }],
 });
@@ -2972,12 +3002,12 @@ const minCtx = (min, usages) => ({
   addon: {
     // bg.js must be in the pure WebExtension tree for the validators to check it.
     files: new Map([["bg.js", Buffer.from("")]]),
-    manifest: {
+    manifest: manifestOf({
       background: { scripts: ["bg.js"] },
       ...(min
         ? { browser_specific_settings: { gecko: { strict_min_version: min } } }
         : {}),
-    },
+    }),
   },
   apiUsages: [{ file: "bg.js", usages }],
 });
@@ -3063,10 +3093,10 @@ test("strict-min-version-api compares minor/patch components", () => {
         schema: local,
         addon: {
           files: new Map([["bg.js", Buffer.from("")]]),
-          manifest: {
+          manifest: manifestOf({
             background: { scripts: ["bg.js"] },
             browser_specific_settings: { gecko: { strict_min_version: min } },
-          },
+          }),
         },
         apiUsages: [
           {
@@ -3122,10 +3152,10 @@ test("strict-min-version-api: an aliased too-new API resolves and is listed", ()
       schema,
       addon: {
         files: new Map([["bg.js", Buffer.from(src)]]),
-        manifest: {
+        manifest: manifestOf({
           background: { scripts: ["bg.js"] },
           browser_specific_settings: { gecko: { strict_min_version: "60.0" } },
-        },
+        }),
       },
       apiUsages: [{ file: "bg.js", usages }],
     })
@@ -3186,7 +3216,7 @@ test("a non-existent namespace: strict-min ignores it, unknown-api raises it", (
     withManifest({
       schema,
       addon: {
-        manifest: { background: { scripts: ["bg.js"] } },
+        manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
         files: new Map([["bg.js", Buffer.from("")]]),
       },
       apiUsages: [{ file: "bg.js", usages }],
@@ -3207,7 +3237,10 @@ test("missing-permission ignores usages in dead (unreachable) files", () => {
   const ctx = (file) => ({
     schema,
     addon: {
-      manifest: { permissions: [], background: { scripts: ["bg.js"] } },
+      manifest: manifestOf({
+        permissions: [],
+        background: { scripts: ["bg.js"] },
+      }),
       files: new Map([
         ["bg.js", Buffer.from("")],
         ["dead.js", Buffer.from("messenger.messages.get(1);")],
@@ -3236,7 +3269,10 @@ test("missing-permission fires for a permission reached only via a namespace ali
     withManifest({
       schema,
       addon: {
-        manifest: { permissions: [], background: { scripts: ["bg.js"] } },
+        manifest: manifestOf({
+          permissions: [],
+          background: { scripts: ["bg.js"] },
+        }),
         files: new Map([["bg.js", Buffer.from(src)]]),
       },
       apiUsages: [{ file: "bg.js", usages }],
@@ -3253,10 +3289,10 @@ test("usedPermissions tracks reachable requirements, not dead-file ones", () => 
   const ctx = (file) => ({
     schema,
     addon: {
-      manifest: {
+      manifest: manifestOf({
         permissions: ["messagesRead"],
         background: { scripts: ["bg.js"] },
-      },
+      }),
       files: new Map([
         ["bg.js", Buffer.from("")],
         ["dead.js", Buffer.from("messenger.messages.get(1);")],
@@ -3287,7 +3323,7 @@ test("unused-permission omits permissions a reachable call requires", () => {
   const ctx = {
     schema,
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
         ["bg.js", Buffer.from("messenger.messages.get(1);")],
@@ -3321,7 +3357,7 @@ const permProducerCtx = (strictMin) => {
   return {
     schema,
     addon: {
-      manifest,
+      manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
       ]),
@@ -3354,7 +3390,7 @@ test("unused-permission enumerates regardless of strict_min_version", () => {
 const tmCtx = (name, files = {}) =>
   withManifest({
     addon: {
-      manifest: { manifest_version: 3, name, version: "1" },
+      manifest: manifestOf({ manifest_version: 3, name, version: "1" }),
       files: new Map(
         Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
       ),
@@ -3489,11 +3525,11 @@ test("an unreadable or unresolvable localized name is a skip, never a pass", () 
   const ctxOf = (files) =>
     withManifest({
       addon: {
-        manifest: {
+        manifest: manifestOf({
           manifest_version: 3,
           name: "__MSG_extName__",
           version: "1",
-        },
+        }),
         files: new Map(
           Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
         ),
@@ -3529,11 +3565,11 @@ test("the trademark checks name every locale and never double-report", () => {
   const ctxOf = (locales) =>
     withManifest({
       addon: {
-        manifest: {
+        manifest: manifestOf({
           manifest_version: 3,
           name: "__MSG_extName__",
           version: "1",
-        },
+        }),
         files: new Map(
           Object.entries(locales).map(([loc, name]) => [
             `_locales/${loc}/messages.json`,
@@ -3592,10 +3628,15 @@ test("trademark-thunderbird-name escalates an unlabelled name, never finds", () 
 // The finding cites the manifest line of the `name` property and the offending
 // (resolved) name, not a bare "manifest.json".
 test("trademark-violation anchors the finding on the name line with the name", () => {
+  // The record is built over the SAME manifest.json bytes the corpus carries, because the
+  // line the finding anchors on is a fact about the file as submitted.
   const ctxOf = (name, files) =>
     withManifest({
       addon: {
-        manifest: { manifest_version: 3, name, version: "1" },
+        manifest: manifestOf(
+          { manifest_version: 3, name, version: "1" },
+          files["manifest.json"]
+        ),
         files: new Map(
           Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
         ),
@@ -3641,7 +3682,10 @@ test("core-symbol-in-webext flags global core symbols, not locals/imports/proper
       withManifest({
         jsSources: parsed([{ file: "bg.js", code, lineOffset: 0 }]),
         addon: {
-          manifest: { manifest_version: 3, background: { scripts: ["bg.js"] } },
+          manifest: manifestOf({
+            manifest_version: 3,
+            background: { scripts: ["bg.js"] },
+          }),
           files: new Map([["bg.js", Buffer.from(code)]]),
         },
         options: {},
@@ -3673,7 +3717,7 @@ test("experiment-missing-strict-max-version flags an allowed Experiment lacking 
   const run = (manifest) =>
     experimentMissingMax.run(
       withManifest({
-        addon: { manifest },
+        addon: { manifest: manifestOf(manifest) },
         options: { allowExperiments: true },
       })
     ).findings;
@@ -3693,7 +3737,7 @@ test("experiment-missing-strict-max-version flags an allowed Experiment lacking 
   assert.equal(
     experimentMissingMax.run(
       withManifest({
-        addon: { manifest: { experiment_apis: { a: {} } } },
+        addon: { manifest: manifestOf({ experiment_apis: { a: {} } }) },
         options: {},
       })
     ).findings.length,
@@ -3705,7 +3749,9 @@ test("experiment-missing-strict-max-version flags an allowed Experiment lacking 
 // locus-less reminder, no findings); a non-Experiment escalates nothing.
 test("experiment-manual-review escalates one reminder for an Experiment only", () => {
   const run = (manifest) =>
-    experimentManualReview.run(withManifest({ addon: { manifest } }));
+    experimentManualReview.run(
+      withManifest({ addon: { manifest: manifestOf(manifest) } })
+    );
   const exp = run({ experiment_apis: { a: {} } });
   assert.deepEqual(exp.findings, []);
   assert.equal(exp.escalations.length, 1);
@@ -3731,7 +3777,10 @@ test("experiment-unknown-api escalates only for an Experiment with unrecognized 
     withManifest({
       schema: local,
       addon: {
-        manifest: { ...manifest, background: { scripts: ["bg.js"] } },
+        manifest: manifestOf({
+          ...manifest,
+          background: { scripts: ["bg.js"] },
+        }),
         files: new Map([["bg.js", Buffer.from("")]]),
       },
       apiUsages: [
@@ -3767,27 +3816,23 @@ test("experiment-unknown-api escalates only for an Experiment with unrecognized 
 // max stays silent.
 test("non-experiment-strict-max-version flags only a non-Experiment that pins a max", () => {
   const run = (manifest) =>
-    nonExperimentMax.run(withManifest({ addon: { manifest } })).findings;
+    nonExperimentMax.run(
+      withManifest({ addon: { manifest: manifestOf(manifest) } })
+    ).findings;
   const out = run({
     browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
   });
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "128.0"); // value surfaced for the {{item}} response
-  // The finding anchors on the strict_max_version line of the manifest text.
+  // The finding anchors on the strict_max_version line of the manifest text, so the record
+  // is built over those bytes rather than a re-serialization of the parse.
+  const locatedText =
+    '{\n  "browser_specific_settings": { "gecko": { "strict_max_version": "128.0" } }\n}\n';
   const located = nonExperimentMax.run(
     withManifest({
       addon: {
-        manifest: {
-          browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
-        },
-        files: new Map([
-          [
-            "manifest.json",
-            Buffer.from(
-              '{\n  "browser_specific_settings": { "gecko": { "strict_max_version": "128.0" } }\n}\n'
-            ),
-          ],
-        ]),
+        manifest: manifestOf(JSON.parse(locatedText), locatedText),
+        files: new Map([["manifest.json", Buffer.from(locatedText)]]),
       },
     })
   ).findings;
@@ -3812,15 +3857,11 @@ test("non-experiment-strict-max-version flags only a non-Experiment that pins a 
 // experiment_apis manifest line; --allow-experiments silences it, and a
 // non-Experiment is silent regardless.
 test("experiment-not-allowed errors on the experiment_apis line unless allowed", () => {
+  const manifestText = '{\n  "experiment_apis": { "x": {} }\n}\n';
   const ctx = (manifest, allowExperiments) => ({
     addon: {
-      manifest,
-      files: new Map([
-        [
-          "manifest.json",
-          Buffer.from('{\n  "experiment_apis": { "x": {} }\n}\n'),
-        ],
-      ]),
+      manifest: manifestOf(manifest, manifestText),
+      files: new Map([["manifest.json", Buffer.from(manifestText)]]),
     },
     options: { allowExperiments },
   });
@@ -3916,12 +3957,11 @@ test("missing-library / obfuscated-code note a verdict per classified file", () 
 // (so a bare check header is never ambiguous). unsure = the deterministic
 // decision to escalate, never an answer to it.
 test("experiment-not-allowed notes pass / fail / skipped", () => {
+  const manifestText = '{\n  "experiment_apis": {}\n}\n';
   const ctxFor = (manifest, allowExperiments) => ({
     addon: {
-      manifest,
-      files: new Map([
-        ["manifest.json", Buffer.from('{\n  "experiment_apis": {}\n}\n')],
-      ]),
+      manifest: manifestOf(manifest, manifestText),
+      files: new Map([["manifest.json", Buffer.from(manifestText)]]),
     },
     options: { allowExperiments },
   });
@@ -3940,7 +3980,7 @@ test("experiment-not-allowed notes pass / fail / skipped", () => {
 test("experiment-missing-strict-max-version notes pass / fail / skipped", () => {
   const v = (manifest) =>
     notesFrom(experimentMissingMax, {
-      addon: { manifest },
+      addon: { manifest: manifestOf(manifest) },
       options: { allowExperiments: true },
     });
   assert.equal(v({ experiment_apis: { a: {} } })[0].verdict, VERDICT.FAIL); // no max
@@ -3955,7 +3995,8 @@ test("experiment-missing-strict-max-version notes pass / fail / skipped", () => 
 });
 
 test("non-experiment-strict-max-version notes pass / fail / skipped", () => {
-  const v = (manifest) => notesFrom(nonExperimentMax, { addon: { manifest } });
+  const v = (manifest) =>
+    notesFrom(nonExperimentMax, { addon: { manifest: manifestOf(manifest) } });
   assert.equal(v({ name: "x" })[0].verdict, VERDICT.PASS); // no max
   assert.equal(
     v({
@@ -3974,7 +4015,10 @@ test("non-experiment-strict-max-version notes pass / fail / skipped", () => {
 
 test("trademark-violation notes pass / fail / skipped", () => {
   const ctxFor = (name) => ({
-    addon: { manifest: name == null ? {} : { name }, files: new Map() },
+    addon: {
+      manifest: manifestOf(name == null ? {} : { name }),
+      files: new Map(),
+    },
   });
   const v = (name) => notesFrom(trademarkViolation, ctxFor(name));
   // Any brand-free name passes here, Thunderbird or not: the form is a sibling's
@@ -3991,7 +4035,7 @@ test("trademark-violation notes pass / fail / skipped", () => {
 test("the trademark-thunderbird checks note fail / unsure / skipped", () => {
   const localeCtx = (locales) => ({
     addon: {
-      manifest: { name: "__MSG_extName__" },
+      manifest: manifestOf({ name: "__MSG_extName__" }),
       files: new Map(
         Object.entries(locales).map(([loc, name]) => [
           `_locales/${loc}/messages.json`,
@@ -4010,7 +4054,10 @@ test("the trademark-thunderbird checks note fail / unsure / skipped", () => {
   assert.equal(loc({ en: "Tool for Thunderbird" })[0].verdict, VERDICT.PASS);
 
   const literalCtx = (name) => ({
-    addon: { manifest: name == null ? {} : { name }, files: new Map() },
+    addon: {
+      manifest: manifestOf(name == null ? {} : { name }),
+      files: new Map(),
+    },
   });
   const lit = (name) => notesFrom(trademarkThunderbirdName, literalCtx(name));
   assert.equal(lit("Thunderbird Organizer")[0].verdict, VERDICT.UNSURE);
@@ -4063,7 +4110,7 @@ test("missing-english-localization: franc over hardcoded text", () => {
     missingEnglish.run(
       withManifest({
         addon: {
-          manifest,
+          manifest: manifestOf(manifest),
           files: new Map(
             Object.entries(files).map(([k, val]) => [k, Buffer.from(val)])
           ),
@@ -4820,7 +4867,9 @@ test("privacy-policy escalates one case per transmission site", () => {
 // Keyed purely on the declared permission (required or optional); no JS scan.
 test("native-messaging escalates on the declared permission", () => {
   const esc = (manifest) =>
-    nativeMessaging.run(withManifest({ addon: { manifest } })).escalations;
+    nativeMessaging.run(
+      withManifest({ addon: { manifest: manifestOf(manifest) } })
+    ).escalations;
   const declared = esc({ permissions: ["nativeMessaging"] });
   assert.equal(declared.length, 1);
   // A single whole-add-on reminder: no item to list (instructions name it).
@@ -4843,7 +4892,7 @@ test("default-locale checks flag the two load-breaking directions", () => {
       files: new Map(
         Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
       ),
-      manifest,
+      manifest: manifestOf(manifest),
     },
   });
   const locales = { "_locales/en/messages.json": "{}" };
@@ -4885,7 +4934,7 @@ test("default-locale checks flag the two load-breaking directions", () => {
 // non-object) gets one advisory with no location; a declared icon passes; themes
 // and dictionaries are exempt; an unparsed manifest is skipped.
 test("addon-icon-missing flags an extension with no defined add-on icon", () => {
-  const ctx = (manifest) => ({ addon: { manifest } });
+  const ctx = (manifest) => ({ addon: { manifest: manifestOf(manifest) } });
   const out = addonIconMissing.run(
     withManifest(ctx({ manifest_version: 3, name: "x" }))
   ).findings;
@@ -4936,7 +4985,7 @@ test("unrecognized-manifest-key accepts experiment-owned keys", () => {
     unrecognizedManifestKey.run(
       withManifest({
         addon: {
-          manifest,
+          manifest: manifestOf(manifest),
           files: new Map([
             ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
           ]),
@@ -4983,7 +5032,7 @@ test("unrecognized-manifest-key accepts a key declared by an experiment's bundle
   const out = unrecognizedManifestKey.run(
     withManifest({
       addon: {
-        manifest,
+        manifest: manifestOf(manifest),
         files: new Map([
           ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
           ["experiments/cal/schema.json", Buffer.from(JSON.stringify(schema))],
@@ -5020,14 +5069,15 @@ test("background-module flags module syntax without type: module", () => {
 // reports them. input: xpi. A helper builds a routed-to-the-artifact ctx with reachability
 // inputs (files + shipped manifest + parsed sources).
 const reachCtx = (files, manifest) => {
+  const manifestText = JSON.stringify(manifest);
   const addon = {
     files: new Map(
       Object.entries({
-        "manifest.json": JSON.stringify(manifest),
+        "manifest.json": manifestText,
         ...files,
       }).map(([k, v]) => [k, Buffer.from(v)])
     ),
-    manifest,
+    manifest: manifestOf(manifest, manifestText),
   };
   return withManifest({
     addon,

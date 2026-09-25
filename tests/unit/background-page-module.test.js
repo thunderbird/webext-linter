@@ -8,10 +8,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import rule from "../../src/checks/rules/background-page-module.js";
-import { withManifest, parsedSources } from "./manifest-ctx.js";
+import { withManifest, parsedSources, manifestOf } from "./manifest-ctx.js";
 
 const addon = (files, manifest) => ({
-  manifest,
+  manifest: manifestOf(manifest),
   files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
 });
 

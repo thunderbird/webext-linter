@@ -36,7 +36,7 @@ export default {
     // against the XPI's manifest, and the build can transform it (an ESM source
     // bundled to a classic script needs no "type": "module"). So this reads the XPI's
     // manifest and its background scripts, not a source submission's readable source.
-    const bg = ctx.manifest?.background;
+    const bg = ctx.manifest?.json?.background;
     if (!bg || typeof bg !== "object") {
       return { findings: [] };
     }

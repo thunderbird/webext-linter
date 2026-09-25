@@ -2,7 +2,7 @@
 // content-hash verifier, the schema experiment-namespace registration, and the
 // experiment-overrides-api check.
 
-import { withManifest } from "./manifest-ctx.js";
+import { withManifest, manifestOf } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -243,7 +243,7 @@ test("loadAllowList collects file hashes and upstream API namespaces", () => {
 });
 
 // ---- verifyExperiments ----
-const addon = (files) => ({ manifest: DEMO_MANIFEST, files });
+const addon = (files) => ({ manifest: manifestOf(DEMO_MANIFEST), files });
 // The allow-list read from a pre-seeded cache (built from the experiments fixture),
 // so verifyExperiments resolves it offline.
 const opts = { experimentsCache: seedFixtureCache() };
@@ -306,7 +306,10 @@ test("verifyExperiments: an unknown API name -> unsupported", async () => {
     ],
     ["experiments/weather/parent/w.js", Buffer.from('"use strict";\n')],
   ]);
-  const res = await verifyExperiments({ manifest, files }, opts);
+  const res = await verifyExperiments(
+    { manifest: manifestOf(manifest), files },
+    opts
+  );
   assert.equal(res.pristine, false);
   assert.equal(res.groups[0].name, "weather");
   assert.equal(status0(res), "unsupported");
@@ -333,9 +336,13 @@ test("verifyExperiments: no locatable experiment files -> not pristine, allow-li
   // throw here if it were, so a plain pristine=false proves the short-circuit.
   await withoutNetwork(async (experimentsCache) => {
     const res = await verifyExperiments(
-      { manifest: { experiment_apis: { myapi: {} } }, files: new Map() },
+      {
+        manifest: manifestOf({ experiment_apis: { myapi: {} } }),
+        files: new Map(),
+      },
       { experimentsCache }
     );
+    assert.equal(res.groups.length, 1); // the group IS declared - it has no files to verify
     assert.equal(res.pristine, false);
   });
 });
@@ -382,7 +389,7 @@ test("experiment-overrides-api flags a path that grafts onto a built-in", () => 
   const ctx = {
     schema: s,
     addon: {
-      manifest,
+      manifest: manifestOf(manifest, '{\n  "experiment_apis": {}\n}\n'),
       files: new Map([
         ["manifest.json", Buffer.from('{\n  "experiment_apis": {}\n}\n')],
       ]),
@@ -400,7 +407,7 @@ test("experiment-not-allowed reports shadowing vs unsupported per unsupported gr
     schema,
     options: {},
     addon: {
-      manifest: { experiment_apis: { a: {} } },
+      manifest: manifestOf({ experiment_apis: { a: {} } }, "{}\n"),
       experiments: {
         groups: [
           {
@@ -433,7 +440,7 @@ test("experiment-not-allowed reports shadowing vs unsupported per unsupported gr
 test("experiment-modified flags only modified groups", () => {
   const ctx = {
     addon: {
-      manifest: { experiment_apis: { a: {} } },
+      manifest: manifestOf({ experiment_apis: { a: {} } }, "{}\n"),
       experiments: {
         groups: [
           {

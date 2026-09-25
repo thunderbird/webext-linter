@@ -28,14 +28,20 @@ const envWith = (over = {}) => ({
   scaNotRequired: false,
   invalidExperiment: false,
   manifest: null,
-  manifestError: null,
-  manifestLoc: null,
-  manifestText: "",
   experiments: null,
   previous: null,
   nonce: "0123456789abcdef",
   ...over,
 });
+
+// The shipped manifest as the artifact carries it: one record, which is what the env holds
+// and every sibling ctx is handed by reference.
+const shippedRecord = {
+  json: { name: "shipped" },
+  text: '{ "name": "shipped" }',
+  error: null,
+  loc: null,
+};
 
 // The builders never parse: a REVIEWABLE add-on's sources must arrive already through the
 // extraction pass, or the builder throws (an empty corpus would mean "no code" and pass every
@@ -179,7 +185,10 @@ test("a check can merge the source and Experiment corpora off ctx.addon", () => 
 // ctx.addon.manifest against another artifact's files.
 test("buildScaCtxs.scaCtx puts the build corpus on ctx.addon and strips manifest/sources", () => {
   const source = addonWith({ "src/app.js": "export const x = 1;" });
-  const env = envWith({ mode: REVIEW_MODE.SCA, manifest: { name: "shipped" } });
+  const env = envWith({
+    mode: REVIEW_MODE.SCA,
+    manifest: shippedRecord,
+  });
   const scaCorpus = new Map([["build.sh", Buffer.from("echo hi")]]);
   // One archive carrying BOTH corpora: `files` is the add-on code, `sca` the whole of it.
   // A full-addon shape (manifest present) must NOT leak through: reviewView allowlists.
@@ -187,7 +196,7 @@ test("buildScaCtxs.scaCtx puts the build corpus on ctx.addon and strips manifest
   const archive = {
     ...source,
     sca: scaCorpus,
-    manifest: { name: "leak" },
+    manifest: { json: { name: "leak" }, text: "{}", error: null, loc: null },
     nodeModules: ["node_modules"],
     archives: ["dist.zip"],
     symlinks: [{ path: "libs/out", cause: SYMLINK_CAUSE.OUTSIDE }],
@@ -265,7 +274,7 @@ test("ctx.addon allowlists intrinsic fields; no manifest/experiments/sca/creds l
 // shipped manifest/schema come from the review env.
 test("buildXpiCtxs.manifestCtx has an empty file corpus and keeps the shipped manifest", () => {
   const xpi = addonWith({ "app.js": "export const x = 1;" });
-  const env = envWith({ manifest: { name: "shipped" } });
+  const env = envWith({ manifest: shippedRecord });
   const { manifestCtx } = buildXpiCtxs(xpi, parsed(xpi), env);
   assert.equal(manifestCtx.addon.files.size, 0); // no file corpus - cannot read a file artifact
   assert.equal(manifestCtx.addon.manifest, undefined); // reviewView stripped it

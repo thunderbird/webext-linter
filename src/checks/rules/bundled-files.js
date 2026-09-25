@@ -62,10 +62,11 @@ export default {
     // token search would give every one of them the first slot's line. Deduped by SLOT for
     // the same reason - two slots naming one missing file are two defects at two lines,
     // while a `choices` fan-out must not emit one slot twice.
-    const refs = ctx.manifest
-      ? manifestFileRefs(ctx.manifest, ctx.schema, { experiments: true })
+    const manifest = ctx.manifest?.json;
+    const refs = manifest
+      ? manifestFileRefs(manifest, ctx.schema, { experiments: true })
       : [];
-    if (ctx.manifest && !refs.length) {
+    if (manifest && !refs.length) {
       // Either no schema (a hand-built ctx) or a schema that types no manifest path at
       // all. Said out loud: the check cannot make its claim, and a silent empty result
       // would read exactly like a manifest that declares nothing.

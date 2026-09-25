@@ -14,7 +14,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { asObject } from "../../lib/util.js";
+import { asObject, skipWithoutManifest } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -24,15 +24,9 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const manifest = ctx.manifest;
+    const manifest = ctx.manifest?.json;
     if (!manifest) {
-      ctx.note?.(
-        "manifest.json",
-        null,
-        "manifest did not parse",
-        VERDICT.SKIPPED
-      );
-      return { findings: [] };
+      return skipWithoutManifest(ctx);
     }
     // Static themes and dictionaries (language packs) are not represented by an
     // add-on icon, so the advisory does not apply to them.

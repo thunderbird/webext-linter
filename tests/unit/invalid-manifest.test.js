@@ -3,7 +3,7 @@
 // the unrecognized-manifest-key / mistyped-manifest-value entries (deep ajv).
 // Severity is left unset by the rules - runChecks stamps the yaml entry type.
 
-import { withManifest } from "./manifest-ctx.js";
+import { withManifest, manifestOf } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -24,7 +24,10 @@ const schema = buildSchemaIndex(
   loadSchemaFiles(path.join(here, "..", "schema-fixture"))
 );
 
-const ctx = (manifest) => ({ addon: { manifest }, schema });
+const ctx = (manifest) => ({
+  addon: { manifest: manifestOf(manifest) },
+  schema,
+});
 
 // A minimal well-typed MV3 manifest yields zero findings from every check.
 test("accepts a well-typed manifest", () => {
@@ -40,24 +43,46 @@ test("accepts a well-typed manifest", () => {
   }
 });
 
-// An unparsable manifest is manifest-invalid-json's finding; the others stay
-// silent (they need a parsed manifest). A genuinely absent one is
-// manifest-missing.
-test("invalid JSON and a missing manifest are their own checks", () => {
-  const broken = { addon: { manifestError: "boom", manifest: null }, schema };
-  assert.equal(
-    manifestInvalidJson.run(withManifest(broken)).findings.length,
-    1
-  );
-  assert.equal(manifestMissing.run(withManifest(broken)).findings.length, 0);
-  assert.equal(manifestMissingKey.run(withManifest(broken)).findings.length, 0);
+// The two checks split one question in two, and the split is by the RECORD: no record means
+// the file is not there (manifest-missing), a record whose parse is not a manifest object
+// means it is there and unusable (manifest-invalid-json). Whether the text failed to parse
+// or parsed to something that is not an object is the same verdict - the developer has no
+// manifest either way and the remedy is the same - so both land on the same check. Every row
+// asserts the OTHER check is silent: one defect, one finding.
+test("the two manifest checks split on presence, not on the parse", () => {
+  const record = (json, error = null) => ({
+    json,
+    text: error ? "{ oops" : JSON.stringify(json),
+    error,
+    loc: null,
+  });
+  const run = (manifest) => ({
+    missing: manifestMissing.run(withManifest({ addon: { manifest }, schema }))
+      .findings.length,
+    invalid: manifestInvalidJson.run(
+      withManifest({ addon: { manifest }, schema })
+    ).findings.length,
+  });
 
-  const absent = { addon: { manifest: null }, schema };
-  assert.equal(manifestMissing.run(withManifest(absent)).findings.length, 1);
-  assert.equal(
-    manifestInvalidJson.run(withManifest(absent)).findings.length,
-    0
-  );
+  // No record at all: the file is absent.
+  assert.deepEqual(run(null), { missing: 1, invalid: 0 });
+  // Present, and every way of holding no manifest object.
+  assert.deepEqual(run(record(null, "boom")), { missing: 0, invalid: 1 });
+  assert.deepEqual(run(record(null)), { missing: 0, invalid: 1 });
+  assert.deepEqual(run(record(0)), { missing: 0, invalid: 1 });
+  assert.deepEqual(run(record("hello")), { missing: 0, invalid: 1 });
+  // An array is refused with the primitives: Object.keys walks one and yields index keys.
+  assert.deepEqual(run(record([])), { missing: 0, invalid: 1 });
+  // A real manifest: neither check has anything to say.
+  assert.deepEqual(run(record({ manifest_version: 3 })), {
+    missing: 0,
+    invalid: 0,
+  });
+
+  // A check that needs a PARSED manifest stays silent on text that would not parse - the one
+  // case where manifest-invalid-json is the only finding.
+  const broken = { addon: { manifest: record(null, "boom") }, schema };
+  assert.equal(manifestMissingKey.run(withManifest(broken)).findings.length, 0);
 });
 
 // manifest_version as the string "3" trips ajv's type rule in

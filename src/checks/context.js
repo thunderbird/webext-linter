@@ -30,10 +30,7 @@ import { apiUsageOf } from "./extract.js";
  * @property {object} mode  The REVIEW_MODE enum member (XPI/SCA); read as `mode?.sca`.
  * @property {boolean} scaNotRequired
  * @property {boolean} invalidExperiment
- * @property {?object} manifest
- * @property {?object} manifestError
- * @property {?object} manifestLoc
- * @property {string} manifestText
+ * @property {?import("../addon/load.js").ManifestRecord} manifest
  * @property {?object} experiments
  */
 
@@ -70,10 +67,12 @@ import { apiUsageOf } from "./extract.js";
  * bundled fallback)
  * attach themselves on demand via `ctx.addon.X ??= …`, so they need no seeding.
  *
- * DELIBERATELY ABSENT: manifest/manifestError/manifestLoc and experiments are
- * shipped-authoritative and exposed as ctx.manifest / ctx.experiments (so a check cannot read
- * one artifact's manifest against another's files); the archive's other corpus is the wrong one for a
- * review check; skipped is read by no check. An Addon carries no path of its own to withhold
+ * DELIBERATELY ABSENT: manifest and experiments are shipped-authoritative and exposed as
+ * ctx.manifest / ctx.experiments (so a check cannot read one artifact's manifest against
+ * another's files). For the archive there is also nothing to withhold: it is loaded without
+ * reading a manifest (src/addon/load.js), so its `manifest` is null and the record this
+ * would strip exists only on the built XPI. The archive's other corpus is the wrong one for
+ * a review check; skipped is read by no check. An Addon carries no path of its own to withhold
  * (src/addon/load.js) - a check addresses files by the keys of this `files` Map.
  * @param {import("../addon/load.js").Addon} addon  The routed add-on (or the build corpus).
  * @returns {object} The intrinsic-only view.
@@ -147,11 +146,10 @@ function projectCtx(
     // The authoritative manifest/experiments are the SHIPPED artifact's (the built XPI) - what
     // Thunderbird actually loads. Explicit shared context like `schema`, so the manifest /
     // permission / API / experiment checks read them here, never off ctx.addon (reviewView
-    // strips those, which in SCA would be the readable source's pre-build template).
+    // strips the record, and in SCA the archive was loaded without one anyway). The record
+    // passes through whole: the parse, the bytes, the parse error and the line index are one
+    // artifact's one answer, and splitting them is how two of them came to disagree.
     manifest: env.manifest,
-    manifestError: env.manifestError,
-    manifestLoc: env.manifestLoc,
-    manifestText: env.manifestText,
     experiments: env.experiments,
   };
   if (isShippedView) {

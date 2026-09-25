@@ -171,7 +171,7 @@ function compute(ctx) {
       unrecognizedRefs: [],
     };
   }
-  const manifest = ctx.manifest || {};
+  const manifest = ctx.manifest?.json || {};
 
   // Non-authored (vendored / library / minified) JS. We still parse it for
   // outgoing edges (so what it statically loads stays reachable), but its own

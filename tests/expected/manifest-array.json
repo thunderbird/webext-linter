@@ -1,0 +1,9 @@
+{
+  "_comment": "manifest.json parses to an array, so it yields no manifest object and manifest-invalid-json owns the verdict. A TRUTHY non-object, which is why the other manifest checks still read it as a manifest and pile findings on beside it - an icon it cannot have, three required keys it cannot declare, and an ajv type error. That noise is recorded here on purpose: it is the known limitation of fixing this at the two checks rather than at the record, so the day the loader refuses a non-object into `json`, this list is what shrinks.",
+  "expect": {
+    "manifest-invalid-json": ["manifest.json"],
+    "addon-icon-missing": ["manifest.json"],
+    "manifest-missing-key": ["(add-on)", "(add-on)", "(add-on)"],
+    "mistyped-manifest-value": ["manifest.json"]
+  }
+}

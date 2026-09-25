@@ -11,7 +11,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { manifestPathLine } from "../../lib/util.js";
+import { manifestPathLine, skipWithoutManifest } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {
@@ -20,15 +20,9 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const m = ctx.manifest;
+    const m = ctx.manifest?.json;
     if (!m) {
-      ctx.note?.(
-        "manifest.json",
-        null,
-        "manifest did not parse",
-        VERDICT.SKIPPED
-      );
-      return { findings: [] };
+      return skipWithoutManifest(ctx);
     }
     const findings = [];
     // Both keys hold a `gecko` block; browser_specific_settings is current,

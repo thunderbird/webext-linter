@@ -34,7 +34,7 @@ export default {
     // targets, and their bytes all come from the XPI, not a source submission's
     // readable source.
     const { addon } = ctx;
-    const page = ctx.manifest?.background?.page;
+    const page = ctx.manifest?.json?.background?.page;
     if (typeof page !== "string") {
       return { findings: [] };
     }

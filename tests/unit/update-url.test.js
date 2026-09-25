@@ -5,7 +5,7 @@
 // update-url-bss covers the bss path end-to-end; the applications alias is not in
 // the offline test schema, so its branch is exercised here.)
 
-import { withManifest } from "./manifest-ctx.js";
+import { withManifest, manifestOf } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -15,7 +15,7 @@ import rule from "../../src/checks/rules/update-url.js";
 // the update_url line from the (pretty-printed) source.
 const ctxOf = (manifest) => ({
   addon: {
-    manifest,
+    manifest: manifestOf(manifest),
     files: new Map([
       ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
     ]),

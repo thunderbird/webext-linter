@@ -13,7 +13,7 @@ import { asArray, isMatchPattern, manifestPathLine } from "../../lib/util.js";
 
 export default {
   run(ctx) {
-    const m = ctx.manifest;
+    const m = ctx.manifest?.json;
     const { schema } = ctx;
     if (!m) {
       return { findings: [] };

@@ -20,6 +20,7 @@
 // rule's verdict logic - src/checks/rules/*.
 
 import { DISPLAY_TRUNCATE_LENGTH } from "../config.js";
+import { VERDICT } from "./enum.js";
 import { basename, extname } from "../util/files.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
@@ -342,7 +343,7 @@ export function isMatchPattern(p) {
  * null if not found. Works for any quoted JSON token - a key or a string value
  * (a permission, host pattern, or web_accessible_resources entry). Best-effort:
  * a token appearing more than once resolves to its first line.
- * @param {string} manifestText
+ * @param {?string} manifestText
  * @param {string} token  The bare key/value, without surrounding quotes.
  * @returns {number|null}
  */
@@ -366,13 +367,33 @@ export function manifestTokenLine(manifestText, token) {
  * this is unambiguous for repeated values and immune to \uXXXX escaping. Returns
  * null when there is no position index or the path is absent. Prefer this over
  * manifestTokenLine for array values; the token search remains for unique top-level
- * keys. Reads ctx.manifestLoc - the SHIPPED manifest's index (see the RunContext).
+ * keys. Reads ctx.manifest.loc - the SHIPPED manifest's index (see the RunContext).
  * @param {?import("../checks/registry.js").RunContext} ctx
  * @param {...(string|number)} path
  * @returns {number|null}
  */
 export function manifestPathLine(ctx, ...path) {
-  return ctx?.manifestLoc?.lineAt(path) ?? null;
+  return ctx?.manifest?.loc?.lineAt(path) ?? null;
+}
+
+/**
+ * Say why a check that reads the manifest has nothing to report, and report nothing. There
+ * are two reasons and the reviewer is owed the right one: the add-on ships no manifest.json,
+ * or it ships one that will not parse. Neither is the caller's verdict to give - manifest-
+ * missing and manifest-invalid-json are the checks for those - so this only accounts for the
+ * silence, which a skipped check owes the feed so a bare check header is never ambiguous.
+ *
+ * The record is what tells the two apart: absent is no record, unparsable is a record
+ * carrying `error`. A manifest.json that parses to something that is not an object is
+ * described as unparsable here, which is not exact - it is the same conflation
+ * manifest-missing makes, and belongs with that one rather than half-fixed here.
+ * @param {RunContext} ctx
+ * @returns {{findings: []}}
+ */
+export function skipWithoutManifest(ctx) {
+  const reason = ctx.manifest ? "manifest did not parse" : "no manifest.json";
+  ctx.note?.("manifest.json", null, reason, VERDICT.SKIPPED);
+  return { findings: [] };
 }
 
 /**

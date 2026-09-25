@@ -83,7 +83,7 @@ function scan(ctx) {
  * pass on silence. NOTHING else reports an unparsable locale file, so a caller that
  * drops these is all that stands between such a name and no review at all.
  *
- * The name comes from ctx.manifest (always the shipped one) and the locale files
+ * The name comes from ctx.manifest.json (always the shipped one) and the locale files
  * from ctx.addon.files (the routed artifact), so this is only meaningful for a
  * check declaring `input: xpi`: a source-input caller would resolve the shipped
  * placeholder against the source tree's locale files.
@@ -101,7 +101,7 @@ export function localizedNames(ctx) {
  *   unreadable: string[]}}
  */
 function scanNames(ctx) {
-  const name = ctx.manifest?.name;
+  const name = ctx.manifest?.json?.name;
   if (typeof name !== "string") {
     return { pairs: [], resolved: false, localized: false, unreadable: [] };
   }

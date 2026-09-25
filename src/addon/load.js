@@ -1,7 +1,8 @@
 // Walks a submitted add-on - an .xpi/.zip archive or an already-unpacked directory - into
-// the Addon model: a file store plus the parsed manifest. The submission is on disk for
-// the whole review, so the store keeps keys and reads bytes when something asks
-// (./corpus.js); nothing is held twice.
+// the Addon model: a file store, plus the manifest record where the caller says this
+// artifact's own manifest is the one that counts. The submission is on disk for the whole
+// review, so the store keeps keys and reads bytes when something asks (./corpus.js);
+// nothing is held twice.
 //
 // A packed archive is read exactly once, by being extracted to disk (extractZip) and then
 // walked back like any already-unpacked submission (readDir). That destination is the
@@ -14,9 +15,9 @@
 // can disagree about where a file went, and ONE frame: every corpus is keyed against the
 // submission, which is the only frame that can name all of it.
 //
-// Belongs here: walking the submission into the Addon model (store + manifest parse +
-// manifestError), extracting a packed one to disk first, the SCA partition above, the
-// Manifest typedef, and the load-time path safety guards.
+// Belongs here: walking the submission into the Addon model (store + the manifest record),
+// extracting a packed one to disk first, the SCA partition above, the Manifest and
+// ManifestRecord typedefs, and the load-time path safety guards.
 //
 // Does NOT belong here: reviewing the add-on - all verdicts live in the checks
 // (src/checks/*). Which of the build candidates the build actually RUNS is a
@@ -105,6 +106,20 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  */
 
 /**
+ * One artifact's manifest.json, read ONCE at load: the parse and everything derived from the
+ * same bytes, as one value. A record or nothing, so an artifact with no manifest answer says
+ * so once - four parallel fields could disagree, and three of them have an empty value that
+ * reads as an answer.
+ * @typedef {object} ManifestRecord
+ * @property {?Manifest} json  Parsed; null when the text would not parse.
+ * @property {string} text  The raw bytes as text, kept so a reader locating a token in the
+ *   source does not re-read and re-parse the file.
+ * @property {?string} error  The parse error message; null when `json` is the answer.
+ * @property {?import("./manifest-loc.js").ManifestLoc} loc  Resolves a manifest JSON path to
+ *   its source line.
+ */
+
+/**
  * An Addon is the CONTENT of one loaded artifact and carries no path of its own. Where it
  * came from is the caller's: the options named it, and the review's `meta` records it
  * (src/pipeline.js). Nothing here resolves a path, derives a lookup from one, or reads it
@@ -171,12 +186,10 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  *   a reader asking "is this path a directory in the submission" asks here. A recorded
  *   installed tree is NOT among them: it is not walked, so nothing may resolve into it.
  *   Set by loadAddon only.
- * @property {?Manifest} manifest  Parsed; null if missing/invalid.
- * @property {string} manifestText  Raw manifest.json text ("" if none), parsed onto the
- *   record once so checks read it here rather than re-reading and re-parsing the file.
- * @property {string|null} manifestError     Parse error message, if any.
- * @property {?import("./manifest-loc.js").ManifestLoc} manifestLoc  Resolves a
- *   manifest JSON path to its source line; null when there is no manifest.
+ * @property {?ManifestRecord} manifest  What the artifact's own manifest.json says - null
+ *   when it holds none, and null for a SOURCE ARCHIVE, which is loaded without reading one
+ *   at all (loadAddon's `parseWebExtManifest`). A check reads none of this: the authoritative
+ *   manifest is the shipped one, exposed as ctx.manifest (src/checks/context.js).
  */
 
 /**
@@ -186,17 +199,28 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  *   ignored if it is already a directory. Defaults to a fresh `<source>.extracted`
  *   (src/util/dest.js) when omitted - callers that care where it landed (the
  *   review, so it can hand the same folder to a reviewer) pass their own.
- * @param {{recordInstalledTrees?: boolean}} [options]  `recordInstalledTrees` makes a
- *   node_modules directory a RECORDED path instead of content: its paths land in
- *   `nodeModules` and not one of its files is read. Only a submitted SOURCE ARCHIVE asks
- *   for that, because there an installed tree is not part of the submission - the
- *   reviewer installs it - so reading it would review bytes the build replaces. In an
- *   ADD-ON, which is what users receive, a folder called node_modules is shipped content
- *   like any other folder and is loaded and reviewed as one, which is why this is off by
- *   default: the exception is named at the one call that needs it.
+ * @param {{recordInstalledTrees?: boolean, parseWebExtManifest?: boolean}} [options]  Both name the
+ *   same exception - a submitted SOURCE ARCHIVE - and both are off the default, so the one
+ *   call that loads one names them and no other caller carries them.
+ *
+ *   `recordInstalledTrees` makes a node_modules directory a RECORDED path instead of
+ *   content: its paths land in `nodeModules` and not one of its files is read. An installed
+ *   tree is not part of a submission - the reviewer installs it - so reading it would review
+ *   bytes the build replaces. In an ADD-ON, which is what users receive, a folder called
+ *   node_modules is shipped content like any other folder and is loaded and reviewed as one.
+ *
+ *   `parseWebExtManifest` false leaves `manifest` null without reading one. A source archive's
+ *   root manifest.json is a PRE-BUILD template: the build may rewrite it or generate it, the
+ *   add-on's root may sit anywhere under the submission, and a submission need not hold one
+ *   at all - so there is no artifact here whose manifest that would be. The bytes stay in
+ *   the corpus (a build step may copy one); only the answer is not offered.
  * @returns {Addon}
  */
-export function loadAddon(source, extractTo, { recordInstalledTrees } = {}) {
+export function loadAddon(
+  source,
+  extractTo,
+  { recordInstalledTrees, parseWebExtManifest = true } = {}
+) {
   const resolved = path.resolve(source);
   if (!fs.existsSync(resolved)) {
     throw new Error(`Add-on not found: ${resolved}`);
@@ -224,20 +248,21 @@ export function loadAddon(source, extractTo, { recordInstalledTrees } = {}) {
   // One corpus, because an artifact loaded on its own has nothing to hold back: every file
   // it holds is a file it ships. A SOURCE archive is the exception and says so later
   // (scaViews), which is the only place `files` and `store` come apart.
-  const addon = assembleAddon(files);
-  addon.store = files;
-  addon.nodeModules = nodeModules;
-  addon.archives = archives;
-  addon.skipped = skipped;
-  addon.symlinks = symlinks;
-  addon.directories = directories;
-  return addon;
+  return {
+    files,
+    store: files,
+    manifest: parseWebExtManifest ? manifestRecord(files) : null,
+    nodeModules,
+    archives,
+    skipped,
+    symlinks,
+    directories,
+  };
 }
 
 // The WebExtension manifest's filename, by which one is recognized at any depth.
 const MANIFEST_NAME = "manifest.json";
 
-/**
 /**
  * Drop every manifest, at any depth, from a corpus - a SOURCE archive's review corpus and
  * nothing else. There the add-on's root is wherever the developer put it, a submission may
@@ -247,7 +272,8 @@ const MANIFEST_NAME = "manifest.json";
  * XPI keeps its manifests, which are just files it ships.
  *
  * Only ever given a VIEW, so the store keeps what the submission contains, and no parsing:
- * the artifact was assembled already and this is the answer it carries.
+ * the archive it belongs to carries no manifest record, and this corpus must not become the
+ * one place a pre-build template can be read back as the shipped manifest.
  * @param {object} files  The view to lift them off.
  */
 function liftManifests(files) {
@@ -260,37 +286,38 @@ function liftManifests(files) {
 }
 
 /**
- * Build an Addon record over one corpus: parse its ROOT manifest.json (BOM-tolerant, JSON5)
- * onto the record. The corpus is left alone - reading the manifest is not a reason to take
- * it away, and the one corpus that must give its manifests up says so itself
+ * Read one corpus's ROOT manifest.json (BOM-tolerant, JSON5) into the record every reader of
+ * that manifest shares. The corpus is left alone - reading the manifest is not a reason to
+ * take it away, and the one corpus that must give its manifests up says so itself
  * (liftManifests, for a source archive).
- * @param {object} files  The corpus to build over. A hand-built Map works too, which is what
- *   the unit fixtures pass.
- * @returns {Addon}
+ *
+ * Unparsable is still a record: `error` is what the review reports and `text` is what a
+ * token search anchors it in, while `loc` answers null to everything (buildManifestLoc gets
+ * no tree out of text JSON5 alone will take). Only an ABSENT manifest is nothing.
+ * @param {object} files  The corpus to read.
+ * @returns {?ManifestRecord}
  */
-function assembleAddon(files) {
-  const addon = {
-    files,
-    manifest: null,
-    manifestText: "",
-    manifestError: null,
-    manifestLoc: null,
-  };
+function manifestRecord(files) {
   const manifestBuf = files.get(MANIFEST_NAME);
-  if (manifestBuf) {
-    addon.manifestText = manifestBuf.toString("utf8");
-    let text = addon.manifestText;
-    if (text.charCodeAt(0) === 0xfeff) {
-      text = text.slice(1);
-    }
-    addon.manifestLoc = buildManifestLoc(text);
-    try {
-      addon.manifest = JSON5.parse(text);
-    } catch (err) {
-      addon.manifestError = err.message;
-    }
+  if (!manifestBuf) {
+    return null;
   }
-  return addon;
+  const raw = manifestBuf.toString("utf8");
+  const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+  const record = {
+    json: null,
+    // The bytes AS SUBMITTED, BOM and all - what a finding quotes is the file the developer
+    // sent. The parse and the line index take the stripped copy, which neither can read past.
+    text: raw,
+    error: null,
+    loc: buildManifestLoc(text),
+  };
+  try {
+    record.json = JSON5.parse(text);
+  } catch (err) {
+    record.error = err.message;
+  }
+  return record;
 }
 
 /**
@@ -390,10 +417,11 @@ export function hasParentSegment(value) {
  * package.json (src/build/corpus.js selectBuildCorpus, via analyzeBuild). One pass, one set
  * of prefixes, so no two of them can disagree about where a file went.
  *
- * The source addon is PURE source - its own files and its own manifest.json, which
- * assembleAddon lifts off the corpus. The authoritative manifest is the built XPI's,
- * exposed separately as ctx.manifest (src/checks/context.js); nothing reviews the source
- * manifest.
+ * The source addon is PURE source: its own files, and no manifest of its own. The review
+ * corpus gives every manifest.json up (liftManifests) and the archive was loaded without a
+ * parsed one (loadAddon's `parseWebExtManifest`), because a pre-build template is not what
+ * Thunderbird loads. The authoritative manifest is the built XPI's, exposed separately as
+ * ctx.manifest (src/checks/context.js).
  *
  * The source and the experiment are keyed alike whenever the Experiment sits inside the
  * add-on, so a check that must review the privileged code too reads the two as one corpus
@@ -402,8 +430,8 @@ export function hasParentSegment(value) {
  * @param {{scaRoot: string, scaExpSource?: string}} where  Absolute paths, resolved by the
  *   arg-array reader (src/cli.js). scaExpSource may sit anywhere under the root.
  * @returns {Addon}  The SAME archive, now carrying its three corpora. Not a new object:
- *   the store, the parsed manifest and the recorded path lists already describe this
- *   submission, and copying them onto parts is how they came to disagree.
+ *   the store and the recorded path lists already describe this submission, and copying
+ *   them onto parts is how they came to disagree.
  */
 export function scaViews(archive, { scaRoot, scaExpSource }) {
   const store = archive.store;
@@ -428,9 +456,9 @@ export function scaViews(archive, { scaRoot, scaExpSource }) {
   archive.sca = fileView(store, { keys: sourceKeys });
   archive.experiment = fileView(store, { keys: expKeys });
   archive.files = fileView(store, { keys: sourceKeys });
-  // Lifted, not re-assembled: loadAddon already parsed this archive's root manifest, and
-  // the view holds the same bytes, so parsing again would only produce a second copy of an
-  // answer the archive carries.
+  // Lifted, never parsed: this archive carries no manifest record at all, and the review
+  // corpus must not become the one place a pre-build template can be read back as the
+  // shipped manifest.
   liftManifests(archive.files);
   return archive;
 }

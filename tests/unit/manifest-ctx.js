@@ -1,7 +1,9 @@
-// Test helper: the checks read the SHIPPED manifest from ctx.manifest (+ siblings),
+// Test helper: the checks read the SHIPPED manifest record from ctx.manifest (+ siblings),
 // resolved by the ctx builders (buildXpiCtxs) in production. Unit tests build a ctx inline with a
-// single artifact, so this derives those fields from ctx.addon (mutating and
+// single artifact, so this derives that field from ctx.addon (mutating and
 // returning the SAME ctx, so tests that inspect the ctx after a run still observe it).
+
+import JSON5 from "json5";
 
 import { buildManifestLoc } from "../../src/addon/manifest-loc.js";
 import { collectJsSources } from "../../src/addon/sources.js";
@@ -26,8 +28,8 @@ export function parsedSources(addon, { schema } = {}) {
   runExtractionPass(jsSources, {
     schema,
     nonAuthored: addon.bundled?.nonAuthored,
-    experimentNamespaces: isExperiment(addon.manifest)
-      ? experimentApiNamespaces(addon.manifest, addon.files)
+    experimentNamespaces: isExperiment(addon.manifest?.json)
+      ? experimentApiNamespaces(addon.manifest?.json, addon.files)
       : null,
   });
   return jsSources;
@@ -47,14 +49,17 @@ export function parsed(jsSources, { schema, nonAuthored } = {}) {
   return jsSources;
 }
 
-// Mirror the loader (assembleAddon): lift manifest.json off a hand-built corpus onto the
-// addon (manifestText) and drop the key, so ctx.addon.files matches production - manifest-free.
-// Idempotent: reruns keep the stored text even though the key is already gone.
-function liftManifest(addon) {
-  if (addon.manifestText === undefined) {
-    addon.manifestText =
-      addon.files?.get?.("manifest.json")?.toString("utf8") ?? "";
-  }
+/**
+ * The manifest record a loaded artifact carries, built the way manifestRecord does
+ * (src/addon/load.js) - so a hand-built fixture hands the checks the shape production hands
+ * them. Give it the parsed object; the text is derived unless a test needs particular bytes
+ * (a token's line, a trailing comma, a duplicate key).
+ * @param {?object} json  The parsed manifest.
+ * @param {string} [text]  The raw manifest.json bytes, when they matter.
+ * @returns {object} The record, for `addon: { manifest: manifestOf(...) }`.
+ */
+export function manifestOf(json, text = JSON.stringify(json, null, 2)) {
+  return { json, text, error: null, loc: buildManifestLoc(text) };
 }
 
 /**
@@ -72,22 +77,21 @@ export function siblingsOf(ctx) {
 
 /**
  * @param {object} ctx
- * @returns {object} the same ctx, with manifest/manifestError/manifestLoc/manifestText.
+ * @returns {object} the same ctx, carrying the shipped manifest record.
  */
 export function withManifest(ctx) {
   const addon = ctx?.addon ?? {};
-  liftManifest(addon);
-  ctx.manifest = addon.manifest ?? null;
-  ctx.manifestError = addon.manifestError ?? null;
-  ctx.manifestLoc =
-    addon.manifestLoc ??
-    (addon.manifestText ? buildManifestLoc(addon.manifestText) : null);
-  ctx.manifestText = addon.manifestText;
-  // The diff baseline also arrives manifest-free from the loader; mirror that so the diff
-  // checks compare manifest-free corpora and read the baseline manifest off ctx.previous.
-  if (ctx?.previous) {
-    liftManifest(ctx.previous);
+  // A loaded artifact's record is read FROM the corpus, so its text IS those bytes and a
+  // line a finding carries is a line of the file the reviewer opens. A fixture that lets
+  // the two drift asserts a line the submission does not have, and passes by coincidence.
+  const bytes = addon.files?.get?.("manifest.json")?.toString("utf8");
+  if (bytes !== undefined && addon.manifest && addon.manifest.text !== bytes) {
+    throw new Error(
+      "manifest record text differs from the corpus manifest.json - pass those bytes " +
+        "as manifestOf()'s second argument"
+    );
   }
+  ctx.manifest = addon.manifest ?? null;
   // The other shipped-authoritative field the pipeline attaches to the review addon and
   // the ctx builders hoist onto ctx: the Experiment classification. Mirror that hoist here
   // for a hand-built ctx (don't clobber a value a test set directly on ctx).

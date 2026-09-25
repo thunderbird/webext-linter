@@ -28,7 +28,8 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const maxStr = ctx.manifest ? strictMaxVersion(ctx.manifest) : undefined;
+    const json = ctx.manifest?.json;
+    const maxStr = json ? strictMaxVersion(json) : undefined;
     const maxMajor = maxStr ? parseInt(maxStr, 10) : NaN;
     if (!Number.isInteger(maxMajor)) {
       ctx.note?.(

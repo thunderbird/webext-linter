@@ -1,6 +1,11 @@
-// No manifest.json at the add-on root, so the submission is invalid. Fires only
-// when the manifest is genuinely absent (not when it is present but unparsable -
-// that is manifest-invalid-json).
+// No manifest.json at the add-on root, so the submission is invalid. ONE question: is the
+// file there. Whatever a file that IS there turns out to hold - unparsable, or parsing to
+// something that is not a manifest - is manifest-invalid-json's verdict, not this one's.
+//
+// `ctx.manifest` is that answer already: the loader builds a record for a manifest.json it
+// finds and returns null when the corpus holds no such key (src/addon/load.js
+// manifestRecord), so the record's existence IS the file's. This check cannot ask the corpus
+// itself - it is input: manifest, routed to a ctx whose file corpus is deliberately empty.
 //
 // Belongs here: the absent-manifest verdict. Does NOT belong here: loading the
 // add-on (-> src/addon/load.js), authored wording (-> assets/registry.yaml), and
@@ -11,7 +16,7 @@ import { finding } from "../../report/finding.js";
 
 export default {
   run(ctx) {
-    if (ctx.manifestError || ctx.manifest) {
+    if (ctx.manifest) {
       return { findings: [] };
     }
     ctx.note?.("manifest.json", null, "no manifest.json", VERDICT.FAIL);

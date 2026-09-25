@@ -332,7 +332,11 @@ test("only the source archive's review corpus gives up its manifests", () => {
   const addon = loadAddon(dir);
   assert.equal(addon.files, addon.store, "an XPI has one corpus, not a view");
   assert.ok(addon.files.has("manifest.json"), "which holds the manifest");
-  assert.equal(addon.manifest.name, "x", "parsed onto the addon all the same");
+  assert.equal(
+    addon.manifest.json.name,
+    "x",
+    "parsed onto the addon all the same"
+  );
 
   // The archive: its review corpus gives every manifest up, the sca corpus keeps them so a
   // build step may copy one, and the artifact itself is untouched by either.
@@ -353,10 +357,43 @@ test("only the source archive's review corpus gives up its manifests", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The archive is ONE object: it owns the store, the parsed manifest and the recorded path
-// lists, and carries its three corpora as views over that store. Copying those onto parts is
-// how two views of one archive came to disagree about what it holds, so the shape itself is
-// worth pinning.
+// `parseWebExtManifest` is the whole of what a source archive withholds: the bytes stay in the
+// corpus, and only the parsed answer is not offered. Pinned on the loader itself, because
+// the archive path reaches it through scaViews and would not say which half did what.
+test("loadAddon(dir) reads a manifest unless told not to, and keeps the bytes either way", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-nomf-"));
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+
+  const parsed = loadAddon(dir);
+  assert.equal(parsed.manifest.json.name, "x", "the default reads it");
+  assert.equal(parsed.manifest.error, null);
+  assert.ok(parsed.manifest.loc, "and can anchor a finding at a line");
+
+  const unread = loadAddon(dir, undefined, { parseWebExtManifest: false });
+  assert.equal(
+    unread.manifest,
+    null,
+    "asked not to, it offers no answer at all"
+  );
+  assert.ok(
+    unread.files.has("manifest.json"),
+    "the bytes are still there - a build step may copy one"
+  );
+  assert.deepEqual(
+    unread.files.get("manifest.json"),
+    parsed.files.get("manifest.json"),
+    "the same bytes, read or not"
+  );
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The archive is ONE object: it owns the store and the recorded path lists, and carries its
+// three corpora as views over that store. Copying those onto parts is how two views of one
+// archive came to disagree about what it holds, so the shape itself is worth pinning.
 test("scaViews leaves the archive owning one store and three corpora", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-oneobj-"));
   const w = (p, c) => {
@@ -368,7 +405,12 @@ test("scaViews leaves the archive owning one store and three corpora", () => {
   w("sub/manifest.json", "{}");
   w("exp/impl.js", "1;\n");
 
-  const loaded = loadAddon(root, undefined, { recordInstalledTrees: true });
+  // Loaded the way the pipeline loads a submission: an installed tree is recorded, and no
+  // manifest is read off it.
+  const loaded = loadAddon(root, undefined, {
+    recordInstalledTrees: true,
+    parseWebExtManifest: false,
+  });
   const archive = scaViews(loaded, {
     scaRoot: root,
     scaExpSource: path.join(root, "exp"),
@@ -401,8 +443,9 @@ test("scaViews leaves the archive owning one store and three corpora", () => {
     "sub/manifest.json",
   ]);
 
-  // Parsed once, by loadAddon - scaViews lifts the key without re-reading the bytes.
-  assert.equal(archive.manifest.name, "R");
+  // And no manifest of its own: an archive is loaded without reading one, so the pre-build
+  // template cannot be mistaken for the shipped manifest. The BYTES are still there above.
+  assert.equal(archive.manifest, null);
 
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -498,7 +541,7 @@ test("the source and experiment views merge into the add-on's whole tree", () =>
   ]);
   assert.deepEqual([...experiment.keys()].sort(), ["addon/experiment/exp.js"]);
 
-  // Together, they are the whole submission (minus the manifests, which assembleAddon lifts
+  // Together, they are the whole submission (minus the manifests, which liftManifests lifts
   // off) - no key belongs to both, and none is lost between them.
   const merged = new Map([...source.files, ...experiment]);
   assert.deepEqual(
@@ -849,7 +892,7 @@ test("a leading ./ on a zip entry is repaired, not refused", () => {
 
   const addon = loadAddon(file);
   assert.ok(addon.files.has("a/b.js"), "keyed without the leading ./");
-  assert.equal(addon.manifest.name, "x");
+  assert.equal(addon.manifest.json.name, "x");
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -900,7 +943,7 @@ test("an unreadable archive is refused in our own words", () => {
 
 // A packed .xpi is extracted to disk and read back from there - the one way its files
 // ever reach addon.files - so the round trip has to be exact: manifest.json included
-// (assembleAddon lifts it off the corpus AFTER this, same as a directory submission),
+// (liftManifests takes it off the review corpus AFTER this, same as a directory submission),
 // and every other file byte-identical to what was packed.
 test("loadAddon(file) extracts to disk and reads the same content back", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-extract-"));
@@ -917,7 +960,8 @@ test("loadAddon(file) extracts to disk and reads the same content back", () => {
   const dest = path.join(dir, "addon.xpi.extracted");
   const addon = loadAddon(file, dest);
 
-  // On disk: manifest.json included, unlike addon.files (assembleAddon drops it there).
+  // On disk: manifest.json included, and in addon.files too - only a source archive's
+  // review corpus gives its manifests up (liftManifests).
   assert.equal(
     fs.readFileSync(path.join(dest, "manifest.json"), "utf8"),
     '{"manifest_version":3,"name":"x","version":"1"}'
@@ -933,7 +977,7 @@ test("loadAddon(file) extracts to disk and reads the same content back", () => {
 
   // Read back the same way a directory submission is: parsed onto the addon, and still in
   // the corpus with everything else, keyed the same as the packed entries were.
-  assert.equal(addon.manifest.name, "x");
+  assert.equal(addon.manifest.json.name, "x");
   assert.ok(addon.files.has("manifest.json"));
   assert.equal(
     addon.files.get("bg.js").toString("utf8"),

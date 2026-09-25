@@ -45,13 +45,13 @@ export default {
     // against the XPI, not a source submission's pre-build layout (which would
     // mislabel loaded resources).
     const { addon } = ctx;
-    const entries = warResourceList(ctx.manifest || {});
+    const entries = warResourceList(ctx.manifest?.json || {});
     if (!entries.length) {
       return { findings: [] }; // nothing to minimize
     }
     const reach = buildReachability(ctx);
     const files = addon.files;
-    const text = ctx.manifestText;
+    const text = ctx.manifest?.text;
     /**
      * @param {string} item  The manifest token to anchor on.
      * @returns {?{line: number}}  Its manifest line as a loc, or null.
